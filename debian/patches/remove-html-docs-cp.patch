@@ -1,0 +1,11 @@
+Remove copying of html doc files
+--- a/Makefile
++++ b/Makefile
+@@ -130,7 +130,6 @@
+ 
+ install-doc:
+ 	@$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc
+-	$(CP) doc/html/* $(DESTDIR)$(NAVISERVER)/pages/doc
+ 	$(CP) contrib/banners/*.png $(DESTDIR)$(NAVISERVER)/pages/doc
+ 
+ install-examples:

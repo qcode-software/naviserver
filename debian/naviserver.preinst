@@ -1,0 +1,51 @@
+#!/bin/sh -e
+# preinst script for naviserver
+#
+# see: dh_installdeb(1)
+
+# summary of how this script can be called:
+#        * <new-preinst> `install'
+#        * <new-preinst> `install' <old-version>
+#        * <new-preinst> `upgrade' <old-version>
+#        * <old-preinst> `abort-upgrade' <new-version>
+
+# Source debconf library
+#. /usr/share/debconf/confmodule
+
+# check for presence of nsd:nsd
+
+add_group_if_missing() {
+    if [ -x /usr/sbin/adduser ]; then
+        if ! id -g nsd >/dev/null 2>&1; then
+                addgroup --force-badname nsd
+        fi
+    fi
+}
+                                                                                                              
+add_user_if_missing() {
+    if [ -x /usr/sbin/adduser ]; then
+        if ! id -u nsd > /dev/null 2>&1; then
+            adduser --system --home /home/nsd --no-create-home \
+                --disabled-password --force-badname \
+                nsd
+        fi
+    fi
+}
+
+
+case "$1" in
+    upgrade|install)
+
+    	add_group_if_missing
+    	add_user_if_missing
+
+    ;;
+
+    abort-upgrade)
+    ;;
+
+    *)
+        echo "preinst called with unknown argument \`$1'" >&2
+        exit 0
+    ;;
+esac

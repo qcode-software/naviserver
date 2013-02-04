@@ -1,0 +1,4 @@
+include/*.h usr/share/naviserver/include
+nsdb/*.h usr/share/naviserver/include
+include/Makefile* usr/share/naviserver/include
+debian.substvars usr/share/naviserver

@@ -1,0 +1,2 @@
+# Do not generate diff for these changes
+extend-diff-ignore = "(^|/)(naviserver.rdf|include\/nsconfig\.h|include\/nsversion\.h)$"
