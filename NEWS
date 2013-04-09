@@ -1,0 +1,500 @@
+======================================
+NaviServer 4.99.4, released XXXX-XX-XX
+======================================
+
+New Features:
+
+    * Less eager thread creation short request peaks. Naviserver tended
+      to create too many threads in situation of short bottlenecks (e.g.
+      file system latencies). This can reduce resource consumption on
+      larges sites significantly.
+
+    * New threads are added to the waiting queue in an already warm
+      state.  Previously, threads we created in one step and the
+      initialization of thread blocked the first request added to the
+      thread. "minthreads" controls the number of warm threads kept
+      around.
+
+    * Improved cache statistics: added "saved", expressing cumulative
+      saved time from "ns_cache_eval". The reporting of theses
+      statistics as updated as well in the add-on package nsstats.
+
+    * Improved locking statistics: added "total_waiting_time" and
+      "max_waiting_time" to the mutex monitoring statistics. The
+      reporting of theses statistics as updated as well in the add-on
+      package nsstats.
+
+    * Made upload progress management compatible with usual 
+      tracking conventions by using the query parameter "X-Progress-ID"
+      if present (as used in nginx, lighttpd and by apache (mod_passenger)).
+
+    * Added support for chunked encoding for uploads (as used e.g. in WEBDAV
+      PUT requests from Mac OS X Finder).
+
+    * Added small compatibility layer for providing Aolserver compatibility
+      (e.g. support "ns_cache eval" as well as "ns_cache_eval"); the layer
+      is designed to be sufficient for OpenACS.
+
+    * Improve concurrency on writing on access logs. File system latencies
+      can block the full server, the change improves the situation.
+
+    * Added [ns_thread stackinfo] to obtain stack size and usage from the 
+      current thread.
+
+    * Add option "-exact" to "ns_cache_keys" to enable exact lookups (also 
+      when glob characters are used in keys)
+
+    * Provided constat time lookup for [ns_cache_keys /cache/
+      /pattern/], when "pattern" contains no glob characters
+
+    * Added .htaccess mode for nsperm module. Similar to Apache but
+      only to allow access. This is disabled by default, can be
+      enabled in the ns/server/servername/module/nsperm section. Doc
+      is updated. In this version only current directory is checked
+      for .htaccess file.
+
+    * New lazy Tcl interpreter initialization option. Saves memory and speeds
+      initialization of interp on first use by defining procs on-demand.
+      See: tcl/lazyloader parameter below.
+
+    * New module nsproxy executes Tcl scripts via pool of external
+      processes. Useful to keep buggy/non-thread-safe code isolated from
+      main server process. See also: ns_job.
+
+    * Log filter callbacks (Tcl and C) may be added to the error log stream
+      to handle particular kinds of log messages by e.g. logging to a separate
+      file.
+
+    * Error logging may now be disabled/enabled at runtime with the
+      ns_logctl command.
+
+    * User-defined named log severities may be created using the ns_logctl
+      command. These may be enabled/disabled individually, at runtime, unlike
+      the old numeric user-levels.
+
+    * New limits feature. Connection limits can be bundled together into a
+      named set of limits and then applied to a subset of the URL
+      hierarchy. The max number of connection threads running and waiting to
+      run a URL, the max upload file size, and the max time a connection
+      should wait to run are all configurable. See ns/limits parameters below.
+
+    * ns_cache_create now takes a -maxentry switch limits the max size of an
+      entry allowed into the cache to prevent wasteful cache flushes.
+
+    * ns_cache_create now takes a -timeout switch which is the default timeout
+      for one thread to wait for another to complete an ns_cache_eval command,
+      if the -timeout switch is not given to the ns_cache_eval command itself.
+
+    * Time values passed to commands such as the -timeout switch of
+      ns_cache_eval now distinguish between an absolute time in the future and
+      an offset from the current time. A heuristic is used: large values are
+      absolute times in the future.
+
+    * A new [ns_cache_eval -force ...] switch replaces any existing cached value
+      whether it is up to date or not.
+
+    * A new ns_cache_stats -contents switch dumps the expire and size of each
+      entry in the cache cache. Useful when developing / testing to check
+      utilisation.
+
+    * The new [ns_conn keepalive ?bool?] sub-command disables or requests
+      keepalive behavior for the current connection.
+
+    * ns_getcsv now takes a -delimiter switch.
+
+    * ns_parseargs: default values can now be specified with in the form 
+      {[..]} to cause evaluation, like ns_parseargs {-flag {[script]}} $args ...
+
+    * Commands which timeout now set a NS_TIMEOUT Tcl error code, which if not
+      caught is reported as an HTTP 503 Unavailable response.
+
+    * Handle png images, as well as existing gif and jpg with new ns_img*
+      commands.
+
+    * New [ns_mutex eval script] to safely handle unlocking on error.
+
+    * Thread commands now takes names as well as thread-object references.
+
+    * New options jobsperthread and jobtimeout for ns_job command to perform
+      automatic job threads exit in case of idle or max number of jobs reached
+
+    * Updated ns_perm module to support missing checkpass and sepass commands
+
+    * ns_http was ported from Aolserver 4.5 and uses new task API
+
+    * ADP parser was ported from AS 4.5 and also used for processing .tcl files
+
+    * New option acceptsize for driver to tell how many connection can be accepted at once,
+      this improves performance significantly in case of large number of incoming connections
+
+    * New Ns_Sls* and ns_sls commands supporting socket-local-storage (data which persists for 
+      the lifetime of an open TCP connection)
+
+    * ns_httpget now supports chunked encoding in results
+
+    * ns_return etc. will now gzip the body content, if that option is enabled.
+
+    * Static files can now be sent using the OS native sendfile() on
+      supported platforms (currently Linux).
+
+    * ns_unregister_op is now the correct way to unregister procs, adp, and tcl
+      pages. (The older names are kept around for backwards compat.)
+
+    * NaviServer now builds on Win32 using the standard configure scripts and
+      the MingWin32 compiler.
+
+    * New command ns_mutex trylock which works similar to the same C API function
+
+    * New command ns_filestat which is similar to file stat but uses direct system 
+      call instead of Tcl VFS
+
+    * New command ns_db rowcount, which return the number of affected rows after a
+      DML operation.
+
+    * Support for If-Range: header in conditional range requests, this makes the server
+      more RFC compliant and allows file retrievals, re-gets and file mirroring without 
+      additional coding, it is all done by the server and HTTP
+
+Security Improvements:
+    * Disallow terminal escape characters in the log file (potential attack)
+    * Protection against path traversal attack
+
+Bug Fixes:
+    * Fixed timeout keep-alive management: When many requests were
+      posted into a persistent connection, it happend frequently that
+      a few of these requests were processed after the keep-alive
+      timeout (keepwait) was firing.
+
+    * Fixed various potential crashes (range requests, severity
+      management, 64 bit, NsTclParseArgsObjCmd with Tcl 8.5, POST with
+      sizes ending exactly at page boundary, accessing "nsconn
+      content" after connection close, purges on new-created entries
+      in the cache).
+
+    * Improved test environment: 
+      - placed nstest into a namespace
+      - added parameter "-verbose" to nstest::http to trace communication 
+      - added parameter -omitcontentlength to to nstest::http to test
+        requests without content length
+
+    * Fixed early closes from the server on too-large content (looked like
+      a server crash to clients like firefox, google chrome, etc.). This
+      has the disadvantage that now the full request has to be transferred.
+
+    * Naviserver could loop under linux in some situations where a
+      client connection was closed unexpectedly (observed under vmware
+      under intel 64bit).
+
+    * Improved Code quality (reduced scope of variables, unused variables, 
+      changed types of file descriptors for socket from "int" to "SOCKET"
+      etc.).
+
+    * removed unused config parameter "urlstats", "maxurlstats",
+      "globalstats", "maxdropped", "keepallmethods"
+
+    * Fix to prevent multiple DriverAccepts on the same socket. The
+      original coded relied on the fact that later accepts lead to an
+      ERROR_STATE. Under RHEL 4 (Power, 64bit) the second accept
+      blocks.
+
+    * Fix Ns_Time for platforms, where time_t is long.
+    * Updated documentation
+    * Various 64bit fixes.
+    * Fix path attribute of HTP Cookie string.
+    * Make sure upload stats lock is unlocked after use.
+    * Fix crash in writer thread logging already freed data.
+    * Fix crashes in cache code due to incorrect expired entry flushing fixed.
+    * Only add cache commands to virtual server interps.
+    * Don't inflate flush-stats on cache eval error.
+    * Custom error documents (return redirects) now send back the correct HTTP
+    * response code. Used to always report 200, success.
+    * Make unsetting an environment variable work cross platform.
+    * Fix bug where executable name was freed before use.
+    * Don't delete bound Unix domain sockets.
+    * Fix typo in ns_setexpires command.
+    * Windows: block SIGPIPE.
+    * Windows: fix stdin, stdout, stderr channel initialization.
+    * Fix infinite loop in spooler thread code.
+    * Message line-breaking of email bodies sent with ns_sendmail now works
+      correctly for non ASCII data.
+    * Files over 2 Gb are supported for logging, serving, uploads, etc.
+    * Fixed ns_sendmail for cases when message body is large and it fails to
+      send all body because of nonblocking socket mode
+    * Fix a race condition in the fastpath code which could allow random files
+      anywhere on the same filesystem to be served by the server.
+
+
+Incompatible API Changes:
+
+    * ns_setcookie -maxage renamed -expires to match common usage throughout
+      code.
+
+    * All cookies are now set HttpOnly by default. The -scriptable option must
+      be true for the client javascript engine to have access to the cookies.
+
+    * The 'secure' flag of Ns_ConnSetCookieEx() is now a flags option which
+      takes NS_COOKIE_SECURE and NS_COOKIE_SCRIPTABLE. Non-scriptable is the
+      default as for the Tcl API.
+
+    * ns_var, ns_share and the -share option to ns_set have been removed.
+      Please use the nsv_* commands instead.
+
+
+Configuration Changes:
+
+    Please update your server configuration files to take account of the
+    following new features and changes.
+
+    * Randomizing the connection life-time controlling parameters
+      "connsperthread" and "threadtimeout" by a new config parameter
+      "spread". The spread is a number between 0 and 100, expressing
+      the percentage of randomization. The randomization provides
+      better resource distributions and prohibits mass thread
+      extinction and recreations.
+
+    * New config parameters "keepalivemaxuploadsize" and
+      "keepalivemaxdownloadsize" for controlling keep-alives for largish
+      content. Use separate request instead of waiting until the large
+      content transfer has finished.
+
+    * Fastpath static page configuration is now a global setting rather then
+      per-server:
+
+      ns_section "ns/fastpath"
+      ns_param mmap          false    ;# Use mmap(2) to read files from disk.
+      ns_param cache         false    ;# Cache file contents in memory.
+      ns_param cachemaxsize  10240000 ;# Size of file cache, if enabled.
+      ns_param cachemaxentry 8192     ;# Don't cache files larger than this.
+
+    * Global thread stacksize configuration deprecated. Server now uses OS
+      default. Only explicitly set the stacksize to some smaller than default
+      value if you need to save memory because your server has a lot of
+      threads, and you know for certain this won't cause problems with deeply
+      nested Tcl or ADP scripts.
+
+      ns_section "ns/parameters"      ;# or "ns/threads"
+      ns_param stacksize     100000   ;# DON'T DO THIS.
+
+    * The dnscachemaxentries config param has been renamed dnscachemaxsize to
+      more accurately reflect what the setting does. A new setting
+      dnswaittimeout has been added:
+
+      ns_section "ns/parameters"
+      ns_param dnscache        true   ;# Enable the DNS query cache.
+      ns_param dnscachemaxsize 512000 ;# Max memory for cache.
+      ns_param dnscachetimeout 60     ;# Minutes to cache a DNS query.
+      ns_param dnstimeout      5      ;# Seconds to wait for query answer.
+
+    * The buffer size used by the writer thread is now configurable:
+
+      ns_section "ns/server/server1/module/nssock"
+      ns_param writerbufsize   8192   ;# Read from file in bufsize chunks.
+
+    * The Tcl lazy loader may be enabled with the following parameter:
+
+      ns_section "ns/server/server1/tcl"
+      ns_param lazyloader      false  ;# Define procs in thread-interps on
+      demand.
+
+    * New sections for server limits:
+
+      ns_section "ns/limits"
+      ns_param default         "Default Limits" ;# Defines a limit.
+
+      ns_section "ns/limit/default"
+      ns_param maxrun          100       ;# Conn threads running for limit.
+      ns_param maxwait         100       ;# Conn threads waiting for limit.
+      ns_param maxupload       102400000 ;# Max size of file upload in bytes.
+      ns_param timeout         60        ;# Total seconds to wait for resources.
+
+      ns_section "ns/server/server1/limits"
+      ns_param default         "GET  /*" ;# Map default limit to URL.
+      ns_param default         "POST /*"
+      ns_param default         "HEAD /*"
+
+
+Code Changes:
+
+   * Fixed test to use preferred getaddrinfo()/getnameinfo() for Mac
+     OS X instead of gethostbyaddr()/gethostbyname() when working
+     under the OS release.
+
+   * Make compilation clean under clang.
+
+   * Provide names for Ns_Mutex to report meaningful output in
+     naviserver statistics.
+
+   * Use poll() as well under Darwin. Per default, poll() returns
+     writeable even when the socket is not. However, setting
+     SO_SNDLOWAT fixes this (added by this patch). The change makes it
+     possible to quer POLLHUP for all platforms.
+
+   * Use "long" instead of "int" for statistics to avoid quick overruns.
+
+   * Added private version of NsBsearch and re-define the "bsearch" to
+     point to it for Windows builds. The Windows implementation of
+     bsearch appears to be buggy.
+
+    * Rewritten cancellation logic. Cancelled jobs stay in the queue
+      and get run on the thread as any other jobs. The differnce is
+      only that we mark the cancellation state early (even before
+      running the script) so the very first Tcl command in the script
+      will be cancelled thus resulting in whole job cancellation. This
+      fixes some weird races.
+
+   * Nsv shared variables now have a C API.
+
+   * Experimental event driven IO API, Ns_Event*().
+
+   * New Ns_RegisterAtShutdown() proc handles notification of shutdown and
+     wait for completion with timeout.
+
+   * Make Ns_RegisterProxy() public, add ns_register_proxy command.
+
+   * Vectored IO support:
+
+       Ns_ConnSend() now sends all given buffers. Used to send 16 and silently
+       discard the rest.
+
+       Increase max iov buffs sent at once.
+
+       Expose iov functionality to higher layers with Ns_ConnWriteVChars(),
+       which handles character data, and Ns_ConnWriteV(), which manages data
+       streaming.
+
+       ns_write now takes a vector of buffers.
+
+   * New driver callback API. This affects modules such as nssock and any SSL
+     modules. This provides more flexibility to write unusual protocol modules.
+     Also added is the ability to provide platform-specific sendfile() support.
+
+   * Each loaded driver module now runs in it's own thread (port from
+     AOLserver 4.5).
+
+   * Use *DStingSetLength() rather than *DStringTrunc() throughout code to try
+     and prevent excess malloc/free activity.
+
+   * Conn structure now contains stat with the file currently being served, stat is
+     called at the beginning of the request
+
+   The following routines have been removed, deprecated or disabled.
+
+   * Removed: Ns_RegisterServerShutdown(), Ns_RegisterAtServerShutdown(),
+     Ns_RegisterShutdown().
+     See: Ns_RegisterAtShutdown().
+   * Disabled: Ns_LogSetLogFlushProc(), Ns_SetNsLogProc().
+     See: Ns_AddLogfilter(), Ns_RemoveLofFilter().
+
+
+   IMPORTANT API changes: (length, nsend) parameters are now Tcl_WideInt, so it requires
+   to recompile all modules that use those functions:
+        
+        int Ns_ConnSendChannel(Ns_Conn *conn, Tcl_Channel chan, Tcl_WideInt nsend)
+        int Ns_ConnSendFp(Ns_Conn *conn, FILE *fp, Tcl_WideInt nsend)
+        int Ns_ConnSendFd(Ns_Conn *conn, int fd, Tcl_WideInt nsend)
+        
+        void Ns_ConnSetRequiredHeaders(Ns_Conn *conn, CONST char *type, Tcl_WideInt length)
+        void Ns_ConnSetLengthHeader(Ns_Conn *conn, Tcl_WideInt length)
+        int Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, CONST char *type,
+                         Tcl_Channel chan, Tcl_WideInt length)
+        int Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, CONST char *type,
+                      FILE *fp, Tcl_WideInt length)
+        int Ns_ConnReturnOpenFd(Ns_Conn *conn, int status, CONST char *type,
+                    int fd, Tcl_WideInt length)
+
+
+======================================
+NaviServer 4.99.1, released 2006-01-02
+======================================
+
+This is just a part of numerous additions, improvements and
+fixes since 4.99.0 release. For the complete set, please consult
+the ChangeLog file.
+
+New Features:
+
+    * HTTP Range requests for streaming media and resuming downloads 
+    * Full Chunked encoding support for Fastpath, Adp and Tcl scripts
+    * Using temporary files for large uploads when content exceeds 
+      pre-configured maxsize parameter
+    * New spooler thread for handling large file uploads
+    * New [ns_upload_stats] command to gather upload statistics
+    * New spooler thread for handling large file uploads
+    * Added ns_conn responseversion to manually set response protocol
+      and version to have full control about returned HTTP format
+    * Add C-level support for TclVFS (all IO on files done with Tcl wrappers)
+    * Add new command [ns_atprestartup].
+    * Add new command [ns_runonce] which ensures that the given script is
+      run only once, either globally or per virtual server, during the 
+      lifetime of the server process.
+    * New autogen/TEA3 compatible configuration
+    * Add new command [ns_logctl severity]
+    * Added many new test (this is an evolving effort)
+    * Added support of binder as a separate process
+    * Added [ns_info started] and [ns_info shutdownpending] commands
+    * Add new Tcl command [ns_register_fastpath]
+    * Added Tcl interface to C-level cache routines.
+    * Added first traces of documentation based on Tcl doctools
+    * New simplified deployment directory structure
+
+Code Changes:
+
+    * New function Ns_ConnPrintfHeaders() for adding NTTP headers in
+      printf style
+    * Allocate interps efficiently, max 1 per-thread per-server
+    * Add Ns_TclLogErrorInfo and allow admin to configure which 
+      connection headers to log for Tcl errors
+    * Remove [ns_markfordelete] command and roll into ns_ictl as
+      [ns_ictl markfordelete]
+    * Make Tcl send panic messages to the server log.
+
+======================================
+NaviServer 4.99.0, released 2005-07-05
+======================================
+
+New Features:
+
+    * Byte code for Tcl pages are cached if nscache module present
+    * Add support for mass virtual hosting #1159471
+    * ns_uuencode et all now do full base64 encoding
+    * New introspection commands for procs, filters and traces #1161597
+    * C and Tcl API for HTTP cookies #1145957
+    * Add -bytes option to ns_conncptofp command
+    * New command ns_conn channel #1156141
+    * Add new watchdog feature to restart the server if it crashes
+    * Add ns_sha1 cryptographic hash command
+    * C and Tcl API for setting response code of current connection
+    * ns_accesslog can change configuration at runtime
+    * New C and Tcl API for parsing command options and arguments
+    * Server can now run as root if instructed to
+    * Add new command ns_atstartup
+    * New routines for listening on UDP and UNIX domain sockets
+    * Add -localhost -localport options to ns_sockopen
+
+Bug Fixes:
+
+    * Add locking to non multi-thread safe timegm()
+    * Fix infinite loop in DNS routines
+    * Call comm drivers DriverClose command when socket is released
+    * Fix crash bug in nslog on NULL rollfmt
+    * Fix URL decoding of '+' characters #1145277
+    * Report correct MIME type for xml documents #1145927
+    * Fix crash in channel detach code #1143586
+    * Make ns_sendmail handle dropped connections
+    * Fix crash on startup when resolving localhost
+    * Preserve nsdb exception messages generated by driver
+
+Code Changes:
+
+    * New function Ns_ConnPrintfHeaders()
+    * Use GCC compiler code checks #1215725
+    * Remove GNU implementations of getopt and poll
+    * Cleanup up autoconf and use autoheader
+    * Clean up test harness and add lots of tests
+    * New Tcl callback infrastructure #1162223
+    * New convenience functions for handling Tcl object types
+    * New function Ns_TclPrintfResult() for formatting Tcl results
+    * No more support for defunct AOLpress
+    * Remove support for old connid argument in much code #1156107
+    * Modules nspd and nsext moved from core to external modules
+    * Objectified TclX keyed lists

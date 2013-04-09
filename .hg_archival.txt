@@ -1,0 +1,5 @@
+repo: bc6d76890ed19530584b4af7c2a33660154b8cc3
+node: d34fc2681cf1fb4dec89b7172d09a187c37efe32
+branch: default
+latesttag: naviserver-4.99.1
+latesttagdistance: 943
