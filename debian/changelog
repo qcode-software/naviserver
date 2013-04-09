@@ -1,4 +1,4 @@
-naviserver (4.99.4-2) stable; urgency=low
+naviserver (4.99.4-2) squeeze; urgency=low
 
   * Fixed postinst, moved to stable, fixed debian.substvars.
 
