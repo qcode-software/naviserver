@@ -23,16 +23,12 @@ LOGDIR="/var/log/$PACKAGE"
 
 case "$1" in
     configure)
-	
-	if [ -d $RUNDIR ]; then
-		chown -R nsd:nsd $RUNDIR
-		chmod 755 $RUNDIR
-	fi
 
-	if [ -d $LOGDIR ]; then
-		chown -R nsd:nsd $LOGDIR
-		chmod 755 $LOGDIR
-	fi
+    [ -d $RUNDIR ] || mkdir -p -m 0755 $RUNDIR
+    chown -R nsd:nsd $RUNDIR
+    [ -d $LOGDIR ] || mkdir -p -m 0755 $LOGDIR
+    chown -R nsd:nsd $LOGDIR 
+
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

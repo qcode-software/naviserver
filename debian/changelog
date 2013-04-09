@@ -1,3 +1,9 @@
+naviserver (4.99.4-2) unstable; urgency=low
+
+  * Fixed postinst, moved to stable, fixed debian.substvars.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 09 Apr 2013 10:40:15 +0100
+
 naviserver (4.99.4-1) unstable; urgency=low
 
   * Initial release 
