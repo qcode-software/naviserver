@@ -1,3 +1,9 @@
+naviserver (4.99.4-3) squeeze; urgency=low
+
+  * Add sample config, init script, defaults file, and postinst script.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 29 Apr 2013 16:47:04 +0100
+
 naviserver (4.99.4-2) squeeze; urgency=low
 
   * Fixed postinst, moved to stable, fixed debian.substvars.
