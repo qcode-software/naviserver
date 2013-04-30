@@ -5,5 +5,6 @@ bin/naviserver-nstclsh usr/bin
 bin/naviserver-nsproxy usr/bin
 bin/nsthreadtest usr/lib/naviserver/bin
 conf/*.tcl usr/share/doc/naviserver/examples
+index.adp usr/share/doc/naviserver/examples
 modules usr/lib/naviserver
 tcl/* usr/lib/naviserver/tcl
