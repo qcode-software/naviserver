@@ -982,7 +982,7 @@ if [ -d $LOGDIR ]; then
 	chmod 755 $LOGDIR
 fi
 
-#db_stop
+db_stop
 
 if [ -x $INIT ]; then
         update-rc.d $PACKAGE defaults 91 >/dev/null
