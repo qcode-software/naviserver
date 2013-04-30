@@ -1,7 +1,7 @@
 Template: naviserver/hostname
 Type: string
 Default: localhost
-_Description: Server hostname:
+Description: Server hostname:
  Naviserver needs a hostname to use for redirect page URLs and for
  identifying itself.
  .
@@ -12,7 +12,7 @@ _Description: Server hostname:
 Template: naviserver/address
 Type: string
 Default: 127.0.0.1
-_Description: Server IP address:
+Description: Server IP address:
  Naviserver needs an IP address to listen to.
  .
  The default is the address of the loopback interface. If the server
@@ -22,7 +22,7 @@ _Description: Server IP address:
 Template: naviserver/port
 Type: string
 Default: 80
-_Description: Server TCP port:
+Description: Server TCP port:
  Naviserver needs a port number assigned for its use. This is almost always
  port 80 (the standard HTTP port), but might be different if another
  web server is installed, or some other service is listening on
