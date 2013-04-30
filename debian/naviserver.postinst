@@ -803,7 +803,7 @@ do_start()
               done
           else
               # start named instances from AUTOSTART
-              for INSTANCE in \$AUTOSTART
+              for INSTANCE in \$AUTOSTART ; do
                   if test -e $ETCDIR/\$INSTANCE.tcl ; then
                       start_instance
                   else
