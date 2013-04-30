@@ -62,9 +62,7 @@ fi
 
 # use current configuration or generate a new one from scratch
 
-if [ ! -f $CONF ]; then
-
-	cat <<EOF >$CONF_NEW
+cat <<EOF >$CONF_NEW
 #
 # The contents of this file are subject to the Mozilla Public License
 # Version 1.1 (the "License"); you may not use this file except in
@@ -801,7 +799,7 @@ case "\$1" in
           if [ "\$AUTOSTART" = "all" ]; then
               # start everything
               for CONFFILE in `cd $ETCDIR; ls *.tcl 2> /dev/null`; do
-                  INSTANCE=\${CONFFILE%%.conf}
+                  INSTANCE=\${CONFFILE%%.tcl}
                   start_instance
               done
           else
@@ -920,8 +918,6 @@ if [ -d $LOGDIR ]; then
 	chown -R www-data:www-data $LOGDIR
 	chmod 755 $LOGDIR
 fi
-
-db_stop
 
 if [ -x $INIT ]; then
         update-rc.d $PACKAGE defaults 91 >/dev/null
