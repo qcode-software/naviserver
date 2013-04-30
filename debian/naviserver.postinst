@@ -787,15 +787,14 @@ stop_instance()
 	start-stop-daemon --stop --quiet --pidfile \$name --oknodo >/dev/null 
 }
 
-
-case "\$1" in
-  start)
+do_start()
+{
       if test -z $2 ; then
           # No named instances passed, check AUTOSTART
           if [ "\$AUTOSTART" = "none" ]; then
               log_warning_msg " Autostart disabled."
-              exit 0 
-          fi 
+              exit 0
+          fi
           if [ "\$AUTOSTART" = "all" ]; then
               # start everything
               for CONFFILE in `cd $ETCDIR; ls *.tcl 2> /dev/null`; do
@@ -812,7 +811,7 @@ case "\$1" in
                   fi
               done
           fi
-      else 
+      else
           # Start named instances only
           while shift ; do
               [ -z "\$1" ] && break
@@ -824,15 +823,16 @@ case "\$1" in
               fi
           done
       fi
+	
+}
 
-    ;;
-
-  stop)
+do_stop ()
+{
       if test -z \$2 ; then
           # No named instances passed in, stop everything
           for name in $RUNDIR/*.pid; do
-	      base=\$(basename \$name .pid)
-	      log_daemon_msg "Stopping Naviserver instance" "\$base"
+              base=\$(basename \$name .pid)
+              log_daemon_msg "Stopping Naviserver instance" "\$base"
               if [ -f \$name ]; then
                   stop_instance
               fi
@@ -842,7 +842,7 @@ case "\$1" in
          while shift ; do
              [ -z "\$1" ] && break
              if test -e $RUNDIR/\$1.pid ; then
-	         log_daemon_msg "Stopping Naviserver instance" "\$1"
+                 log_daemon_msg "Stopping Naviserver instance" "\$1"
                  name=$RUNDIR/\$1.pid
                  stop_instance
              else
@@ -851,12 +851,21 @@ case "\$1" in
          done
     fi
     log_end_msg 0
+}
+
+case "\$1" in
+  start)
+    do_start
+    ;;
+
+  stop)
+    do_stop
     ;;
 
   reload|force-reload|restart)
-    stop
+    do_stop
     sleep 20
-    start
+    do_start
     ;;
 
   *)

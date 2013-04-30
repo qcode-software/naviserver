@@ -8,8 +8,7 @@
 	create 644 www-data www-data
 	sharedscripts
 	postrotate
-	   if [ -f /var/run/naviserver/naviserver.pid ]; then \
-		/etc/init.d/naviserver reload > /dev/null; fi
+           kill -HUP `cat /var/run/naviserver/*.pid`
 	endscript
 }
 
