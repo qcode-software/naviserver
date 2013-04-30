@@ -794,7 +794,7 @@ cat <<EOF >$INIT_NEW
 #
 # Copyright (C) 2003-2009 Francesco P. Lovergine <frankie@debian.org>
 #
-# Updated for Naviserver
+# Modified for Naviserver
 
 ### BEGIN INIT INFO
 # Provides:          naviserver
@@ -952,20 +952,6 @@ else
 	replace_file $DEFAULT
 fi
 
-# Important: keep db_stop before any ucf call or use --debconf-ok
-
-db_stop
-
-if [ -x $INIT ]; then
-        update-rc.d $PACKAGE defaults 91 >/dev/null
-        if [ -x /usr/sbin/invoke-rc.d ]; then
-                invoke-rc.d $PACKAGE start
-        else
-                $INIT start
-        fi
-fi
-
-
 # create the pageroot dir if it does not exist and a default home page
 
 if [ ! -d /var/www ]; then
@@ -994,6 +980,17 @@ fi
 if [ -d $LOGDIR ]; then
 	chown -R www-data:www-data $LOGDIR
 	chmod 755 $LOGDIR
+fi
+
+#db_stop
+
+if [ -x $INIT ]; then
+        update-rc.d $PACKAGE defaults 91 >/dev/null
+        if [ -x /usr/sbin/invoke-rc.d ]; then
+                invoke-rc.d $PACKAGE start
+        else
+                $INIT start
+        fi
 fi
 
 # remove tmp files still around if any...
