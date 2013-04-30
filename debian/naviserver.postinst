@@ -75,7 +75,7 @@ PORT=$RET
 
 # use current configuration or generate a new one from scratch
 
-f [ ! -f $CONF ]; then
+if [ ! -f $CONF ]; then
 
 	cat <<EOF >$CONF_NEW
 #
@@ -148,11 +148,14 @@ parse_shell_snippet /etc/default/naviserver
 # Set some Tcl variables that are commonly used throughout this file.
 #
 
+set	package			$PACKAGE
+
 # Absolute path to the installation directory
 set 	homedir			/usr/lib/\${package}
 
 # Log directories (access log, error log, pidfile)
 set	logdir 			/var/log/\${package}
+set	piddir 			/var/run/\${package}
 
 # Name/description of the virtual server
 set	servername		"main"
@@ -161,7 +164,7 @@ set	serverdesc		"Naviserver Site"
 # The hostname, address and port for nssock should be set to actual values.
 set	hostname		\$debian_config(HOSTNAME)
 set	address			\$debian_config(ADDRESS)
-set	port			\$debian_config(PORT)
+set	port			\$debian_config(HTTP_PORT)
 set	controlport		9999
 
 # html/adp files
@@ -176,13 +179,13 @@ set	pagedir			\${pageroot}
 # Modules to load
 ########################################################################
 
-ns_section	"ns/server/${servername}/modules"
-   ns_param	nssock			${homedir}/bin/nssock.so
-   ns_param	nslog 			${homedir}/bin/nslog.so
-   ns_param	nscgi 			${homedir}/bin/nscgi.so
-   ns_param	nsperm 			${homedir}/bin/nsperm.so
-   #ns_param 	nscp 			${homedir}/bin/nscp.so
-   ns_param	nsproxy			${homedir}/bin/nsproxy.so
+ns_section	"ns/server/\${servername}/modules"
+   ns_param	nssock			\${homedir}/bin/nssock.so
+   ns_param	nslog 			\${homedir}/bin/nslog.so
+   ns_param	nscgi 			\${homedir}/bin/nscgi.so
+   ns_param	nsperm 			\${homedir}/bin/nsperm.so
+   #ns_param 	nscp 			\${homedir}/bin/nscp.so
+   ns_param	nsproxy			\${homedir}/bin/nsproxy.so
 
    # Tcl modules are loaded here as well, they should be put
    # under tcl/ in separate directory each
@@ -207,7 +210,7 @@ ns_section	"ns/parameters"
    ns_param	serverlog       	\${logdir}/\${package}.log
 
    # Pid file of the server process
-   ns_param	pidfile         	\${logdir}/\${package}.pid
+   ns_param	pidfile         	\${piddir}/\${package}.pid
 
    # Min size of the uploaded file to enable progress tracking
    ns_param	progressminsize		0
@@ -411,7 +414,7 @@ ns_section      "ns/server/\${servername}/tcl"
 #  directory listings.
 ########################################################################
 
-ns_section	"ns/server/${servername}/fastpath"
+ns_section	"ns/server/\${servername}/fastpath"
 
    # Defines absolute or relative to serverdir directory where all
    # html/adp pages are located
@@ -508,7 +511,7 @@ ns_section 	"ns/server/\${servername}/module/nssock"
 ns_section 	"ns/server/\${servername}/module/nslog"
 
    # Name to the log file
-   ns_param   	file            	\${serverlog}
+   ns_param   	file            	\${logdir}/\${package}.log
 
    # If true then use common log format
    ns_param   	formattedtime   	true
@@ -556,10 +559,10 @@ ns_section 	"ns/server/\${servername}/module/nslog"
 ns_section 	"ns/server/\${servername}/module/nscgi"
 
    # CGI script file dir (GET).
-   ns_param   	map 			"GET  /cgi-bin /usr/local/cgi"
+   ns_param   	map 			"GET  /cgi-bin /usr/lib/cgi-bin"
 
    # CGI script file dir (POST).
-   ns_param   	map 			"POST /cgi-bin /usr/local/cgi"
+   ns_param   	map 			"POST /cgi-bin /usr/lib/cgi-bin"
 
 
 ########################################################################
@@ -627,7 +630,7 @@ ns_section 	"ns/module/nssock"
    ns_param   	defaultserver   	\$servername
 
 ns_section 	"ns/module/nssock/servers"
-   ns_param   	$servername         	\${hostname}:\${port}
+   ns_param   	\$servername         	\${hostname}:\${port}
 
 
 ########################################################################
@@ -781,18 +784,6 @@ do_update $CONF
 
 chown root:root $CONF
 chmod 644 $CONF
-
-
-
-case "$1" in
-    configure)
-
-    [ -d $RUNDIR ] || mkdir -p -m 0755 $RUNDIR
-    chown -R nsd:nsd $RUNDIR
-    [ -d $LOGDIR ] || mkdir -p -m 0755 $LOGDIR
-    chown -R nsd:nsd $LOGDIR 
-
-    ;;
 
 # create a new init script if it not exists, or update the existing one
 
