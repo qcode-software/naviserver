@@ -804,9 +804,25 @@ case "\$1" in
               done
           else
               # start named instances from AUTOSTART
+              for INSTANCE in \$AUTOSTART
+                  if test -e $ETCDIR/\$INSTANCE.tcl ; then
+                      start_instance
+                  else
+                      log_failure_msg "No such instance: \$INSTANCE"
+                  fi
+              done
           fi
       else 
           # Start named instances only
+          while shift ; do
+              [ -z "\$1" ] && break
+              if test -e $ETCDIR/\$1.tcl ; then
+                  INSTANCE=\$1
+                  start_instance
+              else
+                  log_failure_msg "No such instance: \$1"
+              fi
+          done
       fi
 
     ;;
@@ -839,7 +855,7 @@ case "\$1" in
 
   reload|force-reload|restart)
     stop
-    sleep 2
+    sleep 20
     start
     ;;
 
