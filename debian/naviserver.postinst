@@ -773,7 +773,7 @@ start_instance()
 	CONF="$ETCDIR/\$INSTANCE.tcl"
 	PIDFILE="$RUNDIR/\$INSTANCE.pid"
 	start-stop-daemon --start --quiet --exec \$DAEMON --pidfile \$PIDFILE --oknodo -- \\
-		-u \$USER -g \$GROUP -s \$INSTANCE -t \$CONF >/dev/null 
+		-u \$USER -g \$GROUP -t \$CONF >/dev/null 
 	if [ \$? != 0 ]; then
 		log_end_msg 1
 	exit 1
@@ -797,7 +797,7 @@ do_start()
           fi
           if [ "\$AUTOSTART" = "all" ]; then
               # start everything
-              for CONFFILE in `cd $ETCDIR; ls *.tcl 2> /dev/null`; do
+              for CONFFILE in \`cd $ETCDIR; ls *.tcl 2> /dev/null\`; do
                   INSTANCE=\${CONFFILE%%.tcl}
                   start_instance
               done
