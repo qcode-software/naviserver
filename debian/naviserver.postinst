@@ -19,12 +19,13 @@ set -e
 
 
 PACKAGE="naviserver"
+INSTANCE="default"
 RUNDIR="/var/run/$PACKAGE"
 LOGDIR="/var/log/$PACKAGE"
 ETCDIR="/etc/$PACKAGE"
 NEW_SUFFIX="new"
 OLD_SUFFIX="old"
-CONF="$ETCDIR/$PACKAGE.tcl"
+CONF="$ETCDIR/$INSTANCE.tcl"
 CONF_NEW="$CONF.$NEW_SUFFIX"
 INIT="/etc/init.d/$PACKAGE"
 INIT_NEW="$INIT.$NEW_SUFFIX"
@@ -58,20 +59,6 @@ if [ "$1" != "configure" ]
 then
     exit 0
 fi
-
-
-# get debconf choices
-
-. /usr/share/debconf/confmodule
-
-db_get $PACKAGE/hostname
-HOSTNAME=$RET
-
-db_get $PACKAGE/address
-ADDRESS=$RET
-
-db_get $PACKAGE/port
-PORT=$RET
 
 # use current configuration or generate a new one from scratch
 
@@ -107,48 +94,12 @@ if [ ! -f $CONF ]; then
 # version of this file under either the License or the GPL.
 #
 
-array set debian_config {
-HOSTNAME $HOSTNAME
-ADDRESS $ADDRESS
-HTTP_PORT $PORT
-HTTPS_PORT 443
-}
-
-proc parse_shell_snippet {filename} {
-    global debian_config
-    set fd [open \$filename r]
-    set line_no 1
-    while {![eof \$fd]} {
-        set line [string trim [gets \$fd] " "]
-        if {\$line == ""} continue
-        switch -regexp -- \$line {
-            ^#.* { }
-            .*=.* {
-                set pair [split \$line =]
-                set name [string trim [lindex \$pair 0] " "]
-                set value [string trim [lindex \$pair 1] " "]
-                set debian_config(\$name) \$value
-            }
-           default {
-                error "Error parsing \$filename (line: \$line_no): \$line"
-           }
-        }
-        incr line_no
-    }
-    close \$fd
-}
-
-#
-# Parse default vars snippet file
-#
-parse_shell_snippet /etc/default/naviserver
-
-
 #
 # Set some Tcl variables that are commonly used throughout this file.
 #
 
 set	package			$PACKAGE
+set	instance		$INSTANCE
 
 # Absolute path to the installation directory
 set 	homedir			/usr/lib/\${package}
@@ -158,13 +109,13 @@ set	logdir 			/var/log/\${package}
 set	piddir 			/var/run/\${package}
 
 # Name/description of the virtual server
-set	servername		"main"
-set	serverdesc		"Naviserver Site"
+set	servername		"\$instance"
+set	serverdesc		"Naviserver \$instance"
 
 # The hostname, address and port for nssock should be set to actual values.
-set	hostname		\$debian_config(HOSTNAME)
-set	address			\$debian_config(ADDRESS)
-set	port			\$debian_config(HTTP_PORT)
+set	hostname		localhost
+set	address			127.0.0.1
+set	port			80
 set	controlport		9999
 
 # html/adp files
@@ -207,10 +158,10 @@ ns_section	"ns/parameters"
    ns_param	tcllibrary      	\${homedir}/tcl
 
    # Main server log file
-   ns_param	serverlog       	\${logdir}/\${package}.log
+   ns_param	serverlog       	\${logdir}/\${instance}.log
 
    # Pid file of the server process
-   ns_param	pidfile         	\${piddir}/\${package}.pid
+   ns_param	pidfile         	\${piddir}/\${instance}.pid
 
    # Min size of the uploaded file to enable progress tracking
    ns_param	progressminsize		0
@@ -511,7 +462,7 @@ ns_section 	"ns/server/\${servername}/module/nssock"
 ns_section 	"ns/server/\${servername}/module/nslog"
 
    # Name to the log file
-   ns_param   	file            	\${logdir}/\${package}.log
+   ns_param   	file            	\${logdir}/\${instance}.log
 
    # If true then use common log format
    ns_param   	formattedtime   	true
@@ -771,15 +722,6 @@ ns_section "ns/server/server1/limits"
 
 EOF
 
-else
-	cp $CONF $CONF_NEW
-	sed -i \
-	    -e "s/^HOSTNAME[ \t]\+\(.*\)\$/HOSTNAME $HOSTNAME/" \
-	    -e "s/^ADDRESS[ \t]\+\(.*\)\$/ADDRESS $ADDRESS/" \
-	    -e "s/^HTTP_PORT[ \t]\+\(.*\)\$/HTTP_PORT $PORT/" \
-	    $CONF_NEW 
-fi
-
 do_update $CONF
 
 chown root:root $CONF
@@ -810,12 +752,8 @@ cat <<EOF >$INIT_NEW
 NAME=$PACKAGE
 USER=www-data
 GROUP=www-data
-ADDRESS=$ADDRESS
-HTTP_PORT=$PORT
 DAEMON=/usr/sbin/$PACKAGE-nsd
-PIDFILE=$RUNDIR/\$NAME.pid
-CONF=$CONF
-RUN_DAEMON=yes
+AUTOSTART=all
 
 trap "" 1
 
@@ -831,70 +769,74 @@ fi
 
 [ ! -d \$RUNDIR ] && mkdir -p -m 755 \$RUNDIR
 
-start()
+start_instance()
 {
-	if [ "\$RUN_DAEMON" = "yes" ]; then
-    	log_daemon_msg "Starting web server" "\$NAME"
-		start-stop-daemon --start --quiet --exec \$DAEMON --pidfile \$PIDFILE --oknodo -- \\
-			-u \$USER -g \$GROUP -b \$ADDRESS:\$HTTP_PORT -s main -t \$CONF >/dev/null 
-		if [ \$? != 0 ]; then
-			log_end_msg 1
-		exit 1
-		else
-			log_end_msg 0
-		fi
+    	log_daemon_msg "Starting Naviserver instance" "\$INSTANCE"
+	CONF="$ETCDIR/\$INSTANCE.tcl"
+	PIDFILE="$RUNDIR/\$INSTANCE.pid"
+	start-stop-daemon --start --quiet --exec \$DAEMON --pidfile \$PIDFILE --oknodo -- \\
+		-u \$USER -g \$GROUP -s \$INSTANCE -t \$CONF >/dev/null 
+	if [ \$? != 0 ]; then
+		log_end_msg 1
+	exit 1
+	else
+		log_end_msg 0
 	fi
-
-	for name in $ETCDIR/conf.d/*.sh; do
-		base=\$(basename \$name .sh)
-		if [ -e $ETCDIR/conf.d/\$base.tcl ]; then
-			NS_PIDFILE=$RUNDIR/\$base.pid
-			NS_ADDRESS=\$ADDRESS 
-			NS_PORT=\$(expr \$HTTP_PORT + 1)
-			NS_USER=\$USER
-			NS_GROUP=\$GROUP
-			RUN_DAEMON=yes
-			. \$name
-			if [ "\$RUN_DAEMON" = "yes" ]; then
-				log_daemon_msg "Starting Naviserver instance" "\$base"
-				start-stop-daemon --start --quiet --exec \$DAEMON --pidfile \$NS_PIDFILE --oknodo -- \\
-					-u \$NS_USER -g \$NS_GROUP -b \$NS_ADDRESS:\$NS_PORT -s \$base -t $ETCDIR/conf.d/\$base.tcl >/dev/null 
-				if [ \$? != 0 ]; then
-					log_end_msg 1
-				exit 1
-				else
-					log_end_msg 0
-				fi
-			fi
-		fi
-	done
 }
 
-stop()
+stop_instance()
 {
-	for name in $RUNDIR/*.pid; do
-		if [ -f \$name ]; then
-			base=\$(basename \$name .pid)
-			log_daemon_msg "Stopping web server" "\$base"
-			start-stop-daemon --stop --quiet --pidfile \$name --oknodo >/dev/null 
-			if [ \$? != 0 ]; then
-				log_end_msg 1
-			exit 2
-			else
-				log_end_msg 0
-			fi
-		fi
-	done
+	start-stop-daemon --stop --quiet --pidfile \$name --oknodo >/dev/null 
 }
 
 
 case "\$1" in
   start)
-    start
+      if test -z $2 ; then
+          # No named instances passed, check AUTOSTART
+          if [ "\$AUTOSTART" = "none" ]; then
+              log_warning_msg " Autostart disabled."
+              exit 0 
+          fi 
+          if [ "\$AUTOSTART" = "all" ]; then
+              # start everything
+              for CONFFILE in `cd $ETCDIR; ls *.tcl 2> /dev/null`; do
+                  INSTANCE=\${CONFFILE%%.conf}
+                  start_instance
+              done
+          else
+              # start named instances from AUTOSTART
+          fi
+      else 
+          # Start named instances only
+      fi
+
     ;;
 
   stop)
-    stop
+      if test -z \$2 ; then
+          # No named instances passed in, stop everything
+          for name in $RUNDIR/*.pid; do
+	      base=\$(basename \$name .pid)
+	      log_daemon_msg "Stopping Naviserver instance" "\$base"
+              if [ -f \$name ]; then
+                  stop_instance
+              fi
+          done
+     else
+         # Stop only named instances
+         while shift ; do
+             [ -z "\$1" ] && break
+             if test -e $RUNDIR/\$1.pid ; then
+	         log_daemon_msg "Stopping Naviserver instance" "\$1"
+                 name=$RUNDIR/\$1.pid
+                 stop_instance
+             else
+                log_failure_msg " (failure: No such Naviserver instance is running: \$1)"
+             fi
+         done
+    fi
+    log_end_msg 0
     ;;
 
   reload|force-reload|restart)
@@ -935,12 +877,9 @@ cat <<EOF >$DEFAULT_NEW
 
 #USER=www-data
 #GROUP=www-data
-#HOSTNAME=$HOSTNAME
-#ADDRESS=$ADDRESS
-#HTTP_PORT=$PORT
-#HTTPS_PORT=443
-#CONF=$CONF
-#RUN_DAEMON=yes
+#AUTOSTART=all
+#AUTOSTART="instance1 instance2"
+#AUTOSTART=none
 EOF
 
 chown root:root $DEFAULT_NEW
