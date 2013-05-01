@@ -835,7 +835,6 @@ do_stop ()
           # No named instances passed in, stop everything
           for name in $RUNDIR/*.pid; do
               base=\$(basename \$name .pid)
-              log_daemon_msg "Stopping Naviserver instance" "\$base"
               if [ -f \$name ]; then
                   log_progress_msg "\${base%%.pid}"
                   stop_instance
@@ -845,7 +844,6 @@ do_stop ()
          # Stop only named instances
          for INSTANCE in \$1 ; do
              if test -e /var/run/naviserver/\$INSTANCE.pid ; then
-                 log_daemon_msg "Stopping Naviserver instance" "\$INSTANCE"
                  name=/var/run/naviserver/\$INSTANCE.pid
                  log_progress_msg "\$INSTANCE"
                  stop_instance
