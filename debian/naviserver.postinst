@@ -94,6 +94,12 @@ cat <<EOF >$CONF_NEW
 
 #
 # Set some Tcl variables that are commonly used throughout this file.
+# Where a daemon is started from the config file:
+# /etc/naviserver/srv1.tcl
+# the init script will expect to find the corresponding pid file in:
+# /var/run/naviserver/srv1.pid
+# If you change the instance name please keep in mind the pidfile is 
+# based on it.
 #
 
 set	package			$PACKAGE
@@ -752,6 +758,7 @@ USER=www-data
 GROUP=www-data
 DAEMON=/usr/sbin/$PACKAGE-nsd
 AUTOSTART=all
+DESC="naviserver daemon"
 
 trap "" 1
 
@@ -769,17 +776,10 @@ fi
 
 start_instance()
 {
-    	log_daemon_msg "Starting Naviserver instance" "\$INSTANCE"
 	CONF="$ETCDIR/\$INSTANCE.tcl"
 	PIDFILE="$RUNDIR/\$INSTANCE.pid"
 	start-stop-daemon --start --quiet --exec \$DAEMON --pidfile \$PIDFILE --oknodo -- \\
 		-u \$USER -g \$GROUP -t \$CONF >/dev/null 
-	if [ \$? != 0 ]; then
-		log_end_msg 1
-	exit 1
-	else
-		log_end_msg 0
-	fi
 }
 
 stop_instance()
@@ -789,6 +789,7 @@ stop_instance()
 
 do_start()
 {
+      log_daemon_msg "Starting \$DESC"
       if test -z \$1 ; then
           # No named instances passed, check AUTOSTART
           if [ "\$AUTOSTART" = "none" ]; then
@@ -799,12 +800,14 @@ do_start()
               # start everything
               for CONFFILE in \`cd $ETCDIR; ls *.tcl 2> /dev/null\`; do
                   INSTANCE=\${CONFFILE%%.tcl}
+                  log_progress_msg "\$INSTANCE"
                   start_instance
               done
           else
               # start named instances from AUTOSTART
               for INSTANCE in \$AUTOSTART ; do
                   if test -e $ETCDIR/\$INSTANCE.tcl ; then
+                      log_progress_msg "\$INSTANCE"
                       start_instance
                   else
                       log_failure_msg "No such instance: \$INSTANCE"
@@ -815,23 +818,26 @@ do_start()
           # Start named instances only
           for INSTANCE in \$1 ; do
               if test -e /etc/naviserver/\$INSTANCE.tcl ; then
+                  log_progress_msg "\$INSTANCE"
                   start_instance
               else
                   log_failure_msg "No such instance: \$INSTANCE"
               fi
           done
       fi
-	
+      log_end_msg 0
 }
 
 do_stop ()
 {
+      log_daemon_msg "Stopping \$DESC"
       if test -z \$1 ; then
           # No named instances passed in, stop everything
           for name in $RUNDIR/*.pid; do
               base=\$(basename \$name .pid)
               log_daemon_msg "Stopping Naviserver instance" "\$base"
               if [ -f \$name ]; then
+                  log_progress_msg "\${base%%.pid}"
                   stop_instance
               fi
           done
@@ -841,6 +847,7 @@ do_stop ()
              if test -e /var/run/naviserver/\$INSTANCE.pid ; then
                  log_daemon_msg "Stopping Naviserver instance" "\$INSTANCE"
                  name=/var/run/naviserver/\$INSTANCE.pid
+                 log_progress_msg "\$INSTANCE"
                  stop_instance
              else
                 log_failure_msg " (failure: No such Naviserver instance is running: \$INSTANCE)"
