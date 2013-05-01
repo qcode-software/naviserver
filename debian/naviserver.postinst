@@ -493,7 +493,7 @@ ns_section 	"ns/server/\${servername}/module/nslog"
    ns_param   	rolllog         	true
 
    # If true then roll the log on SIGHUP
-   ns_param	rollonsignal    	true
+   ns_param	rollonsignal    	false
 
    # If true then don't show query string in the log
    ns_param	suppressquery   	false
