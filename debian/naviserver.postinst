@@ -97,7 +97,7 @@ cat <<EOF >$CONF_NEW
 #
 
 set	package			$PACKAGE
-set	instance		$INSTANCE
+set	instance		[string map {".tcl" ""} [file tail [ns_info config]]]
 
 # Absolute path to the installation directory
 set 	homedir			/usr/lib/\${package}
@@ -789,7 +789,7 @@ stop_instance()
 
 do_start()
 {
-      if test -z $2 ; then
+      if test -z \$1 ; then
           # No named instances passed, check AUTOSTART
           if [ "\$AUTOSTART" = "none" ]; then
               log_warning_msg " Autostart disabled."
@@ -813,13 +813,11 @@ do_start()
           fi
       else
           # Start named instances only
-          while shift ; do
-              [ -z "\$1" ] && break
-              if test -e $ETCDIR/\$1.tcl ; then
-                  INSTANCE=\$1
+          for INSTANCE in \$1 ; do
+              if test -e /etc/naviserver/\$INSTANCE.tcl ; then
                   start_instance
               else
-                  log_failure_msg "No such instance: \$1"
+                  log_failure_msg "No such instance: \$INSTANCE"
               fi
           done
       fi
@@ -828,7 +826,7 @@ do_start()
 
 do_stop ()
 {
-      if test -z \$2 ; then
+      if test -z \$1 ; then
           # No named instances passed in, stop everything
           for name in $RUNDIR/*.pid; do
               base=\$(basename \$name .pid)
@@ -839,14 +837,13 @@ do_stop ()
           done
      else
          # Stop only named instances
-         while shift ; do
-             [ -z "\$1" ] && break
-             if test -e $RUNDIR/\$1.pid ; then
-                 log_daemon_msg "Stopping Naviserver instance" "\$1"
-                 name=$RUNDIR/\$1.pid
+         for INSTANCE in \$1 ; do
+             if test -e /var/run/naviserver/\$INSTANCE.pid ; then
+                 log_daemon_msg "Stopping Naviserver instance" "\$INSTANCE"
+                 name=/var/run/naviserver/\$INSTANCE.pid
                  stop_instance
              else
-                log_failure_msg " (failure: No such Naviserver instance is running: \$1)"
+                log_failure_msg " (failure: No such Naviserver instance is running: \$INSTANCE)"
              fi
          done
     fi
@@ -855,17 +852,17 @@ do_stop ()
 
 case "\$1" in
   start)
-    do_start
+    do_start \$2
     ;;
 
   stop)
-    do_stop
+    do_stop \$2
     ;;
 
   reload|force-reload|restart)
-    do_stop
+    do_stop \$2
     sleep 20
-    do_start
+    do_start \$2
     ;;
 
   *)
