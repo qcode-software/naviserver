@@ -163,6 +163,7 @@ ns_section	"ns/parameters"
 
    # Main server log file
    ns_param	serverlog       	\${logdir}/\${instance}.log
+   ns_param	logroll  	     	false
 
    # Pid file of the server process
    ns_param	pidfile         	\${piddir}/\${instance}.pid
@@ -466,7 +467,7 @@ ns_section 	"ns/server/\${servername}/module/nssock"
 ns_section 	"ns/server/\${servername}/module/nslog"
 
    # Name to the log file
-   ns_param   	file            	\${logdir}/\${instance}.log
+   ns_param   	file            	\${logdir}/\${instance}-access.log
 
    # If true then use common log format
    ns_param   	formattedtime   	true
@@ -490,7 +491,7 @@ ns_section 	"ns/server/\${servername}/module/nslog"
    ns_param   	rollhour        	0
 
    # If true then do the log rolling
-   ns_param   	rolllog         	true
+   ns_param   	rolllog         	false
 
    # If true then roll the log on SIGHUP
    ns_param	rollonsignal    	false
