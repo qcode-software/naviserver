@@ -123,7 +123,8 @@ set	port			80
 set	controlport		9999
 
 # html/adp files
-set	pageroot		/var/www
+set 	pageroot 		/usr/share/doc/naviserver/html
+#set	pageroot		/var/www
 
 # Absolute path to pages directory
 set	pagedir			\${pageroot}
