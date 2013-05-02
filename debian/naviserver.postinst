@@ -123,7 +123,7 @@ set	port			80
 set	controlport		9999
 
 # html/adp files
-set 	pageroot 		/usr/share/doc/naviserver/html
+set 	pageroot 		/usr/share/doc/naviserver
 #set	pageroot		/var/www
 
 # Absolute path to pages directory
@@ -929,9 +929,11 @@ fi
 if [ ! -f /var/www/index.adp ]; then
 		if [ -e /usr/share/doc/$PACKAGE/examples/index.adp.gz ]; then
         	zcat /usr/share/doc/$PACKAGE/examples/index.adp.gz >/var/www/index.adp
+        	zcat /usr/share/doc/$PACKAGE/examples/index.adp.gz >/usr/share/doc/$PACKAGE/index.adp
 		fi
 		if [ -e /usr/share/doc/$PACKAGE/examples/index.adp ]; then
         	cp /usr/share/doc/$PACKAGE/examples/index.adp /var/www/index.adp
+        	cp /usr/share/doc/$PACKAGE/examples/index.adp /usr/share/doc/$PACKAGE/index.adp
 		fi
         chmod 644 /var/www/index.adp || true
 fi
