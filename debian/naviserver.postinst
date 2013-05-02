@@ -926,16 +926,14 @@ if [ ! -d /var/www ]; then
         chmod 755 /var/www
 fi
 
-if [ ! -f /var/www/index.adp ]; then
+if [ ! -f /usr/share/doc/$PACKAGE/index.adp  ]; then
 		if [ -e /usr/share/doc/$PACKAGE/examples/index.adp.gz ]; then
-        	zcat /usr/share/doc/$PACKAGE/examples/index.adp.gz >/var/www/index.adp
         	zcat /usr/share/doc/$PACKAGE/examples/index.adp.gz >/usr/share/doc/$PACKAGE/index.adp
 		fi
 		if [ -e /usr/share/doc/$PACKAGE/examples/index.adp ]; then
-        	cp /usr/share/doc/$PACKAGE/examples/index.adp /var/www/index.adp
         	cp /usr/share/doc/$PACKAGE/examples/index.adp /usr/share/doc/$PACKAGE/index.adp
 		fi
-        chmod 644 /var/www/index.adp || true
+        chmod 644 /usr/share/doc/$PACKAGE/index.adp || true
 fi
 
 # assign ownership of run and log directories to www-data
