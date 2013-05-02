@@ -1,3 +1,2 @@
-remove-html-docs-cp.patch
 add-rpath.patch
 ns_eval_switch.patch
