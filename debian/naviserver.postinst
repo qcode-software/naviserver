@@ -761,6 +761,9 @@ GROUP=www-data
 DAEMON=/usr/sbin/$PACKAGE-nsd
 AUTOSTART=all
 DESC="naviserver daemon"
+DAEMONTOOLS=no
+DAEMONTOOLS_SVCDIR=/etc/service
+DAEMONTOOLS_SVC=/usr/bin/svc
 
 trap "" 1
 
@@ -787,6 +790,45 @@ start_instance()
 stop_instance()
 {
 	start-stop-daemon --stop --quiet --pidfile \$name --oknodo >/dev/null 
+}
+
+do_daemontools_start()
+{
+      log_daemon_msg "Starting \$DESC"
+      if test -z \$1 ; then
+          # No named instances passed, check AUTOSTART
+          if [ "\$AUTOSTART" = "none" ]; then
+              log_warning_msg " Autostart disabled."
+              exit 0
+          fi
+          if [ "\$AUTOSTART" = "all" ]; then
+              # start everything
+              for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls * 2> /dev/null\`; do
+                  log_progress_msg "\$INSTANCE"
+                 \$DAEMONTOOLS_SVC -u \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+              done
+          else
+              # start named instances from AUTOSTART
+              for INSTANCE in \$AUTOSTART ; do
+                  if test -e $DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
+                      log_progress_msg "\$INSTANCE"
+                      \$DAEMONTOOLS_SVC -u \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+                  else
+                      log_failure_msg "No such instance: \$INSTANCE"
+                  fi
+              done
+          fi
+      else
+          # Start named instances only
+          for INSTANCE in \$1 ; do
+              if test -e $DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
+                  \$DAEMONTOOLS_SVC -u \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+              else
+                  log_failure_msg "No such instance: \$INSTANCE"
+              fi
+          done
+      fi
+      log_end_msg 0
 }
 
 do_start()
@@ -830,6 +872,52 @@ do_start()
       log_end_msg 0
 }
 
+do_daemontools_stop ()
+{
+      log_daemon_msg "Stopping \$DESC"
+      if test -z \$1 ; then
+          # No named instances passed in, stop everything
+          for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls * 2> /dev/null\`; do
+              log_progress_msg "\$INSTANCE"
+              \$DAEMONTOOLS_SVC -d \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+          done
+     else
+         # Stop only named instances
+         for INSTANCE in \$1 ; do
+             if test -e \$DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
+                 log_progress_msg "\$INSTANCE"
+                 \$DAEMONTOOLS_SVC -d \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+             else
+                log_failure_msg " (failure: No such Naviserver instance: \$INSTANCE)"
+             fi
+         done
+    fi
+    log_end_msg 0
+}
+
+do_daemontools_restart ()
+{
+      log_daemon_msg "Restarting \$DESC"
+      if test -z \$1 ; then
+          # No named instances passed in, stop everything
+          for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls * 2> /dev/null\`; do
+              log_progress_msg "\$INSTANCE"
+              \$DAEMONTOOLS_SVC -t \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+          done
+     else
+         # Stop only named instances
+         for INSTANCE in \$1 ; do
+             if test -e \$DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
+                 log_progress_msg "\$INSTANCE"
+                 \$DAEMONTOOLS_SVC -t \$DAEMONTOOLS_SVCDIR/\$INSTANCE
+             else
+                log_failure_msg " (failure: No such Naviserver instance: \$INSTANCE)"
+             fi
+         done
+    fi
+    log_end_msg 0
+}
+
 do_stop ()
 {
       log_daemon_msg "Stopping \$DESC"
@@ -859,17 +947,29 @@ do_stop ()
 
 case "\$1" in
   start)
-    do_start \$2
+    if [ "\$DAEMONTOOLS" = "yes" ] ; do
+        do_daemontools_start \$2
+    else 
+        do_start \$2
+    fi
     ;;
 
   stop)
-    do_stop \$2
+    if [ "\$DAEMONTOOLS" = "yes" ] ; do
+        do_daemontools_stop \$2
+    else 
+        do_stop \$2
+    fi
     ;;
 
   reload|force-reload|restart)
-    do_stop \$2
-    sleep 20
-    do_start \$2
+    if [ "\$DAEMONTOOLS" = "yes" ] ; do
+        do_daemontools_restart \$2
+    else
+        do_stop \$2
+        sleep 20
+        do_start \$2
+    fi
     ;;
 
   *)
@@ -904,9 +1004,22 @@ cat <<EOF >$DEFAULT_NEW
 
 #USER=www-data
 #GROUP=www-data
+# When AUTOSTART is set to all, using DAEMONTOOLS, all instances in DAEMONTOOLS_SVCDIR
+# will be started/stopped/restarted, otherwise all /etc/naviserver/*.tcl config files will
+# be started.
 #AUTOSTART=all
 #AUTOSTART="instance1 instance2"
 #AUTOSTART=none
+
+#DAEMONTOOLS=no
+#DAEMONTOOLS_SVCDIR=/etc/service
+#DAEMONTOOLS_SVC=/usr/bin/svc
+# If set, the init script assumes the following commands are configured to work correctly:
+# svc -u $DAEMONTOOLS_SVCDIR/instance"
+# svc -t $DAEMONTOOLS_SVCDIR/instance"
+# svc -d $DAEMONTOOLS_SVCDIR/instance"
+# Using allows for non-standard configurations to be specificied in the DAEMONTOOLS_SVCDIR
+# run script for the instance.
 EOF
 
 chown root:root $DEFAULT_NEW
