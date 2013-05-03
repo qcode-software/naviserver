@@ -10,3 +10,4 @@ modules usr/lib/naviserver
 tcl/* usr/lib/naviserver/tcl
 pages/doc/* usr/share/doc/naviserver/doc
 bitbucket-install.tcl usr/share/doc/naviserver
+man/man8 usr/share/man
