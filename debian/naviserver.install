@@ -9,3 +9,4 @@ index.adp usr/share/doc/naviserver
 modules usr/lib/naviserver
 tcl/* usr/lib/naviserver/tcl
 pages/doc/* usr/share/doc/naviserver/doc
+bitbucket-install.tcl usr/share/doc/naviserver
