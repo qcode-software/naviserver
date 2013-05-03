@@ -918,7 +918,7 @@ else
 	replace_file $DEFAULT
 fi
 
-# create the pageroot dir if it does not exist and a default home page
+# create the system pageroot dir if it does not exist
 
 if [ ! -d /var/www ]; then
         mkdir -p /var/www
@@ -936,6 +936,12 @@ fi
 if [ -d $LOGDIR ]; then
 	chown -R www-data:www-data $LOGDIR
 	chmod 755 $LOGDIR
+fi
+
+# Set permissions on default pageroot
+if [ -d /usr/share/doc/$PACKAGE ]; then
+	chown -R www-data:www-data /usr/share/doc/$PACKAGE
+	chmod 755 /usr/share/doc/$PACKAGE
 fi
 
 if [ -x $INIT ]; then
