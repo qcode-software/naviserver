@@ -803,7 +803,7 @@ do_daemontools_start()
           fi
           if [ "\$AUTOSTART" = "all" ]; then
               # start everything
-              for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls * 2> /dev/null\`; do
+              for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls 2> /dev/null\`; do
                   log_progress_msg "\$INSTANCE"
                  \$DAEMONTOOLS_SVC -u \$DAEMONTOOLS_SVCDIR/\$INSTANCE
               done
@@ -877,7 +877,7 @@ do_daemontools_stop ()
       log_daemon_msg "Stopping \$DESC"
       if test -z \$1 ; then
           # No named instances passed in, stop everything
-          for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls * 2> /dev/null\`; do
+          for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls 2> /dev/null\`; do
               log_progress_msg "\$INSTANCE"
               \$DAEMONTOOLS_SVC -d \$DAEMONTOOLS_SVCDIR/\$INSTANCE
           done
@@ -900,7 +900,7 @@ do_daemontools_restart ()
       log_daemon_msg "Restarting \$DESC"
       if test -z \$1 ; then
           # No named instances passed in, stop everything
-          for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls * 2> /dev/null\`; do
+          for INSTANCE in \`cd \$DAEMONTOOLS_SVCDIR; ls 2> /dev/null\`; do
               log_progress_msg "\$INSTANCE"
               \$DAEMONTOOLS_SVC -t \$DAEMONTOOLS_SVCDIR/\$INSTANCE
           done
