@@ -810,7 +810,7 @@ do_daemontools_start()
           else
               # start named instances from AUTOSTART
               for INSTANCE in \$AUTOSTART ; do
-                  if test -e $DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
+                  if test -e \$DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
                       log_progress_msg "\$INSTANCE"
                       \$DAEMONTOOLS_SVC -u \$DAEMONTOOLS_SVCDIR/\$INSTANCE
                   else
