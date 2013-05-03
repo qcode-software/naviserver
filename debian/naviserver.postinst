@@ -821,7 +821,7 @@ do_daemontools_start()
       else
           # Start named instances only
           for INSTANCE in \$1 ; do
-              if test -e $DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
+              if test -e \$DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
                   \$DAEMONTOOLS_SVC -u \$DAEMONTOOLS_SVCDIR/\$INSTANCE
               else
                   log_failure_msg "No such instance: \$INSTANCE"
@@ -905,7 +905,7 @@ do_daemontools_restart ()
               \$DAEMONTOOLS_SVC -t \$DAEMONTOOLS_SVCDIR/\$INSTANCE
           done
      else
-         # Stop only named instances
+         # Restart only named instances
          for INSTANCE in \$1 ; do
              if test -e \$DAEMONTOOLS_SVCDIR/\$INSTANCE ; then
                  log_progress_msg "\$INSTANCE"
