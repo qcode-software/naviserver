@@ -8,4 +8,4 @@ conf/*.tcl usr/share/doc/naviserver/examples
 index.adp usr/share/doc/naviserver
 modules usr/lib/naviserver
 tcl/* usr/lib/naviserver/tcl
-pages/doc/*.html usr/share/doc/naviserver/doc
+pages/doc/* usr/share/doc/naviserver/doc
