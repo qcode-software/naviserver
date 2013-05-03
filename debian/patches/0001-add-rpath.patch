@@ -1,4 +1,15 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Fri, 3 May 2013 13:09:52 +0100
+Subject: [PATCH] add-rpath
+
 Add naviserver lib dir to executable RPATH
+---
+ include/Makefile.global.in |   28 +++++++++++++++-------------
+ include/Makefile.module.in |    4 ++--
+ 2 files changed, 17 insertions(+), 15 deletions(-)
+
+diff --git a/include/Makefile.global.in b/include/Makefile.global.in
+index fe7ce6c..9423a1c 100644
 --- a/include/Makefile.global.in
 +++ b/include/Makefile.global.in
 @@ -40,6 +40,18 @@
@@ -20,7 +31,7 @@ Add naviserver lib dir to executable RPATH
  NS_PATCH_LEVEL   = @NS_PATCH_LEVEL@
  
  @SET_MAKE@
-@@ -59,11 +71,11 @@
+@@ -59,11 +71,11 @@ LIBEXT           = @SHLIB_SUFFIX@
  TCL_EXEC_PREFIX  = @TCL_EXEC_PREFIX@
  LIB_RUNTIME_DIR  =
  LDLIB            = @LDLIB@
@@ -35,7 +46,7 @@ Add naviserver lib dir to executable RPATH
  CC               = $(PURIFY) @CC@
  CFLAGS_DEBUG     = @CFLAGS_DEBUG@
  CFLAGS_OPTIMIZE  = @CFLAGS_OPTIMIZE@
-@@ -105,16 +117,6 @@
+@@ -105,16 +117,6 @@ endif
  NSLIBS      += @TCL_LIB_SPEC@ @TCL_LIBS@ @LDFLAGS@
  CCLIBS       = $(NSLIBS)
  
@@ -52,9 +63,11 @@ Add naviserver lib dir to executable RPATH
  # Platform-specific options.
  uname = $(shell uname -a)
  
+diff --git a/include/Makefile.module.in b/include/Makefile.module.in
+index 2ab02cc..e4985d5 100644
 --- a/include/Makefile.module.in
 +++ b/include/Makefile.module.in
-@@ -137,7 +137,7 @@
+@@ -137,7 +137,7 @@ clean: $(CLEAN)
  
  $(MOD): $(LIBFILE) $(ALIBFILE) $(MODOBJS)
  	$(RM) $(MOD)
@@ -63,7 +76,7 @@ Add naviserver lib dir to executable RPATH
  
  $(LIBFILE): $(LIBOBJS)
  	$(RM) $(LIBFILE)
-@@ -149,7 +149,7 @@
+@@ -149,7 +149,7 @@ $(ALIBFILE): $(LIBOBJS)
  
  $(PGM): $(PGMOBJS) $(LIBFILE) $(ALIBFILE)
  	$(RM) $(PGM)
@@ -72,4 +85,4 @@ Add naviserver lib dir to executable RPATH
  
  $(MODOBJS) $(LIBOBJS) $(PGMOBJS): $(HDRS) $(INCDIR)/ns.h $(INCDIR)/nsthread.h
  
-
+-- 

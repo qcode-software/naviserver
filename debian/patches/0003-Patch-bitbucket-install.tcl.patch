@@ -1,0 +1,30 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Fri, 3 May 2013 13:10:58 +0100
+Subject: [PATCH] Patch bitbucket-install.tcl
+
+---
+ bitbucket-install.tcl |    9 +++++----
+ 1 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/bitbucket-install.tcl b/bitbucket-install.tcl
+index c246c44..2ec7282 100644
+--- a/bitbucket-install.tcl
++++ b/bitbucket-install.tcl
+@@ -3,11 +3,12 @@ switch -exact $pageName {
+   nsconf.tcl -
+   nsstats.tcl {
+     set source https://bitbucket.org/naviserver/[file root $pageName]/get/tip.tar.gz
+-    set page /opt/local/ns/pages/$pageName
++    set page /usr/share/doc/naviserver/$pageName
+     if {![file readable $page]} {
+-      exec wget --quiet --no-check-certificate -O /tmp/nsstats.tar.gz $source
+-      if {[catch {exec tar Ozxvf /tmp/nsstats.tar.gz *$pageName > $page} errorMsg]} {
+-	if {[lindex $errorMsg 0] ne "x"} {
++      exec wget --quiet --no-check-certificate -O /tmp/[file root $pageName].tar.gz $source
++      if {[catch {exec tar --wildcards -Ozxvf /tmp/[file root $pageName].tar.gz *$pageName > $page} errorMsg]} {
++puts "^naviserver\.?/${pageName}\$"
++	if { ![regexp -line "^naviserver\.+/${pageName}\$" [lindex [split $errorMsg] 0]] } {
+ 	  ns_log notice "error: $errorMsg"
+ 	  ns_return 200 text/html \
+ 	      "<html><body>error while downloading $pageName: <b>$errorMsg</b>. <a href='/'>return</a>" 
+-- 
