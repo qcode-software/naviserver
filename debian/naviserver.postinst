@@ -1039,14 +1039,17 @@ if [ ! -d /var/www ]; then
         chmod 755 /var/www
 fi
 
-# assign ownership of run and log directories to www-data
+# assign ownership of run and log directories to www-data if they don't already exist.
+# If they do exist, leave the permissions be.
 
-if [ -d $RUNDIR ]; then
+if [ ! -d $RUNDIR ]; then
+        mkdir -p $RUNDIR
 	chown -R www-data:www-data $RUNDIR
 	chmod 755 $RUNDIR
 fi
 
-if [ -d $LOGDIR ]; then
+if [ ! -d $LOGDIR ]; then
+        mkdir -p $LOGDIR
 	chown -R www-data:www-data $LOGDIR
 	chmod 755 $LOGDIR
 fi
