@@ -13,6 +13,7 @@ PREFIX=/usr/lib/naviserver
 PACKAGE=naviserver
 COREPACKAGE=naviserver-core
 TARGETDIR=$(CURDIR)/debian/tmp
+HELP2MAN=/usr/bin/help2man
 
 override_dh_auto_configure:
 	./autogen.sh
@@ -21,6 +22,11 @@ override_dh_auto_configure:
 override_dh_auto_build:
 	$(MAKE)
 	$(MAKE) build-doc
+	mkdir $(CURDIR)/debian/man
+	cp $(TARGETDIR)/bin/nsd $(CURDIR)/debian/man1/$(PACKAGE)-nsd
+	cp $(TARGETDIR)/bin/nstclsh $(CURDIR)/debian/man1/$(PACKAGE)-nstclsh
+	cp $(TARGETDIR)/bin/nsproxy $(CURDIR)/debian/man1/$(PACKAGE)-nsproxy
+	$(HELP2MAN) --help-option=-help --version-option=-V --no-discard-stderr --no-info $(CURDIR)/debian/man1/$(PACKAGE)-nsd > $(CURDIR)/debian/$(PACKAGE)-nsd.1
 
 override_dh_auto_install:
 	( cd $(CURDIR) ; $(MAKE) NAVISERVER=$(TARGETDIR) install )
@@ -38,6 +44,7 @@ override_dh_auto_test:
 override_dh_auto_clean:
 	rm -f $(CURDIR)/tests/testserver/*.log
 	rm -f $(CURDIR)/tests/testserver/*.pid
+	rm -f $(CURDIR)/debian/man1
 	dh_quilt_unpatch
 	dh_auto_clean
 
