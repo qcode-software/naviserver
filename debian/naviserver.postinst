@@ -32,8 +32,6 @@ INIT_NEW="$INIT.$NEW_SUFFIX"
 DEFAULT="/etc/default/$PACKAGE"
 DEFAULT_NEW="$DEFAULT.$NEW_SUFFIX"
 
-[ -d $RUNDIR ] || mkdir -p -m 0755 $RUNDIR
-
 replace_file () {
     file=$1
     if [ ! -f $file ] ; then

@@ -31,9 +31,9 @@ then
     if [ -x /usr/bin/ucf ]; then
     	ucf --purge /etc/$PACKAGE/$PACKAGE.tcl 
     	ucf --purge /etc/init.d/$PACKAGE 
-		ucf --purge /etc/default/$PACKAGE
+	ucf --purge /etc/default/$PACKAGE
     else
-        rm -f /etc/$PACKAGE/$PACKAGE.tcl /etc/init.d/$PACKAGE
+        rm -f /etc/$PACKAGE/$PACKAGE.tcl /etc/init.d/$PACKAGE /etc/default/$PACKAGE
     fi
 fi
 
