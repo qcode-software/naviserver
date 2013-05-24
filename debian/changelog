@@ -1,3 +1,9 @@
+naviserver (4.99.4-4) squeeze; urgency=low
+
+  * Leave creation of /var/log/naviserver to the postinst script
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 24 May 2013 14:30:58 +0100
+
 naviserver (4.99.4-3) squeeze; urgency=low
 
   * Add sample config, binary man pages, init script, defaults file, and postinst script.
