@@ -324,9 +324,9 @@ void
 Ns_ConnSetLengthHeader(Ns_Conn *conn, Tcl_WideInt length)
 {
     Conn *connPtr = (Conn *) conn;
-    char  strlength[TCL_INTEGER_SPACE];
 
     if (length >= 0) {
+        char strlength[TCL_INTEGER_SPACE];
         snprintf(strlength, sizeof(strlength), "%" TCL_LL_MODIFIER "d", length);
         Ns_ConnUpdateHeaders(conn, "Content-Length", strlength);
     } else {
@@ -467,7 +467,7 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
  *
  * Ns_ConnQueueHeaders, Ns_ConnFlushHeaders, Ns_ConnSetRequiredHeaders --
  *
- *      Deperecated.
+ *      Deprecated.
  *
  * Results:
  *      None / Number of bytes written.
@@ -490,7 +490,7 @@ Ns_ConnFlushHeaders(Ns_Conn *conn, int status)
     Conn *connPtr = (Conn *) conn;
 
     Ns_ConnSetResponseStatus(conn, status);
-    Ns_ConnWriteData(conn, NULL, 0, 0);
+    Ns_ConnWriteVData(conn, NULL, 0, 0);
 
     return connPtr->nContentSent;
 }
@@ -572,7 +572,7 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
                     CONST char *title, CONST char *notice)
 {
     Conn       *connPtr = (Conn *) conn;
-    NsServer   *servPtr = connPtr->servPtr;
+    NsServer   *servPtr = connPtr->poolPtr->servPtr;
     Ns_DString  ds;
     int         result;
 
@@ -616,7 +616,7 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
 
     Ns_DStringVarAppend(&ds, "\n</BODY></HTML>\n", NULL);
 
-    result = Ns_ConnReturnHtml(conn, status, ds.string, ds.length);
+    result = Ns_ConnReturnCharData(conn, status, ds.string, ds.length, "text/html");
     Ns_DStringFree(&ds);
 
     return result;
@@ -680,14 +680,17 @@ int
 Ns_ConnReturnCharData(Ns_Conn *conn, int status, CONST char *data, 
 		      ssize_t len, CONST char *type)
 {
+    struct iovec sbuf;
+
     if (type != NULL) {
         Ns_ConnSetEncodedTypeHeader(conn, type);
     }
-    if (len < 0) {
-        len = data ? strlen(data) : 0;
-    }
+
+    sbuf.iov_base = (void *)data;
+    sbuf.iov_len = len < 0 ? (data ? strlen(data) : 0) : len;
+
     Ns_ConnSetResponseStatus(conn, status);
-    Ns_ConnWriteChars(conn, data, len, 0);
+    Ns_ConnWriteVChars(conn, &sbuf, 1, 0);
 
     return Ns_ConnClose(conn);
 }
@@ -769,9 +772,10 @@ ReturnOpen(Ns_Conn *conn, int status, CONST char *type, Tcl_Channel chan,
 
     Ns_ConnSetTypeHeader(conn, type);
     Ns_ConnSetResponseStatus(conn, status);
-
-    if (NsWriterQueue(conn, len, chan, fp, fd, NULL) == NS_OK) {
-        return NS_OK;
+    
+    if ((chan != NULL || fp != NULL) 
+	&& (NsWriterQueue(conn, len, chan, fp, fd, NULL, 0, 0) == NS_OK)) {
+	return NS_OK;
     }
 
     if (chan != NULL) {
@@ -821,13 +825,54 @@ ReturnRange(Ns_Conn *conn, CONST char *type,
     Ns_DStringInit(&ds);
     rangeCount = NsConnParseRange(conn, type, fd, data, len,
                                   bufs, &nbufs, &ds);
+
+    /*
+     * We are able to handle the following cases via writer:
+     * - iovec based requests: all range request up to 32 ranges.
+     * - fd based requests: 0 or 1 range requests
+     */
+    if (fd == -1) {
+	int nvbufs;
+	struct iovec vbuf[32];
+
+	if (rangeCount == 0) {
+	    nvbufs = 1;
+	    vbuf[0].iov_base = (void *)data;
+	    vbuf[0].iov_len  = len;
+	} else {
+	    int i;
+
+	    nvbufs = rangeCount;
+	    len = 0;
+	    for (i = 0; i < rangeCount; i++) {
+		vbuf[0].iov_base = (void *)(intptr_t)bufs[0].offset;
+		vbuf[0].iov_len  = bufs[0].length;
+		len += bufs[0].length;
+	    }
+	}
+
+	if (NsWriterQueue(conn, len, NULL, NULL, fd, &vbuf[0], nvbufs, 0) == NS_OK) {
+	    Ns_DStringFree(&ds);
+	    return NS_OK;
+	}
+    } else if (rangeCount < 2) {
+	if (rangeCount == 1) {
+	    lseek(fd, bufs[0].offset, SEEK_SET);
+	    len = bufs[0].length;
+	}
+	if (NsWriterQueue(conn, len, NULL, NULL, fd, NULL, 0, 0) == NS_OK) {
+	    Ns_DStringFree(&ds);
+	    return NS_OK;
+	}
+    }
+    
     if (rangeCount >= 0) {
-        if (rangeCount == 0) {
+	if (rangeCount == 0) {
             Ns_ConnSetLengthHeader(conn, len);
             Ns_SetFileVec(bufs, 0, fd, data, 0, len);
             nbufs = 1;
         }
-        if ((result = Ns_ConnWriteData(conn, NULL, 0, NS_CONN_STREAM)) == NS_OK) {
+        if ((result = Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM)) == NS_OK) {
             result = Ns_ConnSendFileVec(conn, bufs, nbufs);
         }
     }

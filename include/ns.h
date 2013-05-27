@@ -68,9 +68,12 @@
 #define NS_CONN_SENTHDRS           0x010 /* Response headers have been sent to client */
 #define NS_CONN_WRITE_ENCODED      0x020 /* Character data mode requested mime-type header. */
 #define NS_CONN_STREAM             0x040 /* Data is to be streamed when ready.  */
-#define NS_CONN_CHUNK              0x080 /* Streamed data is to be chunked. */
-#define NS_CONN_SENT_LAST_CHUNK    0x100 /* Marks that the last chunk was sent in chunked mode */
-#define NS_CONN_SENT_VIA_WRITER    0x200 /* Response data has been sent via writer thread */
+#define NS_CONN_STREAM_CLOSE       0x080 /* Writer Stream should be closed.  */
+#define NS_CONN_CHUNK              0x100 /* Streamed data is to be chunked. */
+#define NS_CONN_SENT_LAST_CHUNK    0x200 /* Marks that the last chunk was sent in chunked mode */
+#define NS_CONN_SENT_VIA_WRITER    0x400 /* Response data has been sent via writer thread */
+#define NS_CONN_SOCK_CORKED        0x800 /* underlying socket is corked */
+#define NS_CONN_ZIPACCEPTED       0x1000 /* the request accepts zip encoding */
 #define NS_CONN_ENTITYTOOLARGE    0x2000 /* the sent Entity was too large */
 #define NS_CONN_REQUESTURITOOLONG 0x4000 /* request-URI too long */
 #define NS_CONN_LINETOOLONG       0x8000 /* request Header line too long */
@@ -156,7 +159,7 @@
 #define NS_TCL_TRACE_ALLOCATE      0x04 /* Interp allocated, possibly from thread cache */
 #define NS_TCL_TRACE_DEALLOCATE    0x08 /* Interp de-allocated, returned to thread-cache */
 #define NS_TCL_TRACE_GETCONN       0x10 /* Interp allocated for connection processing (filter, proc) */
-#define NS_TCL_TRACE_FREECONN      0x20 /* Interp finnished connection processing */
+#define NS_TCL_TRACE_FREECONN      0x20 /* Interp finished connection processing */
 
 /*
  * The following define some buffer sizes and limits.
@@ -172,7 +175,7 @@
  */
 
 #define NS_TCL_SET_STATIC          0 /* Ns_Set managed elsewhere, maintain a Tcl reference */
-#define NS_TCL_SET_DYNAMIC         1 /* Tcl owns the Ns_Set and will free when finnished */
+#define NS_TCL_SET_DYNAMIC         1 /* Tcl owns the Ns_Set and will free when finished */
 
 #define NS_COOKIE_SECURE           1  /* The cookie should only be sent using HTTPS */
 #define NS_COOKIE_SCRIPTABLE       2  /* Available to javascript on the client. */
@@ -296,6 +299,8 @@ struct Ns_ObjvSpec;
 typedef int   (Ns_ObjvProc) (struct Ns_ObjvSpec *spec, Tcl_Interp *interp,
                              int *objcPtr, Tcl_Obj *CONST objv[]);
 
+typedef int (Ns_OptionConverter) (Tcl_Interp *interp, Tcl_Obj *labelPtr, 
+				  Tcl_Obj *objPtr, ClientData *clientData);
 
 /*
  * The field of a key-value data structure.
@@ -1009,7 +1014,37 @@ NS_EXTERN void
 Ns_SetLocationProc(char *server, Ns_LocationProc *proc) NS_GNUC_DEPRECATED;
 
 NS_EXTERN Ns_Time *
-Ns_ConnStartTime(Ns_Conn *conn);
+Ns_ConnStartTime(Ns_Conn *conn) NS_GNUC_NONNULL(1);
+
+NS_EXTERN Ns_Time *
+Ns_ConnAcceptTime(Ns_Conn *conn) NS_GNUC_NONNULL(1);
+
+NS_EXTERN Ns_Time *
+Ns_ConnQueueTime(Ns_Conn *conn) NS_GNUC_NONNULL(1);
+
+NS_EXTERN Ns_Time *
+Ns_ConnDequeueTime(Ns_Conn *conn) NS_GNUC_NONNULL(1);
+
+NS_EXTERN Ns_Time *
+Ns_ConnFilterTime(Ns_Conn *conn) NS_GNUC_NONNULL(1);
+
+NS_EXTERN void
+Ns_ConnTimeSpans(Ns_Conn *conn, Ns_Time *acceptTimePtr, Ns_Time *queueTimePtr, 
+		 Ns_Time *filterTimePtr, Ns_Time *runTimePtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+NS_EXTERN void
+Ns_ConnTimeStats(Ns_Conn *conn)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN int 
+NsAsyncWrite(int fd, char *buffer, size_t nbyte) NS_GNUC_NONNULL(2);
+
+NS_EXTERN void
+NsAsyncWriterQueueDisable(int shutdown);
+
+NS_EXTERN void
+NsAsyncWriterQueueEnable();
 
 NS_EXTERN Ns_Time *
 Ns_ConnTimeout(Ns_Conn *conn) NS_GNUC_NONNULL(1);
@@ -1025,7 +1060,7 @@ Ns_ConnWriteChars(Ns_Conn *conn, CONST char *buf, size_t towrite, int flags)
 
 NS_EXTERN int
 Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+    NS_GNUC_NONNULL(1);
 
 NS_EXTERN int
 Ns_ConnWriteData(Ns_Conn *conn, CONST void *buf, size_t towrite, int flags)
@@ -1033,7 +1068,7 @@ Ns_ConnWriteData(Ns_Conn *conn, CONST void *buf, size_t towrite, int flags)
 
 NS_EXTERN int
 Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+    NS_GNUC_NONNULL(1);
 
 NS_EXTERN int
 Ns_ConnSendFd(Ns_Conn *conn, int fd, Tcl_WideInt nsend)
@@ -1059,7 +1094,7 @@ NS_EXTERN int
 Ns_ConnPuts(Ns_Conn *conn, CONST char *string)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN int
+NS_EXTERN ssize_t
 Ns_ConnSend(Ns_Conn *conn, struct iovec *bufs, int nbufs)
     NS_GNUC_NONNULL(1);
 
@@ -1120,6 +1155,10 @@ Ns_WriteConn(Ns_Conn *conn, CONST char *buf, size_t towrite)
 NS_EXTERN int
 Ns_WriteCharConn(Ns_Conn *conn, CONST char *buf, size_t towrite)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_DEPRECATED;
+
+NS_EXTERN int
+Ns_CompleteHeaders(Ns_Conn *conn, Tcl_WideInt length, int flags, Ns_DString *dsPtr)
+    NS_GNUC_NONNULL(1);
 
 /*
  * cookies.c:
@@ -1546,6 +1585,16 @@ NS_EXTERN Ns_ObjvProc Ns_ObjvArgs;
 NS_EXTERN Ns_ObjvProc Ns_ObjvTime;
 NS_EXTERN Ns_ObjvProc Ns_ObjvSet;
 
+NS_EXTERN Ns_OptionConverter Ns_OptionObj;
+NS_EXTERN Ns_OptionConverter Ns_OptionString;
+NS_EXTERN Ns_OptionConverter Ns_OptionServer;
+
+#define Ns_NrElements(arr)  ((int) (sizeof(arr) / sizeof(arr[0])))
+
+NS_EXTERN int
+Ns_ParseOptions(CONST char *options[], Ns_OptionConverter *converter[], 
+		ClientData clientData[], Tcl_Interp *interp, int offset, 
+		int max, int *nextArg, int objc, Tcl_Obj *CONST objv[]);
 
 /*
  * tclthread.c:
@@ -1787,9 +1836,9 @@ Ns_RegisterModule(CONST char *name, Ns_ModuleInitProc *proc)
      NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN int
-Ns_ModuleLoad(CONST char *server, CONST char *module, CONST char *file,
+Ns_ModuleLoad(Tcl_Interp *interp, CONST char *server, CONST char *module, CONST char *file,
               CONST char *init)
-     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
 /*
  * nsthread.c:
@@ -2351,6 +2400,9 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
                     Ns_Time *timeoutPtr, int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
+NS_EXTERN int
+Ns_SockCork(Ns_Sock *sock, int cork);
+
 /*
  * sock.c:
  */
@@ -2373,16 +2425,16 @@ NS_EXTERN int
 Ns_SockTimedWait(NS_SOCKET sock, int what, Ns_Time *timeoutPtr);
 NS_EXTERN int
 Ns_SockRecv(NS_SOCKET sock, void *vbuf, size_t nrecv,
-                          Ns_Time *timeoutPtr);
+	    Ns_Time *timeoutPtr);
 NS_EXTERN int
 Ns_SockSend(NS_SOCKET sock, void *vbuf, size_t nsend,
-                          Ns_Time *timeoutPtr);
+	    Ns_Time *timeoutPtr);
 NS_EXTERN int
 Ns_SockRecvBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
-                              Ns_Time *timeoutPtr, int flags);
-NS_EXTERN int
-Ns_SockSendBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
-                              Ns_Time *timeoutPtr, int flags);
+		Ns_Time *timeoutPtr, int flags);
+NS_EXTERN ssize_t
+Ns_SockSendBufs(Ns_Sock *sockPtr, struct iovec *bufs, int nbufs,
+		Ns_Time *timeoutPtr, int flags);
 
 NS_EXTERN NS_SOCKET
 Ns_BindSock(struct sockaddr_in *psa) NS_GNUC_DEPRECATED;
@@ -2420,6 +2472,9 @@ Ns_SockSetNonBlocking(NS_SOCKET sock);
 
 NS_EXTERN int
 Ns_SockSetBlocking(NS_SOCKET sock);
+
+NS_EXTERN void
+Ns_SockSetDeferAccept(NS_SOCKET sock, int secs);
 
 NS_EXTERN int
 Ns_GetSockAddr(struct sockaddr_in *psa, char *host, int port);
@@ -2561,6 +2616,7 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, char *chanId, int write, int *fdPtr);
  * tclinit.c:
  */
 
+
 NS_EXTERN int
 Nsd_Init(Tcl_Interp *interp);
 
@@ -2574,6 +2630,9 @@ Ns_TclInit(Tcl_Interp *interp)
 NS_EXTERN int
 Ns_TclEval(Ns_DString *dsPtr, CONST char *server, CONST char *script)
      NS_GNUC_NONNULL(3);
+
+NS_EXTERN Tcl_Interp *
+NS_TclCreateInterp();
 
 NS_EXTERN Tcl_Interp *
 Ns_TclAllocateInterp(CONST char *server);
@@ -2655,6 +2714,10 @@ Ns_TclLogError(Tcl_Interp *interp)
 NS_EXTERN CONST char *
 Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *conn)
     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+
+NS_EXTERN void
+Ns_LogDeprecated(Tcl_Obj *CONST objv[], int objc, char *alternative, char *explanation)
+    NS_GNUC_NONNULL(1);
 
 NS_EXTERN void
 Ns_CtxMD5Init(Ns_CtxMD5 *ctx)

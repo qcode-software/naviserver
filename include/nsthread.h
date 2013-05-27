@@ -51,6 +51,17 @@
 #define NSTHREAD_EXPORTS
 #endif
 
+#if defined(__GNUC__) && __GNUC__ > 2
+/* Use gcc branch prediction hint to minimize cost of e.g. DTrace
+ * ENABLED checks. 
+ */
+#  define unlikely(x) (__builtin_expect((x), 0))
+#  define likely(x) (__builtin_expect((x), 1))
+#else
+#  define unlikely(x) (x)
+#  define likely(x) (x)
+#endif
+
 /*
  *
  * Main Windows defines, including 
@@ -390,19 +401,21 @@ typedef struct DIR_ *DIR;
  */
 
 #ifndef UIO_MAXIOV
-# if defined(__FreeBSD__) || defined(__APPLE__) || defined(__NetBSD__)
-#  define UIO_MAXIOV 1024
-# elif defined(__sun)
-#  ifndef IOV_MAX
-#   define UIO_MAXIOV 16
-#  else
-#   define UIO_MAXIOV IOV_MAX
-#  endif
-# elif defined(IOV_MAX)
+# ifdef IOV_MAX
 #  define UIO_MAXIOV IOV_MAX
 # else
-#  define UIO_MAXIOV 16
+#  if defined(__FreeBSD__) || defined(__APPLE__) || defined(__NetBSD__)
+#   define UIO_MAXIOV 1024
+#  elif defined(__sun)
+#   define UIO_MAXIOV 16
+#  else
+#   define UIO_MAXIOV 16
+#  endif
 # endif
+#endif
+
+#ifndef UIO_SMALLIOV
+# define UIO_SMALLIOV 8
 #endif
 
 /*
@@ -451,6 +464,15 @@ typedef struct DIR_ *DIR;
 #endif
 
 /*
+ * There is apparently no platform independent print format for items
+ * of off_t. Therefore, we invent here our own variant, trying to
+ * stick to the naming conventions.
+ */
+#if !defined(PROTd)
+# define PROTd PRId64
+#endif
+
+/*
  * Older Solaris version (2.8-) have older definitions
  * of pointer formatting macros.
  */
@@ -493,6 +515,16 @@ typedef struct DIR_ *DIR;
 # else
 #  define PRIxPTR                     "x"
 # endif
+#endif
+
+#if !defined(INT2PTR) && !defined(PTR2INT)
+#   if defined(HAVE_INTPTR_T) || defined(intptr_t)
+#       define INT2PTR(p) ((void *)(intptr_t)(p))
+#       define PTR2INT(p) ((int)(intptr_t)(p))
+#   else
+#       define INT2PTR(p) ((void *)(p))
+#       define PTR2INT(p) ((int)(p))
+#   endif
 #endif
 
 #ifdef __cplusplus

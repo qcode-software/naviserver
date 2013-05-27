@@ -27,10 +27,6 @@
 # version of this file under either the License or the GPL.
 #
 
-#
-# $Header$
-#
-
 # http.tcl
 #
 #   Routines for making non-blocking HTTP connections through
@@ -52,6 +48,7 @@
 
 proc ns_httpopen {method url {rqset ""} {timeout 30} {pdata ""}} {
 
+    ns_deprecated "ns_http"
     #
     # Determine if url is local; prepend site address if yes
     #
@@ -231,6 +228,8 @@ proc ns_httpopen {method url {rqset ""} {timeout 30} {pdata ""}} {
 
 proc ns_httppost {url {rqset ""} {qsset ""} {type ""} {timeout 30}} {
 
+    ns_deprecated "ns_http"
+
     #
     # Build the request. Since we're posting, we have to set
     # content-type and content-length ourselves. We'll add 
@@ -315,6 +314,8 @@ proc ns_httppost {url {rqset ""} {qsset ""} {type ""} {timeout 30}} {
 #
 
 proc ns_httpget {url {timeout 30} {depth 0} {rqset ""}} {
+
+    ns_deprecated "ns_http"
 
     if {[incr depth] > 10} {
         return -code error "ns_httpget: recursive redirection: $url"
@@ -660,5 +661,5 @@ proc ns_proxy_handler_http {args} {
     close $rfd
 }
 
-# EOF $RCSfile$
+# EOF
 

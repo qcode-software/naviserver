@@ -40,6 +40,17 @@
 #define INADDR_NONE -1
 #endif
 
+/*
+ * TCP_FASTOPEN was introduced in Linux 3.7.0. At the time of this
+ * writing, TCP_FASTOPEN is just defined in linux/tcp.h, which we
+ * can't include here (testing with FC18)
+ */
+#ifdef HAVE_TCP_FASTOPEN
+# ifndef TCP_FASTOPEN 
+#  define TCP_FASTOPEN           23      /* Enable FastOpen on listeners */
+# endif
+#endif
+
 
 /*
  * Local functions defined in this file
@@ -49,8 +60,6 @@ static NS_SOCKET SockConnect(char *host, int port, char *lhost, int lport,
 			     int async);
 static NS_SOCKET SockSetup(NS_SOCKET sock);
 static int SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, int flags);
-static int SockSend(NS_SOCKET sock, struct iovec *bufs, int nbufs, int flags);
-
 
 
 /*
@@ -202,8 +211,8 @@ Ns_SockRecvBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
  *----------------------------------------------------------------------
  */
 
-int
-Ns_SockSendBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
+ssize_t
+Ns_SockSendBufs(Ns_Sock *sockPtr, struct iovec *bufs, int nbufs,
                 Ns_Time *timeoutPtr, int flags)
 {
     int           sbufLen, sbufIdx = 0, nsbufs = 0, bufIdx = 0;
@@ -211,6 +220,7 @@ Ns_SockSendBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
     void         *data;
     size_t        len, towrite = 0;
     struct iovec  sbufs[UIO_MAXIOV], *sbufPtr;
+    Sock          *sock = (Sock *)sockPtr;
 
     sbufPtr = sbufs;
     sbufLen = UIO_MAXIOV;
@@ -238,11 +248,11 @@ Ns_SockSendBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
          * Timeout once if first attempt would block.
          */
 
-        sent = SockSend(sock, sbufPtr, nsbufs, flags);
+        sent = NsDriverSend(sock, sbufPtr, nsbufs, flags);
         if (sent < 0
             && ns_sockerrno == EWOULDBLOCK
-            && Ns_SockTimedWait(sock, NS_SOCK_WRITE, timeoutPtr) == NS_OK) {
-            sent = SockSend(sock, sbufPtr, nsbufs, flags);
+            && Ns_SockTimedWait(sock->sock, NS_SOCK_WRITE, timeoutPtr) == NS_OK) {
+            sent = NsDriverSend(sock, sbufPtr, nsbufs, flags);
         }
         if (sent < 0) {
             break;
@@ -468,6 +478,8 @@ Ns_SockAccept(NS_SOCKET lsock, struct sockaddr *saPtr, int *lenPtr)
 
     if (sock != INVALID_SOCKET) {
         sock = SockSetup(sock);
+    } else if (errno != EAGAIN) {
+        Ns_Log(Notice, "accept() fails, reason: %s", strerror(errno));
     }
 
     return sock;
@@ -699,6 +711,64 @@ Ns_SockSetBlocking(NS_SOCKET sock)
 
     return NS_OK;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * SetDeferAccept --
+ *
+ *      Tell the OS not to give us a new socket until data is available.
+ *      This saves overhead in the poll() loop and the latency of a RT.
+ *
+ *      Otherwise, we will get socket as soon as the TCP connection
+ *      is established.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Disabled by default as Linux seems broken (does not respect
+ *      the timeout, linux-2.6.26).
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
+Ns_SockSetDeferAccept(NS_SOCKET sock, int secs)
+{
+#ifdef TCP_FASTOPEN
+    int qlen = 5;
+  
+    if (setsockopt(sock, IPPROTO_TCP, TCP_FASTOPEN,
+		   &qlen, sizeof(qlen)) == -1) {
+	Ns_Log(Error, "sock: setsockopt(TCP_FASTOPEN): %s",
+	       ns_sockstrerror(ns_sockerrno));
+    }
+#else
+# ifdef TCP_DEFER_ACCEPT
+    if (setsockopt(sock, IPPROTO_TCP, TCP_DEFER_ACCEPT,
+		   &secs, sizeof(secs)) == -1) {
+	Ns_Log(Error, "sock: setsockopt(TCP_DEFER_ACCEPT): %s",
+	       ns_sockstrerror(ns_sockerrno));
+    }
+# else
+#  ifdef SO_ACCEPTFILTER
+    struct accept_filter_arg afa;
+    int n;
+    
+    memset(&afa, 0, sizeof(afa));
+    strcpy(afa.af_name, "httpready");
+    n = setsockopt(sock, SOL_SOCKET, SO_ACCEPTFILTER, &afa, sizeof(afa));
+    if (n < 0) {
+	Ns_Log(Error, "sock: setsockopt(SO_ACCEPTFILTER): %s",
+	       ns_sockstrerror(ns_sockerrno));
+    }
+#  endif
+# endif
+#endif
+}
+
 
 
 /*
@@ -1056,49 +1126,3 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, int flags)
 #endif
 }
 
-
-/*
- *----------------------------------------------------------------------
- *
- * SockSend --
- *
- *      Send a vector of buffers on a non-blocking socket. Not all
- *      data may be sent.
- *
- * Results:
- *      Number of bytes sent or -1 on error.
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
- */
-
-static int
-SockSend(NS_SOCKET sock, struct iovec *bufs, int nbufs, int flags)
-{
-#ifdef _WIN32
-    DWORD n;
-    if (WSASend(sock, (LPWSABUF)bufs, nbufs, &n, flags,
-                NULL, NULL) != 0) {
-        n = -1;
-    }
-
-    return n;
-#else
-    int n;
-    struct msghdr msg;
-
-    memset(&msg, 0, sizeof(msg));
-    msg.msg_iov = bufs;
-    msg.msg_iovlen = nbufs;
-
-    n = sendmsg(sock, &msg, flags);
-
-    if (n < 0) {
-        Ns_Log(Debug, "SockSend: %s",
-               ns_sockstrerror(ns_sockerrno));
-    }
-    return n;
-#endif
-}

@@ -60,6 +60,7 @@ ns_param   writerthreads   3
 ns_param   writersize      1026
 ns_param   writerbufsize   512
 ns_param   deferaccept     0
+#ns_param   writerstreaming	true	;# false;  activate writer for streaming HTML output (e.g. ns_writer)
 
 ns_section "ns/module/nssock/servers"
 ns_param   test            test
@@ -98,10 +99,27 @@ ns_param   logdev          false
 ns_param   progressminsize 1
 
 ns_section "ns/fastpath"
-ns_param   cache           true
-ns_param   cachemaxsize    2055
-ns_param   cachemaxentry   32
-ns_param   mmap            false
+set v cache
+#set v mmap
+#set v none
+switch $v {
+    cache {
+	ns_param   cache           true
+	ns_param   cachemaxsize    2055
+	ns_param   cachemaxentry   32
+	ns_param   mmap            false
+    }
+    mmap {
+	ns_param   cache           false
+	ns_param   mmap            true
+    }
+    none {
+	ns_param   cache           false
+	ns_param   mmap            false
+    }
+}
+unset v
+
 
 ns_section "ns/limits"
 ns_param   confLimit1      "Config File Limit One"
@@ -132,11 +150,15 @@ ns_param   HackContentType true
 ns_param   compressenable  false ;# turned on as needed for tests
 ns_param   compresslevel   4     ;# default
 ns_param   compressminsize 3     ;# for testing, compress almost everything
-
-
-ns_section "ns/server/test/pool/default"
 ns_param   minthreads 2
 ns_param   maxthreads 10
+
+ns_section "ns/server/test/pools"
+ns_param emergency "Emergency pool"
+
+ns_section "ns/server/test/pool/emergency"
+ns_param   minthreads 1
+ns_param   maxthreads 1
 
 ns_section "ns/server/test/fastpath"
 ns_param   serverdir       testserver
@@ -191,6 +213,8 @@ ns_param   nsproxy         [ns_config "test" home]/../nsproxy/nsproxy.so
 
 ns_section "ns/server/testvhost"
 ns_param   enabletclpages  true
+ns_param   minthreads 1
+ns_param   maxthreads 3
 
 ns_section "ns/server/testvhost/fastpath"
 ns_param   serverdir       testserver
@@ -215,6 +239,8 @@ ns_param   library         [ns_config "test" home]/testserver/modules
 
 ns_section "ns/server/testvhost2"
 ns_param   enabletclpages  true
+ns_param   minthreads 1
+ns_param   maxthreads 4
 
 ns_section "ns/server/testvhost2/fastpath"
 ns_param   serverdir       testserver

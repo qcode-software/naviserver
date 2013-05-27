@@ -99,7 +99,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
 {
     Args      cmd;
     int       i, sig, optind;
-    char     *config;
+    char     *config = NULL;
     Ns_Time   timeout;
 
 #ifndef _WIN32
@@ -369,7 +369,9 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
         }
     }
 
-    config = NsConfigRead(nsconf.config);
+    if (!(mode == 'c' && nsconf.config == NULL)) {
+	config = NsConfigRead(nsconf.config);
+    }
 
 #ifndef _WIN32
 
@@ -437,12 +439,14 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
 
 #endif /* ! _WIN32 */
 
-    /*
-     * Evaluate the config file.
-     */
-
-    NsConfigEval(config, argc, argv, optind);
-    ns_free(config);
+    if (config) {
+	/*
+	 * Evaluate the config file.
+	 */
+	
+	NsConfigEval(config, argc, argv, optind);
+	ns_free(config);
+    }
 
     /*
      * If no servers were defained, autocreate server "default"
@@ -496,6 +500,17 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
         if (nsconf.home == NULL) {
             Ns_Fatal("nsmain: missing: [%s]home", NS_CONFIG_PARAMETERS);
         }
+    } else if (mode == 'c' && nsconf.config == NULL) {
+	/*
+	 * Try to get HOME from environment variable NAVISERVER. If
+	 * this is not defined, take the value from the path. Using
+	 * NAVISERVER makes especially sense when testing or running
+	 * nsd from the source directory.
+	 */
+	nsconf.home = getenv("NAVISERVER");
+	if (nsconf.home == NULL) {
+	    nsconf.home = MakePath("");
+	}
     }
     nsconf.home = SetCwd(nsconf.home);
 
@@ -673,6 +688,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
 
     NsStopDrivers();
     NsStopServers(&timeout);
+    NsStopSpoolers();
 
     /*
      * Next, start simultaneous shutdown in other systems and wait
@@ -987,10 +1003,10 @@ UsageError(char *msg, ...)
 static char *
 MakePath(char *file)
 {
-    Tcl_Obj *obj;
-    char *str, *path = NULL;
-
     if (Ns_PathIsAbsolute(nsconf.nsd)) {
+        char *str, *path = NULL;
+        Tcl_Obj *obj;
+
         str = strstr(nsconf.nsd, "/bin/");
         if (str == NULL) {
             str = strrchr(nsconf.nsd, '/');

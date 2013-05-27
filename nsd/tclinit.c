@@ -410,7 +410,7 @@ Ns_GetConnInterp(Ns_Conn *conn)
     NsInterp *itPtr;
 
     if (connPtr->itPtr == NULL) {
-        itPtr = PopInterp(connPtr->servPtr, NULL);
+        itPtr = PopInterp(connPtr->poolPtr->servPtr, NULL);
         itPtr->conn = conn;
         itPtr->nsconn.flags = 0;
         connPtr->itPtr = itPtr;
@@ -500,7 +500,7 @@ Ns_TclDestroyInterp(Tcl_Interp *interp)
 
       /*
        * Run traces (behaves gracefully, if there is no server
-       * associated.
+       * associated).
        */
       RunTraces(itPtr, NS_TCL_TRACE_DELETE);
 
@@ -585,7 +585,6 @@ Ns_TclRegisterTrace(CONST char *server, Ns_TclTraceProc *proc,
 {
     TclTrace   *tracePtr;
     NsServer   *servPtr;
-    Tcl_Interp *interp;
 
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
@@ -618,7 +617,8 @@ Ns_TclRegisterTrace(CONST char *server, Ns_TclTraceProc *proc,
      */
 
     if (when & NS_TCL_TRACE_CREATE || when & NS_TCL_TRACE_ALLOCATE) {
-        interp = Ns_TclAllocateInterp(server);
+	Tcl_Interp *interp = Ns_TclAllocateInterp(server);
+
         if ((*proc)(interp, arg) != TCL_OK) {
             Ns_TclLogError(interp);
         }
@@ -882,7 +882,7 @@ NsTclICtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         IGetTracesIdx, IMarkForDeleteIdx, IOnCreateIdx, IOnCleanupIdx, IOnDeleteIdx,
         IOnInitIdx, IRunTracesIdx, ISaveIdx, ITraceIdx, IUpdateIdx
     };
-    Ns_ObjvTable traceWhen[] = {
+    static Ns_ObjvTable traceWhen[] = {
         {"create",     NS_TCL_TRACE_CREATE},
         {"delete",     NS_TCL_TRACE_DELETE},
         {"allocate",   NS_TCL_TRACE_ALLOCATE},
@@ -1203,10 +1203,10 @@ void
 NsTclInitServer(CONST char *server)
 {
     NsServer *servPtr = NsGetServer(server);
-    Tcl_Interp *interp;
 
     if (servPtr != NULL) {
-        interp = Ns_TclAllocateInterp(server);
+	Tcl_Interp *interp = Ns_TclAllocateInterp(server);
+
         if (Tcl_EvalFile(interp, servPtr->tcl.initfile) != TCL_OK) {
             Ns_TclLogError(interp);
         }
@@ -1275,7 +1275,8 @@ NsTclAppInit(Tcl_Interp *interp)
 NsInterp *
 NsGetInterpData(Tcl_Interp *interp)
 {
-    return (interp ? Tcl_GetAssocData(interp, "ns:data", NULL) : NULL);
+    assert(interp);
+    return Tcl_GetAssocData(interp, "ns:data", NULL);
 }
 
 
@@ -1491,9 +1492,10 @@ GetCacheEntry(NsServer *servPtr)
 /*
  *----------------------------------------------------------------------
  *
- * CreateInterp --
+ * NS_TclCreateInterp --
  *
- *      Create a fresh new Tcl interp.
+ *      Create a fresh new Tcl interp. The creation is serialized to
+ *      prevent concurrent interp creations.
  *
  * Results:
  *      Tcl_Interp pointer.
@@ -1504,6 +1506,34 @@ GetCacheEntry(NsServer *servPtr)
  *----------------------------------------------------------------------
  */
 
+Tcl_Interp *
+NS_TclCreateInterp() {
+    static Ns_Mutex initLock = NULL; 
+    Tcl_Interp *interp;
+
+    Ns_MutexLock(&initLock);
+    interp = Tcl_CreateInterp();
+    Ns_MutexUnlock(&initLock);
+
+    return interp;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * CreateInterp --
+ *
+ *      Create a fresh new Tcl interp configured for NaviServer
+ *
+ * Results:
+ *      Tcl_Interp pointer.
+ *
+ * Side effects:
+ *      Depends on Tcl library init scripts, errors will be logged.
+ *
+ *----------------------------------------------------------------------
+ */
 static Tcl_Interp *
 CreateInterp(NsInterp **itPtrPtr, NsServer *servPtr)
 {
@@ -1514,10 +1544,22 @@ CreateInterp(NsInterp **itPtrPtr, NsServer *servPtr)
      * Create and initialize a basic Tcl interp.
      */
 
-    interp = Tcl_CreateInterp();
+    interp = NS_TclCreateInterp();
+
     Tcl_InitMemory(interp);
     if (Tcl_Init(interp) != TCL_OK) {
         Ns_TclLogError(interp);
+    }
+
+    /*
+     * Make sure, the system encoding is UTF-8. Changing the system
+     * encoding at runtime is a potentially dangerous operation, since
+     * tcl might be loading already files based on a previous
+     * enconding in another thread. So, we want to perform this
+     * operation only once for all threads.
+     */
+    if (strcmp("utf-8", Tcl_GetEncodingName(Tcl_GetEncoding(interp, NULL))) != 0) {
+      Tcl_SetSystemEncoding(interp, "utf-8");
     }
 
     /*

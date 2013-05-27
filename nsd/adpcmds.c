@@ -217,16 +217,16 @@ NsTclAdpCtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         { "channel",      CChanIdx },
 
         { "autoabort",    ADP_AUTOABORT },
+        { "cache",        ADP_CACHE },
         { "detailerror",  ADP_DETAIL },
         { "displayerror", ADP_DISPLAY },
         { "expire",       ADP_EXPIRE },
-        { "cache",        ADP_CACHE },
         { "safe",         ADP_SAFE },
         { "singlescript", ADP_SINGLE },
+        { "stream",       ADP_STREAM },
         { "stricterror",  ADP_STRICT },
         { "trace",        ADP_TRACE },
         { "trimspace",    ADP_TRIM },
-        { "stream",       ADP_STREAM },
         { NULL, 0}
     };
 
@@ -992,7 +992,6 @@ NsTclAdpExceptionObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
                         Tcl_Obj **objv)
 {
     NsInterp *itPtr = arg;
-    char     *exception;
     int       boolValue;
 
     if (objc != 1 && objc != 2) {
@@ -1007,6 +1006,7 @@ NsTclAdpExceptionObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     Tcl_SetObjResult(interp, Tcl_NewBooleanObj(boolValue));
 
     if (objc == 2) {
+	char   *exception;
         switch (itPtr->adp.exception) {
         case ADP_OK:
             exception = "ok";
@@ -1153,13 +1153,13 @@ NsTclAdpMimeTypeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
 {
     NsInterp *itPtr = arg;
     Ns_Conn  *conn  = itPtr->conn;
-    char     *type;
 
     if (objc != 1 && objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "?mimetype?");
         return TCL_ERROR;
     }
     if (conn != NULL) {
+	char *type;
         if (objc == 2) {
             Ns_ConnSetEncodedTypeHeader(conn, Tcl_GetString(objv[1]));
         }

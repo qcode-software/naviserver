@@ -373,7 +373,7 @@ Ns_LogSeverityName(Ns_LogSeverity severity)
 int
 Ns_LogSeverityEnabled(Ns_LogSeverity severity)
 {
-    if (severity < severityCount) {
+    if (likely(severity < severityCount)) {
         return severityConfig[severity].enabled;
     }
     return NS_TRUE;
@@ -670,7 +670,6 @@ static char *
 LogTime(LogCache *cachePtr, Ns_Time *timePtr, int gmt)
 {
     time_t    *tp;
-    struct tm *ptm;
     char      *bp;
 
     if (gmt) {
@@ -682,6 +681,7 @@ LogTime(LogCache *cachePtr, Ns_Time *timePtr, int gmt)
     }
     if (*tp != timePtr->sec) {
         size_t n;
+	struct tm *ptm;
 
         *tp = timePtr->sec;
         ptm = ns_localtime(&timePtr->sec);
@@ -968,17 +968,21 @@ NsTclLogRollObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
 int
 Ns_LogRoll(void)
 {
+    int rc = NS_OK;
+
     if (file != NULL) {
+	NsAsyncWriterQueueDisable(0);
+
         if (access(file, F_OK) == 0) {
             Ns_RollFile(file, maxback);
         }
         Ns_Log(Notice, "log: re-opening log file '%s'", file);
-        if (LogOpen() != NS_OK) {
-            return NS_ERROR;
-        }
+	rc = LogOpen();
+
+	NsAsyncWriterQueueEnable();
     }
 
-    return NS_OK;
+    return rc;
 }
 
 
@@ -1081,7 +1085,6 @@ LogOpen(void)
             close(fd);
         }
     }
-
     return status;
 }
 
@@ -1212,7 +1215,7 @@ LogToDString(void *arg, Ns_LogSeverity severity, Ns_Time *stamp,
     Ns_DStringAppend(dsPtr, LogTime(GetCache(), stamp, 0));
     if (flags & LOG_USEC) {
         Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
-        Ns_DStringPrintf(dsPtr, ".%ld]", stamp->usec);
+        Ns_DStringPrintf(dsPtr, ".%06ld]", stamp->usec);
     }
     Ns_DStringPrintf(dsPtr, "[%d.%" PRIxPTR "][%s] %s: ",
                      Ns_InfoPid(), Ns_ThreadId(), Ns_ThreadGetName(),
@@ -1258,15 +1261,16 @@ static int
 LogToFile(void *arg, Ns_LogSeverity severity, Ns_Time *stamp,
           char *msg, size_t len)
 {
-    int        ret, fd = (int)(intptr_t) arg;
+    int        fd = (int)(intptr_t) arg;
     Ns_DString ds;
 
     Ns_DStringInit(&ds);
-    LogToDString((void*)&ds, severity, stamp, msg, len);
-    ret = write(fd, Ns_DStringValue(&ds), (size_t)Ns_DStringLength(&ds));
-    Ns_DStringFree(&ds);
 
-    return ret < 0 ? NS_ERROR : NS_OK;
+    LogToDString((void*)&ds, severity, stamp, msg, len);      
+    NsAsyncWrite(fd, Ns_DStringValue(&ds), (size_t)Ns_DStringLength(&ds));
+
+    Ns_DStringFree(&ds);
+    return NS_OK;
 }
 
 
@@ -1448,10 +1452,10 @@ FreeCache(void *arg)
 static int
 GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
 {
-    Tcl_HashEntry *hPtr;
     int            i;
     
     if (Ns_TclGetOpaqueFromObj(objPtr, severityType, addrPtrPtr) != TCL_OK) {
+	Tcl_HashEntry *hPtr;
         Ns_MutexLock(&lock);
         hPtr = Tcl_FindHashEntry(&severityTable, Tcl_GetString(objPtr));
         Ns_MutexUnlock(&lock);

@@ -41,8 +41,9 @@
 #define LOG_COMBINED      (1<<0)
 #define LOG_FMTTIME       (1<<1)
 #define LOG_REQTIME       (1<<2)
-#define LOG_CHECKFORPROXY (1<<3)
-#define LOG_SUPPRESSQUERY (1<<4)
+#define LOG_PARTIALTIMES  (1<<3)
+#define LOG_CHECKFORPROXY (1<<4)
+#define LOG_SUPPRESSQUERY (1<<5)
 
 #if !defined(PIPE_BUF)
 # define PIPE_BUF 512
@@ -185,6 +186,9 @@ Ns_ModuleInit(char *server, char *module)
     }
     if (Ns_ConfigBool(path, "logreqtime", NS_FALSE)) {
         logPtr->flags |= LOG_REQTIME;
+    }
+    if (Ns_ConfigBool(path, "logpartialtimes", NS_FALSE)) {
+        logPtr->flags |= LOG_PARTIALTIMES;
     }
     if (Ns_ConfigBool(path, "suppressquery", NS_FALSE)) {
         logPtr->flags |= LOG_SUPPRESSQUERY;
@@ -378,6 +382,9 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
             if (strstr(ds.string, "logreqtime")) {
                 status |= LOG_REQTIME;
             }
+            if (strstr(ds.string, "logpartialtimes")) {
+                status |= LOG_PARTIALTIMES;
+            }
             if (strstr(ds.string, "checkforproxy")) {
                 status |= LOG_CHECKFORPROXY;
             }
@@ -401,6 +408,9 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         }
         if ((status & LOG_REQTIME)) {
             Ns_DStringAppend(&ds, "logreqtime ");
+        }
+        if ((status & LOG_PARTIALTIMES)) {
+            Ns_DStringAppend(&ds, "logpartialtimes ");
         }
         if ((status & LOG_CHECKFORPROXY)) {
             Ns_DStringAppend(&ds, "checkforproxy ");
@@ -493,21 +503,11 @@ LogTrace(void *arg, Ns_Conn *conn)
     CONST char **h;
     char        *p, *user, buffer[PIPE_BUF], *bufferPtr = NULL;
     int          n, status, i, fd;
-    size_t	 bufferSize;
+    size_t	 bufferSize = 0;
     Ns_DString   ds;
-    Ns_Time      now, diff;
 
     Ns_DStringInit(&ds);
     Ns_MutexLock(&logPtr->lock);
-
-    /*
-     * Compute the request's elapsed time
-     */
-
-    if ((logPtr->flags & LOG_REQTIME)) {
-        Ns_GetTime(&now);
-        Ns_DiffTime(&now, Ns_ConnStartTime(conn), &diff);
-    }
 
     /*
      * Append the peer address. Watch for users coming
@@ -559,12 +559,12 @@ LogTrace(void *arg, Ns_Conn *conn)
      * Append the request line plus query data (if configured)
      */
 
-    if (conn->request != NULL) {
-        if ((logPtr->flags & LOG_SUPPRESSQUERY)) {
-            Ns_DStringVarAppend(&ds, " \"", conn->request->url, "\" ", NULL);
-        } else {
-            Ns_DStringVarAppend(&ds, " \"", conn->request->line, "\" ", NULL);
-        }
+    if (likely(conn->request != NULL)) {
+	char *string = (logPtr->flags & LOG_SUPPRESSQUERY) ? 
+	    conn->request->url : 
+	    conn->request->line;
+
+	Ns_DStringVarAppend(&ds, " \"", likely(string != NULL)  ? string  : "", "\" ", NULL);
     } else {
         Ns_DStringAppend(&ds," \"\" ");
     }
@@ -596,11 +596,29 @@ LogTrace(void *arg, Ns_Conn *conn)
     }
 
     /*
-     * Append the request's elapsed time (if enabled)
+     * Append the request's elapsed time and queue time (if enabled)
      */
 
     if ((logPtr->flags & LOG_REQTIME)) {
-        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t) diff.sec, diff.usec);
+	Ns_Time reqTime, now;
+	Ns_GetTime(&now);
+        Ns_DiffTime(&now, Ns_ConnStartTime(conn), &reqTime);
+        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)reqTime.sec, reqTime.usec);
+    }
+
+    if ((logPtr->flags & LOG_PARTIALTIMES)) {
+	Ns_Time  acceptTime, queueTime, filterTime, runTime;
+        Ns_Time *startTimePtr =  Ns_ConnStartTime(conn);
+
+	Ns_ConnTimeSpans(conn, &acceptTime, &queueTime, &filterTime, &runTime);
+
+        Ns_DStringAppend(&ds, " \"");
+        Ns_DStringPrintf(&ds, "%" PRIu64 ".%06ld",  (int64_t)startTimePtr->sec, startTimePtr->usec);
+        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)acceptTime.sec,    acceptTime.usec);
+        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)queueTime.sec,     queueTime.usec);
+        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)filterTime.sec,    filterTime.usec);
+        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)runTime.sec,       runTime.usec);
+        Ns_DStringAppend(&ds, "\"");
     }
 
     /*
@@ -665,11 +683,10 @@ LogTrace(void *arg, Ns_Conn *conn)
     fd = logPtr->fd;
     Ns_MutexUnlock(&logPtr->lock);
 
-    if (bufferPtr) {
-        if (fd >= 0 && write(fd, bufferPtr, bufferSize) != bufferSize) {
-	    Ns_Log(Error, "nslog: write() failed: '%s'", strerror(errno));
-	}
+    if (likely(bufferPtr != NULL) && likely(fd >= 0) && likely(bufferSize > 0)) {
+      NsAsyncWrite(fd, bufferPtr, bufferSize);
     }
+
     Ns_DStringFree(&ds);
 }
 
@@ -807,7 +824,9 @@ static int
 LogRoll(Log *logPtr)
 {
     int      status;
-    Tcl_Obj *path, *newpath;
+    Tcl_Obj *path;
+
+    NsAsyncWriterQueueDisable(0);
 
     LogClose(logPtr);
 
@@ -827,6 +846,7 @@ LogRoll(Log *logPtr)
             time_t      now = time(0);
             char        timeBuf[512];
             Ns_DString  ds;
+	    Tcl_Obj    *newpath;
             struct tm  *ptm = ns_localtime(&now);
 
             strftime(timeBuf, sizeof(timeBuf)-1, logPtr->rollfmt, ptm);
@@ -841,7 +861,9 @@ LogRoll(Log *logPtr)
                 Ns_Log(Error, "nslog: access(%s, F_OK) failed: '%s'",
                        ds.string, strerror(Tcl_GetErrno()));
                 status = NS_ERROR;
-            }
+            } else {
+		status = NS_OK;
+	    }
             if (status == NS_OK && Tcl_FSRenameFile(path, newpath)) {
                 Ns_Log(Error, "nslog: rename(%s,%s) failed: '%s'",
                        logPtr->file, ds.string, strerror(Tcl_GetErrno()));
@@ -856,8 +878,13 @@ LogRoll(Log *logPtr)
     }
 
     Tcl_DecrRefCount(path);
+    
+    if (status == NS_OK) {
+	status = LogOpen(logPtr);
+    }
+    NsAsyncWriterQueueEnable();
 
-    return (status == NS_OK) ? LogOpen(logPtr) : NS_ERROR;
+    return status;
 }
 
 
