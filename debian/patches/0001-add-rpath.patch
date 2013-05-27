@@ -9,7 +9,7 @@ Add naviserver lib dir to executable RPATH
  2 files changed, 17 insertions(+), 15 deletions(-)
 
 diff --git a/include/Makefile.global.in b/include/Makefile.global.in
-index fe7ce6c..9423a1c 100644
+index 97e500c..9e18fe0 100644
 --- a/include/Makefile.global.in
 +++ b/include/Makefile.global.in
 @@ -40,6 +40,18 @@
