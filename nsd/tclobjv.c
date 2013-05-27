@@ -65,6 +65,87 @@ static Tcl_ObjType specType = {
 };
 
 
+// document me
+
+int
+Ns_OptionObj(Tcl_Interp *interp, Tcl_Obj *labelObj, Tcl_Obj *objPtr, ClientData *clientData) {
+    *clientData = objPtr;
+    return TCL_OK;
+}
+int
+Ns_OptionString(Tcl_Interp *interp, Tcl_Obj *labelObj, Tcl_Obj *objPtr, ClientData *clientData) {
+    *clientData = Tcl_GetString(objPtr);
+    return TCL_OK;
+}
+
+int
+Ns_OptionServer(Tcl_Interp *interp, Tcl_Obj *labelObj, Tcl_Obj *objPtr, ClientData *clientData) {
+    NsServer *servPtr = NsGetServer(Tcl_GetString(objPtr));
+    *clientData = servPtr;
+    return servPtr ? TCL_OK : TCL_ERROR;
+}
+
+int 
+Ns_ParseOptions(CONST char *options[], Ns_OptionConverter *converter[], 
+		ClientData clientData[], Tcl_Interp *interp, int offset, 
+		int max, int *nextArg, int objc, Tcl_Obj *CONST objv[]) {
+    int i = offset, opt;
+    char *nextArgString;
+
+    Tcl_ResetResult(interp);
+    
+    while (1) {
+	if (objc == i) {break;}
+	if (objc < i)  {return TCL_ERROR;}
+	if (Tcl_GetIndexFromObj(interp, objv[i], options, "option", 0, &opt) != TCL_OK) {
+	    break;
+	}
+	if (opt > max) {
+	    Ns_TclPrintfResult(interp, "lookup error for %s", 
+			       Tcl_GetString(objv[i]));
+	    return TCL_ERROR;
+	}
+	if (converter[opt] == NULL) {
+	    clientData[opt] = (ClientData)1;
+	    i++;
+	} else {
+	    if (objc < i + 1) {
+		Ns_TclPrintfResult(interp, "missing argument for %s", 
+				   Tcl_GetString(objv[i]));
+		return TCL_ERROR;
+	    }
+	    if ((converter[opt])(interp, objv[i], objv[i+1], &clientData[opt]) != TCL_OK) {
+		/* preserve the error message of the converter */
+		if (*Tcl_GetStringResult(interp) == '\0') {
+		    Ns_TclPrintfResult(interp, "invalid argument for %s: %s", 
+				       Tcl_GetString(objv[i]), 
+				       Tcl_GetString(objv[i+1]));
+		}
+		return TCL_ERROR;
+	    }
+	    i += 2;
+	}
+    }
+    if (objc > i) {
+	nextArgString = Tcl_GetString(objv[i]);
+	if (*nextArgString == '-') {
+	    if (*(nextArgString+1) == '-' && *(nextArgString+2) == '\0') {
+		/* handle '--' */
+		i++;
+	    } 
+#if 0	
+	    else if (*(nextArgString+1) != '\0') {
+		/* don't allow the next to start with '-' */
+		return TCL_ERROR;
+	    }
+#endif
+	}
+    }
+    *nextArg = i;
+    return TCL_OK;
+}
+
+
 
 /*
  *----------------------------------------------------------------------
@@ -112,7 +193,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
     Ns_ObjvSpec *specPtr = NULL;
     int          optIndex, status, remain = (objc - offset);
 
-    if (optSpec && optSpec->key) {
+    if (likely(optSpec != NULL) && likely(optSpec->key != NULL)) {
         while (remain > 0) {
             if (Tcl_GetIndexFromObjStruct(NULL, objv[objc - remain], optSpec,
                                           sizeof(Ns_ObjvSpec), "option",
@@ -130,7 +211,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
             }
         }
     }
-    if (argSpec == NULL) {
+    if (unlikely(argSpec == NULL)) {
         if (remain > 0) {
         badargs:
             WrongNumArgs(optSpec, argSpec, interp, offset, objv);
@@ -139,18 +220,18 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
         return NS_OK;
     }
     for (specPtr = argSpec; specPtr->key != NULL; specPtr++) {
-        if (remain == 0) {
-            if (specPtr->key[0] != '?') {
+	if (unlikely(remain == 0)) {
+            if (unlikely(specPtr->key[0] != '?')) {
                 goto badargs; /* Too few args. */
             }
             return NS_OK;
         }
-        if (specPtr->proc(specPtr, interp, &remain, objv + (objc - remain))
+        if (unlikely(specPtr->proc(specPtr, interp, &remain, objv + (objc - remain)))
             != TCL_OK) {
             return NS_ERROR;
         }
     }
-    if (remain > 0) {
+    if (unlikely(remain > 0)) {
         goto badargs; /* Too many args. */
     }
 
@@ -180,7 +261,7 @@ Ns_ObjvInt(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     int *dest = spec->dest;
 
-    if (*objcPtr > 0 && Tcl_GetIntFromObj(interp, objv[0], dest) == TCL_OK) {
+    if (likely(*objcPtr > 0) && Tcl_GetIntFromObj(interp, objv[0], dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
     }
@@ -193,7 +274,7 @@ Ns_ObjvLong(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     long *dest = spec->dest;
 
-    if (*objcPtr > 0 && Tcl_GetLongFromObj(interp, objv[0], dest) == TCL_OK) {
+    if (likely(*objcPtr > 0) && Tcl_GetLongFromObj(interp, objv[0], dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
     }
@@ -206,7 +287,7 @@ Ns_ObjvWideInt(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     Tcl_WideInt *dest = spec->dest;
 
-    if (*objcPtr > 0 && Tcl_GetWideIntFromObj(interp, objv[0], dest) == TCL_OK) {
+    if (likely(*objcPtr > 0) && Tcl_GetWideIntFromObj(interp, objv[0], dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
     }
@@ -219,7 +300,7 @@ Ns_ObjvDouble(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     double *dest = spec->dest;
 
-    if (*objcPtr > 0 && Tcl_GetDoubleFromObj(interp, objv[0], dest) == TCL_OK) {
+    if (likely(*objcPtr > 0) && Tcl_GetDoubleFromObj(interp, objv[0], dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
     }
@@ -255,7 +336,7 @@ Ns_ObjvBool(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
         *dest = (int)(intptr_t) spec->arg;
         return TCL_OK;
     }
-    if (*objcPtr > 0 && Tcl_GetBooleanFromObj(interp, objv[0], dest) == TCL_OK) {
+    if (likely(*objcPtr > 0) && Tcl_GetBooleanFromObj(interp, objv[0], dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
     }
@@ -287,9 +368,9 @@ int
 Ns_ObjvString(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
               Tcl_Obj *CONST objv[])
 {
-    char **dest = spec->dest;
+    if (likely(*objcPtr > 0)) {
+	char **dest = spec->dest;
 
-    if (*objcPtr > 0) {
         *dest = Tcl_GetStringFromObj(objv[0], (int *) spec->arg);
         *objcPtr -= 1;
         return TCL_OK;
@@ -323,7 +404,7 @@ Ns_ObjvEval(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     char **dest = spec->dest;
 
-    if (*objcPtr > 0) {
+    if (likely(*objcPtr > 0)) {
         if (Tcl_EvalObjEx(interp, objv[0], 0) == TCL_ERROR) {
             return TCL_ERROR;
         }
@@ -361,7 +442,7 @@ Ns_ObjvByteArray(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     unsigned char **dest = spec->dest;
 
-    if (*objcPtr > 0) {
+    if (likely(*objcPtr > 0)) {
         *dest = Tcl_GetByteArrayFromObj(objv[0], (int *) spec->arg);
         *objcPtr -= 1;
         return TCL_OK;
@@ -391,9 +472,9 @@ int
 Ns_ObjvObj(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
            Tcl_Obj *CONST objv[])
 {
-    Tcl_Obj **dest = spec->dest;
+    if (likely(*objcPtr > 0)) {
+	Tcl_Obj **dest = spec->dest;
 
-    if (*objcPtr > 0) {
         *dest = objv[0];
         *objcPtr -= 1;
         return TCL_OK;
@@ -425,7 +506,7 @@ Ns_ObjvTime(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     Ns_Time **dest = spec->dest;
 
-    if (*objcPtr > 0
+    if (likely(*objcPtr > 0)
         && Ns_TclGetTimePtrFromObj(interp, objv[0], dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
@@ -457,7 +538,7 @@ Ns_ObjvSet(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 {
     Ns_Set **dest = spec->dest;
 
-    if (*objcPtr > 0
+    if (likely(*objcPtr > 0)
         && Ns_TclGetSet2(interp, Tcl_GetString(objv[0]), dest) == TCL_OK) {
         *objcPtr -= 1;
         return TCL_OK;
@@ -493,7 +574,7 @@ Ns_ObjvIndex(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
     int            *dest     = spec->dest;
     int             tableIdx;
 
-    if (*objcPtr > 0) {
+    if (likely(*objcPtr > 0)) {
         if (Tcl_GetIndexFromObjStruct(interp, objv[0], tablePtr,
                                       sizeof(Ns_ObjvTable), "option",
                                       TCL_EXACT, &tableIdx) != TCL_OK) {
@@ -1000,7 +1081,7 @@ DupSpec(Tcl_Obj *srcObj, Tcl_Obj *dupObj)
 static int
 ObjvTcl(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *CONST objv[])
 {
-    if (*objcPtr > 0) {
+    if (likely(*objcPtr > 0)) {
         if (SetValue(interp, spec->key, objv[0]) != TCL_OK) {
             return TCL_ERROR;
         }
@@ -1120,7 +1201,6 @@ WrongNumArgs(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
 {
     Ns_ObjvSpec *specPtr;
     Ns_DString   ds;
-    char        *p;
 
     Ns_DStringInit(&ds);
     if (optSpec != NULL) {
@@ -1130,7 +1210,7 @@ WrongNumArgs(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
             } else if (specPtr->proc == &Ns_ObjvBool && specPtr->arg != NULL) {
                 Ns_DStringPrintf(&ds, "?%s? ", specPtr->key);
             } else {
-                p = specPtr->key;
+	        char *p = specPtr->key;
                 if (*specPtr->key == '-') {
                     ++p;
                 }

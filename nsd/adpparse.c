@@ -113,6 +113,14 @@ NsTclAdpRegisterAdpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
 }
 
 int
+NsTclAdpRegisterTagObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
+                          Tcl_Obj **objv)
+{
+    Ns_LogDeprecated(objv, 1, "ns_adp_registeradp", NULL);
+    return RegisterObjCmd(arg, interp, objc, objv, TAG_ADP);
+}
+
+int
 NsTclAdpRegisterProcObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
                            Tcl_Obj **objv)
 {
@@ -126,6 +134,13 @@ NsTclAdpRegisterScriptObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     return RegisterObjCmd(arg, interp, objc, objv, TAG_SCRIPT);
 }
 
+int
+NsTclAdpRegisterAdptagObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
+                             Tcl_Obj **objv)
+{
+    Ns_LogDeprecated(objv, 1, "ns_adp_registerscript", NULL);
+    return RegisterObjCmd(arg, interp, objc, objv, TAG_SCRIPT);
+}
 
 static int
 RegisterObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
@@ -387,7 +402,7 @@ NsAdpParse(AdpCode *codePtr, NsServer *servPtr, char *adp, int flags, CONST char
 
                     if (!(flags & ADP_SAFE)) {
                         if (stream && !streamdone) {
-                            AppendBlock(&parse, "ns_adp_stream", NULL, 's', flags);
+                            AppendBlock(&parse, "ns_adp_ctl stream on", NULL, 's', flags);
                             streamdone = 1;
                         }
                         AppendBlock(&parse, script, s, 's', flags);

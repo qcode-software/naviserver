@@ -92,7 +92,7 @@ NsConfigProgress(void)
         Ns_SlsAlloc(&slot, ResetProgress);
         Tcl_InitHashTable(&urlTable, TCL_STRING_KEYS);
         Ns_MutexSetName(&lock, "ns:progress");
-        Ns_Log(Notice, "nsmain: enable progess statistics for uploads >= %ld bytes",
+        Ns_Log(Notice, "nsmain: enable progess statistics for uploads >= %" PRIdz " bytes",
                progressMinSize);
     }
 }
@@ -119,22 +119,20 @@ NsConfigProgress(void)
 int
 NsTclProgressObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
 {
-    Tcl_HashEntry *hPtr;
-    Tcl_Obj       *resObj;
-    Progress      *pPtr;
-    char          *url;
-
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "url");
         return TCL_ERROR;
     }
     if (progressMinSize > 0) {
-
-        url = Tcl_GetString(objv[1]);
+        Tcl_HashEntry *hPtr;
+        char          *url = Tcl_GetString(objv[1]);
 
         Ns_MutexLock(&lock);
         hPtr = Tcl_FindHashEntry(&urlTable, url);
         if (hPtr != NULL) {
+	    Tcl_Obj   *resObj;
+	    Progress  *pPtr;
+
             pPtr = Tcl_GetHashValue(hPtr);
             resObj = Tcl_GetObjResult(interp);
 
@@ -184,7 +182,6 @@ NsUpdateProgress(Ns_Sock *sock)
     Sock          *sockPtr = (Sock *) sock;
     Request       *reqPtr  = sockPtr->reqPtr;
     Ns_Request    *request = &reqPtr->request;
-    Progress      *pPtr;
     Tcl_HashEntry *hPtr;
     Ns_DString     ds;
     int            isNew;
@@ -192,8 +189,7 @@ NsUpdateProgress(Ns_Sock *sock)
     if (progressMinSize > 0
         && request->url != NULL
         && sockPtr->reqPtr->length > progressMinSize) {
-
-        pPtr = Ns_SlsGet(&slot, sock);
+        Progress *pPtr = Ns_SlsGet(&slot, sock);
 
         if (pPtr == NULL) {
             pPtr = ns_calloc(1, sizeof(Progress));
@@ -201,8 +197,8 @@ NsUpdateProgress(Ns_Sock *sock)
         }
 
         if (pPtr->hPtr == NULL) {
-	    Ns_Set *set = NULL;
 	    CONST char *key = NULL;
+	    Ns_Set *set = NULL;
 	    Ns_DString *dsPtr = NULL;
 
             pPtr->size = reqPtr->length;
@@ -243,7 +239,7 @@ NsUpdateProgress(Ns_Sock *sock)
             Ns_MutexUnlock(&lock);
 
             if (!isNew) {
-                Ns_Log(Warning, "ns:progress(%" TCL_LL_MODIFIER "d/%" TCL_LL_MODIFIER "d): ignoring duplicate URL: %s",
+                Ns_Log(Warning, "ns:progress(%" PRIdz "/%" PRIdz "): ignoring duplicate URL: %s",
                        reqPtr->avail, reqPtr->length, key);
             }
 	    if (set) {Ns_SetFree(set);}

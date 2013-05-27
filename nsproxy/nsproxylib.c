@@ -1671,7 +1671,6 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
     InterpData *idataPtr = data;
     Pool       *poolPtr;
     Proxy      *proxyPtr;
-    char       *str;
     int         flag, n, result, reap = 0;
 
     static CONST char *flags[] = {
@@ -1697,7 +1696,8 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
             goto err;
         }
     } else if (objc > 4) {
-        int i;
+        int   i;
+	char *str;
 
         for (i = 3; i < (objc - 1); ++i) {
             if (Tcl_GetIndexFromObj(interp, objv[i], flags, "flags", 0,
@@ -1934,6 +1934,7 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         return TCL_ERROR;
     }
     poolPtr = GetPool(Tcl_GetString(objv[2]), idataPtr);
+    assert(idataPtr);
     cntPtr = Tcl_CreateHashEntry(&idataPtr->cnts, (char *) poolPtr, &isNew);
     if ((intptr_t) Tcl_GetHashValue(cntPtr) > 0) {
         err = EDeadlock;
@@ -2175,13 +2176,13 @@ GetPool(char *poolName, InterpData *idataPtr)
     Pool          *poolPtr;
     Proxy         *proxyPtr;
     int            isNew;
-    char          *path = NULL, *exec = NULL;
 
     Ns_MutexLock(&plock);
     hPtr = Tcl_CreateHashEntry(&pools, poolName, &isNew);
     if (!isNew) {
         poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
     } else {
+        char *path = NULL, *exec = NULL;
         int i;
 
         poolPtr = ns_calloc(1, sizeof(Pool));
@@ -2850,8 +2851,7 @@ static void
 PushProxy(Proxy *proxyPtr)
 {
     Pool     *poolPtr = proxyPtr->poolPtr;
-    intptr_t  nhave;
-
+    
     /*
      * Clears the proxy for the next use
      */
@@ -2863,7 +2863,8 @@ PushProxy(Proxy *proxyPtr)
      */
 
     if (proxyPtr->cntPtr) {
-        nhave = (intptr_t) Tcl_GetHashValue(proxyPtr->cntPtr);
+        intptr_t  nhave = (intptr_t) Tcl_GetHashValue(proxyPtr->cntPtr);
+
         nhave--;
         Tcl_SetHashValue(proxyPtr->cntPtr, (ClientData) nhave);
         if (proxyPtr->idPtr) {
@@ -2982,7 +2983,7 @@ RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc,
     Proxy *proxyPtr = (Proxy *)clientData;
     int ms;
 
-    if (objc < 2 && objc > 3) {
+    if (objc < 2 || objc > 3) {
         Tcl_WrongNumArgs(interp, 1, objv, "script ?timeout?");
         return TCL_ERROR;
     }

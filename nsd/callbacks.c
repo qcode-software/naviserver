@@ -343,7 +343,6 @@ void
 NsWaitShutdownProcs(Ns_Time *toPtr)
 {
     Callback         *cbPtr;
-    Ns_ShutdownProc  *proc;
     int               status = NS_OK;
 
     if (shutdownThread == NULL) {
@@ -351,7 +350,7 @@ NsWaitShutdownProcs(Ns_Time *toPtr)
     }
 
     /*
-     * Wait for the shutdown thread to finnish running shutdown
+     * Wait for the shutdown thread to finish running shutdown
      * notification and one-shot callbacks.
      */
 
@@ -371,7 +370,7 @@ NsWaitShutdownProcs(Ns_Time *toPtr)
          */
 
         for (cbPtr = firstShutdown; cbPtr != NULL; cbPtr = cbPtr->nextPtr) {
-	    proc = (Ns_ShutdownProc *)cbPtr->proc;
+	    Ns_ShutdownProc *proc = (Ns_ShutdownProc *)cbPtr->proc;
             (*proc)(toPtr, cbPtr->arg);
         }
 

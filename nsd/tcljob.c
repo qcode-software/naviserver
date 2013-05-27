@@ -242,7 +242,7 @@ void
 NsTclInitQueueType(void)
 {
     Tcl_InitHashTable(&tp.queues, TCL_STRING_KEYS);
-    Ns_MutexSetName(&tp.queuelock, "threadPool");
+    Ns_MutexSetName(&tp.queuelock, "jobThreadPool");
     tp.nextThreadId = 0;
     tp.nextQueueId = 0;
     tp.maxThreads = 0;
@@ -1176,6 +1176,7 @@ JobThread(void *arg)
         if (LookupQueue(NULL, jobPtr->queueId, &queuePtr, 1) != TCL_OK) {
             Ns_Log(Fatal, "cannot find queue: %s", jobPtr->queueId);
         }
+	assert(queuePtr);
 
         interp = Ns_TclAllocateInterp(jobPtr->server);
 
@@ -1330,6 +1331,7 @@ GetNextJob(void)
         if (LookupQueue(NULL, jobPtr->queueId, &queuePtr, 1) != TCL_OK) {
             Ns_Log(Fatal, "cannot find queue: %s", jobPtr->queueId);
         }
+	assert(queuePtr);
 
         if (queuePtr->nRunning < queuePtr->maxThreads) {
             
@@ -1583,7 +1585,6 @@ LookupQueue(Tcl_Interp *interp, CONST char *queueId, Queue **queuePtr,
 static int
 ReleaseQueue(Queue *queuePtr, int locked)
 {
-    Tcl_HashEntry  *qPtr;
     Tcl_HashSearch  search;
     int             deleted = 0;
 
@@ -1596,6 +1597,7 @@ ReleaseQueue(Queue *queuePtr, int locked)
     if (queuePtr->req == QUEUE_REQ_DELETE
         && queuePtr->refCount <= 0
         && (Tcl_FirstHashEntry(&queuePtr->jobs, &search) == NULL)) {
+        Tcl_HashEntry *qPtr;
 
         if (!locked) {
             Ns_MutexLock(&tp.queuelock);

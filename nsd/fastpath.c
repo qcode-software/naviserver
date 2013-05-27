@@ -70,9 +70,9 @@ static Ns_ServerInitProc ConfigServerFastpath;
  * Local variables defined in this file.
  */
 
-static Ns_Cache *cache;    /* Global cache of pages for all virtual servers.     */
-static int       maxentry; /* Maximum size of an individual entry in the cache.  */
-static int       usemmap;  /* Use the mmap() system call to read data from disk. */
+static Ns_Cache *cache = NULL;  /* Global cache of pages for all virtual servers.     */
+static int       maxentry;      /* Maximum size of an individual entry in the cache.  */
+static int       usemmap;       /* Use the mmap() system call to read data from disk. */
 
 
 
@@ -211,7 +211,7 @@ int
 Ns_FastPathProc(void *arg, Ns_Conn *conn)
 {
     Conn        *connPtr = (Conn *) conn;
-    NsServer    *servPtr = connPtr->servPtr;
+    NsServer    *servPtr = connPtr->poolPtr->servPtr;
     char        *url = conn->request->url;
     Ns_DString   ds;
     int          result;
@@ -380,9 +380,6 @@ FastReturn(Ns_Conn *conn, int status, CONST char *type, CONST char *file)
 {
     Conn        *connPtr = (Conn *) conn;
     int         isNew, fd, result = NS_ERROR;
-    Ns_Entry   *entry;
-    File       *filePtr;
-    FileMap     fmap;
 
     /*
      * Determine the mime type if not given.
@@ -422,20 +419,25 @@ FastReturn(Ns_Conn *conn, int status, CONST char *type, CONST char *file)
      * cached copy.
      */
 
-    if (cache == NULL || connPtr->fileInfo.st_size > maxentry
-        || connPtr->fileInfo.st_ctime >= (connPtr->startTime.sec-1) ) {
+    if (cache == NULL 
+	|| connPtr->fileInfo.st_size > maxentry
+        || connPtr->fileInfo.st_ctime >= (connPtr->acceptTime.sec-1) ) {
 
         /*
-         * Caching is disabled, the entry is too large for the cache,
-	 * or the inode has been changed too recently (within 1 second
-	 * of the start of this connection) so send the content 
+         * The cache is not enabled or the entry is too large for the
+	 * cache, or the inode has been changed too recently (within 1
+	 * second of the start of this connection) so send the content
 	 * directly.
          */
 
         if (usemmap
-                && NsMemMap(file, connPtr->fileInfo.st_size, NS_MMAP_READ, &fmap) == NS_OK) {
-            result = Ns_ConnReturnData(conn, status, fmap.addr, fmap.size, type);
-            NsMemUmap(&fmap);
+	    && NsMemMap(file, connPtr->fileInfo.st_size, NS_MMAP_READ, &connPtr->fmap) == NS_OK) {
+            result = Ns_ConnReturnData(conn, status, connPtr->fmap.addr, connPtr->fmap.size, type);
+	    if ((connPtr->flags & NS_CONN_SENT_VIA_WRITER) == 0) {
+		NsMemUmap(&connPtr->fmap);
+	    }
+	    connPtr->fmap.addr = NULL;
+
         } else {
             fd = open(file, O_RDONLY | O_BINARY);
             if (fd < 0) {
@@ -448,6 +450,8 @@ FastReturn(Ns_Conn *conn, int status, CONST char *type, CONST char *file)
         }
 
     } else {
+        Ns_Entry   *entry;
+        File       *filePtr;
 
         /*
          * Search for an existing cache entry for this file, validating
@@ -642,4 +646,84 @@ FreeEntry(void *arg)
     File *filePtr = arg;
 
     DecrEntry(filePtr);
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclCacheStatsObjCmds --
+ *
+ *      Returns stats on a cache. The size and expirey time of each
+ *      entry in the cache is also appended if the -contents switch
+ *      is given.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+// document me, maybe refactor me
+int
+NsTclFastPathCacheStatsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+{
+    Ns_CacheSearch  search;
+    Ns_DString      ds;
+    int             contents = NS_FALSE, reset = NS_FALSE;
+    Ns_ObjvSpec opts[] = {
+        {"-contents", Ns_ObjvBool,  &contents, (void *) NS_TRUE},
+        {"-reset",    Ns_ObjvBool,  &reset,    (void *) NS_TRUE},
+        {"--",        Ns_ObjvBreak, NULL,      NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        return TCL_ERROR;
+    }
+
+    /* if there is no cache defined, return empty */
+    if (cache == NULL) {
+	return TCL_OK;
+    }
+
+    Ns_DStringInit(&ds);
+    Ns_CacheLock(cache);
+
+    if (contents) {
+        Ns_Entry       *entry;
+
+        Tcl_DStringStartSublist(&ds);
+        entry = Ns_CacheFirstEntry(cache, &search);
+        while (entry != NULL) {
+	    size_t   size = Ns_CacheGetSize(entry);
+	    Ns_Time *timePtr =  Ns_CacheGetExpirey(entry);
+
+            if (timePtr->usec == 0) {
+                Ns_DStringPrintf(&ds, "%" PRIdz " %" PRIu64 " ",
+                                 size, (int64_t) timePtr->sec);
+            } else {
+                Ns_DStringPrintf(&ds, "%" PRIdz " %" PRIu64 ":%ld ",
+                                 size, (int64_t) timePtr->sec, timePtr->usec);
+            }
+            entry = Ns_CacheNextEntry(&search);
+        }
+        Tcl_DStringEndSublist(&ds);
+    } else {
+        Ns_CacheStats(cache, &ds);
+    }
+    if (reset) {
+        Ns_CacheResetStats(cache);
+    }
+    Ns_CacheUnlock(cache);
+
+    Tcl_DStringResult(interp, &ds);
+
+    return TCL_OK;
 }

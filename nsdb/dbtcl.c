@@ -49,7 +49,8 @@ typedef struct InterpData {
  * Local functions defined in this file
  */
 
-static int DbFail(Tcl_Interp *interp, Ns_DbHandle *handle, char *cmd);
+static int DbFail(Tcl_Interp *interp, Ns_DbHandle *handle, char *cmd)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 static void EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle);
 static int DbGetHandle(InterpData *idataPtr, Tcl_Interp *interp, char *handleId,
 		       Ns_DbHandle **handle, Tcl_HashEntry **phe);
@@ -154,16 +155,16 @@ NsDbAddCmds(Tcl_Interp *interp, void *arg)
 int
 NsDbReleaseHandles(Tcl_Interp *interp, void *arg)
 {
-    Ns_DbHandle    *handlePtr;
-    Tcl_HashEntry  *hPtr;
-    Tcl_HashSearch  search;
     InterpData     *idataPtr;
 
     idataPtr = Tcl_GetAssocData(interp, datakey, NULL);
     if (idataPtr != NULL) {
-        hPtr = Tcl_FirstHashEntry(&idataPtr->dbs, &search);
+        Tcl_HashSearch  search;
+        Tcl_HashEntry *hPtr = Tcl_FirstHashEntry(&idataPtr->dbs, &search);
+
         while (hPtr != NULL) {
-            handlePtr = Tcl_GetHashValue(hPtr);
+	    Ns_DbHandle *handlePtr = Tcl_GetHashValue(hPtr);
+
             Ns_DbPoolPutHandle(handlePtr);
             hPtr = Tcl_NextHashEntry(&search);
         }
@@ -315,14 +316,14 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
 	    ns_free(handlesPtrPtr);
 	}
 	if (result != NS_TIMEOUT && result != NS_OK) {
-        Ns_TclPrintfResult(interp,
-            "could not allocate %d handle%s from pool \"%s\"",
-            nhandles,
-            nhandles > 1 ? "s" : "",
-            pool);
-        return TCL_ERROR;
-    }
-    break;
+	  Ns_TclPrintfResult(interp,
+			     "could not allocate %d handle%s from pool \"%s\"",
+			     nhandles,
+			     nhandles > 1 ? "s" : "",
+			     pool);
+	  return TCL_ERROR;
+	}
+	break;
     }
 
     case EXCEPTION:
@@ -586,6 +587,7 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         if (objc != 3 && objc != 4) {
             Tcl_WrongNumArgs(interp, 2, objv, "dbId ?on|off?");
         }
+	assert(handlePtr);
         if (objc == 4) {
             int verbose;
             if (Tcl_GetBoolean(interp, Tcl_GetString(objv[3]), &verbose) != TCL_OK) {
@@ -1022,6 +1024,7 @@ EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle)
 static int
 DbFail(Tcl_Interp *interp, Ns_DbHandle *handle, char *cmd)
 {
+    assert(handle);
     Tcl_AppendResult(interp, "Database operation \"", cmd, "\" failed", NULL);
     if (handle->cExceptionCode[0] != '\0') {
         Tcl_AppendResult(interp, " (exception ", handle->cExceptionCode, NULL);

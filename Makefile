@@ -27,13 +27,12 @@
 # version of this file under either the License or the GPL.
 #
 #
-# $Header$
 #
 
 NSBUILD=1
 include include/Makefile.global
 
-dirs   = nsthread nsd nssock nscgi nscp nslog nsperm nsdb nsdbtest nstclsh
+dirs   = nsthread nsd nssock nscgi nscp nslog nsperm nsdb nsdbtest
 
 # Unix only modules
 ifeq (,$(findstring MINGW,$(uname)))
@@ -41,7 +40,7 @@ ifeq (,$(findstring MINGW,$(uname)))
 endif
 
 distfiles = $(dirs) doc tcl contrib include tests win win32 configure m4 \
-	Makefile autogen.sh install-sh missing aclocal.m4 configure.in \
+	Makefile autogen.sh install-sh missing aclocal.m4 configure.ac \
 	README NEWS sample-config.tcl.in simple-config.tcl \
 	nsd-config.tcl index.adp license.terms naviserver.rdf naviserver.rdf.in \
 	version_include.man.in bitbucket-install.tcl

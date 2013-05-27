@@ -173,7 +173,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
         length = bufs[i].length;
         fd     = bufs[i].fd;
 
-        if (length <= 0) {
+        if (length < 1) {
             continue;
         }
 
@@ -193,7 +193,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
             || (fd >= 0
                 && nsbufs > 0)) {
 
-            sent = Ns_SockSendBufs(sock->sock, sbufs, nsbufs, timeoutPtr, 0);
+	    sent = NsDriverSend((Sock *)sock, sbufs, nsbufs, 0);
 
             nsbufs = 0;
             if (sent > 0) {
@@ -366,6 +366,64 @@ int pread(unsigned int fd, char *buf, size_t count, off_t offset)
 }
 #endif
 
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockCork --
+ *
+ *      Turn TCP_CORK state on or off, if supported by the OS. The
+ *      function tracks the cork state in the socket structure to be
+ *      able to handle nesting calls.
+ *
+ * Results:
+ *      success (0 or 1)
+ *
+ * Side effects:
+ *      Switch TCP send state, pothentially update sockPtr->flags
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_SockCork(Ns_Sock *sock, int cork)
+{
+    int success = 0;
+#ifdef TCP_CORK
+    Sock *sockPtr = (Sock *)sock;
+
+    /* fprintf(stderr, "### Ns_SockCork sock %d %d\n", sockPtr->sock, cork); */
+
+    if (cork == 1 && (sockPtr->flags & NS_CONN_SOCK_CORKED)) {
+	/*
+	 * Don't cork an already corked connection.
+	 */
+    } else if (cork == 0 && (sockPtr->flags & NS_CONN_SOCK_CORKED) == 0) {
+	/*
+	 * Don't uncork an already uncorked connection.
+	 */
+	Ns_Log(Error, "socket: trying to uncork an uncorked socket %d",
+	       sockPtr->sock);
+    } else {
+	/*
+	 * The cork state changes. On success, update the corked flag.
+	 */
+	if (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork)) == -1) {
+	    Ns_Log(Error, "socket: setsockopt(TCP_CORK): %s",
+		   ns_sockstrerror(ns_sockerrno));
+	} else {
+	    success = 1;
+	    if (cork) {
+		sockPtr->flags |= NS_CONN_SOCK_CORKED;
+	    } else {
+		sockPtr->flags &= ~NS_CONN_SOCK_CORKED;
+	    }
+	}
+    }
+#endif
+    return success;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -392,14 +450,16 @@ SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
        Ns_Time *timeoutPtr, int flags,
        Ns_DriverSendProc *sendPtr)
 {
-    char          buf[4096];
+    char          buf[16384];
     struct iovec  iov;
     ssize_t       nwrote, sent, nread;
     size_t        toread;
+    int           decork;
 
     toread = length;
     nwrote = 0;
 
+    decork = Ns_SockCork(sock, 1);
     while (toread > 0) {
 
         nread = pread(fd, buf, MIN(toread, sizeof(buf)), offset);
@@ -418,6 +478,10 @@ SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
         if (sent != nread) {
             break;
         }
+    }
+
+    if (decork) {
+	Ns_SockCork(sock, 0);
     }
 
     if (nwrote > 0) {
@@ -449,5 +513,5 @@ ssize_t
 SendBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
          Ns_Time *timeoutPtr, int flags)
 {
-    return Ns_SockSendBufs(sock->sock, bufs, nbufs, timeoutPtr, flags);
+    return Ns_SockSendBufs(sock, bufs, nbufs, timeoutPtr, flags);
 }

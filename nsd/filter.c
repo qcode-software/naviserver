@@ -82,7 +82,7 @@ Ns_RegisterFilter(char *server, char *method, char *url,
     Ns_FilterProc *proc, int when, void *arg)
 {
     NsServer *servPtr = NsGetServer(server);
-    Filter *fPtr, **fPtrPtr;
+    Filter *fPtr;
 
     if (servPtr == NULL) {
 	return NULL;
@@ -98,6 +98,8 @@ Ns_RegisterFilter(char *server, char *method, char *url,
         fPtr->nextPtr = servPtr->filter.firstFilterPtr;
         servPtr->filter.firstFilterPtr = fPtr;
     } else {
+        Filter **fPtrPtr;
+
         fPtr->nextPtr = NULL;
         fPtrPtr = &servPtr->filter.firstFilterPtr;
         while (*fPtrPtr != NULL) {
@@ -129,24 +131,25 @@ int
 NsRunFilters(Ns_Conn *conn, int why)
 {
     Conn *connPtr = (Conn *) conn;
+    NsServer *servPtr = connPtr->poolPtr->servPtr;
     Filter *fPtr;
     int status;
 
     status = NS_OK;
     if (conn->request->method != NULL && conn->request->url != NULL) {
-        Ns_MutexLock(&connPtr->servPtr->filter.lock);
-	fPtr = connPtr->servPtr->filter.firstFilterPtr;
+        Ns_MutexLock(&servPtr->filter.lock);
+	fPtr = servPtr->filter.firstFilterPtr;
 	while (fPtr != NULL && status == NS_OK) {
-	    if ((fPtr->when & why)
+	    if (unlikely(fPtr->when & why)
 		&& Tcl_StringMatch(conn->request->method, fPtr->method)
 		&& Tcl_StringMatch(conn->request->url, fPtr->url)) {
-	        Ns_MutexUnlock(&connPtr->servPtr->filter.lock);
+	        Ns_MutexUnlock(&servPtr->filter.lock);
 		status = (*fPtr->proc)(fPtr->arg, conn, why);
-		Ns_MutexLock(&connPtr->servPtr->filter.lock);
+		Ns_MutexLock(&servPtr->filter.lock);
 	    }
 	    fPtr = fPtr->nextPtr;
 	}
-	Ns_MutexUnlock(&connPtr->servPtr->filter.lock);
+	Ns_MutexUnlock(&servPtr->filter.lock);
 	if (status == NS_FILTER_BREAK ||
 	    (why == NS_FILTER_TRACE && status == NS_FILTER_RETURN)) {
 	    status = NS_OK;
@@ -265,7 +268,7 @@ NsRunTraces(Ns_Conn *conn)
 {
     Conn *connPtr = (Conn *) conn;
 
-    RunTraces(conn, connPtr->servPtr->filter.firstTracePtr);
+    RunTraces(conn, connPtr->poolPtr->servPtr->filter.firstTracePtr);
 }
 
 void
@@ -273,7 +276,7 @@ NsRunCleanups(Ns_Conn *conn)
 {
     Conn *connPtr = (Conn *) conn;
 
-    RunTraces(conn, connPtr->servPtr->filter.firstCleanupPtr);
+    RunTraces(conn, connPtr->poolPtr->servPtr->filter.firstCleanupPtr);
 }
 
 static void
