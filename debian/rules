@@ -24,14 +24,11 @@ override_dh_auto_build:
 	$(MAKE) build-doc
 	mkdir $(CURDIR)/debian/man1
 	cp $(CURDIR)/nsd/nsd $(CURDIR)/debian/man1/$(PACKAGE)-nsd
-	#cp $(TARGETDIR)/bin/nstclsh $(CURDIR)/debian/man1/$(PACKAGE)-nstclsh
-	#cp $(TARGETDIR)/bin/nsproxy $(CURDIR)/debian/man1/$(PACKAGE)-nsproxy
 	$(HELP2MAN) --help-option=-help --version-option=-V --no-discard-stderr --no-info $(CURDIR)/debian/man1/$(PACKAGE)-nsd > $(CURDIR)/debian/man1/$(PACKAGE)-nsd.1
 
 override_dh_auto_install:
 	( cd $(CURDIR) ; $(MAKE) NAVISERVER=$(TARGETDIR) install )
 	mv $(TARGETDIR)/bin/nsd $(TARGETDIR)/bin/$(PACKAGE)-nsd
-	mv $(TARGETDIR)/bin/nstclsh $(TARGETDIR)/bin/$(PACKAGE)-nstclsh
 	mv $(TARGETDIR)/bin/nsproxy $(TARGETDIR)/bin/$(PACKAGE)-nsproxy
 	cp $(CURDIR)/debian/debian.substvars $(TARGETDIR)/.
 	dh_install
