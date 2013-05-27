@@ -4,12 +4,54 @@ Subject: [PATCH] add-rpath
 
 Add naviserver lib dir to executable RPATH
 ---
- include/Makefile.global.in |   28 +++++++++++++++-------------
- include/Makefile.module.in |    4 ++--
- 2 files changed, 17 insertions(+), 15 deletions(-)
+ ...-Patch-bitbucket-install.tcl-to-work-here.patch |   34 ++++++++++++++++++++
+ include/Makefile.global.in                         |   28 +++++++++-------
+ include/Makefile.module.in                         |    4 +-
+ 3 files changed, 51 insertions(+), 15 deletions(-)
+ create mode 100644 debian/patches/0002-Patch-bitbucket-install.tcl-to-work-here.patch
 
+diff --git a/debian/patches/0002-Patch-bitbucket-install.tcl-to-work-here.patch b/debian/patches/0002-Patch-bitbucket-install.tcl-to-work-here.patch
+new file mode 100644
+index 0000000..6e80675
+--- /dev/null
++++ b/debian/patches/0002-Patch-bitbucket-install.tcl-to-work-here.patch
+@@ -0,0 +1,34 @@
++From: David Osborne <david@qcode.co.uk>
++Date: Fri, 3 May 2013 14:59:55 +0100
++Subject: [PATCH] Patch bitbucket-install.tcl to work here
++
++---
++ bitbucket-install.tcl |    9 +++++----
++ 1 files changed, 5 insertions(+), 4 deletions(-)
++
++diff --git a/bitbucket-install.tcl b/bitbucket-install.tcl
++index c246c44..9389b34 100644
++--- a/bitbucket-install.tcl
+++++ b/bitbucket-install.tcl
++@@ -3,11 +3,11 @@ switch -exact $pageName {
++   nsconf.tcl -
++   nsstats.tcl {
++     set source https://bitbucket.org/naviserver/[file root $pageName]/get/tip.tar.gz
++-    set page /opt/local/ns/pages/$pageName
+++    set page /usr/share/doc/naviserver/$pageName
++     if {![file readable $page]} {
++-      exec wget --quiet --no-check-certificate -O /tmp/nsstats.tar.gz $source
++-      if {[catch {exec tar Ozxvf /tmp/nsstats.tar.gz *$pageName > $page} errorMsg]} {
++-	if {[lindex $errorMsg 0] ne "x"} {
+++      exec wget --quiet --no-check-certificate -O /tmp/[file root $pageName].tar.gz $source
+++      if {[catch {exec tar --wildcards -Ozxvf /tmp/[file root $pageName].tar.gz *$pageName > $page} errorMsg]} {
+++	if { ![regexp -line "^naviserver\.+/${pageName}\$" [lindex [split $errorMsg] 0]] } {
++ 	  ns_log notice "error: $errorMsg"
++ 	  ns_return 200 text/html \
++ 	      "<html><body>error while downloading $pageName: <b>$errorMsg</b>. <a href='/'>return</a>" 
++@@ -28,3 +28,4 @@ switch -exact $pageName {
++ 
++ 
++ 
+++
++-- 
 diff --git a/include/Makefile.global.in b/include/Makefile.global.in
-index fe7ce6c..9423a1c 100644
+index 97e500c..9e18fe0 100644
 --- a/include/Makefile.global.in
 +++ b/include/Makefile.global.in
 @@ -40,6 +40,18 @@
