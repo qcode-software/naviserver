@@ -1,4 +1,0 @@
-repo: bc6d76890ed19530584b4af7c2a33660154b8cc3
-node: 723d67081aedf8c0d8f38c50f2717377cb021479
-branch: default
-tag: naviserver-4.99.5
