@@ -16,7 +16,7 @@ TARGETDIR=$(CURDIR)/debian/tmp
 HELP2MAN=/usr/bin/help2man
 
 override_dh_auto_configure:
-	./autogen.sh
+	./autogen.sh --with-tcl=/usr/lib/tcl8.5
 	dh_auto_configure -- --prefix=$(PREFIX) --enable-threads --with-tcl=/usr/lib/tcl8.5 --mandir=/usr/share/man
 
 override_dh_auto_build:
