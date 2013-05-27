@@ -1,3 +1,2 @@
 0001-add-rpath.patch
-0002-Patch-bitbucket-install.tcl-to-work-here.patch
-0003-Use-ns_server-instead-of-deprecated-ns_info.patch
+0003-Patch-bitbucket-install.tcl.patch
