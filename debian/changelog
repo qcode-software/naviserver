@@ -1,3 +1,9 @@
+naviserver (4.99.5-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 27 May 2013 15:54:52 +0100
+
 naviserver (4.99.4-4) squeeze; urgency=low
 
   * Leave creation of /var/log/naviserver to the postinst script
