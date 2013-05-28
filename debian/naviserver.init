@@ -1,0 +1,243 @@
+#!/bin/sh
+#
+# Start the AOLServer HTTP server.
+#
+# Copyright (C) 2003-2009 Francesco P. Lovergine <frankie@debian.org>
+#
+# Modified for Naviserver
+
+### BEGIN INIT INFO
+# Provides:          naviserver
+# Required-Start:    $local_fs $remote_fs $network $syslog
+# Required-Stop:     $local_fs $remote_fs $network $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Starts Naviserver web daemon
+# Description:       It starts up the Naviserver http multi-threaded 
+#                    server
+### END INIT INFO
+
+NAME=naviserver
+USER=www-data
+GROUP=www-data
+DAEMON=/usr/sbin/naviserver-nsd
+AUTOSTART=all
+DESC="naviserver daemon"
+DAEMONTOOLS=no
+DAEMONTOOLS_SVCDIR=/etc/service
+DAEMONTOOLS_SVC=/usr/bin/svc
+
+trap "" 1
+
+[ -x $DAEMON ] || exit 0
+
+. /lib/lsb/init-functions
+
+if [ -x /etc/default/naviserver ]; then
+	. /etc/default/naviserver
+fi
+
+# /var/run could be on a tmpfs
+
+[ ! -d $RUNDIR ] && mkdir -p -m 755 $RUNDIR
+
+start_instance()
+{
+	CONF="/etc/naviserver/$INSTANCE.tcl"
+	PIDFILE="/var/run/naviserver/$INSTANCE.pid"
+	start-stop-daemon --start --quiet --exec $DAEMON --pidfile $PIDFILE --oknodo -- \
+		-u $USER -g $GROUP -t $CONF >/dev/null 
+}
+
+stop_instance()
+{
+	start-stop-daemon --stop --quiet --pidfile $name --oknodo >/dev/null 
+}
+
+do_daemontools_start()      
+      log_daemon_msg "Starting $DESC"
+      if test -z $1 ; then
+          # No named instances passed, check AUTOSTART
+          if [ "$AUTOSTART" = "none" ]; then
+              log_warning_msg " Autostart disabled."
+              exit 0
+          fi
+          if [ "$AUTOSTART" = "all" ]; then
+              # start everything
+              for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
+                  log_progress_msg "$INSTANCE"
+                 $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
+              done
+          else
+              # start named instances from AUTOSTART
+              for INSTANCE in $AUTOSTART ; do
+                  if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+                      log_progress_msg "$INSTANCE"
+                      $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
+                  else
+                      log_failure_msg "No such instance: $INSTANCE"
+                  fi
+              done
+          fi
+      else
+          # Start named instances only
+          for INSTANCE in $1 ; do
+              if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+                  $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
+              else
+                  log_failure_msg "No such instance: $INSTANCE"
+              fi
+          done
+      fi
+      log_end_msg 0
+}
+
+do_start()
+{
+      log_daemon_msg "Starting $DESC"
+      if test -z $1 ; then
+          # No named instances passed, check AUTOSTART
+          if [ "$AUTOSTART" = "none" ]; then
+              log_warning_msg " Autostart disabled."
+              exit 0
+          fi
+          if [ "$AUTOSTART" = "all" ]; then
+              # start everything
+              for CONFFILE in `cd /etc/naviserver; ls *.tcl 2> /dev/null`; do
+                  INSTANCE=${CONFFILE%%.tcl}
+                  log_progress_msg "$INSTANCE"
+                  start_instance
+              done
+          else
+              # start named instances from AUTOSTART
+              for INSTANCE in $AUTOSTART ; do
+                  if test -e /etc/naviserver/$INSTANCE.tcl ; then
+                      log_progress_msg "$INSTANCE"
+                      start_instance
+                  else
+                      log_failure_msg "No such instance: $INSTANCE"
+                  fi
+              done
+          fi
+      else
+          # Start named instances only
+          for INSTANCE in $1 ; do
+              if test -e /etc/naviserver/$INSTANCE.tcl ; then
+                  log_progress_msg "$INSTANCE"
+                  start_instance
+              else
+                  log_failure_msg "No such instance: $INSTANCE"
+              fi
+          done
+      fi
+      log_end_msg 0
+}
+
+do_daemontools_stop ()
+{
+      log_daemon_msg "Stopping $DESC"
+      if test -z $1 ; then
+          # No named instances passed in, stop everything
+          for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
+              log_progress_msg "$INSTANCE"
+              $DAEMONTOOLS_SVC -d $DAEMONTOOLS_SVCDIR/$INSTANCE
+          done
+     else
+         # Stop only named instances
+         for INSTANCE in $1 ; do
+             if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+                 log_progress_msg "$INSTANCE"
+                 $DAEMONTOOLS_SVC -d $DAEMONTOOLS_SVCDIR/$INSTANCE
+             else
+                log_failure_msg " (failure: No such Naviserver instance: $INSTANCE)"
+             fi
+         done
+    fi
+    log_end_msg 0
+}
+
+do_daemontools_restart ()
+{
+      log_daemon_msg "Restarting $DESC"
+      if test -z $1 ; then
+          # No named instances passed in, stop everything
+          for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
+              log_progress_msg "$INSTANCE"
+              $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/$INSTANCE
+          done
+     else
+         # Restart only named instances
+         for INSTANCE in $1 ; do
+             if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+                 log_progress_msg "$INSTANCE"
+                 $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/$INSTANCE
+             else
+                log_failure_msg " (failure: No such Naviserver instance: $INSTANCE)"
+             fi
+         done
+    fi
+    log_end_msg 0
+}
+
+do_stop ()
+{
+      log_daemon_msg "Stopping $DESC"
+      if test -z $1 ; then
+          # No named instances passed in, stop everything
+          for name in /var/run/naviserver/*.pid; do
+              base=$(basename $name .pid)
+              if [ -f $name ]; then
+                  log_progress_msg "${base%%.pid}"
+                  stop_instance
+              fi
+          done
+     else
+         # Stop only named instances
+         for INSTANCE in $1 ; do
+             if test -e /var/run/naviserver/$INSTANCE.pid ; then
+                 name=/var/run/naviserver/$INSTANCE.pid
+                 log_progress_msg "$INSTANCE"
+                 stop_instance
+             else
+                log_failure_msg " (failure: No such Naviserver instance is running: $INSTANCE)"
+             fi
+         done
+    fi
+    log_end_msg 0
+}
+
+case "$1" in
+  start)
+    if [ "$DAEMONTOOLS" = "yes" ] ; then
+        do_daemontools_start $2
+    else 
+        do_start $2
+    fi
+    ;;
+
+  stop)
+    if [ "$DAEMONTOOLS" = "yes" ] ; then
+        do_daemontools_stop $2
+    else 
+        do_stop $2
+    fi
+    ;;
+
+  reload|force-reload|restart)
+    if [ "$DAEMONTOOLS" = "yes" ] ; then
+        do_daemontools_restart $2
+    else
+        do_stop $2
+        sleep 20
+        do_start $2
+    fi
+    ;;
+
+  *)
+    echo "Usage: /etc/init.d/$NAME {start|stop|restart|reload|force-reload}"
+    exit 1
+    ;;
+esac
+
+exit 0
+
