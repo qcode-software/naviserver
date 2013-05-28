@@ -55,6 +55,7 @@ stop_instance()
 }
 
 do_daemontools_start()      
+{
       log_daemon_msg "Starting $DESC"
       if test -z $1 ; then
           # No named instances passed, check AUTOSTART
