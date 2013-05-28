@@ -37,6 +37,13 @@ if [ -f /etc/default/naviserver ]; then
 	. /etc/default/naviserver
 fi
 
+if [ "$DAEMONTOOLS" = "yes" ]; then
+    if [ ! -d $DAEMONTOOLS_SVCDIR ] || [ ! -e $DAEMONTOOLS_SVC ]; then
+        echo "Cannot use DAEMONTOOLS without both $DAEMONTOOLS_SVCDIR and $DAEMONTOOLS_SVC existing"
+        exit 1
+    fi
+fi
+
 # /var/run could be on a tmpfs
 
 [ ! -d $RUNDIR ] && mkdir -p -m 755 $RUNDIR
@@ -57,7 +64,7 @@ stop_instance()
 do_daemontools_start()      
 {
       log_daemon_msg "Starting $DESC"
-      if test -z $1 ; then
+      if [ -z $1 ] ; then
           # No named instances passed, check AUTOSTART
           if [ "$AUTOSTART" = "none" ]; then
               log_warning_msg " Autostart disabled."
@@ -66,13 +73,13 @@ do_daemontools_start()
           if [ "$AUTOSTART" = "all" ]; then
               # start everything
               for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
-                  log_progress_msg "$INSTANCE"
+                 log_progress_msg "$INSTANCE"
                  $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
               done
           else
               # start named instances from AUTOSTART
               for INSTANCE in $AUTOSTART ; do
-                  if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+                  if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
                       log_progress_msg "$INSTANCE"
                       $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
                   else
@@ -83,7 +90,7 @@ do_daemontools_start()
       else
           # Start named instances only
           for INSTANCE in $1 ; do
-              if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+              if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
                   $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
               else
                   log_failure_msg "No such instance: $INSTANCE"
@@ -96,7 +103,7 @@ do_daemontools_start()
 do_start()
 {
       log_daemon_msg "Starting $DESC"
-      if test -z $1 ; then
+      if [ -z $1 ]; then
           # No named instances passed, check AUTOSTART
           if [ "$AUTOSTART" = "none" ]; then
               log_warning_msg " Autostart disabled."
@@ -112,7 +119,7 @@ do_start()
           else
               # start named instances from AUTOSTART
               for INSTANCE in $AUTOSTART ; do
-                  if test -e /etc/naviserver/$INSTANCE.tcl ; then
+                  if [ -e /etc/naviserver/$INSTANCE.tcl ]; then
                       log_progress_msg "$INSTANCE"
                       start_instance
                   else
@@ -123,7 +130,7 @@ do_start()
       else
           # Start named instances only
           for INSTANCE in $1 ; do
-              if test -e /etc/naviserver/$INSTANCE.tcl ; then
+              if [ -e /etc/naviserver/$INSTANCE.tcl ]; then
                   log_progress_msg "$INSTANCE"
                   start_instance
               else
@@ -137,7 +144,7 @@ do_start()
 do_daemontools_stop ()
 {
       log_daemon_msg "Stopping $DESC"
-      if test -z $1 ; then
+      if [ -z $1 ]; then
           # No named instances passed in, stop everything
           for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
               log_progress_msg "$INSTANCE"
@@ -146,7 +153,7 @@ do_daemontools_stop ()
      else
          # Stop only named instances
          for INSTANCE in $1 ; do
-             if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+             if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
                  log_progress_msg "$INSTANCE"
                  $DAEMONTOOLS_SVC -d $DAEMONTOOLS_SVCDIR/$INSTANCE
              else
@@ -160,7 +167,7 @@ do_daemontools_stop ()
 do_daemontools_restart ()
 {
       log_daemon_msg "Restarting $DESC"
-      if test -z $1 ; then
+      if [ -z $1 ]; then
           # No named instances passed in, stop everything
           for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
               log_progress_msg "$INSTANCE"
@@ -169,7 +176,7 @@ do_daemontools_restart ()
      else
          # Restart only named instances
          for INSTANCE in $1 ; do
-             if test -e $DAEMONTOOLS_SVCDIR/$INSTANCE ; then
+             if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
                  log_progress_msg "$INSTANCE"
                  $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/$INSTANCE
              else
@@ -183,7 +190,7 @@ do_daemontools_restart ()
 do_stop ()
 {
       log_daemon_msg "Stopping $DESC"
-      if test -z $1 ; then
+      if [ -z $1 ]; then
           # No named instances passed in, stop everything
           for name in /var/run/naviserver/*.pid; do
               base=$(basename $name .pid)
@@ -195,7 +202,7 @@ do_stop ()
      else
          # Stop only named instances
          for INSTANCE in $1 ; do
-             if test -e /var/run/naviserver/$INSTANCE.pid ; then
+             if [ -e /var/run/naviserver/$INSTANCE.pid ]; then
                  name=/var/run/naviserver/$INSTANCE.pid
                  log_progress_msg "$INSTANCE"
                  stop_instance
