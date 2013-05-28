@@ -26,14 +26,10 @@ then
     rm -rf /var/run/$PACKAGE
     rm -rf /etc/$PACKAGE
     rm -f /etc/logrotate.d/$PACKAGE
-    rm -f /etc/init.d/$PACKAGE
-    update-rc.d -f $PACKAGE remove >/dev/null
     if [ -x /usr/bin/ucf ]; then
     	ucf --purge /etc/$PACKAGE/$PACKAGE.tcl 
-    	ucf --purge /etc/init.d/$PACKAGE 
-	ucf --purge /etc/default/$PACKAGE
     else
-        rm -f /etc/$PACKAGE/$PACKAGE.tcl /etc/init.d/$PACKAGE /etc/default/$PACKAGE
+        rm -f /etc/$PACKAGE/$PACKAGE.tcl
     fi
 fi
 
