@@ -1,1 +1,1 @@
-naviserver:Depends=naviserver, naviserver-core
+naviserver:Depends=naviserver (>=4.99.5), naviserver-core (>=4.99.5)
