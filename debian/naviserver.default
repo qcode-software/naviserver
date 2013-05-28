@@ -15,6 +15,8 @@
 #AUTOSTART="instance1 instance2"
 #AUTOSTART=none
 
+# IMPORTANT: If using Daemontools to control the Naviserver daemon, remove the init script links
+# to the package script using "update-rc.d -f naviserver remove"
 #DAEMONTOOLS=no
 #DAEMONTOOLS_SVCDIR=/etc/service
 #DAEMONTOOLS_SVC=/usr/bin/svc
