@@ -1,12 +1,22 @@
-This Debian package was created by Qcode <hackers@qcode.co.uk>
+This work was packaged for Debian by:
 
-It was downloaded from https://bitbucket.org/naviserver/naviserver
+    Qcode Software Ltd <hackers@qcode.co.uk> on Tues, 28 May 2013 11:26:18 +0100
 
-Upstream Authors: Naviserver Team
+It was downloaded from:
+
+    https://bitbucket.org/naviserver/naviserver
+
+Upstream Author(s):
+
+    Vlad Seryakov vlad@crystalballinc.com
+    Gustaf Neumann neumann@wu-wien.ac.at
+
+
+Upstream Authors: 
+    Naviserver Team
+    https://www.ohloh.net/p/naviserver/contributors
 
 Copyright:
-
-
 
 MOZILLA PUBLIC LICENSE
 Version 1.1
