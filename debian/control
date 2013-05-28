@@ -27,7 +27,7 @@ Description: Naviserver - core libraries
 Package: naviserver-dev
 Section: web
 Architecture: any
-Depends: naviserver-core (= ${binary:Version}), tcl8.5-dev, zlib1g-dev | libz-dev, ${misc:Depends}
+Depends: tcl8.5-dev, zlib1g-dev | libz-dev, ${misc:Depends}
 Description: Naviserver - development files
  It offers many features for building custom web sites. The 
  implementation is high performance, but the interface is easy 
