@@ -33,7 +33,7 @@ trap "" 1
 
 . /lib/lsb/init-functions
 
-if [ -x /etc/default/naviserver ]; then
+if [ -f /etc/default/naviserver ]; then
 	. /etc/default/naviserver
 fi
 
