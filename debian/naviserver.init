@@ -168,7 +168,7 @@ do_daemontools_restart ()
 {
       log_daemon_msg "Restarting $DESC"
       if [ -z $1 ]; then
-          # No named instances passed in, stop everything
+          # No named instances passed in, restart everything
           for INSTANCE in `cd $DAEMONTOOLS_SVCDIR; ls 2> /dev/null`; do
               log_progress_msg "$INSTANCE"
               $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/$INSTANCE

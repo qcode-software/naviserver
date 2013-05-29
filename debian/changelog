@@ -1,3 +1,9 @@
+naviserver (4.99.5-2) squeeze; urgency=low
+
+  * Updating README.Debian, typo in init script.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 29 May 2013 10:33:00 +0100
+
 naviserver (4.99.5-1) squeeze; urgency=low
 
   * New upstream release

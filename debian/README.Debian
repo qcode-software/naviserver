@@ -1,6 +1,98 @@
-naviserver for Debian
+Naviserver for Debian
 ---------------------
 
-<possible notes regarding this package - if none, delete this file>
+** INIT SCRIPT **
 
- -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 04 Feb 2013 17:06:49 +0000
+/etc/init.d/naviserver is intended to allow stopping and starting of multiple instances using a single command.
+
+Starting:
+
+Start named instances by passing 1 or more instance names:
+ /etc/init.d/naviserver start myinstance1 ?myinstance2? ...
+This will expect a config file /etc/naviserver/myinstance1.tcl to be present and correct
+
+When no instance name is passed, the contents of the AUTOSTART variable is used to control behaviour:
+ /etc/init.d/naviserver start
+
+This queries the contents of the AUTOSTART variable which is set in /etc/default/naviserver.
+AUTOSTART defaults to "all". The semantics of "all" being defined as every config file /etc/naviserver/*.tcl
+
+AUTOSTART can also contain a list of instances. This can be used to permanently change the subset of instances which
+will be active after reboots etc without having to delete the instance config.
+
+When AUTOSTART is set to "none", Naviserver will be inactive.
+
+Stopping:
+
+Stop named instances by passing 1 or more instance names:
+ /etc/init.d/naviserver stop myinstance1 ?myinstance2? ...
+This will expect to find /var/run/naviserver/myinstance1.pid
+
+When no instance name is passed, stop will attempt to stop every pid found in /var/run/naviserver
+ /etc/init.d/naviserver stop
+The AUTOSTART variable has no effect on stopping.
+
+Caution: although stop exits immediately, it can take some time for an instance to actually terminate.
+
+Restarting:
+ /etc/init.d/naviserver restart
+
+This simply does the following: 
+ /etc/init.d/naviserver stop
+ sleep 20
+ /etc/init.d/naviserver start
+
+If named instances are passed, they are simply passed onto the stop/start functions.
+
+
+** /etc/default/naviserver **
+
+Use this file to alter the default behaviour of the init script, eg. run naviserver as a different user
+etc. as is standard for Debian packages.
+
+** Daemontools **
+
+Since Daemontools is a very popular way of handling Naviserver instances, /etc/default/naviserver files allows 
+use of the following 3 variables (with the listed defaults):
+
+DAEMONTOOLS=no
+DAEMONTOOLS_SVCDIR=/etc/service
+DAEMONTOOLS_SVC=/usr/bin/svc
+
+When set to "yes", the DAEMONTOOLS variable will override the normal init functions of /etc/init.d/naviserver
+and used Daemontools instead. This allows the /etc/init.d/naviserver script syntax to continue to be used to
+control the Naviserver daemons even thought Daemontools is being used under the covers.
+
+To use this the init script links should be removed as follows "update-rc.d -f naviserver remove".
+
+The semantics of each command are as follows:
+
+Starting:
+
+ /etc/init.d/naviserver start myinstance1 ?myinstance2? ...
+This will expect $DAEMONTOOLS_SVCDIR/myinstance1 to exist as a daemontools service dir and will issue:
+$DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/myinstance1
+
+ /etc/init.d/naviserver start
+If AUTOSTART=all, this will attempt to issue a $DAEMONTOOLS_SVC -u for $DAEMONTOOLS_SVCDIR/*
+If AUTOSTART="myinstance1 myinstance2" the following commands are issued:
+$DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/myinstance1
+$DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/myinstance2
+
+Stopping:
+
+ /etc/init.d/naviserver stop myinstance1 ?myinstance2? ...
+This will issue a $DAEMONTOOLS_SVC -d $DAEMONTOOLS_SVCDIR/myinstance1
+
+ /etc/init.d/naviserver stop 
+This will attempt to issue a $DAEMONTOOLS_SVC -d for $DAEMONTOOLS_SVCDIR/*
+
+Restarting:
+
+ /etc/init.d/naviserver restart myinstance1 ?myinstance2? ...
+This will issue a $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/myinstance1
+
+ /etc/init.d/naviserver restart 
+This will attempt to issue a $DAEMONTOOLS_SVC -t for $DAEMONTOOLS_SVCDIR/*
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 29 May 2013 09:35:49 +0000
