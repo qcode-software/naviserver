@@ -7,34 +7,43 @@ Naviserver for Debian
 
 Starting:
 
-Start named instances by passing 1 or more instance names:
+
  /etc/init.d/naviserver start myinstance1 ?myinstance2? ...
+
+Start named instances by passing 1 or more instance names:
 This will expect a config file /etc/naviserver/myinstance1.tcl to be present and correct
 
-When no instance name is passed, the contents of the AUTOSTART variable is used to control behaviour:
+
  /etc/init.d/naviserver start
 
-This queries the contents of the AUTOSTART variable which is set in /etc/default/naviserver.
+When no instance name is passed, the contents of the AUTOSTART variable is used to control behaviour.
+This queries the contents of the AUTOSTART variable set in /etc/default/naviserver.
 AUTOSTART defaults to "all". The semantics of "all" being defined as every config file /etc/naviserver/*.tcl
 
 AUTOSTART can also contain a list of instances. This can be used to permanently change the subset of instances which
-will be active after reboots etc without having to delete the instance config.
+will be active after reboots etc. without having to delete the instance config.
 
 When AUTOSTART is set to "none", Naviserver will be inactive.
 
+
 Stopping:
 
-Stop named instances by passing 1 or more instance names:
  /etc/init.d/naviserver stop myinstance1 ?myinstance2? ...
+
+Stop named instances by passing 1 or more instance names:
 This will expect to find /var/run/naviserver/myinstance1.pid
 
-When no instance name is passed, stop will attempt to stop every pid found in /var/run/naviserver
+
  /etc/init.d/naviserver stop
+
+When no instance name is passed, stop will attempt to stop every pid found in /var/run/naviserver
 The AUTOSTART variable has no effect on stopping.
 
 Caution: although stop exits immediately, it can take some time for an instance to actually terminate.
 
+
 Restarting:
+
  /etc/init.d/naviserver restart
 
 This simply does the following: 
@@ -74,7 +83,7 @@ This will expect $DAEMONTOOLS_SVCDIR/myinstance1 to exist as a daemontools servi
 $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/myinstance1
 
  /etc/init.d/naviserver start
-If AUTOSTART=all, this will attempt to issue a $DAEMONTOOLS_SVC -u for $DAEMONTOOLS_SVCDIR/*
+If AUTOSTART=all, this will attempt to issue a $DAEMONTOOLS_SVC -u for every service dir in $DAEMONTOOLS_SVCDIR
 If AUTOSTART="myinstance1 myinstance2" the following commands are issued:
 $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/myinstance1
 $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/myinstance2
@@ -85,7 +94,7 @@ Stopping:
 This will issue a $DAEMONTOOLS_SVC -d $DAEMONTOOLS_SVCDIR/myinstance1
 
  /etc/init.d/naviserver stop 
-This will attempt to issue a $DAEMONTOOLS_SVC -d for $DAEMONTOOLS_SVCDIR/*
+This will attempt to issue a $DAEMONTOOLS_SVC -d for every service dir in $DAEMONTOOLS_SVCDIR
 
 Restarting:
 
@@ -93,6 +102,6 @@ Restarting:
 This will issue a $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/myinstance1
 
  /etc/init.d/naviserver restart 
-This will attempt to issue a $DAEMONTOOLS_SVC -t for $DAEMONTOOLS_SVCDIR/*
+This will attempt to issue a $DAEMONTOOLS_SVC -t for every service dir in $DAEMONTOOLS_SVCDIR
 
  -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 29 May 2013 09:35:49 +0000
