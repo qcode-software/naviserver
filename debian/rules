@@ -24,7 +24,7 @@ override_dh_auto_build:
 	$(MAKE) build-doc
 	mkdir $(CURDIR)/debian/man1
 	cp $(CURDIR)/nsd/nsd $(CURDIR)/debian/man1/$(PACKAGE)-nsd
-	$(HELP2MAN) --help-option=-help --name="NaviServer - a high performance web server written in C and Tcl." --version-option=-V --no-discard-stderr --no-info $(CURDIR)/debian/man1/$(PACKAGE)-nsd > $(CURDIR)/debian/man1/$(PACKAGE)-nsd.1
+	$(HELP2MAN) --help-option=-help --name="a high performance web server written in C and Tcl." --version-option=-V --no-discard-stderr --no-info $(CURDIR)/debian/man1/$(PACKAGE)-nsd > $(CURDIR)/debian/man1/$(PACKAGE)-nsd.1
 
 override_dh_auto_install:
 	( cd $(CURDIR) ; $(MAKE) NAVISERVER=$(TARGETDIR) install )
