@@ -116,6 +116,10 @@ set	address			127.0.0.1
 set	port			80
 set	controlport		9999
 
+# nsssl options (if applicable)
+set     ssl_port                443     
+set     ssl_cert                /etc/naviserver/default.pem
+
 # html/adp files
 set 	pageroot 		/usr/share/doc/naviserver
 #set	pageroot		/var/www
@@ -136,6 +140,10 @@ ns_section	"ns/server/\${servername}/modules"
    ns_param	nsperm 			\${homedir}/bin/nsperm.so
    #ns_param 	nscp 			\${homedir}/bin/nscp.so
    ns_param	nsproxy			\${homedir}/bin/nsproxy.so
+   # Load nsssl if naviserver-nsssl package is installed and certificate present.
+   if { [file exists \${homedir}/bin/nsssl.so] && [file exists \$ssl_cert] } {
+      ns_param  nsssl                   \${homedir}/bin/nsssl.so
+   }
 
    # Tcl modules are loaded here as well, they should be put
    # under tcl/ in separate directory each
@@ -453,6 +461,34 @@ ns_section 	"ns/server/\${servername}/module/nssock"
    ns_param	keepwait		 5	 ;# timeout in seconds for keep-alive
    ns_param	keepalivemaxuploadsize	 500000	 ;# don't allow keep-alive for upload content larger than this
    ns_param	keepalivemaxdownloadsize 1000000 ;# don't allow keep-alive for download content larger than this
+
+
+########################################################################
+# SSL module (HTTPS)  -- nsssl
+########################################################################
+
+ns_section 	"ns/server/\${servername}/module/nsssl"
+
+   ns_param   port            \$ssl_port
+   ns_param   hostname        \$hostname
+   ns_param   address         \$address
+
+   # Certificate is required and will not run without it, it should contain cert and privkey
+   ns_param   certificate     /etc/ssl/certs/ns_default.pem
+
+   # Ciphers parameter defines which ciphers will be used, by default nsssl uses all ciphers
+   ns_param   ciphers         "RC4:HIGH:!aNULL:!MD5;"
+
+   # Protocols parameter defines which protocols can be disabled, options are:
+   #         !SSLv2 !SSLv3 !TLSv1, by default all protocosl are enabled
+   ns_param   protocols       "!SSLv2"
+
+   # Verify if set to 1 will reject any connections without valid ceritificate
+   ns_param   verify          0
+   ns_param   maxpost         10485760
+   ns_param   maxinput        10485760
+
+   # All other driver related parameters can be specified, see nssock for more details
 
 
 ########################################################################
