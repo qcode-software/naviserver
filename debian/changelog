@@ -1,3 +1,9 @@
+naviserver (4.99.5-3) squeeze; urgency=low
+
+  * Use default self-signed certificate if nsssl is installed
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 30 May 2013 13:07:39 +0100
+
 naviserver (4.99.5-2) squeeze; urgency=low
 
   * Updating README.Debian, typo in init script.
