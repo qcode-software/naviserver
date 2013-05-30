@@ -474,7 +474,7 @@ ns_section 	"ns/server/\${servername}/module/nsssl"
    ns_param   address         \$address
 
    # Certificate is required and will not run without it, it should contain cert and privkey
-   ns_param   certificate     /etc/ssl/certs/ns_default.pem
+   ns_param   certificate     \$ssl_cert
 
    # Ciphers parameter defines which ciphers will be used, by default nsssl uses all ciphers
    ns_param   ciphers         "RC4:HIGH:!aNULL:!MD5;"
