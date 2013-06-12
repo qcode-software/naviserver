@@ -1,3 +1,9 @@
+naviserver (4.99.5-4) squeeze; urgency=low
+
+  * Add patch to reflect upstream v4.99.5 retagging
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 12 Jun 2013 09:22:59 +0100
+
 naviserver (4.99.5-3) squeeze; urgency=low
 
   * Use default self-signed certificate if nsssl is installed
