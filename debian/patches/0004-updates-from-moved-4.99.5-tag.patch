@@ -1,141 +1,88 @@
-diff -r 283dbf8cd8dc -r b7633f34a21a NEWS
---- a/NEWS	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a NEWS
+--- a/NEWS	Sat May 25 20:06:28 2013 +0200
 +++ b/NEWS	Sat Jun 08 14:13:25 2013 +0200
-@@ -1,5 +1,5 @@
- ======================================
--NaviServer 4.99.5, released XXXX-XX-XX
-+NaviServer 4.99.5, released 2013-05-25
- ======================================
- 
- New Features:
-@@ -8,7 +8,6 @@
-       - Introduced connection thread queues for better control over
-         connection threads and to reduce queuing operations for
-         handing requests from the driver to the connection threads.
--        
- 
-     * Support for improved TCP socket option handling 
-       (when supported by the OS);
-@@ -23,7 +22,8 @@
- 
-        - Asynchronous HTML streaming via writer threads to reduce
-          connection thread blocking time for slow delivery lines.
--       - New asynchronous log file writer - configurable
-+       - New asynchronous log file writer to write access.log
-+         and error.log without blocking - configurable
- 
-     * Better scalability by reducing busiest lock contention and
-       finer lock granularity (see below).
-@@ -35,7 +35,7 @@
-         per server and pool.
-       - Report OS-level thread ID via "ns_info threads" when supported
-         from the OS (currenly just Linux). This information is used by
--        nsstats to report e.g. system time and user time per thread.
-+        nsstats.tcl to report e.g. system time and user time per thread.
-       - New subcommand "ns_conn clientdata" to query or set client data
-         (used e.g in ns_writer list)
-       - Added ns_fastpath_cache_stats to obtain usage info from the
-@@ -47,6 +47,7 @@
- 
- 
- Performance Improvements:
-+
-     * Server lock to pool lock in most cases
-     * Lazy init of zlib (mostly reduction in memory consumption)
-     * Allow delivery of mmapped files via writer without the need of copying content.
-@@ -65,6 +66,7 @@
- 
- 
- Bug Fixes:
-+
-     * Do not save variables of the toplevel namespace into the blueprint. 
-       OpenACS had with this a problem, since the database handles are managed via 
-       global variables, which is solved by this modification.
-@@ -85,6 +87,8 @@
-       and leads to a busy loop.
-     * Fix bug in rolling access log when rollfmt is specified. Previously 
-       the log file was closed but not reopened, log data was lost.
-+    * Protect against a bug in Tcl, when several threads are created
-+      concurrently via Tcl_CreateInterp()
- 
- 
- Documentation improvements:
-@@ -95,82 +99,154 @@
-     * Remove man pages for non-existing commands and half written man
-       pages.
- 
-+    * Updated documentation in configuration files
-+
-+    * Added sample configuration file for OpenACS
-+
+@@ -106,83 +106,147 @@
  
  Tcl API Changes:
  
--    * ns_httpget, ns_httppost and ns_httpopen are deprecated (use
--      ns_http instead)
+-    * Added proc  "ns_deprecated" to flag deprecated commands 
+-      in the the errlor.log file.
 +    * New and modified commands/subcommands:
  
--    * ns_writer: added -server option to "ns_writer list" to list only
--      requests from a particular (virtual) server
+-    * Added commands to change server settings on the fly:
+-      ns_server ?-server s? ?-pool p? maxthreads ?value?
+-      ns_server ?-server s? ?-pool p? minthreads ?value?
+-      
+-    * Add "ns_server stats" to return number of requests, number of
+-      spools and number of requests added to the waiting queue plus
+-      cumulative times to serve requests.
 +      - nsv_get: added optional argument ?varName? to nsv_get to
 +        obtain compatibility with tsv::get in the Tcl thread
 +        library. This option allows an atomic test + get operation,
 +        avoiding unsafe nsv_exists following by nsv_get.
  
--    * ns_driversection - determine the configsection for driver in the
--      config file.  Usage: ns_driversection ?-driver drv? ?-server s?
+-    * New commands "ns_writer size /driver/ ?value?"
+-      If not specified, the whole file will be retuned, otherwise only
+-      given part. Can be combined with -offset to return chunks of
+-      file.
 +          nsv_get /array/ /key/ ?/varName/?
  
--    * "ns_info platform" is deprecated; use $::tcl_platform(platform) instead.
--      "ns_info winnt" is deprecated; use $::tcl_platform(platform) instead.
+-    * New command "ns_writer streaming /driver/ ?value?" to query or
+-      set the configuration parameter of writer thread.
 +      - Obtain a value from the cache 
 +        (similar to nsv_get)
  
--    * ns_register_adptag is deprecated - use ns_adp_registerscript instead.
+-    * New command "ns_conn zipaccepted" returns whether or not the
+-      client accepts a zip encoded response.
 +          ns_cache_get /cache/ /key/ ?/varName/?
 +        
 +      - Write a notice to the error.log when this command 
 +        is used 
  
--    * ns_adp_registertag is deprecated - use ns_adp_registeradp instead.
+-    * New command "ns_conn pool" returns the connection pool of
+-      the current request (connection).
 +          ns_deprecated ?/alternative/? ?/explanation/?
  
--    * The following commands are deprecated
--      ns_info filters
--      ns_info pagedir
--      ns_info pageroot
--      ns_info requestprocs
--      ns_info tcllib
--      ns_info traces
--      ns_info url2file
+-    * New subcommand "ns_conn clientdata" to query or set the client
+-      data for the current connection. The client data is provided by
+-      the application and is potentially passed to different threads
+-      and can be used to establish the context with the connection
+-      thread. For example, the writer thread outputs the client data
+-      when listing running connections (one can determine e.g. which
+-      user has initiated the delivery, etc.).
 +      - Change server settings on the fly:
  
--      and defined the following commands instead:
+-    * Output in "ns_writer list" now contains the start time of the
+-      initiating request, the name of the thread, driver, the
+-      ip-address of the requestor, the file descriptor, the remaining
+-      size and the bytes already sent, and the client data as provided
+-      via [ns_conn clientdata].
 +          ns_server ?-server /server/? ?-pool /p/? maxthreads ?/value/?
 +          ns_server ?-server /server/? ?-pool /p/? minthreads ?/value/?
  
--      ns_server ?-server server? filters
--      ns_server ?-server server? pagedir
--      ns_server ?-server server? requestprocs
--      ns_server ?-server server? tcllib
--      ns_server ?-server server? traces
--      ns_server ?-server server? url2file
+-    * ns_httpget, ns_httppost and ns_httpopen are deprecated (use
+-      ns_http instead)
 +      - The following commands can return now server-specific
 +        results, when "-server ..." is used:
  
--    * ns_server - passing pool as 2nd argument is deprecated.
--      new option serverdir returns the base directory "ns_server ?-server s? serverdir" 
+-    * ns_writer: added -server option to "ns_writer list" to list only
+-      requests from a particular (virtual) server
 +          ns_server ?-server /server/? filters
 +          ns_server ?-server /server/? pagedir
 +          ns_server ?-server /server/? requestprocs
 +          ns_server ?-server /server/? tcllib
 +          ns_server ?-server /server/? traces
 +          ns_server ?-server /server/? url2file
-+
-+
+ 
+-    * ns_driversection: determine the configsection for driver in the
+-      config file.  Usage: ns_driversection ?-driver drv? ?-server s?
+ 
+-    * "ns_info platform" is deprecated; use $::tcl_platform(platform) instead.
+-      "ns_info winnt" is deprecated; use $::tcl_platform(platform) instead.
 +      - The following commands can return now server-specific
 +        and pool-specific results:
-+
+ 
+-    * ns_register_adptag is deprecated - use ns_adp_registerscript instead.
 +          ns_server ?-server /server/? ?-pool p? active
 +          ns_server ?-server /server/? ?-pool p? all
 +          ns_server ?-server /server/? ?-pool p? queued
@@ -145,21 +92,39 @@ diff -r 283dbf8cd8dc -r b7633f34a21a NEWS
 +          ns_server ?-server /server/? ?-pool p? stats
 +          ns_server ?-server /server/? ?-pool p? threads
 +          ns_server ?-server /server/? ?-pool p? waiting
-+
+ 
+-    * ns_adp_registertag is deprecated - use ns_adp_registeradp instead.
 +      - Return number of requests, number of spools and number of
 +        requests added to the waiting queue plus cumulative times to
 +        serve requests.
-+
+ 
+-    * The following commands are deprecated
+-      ns_info filters
+-      ns_info pagedir
+-      ns_info pageroot
+-      ns_info requestprocs
+-      ns_info tcllib
+-      ns_info traces
+-      ns_info url2file
 +          ns_server ?-server /server/? ?-pool /p/? stats
-+
+ 
+-      and defined the following commands instead:
 +      - Query for the current connection, whether
 +        the requestor accepts zipped results
 +        
 +          ns_conn zipaccepted
-+
+ 
+-      ns_server ?-server server? filters
+-      ns_server ?-server server? pagedir
+-      ns_server ?-server server? requestprocs
+-      ns_server ?-server server? tcllib
+-      ns_server ?-server server? traces
+-      ns_server ?-server server? url2file
 +      - Return for the current connection the 
 +        connection pool
-+
+ 
+-    * ns_server - passing pool as 2nd argument is deprecated.
+-      new option serverdir returns the base directory "ns_server ?-server s? serverdir" 
 +          ns_conn pool
 + 
 +      - Query or set for the current connection the client data.  The
@@ -238,59 +203,13 @@ diff -r 283dbf8cd8dc -r b7633f34a21a NEWS
 +          "ns_server ?-server /server/? serverdir" 
       
 -    * "ns_server keepalive" is deprecated - use "ns_conn keepalive" instead
--
--    * Added proc  "ns_deprecated" to flag deprecated commands in the the log file.
--
--    * Added commands to change server settings on the fly:
--      ns_server ?-server s? ?-pool p? maxthreads ?value?
--      ns_server ?-server s? ?-pool p? minthreads ?value?
--      
--    * Add "ns_server stats" to return number of requests, number of
--      spools and number of requests added to the waiting queue plus
--      cumulative times to serve requests.
--
--    * New commands "ns_writer size /driver/ ?value?"
--      If not specified, the whole file will be retuned, otherwise only
--      given part. Can be combined with -offset to return chunks of
--      file.
--
--    * New command "ns_writer streaming /driver/ ?value?" to query or
--      set the configuration parameter of writer thread.
--
--    * New command "ns_conn zipaccepted" returns whether or not the
--      client accepts a zip encoded response.
--
--    * New subcommand "ns_conn clientdata" to query or set the client
--      data for the current connection. The client data is provided by
--      the application and is potentially passed to different threads
--      and can be used to establish the context with the connection
--      thread. For example, the writer thread outputs the client data
--      when listing running connections (one can determine e.g. which
--      user has initiated the delivery, etc.).
--
--    * Output in "ns_writer list" now contains the start time of the
--      initiating request, the name of the thread, driver, the
--      ip-address of the requestor, the file descriptor, the remaining
--      size and the bytes already sent, and the client data as provided
--      via [ns_conn clientdata].
 +      - "ns_server keepalive" is deprecated;
 +        use "ns_conn keepalive" instead
  
  
  C API Changes:
-@@ -321,6 +397,10 @@
-     * Extending buffer size when sending files via writer thread from
-       4KB to 16KB.
- 
-+    * Replaced unsafe system calls with safe ones (e.g. mktemp() by mkstemp())
-+
-+    * Improved code quality with static analyzer and valgrind
-+
-     * Extended regression test
- 
- 
-diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/ns_cache.man
---- a/doc/src/naviserver/ns_cache.man	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a doc/src/naviserver/ns_cache.man
+--- a/doc/src/naviserver/ns_cache.man	Sat May 25 20:06:28 2013 +0200
 +++ b/doc/src/naviserver/ns_cache.man	Sat Jun 08 14:13:25 2013 +0200
 @@ -83,6 +83,18 @@
  whether it has expired or not, and the [arg script] is run to regenerate it.
@@ -311,8 +230,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/ns_cache.man
  
  [call [cmd ns_cache_incr] \
       [opt [option "-timeout [arg t]"]] \
-diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/ns_thread.man
---- a/doc/src/naviserver/ns_thread.man	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a doc/src/naviserver/ns_thread.man
+--- a/doc/src/naviserver/ns_thread.man	Sat May 25 20:06:28 2013 +0200
 +++ b/doc/src/naviserver/ns_thread.man	Sat Jun 08 14:13:25 2013 +0200
 @@ -70,6 +70,7 @@
  Calling ns_thread join on an invalid thread ID or a thread ID that has
@@ -322,8 +241,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/ns_thread.man
  
  [manpage_end]
  
-diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/nsv.man
---- a/doc/src/naviserver/nsv.man	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a doc/src/naviserver/nsv.man
+--- a/doc/src/naviserver/nsv.man	Sat May 25 20:06:28 2013 +0200
 +++ b/doc/src/naviserver/nsv.man	Sat Jun 08 14:13:25 2013 +0200
 @@ -84,10 +84,20 @@
  [example_end]
@@ -359,8 +278,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/nsv.man
  
  [manpage_end]
  
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/driver.c
---- a/nsd/driver.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/driver.c
+--- a/nsd/driver.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/driver.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -339,7 +339,7 @@
  
@@ -389,8 +308,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/driver.c
              Ns_ThreadJoin(&drvPtr->thread, NULL);
              drvPtr->thread = NULL;
          }
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/fastpath.c
---- a/nsd/fastpath.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/fastpath.c
+--- a/nsd/fastpath.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/fastpath.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -653,7 +653,7 @@
  /*
@@ -401,8 +320,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/fastpath.c
   *
   *      Returns stats on a cache. The size and expirey time of each
   *      entry in the cache is also appended if the -contents switch
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/set.c
---- a/nsd/set.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/set.c
+--- a/nsd/set.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/set.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -228,15 +228,20 @@
                int (*cmp) (CONST char *s1, CONST char *s2))
@@ -434,8 +353,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/set.c
      }
  
      return -1;
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/sock.c
---- a/nsd/sock.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/sock.c
+--- a/nsd/sock.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/sock.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -742,15 +742,19 @@
    
@@ -472,8 +391,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/sock.c
      }
  #  endif
  # endif
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclcache.c
---- a/nsd/tclcache.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/tclcache.c
+--- a/nsd/tclcache.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/tclcache.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -501,6 +501,7 @@
      return TCL_OK;
@@ -552,8 +471,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclcache.c
   *
   *      Returns stats on a cache. The size and expirey time of each
   *      entry in the cache is also appended if the -contents switch
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclcmds.c
---- a/nsd/tclcmds.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/tclcmds.c
+--- a/nsd/tclcmds.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/tclcmds.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -82,6 +82,7 @@
      NsTclCacheCreateObjCmd,
@@ -571,8 +490,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclcmds.c
      {"ns_cache_flush", NULL, NsTclCacheFlushObjCmd},
      {"ns_cache_incr", NULL, NsTclCacheIncrObjCmd},
      {"ns_cache_keys", NULL, NsTclCacheKeysObjCmd},
-diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclvar.c
---- a/nsd/tclvar.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nsd/tclvar.c
+--- a/nsd/tclvar.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nsd/tclvar.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -131,9 +131,10 @@
  {
@@ -619,8 +538,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclvar.c
      return TCL_OK;
  }
  
-diff -r 283dbf8cd8dc -r b7633f34a21a nssock/nssock.c
---- a/nssock/nssock.c	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a nssock/nssock.c
+--- a/nssock/nssock.c	Sat May 25 20:06:28 2013 +0200
 +++ b/nssock/nssock.c	Sat Jun 08 14:13:25 2013 +0200
 @@ -374,7 +374,9 @@
                         &value, sizeof(value)) == -1) {
@@ -633,8 +552,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a nssock/nssock.c
  #endif
      }
  }
-diff -r 283dbf8cd8dc -r b7633f34a21a tcl/aolserver-openacs.tcl
---- a/tcl/aolserver-openacs.tcl	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a tcl/aolserver-openacs.tcl
+--- a/tcl/aolserver-openacs.tcl	Sat May 25 20:06:28 2013 +0200
 +++ b/tcl/aolserver-openacs.tcl	Sat Jun 08 14:13:25 2013 +0200
 @@ -106,21 +106,9 @@
  
@@ -660,8 +579,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a tcl/aolserver-openacs.tcl
        }
      }
  
-diff -r 283dbf8cd8dc -r b7633f34a21a tests/ns_cache.test
---- a/tests/ns_cache.test	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a tests/ns_cache.test
+--- a/tests/ns_cache.test	Sat May 25 20:06:28 2013 +0200
 +++ b/tests/ns_cache.test	Sat Jun 08 14:13:25 2013 +0200
 @@ -379,10 +379,44 @@
      ns_cache_flush c1
@@ -718,8 +637,8 @@ diff -r 283dbf8cd8dc -r b7633f34a21a tests/ns_cache.test
  test ns_cache-11.1 {stability} -constraints stress -body {
  
      ns_log Notice Begin cache stress test.
-diff -r 283dbf8cd8dc -r b7633f34a21a tests/ns_nsv.test
---- a/tests/ns_nsv.test	Sat May 25 20:03:45 2013 +0200
+diff -r 723d67081aed -r b7633f34a21a tests/ns_nsv.test
+--- a/tests/ns_nsv.test	Sat May 25 20:06:28 2013 +0200
 +++ b/tests/ns_nsv.test	Sat Jun 08 14:13:25 2013 +0200
 @@ -9,7 +9,7 @@
  
