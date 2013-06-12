@@ -1,0 +1,787 @@
+diff -r 283dbf8cd8dc -r b7633f34a21a NEWS
+--- a/NEWS	Sat May 25 20:03:45 2013 +0200
++++ b/NEWS	Sat Jun 08 14:13:25 2013 +0200
+@@ -1,5 +1,5 @@
+ ======================================
+-NaviServer 4.99.5, released XXXX-XX-XX
++NaviServer 4.99.5, released 2013-05-25
+ ======================================
+ 
+ New Features:
+@@ -8,7 +8,6 @@
+       - Introduced connection thread queues for better control over
+         connection threads and to reduce queuing operations for
+         handing requests from the driver to the connection threads.
+-        
+ 
+     * Support for improved TCP socket option handling 
+       (when supported by the OS);
+@@ -23,7 +22,8 @@
+ 
+        - Asynchronous HTML streaming via writer threads to reduce
+          connection thread blocking time for slow delivery lines.
+-       - New asynchronous log file writer - configurable
++       - New asynchronous log file writer to write access.log
++         and error.log without blocking - configurable
+ 
+     * Better scalability by reducing busiest lock contention and
+       finer lock granularity (see below).
+@@ -35,7 +35,7 @@
+         per server and pool.
+       - Report OS-level thread ID via "ns_info threads" when supported
+         from the OS (currenly just Linux). This information is used by
+-        nsstats to report e.g. system time and user time per thread.
++        nsstats.tcl to report e.g. system time and user time per thread.
+       - New subcommand "ns_conn clientdata" to query or set client data
+         (used e.g in ns_writer list)
+       - Added ns_fastpath_cache_stats to obtain usage info from the
+@@ -47,6 +47,7 @@
+ 
+ 
+ Performance Improvements:
++
+     * Server lock to pool lock in most cases
+     * Lazy init of zlib (mostly reduction in memory consumption)
+     * Allow delivery of mmapped files via writer without the need of copying content.
+@@ -65,6 +66,7 @@
+ 
+ 
+ Bug Fixes:
++
+     * Do not save variables of the toplevel namespace into the blueprint. 
+       OpenACS had with this a problem, since the database handles are managed via 
+       global variables, which is solved by this modification.
+@@ -85,6 +87,8 @@
+       and leads to a busy loop.
+     * Fix bug in rolling access log when rollfmt is specified. Previously 
+       the log file was closed but not reopened, log data was lost.
++    * Protect against a bug in Tcl, when several threads are created
++      concurrently via Tcl_CreateInterp()
+ 
+ 
+ Documentation improvements:
+@@ -95,82 +99,154 @@
+     * Remove man pages for non-existing commands and half written man
+       pages.
+ 
++    * Updated documentation in configuration files
++
++    * Added sample configuration file for OpenACS
++
+ 
+ Tcl API Changes:
+ 
+-    * ns_httpget, ns_httppost and ns_httpopen are deprecated (use
+-      ns_http instead)
++    * New and modified commands/subcommands:
+ 
+-    * ns_writer: added -server option to "ns_writer list" to list only
+-      requests from a particular (virtual) server
++      - nsv_get: added optional argument ?varName? to nsv_get to
++        obtain compatibility with tsv::get in the Tcl thread
++        library. This option allows an atomic test + get operation,
++        avoiding unsafe nsv_exists following by nsv_get.
+ 
+-    * ns_driversection - determine the configsection for driver in the
+-      config file.  Usage: ns_driversection ?-driver drv? ?-server s?
++          nsv_get /array/ /key/ ?/varName/?
+ 
+-    * "ns_info platform" is deprecated; use $::tcl_platform(platform) instead.
+-      "ns_info winnt" is deprecated; use $::tcl_platform(platform) instead.
++      - Obtain a value from the cache 
++        (similar to nsv_get)
+ 
+-    * ns_register_adptag is deprecated - use ns_adp_registerscript instead.
++          ns_cache_get /cache/ /key/ ?/varName/?
++        
++      - Write a notice to the error.log when this command 
++        is used 
+ 
+-    * ns_adp_registertag is deprecated - use ns_adp_registeradp instead.
++          ns_deprecated ?/alternative/? ?/explanation/?
+ 
+-    * The following commands are deprecated
+-      ns_info filters
+-      ns_info pagedir
+-      ns_info pageroot
+-      ns_info requestprocs
+-      ns_info tcllib
+-      ns_info traces
+-      ns_info url2file
++      - Change server settings on the fly:
+ 
+-      and defined the following commands instead:
++          ns_server ?-server /server/? ?-pool /p/? maxthreads ?/value/?
++          ns_server ?-server /server/? ?-pool /p/? minthreads ?/value/?
+ 
+-      ns_server ?-server server? filters
+-      ns_server ?-server server? pagedir
+-      ns_server ?-server server? requestprocs
+-      ns_server ?-server server? tcllib
+-      ns_server ?-server server? traces
+-      ns_server ?-server server? url2file
++      - The following commands can return now server-specific
++        results, when "-server ..." is used:
+ 
+-    * ns_server - passing pool as 2nd argument is deprecated.
+-      new option serverdir returns the base directory "ns_server ?-server s? serverdir" 
++          ns_server ?-server /server/? filters
++          ns_server ?-server /server/? pagedir
++          ns_server ?-server /server/? requestprocs
++          ns_server ?-server /server/? tcllib
++          ns_server ?-server /server/? traces
++          ns_server ?-server /server/? url2file
++
++
++      - The following commands can return now server-specific
++        and pool-specific results:
++
++          ns_server ?-server /server/? ?-pool p? active
++          ns_server ?-server /server/? ?-pool p? all
++          ns_server ?-server /server/? ?-pool p? queued
++          ns_server ?-server /server/? ?-pool p? connections
++          ns_server ?-server /server/? ?-pool p? maxthreads ?value?
++          ns_server ?-server /server/? ?-pool p? minthreads ?value?
++          ns_server ?-server /server/? ?-pool p? stats
++          ns_server ?-server /server/? ?-pool p? threads
++          ns_server ?-server /server/? ?-pool p? waiting
++
++      - Return number of requests, number of spools and number of
++        requests added to the waiting queue plus cumulative times to
++        serve requests.
++
++          ns_server ?-server /server/? ?-pool /p/? stats
++
++      - Query for the current connection, whether
++        the requestor accepts zipped results
++        
++          ns_conn zipaccepted
++
++      - Return for the current connection the 
++        connection pool
++
++          ns_conn pool
++ 
++      - Query or set for the current connection the client data.  The
++        client data is provided by the application and is potentially
++        passed to different threads and can be used to establish the
++        context with the connection thread. For example, the writer
++        thread outputs the client data when listing running connections
++        (one can determine e.g. which user has initiated the delivery,
++        etc.).
++
++          ns_conn clientdata
++
++      - Query or modify the size limit of files being delivered
++        via the writer threads
++
++          ns_writer size /driver/ ?/value/?
++
++      - Query or modify the configuration parameter
++        writerstreaming that controls streaming HTML
++        output via writer threads
++  
++          ns_writer streaming /driver/ ?/value/?
++
++      - Allow to restrict the output of "ns_writer list"
++        to list only requests from a particular (virtual) server
++
++          ns_writer list ?-server /server/?
++
++      - The output of "ns_writer list" now contains the start time of
++        the initiating request, the name of the thread, driver, the
++        ip-address of the requestor, the file descriptor, the
++        remaining size and the bytes already sent, and the client data
++        as provided via [ns_conn clientdata].
++
++      - Determine the section in the configuration for a driver
++        in the configuration file
++
++          ns_driversection ?-driver /drv/? ?-server /server/?
++
++
++    * Deprecated commands/subcommands:
++
++
++      - ns_httpget, ns_httppost and ns_httpopen are deprecated (use
++        ns_http instead)
++
++      - "ns_info platform" is deprecated; use $::tcl_platform(platform) instead.
++        "ns_info winnt" is deprecated; use $::tcl_platform(platform) instead.
++
++      - ns_register_adptag is deprecated - use ns_adp_registerscript instead.
++
++      - ns_adp_registertag is deprecated - use ns_adp_registeradp instead.
++
++      - The following commands are deprecated
++
++          ns_info filters
++          ns_info pagedir
++          ns_info pageroot
++          ns_info requestprocs
++          ns_info tcllib
++          ns_info traces
++          ns_info url2file
++
++        and defined the following commands instead:
++
++          ns_server ?-server /server/? filters
++          ns_server ?-server /server/? pagedir
++          ns_server ?-server /server/? requestprocs
++          ns_server ?-server /server/? tcllib
++          ns_server ?-server /server/? traces
++          ns_server ?-server /server/? url2file
++
++      - ns_server - passing pool as 2nd argument is deprecated.
++        new option serverdir returns the base directory. Using 
++        instead the explicit options
++          "ns_server ?-server /server/? serverdir" 
+      
+-    * "ns_server keepalive" is deprecated - use "ns_conn keepalive" instead
+-
+-    * Added proc  "ns_deprecated" to flag deprecated commands in the the log file.
+-
+-    * Added commands to change server settings on the fly:
+-      ns_server ?-server s? ?-pool p? maxthreads ?value?
+-      ns_server ?-server s? ?-pool p? minthreads ?value?
+-      
+-    * Add "ns_server stats" to return number of requests, number of
+-      spools and number of requests added to the waiting queue plus
+-      cumulative times to serve requests.
+-
+-    * New commands "ns_writer size /driver/ ?value?"
+-      If not specified, the whole file will be retuned, otherwise only
+-      given part. Can be combined with -offset to return chunks of
+-      file.
+-
+-    * New command "ns_writer streaming /driver/ ?value?" to query or
+-      set the configuration parameter of writer thread.
+-
+-    * New command "ns_conn zipaccepted" returns whether or not the
+-      client accepts a zip encoded response.
+-
+-    * New subcommand "ns_conn clientdata" to query or set the client
+-      data for the current connection. The client data is provided by
+-      the application and is potentially passed to different threads
+-      and can be used to establish the context with the connection
+-      thread. For example, the writer thread outputs the client data
+-      when listing running connections (one can determine e.g. which
+-      user has initiated the delivery, etc.).
+-
+-    * Output in "ns_writer list" now contains the start time of the
+-      initiating request, the name of the thread, driver, the
+-      ip-address of the requestor, the file descriptor, the remaining
+-      size and the bytes already sent, and the client data as provided
+-      via [ns_conn clientdata].
++      - "ns_server keepalive" is deprecated;
++        use "ns_conn keepalive" instead
+ 
+ 
+ C API Changes:
+@@ -321,6 +397,10 @@
+     * Extending buffer size when sending files via writer thread from
+       4KB to 16KB.
+ 
++    * Replaced unsafe system calls with safe ones (e.g. mktemp() by mkstemp())
++
++    * Improved code quality with static analyzer and valgrind
++
+     * Extended regression test
+ 
+ 
+diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/ns_cache.man
+--- a/doc/src/naviserver/ns_cache.man	Sat May 25 20:03:45 2013 +0200
++++ b/doc/src/naviserver/ns_cache.man	Sat Jun 08 14:13:25 2013 +0200
+@@ -83,6 +83,18 @@
+ whether it has expired or not, and the [arg script] is run to regenerate it.
+ 
+ 
++[call [cmd ns_cache_get] \
++	[arg name] \
++        [arg key] \
++        [opt [arg varName]] ]
++
++Get the cached value for the provided key from the cache.
++If the optional variable name is not provided, it returns 
++the associated value on success or it raises an error,
++if the key does not exist. If the optional variable name is
++provided it returns 1 or 0 on success / failure and sets
++the provided variable with the associated value (similar to 
++nsv_get).
+ 
+ [call [cmd ns_cache_incr] \
+      [opt [option "-timeout [arg t]"]] \
+diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/ns_thread.man
+--- a/doc/src/naviserver/ns_thread.man	Sat May 25 20:03:45 2013 +0200
++++ b/doc/src/naviserver/ns_thread.man	Sat Jun 08 14:13:25 2013 +0200
+@@ -70,6 +70,7 @@
+ Calling ns_thread join on an invalid thread ID or a thread ID that has
+ already been joined will cause the server to abort with a fatal error.  See 
+ 
++[keywords stack]
+ 
+ [manpage_end]
+ 
+diff -r 283dbf8cd8dc -r b7633f34a21a doc/src/naviserver/nsv.man
+--- a/doc/src/naviserver/nsv.man	Sat May 25 20:03:45 2013 +0200
++++ b/doc/src/naviserver/nsv.man	Sat Jun 08 14:13:25 2013 +0200
+@@ -84,10 +84,20 @@
+ [example_end]
+ 
+ 
+-[call [cmd nsv_get] [arg array] [arg key]]
++[call [cmd nsv_get] \
++	[arg array] \
++	[arg key] \
++	[opt [arg varName]]]
+ 
+ 
+-Get the value for the key from the nsv array.  Error occurs if key does not exist.
++Get the value for the key from the nsv array.  If the the optional
++[arg varName] is provided, the function returns on success 1 and on
++failure 0. On success, it binds the variable [arg varName]. If the
++variable name is not provided, it returns on success the value and
++raises on failure an error (similar to ns_cache_get).
++With the optional variable name, this function allows an atomic 
++check for existence followed by a get operation.
++
+ 
+ [example_begin]
+    % nsv_get shared_array key1
+@@ -409,8 +419,8 @@
+ 
+ 
+ 
+-[see_also nsd]
+-
++[see_also nsd ns_cache_get]
++[keywords nsv shared variables]
+ 
+ [manpage_end]
+ 
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/driver.c
+--- a/nsd/driver.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/driver.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -339,7 +339,7 @@
+ 
+     drvPtr->server       = server;
+     drvPtr->name         = init->name;
+-    drvPtr->module       = module;
++    drvPtr->module       = ns_strdup(module);
+     drvPtr->listenProc   = init->listenProc;
+     drvPtr->acceptProc   = init->acceptProc;
+     drvPtr->recvProc     = init->recvProc;
+@@ -688,8 +688,6 @@
+     int status = NS_OK;
+ 
+     while (drvPtr != NULL) {
+-	char buffer[1024];
+-	memcpy(buffer, drvPtr->module, strnlen(drvPtr->module, 1024));
+         Ns_MutexLock(&drvPtr->lock);
+         while (!(drvPtr->flags & DRIVER_STOPPED) && status == NS_OK) {
+             status = Ns_CondTimedWait(&drvPtr->cond, &drvPtr->lock, toPtr);
+@@ -698,7 +696,7 @@
+         if (status != NS_OK) {
+             Ns_Log(Warning, "[driver:%s]: shutdown timeout", drvPtr->module);
+         } else {
+-            Ns_Log(Notice, "[driver:%s]: stopped", buffer);
++            Ns_Log(Notice, "[driver:%s]: stopped", drvPtr->module);
+             Ns_ThreadJoin(&drvPtr->thread, NULL);
+             drvPtr->thread = NULL;
+         }
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/fastpath.c
+--- a/nsd/fastpath.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/fastpath.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -653,7 +653,7 @@
+ /*
+  *----------------------------------------------------------------------
+  *
+- * NsTclCacheStatsObjCmds --
++ * NsTclFastPathCacheStatsObjCmd --
+  *
+  *      Returns stats on a cache. The size and expirey time of each
+  *      entry in the cache is also appended if the -contents switch
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/set.c
+--- a/nsd/set.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/set.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -228,15 +228,20 @@
+               int (*cmp) (CONST char *s1, CONST char *s2))
+ {
+     int   i;
+-    char *name;
+-
+-    for (i = 0; i < set->size; ++i) {
+-        name = set->fields[i].name;
+-        if ((unlikely(key == NULL) && unlikely(name == NULL)) ||
+-            (likely(key != NULL) && likely(name != NULL) && ((*cmp) (key, name)) == 0)) {
+-
+-            return i;
+-        }
++    
++    if (likely(key != NULL)) {
++	for (i = 0; i < set->size; ++i) {
++	    char *name = set->fields[i].name;
++	    if (likely(name != NULL) && ((*cmp) (key, name)) == 0) {
++		return i;
++	    }
++	}
++    } else {
++	for (i = 0; i < set->size; ++i) {
++	    if (unlikely(set->fields[i].name == NULL)) {
++		return i;
++	    }
++	}
+     }
+ 
+     return -1;
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/sock.c
+--- a/nsd/sock.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/sock.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -742,15 +742,19 @@
+   
+     if (setsockopt(sock, IPPROTO_TCP, TCP_FASTOPEN,
+ 		   &qlen, sizeof(qlen)) == -1) {
+-	Ns_Log(Error, "sock: setsockopt(TCP_FASTOPEN): %s",
++	Ns_Log(Error, "deferaccept setsockopt(TCP_FASTOPEN): %s",
+ 	       ns_sockstrerror(ns_sockerrno));
++    } else {
++        Ns_Log(Notice, "deferaccept: socket option TCP_FASTOPEN activated");
+     }
+ #else
+ # ifdef TCP_DEFER_ACCEPT
+     if (setsockopt(sock, IPPROTO_TCP, TCP_DEFER_ACCEPT,
+ 		   &secs, sizeof(secs)) == -1) {
+-	Ns_Log(Error, "sock: setsockopt(TCP_DEFER_ACCEPT): %s",
++	Ns_Log(Error, "deferaccept setsockopt(TCP_DEFER_ACCEPT): %s",
+ 	       ns_sockstrerror(ns_sockerrno));
++    } else {
++        Ns_Log(Notice, "deferaccept: socket option DEFER_ACCEPT activated (timeout %d)", secs);
+     }
+ # else
+ #  ifdef SO_ACCEPTFILTER
+@@ -761,8 +765,11 @@
+     strcpy(afa.af_name, "httpready");
+     n = setsockopt(sock, SOL_SOCKET, SO_ACCEPTFILTER, &afa, sizeof(afa));
+     if (n < 0) {
+-	Ns_Log(Error, "sock: setsockopt(SO_ACCEPTFILTER): %s",
++	Ns_Log(Error, "deferaccept setsockopt(SO_ACCEPTFILTER): %s",
+ 	       ns_sockstrerror(ns_sockerrno));
++    } else {
++        Ns_Log(Notice, "deferaccept: socket option SO_ACCEPTFILTER activated");
++
+     }
+ #  endif
+ # endif
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclcache.c
+--- a/nsd/tclcache.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/tclcache.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -501,6 +501,7 @@
+     return TCL_OK;
+ }
+ 
++
+ 
+ /*
+  *----------------------------------------------------------------------
+@@ -583,7 +584,67 @@
+ /*
+  *----------------------------------------------------------------------
+  *
+- * NsTclCacheStatsObjCmds --
++ * NsTclCacheGetObjCmd --
++ *
++ *      Return an entry from the cache. This function behaves
++ *      similar to nsv_get; if the optional varname is passed,
++ *      it returns 0 or 1 depending on succes and bind the variable
++ *      on success. If no varName is provided, it returns the value
++ *      or an error.
++ *
++ * Results:
++ *      TCL result.
++ *
++ * Side effects:
++ *      None.
++ *
++ *----------------------------------------------------------------------
++ */
++int
++NsTclCacheGetObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
++{
++    TclCache       *cPtr;
++    Ns_Entry       *entry;
++    char           *key;
++    Tcl_Obj        *varNameObj = NULL, *resultObj;
++
++    Ns_ObjvSpec args[] = {
++        {"cache",    ObjvCache,     &cPtr,        arg},
++        {"key",      Ns_ObjvString, &key,         NULL},
++        {"?varName", Ns_ObjvObj,    &varNameObj,  NULL},
++        {NULL, NULL, NULL, NULL}
++    };
++    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
++        return TCL_ERROR;
++    }
++
++    Ns_CacheLock(cPtr->cache);
++    entry = Ns_CacheFindEntry(cPtr->cache, key);
++    resultObj = entry ? Tcl_NewStringObj(Ns_CacheGetValue(entry), -1) : NULL;
++    Ns_CacheUnlock(cPtr->cache);
++
++    if (varNameObj) {
++	Tcl_SetObjResult(interp, Tcl_NewIntObj(resultObj != NULL));
++	if (resultObj) {
++	    Tcl_ObjSetVar2(interp, varNameObj, NULL, resultObj, 0);
++	}
++    } else {
++	if (resultObj) {
++	    Tcl_SetObjResult(interp, resultObj);
++	} else {
++	    Tcl_AppendResult(interp, "no such key: ",
++			     Tcl_GetString(objv[2]), NULL);
++	    return TCL_ERROR;
++	}
++    }
++    return TCL_OK;
++}
++
++
++/*
++ *----------------------------------------------------------------------
++ *
++ * NsTclCacheStatsObjCmd --
+  *
+  *      Returns stats on a cache. The size and expirey time of each
+  *      entry in the cache is also appended if the -contents switch
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclcmds.c
+--- a/nsd/tclcmds.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/tclcmds.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -82,6 +82,7 @@
+     NsTclCacheCreateObjCmd,
+     NsTclCacheEvalObjCmd,
+     NsTclCacheFlushObjCmd,
++    NsTclCacheGetObjCmd,
+     NsTclCacheIncrObjCmd,
+     NsTclCacheKeysObjCmd,
+     NsTclCacheLappendObjCmd,
+@@ -405,6 +406,7 @@
+     {"ns_cache_append", NULL, NsTclCacheAppendObjCmd},
+     {"ns_cache_create", NULL, NsTclCacheCreateObjCmd},
+     {"ns_cache_eval", NULL, NsTclCacheEvalObjCmd},
++    {"ns_cache_get", NULL, NsTclCacheGetObjCmd},
+     {"ns_cache_flush", NULL, NsTclCacheFlushObjCmd},
+     {"ns_cache_incr", NULL, NsTclCacheIncrObjCmd},
+     {"ns_cache_keys", NULL, NsTclCacheKeysObjCmd},
+diff -r 283dbf8cd8dc -r b7633f34a21a nsd/tclvar.c
+--- a/nsd/tclvar.c	Sat May 25 20:03:45 2013 +0200
++++ b/nsd/tclvar.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -131,9 +131,10 @@
+ {
+     Array         *arrayPtr;
+     Tcl_HashEntry *hPtr;
++    Tcl_Obj       *resultObj;
+ 
+-    if (unlikely(objc != 3)) {
+-        Tcl_WrongNumArgs(interp, 1, objv, "array key");
++    if (unlikely(objc < 3 || objc > 4)) {
++        Tcl_WrongNumArgs(interp, 1, objv, "array key ?varName?");
+         return TCL_ERROR;
+     }
+     if (unlikely((arrayPtr = LockArrayObj(interp, objv[1], 0)) == NULL)) {
+@@ -141,16 +142,24 @@
+     }
+ 
+     hPtr = Tcl_FindHashEntry(&arrayPtr->vars, Tcl_GetString(objv[2]));
+-    if (likely(hPtr != NULL)) {
+-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+-    }
++    resultObj = likely(hPtr != NULL) ? Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1) : NULL;
+     UnlockArray(arrayPtr);
+ 
+-    if (unlikely(hPtr == NULL)) {
+-        Tcl_AppendResult(interp, "no such key: ",
+-                         Tcl_GetString(objv[2]), NULL);
+-        return TCL_ERROR;
++    if (objc == 3) {
++	if (resultObj) {
++	    Tcl_SetObjResult(interp, resultObj);
++	} else {
++	    Tcl_AppendResult(interp, "no such key: ",
++			     Tcl_GetString(objv[2]), NULL);
++	    return TCL_ERROR;
++	}
++    } else {
++	Tcl_SetObjResult(interp, Tcl_NewIntObj(resultObj != NULL));
++	if (resultObj) {
++	    Tcl_ObjSetVar2(interp, objv[3], NULL, resultObj, 0);
++	}
+     }
++
+     return TCL_OK;
+ }
+ 
+diff -r 283dbf8cd8dc -r b7633f34a21a nssock/nssock.c
+--- a/nssock/nssock.c	Sat May 25 20:03:45 2013 +0200
++++ b/nssock/nssock.c	Sat Jun 08 14:13:25 2013 +0200
+@@ -374,7 +374,9 @@
+                        &value, sizeof(value)) == -1) {
+             Ns_Log(Error, "nssock: setsockopt(TCP_NODELAY): %s",
+                    ns_sockstrerror(ns_sockerrno));
+-        }
++        } else {
++	    Ns_Log(Debug, "nodelay: socket option TCP_NODELAY activated");
++	}
+ #endif
+     }
+ }
+diff -r 283dbf8cd8dc -r b7633f34a21a tcl/aolserver-openacs.tcl
+--- a/tcl/aolserver-openacs.tcl	Sat May 25 20:03:45 2013 +0200
++++ b/tcl/aolserver-openacs.tcl	Sat Jun 08 14:13:25 2013 +0200
+@@ -106,21 +106,9 @@
+ 
+     :public object method get {cache_name key var_name:optional} {
+       if {[info exists var_name]} {
+-	# Check if we have an entry. This assumes that only valid (not
+-	# expired) entries are returned, and this state will be true
+-	# for the subsequence _eval as well.
+-	if {[ns_cache_keys $cache_name $key] ne ""} {
+-	  # The next pattern assumes, that the script == key, as in
+-	  # util_memoize
+-	  set r [ns_cache_eval $cache_name $key $key]
+-	  uplevel set $var_name [list $r]
+-	  return 1
+-	} else {
+-	  return 0
+-	}
++	return [uplevel [list ns_cache_get $cache_name $key $var_name]]
+       } else {
+-	set r [ns_cache_eval $cache_name $key $key]
+-	return $r
++	return [ns_cache_get $cache_name $key]
+       }
+     }
+ 
+diff -r 283dbf8cd8dc -r b7633f34a21a tests/ns_cache.test
+--- a/tests/ns_cache.test	Sat May 25 20:03:45 2013 +0200
++++ b/tests/ns_cache.test	Sat Jun 08 14:13:25 2013 +0200
+@@ -379,10 +379,44 @@
+     ns_cache_flush c1
+ } -result {a b c}
+ 
++test cache-9.6 {cache get} -body {
++    ns_cache_eval c1 k1 {return a}
++    ns_cache_get c1 k1
++} -cleanup {
++    ns_cache_flush c1
++} -result {a}
+ 
++test cache-9.7 {cache get varname} -body {
++    ns_cache_eval c1 k1 {return a}
++    ns_cache_get c1 k1 v
++} -cleanup {
++    ns_cache_flush c1
++} -result {1}
++
++test cache-9.8 {cache get varname value} -body {
++    ns_cache_eval c1 k1 {return a}
++    ns_cache_get c1 k1 v
++    set v
++} -cleanup {
++    ns_cache_flush c1
++} -result {a}
++
++test cache-9.9 {cache get varname non-existing} -body {
++    ns_cache_eval c1 k1 {return a}
++    ns_cache_get c1 k2
++} -cleanup {
++    ns_cache_flush c1
++} -returnCodes error -result {no such key: k2}
++
++test cache-9.10 {cache get varname non-existing varname} -body {
++    ns_cache_eval c1 k1 {return a}
++    ns_cache_get c1 k2 v
++} -cleanup {
++    ns_cache_flush c1
++} -result {0}
+ 
+ test cache-10.1 {memoize} -body {
+-    ns_memoize {return a}
++    ns_cache_eval c1 k1 {return a}
+ } -cleanup {
+     ns_memoize_flush
+ } -result a
+@@ -418,6 +452,8 @@
+ 
+ 
+ 
++
++
+ test ns_cache-11.1 {stability} -constraints stress -body {
+ 
+     ns_log Notice Begin cache stress test.
+diff -r 283dbf8cd8dc -r b7633f34a21a tests/ns_nsv.test
+--- a/tests/ns_nsv.test	Sat May 25 20:03:45 2013 +0200
++++ b/tests/ns_nsv.test	Sat Jun 08 14:13:25 2013 +0200
+@@ -9,7 +9,7 @@
+ 
+ test ns_nsv-1.2 {basic syntax nsv_get} -body {
+     nsv_get
+-} -returnCodes error -result {wrong # args: should be "nsv_get array key"}
++} -returnCodes error -result {wrong # args: should be "nsv_get array key ?varName?"}
+ 
+ test ns_nsv-1.3 {basic syntax nsv_exists} -body {
+     nsv_exists 
+@@ -212,7 +212,7 @@
+     nsv_get noexist noexist
+ } -returnCodes error -result {no such array: noexist}
+ 
+-test ns_nsv-5.2 {nsv_get nonexisting key} -setup {
++test ns_nsv-5.2.1 {nsv_get nonexisting key} -setup {
+     nsv_set a k1 v1
+ } -body {
+     nsv_get a k2
+@@ -220,13 +220,44 @@
+     nsv_unset -nocomplain a
+ } -returnCodes error -result {no such key: k2}
+ 
+-test ns_nsv-5.3 {nsv_get existing key} -body {
++test ns_nsv-5.2.2 {nsv_get nonexisting key} -setup {
++    nsv_set a k1 v1
++} -body {
++    nsv_get a k2 var
++} -cleanup {
++    nsv_unset -nocomplain a
++} -result 0
++
++test ns_nsv-5.2.3 {nsv_get nonexisting key} -setup {
++    nsv_set a k1 v1
++} -body {
++    nsv_get a k2 var
++    info exists var
++} -cleanup {
++    nsv_unset -nocomplain a
++} -result 0
++
++test ns_nsv-5.3.1 {nsv_get existing key} -body {
+     nsv_set a k v
+     nsv_get a k
+ } -cleanup {
+     nsv_unset -nocomplain a
+ } -result v
+ 
++test ns_nsv-5.3.2 {nsv_get existing key} -body {
++    nsv_set a k v
++    nsv_get a k var
++} -cleanup {
++    nsv_unset -nocomplain a
++} -result 1
++
++test ns_nsv-5.3.3 {nsv_get existing key} -body {
++    nsv_set a k 100
++    nsv_get a k var
++    set var
++} -cleanup {
++    nsv_unset -nocomplain a
++} -result 100
+ 
+ 
+ test ns_nsv-6.1 {nsv_exists nonexisting key} -body {
