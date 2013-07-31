@@ -89,8 +89,9 @@ do_daemontools_start()
           fi
       else
           # Start named instances only
-          for INSTANCE in $1 ; do
+          for INSTANCE in $* ; do
               if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
+                  log_progress_msg "$INSTANCE"
                   $DAEMONTOOLS_SVC -u $DAEMONTOOLS_SVCDIR/$INSTANCE
               else
                   log_failure_msg "No such instance: $INSTANCE"
@@ -129,7 +130,7 @@ do_start()
           fi
       else
           # Start named instances only
-          for INSTANCE in $1 ; do
+          for INSTANCE in $* ; do
               if [ -e /etc/naviserver/$INSTANCE.tcl ]; then
                   log_progress_msg "$INSTANCE"
                   start_instance
@@ -152,7 +153,7 @@ do_daemontools_stop ()
           done
      else
          # Stop only named instances
-         for INSTANCE in $1 ; do
+         for INSTANCE in $* ; do
              if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
                  log_progress_msg "$INSTANCE"
                  $DAEMONTOOLS_SVC -d $DAEMONTOOLS_SVCDIR/$INSTANCE
@@ -175,7 +176,7 @@ do_daemontools_restart ()
           done
      else
          # Restart only named instances
-         for INSTANCE in $1 ; do
+         for INSTANCE in $* ; do
              if [ -e $DAEMONTOOLS_SVCDIR/$INSTANCE ]; then
                  log_progress_msg "$INSTANCE"
                  $DAEMONTOOLS_SVC -t $DAEMONTOOLS_SVCDIR/$INSTANCE
@@ -201,7 +202,7 @@ do_stop ()
           done
      else
          # Stop only named instances
-         for INSTANCE in $1 ; do
+         for INSTANCE in $* ; do
              if [ -e /var/run/naviserver/$INSTANCE.pid ]; then
                  name=/var/run/naviserver/$INSTANCE.pid
                  log_progress_msg "$INSTANCE"
@@ -216,28 +217,31 @@ do_stop ()
 
 case "$1" in
   start)
+    shift
     if [ "$DAEMONTOOLS" = "yes" ] ; then
-        do_daemontools_start $2
+        do_daemontools_start $*
     else 
-        do_start $2
+        do_start $*
     fi
     ;;
 
   stop)
+    shift
     if [ "$DAEMONTOOLS" = "yes" ] ; then
-        do_daemontools_stop $2
+        do_daemontools_stop $*
     else 
-        do_stop $2
+        do_stop $*
     fi
     ;;
 
   reload|force-reload|restart)
+    shift
     if [ "$DAEMONTOOLS" = "yes" ] ; then
-        do_daemontools_restart $2
+        do_daemontools_restart $*
     else
-        do_stop $2
+        do_stop $*
         sleep 20
-        do_start $2
+        do_start $*
     fi
     ;;
 
