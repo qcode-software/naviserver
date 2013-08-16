@@ -1,0 +1,39 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Fri, 16 Aug 2013 16:38:07 +0100
+Subject: [PATCH] Dont assume ::errorInfo or ::errorCode are always set
+
+---
+ tcl/nstrace.tcl |   18 ++++++++++++++----
+ 1 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/tcl/nstrace.tcl b/tcl/nstrace.tcl
+index 665e1e1..1087298 100644
+--- a/tcl/nstrace.tcl
++++ b/tcl/nstrace.tcl
+@@ -572,11 +572,21 @@ ns_runonce {
+ 
+         proc getentry {store var} {
+             variable epoch
+-            set ei $::errorInfo
+-            set ec $::errorCode
++
++            if {[info exists ::errorInfo]} {set savedErrorInfo $::errorInfo}
++            if {[info exists ::errorCode]} {set savedErrorCode $::errorCode}
++
+             if {[catch {nsv_set nstrace-${store}-${epoch} $var} val]} {
+-                set ::errorInfo $ei
+-                set ::errorCode $ec
++                if {[info exists savedErrorInfo]} {
++                    set ::errorInfo $savedErrorInfo
++                } else {
++                    unset -nocomplain ::errorInfo
++                }
++                if {[info exists savedErrorCode]} {
++                    set ::errorCode $savedErrorCode
++                } else {
++                    unset -nocomplain ::errorCode
++                }
+                 set val ""
+             }
+             return $val
+-- 
