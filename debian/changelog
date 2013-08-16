@@ -1,3 +1,9 @@
+naviserver (4.99.5-5) squeeze; urgency=low
+
+  * Patch to check ::errorInfo exists. Bug fix for init code.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 16 Aug 2013 16:41:07 +0100
+
 naviserver (4.99.5-4) squeeze; urgency=low
 
   * Add patch to reflect upstream v4.99.5 retagging
