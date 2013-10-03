@@ -187,12 +187,12 @@ Ns_SetUniqueCmp(Ns_Set *set, CONST char *key,
                 int (*cmp) (CONST char *s1, CONST char *s2))
 {
     int   i;
-    char *name;
     int   found;
 
     found = 0;
     for (i = 0; i < set->size; ++i) {
-        name = set->fields[i].name;
+        char *name = set->fields[i].name;
+
         if ((key == NULL && name == NULL) ||
             (key != NULL && name != NULL && ((*cmp) (key, name)) == 0)) {
 
@@ -202,6 +202,7 @@ Ns_SetUniqueCmp(Ns_Set *set, CONST char *key,
             found = 1;
         }
     }
+
     return NS_TRUE;
 }
 
@@ -228,15 +229,20 @@ Ns_SetFindCmp(Ns_Set *set, CONST char *key,
               int (*cmp) (CONST char *s1, CONST char *s2))
 {
     int   i;
-    char *name;
-
-    for (i = 0; i < set->size; ++i) {
-        name = set->fields[i].name;
-        if ((unlikely(key == NULL) && unlikely(name == NULL)) ||
-            (likely(key != NULL) && likely(name != NULL) && ((*cmp) (key, name)) == 0)) {
-
-            return i;
-        }
+    
+    if (likely(key != NULL)) {
+	for (i = 0; i < set->size; ++i) {
+	    char *name = set->fields[i].name;
+	    if (likely(name != NULL) && ((*cmp) (key, name)) == 0) {
+		return i;
+	    }
+	}
+    } else {
+	for (i = 0; i < set->size; ++i) {
+	    if (unlikely(set->fields[i].name == NULL)) {
+		return i;
+	    }
+	}
     }
 
     return -1;
@@ -751,10 +757,10 @@ Ns_SetListFree(Ns_Set **sets)
 void
 Ns_SetMerge(Ns_Set *high, Ns_Set *low)
 {
-    int i,j;
+    int i;
 
     for (i = 0; i < low->size; ++i) {
-        j = Ns_SetFind(high, low->fields[i].name);
+        int j = Ns_SetFind(high, low->fields[i].name);
         if (j == -1) {
             Ns_SetPut(high, low->fields[i].name, low->fields[i].value);
         }

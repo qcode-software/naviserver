@@ -59,7 +59,7 @@ NsTclConfigObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
     char       *section, *key;
     CONST char *value;
     Tcl_Obj    *defObj = NULL;
-    int         status, i, isbool = 0, isint = 0, exact = 0;
+    int         status, i, isbool = 0, isint = 0, exact = 0, doSet = 0;
     Tcl_WideInt v, min = LLONG_MIN, max = LLONG_MAX;
 
     Ns_ObjvSpec opts[] = {
@@ -68,6 +68,7 @@ NsTclConfigObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
         {"-min",   Ns_ObjvWideInt,   &min,    NULL},
         {"-max",   Ns_ObjvWideInt,   &max,    NULL},
         {"-exact", Ns_ObjvBool,      &exact,  (void *) NS_TRUE},
+        {"-set",   Ns_ObjvBool,      &doSet,  (void *) NS_TRUE},
         {"--",     Ns_ObjvBreak,     NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -127,6 +128,7 @@ NsTclConfigObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
      */
 
     if (defObj != NULL) {
+
         if (isbool) {
             if (unlikely(Tcl_GetBooleanFromObj(interp, defObj, &i) != TCL_OK)) {
                 return TCL_ERROR;
@@ -141,6 +143,16 @@ NsTclConfigObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
                 return TCL_ERROR;
             }
         }
+
+	if (doSet) {
+	    /* make setting queryable */
+
+	    Ns_Set *set = Ns_ConfigCreateSection(section);
+	    if (set) {
+		Ns_SetUpdate(set, key, Tcl_GetString(defObj));
+	    }
+	}
+
         Tcl_SetObjResult(interp, defObj);
         return TCL_OK;
     }

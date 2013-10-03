@@ -128,7 +128,7 @@ ns_runonce {
         
         # Exported commands
         namespace export unknown
-        
+
         # Initialize nstrace shared state
         if {[nsv_array exists nstrace] == 0} {
             nsv_set nstrace lastepoch $epoch
@@ -460,10 +460,12 @@ ns_runonce {
 
             #
             # Script is output to file mainly for
-            # interactive debugging purposes.
-            #
-
+            # interactive debugging purposes. The first line
+            # gives you always the latest version, the second
+	    # one is useful for debugging e.g. ns_eval.
+	  
 	    #if {1} {_savescript /tmp/__ns_blueprint.tcl $script}
+	    #if {1} {_savescript /tmp/__ns_blueprint[clock format [clock seconds] -format %d-%b-%Y-%H:%M:%S].tcl $script}
 
             if {$file ne ""} {
                 _savescript $file $script
@@ -572,11 +574,21 @@ ns_runonce {
 
         proc getentry {store var} {
             variable epoch
-            set ei $::errorInfo
-            set ec $::errorCode
+	    
+	    if {[info exists ::errorInfo]} {set savedErrorInfo $::errorInfo}
+	    if {[info exists ::errorCode]} {set savedErrorCode $::errorCode}
+
             if {[catch {nsv_set nstrace-${store}-${epoch} $var} val]} {
-                set ::errorInfo $ei
-                set ::errorCode $ec
+		if {[info exists savedErrorInfo]} {
+		    set ::errorInfo $savedErrorInfo
+		} else {
+		    unset -nocomplain ::errorInfo
+		}
+		if {[info exists savedErrorCode]} {
+		    set ::errorCode $savedErrorCode
+		} else {
+		    unset -nocomplain ::errorCode
+		}
                 set val ""
             }
             return $val
@@ -633,9 +645,38 @@ ns_runonce {
             variable nsplist
             lappend nsplist $top
             foreach nsp [namespace children $top] {
+		#if {$nsp eq "::tcl"} {continue}
                 _namespaces $nsp
             }
         }
+
+	#
+	# helper proc for ensembles
+	# reconfigures rather than recreates existing ensembles
+	# to prevent loss of bytecoding
+	# 
+
+	proc _create_or_config_ensemble {cmd cfg} {
+	    if {[info command $cmd] eq $cmd && [namespace ensemble exists $cmd]} {
+	       uplevel 1 [list ::namespace ensemble configure $cmd {*}$cfg]
+	    } else {
+	       uplevel 1 [list ::namespace ensemble create -command $cmd {*}$cfg]
+	    }
+	}
+
+	#
+	# helper proc for ensemble serialization
+	# 
+
+	proc _getensemble {cmd} {
+	    if {[namespace ensemble exists $cmd]} {
+		set _cfg [namespace ensemble configure $cmd]
+		set _enns [dict get $_cfg -namespace]
+		dict unset _cfg -namespace
+		set _encmd [list ::nstrace::_create_or_config_ensemble $cmd $_cfg]
+		return [list namespace eval $_enns $_encmd]\n
+	    }
+	}
 
         #
         # Generates scipts to re-generate namespace definition.
@@ -686,12 +727,21 @@ ns_runonce {
                     append script [_procscript $pn]
                 }
             }
+
+            # Add aliases
+            foreach cmd [interp aliases {}] {
+		if {[namespace qualifiers $cmd] eq $nsp} {
+                    append script "interp alias {} $cmd {} [interp alias {} $cmd]" \n
+                }
+            }    
+
             foreach cn [info commands ${nsp}::*] {
                 set orig [namespace origin $cn]
                 if {[info procs $cn] eq {} &&
                     $orig ne [namespace which -command $cn]} {
                     append import "namespace import -force [list $orig]" \n
                 }
+		append import [_getensemble $cn]
             }
             foreach ex [namespace eval $nsp [list namespace export]] {
                 append script "namespace export [list $ex]" \n

@@ -161,7 +161,7 @@ char *
 Ns_NormalizePath(Ns_DString *dsPtr, CONST char *path)
 {
     char end;
-    register char *src, *part, *slash;
+    register char *src, *slash;
     Ns_DString tmp;
 
     Ns_DStringInit(&tmp);
@@ -184,7 +184,7 @@ Ns_NormalizePath(Ns_DString *dsPtr, CONST char *path)
         ++src;
     }
     do {
-        part = src;
+	register char *part = src;
 
         /*
          * Move to next slash
@@ -698,6 +698,11 @@ NsTclModulePathObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
     module = objc > 2 ? Tcl_GetString(objv[2]) : NULL;
+    /* 
+     * cppcheck complains about potential compatibility problem, when
+     * NULL is specified in last arg, cpp complains, if not. Let's
+     * trust gcc and proven code.
+     */
     Ns_ModulePath(&ds, Tcl_GetString(objv[1]), module, NULL);
     for (i = 3; i < objc; ++i) {
         Ns_MakePath(&ds, Tcl_GetString(objv[i]), NULL);

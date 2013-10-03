@@ -131,9 +131,10 @@ NsTclNsvGetObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 {
     Array         *arrayPtr;
     Tcl_HashEntry *hPtr;
+    Tcl_Obj       *resultObj;
 
-    if (unlikely(objc != 3)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "array key");
+    if (unlikely(objc < 3 || objc > 4)) {
+        Tcl_WrongNumArgs(interp, 1, objv, "array key ?varName?");
         return TCL_ERROR;
     }
     if (unlikely((arrayPtr = LockArrayObj(interp, objv[1], 0)) == NULL)) {
@@ -141,16 +142,24 @@ NsTclNsvGetObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
     }
 
     hPtr = Tcl_FindHashEntry(&arrayPtr->vars, Tcl_GetString(objv[2]));
-    if (likely(hPtr != NULL)) {
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
-    }
+    resultObj = likely(hPtr != NULL) ? Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1) : NULL;
     UnlockArray(arrayPtr);
 
-    if (unlikely(hPtr == NULL)) {
-        Tcl_AppendResult(interp, "no such key: ",
-                         Tcl_GetString(objv[2]), NULL);
-        return TCL_ERROR;
+    if (objc == 3) {
+	if (resultObj) {
+	    Tcl_SetObjResult(interp, resultObj);
+	} else {
+	    Tcl_AppendResult(interp, "no such key: ",
+			     Tcl_GetString(objv[2]), NULL);
+	    return TCL_ERROR;
+	}
+    } else {
+	Tcl_SetObjResult(interp, Tcl_NewIntObj(resultObj != NULL));
+	if (resultObj) {
+	    Tcl_ObjSetVar2(interp, objv[3], NULL, resultObj, 0);
+	}
     }
+
     return TCL_OK;
 }
 
@@ -469,7 +478,6 @@ NsTclNsvNamesObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv
 {
     NsInterp       *itPtr = arg;
     NsServer       *servPtr = itPtr->servPtr;
-    Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
     Tcl_Obj        *result;
     Bucket         *bucketPtr;
@@ -488,6 +496,8 @@ NsTclNsvNamesObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv
 
     result = Tcl_GetObjResult(interp);
     for (i = 0; i < servPtr->nsv.nbuckets; i++) {
+        Tcl_HashEntry  *hPtr;
+
         bucketPtr = &servPtr->nsv.buckets[i];
         Ns_MutexLock(&bucketPtr->lock);
         hPtr = Tcl_FirstHashEntry(&bucketPtr->arrays, &search);
@@ -526,9 +536,7 @@ int
 NsTclNsvArrayObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 {
     Array          *arrayPtr;
-    Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
-    char           *pattern, *key, *value;
     int             i, opt, lobjc, size;
     Tcl_Obj       **lobjv;
 
@@ -571,7 +579,7 @@ NsTclNsvArrayObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv
             Flush(arrayPtr);
         }
         for (i = 0; i < lobjc; i += 2) {
-            value = Tcl_GetStringFromObj(lobjv[i+1], &size);
+            char *value = Tcl_GetStringFromObj(lobjv[i+1], &size);
             SetVar(arrayPtr, Tcl_GetString(lobjv[i]), value, size);
         }
         UnlockArray(arrayPtr);
@@ -606,10 +614,12 @@ NsTclNsvArrayObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv
         arrayPtr = LockArrayObj(interp, objv[2], 0);
         Tcl_ResetResult(interp);
         if (arrayPtr != NULL) {
-            pattern = (objc > 3) ? Tcl_GetString(objv[3]) : NULL;
-            hPtr = Tcl_FirstHashEntry(&arrayPtr->vars, &search);
+	    Tcl_HashEntry  *hPtr    = Tcl_FirstHashEntry(&arrayPtr->vars, &search);
+	    char           *pattern = (objc > 3) ? Tcl_GetString(objv[3]) : NULL;
+
             while (hPtr != NULL) {
-                key = Tcl_GetHashKey(&arrayPtr->vars, hPtr);
+                char *key = Tcl_GetHashKey(&arrayPtr->vars, hPtr);
+
                 if (pattern == NULL || Tcl_StringMatch(key, pattern)) {
                     Tcl_AppendElement(interp, key);
                     if (opt == CGetIdx) {

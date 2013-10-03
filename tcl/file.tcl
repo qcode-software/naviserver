@@ -39,17 +39,16 @@
 #
 
 set path ns/server/[ns_info server]
-set on [ns_config -bool $path enabletclpages off]
-ns_log notice "conf: \[$path\]enabletclpages = $on"
+set on [ns_config -set -bool $path enabletclpages off]
+ns_log notice "conf: \[$path\] enabletclpages = $on"
 
 if {$on} {
     ns_log notice "tcl: enabling .tcl pages"
-    nsv_set ns:tclfile errorpage [ns_config "${path}/tcl" errorpage]
+    nsv_set ns:tclfile errorpage [ns_config -set "${path}/tcl" errorpage]
     ns_register_proc GET  /*.tcl ns_sourceproc
     ns_register_proc POST /*.tcl ns_sourceproc
     ns_register_proc HEAD /*.tcl ns_sourceproc
 }
-
 
 #
 # ns_tcl_abort --
