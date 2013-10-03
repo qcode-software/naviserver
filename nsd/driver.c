@@ -222,7 +222,7 @@ int
 Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
 {
     char           *path,*address, *host, *bindaddr, *defproto, *defserver;
-    int             i, n, defport;
+    int             i, n, defport, noHostNameGiven;
     ServerMap      *mapPtr;
     Ns_DString      ds;
     struct in_addr  ia;
@@ -231,6 +231,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
     DrvWriter      *wrPtr;
     DrvSpooler     *spPtr;
     NsServer       *servPtr = NULL;
+    Ns_Set         *set;
 
     if (server != NULL && (servPtr = NsGetServer(server)) == NULL) {
         return NS_ERROR;
@@ -243,6 +244,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
     }
 
     path = (init->path ? init->path : Ns_ConfigGetPath(server, module, NULL));
+    set = Ns_ConfigCreateSection(path);
 
     /*
      * Determine the hostname used for the local address to bind
@@ -250,6 +252,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
      */
 
     host = Ns_ConfigGetValue(path, "hostname");
+    noHostNameGiven = (host == NULL);
     bindaddr = address = Ns_ConfigGetValue(path, "address");
     defserver = Ns_ConfigGetValue(path, "defaultserver");
 
@@ -281,18 +284,21 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
          */
 
         if (he == NULL || he->h_name == NULL) {
-            Ns_Log(Error, "%s: could not resolve %s", module,
-                   host ? host : Ns_InfoHostname());
+            Ns_Log(Error, "%s: could not resolve %s", module, 
+		   host ? host : Ns_InfoHostname());
             return NS_ERROR;
         }
         if (*(he->h_addr_list) == NULL) {
-            Ns_Log(Error, "%s: no addresses for %s", module,
-                   he->h_name);
+            Ns_Log(Error, "%s: no addresses for %s", module, he->h_name);
             return NS_ERROR;
         }
 
         memcpy(&ia.s_addr, he->h_addr_list[0], sizeof(ia.s_addr));
         address = ns_inet_ntoa(ia);
+
+	if (address && path) {
+	    Ns_SetUpdate(set, "address", address);
+	}
 
         /*
          * Finally, if no hostname was specified, set it to the hostname
@@ -311,6 +317,10 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
 
     if (host == NULL) {
         host = address;
+    }
+
+    if (noHostNameGiven && host && path) {
+	Ns_SetUpdate(set, "hostname", host);
     }
 
     /*
@@ -338,8 +348,9 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
     }
 
     drvPtr->server       = server;
-    drvPtr->name         = init->name;
-    drvPtr->module       = module;
+    drvPtr->module       = ns_strdup(module);
+    /*drvPtr->name         = init->name;*/
+    drvPtr->name         = drvPtr->module;
     drvPtr->listenProc   = init->listenProc;
     drvPtr->acceptProc   = init->acceptProc;
     drvPtr->recvProc     = init->recvProc;
@@ -398,11 +409,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
     drvPtr->acceptsize   = Ns_ConfigIntRange(path, "acceptsize",
                                              drvPtr->backlog, 1, INT_MAX);
 
-    /* Apparently not used; should be removed or filled with life
-    drvPtr->keepallmethods = Ns_ConfigBool(path, "keepallmethods", NS_FALSE);
-    */
-
-    drvPtr->uploadpath = ns_strdup(Ns_ConfigString(path, "uploadpath", P_tmpdir));
+    drvPtr->uploadpath = ns_strdup(Ns_ConfigString(path, "uploadpath", nsconf.tmpDir));
 
     /*
      * Determine the port and then set the HTTP location string either
@@ -499,6 +506,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
         defMapPtr = NULL;
         path = Ns_ConfigGetPath(NULL, module, "servers", NULL);
         set  = Ns_ConfigGetSection(path);
+        Ns_DStringInit(&ds);
         for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
             server  = Ns_SetKey(set, i);
             host    = Ns_SetValue(set, i);
@@ -522,6 +530,8 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
                 }
             }
         }
+        Ns_DStringFree(&ds);
+
         if (defMapPtr == NULL) {
             Ns_Fatal("%s: default server %s not defined in %s",
                      module, server, path);
@@ -688,8 +698,6 @@ NsWaitDriversShutdown(Ns_Time *toPtr)
     int status = NS_OK;
 
     while (drvPtr != NULL) {
-	char buffer[1024];
-	memcpy(buffer, drvPtr->module, strnlen(drvPtr->module, 1024));
         Ns_MutexLock(&drvPtr->lock);
         while (!(drvPtr->flags & DRIVER_STOPPED) && status == NS_OK) {
             status = Ns_CondTimedWait(&drvPtr->cond, &drvPtr->lock, toPtr);
@@ -698,7 +706,7 @@ NsWaitDriversShutdown(Ns_Time *toPtr)
         if (status != NS_OK) {
             Ns_Log(Warning, "[driver:%s]: shutdown timeout", drvPtr->module);
         } else {
-            Ns_Log(Notice, "[driver:%s]: stopped", buffer);
+            Ns_Log(Notice, "[driver:%s]: stopped", drvPtr->module);
             Ns_ThreadJoin(&drvPtr->thread, NULL);
             drvPtr->thread = NULL;
         }
@@ -1086,7 +1094,7 @@ DriverThread(void *arg)
     Driver        *drvPtr = (Driver*)arg;
     Ns_Time        now, diff;
     char          *errstr, c, drain[1024];
-    int            n, flags, stopping, pollto, accepted;
+    int            flags, stopping, pollto, accepted;
     Sock          *sockPtr, *closePtr, *nextPtr, *waitPtr, *readPtr;
     PollData       pdata;
 
@@ -1120,6 +1128,7 @@ DriverThread(void *arg)
     stopping = (flags & DRIVER_SHUTDOWN);
 
     while (!stopping) {
+	int n;
 
         /*
          * Set the bits for all active drivers if a connection
@@ -2034,13 +2043,14 @@ static int
 ChunkedDecode(Request *reqPtr, int update)
 {
     Tcl_DString *bufPtr = &reqPtr->buffer;
-    long chunk_length;
     char 
       *end = bufPtr->string + bufPtr->length, 
       *chunkStart = bufPtr->string + reqPtr->chunkStartOff;
 
     while (reqPtr->chunkStartOff <  bufPtr->length) {
       char *p = strstr(chunkStart, "\r\n");
+      long chunk_length;
+
       if (!p) {
         Ns_Log(DriverDebug, "ChunkedDecode: chunk did not find end-of-line");
         return -1;
@@ -2291,8 +2301,7 @@ SockParse(Sock *sockPtr, int spooler)
 {
     Request      *reqPtr;
     Tcl_DString  *bufPtr;
-    char         *s, *e, save;
-    int           cnt;
+    char          save;
     Driver       *drvPtr = sockPtr->drvPtr;
 
     NsUpdateProgress((Ns_Sock *) sockPtr);
@@ -2305,6 +2314,8 @@ SockParse(Sock *sockPtr, int spooler)
      */
 
     while (reqPtr->coff == 0) {
+	char *s, *e;
+	int cnt;
 
         /*
          * Find the next line.
@@ -2447,17 +2458,28 @@ SockParse(Sock *sockPtr, int spooler)
                 }
 
             }
+	    
+	    /*
+	     * Clear NS_CONN_ZIPACCEPTED flag
+	     */
+	    sockPtr->flags &= ~(NS_CONN_ZIPACCEPTED);
 
 	    s = Ns_SetIGet(reqPtr->headers, "Accept-Encoding");
 	    if (s != NULL) {
 		/* get gzip from accept-encoding header */
 		gzip = NsParseAcceptEnconding(reqPtr->request.version, s);
 	    } else {
-		/* no accept-encoding header; make gzip default in HTTP/1.1 */
-		gzip = (reqPtr->request.version >= 1.1);
+		/* no accept-encoding header; don't allow gzip */
+		gzip = 0;
 	    }
 	    if (gzip) {
-		sockPtr->flags |= NS_CONN_ZIPACCEPTED;
+		/*
+		 * Don't allow gzip results for Range requests.
+		 */
+		s = Ns_SetIGet(reqPtr->headers, "Range");
+		if (s == NULL) {
+		    sockPtr->flags |= NS_CONN_ZIPACCEPTED;
+		}
 	    }
 
         } else {
@@ -2585,7 +2607,10 @@ SockParse(Sock *sockPtr, int spooler)
 	     * always into the mmapped area. Might lead to crashes
 	     * when we hitting page boundaries.
 	     */
-	    write(sockPtr->tfd, "\0", 1); 
+	    int result = write(sockPtr->tfd, "\0", 1); 
+	    if (result == -1) {
+		Ns_Log(Error, "socket: could not append terminating 0-byte");
+	    }
             sockPtr->tsize = reqPtr->length + 1;
             sockPtr->taddr = mmap(0, sockPtr->tsize, prot, MAP_PRIVATE,
                                   sockPtr->tfd, 0);
@@ -2894,9 +2919,9 @@ SpoolerQueueStart(SpoolerQueue *queuePtr, Ns_ThreadProc *proc)
 static void
 SpoolerQueueStop(SpoolerQueue *queuePtr, Ns_Time *timeoutPtr, CONST char *name)
 {
-    int status;
-
     while (queuePtr != NULL) {
+	int status;
+
         Ns_MutexLock(&queuePtr->lock);
         if (!queuePtr->stopped && !queuePtr->shutdown) {
             Ns_Log(Debug, "%s%d: triggering shutdown", name, queuePtr->id);
@@ -3629,7 +3654,7 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
     DrvWriter     *wrPtr;
     int            trigger = 0, headerSize;
 
-    if (conn == NULL) {
+    if (conn == NULL || connPtr->sockPtr == NULL) {
         return NS_ERROR;
     }
 
@@ -3693,10 +3718,10 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
 	 * output (iovec bufs). Write the content to the spool file.
 	 */
 	{
-	    int i, j;
+	    int i;
 	    assert(bufs != NULL);
 	    for (i = 0; i < nbufs; i++) {
-		j = write(connPtr->fd, bufs[i].iov_base, bufs[i].iov_len);
+		int j = write(connPtr->fd, bufs[i].iov_base, bufs[i].iov_len);
 		wrote += j;
 		Ns_Log(Debug, "NsWriterQueue: fd %d [%d] spooled %d of %" PRIdz " OK %d", 
 		       connPtr->fd, i, j, bufs[i].iov_len, j == bufs[i].iov_len);
@@ -4369,10 +4394,13 @@ NsAsyncWrite(int fd, char *buffer, size_t nbyte)
 
     /*
      * If the async writer has not started or is deactivated, behave
-     * like a write() command.
+     * like a write() command. If the write() fails, we can't do much,
+     * since writing of an error message to the log might bring us
+     * into an infinte loop.
      */
     if (asyncWriter == NULL || asyncWriter->firstPtr->stopped) {
-	write(fd, buffer, nbyte);
+        int unused NS_GNUC_UNUSED =
+	  write(fd, buffer, nbyte);
         return NS_ERROR;
     }
 
@@ -4523,12 +4551,14 @@ AsyncWriterThread(void *arg)
 		 * Drain the queue from everything
 		 */
 		for (curPtr = writePtr; curPtr;  curPtr = curPtr->nextPtr) {
-		    write(curPtr->fd, curPtr->buf, curPtr->bufsize);
+		    int unused NS_GNUC_UNUSED = 
+		      write(curPtr->fd, curPtr->buf, curPtr->bufsize);
 		}
 		writePtr = NULL;
 
 		for (curPtr = queuePtr->sockPtr; curPtr;  curPtr = curPtr->nextPtr) {
-		    write(curPtr->fd, curPtr->buf, curPtr->bufsize);
+		    int unused NS_GNUC_UNUSED = 
+		      write(curPtr->fd, curPtr->buf, curPtr->bufsize);
 		}
 		queuePtr->sockPtr = NULL;
 
@@ -4598,6 +4628,7 @@ AsyncWriterThread(void *arg)
 	    curPtr = queuePtr->sockPtr;
 	    assert(writePtr == NULL);
 	    while (curPtr != NULL) {
+	      int unused NS_GNUC_UNUSED = 
 		write(curPtr->fd, curPtr->buf, curPtr->bufsize);
 		curPtr = curPtr->nextPtr;
 	    }

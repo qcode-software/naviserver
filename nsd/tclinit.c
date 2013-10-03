@@ -159,9 +159,11 @@ ConfigServerTcl(CONST char *server)
     Ns_DString  ds;
     CONST char *path, *p;
     int         n;
+    Ns_Set     *set;
 
     servPtr = NsGetServer(server);
     path = Ns_ConfigGetPath(server, NULL, "tcl", NULL);
+    set = Ns_ConfigCreateSection(path);
 
     Ns_DStringInit(&ds);
 
@@ -169,12 +171,14 @@ ConfigServerTcl(CONST char *server)
     if (!Ns_PathIsAbsolute(servPtr->tcl.library)) {
         Ns_HomePath(&ds, servPtr->tcl.library, NULL);
         servPtr->tcl.library = Ns_DStringExport(&ds);
+	Ns_SetUpdate(set, "library", servPtr->tcl.library);
     }
 
     servPtr->tcl.initfile = (char *) Ns_ConfigString(path, "initfile", "bin/init.tcl");
     if (!Ns_PathIsAbsolute(servPtr->tcl.initfile) ) {
         Ns_HomePath(&ds, servPtr->tcl.initfile, NULL);
         servPtr->tcl.initfile = Ns_DStringExport(&ds);
+	Ns_SetUpdate(set, "initfile", servPtr->tcl.initfile);
     }
 
     servPtr->tcl.modules = Tcl_NewObj();
@@ -1837,10 +1841,11 @@ DeleteInterps(void *arg)
     Tcl_HashTable  *tablePtr = arg;
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
-    NsInterp       *itPtr;
  
     hPtr = Tcl_FirstHashEntry(tablePtr, &search);
     while (hPtr != NULL) {
+        NsInterp  *itPtr;
+
         if ((itPtr = Tcl_GetHashValue(hPtr)) != NULL) {
 	    if (itPtr->interp) {
 	        Ns_TclDestroyInterp(itPtr->interp);

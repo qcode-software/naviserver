@@ -70,9 +70,11 @@ static Ns_ServerInitProc ConfigServerFastpath;
  * Local variables defined in this file.
  */
 
-static Ns_Cache *cache = NULL;  /* Global cache of pages for all virtual servers.     */
-static int       maxentry;      /* Maximum size of an individual entry in the cache.  */
-static int       usemmap;       /* Use the mmap() system call to read data from disk. */
+static Ns_Cache   *cache = NULL;   /* Global cache of pages for all virtual servers.     */
+static int         maxentry;       /* Maximum size of an individual entry in the cache.  */
+static int         usemmap;        /* Use the mmap() system call to read data from disk. */
+static int         useGzip;        /* Use gzip delivery if possible                      */
+static int         useGzipRefresh; /* Update outdated gzip files automatically via ::ns_gzipfile */
 
 
 
@@ -99,6 +101,8 @@ NsConfigFastpath()
 
     path    = Ns_ConfigGetPath(NULL, NULL, "fastpath", NULL);
     usemmap = Ns_ConfigBool(path, "mmap", NS_FALSE);
+    useGzip = Ns_ConfigBool(path, "gzip_static", NS_FALSE);
+    useGzipRefresh = Ns_ConfigBool(path, "gzip_refresh", NS_FALSE);
 
     if (Ns_ConfigBool(path, "cache", NS_FALSE)) {
         cache = Ns_CacheCreateSz("ns:fastpath", TCL_STRING_KEYS,
@@ -362,6 +366,44 @@ Ns_PageRoot(CONST char *server)
 /*
  *----------------------------------------------------------------------
  *
+ * GzipFile --
+ *
+ *      Compress an external file with the command configured via
+ *      "gzip_cmd". We use the external program instead of in-memory
+ *      gzip-ing to avoid memory boats on large source files.
+ *
+ * Results:
+ *      Tcl Result Code
+ *
+ * Side effects:
+ *      Gzip-ed file in the same directory.
+ *      When gzip fails, the command writes a warning to the error.log.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+GzipFile(Tcl_Interp *interp, CONST char *fileName, CONST char *gzFileName) 
+{
+    int result;
+    Tcl_DString ds, *dsPtr = &ds;
+
+    Tcl_DStringInit(dsPtr);
+    Tcl_DStringAppend(dsPtr, "::ns_gzipfile ", 13);
+    Tcl_DStringAppendElement(dsPtr, fileName);
+    Tcl_DStringAppendElement(dsPtr, gzFileName);
+    result = Tcl_EvalEx(interp, Tcl_DStringValue(dsPtr), Tcl_DStringLength(dsPtr), 0);
+    if (result != TCL_OK) {
+	Ns_Log(Warning, "ns_gzipfile returned: %s ", Tcl_GetString(Tcl_GetObjResult(interp)));
+    }
+    Tcl_DStringFree(dsPtr);
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
  * FastReturn --
  *
  *      Return file contents, possibly from cache.
@@ -380,6 +422,7 @@ FastReturn(Ns_Conn *conn, int status, CONST char *type, CONST char *file)
 {
     Conn        *connPtr = (Conn *) conn;
     int         isNew, fd, result = NS_ERROR;
+    Tcl_DString ds, *dsPtr = &ds;
 
     /*
      * Determine the mime type if not given.
@@ -413,6 +456,51 @@ FastReturn(Ns_Conn *conn, int status, CONST char *type, CONST char *file)
         return Ns_ConnReturnData(conn, status, "", 0, type);
     }
 
+	
+    Tcl_DStringInit(dsPtr);
+    
+    /*
+     * Check gzip version
+     */
+    if (useGzip && connPtr->flags & NS_CONN_ZIPACCEPTED) {
+	struct stat gzStat;
+	char *gzFile;
+
+	Tcl_DStringAppend(dsPtr, file, -1);
+	Tcl_DStringAppend(dsPtr, ".gz", 3);
+	gzFile = Tcl_DStringValue(dsPtr);
+
+	if (FastStat(gzFile, &gzStat)) {
+	    Ns_ConnCondSetHeaders(conn, "Vary", "Accept-Encoding");
+
+	    /*
+	     * We have a .gz file
+	     */
+	    if (gzStat.st_mtime < connPtr->fileInfo.st_mtime && useGzipRefresh) {
+		/*
+		 * The modification time of the .gz file is older than
+		 * the modification time of the source, and the config
+		 * file indicates the we have to try to refresh the
+		 * gzip file (rezip the source).
+		 */
+		GzipFile(Ns_GetConnInterp(conn), file, gzFile);
+		FastStat(gzFile, &gzStat);
+	    }
+	    if (gzStat.st_mtime >= connPtr->fileInfo.st_mtime) {
+		/*
+		 * The modification time of the .gz file is newer or
+		 * equal, so use it for delivery.
+		 */
+		connPtr->fileInfo = gzStat;
+		file = gzFile;
+		Ns_ConnCondSetHeaders(conn, "Content-Encoding", "gzip");
+	    } else {
+		Ns_Log(Warning, "gzip: the gzip file %s is older than the uncompressed file", 
+		       gzFile);
+	    }
+	}
+    }
+    
     /*
      * Depending on the size of the content and state of the fastpath cache,
      * either return the data directly, or cache it first and return the
@@ -530,10 +618,12 @@ FastReturn(Ns_Conn *conn, int status, CONST char *type, CONST char *file)
         }
     }
 
+    Ns_DStringFree(dsPtr);
     return result;
 
  notfound:
 
+    Ns_DStringFree(dsPtr);
     return Ns_ConnReturnNotFound(conn);
 }
 
@@ -653,7 +743,7 @@ FreeEntry(void *arg)
 /*
  *----------------------------------------------------------------------
  *
- * NsTclCacheStatsObjCmds --
+ * NsTclFastPathCacheStatsObjCmd --
  *
  *      Returns stats on a cache. The size and expirey time of each
  *      entry in the cache is also appended if the -contents switch

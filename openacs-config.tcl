@@ -27,11 +27,14 @@ set address		127.0.0.1
 set server		"openacs" 
 set servername		"New OpenACS Installation - Development"
 
-set serverroot		"/var/www/${server}"
+set serverroot		/var/www/${server}
 set logroot		${serverroot}/log/
 
 set homedir		/usr/local/ns
 set bindir		${homedir}/bin
+
+# Are we runnng behind a proxy?
+set proxy_mode		false
 
 #---------------------------------------------------------------------
 # Which database do you want? postgres or oracle
@@ -71,7 +74,7 @@ set max_file_upload_min        5
 #---------------------------------------------------------------------
 # Where are your pages going to live ?
 set pageroot                  ${serverroot}/www 
-set directoryfile             index.tcl,index.adp,index.html,index.htm
+set directoryfile             "index.tcl index.adp index.html index.htm"
 
 #---------------------------------------------------------------------
 # Global server parameters 
@@ -114,24 +117,39 @@ ns_section ns/parameters
 	ns_param	OutputCharset	utf-8   
 	# ns_param	URLCharset	utf-8
 
+	# Running behind proxy? Used by OpenACS...
+	ns_param	ReverseProxyMode	$proxy_mode
+
+
 #---------------------------------------------------------------------
 # Thread library (nsthread) parameters 
 #---------------------------------------------------------------------
 ns_section ns/threads 
 	ns_param	stacksize	[expr {128 * 8192}]
 
-# 
-# MIME types. 
-# 
+#---------------------------------------------------------------------
+# Extra mime types
+#---------------------------------------------------------------------
 ns_section ns/mimetypes
 	#  Note: NaviServer already has an exhaustive list of MIME types:
 	#  see: /usr/local/src/naviserver/nsd/mimetypes.c
 	#  but in case something is missing you can add it here. 
-	ns_param	Default		*/*
-	ns_param	NoExtension	*/*
-	ns_param	.pcd		image/x-photo-cd
-	ns_param	.prc		application/x-pilot
+	#ns_param	Default		*/*
+	#ns_param	NoExtension	*/*
+	#ns_param	.pcd		image/x-photo-cd
+	#ns_param	.prc		application/x-pilot
 
+#---------------------------------------------------------------------
+# Global fastpath parameters
+#---------------------------------------------------------------------
+ns_section      "ns/fastpath"
+    #ns_param        cache               true       ;# default: false
+    #ns_param        cachemaxsize        10240000   ;# default: 1024*10000
+    #ns_param        cachemaxentry       100000     ;# default: 8192
+    #ns_param        mmap                true       ;# default: false
+    #ns_param        gzip_static         true       ;# check for static gzip; default: false
+    #ns_param        gzip_refresh        true       ;# refresh stale .gz files on the fly using ::ns_gzipfile
+    #ns_param        gzip_cmd            "/usr/bin/gzip -9"  ;# use for re-compressing
 
 #---------------------------------------------------------------------
 # 
@@ -150,13 +168,12 @@ ns_section ns/servers
 # Server parameters 
 # 
 ns_section ns/server/${server} 
-	ns_param	directoryfile	$directoryfile
 	#
 	# Scaling and Tuning Options
 	#
 	# ns_param	maxconnections	100	;# 100; number of allocated connection stuctures
 	# ns_param	maxthreads	10	;# 10; maximal number of connection threads
-	# ns_param	minthreads	1	;# 1; minimal number of connection threads
+	ns_param	minthreads	2	;# 1; minimal number of connection threads
 	ns_param	connsperthread	1000	;# 10000; number of connections (requests) handled per thread
 	# ns_param	threadtimeout	120	;# 120; timeout for idle theads
         # ns_param	lowwatermark	10      ;# 10; create additional threads above this queue-full percentage
@@ -285,7 +302,7 @@ ns_section ns/server/${server}/module/nssock
 	# ns_param	uploadpath	/tmp	;# directory for uploads
 	# ns_param	backlog		256	;# 256, backlog for listen operations
 	# ns_param	maxqueuesize	256	;# 1024, maximum size of the queue
-	# ns_param	acceptsize	10	;# value of "backlog", max number of accepted (but unqueued) requests
+	# ns_param	acceptsize	10	;# Maximum number of requests accepted at once.
 	# ns_param	deferaccept     true    ;# false, Performance optimization, may cause recvwait to be ignored
 	# ns_param	bufsize		16384	;# 16384, buffersize
 	# ns_param	readahead	16384	;# value of bufsize, size of readahead for requests
@@ -326,7 +343,7 @@ ns_section ns/server/${server}/module/nslog
 	# ns_param	formattedtime	true	;# true, timestamps formatted or in secs (unix time)
 	# ns_param	logcombined	true	;# true, Log in NSCA Combined Log Format (referer, user-agent)
 	# ns_param	extendedheaders	COOKIE	;# space delimited list of HTTP heads to log per entry
-	# ns_param	checkforproxy	true	;# false, check for proxy header (X-Forwarded-For)
+	ns_param	checkforproxy	$proxy_mode ;# false, check for proxy header (X-Forwarded-For)
 	#
 	#
 	# Control log file rolling

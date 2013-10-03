@@ -98,7 +98,7 @@ typedef struct LogCache {
 
 static int   LogOpen(void);
 static void  LogFlush(LogCache *cachePtr, LogFilter *list, int cnt,
-                      int trunc, int lock);
+                      int trunc, int lock) NS_GNUC_NONNULL(1);
 static char* LogTime(LogCache *cachePtr, Ns_Time *timePtr, int gmt);
 
 static int GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr,
@@ -233,6 +233,7 @@ NsConfigLog(void)
 {
     Ns_DString  ds;
     CONST char *path = NS_CONFIG_PARAMETERS;
+    Ns_Set *set = Ns_ConfigCreateSection(path);
 
     severityConfig[Debug ].enabled = Ns_ConfigBool(path, "logdebug",  NS_FALSE);
     severityConfig[Dev   ].enabled = Ns_ConfigBool(path, "logdev",    NS_FALSE);
@@ -259,6 +260,7 @@ NsConfigLog(void)
             Ns_HomePath(&ds, file, NULL);
         }
         file = Ns_DStringExport(&ds);
+	Ns_SetUpdate(set, "serverlog", file);
     }
 }
 
@@ -784,7 +786,7 @@ int
 NsTclLogCtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
                   Tcl_Obj *CONST objv[])
 {
-    int             count, opt, enabled, i;
+    int             count, opt, i;
     Ns_DString      ds;
     Tcl_Obj        *objPtr;
     Ns_LogSeverity  severity;
@@ -876,6 +878,8 @@ NsTclLogCtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     case CSeverityIdx:
       {
         void *addrPtr;
+	int   enabled;
+
         if (objc != 3 && objc != 4) {
             Tcl_WrongNumArgs(interp, 2, objv, "severity-level ?bool?");
             return TCL_ERROR;
@@ -1109,14 +1113,13 @@ LogOpen(void)
 static void
 LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, int trunc, int locked)
 {
-    int       status, nentry = 0;
-    char     *log;
-    LogEntry *ePtr;
-    LogFilter  *cPtr;
+    int        status, nentry = 0;
+    LogFilter *cPtr;
+    LogEntry  *ePtr = cachePtr->firstEntry;
 
-    ePtr = cachePtr->firstEntry;
     while (ePtr != NULL && cachePtr->currEntry) {
-        log = Ns_DStringValue(&cachePtr->buffer) + ePtr->offset;
+        char *log = Ns_DStringValue(&cachePtr->buffer) + ePtr->offset;
+
         if (locked) {
             Ns_MutexLock(&lock);
         }
