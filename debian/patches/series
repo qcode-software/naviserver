@@ -1,5 +1,3 @@
 0001-add-rpath.patch
 0002-Patch-bitbucket-install.tcl-to-work-here.patch
 0003-Use-ns_server-instead-of-deprecated-ns_info.patch
-0004-0004-updates-from-moved-4.99.5-tag.patch
-0005-Dont-assume-errorInfo-or-errorCode-are-always-set.patch

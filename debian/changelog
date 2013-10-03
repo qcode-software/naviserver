@@ -1,3 +1,9 @@
+naviserver (4.99.6~20131003-1) squeeze; urgency=low
+
+  * Import from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 03 Oct 2013 13:02:06 +0100
+
 naviserver (4.99.5-5) squeeze; urgency=low
 
   * Patch to check ::errorInfo exists. Bug fix for init code.
