@@ -1,0 +1,65 @@
+naviserver (4.99.6~20140108) wheezy; urgency=low
+
+  * Import from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 08 Jan 2014 14:27:39 +0100
+
+naviserver (4.99.5-6) wheezy; urgency=low
+
+  * Wheezy rebuild
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 30 Sep 2013 16:29:49 +0100
+
+naviserver (4.99.5-5) squeeze; urgency=low
+
+  * Patch to check ::errorInfo exists. Bug fix for init code.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 16 Aug 2013 16:41:07 +0100
+
+naviserver (4.99.5-4) squeeze; urgency=low
+
+  * Add patch to reflect upstream v4.99.5 retagging
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 12 Jun 2013 09:22:59 +0100
+
+naviserver (4.99.5-3) squeeze; urgency=low
+
+  * Use default self-signed certificate if nsssl is installed
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 30 May 2013 13:07:39 +0100
+
+naviserver (4.99.5-2) squeeze; urgency=low
+
+  * Updating README.Debian, typo in init script.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 29 May 2013 10:33:00 +0100
+
+naviserver (4.99.5-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 27 May 2013 15:54:52 +0100
+
+naviserver (4.99.4-4) squeeze; urgency=low
+
+  * Leave creation of /var/log/naviserver to the postinst script
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 24 May 2013 14:30:58 +0100
+
+naviserver (4.99.4-3) squeeze; urgency=low
+
+  * Add sample config, binary man pages, init script, defaults file, and postinst script.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 29 Apr 2013 16:47:04 +0100
+
+naviserver (4.99.4-2) squeeze; urgency=low
+
+  * Fixed postinst, moved to stable, fixed debian.substvars.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 09 Apr 2013 10:40:15 +0100
+
+naviserver (4.99.4-1) unstable; urgency=low
+
+  * Initial release 
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 04 Feb 2013 17:06:49 +0000

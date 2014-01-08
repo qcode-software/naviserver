@@ -1,0 +1,38 @@
+Source: naviserver
+Section: web
+Priority: extra
+Maintainer: Qcode Software Ltd <hackers@qcode.co.uk> 
+Build-Depends: debhelper (>= 9), autotools-dev, tcl8.5-dev, zlib1g-dev, mawk, mime-support, quilt (>= 0.46-7~), autoconf, tcllib, help2man
+Standards-Version: 3.9.4
+Homepage: http://wiki.tcl.tk/2090
+
+Package: naviserver
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, debconf (>= 1.2.9), ucf (>= 0.30), logrotate (>= 3.7.8-6), tcl8.5 (>= 8.5.8-2), naviserver-core (= ${binary:Version})
+Description: Programmable web server written in C & Tcl.
+ It offers many features for building custom web sites. The 
+ implementation is high performance, but the interface is easy 
+ to use, at both the C and Tcl level.
+ This package provides the server itself.
+
+Package: naviserver-core
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: naviserver
+Description: Naviserver - core libraries
+ This package provides the basic shared libraries which are needed by
+ the daemon. It does not contain the naviserver daemon, which is in 
+ naviserver.
+
+Package: naviserver-dev
+Section: web
+Architecture: any
+Depends: tcl8.5-dev, zlib1g-dev | libz-dev, ${misc:Depends}, naviserver-core (= ${binary:Version})
+Description: Naviserver - development files
+ It offers many features for building custom web sites. The 
+ implementation is high performance, but the interface is easy 
+ to use, at both the C and Tcl level.
+ This package contains header files and libraries needed to develop
+ applications based on Naviserver.
+
+

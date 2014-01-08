@@ -1,0 +1,3 @@
+usr/sbin/naviserver-nsd usr/lib/naviserver/bin/nsd
+usr/bin/naviserver-nstclsh usr/lib/naviserver/bin/nstclsh
+usr/bin/naviserver-nsproxy usr/lib/naviserver/bin/nsproxy
