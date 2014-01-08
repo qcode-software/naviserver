@@ -1,0 +1,21 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Wed, 8 Jan 2014 15:51:14 +0000
+Subject: Revert dtplite change for now
+
+---
+ Makefile |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index d5f12eb..e276a54 100644
+--- a/Makefile
++++ b/Makefile
+@@ -139,7 +139,7 @@ install-examples:
+ 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/pages/examples/; \
+ 	done
+ 
+-DTPLITE=$(NAVISERVER)/bin/tclsh $(NAVISERVER)/bin/dtplite
++DTPLITE=dtplite
+ 
+ build-doc:
+ 	$(RM) doc/html doc/man doc/tmp

@@ -1,6 +1,6 @@
 From: Qcode Software Ltd <hackers@qcode.co.uk>
 Date: Fri, 3 May 2013 13:09:52 +0100
-Subject: [PATCH] add-rpath
+Subject: add-rpath
 
 Add naviserver lib dir to executable RPATH
 ---
@@ -85,4 +85,3 @@ index 2ab02cc..e4985d5 100644
  
  $(MODOBJS) $(LIBOBJS) $(PGMOBJS): $(HDRS) $(INCDIR)/ns.h $(INCDIR)/nsthread.h
  
--- 
