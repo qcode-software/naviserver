@@ -1,0 +1,165 @@
+[include version_include.man]
+[manpage_begin ns_http n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Simple HTTP client functionality}]
+
+[description]
+
+This command provides a simple HTTP client mechanism.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd "ns_http cancel"] \
+	[arg id]]
+
+Cancel queued http request by id (ns_set id of request).
+
+[call [cmd "ns_http cleanup"]]
+
+Cancel all pending http requests
+
+[call [cmd "ns_http list"]]
+
+Return the list of currently running or pending requests in format:
+id url done|running ....
+
+[call [cmd "ns_http queue"] \
+	[opt [arg {-method M}]] \
+	[opt [arg {-headers S}]] \
+	[opt [arg {-body B}]] \
+	[opt [arg {-timeout T}]] \
+	[arg url] \
+	]
+
+[arg -method]
+use the specified HTTP method such as GET or POST or HEAD
+
+[para]
+[arg -headers]
+headers is the ns_set ID containing the additional headers to include in the HTTP request.
+
+[para]
+[arg -body]
+body is the value which will be sent as the HTTP request body.
+
+[para]
+[arg -timeout]
+Timeout for how long to wait for finishing the request (default
+2:0, secs:microsesc)
+
+[para]
+The command [cmd "ns_http queue"] opens a connection to the web server
+denoted in the [arg url] and returns on success the [arg id] of the HTTP
+request, which might be used later in a [cmd "ns_http wait"] 
+or [cmd "ns_http cancel"] command to refer to this request.
+
+
+[call [cmd "ns_http run"] \
+	[opt [arg {-method M}]] \
+	[opt [arg {-headers S}]] \
+	[opt [arg {-body B}]] \
+	[opt [arg {-timeout T}]] \
+	[arg url] \
+	]
+
+[para] 
+Send a HTTP reuqest and wait for the result.  The command 
+[cmd "ns_http run"] is similar to [cmd "ns_http queue"] followed by 
+[cmd "ns_http wait"].
+
+
+[call [cmd "ns_http wait"] \
+	[opt [arg {-elapsed varName}]] \
+	[opt [arg {-file varName}]] \
+	[opt [arg {-headers H}]] \
+	[opt [arg {-result varName}]] \
+	[opt [arg {-spoolsize int}]] \
+	[opt [arg {-status varName}]] \
+	[opt [arg {-timeout t}]] \
+	[arg id]]
+
+[para]
+[arg -elapsed]
+varName is the name of a variable that should be used to store the elapsed
+time for the request from beginning to finish
+
+[para]
+[arg -file]
+varName is the name of a variable that will contain the name of the 
+temporary file in case the request was larger than [arg -spoolsize]
+
+[para]
+[arg -headers]
+headers is the ns_set ID which will receive the headers from the HTTP response.
+
+[para]
+[arg -result]
+varName is the name of a variable that should be used to store the HTTP response body.
+
+[para]
+[arg -spoolsize]
+In case the result is larger than spoolsize, it will be spooled to a
+temporary file returned in the variable denoted by [arg -file].
+
+[para]
+[arg -status]
+varName is the name of a variable that should be used to store the HTTP response status
+
+[para]
+[arg -timeout]
+Optional additional timeout for the wait command. Might be governed by
+the timeout specified in the queue subcommand.
+
+[para]
+[arg id]
+ns_set ID of the HTTP request to wait for.
+
+[para]
+The command [cmd "ns_http wait"] specifies, how the results of request
+should be delivered and what information should be obtained from the
+request in which form. The command waits until the request is
+finished. For retrieving large content (e.g. .mp4 files) from a
+server, it is recommended to use the [arg -spoolsize] option,
+since per default the results are received into memory.
+
+[list_end]
+
+[section EXAMPLES]
+
+First, a minimal example:
+[example_begin]
+ % ns_http queue http://www.google.com
+ http0
+ % ns_http wait -status S -result R http0
+ 1
+[example_end]
+
+The second example set a larger timeout on the request, provides
+query-headers and returns reply-headers, and spools results to a file,
+when the result is larger than 100 bytes.
+
+[example_begin]
+ set queryHeaders [lb]ns_set create[rb]
+ set replyHeaders [lb]ns_set create[rb]
+ ns_set update $queryHeaders Host localhost
+ 
+ set h [lb]ns_http queue -headers $queryHeaders -timeout 10:0 http://www.google.com[rb]
+ ns_http wait -result R -headers $replyHeaders -status S -spoolsize 1000 -file F $h
+ 
+ if {[lb]info exists F[rb]} {
+   ns_log notice "Spooled [lb]file size $F[rb] bytes to $F"
+   file delete $F
+ } else {
+   ns_log notice "Got [lb]string length $R[rb] bytes"
+ }
+[example_end]
+
+
+[see_also ns_ssl ns_httpget ns_httppost ns_httptime]
+[keywords http-client] 
+
+[manpage_end]
+
