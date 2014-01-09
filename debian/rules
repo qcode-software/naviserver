@@ -13,7 +13,6 @@ PREFIX=/usr/lib/naviserver
 PACKAGE=naviserver
 COREPACKAGE=naviserver-core
 TARGETDIR=$(CURDIR)/debian/tmp
-HELP2MAN=/usr/bin/help2man
 
 override_dh_auto_configure:
 	./autogen.sh --with-tcl=/usr/lib/tcl8.5
@@ -22,9 +21,6 @@ override_dh_auto_configure:
 override_dh_auto_build:
 	$(MAKE)
 	$(MAKE) DTPLITE=dtplite build-doc
-	mkdir $(CURDIR)/debian/man1
-	cp $(CURDIR)/nsd/nsd $(CURDIR)/debian/man1/$(PACKAGE)-nsd
-	$(HELP2MAN) --help-option=-help --name="a high performance web server written in C and Tcl." --version-option=-V --no-discard-stderr --no-info $(CURDIR)/debian/man1/$(PACKAGE)-nsd > $(CURDIR)/debian/man1/$(PACKAGE)-nsd.1
 
 override_dh_auto_install:
 	( cd $(CURDIR) ; $(MAKE) NAVISERVER=$(TARGETDIR) install )
@@ -38,8 +34,6 @@ override_dh_shlibdeps:
 override_dh_auto_clean:
 	rm -f $(CURDIR)/tests/testserver/*.log
 	rm -f $(CURDIR)/tests/testserver/*.pid
-	rm -f $(CURDIR)/debian/man1
-	dh_quilt_unpatch
 	dh_auto_clean
 
 %:
