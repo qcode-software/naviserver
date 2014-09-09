@@ -26,6 +26,7 @@ DESC="naviserver daemon"
 DAEMONTOOLS=no
 DAEMONTOOLS_SVCDIR=/etc/service
 DAEMONTOOLS_SVC=/usr/bin/svc
+RUNDIR=/var/run/naviserver
 
 trap "" 1
 
@@ -46,7 +47,7 @@ fi
 
 # /var/run could be on a tmpfs
 
-[ ! -d $RUNDIR ] && mkdir -p -m 755 $RUNDIR
+[ ! -d $RUNDIR ] && mkdir -p -m 755 $RUNDIR && chown $USER:$GROUP $RUNDIR
 
 start_instance()
 {
