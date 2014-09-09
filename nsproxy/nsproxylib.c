@@ -246,7 +246,7 @@ static void   SetOpt(char *str, char **optPtr);
 static void   ReaperThread(void *ignored);
 static void   CloseSlave(Slave *slavePtr, int ms);
 static void   ReapProxies(void);
-static void   Kill(int pid, int sig);
+static void   Kill(pid_t pid, int sig);
 static int    GetTimeDiff(Ns_Time *tsPtr);
 
 static void   AppendStr(Tcl_Interp *interp, CONST char *flag, char *val);
@@ -357,8 +357,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
 {
     Tcl_Interp  *interp;
     Slave         proc;
-    Req         *reqPtr;
-    int          result, len, n, max = 0;
+    int          result, n, max = 0;
     Tcl_DString  in, out;
     char        *script, *active, *dots;
     char        *uarg = NULL, *user = NULL, *group = NULL;
@@ -469,6 +468,9 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     Tcl_DStringInit(&out);
 
     while (RecvBuf(&proc, -1, &in)) {
+        Req *reqPtr;
+	int  len;
+
         if (Tcl_DStringLength(&in) < sizeof(Req)) {
             break;
         }
@@ -568,7 +570,6 @@ Shutdown(Ns_Time *toutPtr, void *arg)
 {
     Pool           *poolPtr;
     Proxy          *proxyPtr, *tmpPtr;
-    Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
     int             reap, status;
 
@@ -581,6 +582,8 @@ Shutdown(Ns_Time *toutPtr, void *arg)
      */
 
     if (toutPtr == NULL) {
+        Tcl_HashEntry *hPtr;
+      
         Ns_MutexLock(&plock);
         hPtr = Tcl_FirstHashEntry(&pools, &search);
         while (hPtr != NULL) {
@@ -759,7 +762,8 @@ ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
     Pool  *poolPtr = proxyPtr->poolPtr;
     char  *argv[5], active[100];
     Slave *slavePtr;
-    int    rpipe[2], wpipe[2], pid, len;
+    int    rpipe[2], wpipe[2], len;
+    pid_t  pid;
 
     len = sizeof(active) - 1;
     memset(active, ' ', len);
@@ -808,7 +812,7 @@ ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
 
     SetExpire(slavePtr, proxyPtr->conf.tidle);
 
-    Ns_Log(Debug, "nsproxy: slave %d started", (int) slavePtr->pid);
+    Ns_Log(Debug, "nsproxy: slave %ld started", (long) slavePtr->pid);
 
     return slavePtr;
 }
@@ -2061,7 +2065,7 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
 {
     Proxy   *proxyPtr;
     Err      err;
-    int      i, status = NS_OK;
+    int      status = NS_OK;
     Ns_Time  tout;
 
     if (ms > 0) {
@@ -2095,8 +2099,11 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
         } else if (poolPtr->maxslaves == 0 || poolPtr->maxslaves < nwant) {
             err = ERange;
         } else {
+  	    int i;
+
             poolPtr->nfree -= nwant;
             poolPtr->nused += nwant;
+
             for (i = 0, *proxyPtrPtr = NULL; i < nwant; ++i) {
                 proxyPtr = poolPtr->firstPtr;
                 poolPtr->firstPtr = proxyPtr->nextPtr;
@@ -2141,9 +2148,9 @@ FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr)
     Tcl_DStringGetResult(interp, &ds);
 
     Tcl_DStringStartSublist(&ds);
-    Ns_DStringPrintf(&ds, "handle %s slave %d start %" PRIu64 ":%ld script",
+    Ns_DStringPrintf(&ds, "handle %s slave %ld start %" PRIu64 ":%ld script",
                      proxyPtr->id,
-                     proxyPtr->slavePtr ? proxyPtr->slavePtr->pid : 0,
+                     (long) (proxyPtr->slavePtr ? proxyPtr->slavePtr->pid : 0),
                      (int64_t) proxyPtr->when.sec, proxyPtr->when.usec);
 
     Tcl_DStringAppendElement(&ds, Tcl_DStringValue(&proxyPtr->in) + sizeof(Req));
@@ -2537,10 +2544,10 @@ CloseProxy(Proxy *proxyPtr)
  */
 
 static void
-Kill(int pid, int sig)
+Kill(pid_t pid, int sig)
 {
-    if (kill((pid_t)pid, sig) != 0 && errno != ESRCH) {
-        Ns_Log(Error, "kill(%d, %d) failed: %s", pid, sig, strerror(errno));
+    if (kill(pid, sig) != 0 && errno != ESRCH) {
+        Ns_Log(Error, "kill(%ld, %d) failed: %s", (long)pid, sig, strerror(errno));
     }
 }
 
@@ -2565,11 +2572,10 @@ Kill(int pid, int sig)
 static void
 ReaperThread(void *ignored)
 {
-    Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
     Proxy          *proxyPtr, *prevPtr, *nextPtr;
     Pool           *poolPtr;
-    Slave           *slavePtr, *prevSlavePtr, *tmpSlavePtr;
+    Slave           *slavePtr, *tmpSlavePtr;
     Ns_Time         tout, now, diff;
     int             ms, expire, ntotal;
 
@@ -2582,6 +2588,9 @@ ReaperThread(void *ignored)
     Ns_CondSignal(&pcond); /* Wakeup starter thread */
 
     while (1) {
+        Tcl_HashEntry *hPtr;
+	Slave          *prevSlavePtr;
+
 
         Ns_GetTime(&now);
 
@@ -3049,11 +3058,11 @@ ReleaseHandles(Tcl_Interp *interp, InterpData *idataPtr)
 {
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
-    Proxy          *proxyPtr;
 
     hPtr = Tcl_FirstHashEntry(&idataPtr->ids, &search);
     while (hPtr != NULL) {
-        proxyPtr = (Proxy *)Tcl_GetHashValue(hPtr);
+        Proxy  *proxyPtr = (Proxy *)Tcl_GetHashValue(hPtr);
+
         (void) ReleaseProxy(interp, proxyPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }

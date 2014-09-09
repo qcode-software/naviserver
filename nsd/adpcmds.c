@@ -463,16 +463,17 @@ NsTclAdpParseObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
                     Tcl_Obj **objv)
 {
     NsInterp   *itPtr = arg;
-    int         result, flags, nargs = 0;
+    int         result, savedFlags, nargs = 0;
     char       *resvar = NULL;
-    int         file = 0, safe = 0, string = 0;
-    char       *cwd = NULL, *savecwd = NULL;
+    int         file = 0, safe = 0, string = 0, tcl = 0;
+    char       *cwd = NULL, *savedCwd = NULL;
 
     Ns_ObjvSpec opts[] = {
         {"-cwd",         Ns_ObjvString, &cwd,    NULL},
         {"-file",        Ns_ObjvBool,   &file,   (void *) NS_TRUE},
         {"-safe",        Ns_ObjvBool,   &safe,   (void *) NS_TRUE},
         {"-string",      Ns_ObjvBool,   &string, (void *) NS_TRUE},
+        {"-tcl",         Ns_ObjvBool,   &tcl,    (void *) NS_TRUE},
         {"--",           Ns_ObjvBreak,  NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -491,13 +492,24 @@ NsTclAdpParseObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
       return TCL_ERROR;
     }
 
-    flags = itPtr->adp.flags;
+    savedFlags = itPtr->adp.flags;
+
+    /*
+     * We control the following three flags via parameter for this
+     * function, so clear the values first.
+     */
+    itPtr->adp.flags &= ~(ADP_TCLFILE|ADP_ADPFILE|ADP_SAFE);
+
     if (file) {
 	/* file mode */
-        itPtr->adp.flags |= ADP_TCLFILE;
+        itPtr->adp.flags |= ADP_ADPFILE;
     } else {
 	/* string mode */
-        itPtr->adp.flags &= ~ADP_TCLFILE;
+        //itPtr->adp.flags &= ~ADP_ADPFILE;
+    }
+    if (tcl) {
+        /* tcl script */
+        itPtr->adp.flags |= ADP_TCLFILE;
     }
     if (safe) {
         itPtr->adp.flags |= ADP_SAFE;
@@ -509,7 +521,7 @@ NsTclAdpParseObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
      */
 
     if (cwd != NULL) {
-        savecwd = itPtr->adp.cwd;
+        savedCwd = itPtr->adp.cwd;
         itPtr->adp.cwd = cwd;
     }
     if (file) {
@@ -518,9 +530,9 @@ NsTclAdpParseObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         result = NsAdpEval(arg, objc, objv, resvar);
     }
     if (cwd != NULL) {
-        itPtr->adp.cwd = savecwd;
+        itPtr->adp.cwd = savedCwd;
     }
-    itPtr->adp.flags = flags;
+    itPtr->adp.flags = savedFlags;
 
     return result;
 }

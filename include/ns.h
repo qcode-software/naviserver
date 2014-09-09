@@ -32,7 +32,6 @@
  *
  *      All the public types and function declarations for the core server.
  *
- *	$Header$
  */
 
 #ifndef NS_H
@@ -40,6 +39,10 @@
 
 #include "nsversion.h"
 #include "nsthread.h"
+
+#ifdef HAVE_ZLIB_H
+# include <zlib.h>
+#endif
 
 #ifdef NSD_EXPORTS
 #undef NS_EXTERN
@@ -427,6 +430,7 @@ typedef struct Ns_Driver {
     int      sendwait;      /* send() I/O timeout in seconds */
     int      recvwait;      /* recv() I/O timeout in seconds */
     int      bufsize;       /* Conn bufsize (0 for SSL) */
+    char    *extraHeaders;  /* Extra header fields added for every request */
 } Ns_Driver;
 
 /*
@@ -525,28 +529,7 @@ typedef struct Ns_DriverInitData {
     char                  *path;         /* Path to find port, address, etc. */
 } Ns_DriverInitData;
 
-/*
- * For HTTP tasks (in ns_http and ns_https)
- */
-typedef struct {
-    Ns_Task    *task;
-    NS_SOCKET   sock;
-    int         status;
-    char       *url;
-    char       *error;
-    char       *next;             /* write to client */
-    size_t      len;              /* size of request */
-    int         replyHeaderSize;
-    Ns_Set     *replyHeaders;     /* ns_set for header fields of the reply */
-    int         spoolLimit;       /* spool to file, when this body > this size */
-    int         spoolFd;          /* fd of spool file */
-    char       *spoolFileName;    /* filename of spoolfile */
-    Ns_Mutex    lock;             /* needed for switching modes (spooling to file/memory) */
-    Ns_Time     timeout;
-    Ns_Time     stime;
-    Ns_Time     etime;
-    Tcl_DString ds;
-} Ns_HttpTask;
+
 
 /*
  * MD5 digest implementation
@@ -804,10 +787,6 @@ NS_EXTERN void Ns_ClsSet(Ns_Cls *clsPtr, Ns_Conn *conn, void *data);
  * compress.c:
  */
 
-#ifdef HAVE_ZLIB_H
-# include <zlib.h>
-#endif
-
 typedef struct Ns_CompressStream {
 
 #ifdef HAVE_ZLIB_H
@@ -833,6 +812,54 @@ Ns_CompressBufsGzip(Ns_CompressStream *, struct iovec *bufs, int nbufs, Ns_DStri
 
 NS_EXTERN int
 Ns_CompressGzip(const char *buf, int len, Tcl_DString *outPtr, int level);
+
+
+NS_EXTERN int 
+Ns_InflateInit(Ns_CompressStream *stream) 
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN int
+Ns_InflateBufferInit(Ns_CompressStream *stream, char *in, int inSize) 
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN int
+Ns_InflateBuffer(Ns_CompressStream *stream, char *out, int outSize, int *nrBytes) 
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
+
+NS_EXTERN int
+Ns_InflateEnd(Ns_CompressStream *stream) 
+    NS_GNUC_NONNULL(1);
+
+/*
+ * For HTTP tasks (in ns_http and ns_https)
+ */
+typedef struct {
+    Ns_Task    *task;
+    NS_SOCKET   sock;
+    int         status;
+    char       *url;
+    char       *error;
+    char       *next;             /* write to client */
+    size_t      len;              /* size of request */
+    int         replyHeaderSize;
+    Ns_Set     *replyHeaders;     /* ns_set for header fields of the reply */
+    int         spoolLimit;       /* spool to file, when this body > this size */
+    int         spoolFd;          /* fd of spool file */
+    char       *spoolFileName;    /* filename of spoolfile */
+    Ns_Mutex    lock;             /* needed for switching modes (spooling to file/memory) */
+    int         flags;
+    Ns_CompressStream *compress;
+    Ns_Time     timeout;
+    Ns_Time     stime;
+    Ns_Time     etime;
+    Tcl_DString ds;
+} Ns_HttpTask;
+
+#define NS_HTTP_FLAG_DECOMPRESS    0x0001
+#define NS_HTTP_FLAG_GZIP_ENCODING 0x0002
+#define NS_HTTP_FLAG_GUNZIP        (NS_HTTP_FLAG_DECOMPRESS|NS_HTTP_FLAG_GZIP_ENCODING)
+
+
 
 /*
  * config.c:
@@ -1006,7 +1033,7 @@ NS_EXTERN int
 Ns_ConnPeerPort(Ns_Conn *conn);
 
 NS_EXTERN char *
-Ns_ConnLocation(Ns_Conn *conn) NS_GNUC_DEPRECATED;
+Ns_ConnLocation(Ns_Conn *conn) NS_GNUC_DEPRECATED_FOR(Ns_ConnLocationAppend);
 
 NS_EXTERN char *
 Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest);
@@ -1036,7 +1063,7 @@ NS_EXTERN int
 Ns_SetConnLocationProc(Ns_ConnLocationProc *proc, void *arg);
 
 NS_EXTERN void
-Ns_SetLocationProc(char *server, Ns_LocationProc *proc) NS_GNUC_DEPRECATED;
+Ns_SetLocationProc(char *server, Ns_LocationProc *proc) NS_GNUC_DEPRECATED_FOR(Ns_SetConnLocationProc);
 
 NS_EXTERN Ns_Time *
 Ns_ConnStartTime(Ns_Conn *conn) NS_GNUC_NONNULL(1);
@@ -1166,20 +1193,16 @@ Ns_ConnCopyToChannel(Ns_Conn *conn, size_t ncopy, Tcl_Channel chan)
 
 
 NS_EXTERN int
-Ns_ConnInit(Ns_Conn *connPtr)
-    NS_GNUC_DEPRECATED;
-
-NS_EXTERN int
 Ns_ConnWrite(Ns_Conn *conn, CONST void *buf, size_t towrite)
     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
 
 NS_EXTERN int
 Ns_WriteConn(Ns_Conn *conn, CONST char *buf, size_t towrite)
-    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(Ns_ConnWriteVData);
 
 NS_EXTERN int
 Ns_WriteCharConn(Ns_Conn *conn, CONST char *buf, size_t towrite)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_DEPRECATED;
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_DEPRECATED_FOR(Ns_ConnWriteVChars);
 
 NS_EXTERN int
 Ns_CompleteHeaders(Ns_Conn *conn, Tcl_WideInt length, int flags, Ns_DString *dsPtr)
@@ -1331,7 +1354,7 @@ Ns_ConnReturnFile(Ns_Conn *conn, int status, CONST char *type,
 
 NS_EXTERN CONST char *
 Ns_PageRoot(CONST char *server)
-    NS_GNUC_DEPRECATED;
+    NS_GNUC_DEPRECATED_FOR(Ns_PagePath);
 
 NS_EXTERN int
 Ns_UrlIsFile(CONST char *server, CONST char *url);
@@ -1709,10 +1732,12 @@ Ns_LogTime2(char *timeBuf, int gmt)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN void
-Ns_SetLogFlushProc(Ns_LogFlushProc *procPtr) NS_GNUC_DEPRECATED;
+Ns_SetLogFlushProc(Ns_LogFlushProc *procPtr) 
+    NS_GNUC_DEPRECATED_FOR(Ns_AddLogFilter);
 
 NS_EXTERN void
-Ns_SetNsLogProc(Ns_LogProc *procPtr)  NS_GNUC_DEPRECATED;
+Ns_SetNsLogProc(Ns_LogProc *procPtr)  
+    NS_GNUC_DEPRECATED_FOR(Ns_AddLogFilter);
 
 NS_EXTERN void
 Ns_AddLogFilter(Ns_LogFilter *procPtr, void *arg, Ns_Callback *freePtr);
@@ -1850,7 +1875,7 @@ Ns_GetFileEncoding(CONST char *file)
 
 NS_EXTERN Tcl_Encoding
 Ns_GetEncoding(CONST char *name)
-    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(Ns_GetCharsetEncodingEx);
 
 
 /*
@@ -2463,7 +2488,8 @@ Ns_SockSendBufs(Ns_Sock *sockPtr, struct iovec *bufs, int nbufs,
 		Ns_Time *timeoutPtr, int flags);
 
 NS_EXTERN NS_SOCKET
-Ns_BindSock(struct sockaddr_in *psa) NS_GNUC_DEPRECATED;
+Ns_BindSock(struct sockaddr_in *psa) 
+    NS_GNUC_DEPRECATED_FOR(Ns_SockBind);
 
 NS_EXTERN NS_SOCKET
 Ns_SockBind(struct sockaddr_in *psa);
@@ -2700,23 +2726,23 @@ Ns_TclInitModule(CONST char *server, CONST char *module)
 
 NS_EXTERN void
 Ns_FreeConnInterp(Ns_Conn *conn)
-     NS_GNUC_DEPRECATED;
+     NS_GNUC_DEPRECATED_FOR(NsFreeConnInterp);
 
 NS_EXTERN int
 Ns_TclRegisterAtCreate(Ns_TclTraceProc *proc, void *arg)
-     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(RegisterAt);
 
 NS_EXTERN int
 Ns_TclRegisterAtCleanup(Ns_TclTraceProc *proc, void *arg)
-     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(RegisterAt);
 
 NS_EXTERN int
 Ns_TclRegisterAtDelete(Ns_TclTraceProc *proc, void *arg)
-     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(RegisterAt);
 
 NS_EXTERN int
 Ns_TclInitInterps(CONST char *server, Ns_TclInterpInitProc *proc, void *arg)
-     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_DEPRECATED;
+     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_DEPRECATED_FOR(Ns_TclRegisterTrace);
 
 NS_EXTERN void
 Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
@@ -2733,6 +2759,10 @@ Ns_HttpCheckHeader(Ns_HttpTask *httpPtr)
 NS_EXTERN void
 Ns_HttpCheckSpool(Ns_HttpTask *httpPtr)
     NS_GNUC_NONNULL(1); 
+
+NS_EXTERN int
+Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, char *inBuf, int inSize) 
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2); 
 
 /*
  * tclmisc.c
@@ -2756,7 +2786,7 @@ Ns_TclLogError(Tcl_Interp *interp)
 
 NS_EXTERN CONST char *
 Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *conn)
-    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
+    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(Ns_TclLoggErrorInfo);
 
 NS_EXTERN void
 Ns_LogDeprecated(Tcl_Obj *CONST objv[], int objc, char *alternative, char *explanation)
@@ -2885,19 +2915,19 @@ Ns_UrlQueryDecode(Ns_DString *dsPtr, char *str, Tcl_Encoding enc);
 
 NS_EXTERN char *
 Ns_EncodeUrlWithEncoding(Ns_DString *dsPtr, char *string,
-                                         Tcl_Encoding encoding) NS_GNUC_DEPRECATED;
+			 Tcl_Encoding encoding) NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryEncode);
 
 NS_EXTERN char *
 Ns_DecodeUrlWithEncoding(Ns_DString *dsPtr, char *string,
-                                         Tcl_Encoding encoding) NS_GNUC_DEPRECATED;
+			 Tcl_Encoding encoding) NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryDecode);
 
 NS_EXTERN char *
 Ns_EncodeUrlCharset(Ns_DString *dsPtr, char *string,
-                                    char *charset) NS_GNUC_DEPRECATED;
+		    char *charset) NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryEncode);
 
 NS_EXTERN char *
 Ns_DecodeUrlCharset(Ns_DString *dsPtr, char *string,
-                                    char *charset) NS_GNUC_DEPRECATED;
+		    char *charset) NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryDecode);
 
 /*
  * urlopen.c:

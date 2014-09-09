@@ -150,7 +150,7 @@ CONST char *
 Ns_TclLogErrorInfo(Tcl_Interp *interp, CONST char *extraInfo)
 {
     NsInterp    *itPtr = NsGetInterpData(interp);
-    CONST char  *errorInfo, **logHeaders, **hdr;
+    CONST char  *errorInfo, **logHeaders;
     Ns_DString   ds;
 
     if (extraInfo != NULL) {
@@ -173,8 +173,11 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, CONST char *extraInfo)
 
         logHeaders = itPtr->servPtr->tcl.errorLogHeaders;
         if (logHeaders != NULL) {
+	    CONST char  **hdr;
+
             for (hdr = logHeaders; *hdr != NULL; hdr++) {
 	        char *value = Ns_SetIGet(conn->headers, *hdr);
+
                 if (value != NULL) {
                     Ns_DStringVarAppend(&ds, ", ", *hdr, ": ", value, NULL);
                 }
@@ -1276,8 +1279,8 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
     byteReverse(ctx->in, 14);
 
     /* Append length in bits and transform */
-    ((uint32_t *) ctx->in)[14] = ctx->bits[0];
-    ((uint32_t *) ctx->in)[15] = ctx->bits[1];
+    ctx->in[14] = ctx->bits[0];
+    ctx->in[15] = ctx->bits[1];
 
     MD5Transform(ctx->buf, (uint32_t *) ctx->in);
     byteReverse((unsigned char *) ctx->buf, 4);

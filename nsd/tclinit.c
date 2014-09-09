@@ -291,11 +291,12 @@ int
 Ns_TclEval(Ns_DString *dsPtr, CONST char *server, CONST char *script)
 {
     Tcl_Interp *interp;
-    CONST char *result;
     int         retcode = NS_ERROR;
 
     interp = Ns_TclAllocateInterp(server);
     if (interp != NULL) {
+        CONST char *result;
+
         if (Tcl_EvalEx(interp, script, -1, 0) != TCL_OK) {
             result = Ns_TclLogError(interp);
         } else {
@@ -645,6 +646,8 @@ Ns_TclRegisterTrace(CONST char *server, Ns_TclTraceProc *proc,
  *      virtual server argument so must assume the currently
  *      initializing server is the intended server.
  *
+ *      Deprecated.
+ *
  * Results:
  *      See Ns_TclRegisterTrace.
  *
@@ -696,6 +699,8 @@ RegisterAt(Ns_TclTraceProc *proc, void *arg, int when)
  *      given proc immediately on each interp in a shared pool which
  *      explains this otherwise misnamed API.
  *
+ *      Deprecated.
+ *
  * Results:
  *      See Ns_TclRegisterTrace.
  *
@@ -720,6 +725,8 @@ Ns_TclInitInterps(CONST char *server, Ns_TclInterpInitProc *proc, void *arg)
  *      Register a procedure to be called when the interp is deallocated.
  *      This is a one-shot FIFO order callback mechanism which is seldom
  *      used.
+ *
+ *      Deprecated.
  *
  * Results:
  *      None.

@@ -224,7 +224,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
     char           *path,*address, *host, *bindaddr, *defproto, *defserver;
     int             i, n, defport, noHostNameGiven;
     ServerMap      *mapPtr;
-    Ns_DString      ds;
+    Ns_DString      ds, *dsPtr = &ds;
     struct in_addr  ia;
     struct hostent *he;
     Driver         *drvPtr;
@@ -426,16 +426,44 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
     if (drvPtr->location != NULL && strstr(drvPtr->location, "://")) {
         drvPtr->location = ns_strdup(drvPtr->location);
     } else {
-        Ns_DStringInit(&ds);
-        Ns_DStringVarAppend(&ds, drvPtr->protocol, "://", host, NULL);
+        Ns_DStringInit(dsPtr);
+        Ns_DStringVarAppend(dsPtr, drvPtr->protocol, "://", host, NULL);
         if (drvPtr->port != defport) {
-            Ns_DStringPrintf(&ds, ":%d", drvPtr->port);
+            Ns_DStringPrintf(dsPtr, ":%d", drvPtr->port);
         }
-        drvPtr->location = Ns_DStringExport(&ds);
+        drvPtr->location = Ns_DStringExport(dsPtr);
     }
 
     drvPtr->nextPtr = firstDrvPtr;
     firstDrvPtr = drvPtr;
+
+    /*
+     * Add extra headers, which have to be of the form of
+     * attribute/value pairs.
+     */
+
+    {
+	char *extraHeaders = Ns_ConfigGetValue(path, "extraheaders");
+
+	if (extraHeaders != NULL) {
+	    int objc;
+	    Tcl_Obj **objv, *headers = Tcl_NewStringObj(extraHeaders, -1);
+	    int result = Tcl_ListObjGetElements(NULL, headers, &objc, &objv);
+
+	    if (result != TCL_OK || objc % 2 != 0) {
+		Ns_Log(Warning, "Ignoring invalid value for extraheaders: %s", extraHeaders);
+	    } else {
+		Ns_DStringInit(dsPtr);
+		for (i = 0; i < objc; i +=2) {
+		    Ns_DStringVarAppend(dsPtr,
+					Tcl_GetString(objv[i]), ": ", 
+					Tcl_GetString(objv[i+1]), "\r\n", 
+					NULL);
+		    drvPtr->extraHeaders = Ns_DStringExport(dsPtr);
+		}
+	    }
+	}
+    }
 
     /*
      * Check if upload spooler are enabled
@@ -506,7 +534,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
         defMapPtr = NULL;
         path = Ns_ConfigGetPath(NULL, module, "servers", NULL);
         set  = Ns_ConfigGetSection(path);
-        Ns_DStringInit(&ds);
+        Ns_DStringInit(dsPtr);
         for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
             server  = Ns_SetKey(set, i);
             host    = Ns_SetValue(set, i);
@@ -518,7 +546,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
                 if (!n) {
                     Ns_Log(Error, "%s: duplicate host map: %s", module, host);
                 } else {
-                    Ns_DStringVarAppend(&ds, drvPtr->protocol, "://",host,NULL);
+                    Ns_DStringVarAppend(dsPtr, drvPtr->protocol, "://",host,NULL);
                     mapPtr = ns_malloc(sizeof(ServerMap) + ds.length);
                     mapPtr->servPtr  = servPtr;
                     strcpy(mapPtr->location, ds.string);
@@ -530,7 +558,7 @@ Ns_DriverInit(char *server, char *module, Ns_DriverInitData *init)
                 }
             }
         }
-        Ns_DStringFree(&ds);
+        Ns_DStringFree(dsPtr);
 
         if (defMapPtr == NULL) {
             Ns_Fatal("%s: default server %s not defined in %s",
@@ -2212,8 +2240,12 @@ SockRead(Sock *sockPtr, int spooler, Ns_Time *timePtr)
 
         if (drvPtr->maxupload > 0 && reqPtr->length > drvPtr->maxupload) {
             sockPtr->tfile = ns_malloc(strlen(drvPtr->uploadpath) + 16);
-            sprintf(sockPtr->tfile, "%s%d.XXXXXX", drvPtr->uploadpath, sockPtr->sock);
+            sprintf(sockPtr->tfile, "%s/%d.XXXXXX", drvPtr->uploadpath, sockPtr->sock);
             sockPtr->tfd = mkstemp(sockPtr->tfile);
+	    if (sockPtr->tfd == -1) {
+	      Ns_Log(Error, "nssock: cannot create spool file with template '%s': %s", 
+		     sockPtr->tfile, strerror(errno));
+	    }
         } else {
 	    /* GN: don't we need a Ns_ReleaseTemp() on cleanup? */
             sockPtr->tfd = Ns_GetTemp(); 
@@ -3321,7 +3353,7 @@ WriterSend(WriterSock *curPtr, int *err) {
 	    if (vPtr->iov_len > 0 && vPtr->iov_base != NULL) {
 
 		Ns_Log(DriverDebug, 
-		       "### Writer copies source %d to scratch %d len %" PRIdz,
+		       "### Writer copies source %d to scratch %d len %" PRIiovlen,
 		       curPtr->mem.bufIdx, curPtr->mem.sbufIdx, vPtr->iov_len);
 
 		towrite += Ns_SetVec(curPtr->mem.sbufs, curPtr->mem.sbufIdx++, 
@@ -3665,11 +3697,11 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
     DrvWriter     *wrPtr;
     int            trigger = 0, headerSize;
 
-    if (conn == NULL || connPtr->sockPtr == NULL) {
+    if (connPtr == NULL || connPtr->sockPtr == NULL) {
         return NS_ERROR;
     }
 
-    wrPtr  = &connPtr->sockPtr->drvPtr->writer;
+    wrPtr = &connPtr->sockPtr->drvPtr->writer;
 
     Ns_Log(DriverDebug, 
 	   "NsWriterQueue: size %" PRIdz " bufs %p (%d) flags %.6x stream %.6x chan %p fd %d thread %d", 
@@ -3734,7 +3766,7 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
 	    for (i = 0; i < nbufs; i++) {
 		int j = write(connPtr->fd, bufs[i].iov_base, bufs[i].iov_len);
 		wrote += j;
-		Ns_Log(Debug, "NsWriterQueue: fd %d [%d] spooled %d of %" PRIdz " OK %d", 
+		Ns_Log(Debug, "NsWriterQueue: fd %d [%d] spooled %d of %" PRIiovlen " OK %d", 
 		       connPtr->fd, i, j, bufs[i].iov_len, j == bufs[i].iov_len);
 	    }
 	}
