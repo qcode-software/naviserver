@@ -26,9 +26,6 @@
 # If you do not delete the provisions above, a recipient may use your
 # version of this file under either the License or the GPL.
 #
-#
-# $Header$
-#
 
 #
 # Makefile.global.in --
@@ -71,7 +68,7 @@ CFLAGS_WARNING   = @CFLAGS_WARNING@
 CFLAGS_INCLUDE   = -I$(INCDIR) @TCL_INCLUDES@
 CFLAGS_EXTRA     = @SHLIB_CFLAGS@ @TCL_EXTRA_CFLAGS@
 DEFS             = @DEFS@
-CFLAGS          += @CFLAGS_DEFAULT@ $(CFLAGS_WARNING) $(CFLAGS_EXTRA) $(CFLAGS_INCLUDE) @CPPFLAGS@ $(DEFS)
+CFLAGS          += @CFLAGS_DEFAULT@ $(CFLAGS_OPTIMIZE) $(CFLAGS_WARNING) $(CFLAGS_EXTRA) $(CFLAGS_INCLUDE) @CPPFLAGS@ $(DEFS)
 LIBS		 = @LIBS@
 DL_LIBS		 = 
 MATH_LIBS	 = @MATH_LIBS@
@@ -81,6 +78,7 @@ ifndef NSBUILD
     LDFLAGS += -L$(NAVISERVER)/lib
     NSLIBS  += -lnsthread -lnsd
     INCDIR   = $(NAVISERVER)/include
+    CFLAGS  += @ZLIB_INCLUDES@
 else
     LDFLAGS += -L../nsthread -L../nsd -L../nsdb
     INCDIR   = ../include
@@ -118,15 +116,23 @@ INSTSRVPAG   = $(INSTSRV)/pages
 # Platform-specific options.
 uname = $(shell uname -a)
 
-# Solaris 2.6+
+#
+# Solaris, OpenSolaris
+#
 ifneq (,$(findstring SunOS,$(uname)))
+
+    # Solaris 2.6+
     ifneq (,$(findstring 5.6,$(uname)))
         NSLIBS += -lthread -lposix4
     else
         NSLIBS += -lrt
     endif
-endif
 
+    # OpenSolaris (e.g. OmniOS)
+    ifneq (,$(findstring 5.11,$(uname)))
+        NSLIBS += -lsendfile
+    endif
+endif
 
 #
 # For static linking on Darwin, link modules

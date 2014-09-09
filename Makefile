@@ -80,7 +80,12 @@ install-notice:
 	@echo ""
 	@if [ "`whoami`" = "root" ]; then \
 	  echo "  Because you are running as root, the server needs an unprivileged user to be"; \
-	  echo "  specified (e.g. nsadmin). The permissions for log directory have to be set up:"; \
+	  echo "  specified (e.g. nsadmin). This user can be created on a Linux-like system with"; \
+	  echo "  the command"; \
+	  echo ""; \
+	  echo "  useradd nsadmin"; \
+	  echo ""; \
+	  echo "The permissions for log directory have to be set up:"; \
 	  echo ""; \
 	  echo "  chown -R nsadmin $(NAVISERVER)/logs"; \
 	  echo ""; \
@@ -139,7 +144,7 @@ install-examples:
 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/pages/examples/; \
 	done
 
-DTPLITE=$(NAVISERVER)/bin/tclsh $(NAVISERVER)/bin/dtplite
+DTPLITE=dtplite
 
 build-doc:
 	$(RM) doc/html doc/man doc/tmp
@@ -213,7 +218,9 @@ memcheck: all
 helgrind: all
 	$(LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
-
+cppcheck:
+	cppcheck --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+		-I./include -I/usr/include $(DEFS)
 
 checkexports: all
 	@for i in $(dirs); do \
@@ -240,7 +247,7 @@ dist: clean
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/include/{config.h,Makefile.global,Makefile.module,stamp-h1}
 	hg log --style=changelog > naviserver-$(NS_PATCH_LEVEL)/ChangeLog
 	find naviserver-$(NS_PATCH_LEVEL) -name '.[a-zA-Z_]*' -exec rm \{} \;
-	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
+	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
 	$(RM) naviserver-$(NS_PATCH_LEVEL)
 
 
