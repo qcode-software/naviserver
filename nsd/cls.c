@@ -41,7 +41,7 @@
  */
 
 static Ns_Callback *cleanupProcs[NS_CONN_MAXCLS];
-static void **GetSlot(Ns_Cls *clsPtr, Ns_Conn *conn);
+static void **GetSlot(const Ns_Cls *clsPtr, Ns_Conn *conn);
 
 
 /*
@@ -61,9 +61,9 @@ static void **GetSlot(Ns_Cls *clsPtr, Ns_Conn *conn);
  */
 
 void
-Ns_ClsAlloc(Ns_Cls *clsPtr, Ns_Callback *cleanup)
+Ns_ClsAlloc(Ns_Cls *clsPtr, Ns_Callback *cleanupProc)
 {
-    static uintptr_t nextId = 1;
+    static uintptr_t nextId = 1u;
     uintptr_t        id;
 
     Ns_MasterLock();
@@ -71,9 +71,9 @@ Ns_ClsAlloc(Ns_Cls *clsPtr, Ns_Callback *cleanup)
 	Ns_Fatal("Ns_ClsAlloc: exceded max cls: %d", NS_CONN_MAXCLS);
     }
     id = nextId++;
-    cleanupProcs[id] = cleanup;
+    cleanupProcs[id] = cleanupProc;
     Ns_MasterUnlock();
-    *clsPtr = (void *) id;
+    *clsPtr = INT2PTR(id);
 }
 
 
@@ -94,7 +94,7 @@ Ns_ClsAlloc(Ns_Cls *clsPtr, Ns_Callback *cleanup)
  */
 
 void
-Ns_ClsSet(Ns_Cls *clsPtr, Ns_Conn *conn, void *value)
+Ns_ClsSet(const Ns_Cls *clsPtr, Ns_Conn *conn, void *value)
 {
     void **slotPtr;
 
@@ -120,7 +120,7 @@ Ns_ClsSet(Ns_Cls *clsPtr, Ns_Conn *conn, void *value)
  */
 
 void *
-Ns_ClsGet(Ns_Cls *clsPtr, Ns_Conn *conn)
+Ns_ClsGet(const Ns_Cls *clsPtr, Ns_Conn *conn)
 {
     void **slotPtr;
 
@@ -152,13 +152,15 @@ NsClsCleanup(Conn *connPtr)
     int trys, retry;
     void *arg;
 
+    assert(connPtr != NULL);
+    
     trys = 0;
     do {
-        int i;
+      unsigned int i;
 
 	retry = 0;
     	i = NS_CONN_MAXCLS;
-    	while (i-- > 0) {
+    	while (i-- > 0u) {
 	    if (cleanupProcs[i] != NULL && connPtr->cls[i] != NULL) {
 	    	arg = connPtr->cls[i];
 	    	connPtr->cls[i] = NULL;
@@ -166,7 +168,7 @@ NsClsCleanup(Conn *connPtr)
 		retry = 1;
 	    }
 	}
-    } while (retry && trys++ < 5);
+    } while ((retry != 0) && (trys++ < 5));
 }
 
 
@@ -187,14 +189,23 @@ NsClsCleanup(Conn *connPtr)
  */
 
 static void **
-GetSlot(Ns_Cls *clsPtr, Ns_Conn *conn)
+GetSlot(const Ns_Cls *clsPtr, Ns_Conn *conn)
 {
     Conn *connPtr = (Conn *) conn;
     uintptr_t idx = (uintptr_t) *clsPtr;
 
-    if (idx < 1 || idx >= NS_CONN_MAXCLS) {
+    if (idx < 1u || idx >= NS_CONN_MAXCLS) {
         Ns_Fatal("Ns_Cls: invalid key: %" PRIuPTR ": must be between 1 and %d",
                  idx, NS_CONN_MAXCLS);
     }
     return &connPtr->cls[idx];
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -39,9 +39,15 @@
  * Local functions defined in this file.
  */
 
-static void AddCharset(CONST char *name, CONST char *charset);
-static void AddExtension(CONST char *name, CONST char *charset);
-static Tcl_Encoding LoadEncoding(CONST char *name);
+static void AddCharset(const char *charset, const char *name)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void AddExtension(const char *ext, const char *name)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static Tcl_Encoding LoadEncoding(const char *name)
+    NS_GNUC_NONNULL(1);
+
 static Ns_ServerInitProc ConfigServerEncodings;
 
 /*
@@ -58,16 +64,16 @@ static Ns_Cond        cond;
 
 static Tcl_Encoding   utf8Encoding; /* Cached pointer to utf-8 encoding. */
 
-#define ENC_LOCKED ((Tcl_Encoding) (-1))
+#define EncodingLocked ((Tcl_Encoding) (-1))
 
 /*
  * The default table maps file extensions to Tcl encodings.
  * That is, the encoding used to read the files from disk (mainly ADP).
  */
 
-static struct {
-    CONST char  *extension;
-    CONST char  *name;
+static const struct {
+    const char  *extension;
+    const char  *name;
 } builtinExt[] = {
     {".txt",    "ascii"},
     {".htm",    "iso8859-1"},
@@ -80,9 +86,9 @@ static struct {
  * The following table provides HTTP charset aliases for Tcl encodings names.
  */
 
-static struct {
-    CONST char  *charset;
-    CONST char  *name;
+static const struct {
+    const char  *charset;
+    const char  *name;
 } builtinChar[] = {
     { "iso-2022-jp",        "iso2022-jp" },
     { "iso-2022-kr",        "iso2022-kr" },
@@ -172,7 +178,7 @@ void
 NsConfigEncodings(void)
 {
     Ns_Set *set;
-    int     i;
+    size_t  i;
 
     Ns_MutexSetName(&lock, "ns:encodings");
     Tcl_InitHashTable(&extensions, TCL_STRING_KEYS);
@@ -185,10 +191,10 @@ NsConfigEncodings(void)
      * Add default charsets and file mappings.
      */
 
-    for (i = 0; builtinChar[i].charset != NULL; ++i) {
+    for (i = 0U; builtinChar[i].charset != NULL; ++i) {
         AddCharset(builtinChar[i].charset, builtinChar[i].name);
     }
-    for (i = 0; builtinExt[i].extension != NULL; ++i) {
+    for (i = 0U; builtinExt[i].extension != NULL; ++i) {
         AddExtension(builtinExt[i].extension, builtinExt[i].name);
     }
 
@@ -197,11 +203,11 @@ NsConfigEncodings(void)
      */
 
     set = Ns_ConfigGetSection("ns/charsets");
-    for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
+    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
         AddCharset(Ns_SetKey(set, i), Ns_SetValue(set, i));
     }
     set = Ns_ConfigGetSection("ns/encodings");
-    for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
+    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
         AddExtension(Ns_SetKey(set, i), Ns_SetValue(set, i));
     }
 
@@ -209,16 +215,16 @@ NsConfigEncodings(void)
 }
 
 static int
-ConfigServerEncodings(CONST char *server)
+ConfigServerEncodings(const char *server)
 {
     NsServer   *servPtr = NsGetServer(server);
-    CONST char *path;
+    const char *path;
 
     /*
      * Configure the encoding used in the request URL.
      */
 
-    path = Ns_ConfigGetPath(server, NULL, NULL);
+    path = Ns_ConfigGetPath(server, NULL, (char *)0);
 
     servPtr->encoding.urlCharset =
         Ns_ConfigString(path, "urlCharset", "utf-8");
@@ -276,17 +282,19 @@ ConfigServerEncodings(CONST char *server)
  */
 
 Tcl_Encoding
-Ns_GetFileEncoding(CONST char *file)
+Ns_GetFileEncoding(const char *file)
 {
-    CONST char    *ext;
+    const char    *ext;
     Tcl_Encoding   encoding = NULL;
+
+    assert(file != NULL);
 
     ext = strrchr(file, '.');
     if (ext != NULL) {
         Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&extensions, ext);
 
         if (hPtr != NULL) {
-	    CONST char  *name = Tcl_GetHashValue(hPtr);
+	    const char *name = Tcl_GetHashValue(hPtr);
             encoding = Ns_GetCharsetEncoding(name);
         }
     }
@@ -320,13 +328,15 @@ Ns_GetFileEncoding(CONST char *file)
  */
 
 Tcl_Encoding
-Ns_GetTypeEncoding(CONST char *type)
+Ns_GetTypeEncoding(const char *mimeType)
 {
-    char    *charset;
-    size_t   len;
+    const char *charset;
+    size_t      len;
 
-    charset = NsFindCharset(type, &len);
-    return (charset ? Ns_GetCharsetEncodingEx(charset, len) : NULL);
+    assert(mimeType != NULL);
+
+    charset = NsFindCharset(mimeType, &len);
+    return (charset != NULL) ? Ns_GetCharsetEncodingEx(charset, (int)len) : NULL;
 }
 
 
@@ -348,17 +358,21 @@ Ns_GetTypeEncoding(CONST char *type)
  */
 
 Tcl_Encoding
-Ns_GetCharsetEncoding(CONST char *charset)
+Ns_GetCharsetEncoding(const char *charset)
 {
+    assert(charset != NULL);
+
     return Ns_GetCharsetEncodingEx(charset, -1);
 }
 
 Tcl_Encoding
-Ns_GetCharsetEncodingEx(CONST char *charset, size_t len)
+Ns_GetCharsetEncodingEx(const char *charset, int len)
 {
     Tcl_HashEntry *hPtr;
     Tcl_Encoding   encoding;
     Ns_DString     ds;
+
+    assert(charset != NULL);
 
     /*
      * Cleanup the charset name and check for an
@@ -368,7 +382,7 @@ Ns_GetCharsetEncodingEx(CONST char *charset, size_t len)
      */
 
     Ns_DStringInit(&ds);
-    Ns_DStringNAppend(&ds, charset, (int)len);
+    Ns_DStringNAppend(&ds, charset, len);
     charset = Ns_StrTrim(Ns_StrToLower(ds.string));
     hPtr = Tcl_FindHashEntry(&charsets, charset);
     if (hPtr != NULL) {
@@ -381,7 +395,7 @@ Ns_GetCharsetEncodingEx(CONST char *charset, size_t len)
 }
 
 Tcl_Encoding
-Ns_GetEncoding(CONST char *name)
+Ns_GetEncoding(const char *name)
 {
     /* Deprecated, use Ns_GetCharsetEncodingEx(). */
     return LoadEncoding(name);
@@ -404,18 +418,20 @@ Ns_GetEncoding(CONST char *name)
  *----------------------------------------------------------------------
  */
 
-CONST char *
+const char *
 Ns_GetEncodingCharset(Tcl_Encoding encoding)
 {
-    CONST char    *encname, *charset = NULL;
+    const char    *encname, *charset = NULL;
     Tcl_HashEntry *hPtr;
+
+    assert(encoding != NULL);
 
     encname = Tcl_GetEncodingName(encoding);
     hPtr = Tcl_FindHashEntry(&encnames, encname);
     if (hPtr != NULL) {
         charset = Tcl_GetHashValue(hPtr);
     }
-    return charset ? charset : encname;
+    return (charset != NULL) ? charset : encname;
 }
 
 
@@ -435,23 +451,28 @@ Ns_GetEncodingCharset(Tcl_Encoding encoding)
  *----------------------------------------------------------------------
  */
 
-char *
-NsFindCharset(CONST char *mimetype, size_t *lenPtr)
+const char *
+NsFindCharset(const char *mimetype, size_t *lenPtr)
 {
-    CONST char *start, *end;
+    const char *start;
+
+    assert(mimetype != NULL);
+    assert(lenPtr != NULL);
 
     start = Ns_StrCaseFind(mimetype, "charset");
     if (start != NULL) {
         start += 7;
         start += strspn(start, " ");
         if (*start++ == '=') {
+            const char *end;
+
             start += strspn(start, " ");
             end = start;
-            while (*end && !isspace(UCHAR(*end))) {
+            while (*end != '\0' && CHARTYPE(space, *end) == 0) {
                 ++end;
             }
-            *lenPtr = end - start;
-            return (char *) start;
+            *lenPtr = (size_t)(end - start);
+            return start;
         }
     }
     return NULL;
@@ -475,14 +496,15 @@ NsFindCharset(CONST char *mimetype, size_t *lenPtr)
  */
 
 int
-NsTclCharsetsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, 
+		    int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
 
     hPtr = Tcl_FirstHashEntry(&charsets, &search);
     while (hPtr != NULL) {
-        Tcl_AppendElement(interp, (char *) Tcl_GetHashKey(&charsets, hPtr));
+        Tcl_AppendElement(interp, Tcl_GetHashKey(&charsets, hPtr));
         hPtr = Tcl_NextHashEntry(&search);
     }
     return TCL_OK;
@@ -507,20 +529,22 @@ NsTclCharsetsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST
  */
 
 int
-NsTclEncodingForCharsetObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                              Tcl_Obj *CONST objv[])
+NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Tcl_Encoding encoding;
+    const char *encodingName;
+    int encodingNameLen;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "charset");
         return TCL_ERROR;
     }
-    encoding = Ns_GetCharsetEncoding(Tcl_GetString(objv[1]));
+    encodingName = Tcl_GetStringFromObj(objv[1], &encodingNameLen);
+    encoding = Ns_GetCharsetEncodingEx(encodingName, encodingNameLen);
     if (encoding == NULL) {
         return TCL_OK;
     }
-    Tcl_SetResult(interp, (char*) Tcl_GetEncodingName(encoding), TCL_VOLATILE);
+    Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetEncodingName(encoding), -1));
 
     return TCL_OK;
 }
@@ -543,7 +567,7 @@ NsTclEncodingForCharsetObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsEncodingIsUtf8(Tcl_Encoding encoding)
+NsEncodingIsUtf8(const Tcl_Encoding encoding)
 {
     return (encoding == utf8Encoding);
 }
@@ -567,20 +591,22 @@ NsEncodingIsUtf8(Tcl_Encoding encoding)
  */
 
 static Tcl_Encoding
-LoadEncoding(CONST char *name)
+LoadEncoding(const char *name)
 {
     Tcl_HashEntry *hPtr;
     Tcl_Encoding   encoding;
     int            isNew;
 
+    assert(name != NULL);
+
     Ns_MutexLock(&lock);
     hPtr = Tcl_CreateHashEntry(&encodings, name, &isNew);
-    if (!isNew) {
-        while ((encoding = Tcl_GetHashValue(hPtr)) == ENC_LOCKED) {
+    if (isNew == 0) {
+        while ((encoding = Tcl_GetHashValue(hPtr)) == EncodingLocked) {
             Ns_CondWait(&cond, &lock);
         }
     } else {
-        Tcl_SetHashValue(hPtr, ENC_LOCKED);
+	Tcl_SetHashValue(hPtr, INT2PTR(EncodingLocked));
         Ns_MutexUnlock(&lock);
         encoding = Tcl_GetEncoding(NULL, name);
         if (encoding == NULL) {
@@ -615,21 +641,27 @@ LoadEncoding(CONST char *name)
  */
 
 static void
-AddExtension(CONST char *ext, CONST char *name)
+AddExtension(const char *ext, const char *name)
 {
     Tcl_HashEntry  *hPtr;
     int             isNew;
+
+    assert(ext != NULL);
+    assert(name != NULL);
 
     hPtr = Tcl_CreateHashEntry(&extensions, ext, &isNew);
     Tcl_SetHashValue(hPtr, name);
 }
 
 static void
-AddCharset(CONST char *charset, CONST char *name)
+AddCharset(const char *charset, const char *name)
 {
     Tcl_HashEntry  *hPtr;
     Ns_DString      ds;
     int             isNew;
+
+    assert(charset != NULL);
+    assert(name != NULL);
 
     Ns_DStringInit(&ds);
     charset = Ns_StrToLower(Ns_DStringAppend(&ds, charset));
@@ -647,9 +679,18 @@ AddCharset(CONST char *charset, CONST char *name)
      */
 
     hPtr = Tcl_CreateHashEntry(&encnames, name, &isNew);
-    if (isNew) {
+    if (isNew != 0) {
         Tcl_SetHashValue(hPtr, ns_strdup(charset));
     }
 
     Ns_DStringFree(&ds);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

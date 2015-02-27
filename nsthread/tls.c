@@ -70,9 +70,11 @@ static Ns_TlsCleanup *cleanupProcs[NS_THREAD_MAXTLS];
 void
 Ns_TlsAlloc(Ns_Tls *keyPtr, Ns_TlsCleanup *cleanup)
 {
-    static uintptr_t nextkey = 1;
+    static uintptr_t nextkey = 1u;
     uintptr_t        key;
 
+    assert(keyPtr != NULL);
+    
     Ns_MasterLock();
     if (nextkey == nsThreadMaxTls) {
         Tcl_Panic("Ns_TlsAlloc: exceded max tls: %" PRIuPTR, nsThreadMaxTls);
@@ -105,8 +107,12 @@ void
 Ns_TlsSet(Ns_Tls *keyPtr, void *value)
 {
     void      **slots = NsGetTls();
-    uintptr_t   key = (uintptr_t) *keyPtr;
+    uintptr_t   key;
 
+    assert(keyPtr != NULL);
+
+    key = (uintptr_t) *keyPtr;
+     
     if (key < 1 || key >= NS_THREAD_MAXTLS) {
         Tcl_Panic("Ns_TlsSet: invalid key: %" PRIuPTR
                   ": should be between 1 and %" PRIuPTR,
@@ -136,8 +142,11 @@ void *
 Ns_TlsGet(Ns_Tls *keyPtr)
 {
     void      **slots = NsGetTls();
-    uintptr_t   key = (uintptr_t) *keyPtr;
+    uintptr_t   key;
 
+    assert(keyPtr != NULL);
+    
+    key = (uintptr_t) *keyPtr;
     if (key < 1 || key >= NS_THREAD_MAXTLS) {
         Tcl_Panic("Ns_TlsGet: invalid key: %" PRIuPTR
                   ": should be between 1 and %" PRIuPTR,
@@ -173,6 +182,8 @@ NsCleanupTls(void **slots)
     int trys, retry;
     void *arg;
 
+    assert(slots != NULL);
+
     trys = 0;
     do {
 	int i;
@@ -190,3 +201,12 @@ NsCleanupTls(void **slots)
     } while (retry && trys++ < 5);
     Tcl_FinalizeThread();
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

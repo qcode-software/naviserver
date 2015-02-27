@@ -40,7 +40,12 @@
  * Local functions defined in this file
  */
 
-static int WordEndsInSemi(char *ip);
+static int WordEndsInSemi(const char *ip) NS_GNUC_NONNULL(1);
+static void SHAByteSwap(uint32_t *dest, uint8_t const *src, unsigned int words)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void SHATransform(Ns_CtxSHA1 *sha) NS_GNUC_NONNULL(1);
+static void MD5Transform(uint32_t buf[4], uint32_t const in[16]) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 
 
 /*
@@ -60,10 +65,13 @@ static int WordEndsInSemi(char *ip);
  */
 
 void
-Ns_TclPrintfResult(Tcl_Interp *interp, char *fmt, ...)
+Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
 {
     va_list     ap;
     Tcl_DString ds;
+
+    assert(interp != NULL);
+    assert(fmt != NULL);
 
     Tcl_DStringInit(&ds);
     va_start(ap, fmt);
@@ -90,17 +98,16 @@ Ns_TclPrintfResult(Tcl_Interp *interp, char *fmt, ...)
  */
 
 int
-NsTclRunOnceObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                   Tcl_Obj *CONST objv[])
+NsTclRunOnceObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp             *itPtr = arg;
-    CONST char           *script;
+    const char           *script;
     int                   isNew, global = NS_FALSE;
     static Tcl_HashTable  runTable;
-    static int            initialized;
+    static int            initialized = NS_FALSE;
 
     Ns_ObjvSpec opts[] = {
-        {"-global", Ns_ObjvBool,  &global, (void *) NS_TRUE},
+        {"-global", Ns_ObjvBool,  &global, INT2PTR(NS_TRUE)},
         {"--",      Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -113,15 +120,15 @@ NsTclRunOnceObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     }
 
     Ns_MasterLock();
-    if (!initialized) {
+    if (initialized == 0) {
         Tcl_InitHashTable(&runTable, TCL_STRING_KEYS);
         initialized = NS_TRUE;
     }
-    (void) Tcl_CreateHashEntry(global ? &runTable :
+    (void) Tcl_CreateHashEntry((global != NS_FALSE) ? &runTable :
                                &itPtr->servPtr->tcl.runTable, script, &isNew);
     Ns_MasterUnlock();
 
-    if (isNew) {
+    if (isNew != 0) {
         return Tcl_Eval(interp, script);
     }
 
@@ -146,11 +153,11 @@ NsTclRunOnceObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  *----------------------------------------------------------------------
  */
 
-CONST char *
-Ns_TclLogErrorInfo(Tcl_Interp *interp, CONST char *extraInfo)
+const char *
+Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
 {
     NsInterp    *itPtr = NsGetInterpData(interp);
-    CONST char  *errorInfo, **logHeaders;
+    const char  *errorInfo, **logHeaders;
     Ns_DString   ds;
 
     if (extraInfo != NULL) {
@@ -173,10 +180,10 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, CONST char *extraInfo)
 
         logHeaders = itPtr->servPtr->tcl.errorLogHeaders;
         if (logHeaders != NULL) {
-	    CONST char  **hdr;
+	    const char  **hdr;
 
             for (hdr = logHeaders; *hdr != NULL; hdr++) {
-	        char *value = Ns_SetIGet(conn->headers, *hdr);
+	        const char *value = Ns_SetIGet(conn->headers, *hdr);
 
                 if (value != NULL) {
                     Ns_DStringVarAppend(&ds, ", ", *hdr, ": ", value, NULL);
@@ -209,7 +216,7 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, CONST char *extraInfo)
  *----------------------------------------------------------------------
  */
 
-CONST char *
+const char *
 Ns_TclLogError(Tcl_Interp *interp)
 {
     return Ns_TclLogErrorInfo(interp, NULL);
@@ -232,8 +239,8 @@ Ns_TclLogError(Tcl_Interp *interp)
  *----------------------------------------------------------------------
  */
 
-CONST char *
-Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *conn)
+const char *
+Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *UNUSED(conn))
 {
     return Ns_TclLogErrorInfo(interp, NULL);
 }
@@ -256,7 +263,7 @@ Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *conn)
  */
 
 void
-Ns_LogDeprecated(Tcl_Obj *CONST objv[], int objc, char *alternative, char *explanation)
+Ns_LogDeprecated(Tcl_Obj *CONST* objv, int objc, const char *alternative, const char *explanation)
 {
     Tcl_DString ds;
     int i;
@@ -264,7 +271,11 @@ Ns_LogDeprecated(Tcl_Obj *CONST objv[], int objc, char *alternative, char *expla
     Tcl_DStringInit(&ds);
     Tcl_DStringAppend(&ds, "'", 1);
     for (i = 0; i < objc; i++) {
-	Tcl_DStringAppend(&ds, Tcl_GetString(objv[i]), -1);
+	const char *s;
+	int len;
+
+	s = Tcl_GetStringFromObj(objv[i], &len);
+	Tcl_DStringAppend(&ds, s, len);
 	Tcl_DStringAppend(&ds, " ", 1);
     }
     Tcl_DStringAppend(&ds, "' is deprecated. ", -1);
@@ -307,8 +318,9 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
     errPtr = Tcl_ObjSetVar2(interp, varPtr, NULL, valPtr,
 			       TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG);
     Tcl_DecrRefCount(valPtr);
-    return (errPtr ? 1 : 0);
+    return (errPtr != NULL ? NS_TRUE : NS_FALSE);
 }
+
 
 /*
  *----------------------------------------------------------------------
@@ -327,13 +339,13 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
  */
 
 int
-NsTclStripHtmlCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
+NsTclStripHtmlCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int argc, CONST84 char *argv[])
 {
-    int   intag;     /* flag to see if are we inside a tag */
-    int   intspec;   /* flag to see if we are inside a special char */
-    char *inString;  /* copy of input string */
-    char *inPtr;     /* moving pointer to input string */
-    char *outPtr;    /* moving pointer to output string */
+    int         intag;     /* flag to see if are we inside a tag */
+    int         intspec;   /* flag to see if we are inside a special char */
+    char       *inString;  /* copy of input string */
+    char       *outPtr;    /* moving pointer to output string */
+    const char *inPtr;     /* moving pointer to input string */
 
     if (argc != 2) {
         Tcl_AppendResult(interp, "wrong # of args:  should be \"",
@@ -355,26 +367,26 @@ NsTclStripHtmlCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
         if (*inPtr == '<') {
             intag = 1;
 
-        } else if (intag && (*inPtr == '>')) {
-        /* inside a tag that closes */
+        } else if ((intag != 0) && (*inPtr == '>')) {
+	    /* inside a tag that closes */
             intag = 0;
 
-        } else if (intspec && (*inPtr == ';')) {
-        /* inside a special character that closes */
+        } else if ((intspec != 0) && (*inPtr == ';')) {
+	    /* inside a special character that closes */
             intspec = 0;
 
-        } else if (!intag && !intspec) {
-        /* regular text */
+        } else if ((intag == 0) && (intspec == 0)) {
+	    /* regular text */
 
             if (*inPtr == '&') {
-        /* starting a new special character */
-                intspec=WordEndsInSemi(inPtr);
-        }
+		/* starting a new special character */
+		intspec=WordEndsInSemi(inPtr);
+	    }
 
-            if (!intspec) {
-        /* incr pointer only if we're not in something htmlish */
+            if (intspec == 0) {
+		/* incr pointer only if we're not in something htmlish */
                 *outPtr++ = *inPtr;
-        }
+	    }
         }
         ++inPtr;
     }
@@ -382,7 +394,7 @@ NsTclStripHtmlCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
     /* null-terminator */
     *outPtr = '\0';
 
-    Tcl_SetResult(interp, inString, TCL_VOLATILE);
+    Tcl_SetObjResult(interp, Tcl_NewStringObj(inString, -1));
 
     ns_free(inString);
 
@@ -407,8 +419,7 @@ NsTclStripHtmlCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
  */
 
 int
-NsTclCryptObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                 Tcl_Obj *CONST objv[])
+NsTclCryptObjCmd(ClientData UNUSED(arg), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     char buf[NS_ENCRYPT_BUFSIZE];
 
@@ -441,9 +452,10 @@ NsTclCryptObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclHrefsCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
+NsTclHrefsCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int argc, CONST84 char *argv[])
 {
-    char *p, *s, *e, *he, save;
+    char       *s, *e, *he, save;
+    const char *p;
 
     if (argc != 2) {
         Tcl_AppendResult(interp, "wrong # args: should be \"",
@@ -452,23 +464,23 @@ NsTclHrefsCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
     }
 
     p = argv[1];
-    while ((s = strchr(p, '<')) && (e = strchr(s, '>'))) {
+    while (((s = strchr(p, '<')) != NULL) && ((e = strchr(s, '>')) != NULL)) {
         ++s;
         *e = '\0';
-        while (*s && isspace(UCHAR(*s))) {
+        while (*s != '\0' && CHARTYPE(space, *s) != 0) {
             ++s;
         }
-        if ((*s == 'a' || *s == 'A') && isspace(UCHAR(s[1]))) {
+        if ((*s == 'a' || *s == 'A') && CHARTYPE(space, s[1]) != 0) {
             ++s;
             while (*s) {
-                if (!strncasecmp(s, "href", 4)) {
+                if (strncasecmp(s, "href", 4u) == 0) {
                     s += 4;
-                    while (*s && isspace(UCHAR(*s))) {
+                    while (*s != '\0' && CHARTYPE(space, *s) != 0) {
                         ++s;
                     }
                     if (*s == '=') {
                         ++s;
-                        while (*s && isspace(UCHAR(*s))) {
+                        while (*s != '\0' && CHARTYPE(space, *s) != 0) {
                             ++s;
                         }
                         he = NULL;
@@ -477,8 +489,9 @@ NsTclHrefsCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
                             ++s;
                         }
                         if (he == NULL) {
+                            assert(s != NULL);
                             he = s;
-                            while (!isspace(UCHAR(*he))) {
+                            while (*he != '\0' && CHARTYPE(space, *he) == 0) {
                                 ++he;
                             }
                         }
@@ -490,7 +503,7 @@ NsTclHrefsCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
                     }
                 }
                 if (*s == '\'' || *s == '\"') {
-                    while (*s && (*s != '\'' || *s != '\"')) {
+                    while (*s != '\0' && (*s != '\'' || *s != '\"')) {
                         ++s;
                     }
                     continue;
@@ -523,21 +536,22 @@ NsTclHrefsCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
  */
 
 int
-NsTclHTUUEncodeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc,
-                      Tcl_Obj **objv)
+NsTclHTUUEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    unsigned char *string;
+    const unsigned char *bytes;
     char          *result;
-    int            nbytes;
+    int            nbytes = 0;
+    size_t         size;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "string");
         return TCL_ERROR;
     }
 
-    string = Tcl_GetByteArrayFromObj(objv[1], &nbytes);
-    result = ns_malloc((size_t) 1 + (4 * MAX(nbytes,2)) / 2);
-    Ns_HtuuEncode(string, (size_t)nbytes, result);
+    bytes = Tcl_GetByteArrayFromObj(objv[1], &nbytes);
+    size = (size_t)nbytes;
+    result = ns_malloc(1u + (4u * MAX(size,2u)) / 2u);
+    (void)Ns_HtuuEncode(bytes, size, result);
     Tcl_SetResult(interp, result, (Tcl_FreeProc *) ns_free);
 
     return TCL_OK;
@@ -561,11 +575,11 @@ NsTclHTUUEncodeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclHTUUDecodeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc,
-                      Tcl_Obj **objv)
+NsTclHTUUDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int            size;
-    char          *string;
+    int            len;
+    size_t         size;
+    const char    *chars;
     unsigned char *decoded;
 
     if (objc != 2) {
@@ -573,12 +587,12 @@ NsTclHTUUDecodeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
 
-    string = Tcl_GetStringFromObj(objv[1], &size);
-    size += 3;
-    decoded = ns_malloc(size);
-    size = (int)Ns_HtuuDecode(string, decoded, size);
-    decoded[size] = '\0';
-    Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, size));
+    chars = Tcl_GetStringFromObj(objv[1], &len);
+    size = (size_t)len + 3u;
+    decoded = (unsigned char *)ns_malloc(size);
+    size = Ns_HtuuDecode(chars, decoded, size);
+    decoded[size] = UCHAR('\0');
+    Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (int)size));
     ns_free(decoded);
 
     return TCL_OK;
@@ -602,7 +616,8 @@ NsTclHTUUDecodeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclCrashCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
+NsTclCrashCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
+	      int UNUSED(argc), CONST char* UNUSED(argv[]))
 {
     char *death;
 
@@ -630,11 +645,10 @@ NsTclCrashCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv)
  */
 
 static int
-WordEndsInSemi(char *ip)
+WordEndsInSemi(const char *ip)
 {
-    if (ip == NULL) {
-        return 0;
-    }
+    assert(ip != NULL);
+    
     /* advance past the first '&' so we can check for a second
        (i.e. to handle "ben&jerry&nbsp;")
     */
@@ -675,7 +689,7 @@ WordEndsInSemi(char *ip)
  *
  */
 
-static char hexChars[] = "0123456789ABCDEF";
+static const char hexChars[] = "0123456789ABCDEF";
 
 /*
  * Define to 1 for FIPS 180.1 version (with extra rotate in prescheduling),
@@ -685,15 +699,16 @@ static char hexChars[] = "0123456789ABCDEF";
 
 #define SHA_VERSION 1
 
-#define SHA_BLOCKBYTES 64
-#define SHA_HASHBYTES 20
+#define SHA_BLOCKBYTES 64u
 
 /*
    Shuffle the bytes into big-endian order within words, as per the
    SHA spec.
  */
+
+
 static void
-shaByteSwap(uint32_t * dest, uint8_t const *src, unsigned int words)
+SHAByteSwap(uint32_t *dest, uint8_t const *src, unsigned int words)
 {
     do {
        *dest++ = (uint32_t) ((unsigned) src[0] << 8 | src[1]) << 16 |
@@ -707,18 +722,18 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
 {
 
     /* Set the h-vars to their initial values */
-    ctx->iv[0] = 0x67452301;
-    ctx->iv[1] = 0xEFCDAB89;
-    ctx->iv[2] = 0x98BADCFE;
-    ctx->iv[3] = 0x10325476;
-    ctx->iv[4] = 0xC3D2E1F0;
+    ctx->iv[0] = 0x67452301u;
+    ctx->iv[1] = 0xEFCDAB89u;
+    ctx->iv[2] = 0x98BADCFEu;
+    ctx->iv[3] = 0x10325476u;
+    ctx->iv[4] = 0xC3D2E1F0u;
 
     /* Initialise bit count */
-#ifdef HAVE64
-    ctx->bytes = 0;
+#if defined(HAVE_64BIT)
+    ctx->bytes = 0u;
 #else
-    ctx->bytesHi = 0;
-    ctx->bytesLo = 0;
+    ctx->bytesHi = 0u;
+    ctx->bytesLo = 0u;
 #endif
 }
 
@@ -729,23 +744,20 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
    The f3 function can be modified to use an addition to combine the
    two halves rather than OR, allowing more opportunity for using
    associativity in optimization. (Colin Plumb)
-
-   Note that it may be necessary to add parentheses to these macros
-   if they are to be called with expressions as arguments.
  */
-#define f1(x,y,z) ( z ^ (x & (y ^ z) ) )	/* Rounds 0-19 */
-#define f2(x,y,z) ( x ^ y ^ z )			/* Rounds 20-39 */
-#define f3(x,y,z) ( (x & y) + (z & (x ^ y) ) )	/* Rounds 40-59 */
-#define f4(x,y,z) ( x ^ y ^ z )			/* Rounds 60-79 */
+#define f1(x,y,z) ( (z) ^ ((x) & ((y) ^ (z)) ) )	/* Rounds 0-19 */
+#define f2(x,y,z) ( (x) ^ (y) ^ (z) )			/* Rounds 20-39 */
+#define f3(x,y,z) ( ((x) & (y)) + ((z) & ((x) ^ (y)) ) )	/* Rounds 40-59 */
+#define f4(x,y,z) ( (x) ^ (y) ^ (z) )			/* Rounds 60-79 */
 
 /* The SHA Mysterious Constants. */
-#define K2 0x5A827999L		/* Rounds 0 -19 - floor(sqrt(2)  * 2^30) */
-#define K3 0x6ED9EBA1L		/* Rounds 20-39 - floor(sqrt(3)  * 2^30) */
-#define K5 0x8F1BBCDCL		/* Rounds 40-59 - floor(sqrt(5)  * 2^30) */
-#define K10 0xCA62C1D6L		/* Rounds 60-79 - floor(sqrt(10) * 2^30) */
+#define K2  (0x5A827999uL)	/* Rounds 0 -19 - floor(sqrt(2)  * 2^30) */
+#define K3  (0x6ED9EBA1uL)	/* Rounds 20-39 - floor(sqrt(3)  * 2^30) */
+#define K5  (0x8F1BBCDCuL)	/* Rounds 40-59 - floor(sqrt(5)  * 2^30) */
+#define K10 (0xCA62C1D6uL)	/* Rounds 60-79 - floor(sqrt(10) * 2^30) */
 
 /* 32-bit rotate left - kludged with shifts */
-#define ROTL(n,X) ( (X << n) | (X >> (32-n)) )
+#define ROTL(n,X) ( ((X) << (n)) | ((X) >> (32-(n))) )
 
 /*
    The initial expanding function
@@ -763,14 +775,14 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
  */
 #if SHA_VERSION			/* FIPS 180.1 */
 
-#define expandx(W,i) (t = W[i&15] ^ W[(i-14)&15] ^ W[(i-8)&15] ^ W[(i-3)&15],\
+#define expandx(W,i) (t = W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u], \
 			ROTL(1, t))
-#define expand(W,i) (W[i&15] = expandx(W,i))
+#define expand(W,i) (W[(i)&15u] = expandx(W,(i)))
 
 #else /* Old FIPS 180 */
 
-#define expandx(W,i) (W[i&15] ^ W[(i-14)&15] ^ W[(i-8)&15] ^ W[(i-3)&15])
-#define expand(W,i) (W[i&15] ^= W[(i-14)&15] ^ W[(i-8)&15] ^ W[(i-3)&15])a
+#define expandx(W,i) (W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u])
+#define expand(W,i) (W[(i)&15u] ^= W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u])
 
 #endif /* SHA_VERSION */
 
@@ -787,7 +799,7 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
    the variables (e,a,b,c,d) = (a',b',c',d',e') each iteration.
  */
 #define subRound(a, b, c, d, e, f, k, data) \
-	 ( e += ROTL(5,a) + f(b, c, d) + k + data, b = ROTL(30, b) )
+    ( (e) += ROTL(5u,(a)) + f((b), (c), (d)) + (k) + (data), (b) = ROTL(30u, (b)) )
 /*
    The above code is replicated 20 times for each of the 4 functions,
    using the next 20 values from the W[] array for "data" each time.
@@ -801,6 +813,7 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
 
    Note that this corrupts the sha->key area.
  */
+
 static void
 SHATransform(Ns_CtxSHA1 *sha)
 {
@@ -808,6 +821,8 @@ SHATransform(Ns_CtxSHA1 *sha)
 #if SHA_VERSION
     register uint32_t t;
 #endif
+
+    assert(sha != NULL);
 
     /* Set up first buffer */
     A = sha->iv[0];
@@ -833,73 +848,73 @@ SHATransform(Ns_CtxSHA1 *sha)
     subRound (C, D, E, A, B, f1, K2, sha->key[13]);
     subRound (B, C, D, E, A, f1, K2, sha->key[14]);
     subRound (A, B, C, D, E, f1, K2, sha->key[15]);
-    subRound (E, A, B, C, D, f1, K2, expand (sha->key, 16));
-    subRound (D, E, A, B, C, f1, K2, expand (sha->key, 17));
-    subRound (C, D, E, A, B, f1, K2, expand (sha->key, 18));
-    subRound (B, C, D, E, A, f1, K2, expand (sha->key, 19));
+    subRound (E, A, B, C, D, f1, K2, expand (sha->key, 16u));
+    subRound (D, E, A, B, C, f1, K2, expand (sha->key, 17u));
+    subRound (C, D, E, A, B, f1, K2, expand (sha->key, 18u));
+    subRound (B, C, D, E, A, f1, K2, expand (sha->key, 19u));
 
-    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 20));
-    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 21));
-    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 22));
-    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 23));
-    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 24));
-    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 25));
-    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 26));
-    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 27));
-    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 28));
-    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 29));
-    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 30));
-    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 31));
-    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 32));
-    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 33));
-    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 34));
-    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 35));
-    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 36));
-    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 37));
-    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 38));
-    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 39));
+    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 20u));
+    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 21u));
+    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 22u));
+    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 23u));
+    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 24u));
+    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 25u));
+    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 26u));
+    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 27u));
+    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 28u));
+    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 29u));
+    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 30u));
+    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 31u));
+    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 32u));
+    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 33u));
+    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 34u));
+    subRound (A, B, C, D, E, f2, K3, expand (sha->key, 35u));
+    subRound (E, A, B, C, D, f2, K3, expand (sha->key, 36u));
+    subRound (D, E, A, B, C, f2, K3, expand (sha->key, 37u));
+    subRound (C, D, E, A, B, f2, K3, expand (sha->key, 38u));
+    subRound (B, C, D, E, A, f2, K3, expand (sha->key, 39u));
 
-    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 40));
-    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 41));
-    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 42));
-    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 43));
-    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 44));
-    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 45));
-    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 46));
-    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 47));
-    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 48));
-    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 49));
-    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 50));
-    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 51));
-    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 52));
-    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 53));
-    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 54));
-    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 55));
-    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 56));
-    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 57));
-    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 58));
-    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 59));
+    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 40u));
+    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 41u));
+    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 42u));
+    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 43u));
+    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 44u));
+    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 45u));
+    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 46u));
+    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 47u));
+    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 48u));
+    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 49u));
+    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 50u));
+    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 51u));
+    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 52u));
+    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 53u));
+    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 54u));
+    subRound (A, B, C, D, E, f3, K5, expand (sha->key, 55u));
+    subRound (E, A, B, C, D, f3, K5, expand (sha->key, 56u));
+    subRound (D, E, A, B, C, f3, K5, expand (sha->key, 57u));
+    subRound (C, D, E, A, B, f3, K5, expand (sha->key, 58u));
+    subRound (B, C, D, E, A, f3, K5, expand (sha->key, 59u));
 
-    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 60));
-    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 61));
-    subRound (D, E, A, B, C, f4, K10, expand (sha->key, 62));
-    subRound (C, D, E, A, B, f4, K10, expand (sha->key, 63));
-    subRound (B, C, D, E, A, f4, K10, expand (sha->key, 64));
-    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 65));
-    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 66));
-    subRound (D, E, A, B, C, f4, K10, expand (sha->key, 67));
-    subRound (C, D, E, A, B, f4, K10, expand (sha->key, 68));
-    subRound (B, C, D, E, A, f4, K10, expand (sha->key, 69));
-    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 70));
-    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 71));
-    subRound (D, E, A, B, C, f4, K10, expand (sha->key, 72));
-    subRound (C, D, E, A, B, f4, K10, expand (sha->key, 73));
-    subRound (B, C, D, E, A, f4, K10, expand (sha->key, 74));
-    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 75));
-    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 76));
-    subRound (D, E, A, B, C, f4, K10, expandx (sha->key, 77));
-    subRound (C, D, E, A, B, f4, K10, expandx (sha->key, 78));
-    subRound (B, C, D, E, A, f4, K10, expandx (sha->key, 79));
+    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 60u));
+    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 61u));
+    subRound (D, E, A, B, C, f4, K10, expand (sha->key, 62u));
+    subRound (C, D, E, A, B, f4, K10, expand (sha->key, 63u));
+    subRound (B, C, D, E, A, f4, K10, expand (sha->key, 64u));
+    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 65u));
+    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 66u));
+    subRound (D, E, A, B, C, f4, K10, expand (sha->key, 67u));
+    subRound (C, D, E, A, B, f4, K10, expand (sha->key, 68u));
+    subRound (B, C, D, E, A, f4, K10, expand (sha->key, 69u));
+    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 70u));
+    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 71u));
+    subRound (D, E, A, B, C, f4, K10, expand (sha->key, 72u));
+    subRound (C, D, E, A, B, f4, K10, expand (sha->key, 73u));
+    subRound (B, C, D, E, A, f4, K10, expand (sha->key, 74u));
+    subRound (A, B, C, D, E, f4, K10, expand (sha->key, 75u));
+    subRound (E, A, B, C, D, f4, K10, expand (sha->key, 76u));
+    subRound (D, E, A, B, C, f4, K10, expandx (sha->key, 77u));
+    subRound (C, D, E, A, B, f4, K10, expandx (sha->key, 78u));
+    subRound (B, C, D, E, A, f4, K10, expandx (sha->key, 79u));
 
     /* Build message digest */
     sha->iv[0] += A;
@@ -910,33 +925,38 @@ SHATransform(Ns_CtxSHA1 *sha)
 }
 
 /* Update SHA for a block of data. */
-void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, unsigned len)
+void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
 {
     unsigned i;
 
+    assert(ctx != NULL);
+    assert(buf != NULL);
+
     /* Update bitcount */
 
-#ifdef HAVE64
+#if defined(HAVE_64BIT)
     i = (unsigned) ctx->bytes % SHA_BLOCKBYTES;
     ctx->bytes += len;
 #else
-    uint32_t t = ctx->bytesLo;
-    if ((ctx->bytesLo = t + len) < t) {
-       ctx->bytesHi++;		/* Carry from low to high */
+    {
+        uint32_t t = ctx->bytesLo;
+        ctx->bytesLo = (uint32_t)(t + len);
+        if (ctx->bytesLo < t) {
+            ctx->bytesHi++;		/* Carry from low to high */
+        }
+        i = (unsigned) t % SHA_BLOCKBYTES;	/* Bytes already in ctx->key */
     }
-
-    i = (unsigned) t % SHA_BLOCKBYTES;	/* Bytes already in ctx->key */
 #endif
 
     /* i is always less than SHA_BLOCKBYTES. */
     if (SHA_BLOCKBYTES - i > len) {
-        memcpy((uint8_t *) ctx->key + i, buf, len);
+        memcpy(ctx->key + i, buf, len);
         return;
     }
 
-    if (i) {				/* First chunk is an odd size */
-        memcpy((uint8_t *) ctx->key + i, buf, SHA_BLOCKBYTES - i);
-        shaByteSwap(ctx->key, (uint8_t *) ctx->key, SHA_BLOCKWORDS);
+    if (i != 0u) {				/* First chunk is an odd size */
+        memcpy(ctx->key + i, buf, SHA_BLOCKBYTES - i);
+        SHAByteSwap(ctx->key, (uint8_t const *) ctx->key, SHA_BLOCKWORDS);
         SHATransform(ctx);
         buf += SHA_BLOCKBYTES - i;
         len -= SHA_BLOCKBYTES - i;
@@ -944,14 +964,14 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, unsigned len)
 
     /* Process data in 64-byte chunks */
     while (len >= SHA_BLOCKBYTES) {
-        shaByteSwap(ctx->key, buf, SHA_BLOCKWORDS);
+        SHAByteSwap(ctx->key, buf, SHA_BLOCKWORDS);
         SHATransform(ctx);
         buf += SHA_BLOCKBYTES;
         len -= SHA_BLOCKBYTES;
     }
 
     /* Handle any remaining bytes of data. */
-    if (len) {
+    if (len != 0u) {
        memcpy(ctx->key, buf, len);
     }
 }
@@ -963,32 +983,31 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, unsigned len)
 
 void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
 {
-#if HAVE64
+#if defined(HAVE_64BIT)
     unsigned i = (unsigned) ctx->bytes % SHA_BLOCKBYTES;
 #else
     unsigned i = (unsigned) ctx->bytesLo % SHA_BLOCKBYTES;
 #endif
     uint8_t *p = (uint8_t *) ctx->key + i;	/* First unused byte */
-    uint32_t t;
 
     /* Set the first char of padding to 0x80. There is always room. */
-    *p++ = 0x80;
+    *p++ = (uint8_t)0x80;
 
     /* Bytes of padding needed to make 64 bytes (0..63) */
-    i = SHA_BLOCKBYTES - 1 - i;
+    i = SHA_BLOCKBYTES - 1u - i;
 
-    if (i < 8) {				/* Padding forces an extra block */
+    if (i < 8u) {				/* Padding forces an extra block */
         memset(p, 0, i);
-        shaByteSwap(ctx->key, (uint8_t *) ctx->key, 16);
+        SHAByteSwap(ctx->key, (uint8_t const *) ctx->key, 16u);
         SHATransform(ctx);
         p = (uint8_t *) ctx->key;
-        i = 64;
+        i = 64u;
     }
-    memset(p, 0, i - 8);
-    shaByteSwap(ctx->key, (uint8_t *) ctx->key, 14);
+    memset(p, 0, i - 8u);
+    SHAByteSwap(ctx->key, (uint8_t const *) ctx->key, 14u);
 
     /* Append length in bits and transform */
-#if HAVE64
+#if defined(HAVE_64BIT)
     ctx->key[14] = (uint32_t) (ctx->bytes >> 29);
     ctx->key[15] = (uint32_t) ctx->bytes << 3;
 #else
@@ -1003,24 +1022,25 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
      */
     /*memcpy(digest, ctx->iv, sizeof(digest));*/
 
-    for (i = 0; i < SHA_HASHWORDS; i++) {
-        t = ctx->iv[i];
-        digest[i * 4 + 0] = (uint8_t) (t >> 24);
-        digest[i * 4 + 1] = (uint8_t) (t >> 16);
-        digest[i * 4 + 2] = (uint8_t) (t >> 8);
-        digest[i * 4 + 3] = (uint8_t) t;
+    for (i = 0u; i < SHA_HASHWORDS; i++) {
+	uint32_t t = ctx->iv[i];
+
+        digest[i * 4u     ] = (uint8_t) (t >> 24);
+        digest[i * 4u + 1u] = (uint8_t) (t >> 16);
+        digest[i * 4u + 2u] = (uint8_t) (t >> 8);
+        digest[i * 4u + 3u] = (uint8_t) t;
     }
 
     memset(ctx, 0, sizeof(Ns_CtxSHA1)); 			/* In case it's sensitive */
 }
 
-void Ns_CtxString(unsigned char *digest, char *buf, int size)
+void Ns_CtxString(const unsigned char *digest, char *buf, int size)
 {
     int i;
 
     for (i = 0; i < size; ++i) {
         buf[i * 2] = hexChars[digest[i] >> 4];
-        buf[i * 2 + 1] = hexChars[digest[i] & 0xF];
+        buf[i * 2 + 1] = hexChars[digest[i] & 0xFu];
     }
     buf[size * 2] = '\0';
 }
@@ -1044,13 +1064,12 @@ void Ns_CtxString(unsigned char *digest, char *buf, int size)
  */
 
 int
-NsTclSHA1ObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                Tcl_Obj *CONST objv[])
+NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_CtxSHA1     ctx;
     unsigned char  digest[20];
     char           digestChars[41];
-    char          *str;
+    const char    *str;
     int            strLen;
 
     if (objc != 2) {
@@ -1058,9 +1077,9 @@ NsTclSHA1ObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
 
-    str = Tcl_GetStringFromObj(objv[1],&strLen);
+    str = Tcl_GetStringFromObj(objv[1], &strLen);
     Ns_CtxSHAInit(&ctx);
-    Ns_CtxSHAUpdate(&ctx, (unsigned char *) str, (unsigned int) strLen);
+    Ns_CtxSHAUpdate(&ctx, (const unsigned char *) str, (size_t) strLen);
     Ns_CtxSHAFinal(&ctx, digest);
 
     Ns_CtxString(digest, digestChars, 20);
@@ -1089,8 +1108,7 @@ NsTclSHA1ObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclFileStatObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                Tcl_Obj *CONST objv[])
+NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     struct stat st;
 
@@ -1104,17 +1122,17 @@ NsTclFileStatObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     }
     if (objc > 2) {
         char *name = Tcl_GetString(objv[2]);
-        Tcl_SetVar2Ex(interp, name, "dev", Tcl_NewIntObj(st.st_ino), 0);
-        Tcl_SetVar2Ex(interp, name, "ino", Tcl_NewWideIntObj(st.st_ino), 0);
+        Tcl_SetVar2Ex(interp, name, "dev",   Tcl_NewIntObj(st.st_ino), 0);
+        Tcl_SetVar2Ex(interp, name, "ino",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_ino), 0);
         Tcl_SetVar2Ex(interp, name, "nlink", Tcl_NewLongObj(st.st_nlink), 0);
-        Tcl_SetVar2Ex(interp, name, "uid", Tcl_NewIntObj(st.st_uid), 0);
-        Tcl_SetVar2Ex(interp, name, "gid", Tcl_NewIntObj(st.st_gid), 0);
-        Tcl_SetVar2Ex(interp, name, "size", Tcl_NewWideIntObj(st.st_size), 0);
-        Tcl_SetVar2Ex(interp, name, "atime", Tcl_NewWideIntObj(st.st_atime), 0);
-        Tcl_SetVar2Ex(interp, name, "ctime", Tcl_NewWideIntObj(st.st_ctime), 0);
-        Tcl_SetVar2Ex(interp, name, "mtime", Tcl_NewWideIntObj(st.st_mtime), 0);
-        Tcl_SetVar2Ex(interp, name, "mode", Tcl_NewIntObj(st.st_mode), 0);
-        Tcl_SetVar2Ex(interp, name, "type", Tcl_NewStringObj(
+        Tcl_SetVar2Ex(interp, name, "uid",   Tcl_NewIntObj(st.st_uid), 0);
+        Tcl_SetVar2Ex(interp, name, "gid",   Tcl_NewIntObj(st.st_gid), 0);
+        Tcl_SetVar2Ex(interp, name, "size",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_size), 0);
+        Tcl_SetVar2Ex(interp, name, "atime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_atime), 0);
+        Tcl_SetVar2Ex(interp, name, "ctime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_ctime), 0);
+        Tcl_SetVar2Ex(interp, name, "mtime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_mtime), 0);
+        Tcl_SetVar2Ex(interp, name, "mode",  Tcl_NewIntObj(st.st_mode), 0);
+        Tcl_SetVar2Ex(interp, name, "type",  Tcl_NewStringObj(
                   (S_ISREG(st.st_mode) ? "file" :
                         S_ISDIR(st.st_mode) ? "directory" :
 #ifdef S_ISCHR
@@ -1151,12 +1169,10 @@ NsTclFileStatObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  * with every copy.
  *
  * To compute the message digest of a chunk of bytes, declare an
- * MD5Context structure, pass it to MD5Init, call MD5Update as
+ * MD5Context structure, pass it to MD5Init, call MD5update as
  * needed on buffers full of bytes, and then call MD5Final, which
  * will fill a supplied 16-byte array with the digest.
  */
-
-static void MD5Transform(uint32_t buf[4], uint32_t const in[16]);
 
 #ifdef sun
 #define HIGHFIRST
@@ -1170,9 +1186,11 @@ static void MD5Transform(uint32_t buf[4], uint32_t const in[16]);
  */
 static void byteReverse(unsigned char *buf, unsigned longs)
 {
-    uint32_t t;
     do {
-	t = (uint32_t) ((unsigned) buf[3] << 8 | buf[2]) << 16 |
+	uint32_t t;
+
+	t = (uint32_t) 
+	    ((unsigned) buf[3] << 8 | buf[2]) << 16 |
 	    ((unsigned) buf[1] << 8 | buf[0]);
 	*(uint32_t *) buf = t;
 	buf += 4;
@@ -1186,38 +1204,43 @@ static void byteReverse(unsigned char *buf, unsigned longs)
  */
 void Ns_CtxMD5Init(Ns_CtxMD5 *ctx)
 {
-    ctx->buf[0] = 0x67452301U;
-    ctx->buf[1] = 0xefcdab89U;
+    ctx->buf[0] = 0x67452301u;
+    ctx->buf[1] = 0xefcdab89u;
     ctx->buf[2] = 0x98badcfeU;
-    ctx->buf[3] = 0x10325476U;
+    ctx->buf[3] = 0x10325476u;
 
-    ctx->bits[0] = 0;
-    ctx->bits[1] = 0;
+    ctx->bits[0] = 0u;
+    ctx->bits[1] = 0u;
 }
 
 /*
  * Update context to reflect the concatenation of another buffer full
  * of bytes.
  */
-void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, unsigned const char *buf, unsigned len)
+void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, unsigned const char *buf, size_t len)
 {
     uint32_t t;
+
+    assert(ctx != NULL);
+    assert(buf != NULL);
 
     /* Update bitcount */
 
     t = ctx->bits[0];
-    if ((ctx->bits[0] = t + ((uint32_t) len << 3)) < t)
+    ctx->bits[0] = t + ((uint32_t) len << 3);
+    if (ctx->bits[0] < t) {
 	ctx->bits[1]++;		/* Carry from low to high */
-    ctx->bits[1] += len >> 29;
+    }
+    ctx->bits[1] += (uint32_t)(len >> 29);
 
-    t = (t >> 3) & 0x3f;	/* Bytes already in shsInfo->data */
+    t = (t >> 3) & 0x3Fu;	/* Bytes already in shsInfo->data */
 
     /* Handle any leading odd-sized chunks */
 
-    if (t) {
-	unsigned char *p = (unsigned char *) ctx->in + t;
+    if (t != 0u) {
+	unsigned char *p = ctx->in + t;
 
-	t = 64 - t;
+	t = 64u - t;
 	if (len < t) {
 	    memcpy(p, buf, len);
 	    return;
@@ -1230,12 +1253,12 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, unsigned const char *buf, unsigned len)
     }
     /* Process data in 64-byte chunks */
 
-    while (len >= 64) {
-	memcpy(ctx->in, buf, 64);
+    while (len >= 64u) {
+	memcpy(ctx->in, buf, 64u);
 	byteReverse(ctx->in, 16);
 	MD5Transform(ctx->buf, (uint32_t *) ctx->in);
 	buf += 64;
-	len -= 64;
+	len -= 64u;
     }
 
     /* Handle any remaining bytes of data. */
@@ -1252,53 +1275,56 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
     unsigned count;
     unsigned char *p;
 
+    assert(ctx != NULL);
+    assert(digest != NULL);
+
     /* Compute number of bytes mod 64 */
-    count = (ctx->bits[0] >> 3) & 0x3F;
+    count = (ctx->bits[0] >> 3) & 0x3Fu;
 
     /* Set the first char of padding to 0x80.  This is safe since there is
        always at least one byte free */
     p = ctx->in + count;
-    *p++ = 0x80;
+    *p++ = (unsigned char)0x80;
 
     /* Bytes of padding needed to make 64 bytes */
-    count = 64 - 1 - count;
+    count = 64u - 1u - count;
 
     /* Pad out to 56 mod 64 */
-    if (count < 8) {
+    if (count < 8u) {
 	/* Two lots of padding:  Pad the first block to 64 bytes */
 	memset(p, 0, count);
 	byteReverse(ctx->in, 16);
 	MD5Transform(ctx->buf, (uint32_t *) ctx->in);
 
 	/* Now fill the next block with 56 bytes */
-	memset(ctx->in, 0, 56);
+	memset(ctx->in, 0, 56u);
     } else {
 	/* Pad block to 56 bytes */
-	memset(p, 0, count - 8);
+	memset(p, 0, count - 8u);
     }
     byteReverse(ctx->in, 14);
 
     /* Append length in bits and transform */
-    ctx->in[14] = ctx->bits[0];
-    ctx->in[15] = ctx->bits[1];
+    ctx->in[14] = (unsigned char)ctx->bits[0];
+    ctx->in[15] = (unsigned char)ctx->bits[1];
 
     MD5Transform(ctx->buf, (uint32_t *) ctx->in);
     byteReverse((unsigned char *) ctx->buf, 4);
-    memcpy(digest, ctx->buf, 16);
+    memcpy(digest, ctx->buf, 16u);
     memset(ctx, 0, sizeof(Ns_CtxMD5));	/* In case it's sensitive */
 }
 
 /* The four core functions - F1 is optimized somewhat */
 
 /* #define F1(x, y, z) (x & y | ~x & z) */
-#define F1(x, y, z) (z ^ (x & (y ^ z)))
-#define F2(x, y, z) F1(z, x, y)
-#define F3(x, y, z) (x ^ y ^ z)
-#define F4(x, y, z) (y ^ (x | ~z))
+#define F1(x, y, z) ((z) ^ ((x) & ((y) ^ (z))))
+#define F2(x, y, z) (F1((z), (x), (y)))
+#define F3(x, y, z) ((x) ^ (y) ^ (z))
+#define F4(x, y, z) ((y) ^ ((x) | ~(z)))
 
 /* This is the central step in the MD5 algorithm. */
 #define MD5STEP(f, w, x, y, z, data, s) \
-	( w += f(x, y, z) + data,  w = w<<s | w>>(32-s),  w += x )
+    ( (w) += f((x), (y), (z)) + (data),  (w) = (w)<<(s) | (w)>>(32-(s)),  (w) += (x) )
 
 /*
  * The core of the MD5 algorithm, this alters an existing MD5 hash to
@@ -1309,78 +1335,81 @@ static void MD5Transform(uint32_t buf[4], uint32_t const in[16])
 {
     register uint32_t a, b, c, d;
 
+    assert(buf != NULL);
+    assert(in != NULL);
+    
     a = buf[0];
     b = buf[1];
     c = buf[2];
     d = buf[3];
 
-    MD5STEP(F1, a, b, c, d,  in[0] + 0xd76aa478U,  7);
-    MD5STEP(F1, d, a, b, c,  in[1] + 0xe8c7b756U, 12);
+    MD5STEP(F1, a, b, c, d,  in[0] + 0xd76aa478u,  7);
+    MD5STEP(F1, d, a, b, c,  in[1] + 0xe8c7b756u, 12);
     MD5STEP(F1, c, d, a, b,  in[2] + 0x242070dbU, 17);
     MD5STEP(F1, b, c, d, a,  in[3] + 0xc1bdceeeU, 22);
     MD5STEP(F1, a, b, c, d,  in[4] + 0xf57c0fafU,  7);
     MD5STEP(F1, d, a, b, c,  in[5] + 0x4787c62aU, 12);
-    MD5STEP(F1, c, d, a, b,  in[6] + 0xa8304613U, 17);
-    MD5STEP(F1, b, c, d, a,  in[7] + 0xfd469501U, 22);
-    MD5STEP(F1, a, b, c, d,  in[8] + 0x698098d8U,  7);
+    MD5STEP(F1, c, d, a, b,  in[6] + 0xa8304613u, 17);
+    MD5STEP(F1, b, c, d, a,  in[7] + 0xfd469501u, 22);
+    MD5STEP(F1, a, b, c, d,  in[8] + 0x698098d8u,  7);
     MD5STEP(F1, d, a, b, c,  in[9] + 0x8b44f7afU, 12);
-    MD5STEP(F1, c, d, a, b, in[10] + 0xffff5bb1U, 17);
+    MD5STEP(F1, c, d, a, b, in[10] + 0xffff5bb1u, 17);
     MD5STEP(F1, b, c, d, a, in[11] + 0x895cd7beU, 22);
-    MD5STEP(F1, a, b, c, d, in[12] + 0x6b901122U,  7);
-    MD5STEP(F1, d, a, b, c, in[13] + 0xfd987193U, 12);
+    MD5STEP(F1, a, b, c, d, in[12] + 0x6b901122u,  7);
+    MD5STEP(F1, d, a, b, c, in[13] + 0xfd987193u, 12);
     MD5STEP(F1, c, d, a, b, in[14] + 0xa679438eU, 17);
-    MD5STEP(F1, b, c, d, a, in[15] + 0x49b40821U, 22);
+    MD5STEP(F1, b, c, d, a, in[15] + 0x49b40821u, 22);
 
-    MD5STEP(F2, a, b, c, d,  in[1] + 0xf61e2562U,  5);
-    MD5STEP(F2, d, a, b, c,  in[6] + 0xc040b340U,  9);
-    MD5STEP(F2, c, d, a, b, in[11] + 0x265e5a51U, 14);
+    MD5STEP(F2, a, b, c, d,  in[1] + 0xf61e2562u,  5);
+    MD5STEP(F2, d, a, b, c,  in[6] + 0xc040b340u,  9);
+    MD5STEP(F2, c, d, a, b, in[11] + 0x265e5a51u, 14);
     MD5STEP(F2, b, c, d, a,  in[0] + 0xe9b6c7aaU, 20);
     MD5STEP(F2, a, b, c, d,  in[5] + 0xd62f105dU,  5);
-    MD5STEP(F2, d, a, b, c, in[10] + 0x02441453U,  9);
-    MD5STEP(F2, c, d, a, b, in[15] + 0xd8a1e681U, 14);
-    MD5STEP(F2, b, c, d, a,  in[4] + 0xe7d3fbc8U, 20);
-    MD5STEP(F2, a, b, c, d,  in[9] + 0x21e1cde6U,  5);
-    MD5STEP(F2, d, a, b, c, in[14] + 0xc33707d6U,  9);
-    MD5STEP(F2, c, d, a, b,  in[3] + 0xf4d50d87U, 14);
+    MD5STEP(F2, d, a, b, c, in[10] + 0x02441453u,  9);
+    MD5STEP(F2, c, d, a, b, in[15] + 0xd8a1e681u, 14);
+    MD5STEP(F2, b, c, d, a,  in[4] + 0xe7d3fbc8u, 20);
+    MD5STEP(F2, a, b, c, d,  in[9] + 0x21e1cde6u,  5);
+    MD5STEP(F2, d, a, b, c, in[14] + 0xc33707d6u,  9);
+    MD5STEP(F2, c, d, a, b,  in[3] + 0xf4d50d87u, 14);
     MD5STEP(F2, b, c, d, a,  in[8] + 0x455a14edU, 20);
-    MD5STEP(F2, a, b, c, d, in[13] + 0xa9e3e905U,  5);
-    MD5STEP(F2, d, a, b, c,  in[2] + 0xfcefa3f8U,  9);
-    MD5STEP(F2, c, d, a, b,  in[7] + 0x676f02d9U, 14);
+    MD5STEP(F2, a, b, c, d, in[13] + 0xa9e3e905u,  5);
+    MD5STEP(F2, d, a, b, c,  in[2] + 0xfcefa3f8u,  9);
+    MD5STEP(F2, c, d, a, b,  in[7] + 0x676f02d9u, 14);
     MD5STEP(F2, b, c, d, a, in[12] + 0x8d2a4c8aU, 20);
 
-    MD5STEP(F3, a, b, c, d,  in[5] + 0xfffa3942U,  4);
-    MD5STEP(F3, d, a, b, c,  in[8] + 0x8771f681U, 11);
-    MD5STEP(F3, c, d, a, b, in[11] + 0x6d9d6122U, 16);
+    MD5STEP(F3, a, b, c, d,  in[5] + 0xfffa3942u,  4);
+    MD5STEP(F3, d, a, b, c,  in[8] + 0x8771f681u, 11);
+    MD5STEP(F3, c, d, a, b, in[11] + 0x6d9d6122u, 16);
     MD5STEP(F3, b, c, d, a, in[14] + 0xfde5380cU, 23);
-    MD5STEP(F3, a, b, c, d,  in[1] + 0xa4beea44U,  4);
-    MD5STEP(F3, d, a, b, c,  in[4] + 0x4bdecfa9U, 11);
-    MD5STEP(F3, c, d, a, b,  in[7] + 0xf6bb4b60U, 16);
-    MD5STEP(F3, b, c, d, a, in[10] + 0xbebfbc70U, 23);
-    MD5STEP(F3, a, b, c, d, in[13] + 0x289b7ec6U,  4);
+    MD5STEP(F3, a, b, c, d,  in[1] + 0xa4beea44u,  4);
+    MD5STEP(F3, d, a, b, c,  in[4] + 0x4bdecfa9u, 11);
+    MD5STEP(F3, c, d, a, b,  in[7] + 0xf6bb4b60u, 16);
+    MD5STEP(F3, b, c, d, a, in[10] + 0xbebfbc70u, 23);
+    MD5STEP(F3, a, b, c, d, in[13] + 0x289b7ec6u,  4);
     MD5STEP(F3, d, a, b, c,  in[0] + 0xeaa127faU, 11);
-    MD5STEP(F3, c, d, a, b,  in[3] + 0xd4ef3085U, 16);
-    MD5STEP(F3, b, c, d, a,  in[6] + 0x04881d05U, 23);
-    MD5STEP(F3, a, b, c, d,  in[9] + 0xd9d4d039U,  4);
-    MD5STEP(F3, d, a, b, c, in[12] + 0xe6db99e5U, 11);
-    MD5STEP(F3, c, d, a, b, in[15] + 0x1fa27cf8U, 16);
-    MD5STEP(F3, b, c, d, a,  in[2] + 0xc4ac5665U, 23);
+    MD5STEP(F3, c, d, a, b,  in[3] + 0xd4ef3085u, 16);
+    MD5STEP(F3, b, c, d, a,  in[6] + 0x04881d05u, 23);
+    MD5STEP(F3, a, b, c, d,  in[9] + 0xd9d4d039u,  4);
+    MD5STEP(F3, d, a, b, c, in[12] + 0xe6db99e5u, 11);
+    MD5STEP(F3, c, d, a, b, in[15] + 0x1fa27cf8u, 16);
+    MD5STEP(F3, b, c, d, a,  in[2] + 0xc4ac5665u, 23);
 
-    MD5STEP(F4, a, b, c, d,  in[0] + 0xf4292244U,  6);
-    MD5STEP(F4, d, a, b, c,  in[7] + 0x432aff97U, 10);
-    MD5STEP(F4, c, d, a, b, in[14] + 0xab9423a7U, 15);
-    MD5STEP(F4, b, c, d, a,  in[5] + 0xfc93a039U, 21);
-    MD5STEP(F4, a, b, c, d, in[12] + 0x655b59c3U,  6);
-    MD5STEP(F4, d, a, b, c,  in[3] + 0x8f0ccc92U, 10);
+    MD5STEP(F4, a, b, c, d,  in[0] + 0xf4292244u,  6);
+    MD5STEP(F4, d, a, b, c,  in[7] + 0x432aff97u, 10);
+    MD5STEP(F4, c, d, a, b, in[14] + 0xab9423a7u, 15);
+    MD5STEP(F4, b, c, d, a,  in[5] + 0xfc93a039u, 21);
+    MD5STEP(F4, a, b, c, d, in[12] + 0x655b59c3u,  6);
+    MD5STEP(F4, d, a, b, c,  in[3] + 0x8f0ccc92u, 10);
     MD5STEP(F4, c, d, a, b, in[10] + 0xffeff47dU, 15);
-    MD5STEP(F4, b, c, d, a,  in[1] + 0x85845dd1U, 21);
+    MD5STEP(F4, b, c, d, a,  in[1] + 0x85845dd1u, 21);
     MD5STEP(F4, a, b, c, d,  in[8] + 0x6fa87e4fU,  6);
-    MD5STEP(F4, d, a, b, c, in[15] + 0xfe2ce6e0U, 10);
-    MD5STEP(F4, c, d, a, b,  in[6] + 0xa3014314U, 15);
-    MD5STEP(F4, b, c, d, a, in[13] + 0x4e0811a1U, 21);
-    MD5STEP(F4, a, b, c, d,  in[4] + 0xf7537e82U,  6);
-    MD5STEP(F4, d, a, b, c, in[11] + 0xbd3af235U, 10);
+    MD5STEP(F4, d, a, b, c, in[15] + 0xfe2ce6e0u, 10);
+    MD5STEP(F4, c, d, a, b,  in[6] + 0xa3014314u, 15);
+    MD5STEP(F4, b, c, d, a, in[13] + 0x4e0811a1u, 21);
+    MD5STEP(F4, a, b, c, d,  in[4] + 0xf7537e82u,  6);
+    MD5STEP(F4, d, a, b, c, in[11] + 0xbd3af235u, 10);
     MD5STEP(F4, c, d, a, b,  in[2] + 0x2ad7d2bbU, 15);
-    MD5STEP(F4, b, c, d, a,  in[9] + 0xeb86d391U, 21);
+    MD5STEP(F4, b, c, d, a,  in[9] + 0xeb86d391u, 21);
 
     buf[0] += a;
     buf[1] += b;
@@ -1406,13 +1435,12 @@ static void MD5Transform(uint32_t buf[4], uint32_t const in[16])
  */
 
 int
-NsTclMD5ObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                Tcl_Obj *CONST objv[])
+NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_CtxMD5      ctx;
     unsigned char  digest[16];
     char           digestChars[33];
-    char          *str;
+    const char    *str;
     int            strLen;
 
     if (objc != 2) {
@@ -1420,9 +1448,9 @@ NsTclMD5ObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
 
-    str = Tcl_GetStringFromObj(objv[1],&strLen);
+    str = Tcl_GetStringFromObj(objv[1], &strLen);
     Ns_CtxMD5Init(&ctx);
-    Ns_CtxMD5Update(&ctx, (unsigned char *) str, (unsigned int) strLen);
+    Ns_CtxMD5Update(&ctx, (const unsigned char *) str, (size_t)strLen);
     Ns_CtxMD5Final(&ctx, digest);
 
     Ns_CtxString(digest, digestChars, 16);
@@ -1448,7 +1476,7 @@ NsTclMD5ObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclSetUserObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "user");
@@ -1460,7 +1488,7 @@ NsTclSetUserObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST 
 }
 
 int
-NsTclSetGroupObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "group");
@@ -1471,3 +1499,12 @@ NsTclSetGroupObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST
     return TCL_OK;
 }
 
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

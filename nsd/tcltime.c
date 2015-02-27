@@ -41,9 +41,17 @@
  * Local functions defined in this file
  */
 
-static void  SetTimeInternalRep(Tcl_Obj *objPtr, Ns_Time *timePtr);
-static int   SetTimeFromAny (Tcl_Interp *interp, Tcl_Obj *objPtr);
-static void  UpdateStringOfTime(Tcl_Obj *objPtr);
+static void  SetTimeInternalRep(Tcl_Obj *objPtr, const Ns_Time *timePtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static int   SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void  UpdateStringOfTime(Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1);
+
+static int   TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+        NS_GNUC_NONNULL(2);
 
 /*
  * Local variables defined in this file.
@@ -51,8 +59,8 @@ static void  UpdateStringOfTime(Tcl_Obj *objPtr);
 
 static Tcl_ObjType timeType = {
     "ns:time",
-    (Tcl_FreeInternalRepProc *) NULL,
-    (Tcl_DupInternalRepProc *) NULL,
+    NULL,
+    NULL,
     UpdateStringOfTime,
     SetTimeFromAny
 };
@@ -111,10 +119,12 @@ NsTclInitTimeType()
  */
 
 Tcl_Obj *
-Ns_TclNewTimeObj(Ns_Time *timePtr)
+Ns_TclNewTimeObj(const Ns_Time *timePtr)
 {
     Tcl_Obj *objPtr = Tcl_NewObj();
 
+    assert(timePtr != NULL);
+    
     Tcl_InvalidateStringRep(objPtr);
     SetTimeInternalRep(objPtr, timePtr);
 
@@ -139,8 +149,12 @@ Ns_TclNewTimeObj(Ns_Time *timePtr)
  */
 
 void
-Ns_TclSetTimeObj(Tcl_Obj *objPtr, Ns_Time *timePtr)
+Ns_TclSetTimeObj(Tcl_Obj *objPtr, const Ns_Time *timePtr)
 {
+
+    assert(timePtr != NULL);
+    assert(objPtr != NULL);
+
     if (Tcl_IsShared(objPtr)) {
         Tcl_Panic("Ns_TclSetTimeObj called with shared object");
     }
@@ -169,6 +183,10 @@ int
 Ns_TclGetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time *timePtr)
 {
     long sec;
+
+    assert(interp != NULL);
+    assert(objPtr != NULL);
+    assert(timePtr != NULL);
 
     if (objPtr->typePtr == intTypePtr) {
         if (Tcl_GetLongFromObj(interp, objPtr, &sec) != TCL_OK) {
@@ -207,6 +225,11 @@ Ns_TclGetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time *timePtr)
 int
 Ns_TclGetTimePtrFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time **timePtrPtr)
 {
+
+    assert(interp != NULL);
+    assert(objPtr != NULL);
+    assert(timePtrPtr != NULL);
+    
     if (objPtr->typePtr != &timeType) {
         if (Tcl_ConvertToType(interp, objPtr, &timeType) != TCL_OK) {
             return TCL_ERROR;
@@ -235,13 +258,13 @@ Ns_TclGetTimePtrFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time **timePtrPt
  */
 
 int
-NsTclTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Time result = {0, 0}, t1, t2;
     long sec;
     int opt;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
 	"adjust", "diff", "format", "get", "incr", "make",
 	"seconds", "microseconds", NULL
     };
@@ -273,7 +296,7 @@ NsTclTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         if (Tcl_GetLongFromObj(interp, objv[2], &sec) != TCL_OK) {
             return TCL_ERROR;
         }
-        result.sec = (time_t) sec;
+        result.sec = sec;
         if (objc == 3) {
             result.usec = 0;
         } else if (Tcl_GetLongFromObj(interp, objv[3], &result.usec) != TCL_OK) {
@@ -290,7 +313,7 @@ NsTclTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
                 || Tcl_GetLongFromObj(interp, objv[3], &sec) != TCL_OK) {
             return TCL_ERROR;
         }
-        t2.sec = (time_t) sec;
+        t2.sec = sec;
         if (objc == 4) {
             t2.usec = 0;
         } else if (Tcl_GetLongFromObj(interp, objv[4], &t2.usec) != TCL_OK) {
@@ -334,7 +357,6 @@ NsTclTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         Tcl_SetObjResult(interp, Tcl_NewLongObj((long)(opt == TSecondsIdx ?
 						       result.sec : result.usec)));
         return TCL_OK;
-        break;
 
     case TFormatIdx:
         if (objc != 3) {
@@ -354,7 +376,11 @@ NsTclTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 	  Tcl_DStringResult(interp, dsPtr);
 	}
 	return TCL_OK;
-	break;  
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
+        break;
     }
 
     Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&result));
@@ -380,18 +406,20 @@ NsTclTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
  */
 
 static int
-TmObjCmd(ClientData isgmt, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     time_t     now;
     struct tm *ptm;
     Tcl_Obj   *objPtr[9];
 
+    assert(interp != NULL);
+    
     if (objc != 1) {
         Tcl_WrongNumArgs(interp, 1, objv, "");
         return TCL_ERROR;
     }
     now = time(NULL);
-    if (isgmt) {
+    if (PTR2INT(isGmt) != 0) {
         ptm = ns_gmtime(&now);
     } else {
         ptm = ns_localtime(&now);
@@ -411,13 +439,13 @@ TmObjCmd(ClientData isgmt, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 }
 
 int
-NsTclGmTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclGmTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    return TmObjCmd((ClientData) 1, interp, objc, objv);
+    return TmObjCmd(INT2PTR(1), interp, objc, objv);
 }
 
 int
-NsTclLocalTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclLocalTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     return TmObjCmd(NULL, interp, objc, objv);
 }
@@ -440,25 +468,25 @@ NsTclLocalTimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **o
  */
 
 int
-NsTclSleepObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Time time;
+    Ns_Time t;
     int     ms;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "timespec");
         return TCL_ERROR;
     }
-    if (Ns_TclGetTimeFromObj(interp, objv[1], &time) != TCL_OK) {
+    if (Ns_TclGetTimeFromObj(interp, objv[1], &t) != TCL_OK) {
         return TCL_ERROR;
     }
-    Ns_AdjTime(&time);
-    if (time.sec < 0 || (time.sec == 0 && time.usec < 0)) {
+    Ns_AdjTime(&t);
+    if (t.sec < 0 || (t.sec == 0 && t.usec < 0)) {
         Tcl_AppendResult(interp, "invalid timespec: ",
                          Tcl_GetString(objv[1]), NULL);
         return TCL_ERROR;
     }
-    ms = (int)(time.sec * 1000 + time.usec / 1000);
+    ms = (int)(t.sec * 1000 + t.usec / 1000);
     Tcl_Sleep(ms);
 
     return TCL_OK;
@@ -482,10 +510,11 @@ NsTclSleepObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
  */
 
 int
-NsTclStrftimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    char   *fmt, buf[200];
-    time_t  time;
+    const char *fmt;
+    char    buf[200];
+    time_t  t;
     long    sec;
 
     if (objc != 2 && objc != 3) {
@@ -495,19 +524,19 @@ NsTclStrftimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **ob
     if (Tcl_GetLongFromObj(interp, objv[1], &sec) != TCL_OK) {
         return TCL_ERROR;
     }
-    time = sec;
+    t = sec;
 
     if (objc > 2) {
         fmt = Tcl_GetString(objv[2]);
     } else {
         fmt = "%c";
     }
-    if (strftime(buf, sizeof(buf), fmt, ns_localtime(&time)) == 0) {
+    if (strftime(buf, sizeof(buf), fmt, ns_localtime(&t)) == 0u) {
         Tcl_AppendStringsToObj(Tcl_GetObjResult(interp), "invalid time: ",
                                Tcl_GetString(objv[1]), NULL);
         return TCL_ERROR;
     }
-    Tcl_SetResult(interp, buf, TCL_VOLATILE);
+    Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, -1));
 
     return TCL_OK;
 }
@@ -519,6 +548,7 @@ NsTclStrftimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **ob
  * UpdateStringOfTime --
  *
  *      Update the string representation for an Ns_Time object.
+ *
  *      Note: This procedure does not free an existing old string rep
  *      so storage will be lost if this has not already been done.
  *
@@ -535,16 +565,19 @@ NsTclStrftimeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **ob
 static void
 UpdateStringOfTime(Tcl_Obj *objPtr)
 {
-    Ns_Time *timePtr = (Ns_Time *) (void *) &objPtr->internalRep;
+    Ns_Time *timePtr;
     int      len;
     char     buf[(TCL_INTEGER_SPACE * 2) + 1];
 
+    assert(objPtr != NULL);
+
+    timePtr = (Ns_Time *) (void *) &objPtr->internalRep;
     Ns_AdjTime(timePtr);
     if (timePtr->usec == 0) {
-        len = snprintf(buf, sizeof(buf), "%" PRIu64, (int64_t) timePtr->sec);
+        len = snprintf(buf, sizeof(buf), "%ld", timePtr->sec);
     } else {
-        len = snprintf(buf, sizeof(buf), "%" PRIu64 ":%ld",
-                       (int64_t) timePtr->sec, timePtr->usec);
+        len = snprintf(buf, sizeof(buf), "%ld:%ld",
+                       timePtr->sec, timePtr->usec);
     }
     Ns_TclSetStringRep(objPtr, buf, len);
 }
@@ -573,35 +606,49 @@ static int
 SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
 {
     char    *str, *sep;
-    Ns_Time  time;
+    Ns_Time  t;
     long     sec;
     int      value;
 
+    assert(interp != NULL);
+    assert(objPtr != NULL);
+    
     str = Tcl_GetString(objPtr);
     sep = strchr(str, ':');
     if (objPtr->typePtr == intTypePtr || sep == NULL) {
+        /*
+         * When the type is "int" or no ":" is found, usec is 0.
+         */
         if (Tcl_GetLongFromObj(interp, objPtr, &sec) != TCL_OK) {
             return TCL_ERROR;
         }
-        time.sec = (time_t) sec;
-        time.usec = 0;
+        t.sec = sec;
+        t.usec = 0;
     } else {
         int result;
 
+        /*
+         * Get sec: Overwrite the separator with a null-byte to make the
+         * first part null-terminated.
+         */
         *sep = '\0';
         result = Tcl_GetInt(interp, str, &value);
-        time.sec = value;
         *sep = ':';
         if (result != TCL_OK) {
             return TCL_ERROR;
         }
+        t.sec = (long)value;
+
+        /*
+         * Get usec
+         */
         if (Tcl_GetInt(interp, sep+1, &value) != TCL_OK) {
             return TCL_ERROR;
         }
-        time.usec = value;
+        t.usec = value;
     }
-    Ns_AdjTime(&time);
-    SetTimeInternalRep(objPtr, &time);
+    Ns_AdjTime(&t);
+    SetTimeInternalRep(objPtr, &t);
 
     return TCL_OK;
 }
@@ -625,8 +672,20 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
  */
 
 static void
-SetTimeInternalRep(Tcl_Obj *objPtr, Ns_Time *timePtr)
+SetTimeInternalRep(Tcl_Obj *objPtr, const Ns_Time *timePtr)
 {
+    assert(objPtr != NULL);
+    assert(timePtr != NULL);
+    
     Ns_TclSetTwoPtrValue(objPtr, &timeType,
-                         (void *) timePtr->sec, (void *) timePtr->usec);
+                         INT2PTR(timePtr->sec), INT2PTR(timePtr->usec));
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

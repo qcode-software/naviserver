@@ -37,12 +37,13 @@
 #include "nsd.h"
 
 #ifndef _WIN32
-#include <sys/un.h>
-#include <sys/uio.h>
+# include <sys/un.h>
+# include <sys/uio.h>
+
+# define REQUEST_SIZE (sizeof(int) + sizeof(int) + sizeof(int) + 64)
+# define RESPONSE_SIZE (sizeof(int))
 #endif
 
-#define REQUEST_SIZE (sizeof(int) + sizeof(int) + sizeof(int) + 64)
-#define RESPONSE_SIZE (sizeof(int))
 
 /*
  * Local variables defined in this file
@@ -54,16 +55,17 @@ static Tcl_HashTable preboundUdp;
 static Tcl_HashTable preboundRaw;
 static Tcl_HashTable preboundUnix;
 
-static int binderRunning = 0;
-static int binderRequest[2] = { -1, -1 };
-static int binderResponse[2] = { -1, -1 };
+static bool binderRunning = NS_FALSE;
+static NS_SOCKET binderRequest[2]  = { NS_INVALID_SOCKET, NS_INVALID_SOCKET };
+static NS_SOCKET binderResponse[2] = { NS_INVALID_SOCKET, NS_INVALID_SOCKET };
 
 /*
  * Local functions defined in this file
  */
-
-static void PreBind(char *line);
+#ifndef _WIN32
+static void PreBind(const char *line) NS_GNUC_NONNULL(1);
 static void Binder(void);
+#endif
 
 
 /*
@@ -85,9 +87,9 @@ static void Binder(void);
 
 #ifndef _WIN32
 NS_SOCKET
-Ns_SockListenEx(char *address, int port, int backlog)
+Ns_SockListenEx(const char *address, int port, int backlog)
 {
-    NS_SOCKET          sock = -1;
+    NS_SOCKET          sock = NS_INVALID_SOCKET;
     struct sockaddr_in sa;
 
     if (Ns_GetSockAddr(&sa, address, port) == NS_OK) {
@@ -95,20 +97,25 @@ Ns_SockListenEx(char *address, int port, int backlog)
         Ns_MutexLock(&lock);
         hPtr = Tcl_FindHashEntry(&preboundTcp, (char *) &sa);
         if (hPtr != NULL) {
-            sock = (int)(intptr_t) Tcl_GetHashValue(hPtr);
+	    sock = PTR2INT(Tcl_GetHashValue(hPtr));
             Tcl_DeleteHashEntry(hPtr);
         }
         Ns_MutexUnlock(&lock);
         if (hPtr == NULL) {
-            /* Not prebound, bind now */
+            /* 
+             * Not prebound, bind now 
+             */
             sock = Ns_SockBind(&sa);
         }
-        if (sock >= 0 && listen(sock, backlog) == -1) {
-            /* Can't listen; close the opened socket */
+        if (sock != NS_INVALID_SOCKET && listen(sock, backlog) == -1) {
+            /* 
+             * Can't listen; close the opened socket 
+             */
             int err = errno;
-            close(sock);
+            
+            ns_sockclose(sock);
             errno = err;
-            sock = -1;
+            sock = NS_INVALID_SOCKET;
             Ns_SetSockErrno(err);
         }
     }
@@ -118,7 +125,7 @@ Ns_SockListenEx(char *address, int port, int backlog)
      * directly, try to do it through the binder
      */
 
-    if (sock == -1 && binderRunning) {
+    if (sock == NS_INVALID_SOCKET && binderRunning == NS_TRUE) {
         sock = Ns_SockBinderListen('T', address, port, backlog);
     }
     return sock;
@@ -131,6 +138,7 @@ Ns_SockListenEx(char *address, int port, int backlog)
  * Ns_SockListenUdp --
  *
  *      Listen on the UDP socket for the given IP address and port.
+ *      The given address might be NULL, which implies "0.0.0.0";
  *
  * Results:
  *      Socket descriptor or -1 on error.
@@ -142,9 +150,9 @@ Ns_SockListenEx(char *address, int port, int backlog)
  */
 
 NS_SOCKET
-Ns_SockListenUdp(char *address, int port)
+Ns_SockListenUdp(const char *address, int port)
 {
-    NS_SOCKET          sock = -1;
+    NS_SOCKET          sock = NS_INVALID_SOCKET;
     struct sockaddr_in sa;
 
     if (Ns_GetSockAddr(&sa, address, port) == NS_OK) {
@@ -152,12 +160,14 @@ Ns_SockListenUdp(char *address, int port)
         Ns_MutexLock(&lock);
         hPtr = Tcl_FindHashEntry(&preboundUdp, (char *) &sa);
         if (hPtr != NULL) {
-            sock = (int)(intptr_t) Tcl_GetHashValue(hPtr);
+            sock = PTR2INT(Tcl_GetHashValue(hPtr));
             Tcl_DeleteHashEntry(hPtr);
         }
         Ns_MutexUnlock(&lock);
         if (hPtr == NULL) {
-            /* Not prebound, bind now */
+            /* 
+             * Not prebound, bind now 
+             */
             sock = Ns_SockBindUdp(&sa);
         }
     }
@@ -167,7 +177,7 @@ Ns_SockListenUdp(char *address, int port)
      * directly, try to do it through the binder
      */
 
-    if (sock == -1 && binderRunning) {
+    if (sock == NS_INVALID_SOCKET && binderRunning == NS_TRUE) {
         sock = Ns_SockBinderListen('U', address, port, 0);
     }
 
@@ -194,15 +204,15 @@ Ns_SockListenUdp(char *address, int port)
 NS_SOCKET
 Ns_SockListenRaw(int proto)
 {
-    NS_SOCKET       sock = -1;
+    NS_SOCKET       sock = NS_INVALID_SOCKET;
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch search;
 
     Ns_MutexLock(&lock);
     hPtr = Tcl_FirstHashEntry(&preboundRaw, &search);
     while (hPtr != NULL) {
-        if (proto == (int)(intptr_t) Tcl_GetHashValue(hPtr)) {
-            sock = (int)(intptr_t) Tcl_GetHashKey(&preboundRaw, hPtr);
+        if (proto == PTR2INT(Tcl_GetHashValue(hPtr))) {
+	    sock = PTR2NSSOCK(Tcl_GetHashKey(&preboundRaw, hPtr));
             Tcl_DeleteHashEntry(hPtr);
             break;
         }
@@ -210,7 +220,9 @@ Ns_SockListenRaw(int proto)
     }
     Ns_MutexUnlock(&lock);
     if (hPtr == NULL) {
-        /* Not prebound, bind now */
+        /* 
+         * Not prebound, bind now 
+         */
         sock = Ns_SockBindRaw(proto);
     }
 
@@ -219,8 +231,8 @@ Ns_SockListenRaw(int proto)
      * directly, try to do it through the binder
      */
 
-    if (sock == -1 && binderRunning) {
-        sock = Ns_SockBinderListen('R', 0, proto, proto);
+    if (sock == NS_INVALID_SOCKET && binderRunning == NS_TRUE) {
+        sock = Ns_SockBinderListen('R', NULL, proto, proto);
     }
 
     return sock;
@@ -245,18 +257,22 @@ Ns_SockListenRaw(int proto)
  */
 
 NS_SOCKET
-Ns_SockListenUnix(char *path, int backlog, int  mode)
+Ns_SockListenUnix(const char *path, int backlog, int  mode)
 {
-    int            sock = -1;
+    NS_SOCKET      sock = NS_INVALID_SOCKET;
 #ifndef _WIN32
-    Tcl_HashEntry  *hPtr;
+    Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
+
+    assert(path != NULL);
 
     Ns_MutexLock(&lock);
     hPtr = Tcl_FirstHashEntry(&preboundUnix, &search);
     while (hPtr != NULL) {
-        if (!strcmp(path, (char*) Tcl_GetHashValue(hPtr))) {
-            sock = (int)(intptr_t) Tcl_GetHashKey(&preboundRaw, hPtr);
+	const char *value = (char*) Tcl_GetHashValue(hPtr);
+
+        if (STREQ(path, value)) {
+            sock = PTR2NSSOCK(Tcl_GetHashKey(&preboundRaw, hPtr));
             Tcl_DeleteHashEntry(hPtr);
             break;
         }
@@ -264,16 +280,20 @@ Ns_SockListenUnix(char *path, int backlog, int  mode)
     }
     Ns_MutexUnlock(&lock);
     if (hPtr == NULL) {
-        /* Not prebound, bind now */
+        /* 
+         * Not prebound, bind now 
+         */
         sock = Ns_SockBindUnix(path, backlog > 0 ? SOCK_STREAM : SOCK_DGRAM, mode);
     }
     if (sock >= 0 && backlog > 0 && listen(sock, backlog) == -1) {
-        /* Can't listen; close the opened socket */
+        /* 
+         * Can't listen; close the opened socket 
+         */
         int err = errno;
 
-        close(sock);
+        ns_sockclose(sock);
         errno = err;
-        sock = -1;
+        sock = NS_INVALID_SOCKET;
         Ns_SetSockErrno(err);
     }
 
@@ -282,7 +302,7 @@ Ns_SockListenUnix(char *path, int backlog, int  mode)
      * directly, try to do it through the binder
      */
 
-    if (sock == -1 && binderRunning) {
+    if (sock == NS_INVALID_SOCKET && binderRunning == NS_TRUE) {
         sock = Ns_SockBinderListen('D', path, mode, backlog);
     }
 #endif /* _WIN32 */
@@ -307,20 +327,22 @@ Ns_SockListenUnix(char *path, int backlog, int  mode)
  */
 
 NS_SOCKET
-Ns_SockBindUdp(struct sockaddr_in *saPtr)
+Ns_SockBindUdp(const struct sockaddr_in *saPtr)
 {
     NS_SOCKET sock;
     int       n = 1;
 
+    assert(saPtr != NULL);
+    
     sock = socket(AF_INET, SOCK_DGRAM, 0);
 
-    if (sock == -1
+    if (sock == NS_INVALID_SOCKET
         || setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&n, sizeof(n)) == -1
         || setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&n, sizeof(n)) == -1
-        || bind(sock,(struct sockaddr*)saPtr, sizeof(struct sockaddr_in)) == -1) {
+        || bind(sock,(const struct sockaddr*)saPtr, sizeof(struct sockaddr_in)) == -1) {
         int err = errno;
-        close(sock);
-        sock = -1;
+        ns_sockclose(sock);
+        sock = NS_INVALID_SOCKET;
         Ns_SetSockErrno(err);
     }
 
@@ -346,31 +368,40 @@ Ns_SockBindUdp(struct sockaddr_in *saPtr)
  */
 
 NS_SOCKET
-Ns_SockBindUnix(char *path, int socktype, int mode)
+Ns_SockBindUnix(const char *path, int socktype, int mode)
 {
-    int sock;
 #ifdef _WIN32
-    sock = -1;
+    return NS_INVALID_SOCKET;
 #else
+    NS_SOCKET sock;
     struct sockaddr_un addr;
+    size_t pathLength;
+
+    assert(path != NULL);
+    pathLength = strlen(path);
+
+    if (pathLength >= sizeof(addr.sun_path)) {
+        Ns_Log(Error, "provided path exeeds maximum length: %s\n", path);
+        return NS_INVALID_SOCKET;
+    }
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+    memcpy(addr.sun_path, path, pathLength + 1);
     unlink(path);
 
     sock = socket(AF_UNIX, socktype > 0 ? socktype : SOCK_STREAM, 0);
 
-    if (sock == -1
+    if (sock == NS_INVALID_SOCKET
         || bind(sock, (struct sockaddr *) &addr, sizeof(addr)) == -1
         || (mode && chmod(path, mode) == -1)) {
         int err = errno;
-        close(sock);
-        sock = -1;
+        ns_sockclose(sock);
+        sock = NS_INVALID_SOCKET;
         Ns_SetSockErrno(err);
     }
-#endif /* _WIN32 */
     return sock;
+#endif /* _WIN32 */
 }
 
 
@@ -399,9 +430,9 @@ Ns_SockBindRaw(int proto)
 
     sock = socket(AF_INET, SOCK_RAW, proto);
 
-    if (sock == -1) {
+    if (sock == NS_INVALID_SOCKET) {
         int err = errno;
-        close(sock);
+        ns_sockclose(sock);
         Ns_SetSockErrno(err);
     }
 
@@ -428,8 +459,8 @@ Ns_SockBindRaw(int proto)
 void
 NsInitBinder(void)
 {
-    Tcl_InitHashTable(&preboundTcp, sizeof(struct sockaddr_in)/sizeof(int));
-    Tcl_InitHashTable(&preboundUdp, sizeof(struct sockaddr_in)/sizeof(int));
+    Tcl_InitHashTable(&preboundTcp, (int)(sizeof(struct sockaddr_in) / sizeof(int)));
+    Tcl_InitHashTable(&preboundUdp, (int)(sizeof(struct sockaddr_in) / sizeof(int)));
     Tcl_InitHashTable(&preboundRaw, TCL_ONE_WORD_KEYS);
     Tcl_InitHashTable(&preboundUnix, TCL_STRING_KEYS);
 }
@@ -452,7 +483,7 @@ NsInitBinder(void)
  */
 
 void
-NsPreBind(char *args, char *file)
+NsPreBind(const char *args, const char *file)
 {
 #ifndef _WIN32
     if (args != NULL) {
@@ -466,7 +497,7 @@ NsPreBind(char *args, char *file)
         } else {
             Tcl_DString line;
             Tcl_DStringInit(&line);
-            while(!Tcl_Eof(chan)) {
+            while(Tcl_Eof(chan) == 0) {
                 Tcl_DStringSetLength(&line, 0);
                 if (Tcl_Gets(chan, &line) > 0) {
                     PreBind(Tcl_DStringValue(&line));
@@ -501,9 +532,10 @@ NsClosePreBound(void)
 {
 #ifndef _WIN32
     Tcl_HashEntry      *hPtr;
-    Tcl_HashSearch     search;
-    char               *addr;
-    int                port, sock;
+    Tcl_HashSearch      search;
+    const char         *addr;
+    int                 port;
+    NS_SOCKET           sock;
     struct sockaddr_in *saPtr;
 
     Ns_MutexLock(&lock);
@@ -517,10 +549,10 @@ NsClosePreBound(void)
         saPtr = (struct sockaddr_in *) Tcl_GetHashKey(&preboundTcp, hPtr);
         addr = ns_inet_ntoa(saPtr->sin_addr);
         port = htons(saPtr->sin_port);
-        sock = (int)(intptr_t) Tcl_GetHashValue(hPtr);
+        sock = PTR2NSSOCK(Tcl_GetHashValue(hPtr));
         Ns_Log(Warning, "prebind: closed unused TCP socket: %s:%d = %d",
                addr, port, sock);
-        close(sock);
+        ns_sockclose(sock);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -536,10 +568,10 @@ NsClosePreBound(void)
         saPtr = (struct sockaddr_in *) Tcl_GetHashKey(&preboundUdp, hPtr);
         addr = ns_inet_ntoa(saPtr->sin_addr);
         port = htons(saPtr->sin_port);
-        sock = (int)(intptr_t) Tcl_GetHashValue(hPtr);
+        sock = PTR2NSSOCK(Tcl_GetHashValue(hPtr));
         Ns_Log(Warning, "prebind: closed unused UDP socket: %s:%d = %d",
                addr, port, sock);
-        close(sock);
+        ns_sockclose(sock);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -552,11 +584,11 @@ NsClosePreBound(void)
 
     hPtr = Tcl_FirstHashEntry(&preboundRaw, &search);
     while (hPtr != NULL) {
-        sock = (int)(intptr_t) Tcl_GetHashKey(&preboundRaw, hPtr);
-        port = (int)(intptr_t) Tcl_GetHashValue(hPtr);
+        sock = PTR2NSSOCK(Tcl_GetHashKey(&preboundRaw, hPtr));
+        port = PTR2INT(Tcl_GetHashValue(hPtr));
         Ns_Log(Warning, "prebind: closed unused raw socket: %d = %d",
                port, sock);
-        close(sock);
+        ns_sockclose(sock);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -570,10 +602,10 @@ NsClosePreBound(void)
     hPtr = Tcl_FirstHashEntry(&preboundUnix, &search);
     while (hPtr != NULL) {
         addr = (char *) Tcl_GetHashKey(&preboundUnix, hPtr);
-        sock = (int)(intptr_t) Tcl_GetHashValue(hPtr);
+        sock = PTR2NSSOCK(Tcl_GetHashValue(hPtr));
         Ns_Log(Warning, "prebind: closed unused Unix-domain socket: %s = %d",
                addr, sock);
-        close(sock);
+        ns_sockclose(sock);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -606,104 +638,122 @@ NsClosePreBound(void)
  *
  *----------------------------------------------------------------------
  */
+#ifndef _WIN32
 
 static void
-PreBind(char *line)
+PreBind(const char *line)
 {
-#ifndef _WIN32
     Tcl_HashEntry      *hPtr;
     int                isNew, sock, port, mode;
     char               *next, *str;
     struct sockaddr_in sa;
 
-    for (;line != NULL; line = next) {
-        char  *addr, *proto;
+    assert(line != NULL);
+
+    for (; line != NULL; line = next) {
+        const char *addr, *proto;
+
         next = strchr(line, ',');
-        if (next) {
+        if (next != NULL) {
             *next++ = '\0';
         }
         proto = "tcp";
         addr = "0.0.0.0";
-        /* Parse port */
+
+        /* 
+	 * Parse port 
+	 */
         str = strchr(line, ':');
-        if (str) {
+        if (str != NULL) {
             *str++ = '\0';
-            port = atoi(str);
+            port = strtol(str, NULL, 10);
             addr = line;
             line = str;
         } else {
-            port = atoi(line);
+            port = strtol(line, NULL, 10);
         }
-        /* Parse protocol */
+
+        /* 
+	 * Parse protocol 
+	 */
         if (*line != '/' && (str = strchr(line,'/'))) {
             *str++ = '\0';
             proto = str;
         }
 
-        if (!strcmp(proto,"tcp") && port > 0) {
+	/*
+	 * TCP
+	 */
+        if (STREQ(proto,"tcp") && port > 0) {
             if (Ns_GetSockAddr(&sa, addr, port) != NS_OK) {
                 Ns_Log(Error, "prebind: tcp: invalid address: %s:%d",
                        addr, port);
                 continue;
             }
             hPtr = Tcl_CreateHashEntry(&preboundTcp, (char *) &sa, &isNew);
-            if (!isNew) {
+            if (isNew == 0) {
                 Ns_Log(Error, "prebind: tcp: duplicate entry: %s:%d",
                        addr, port);
                 continue;
             }
             sock = Ns_SockBind(&sa);
-            if (sock == -1) {
+            if (sock == NS_INVALID_SOCKET) {
                 Ns_Log(Error, "prebind: tcp: %s:%d: %s", addr, port,
                        strerror(errno));
                 Tcl_DeleteHashEntry(hPtr);
                 continue;
             }
-            Tcl_SetHashValue(hPtr, (ClientData)(intptr_t) sock);
+            Tcl_SetHashValue(hPtr, NSSOCK2PTR(sock));
             Ns_Log(Notice, "prebind: tcp: %s:%d = %d", addr, port, sock);
         }
 
-        if (!strcmp(proto,"udp") && port > 0) {
+	/*
+	 * UDP
+	 */
+        if (STREQ(proto,"udp") && port > 0) {
             if (Ns_GetSockAddr(&sa, addr, port) != NS_OK) {
                 Ns_Log(Error, "prebind: udp: invalid address: %s:%d",
                        addr, port);
                 continue;
             }
             hPtr = Tcl_CreateHashEntry(&preboundUdp, (char *) &sa, &isNew);
-            if (!isNew) {
+            if (isNew == 0) {
                 Ns_Log(Error, "prebind: udp: duplicate entry: %s:%d",
                        addr, port);
                 continue;
             }
             sock = Ns_SockBindUdp(&sa);
-            if (sock == -1) {
+            if (sock == NS_INVALID_SOCKET) {
                 Ns_Log(Error, "prebind: udp: %s:%d: %s", addr, port,
                        strerror(errno));
                 Tcl_DeleteHashEntry(hPtr);
                 continue;
             }
-            Tcl_SetHashValue(hPtr, (ClientData)(intptr_t) sock);
+            Tcl_SetHashValue(hPtr, NSSOCK2PTR(sock));
             Ns_Log(Notice, "prebind: udp: %s:%d = %d", addr, port, sock);
         }
 
-        if (!strncmp(proto,"icmp",4)) {
+	/*
+	 * ICMP
+	 */
+        if (strncmp(proto, "icmp", 4U) == 0) {
             int count = 1;
             /* Parse count */
             str = strchr(str,'/');
-            if (str) {
+            if (str != NULL) {
                 *(str++) = '\0';
-                count = atoi(str);
+                count = strtol(str, NULL, 10);
             }
             while(count--) {
                 sock = Ns_SockBindRaw(IPPROTO_ICMP);
-                if (sock == -1) {
+                if (sock == NS_INVALID_SOCKET) {
                     Ns_Log(Error, "prebind: icmp: %s",strerror(errno));
                     continue;
                 }
-                hPtr = Tcl_CreateHashEntry(&preboundRaw, (char *)(intptr_t) sock, &isNew);
-                if (!isNew) {
+                hPtr = Tcl_CreateHashEntry(&preboundRaw, NSSOCK2PTR(sock), &isNew);
+                if (isNew == 0) {
                     Ns_Log(Error, "prebind: icmp: duplicate entry");
-                    close(sock);
+                    ns_sockclose(sock);
                     continue;
                 }
                 Tcl_SetHashValue(hPtr, IPPROTO_ICMP);
@@ -711,31 +761,34 @@ PreBind(char *line)
             }
         }
 
-        if (Ns_PathIsAbsolute(line)) {
+	/*
+	 * Unix-domain socket
+	 */
+        if (Ns_PathIsAbsolute(line) == NS_TRUE) {
             /* Parse mode */
             mode = 0;
             str = strchr(str,'|');
-            if (str) {
+            if (str != NULL) {
                 *(str++) = '\0';
-                mode = atoi(str);
+                mode = strtol(str, NULL, 10);
             }
             hPtr = Tcl_CreateHashEntry(&preboundUnix, (char *) line, &isNew);
-            if (!isNew) {
+            if (isNew == 0) {
                 Ns_Log(Error, "prebind: unix: duplicate entry: %s",line);
                 continue;
             }
             sock = Ns_SockBindUnix(line, SOCK_STREAM, mode);
-            if (sock == -1) {
+            if (sock == NS_INVALID_SOCKET) {
                 Ns_Log(Error, "prebind: unix: %s: %s", proto, strerror(errno));
                 Tcl_DeleteHashEntry(hPtr);
                 continue;
             }
-            Tcl_SetHashValue(hPtr, (ClientData)(intptr_t) sock);
+            Tcl_SetHashValue(hPtr, NSSOCK2PTR(sock));
             Ns_Log(Notice, "prebind: unix: %s = %d", line, sock);
         }
     }
-#endif
 }
+#endif
 
 
 /*
@@ -762,9 +815,9 @@ PreBind(char *line)
  */
 
 NS_SOCKET
-Ns_SockBinderListen(int type, char *address, int port, int options)
+Ns_SockBinderListen(int type, const char *address, int port, int options)
 {
-    NS_SOCKET     sock = -1;
+    NS_SOCKET     sock = NS_INVALID_SOCKET;
 #ifndef _WIN32
     int           n, err;
     char          data[64];
@@ -782,7 +835,7 @@ Ns_SockBinderListen(int type, char *address, int port, int options)
     iov[2].iov_len = sizeof(type);
     iov[3].iov_base = (caddr_t) data;
     iov[3].iov_len = sizeof(data);
-    /*memset(data, 0, sizeof(data));*/
+
     strncpy(data, address, sizeof(data)-1);
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = iov;
@@ -802,7 +855,7 @@ Ns_SockBinderListen(int type, char *address, int port, int options)
 #ifdef HAVE_CMMSG
     msg.msg_control = (void *) data;
     msg.msg_controllen = sizeof(data);
-    msg.msg_flags = 0;
+    msg.msg_flags = 0U;
 #else
     msg.msg_accrights = (caddr_t) &sock;
     msg.msg_accrightslen = sizeof(sock);
@@ -830,16 +883,16 @@ Ns_SockBinderListen(int type, char *address, int port, int options)
      * must be set again.
      */
 
-    if (sock != INVALID_SOCKET && Ns_CloseOnExec(sock) != NS_OK) {
-        close(sock);
-        sock = -1;
+    if (sock != NS_INVALID_SOCKET && Ns_CloseOnExec(sock) != NS_OK) {
+        ns_sockclose(sock);
+        sock = NS_INVALID_SOCKET;
     }
     if (err == 0) {
         Ns_Log(Notice, "Ns_SockBinderListen: listen(%s,%d) = %d",
                address, port, sock);
     } else {
         Ns_SetSockErrno(err);
-        sock = -1;
+        sock = NS_INVALID_SOCKET;
         Ns_Log(Error, "Ns_SockBinderListen: listen(%s,%d) failed: '%s'",
                address, port, ns_sockstrerror(ns_sockerrno));
     }
@@ -870,7 +923,8 @@ void
 NsForkBinder(void)
 {
 #ifndef _WIN32
-    int pid, status;
+    pid_t pid;
+    int status;
 
     /*
      * Create two socket pipes, one for sending the request and one
@@ -897,8 +951,8 @@ NsForkBinder(void)
         if (pid < 0) {
             Ns_Fatal("NsForkBinder: fork() failed: '%s'", strerror(errno));
         } else if (pid == 0) {
-            close(binderRequest[1]);
-            close(binderResponse[0]);
+            ns_sockclose(binderRequest[1]);
+            ns_sockclose(binderResponse[0]);
             Binder();
         }
         exit(0);
@@ -910,7 +964,7 @@ NsForkBinder(void)
         Ns_Fatal("NsForkBinder: process %d exited with non-zero status: %d",
                  pid, status);
     }
-    binderRunning = 1;
+    binderRunning = NS_TRUE;
 #endif /* _WIN32 */
 }
 
@@ -936,12 +990,12 @@ NsForkBinder(void)
 void
 NsStopBinder(void)
 {
-    if (binderRunning) {
-        close(binderRequest[1]);
-        close(binderResponse[0]);
-        close(binderRequest[0]);
-        close(binderResponse[1]);
-        binderRunning = 0;
+    if (binderRunning == NS_TRUE) {
+        ns_sockclose(binderRequest[1]);
+        ns_sockclose(binderResponse[0]);
+        ns_sockclose(binderRequest[0]);
+        ns_sockclose(binderResponse[1]);
+        binderRunning = NS_FALSE;
     }
 }
 
@@ -962,11 +1016,11 @@ NsStopBinder(void)
  *----------------------------------------------------------------------
  */
 
+#ifndef _WIN32
 static void
 Binder(void)
 {
-#ifndef _WIN32
-    int           options, type, port, n, err, fd;
+    int           options, type, port, n, err, sock;
     char          address[64];
     struct msghdr msg;
     struct iovec  iov[4];
@@ -1015,20 +1069,20 @@ Binder(void)
          */
         switch (type) {
         case 'U':
-            fd = Ns_SockListenUdp(address, port);
+            sock = Ns_SockListenUdp(address, port);
             break;
         case 'D':
-            fd = Ns_SockListenUnix(address, options, port);
+            sock = Ns_SockListenUnix(address, options, port);
             break;
         case 'R':
-            fd = Ns_SockListenRaw(options);
+            sock = Ns_SockListenRaw(options);
             break;
         case 'T':
         default:
-            fd = Ns_SockListenEx(address, port, options);
+            sock = Ns_SockListenEx(address, port, options);
         }
 
-        if (fd < 0) {
+        if (sock < 0) {
             err = errno;
         }
 
@@ -1042,7 +1096,7 @@ Binder(void)
         msg.msg_controllen = sizeof(address); 
 #endif
 
-        if (fd != -1) {
+        if (sock != -1) {
 #ifdef HAVE_CMMSG
 	    int *pfd;
 
@@ -1050,12 +1104,12 @@ Binder(void)
             c->cmsg_level = SOL_SOCKET;
             c->cmsg_type  = SCM_RIGHTS;
             pfd = (int*)CMSG_DATA(c); 
-            *pfd = fd;
+            *pfd = sock;
             c->cmsg_len = CMSG_LEN(sizeof(int));
             msg.msg_controllen = c->cmsg_len; 
 #else
-            msg.msg_accrights = (caddr_t) &fd;
-            msg.msg_accrightslen = sizeof(fd);
+            msg.msg_accrights = (caddr_t) &sock;
+            msg.msg_accrightslen = sizeof(sock);
 #endif
         }
         do {
@@ -1064,15 +1118,24 @@ Binder(void)
         if (n != RESPONSE_SIZE) {
             Ns_Fatal("binder: sendmsg() failed: sent %d bytes, '%s'", n, strerror(errno));
         }
-        if (fd != -1) {
+        if (sock != -1) {
 
             /*
              * Close the socket as it won't be needed in the slave.
              */
 
-            close(fd);
+            ns_sockclose(sock);
         }
     }
     Ns_Log(Notice, "binder: stopped");
-#endif /* _WIN32 */
 }
+#endif /* _WIN32 */
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -79,7 +79,9 @@ void
 Ns_CsInit(Ns_Cs *csPtr)
 {
     CsLock     *lockPtr;
-    static unsigned int nextid = 0;
+    static uintptr_t nextid = 0u;
+
+    assert(csPtr != NULL);
 
     lockPtr = ns_malloc(sizeof(CsLock));
     NsMutexInitNext(&lockPtr->mutex, "cs", &nextid);
@@ -200,9 +202,20 @@ Ns_CsLeave(Ns_Cs *csPtr)
 {
     CsLock *lockPtr = (CsLock *) *csPtr;
 
+    assert(csPtr != NULL);
+
     Ns_MutexLock(&lockPtr->mutex);
     if (--lockPtr->count == 0) {
         Ns_CondSignal(&lockPtr->cond);
     }
     Ns_MutexUnlock(&lockPtr->mutex);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

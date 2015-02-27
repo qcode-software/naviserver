@@ -47,9 +47,12 @@
 
 #include <nscheck.h>
 
-#if defined(__GNUC__) || defined(__MINGW32__)
+/*
+ * AFAICT, there is no reason to conditionalize NSTHREAD_EXPORTS
+ * depending on the compiler used, it should ALWAYS be set:
+ * --atp@piskorski.com, 2014/09/23 13:14 EDT
+ */
 #define NSTHREAD_EXPORTS
-#endif
 
 #if defined(__GNUC__) && __GNUC__ > 2
 /* Use gcc branch prediction hint to minimize cost of e.g. DTrace
@@ -62,14 +65,14 @@
 #  define likely(x) (x)
 #endif
 
-/*
- *
+/***************************************************************
  * Main Windows defines, including 
+ *
  *  - mingw 
  *  - Visual Studio
  *  - WIN32
  *  - WIN64
- */ 
+ ***************************************************************/
 #ifdef _WIN32
 # define NS_EXPORT                   __declspec(dllexport)
 # define NS_IMPORT                   __declspec(dllimport)
@@ -84,20 +87,26 @@
 #  define WIN32_LEAN_AND_MEAN
 # endif
 
+/* 
+ * 0x0400  Windows NT
+ * 0x0500  Windows XP
+ * 0x0600  Windows Vista
+ * 0x0601  Windows 7 
+ * 0x0602  Windows 8
+ * 0x0603  Windows 8.1
+ */
 # ifndef _WIN32_WINNT
-#  define _WIN32_WINNT                0x0400
+#  define _WIN32_WINNT                0x0600
 # endif
 
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <sys/timeb.h>
-#include <sys/types.h>
-#include <io.h>
-#include <process.h>
-#include <direct.h>
-
-#define NS_SOCKET	SOCKET
+# include <windows.h>
+# include <winsock2.h>
+# include <ws2tcpip.h>
+# include <sys/timeb.h>
+# include <sys/types.h>
+# include <io.h>
+# include <process.h>
+# include <direct.h>
 
 # define STDOUT_FILENO               1
 # define STDERR_FILENO               2
@@ -121,7 +130,15 @@ typedef unsigned __int64 uint64_t;
 typedef          long int intmax_t;
 typedef unsigned long int uintmax_t;
 
+typedef          DWORD pid_t;
+
+#  define NS_SOCKET		SOCKET
+#  define NS_INVALID_SOCKET     (INVALID_SOCKET)
+#  define NS_INVALID_PID        (0)
+#  define NS_INVALID_FD         (-1)
+
 #  ifdef _WIN64
+#   define HAVE_64BIT 1
 typedef int64_t ssize_t;
 #  else
 typedef int32_t ssize_t;
@@ -129,10 +146,37 @@ typedef int32_t ssize_t;
 
 #  define atoll                       _atoi64
 #  define strtoll                     _strtoi64
+
+#  define access                      _access
+#  define chsize                      _chsize
+#  define close                       _close
+#  define fileno                      _fileno
+#  define getpid                      GetCurrentProcessId
+#  define mktemp                      _mktemp
+#  define open                        _open
+#  define putenv                      _putenv
+#  define snprintf                    _snprintf
+#  define unlink                      _unlink
+#  define vsnprintf                   _vsnprintf
+
+#  define ftruncate(f,s)              _chsize((f),(s))
+
+# else
+/*
+ * MinGW
+ */
+#  define NS_SOCKET 		int
+#  define NS_INVALID_PID 	(-1)
+#  define NS_INVALID_SOCKET     (-1)
+#  define NS_INVALID_FD         (-1)
 # endif
 
-#include <sys/stat.h> /* for __stat64 */
-#include <malloc.h>   /* for alloca   */
+
+/*
+ * ALL _WIN32
+ */
+# include <sys/stat.h> /* for __stat64 */
+# include <malloc.h>   /* for alloca   */
 
 # define NS_SIGHUP                  1
 # define NS_SIGINT                  2
@@ -140,29 +184,41 @@ typedef int32_t ssize_t;
 # define NS_SIGPIPE                13
 # define NS_SIGTERM                15
 
-# define DEVNULL	             "nul:"
-
-# define ftruncate(f,s)              chsize((f),(s))
-# define mkdir(d,m)                  _mkdir((d))
-# define sleep(n)                    (Sleep((n)*1000))
-# define snprintf                    _snprintf
-# define strcasecmp                  _stricmp
-# define strncasecmp                 _strnicmp
-# define vsnprintf                   _vsnprintf
+# define DEVNULL	           "nul:"
 
 /*
- * Under MinGW we use config.h, for MSVC we pre-define environment here
+ * For the time being, don't try to be very clever
+ * and define (platform-neutral) just those two modes
+ * for mapping the files.
+ * Although the underlying implementation(s) can do
+ * much more, we really need only one (read-maps) now.
+ */
+# define NS_MMAP_READ               (FILE_MAP_READ)
+# define NS_MMAP_WRITE              (FILE_MAP_WRITE)
+
+# define sleep(n)                  (Sleep((n)*1000))
+# define mkdir(d,m)                _mkdir((d))
+# define strcasecmp                _stricmp
+# define strncasecmp               _strnicmp
+
+# define ns_sockclose              closesocket
+# define ns_sockerrno              GetLastError()
+# define ns_sockioctl              ioctlsocket
+# define ns_sockstrerror           NsWin32ErrMsg
+
+/*
+ * Under MinGW we use nsconfig.h, for MSVC we pre-define environment here
  */
 
 # ifndef HAVE_CONFIG_H
 #  define F_OK                        0
 #  define W_OK                        2
 #  define R_OK                        4
-#  define X_OK                        R_OK
+#  define X_OK                        (R_OK)
 #  define va_copy(dst,src)            ((void)((dst) = (src)))
 #  define USE_TCLVFS                  1
 #  define USE_THREAD_ALLOC            1
-#  define VERSION                     NS_PATCH_LEVEL
+#  define VERSION                     (NS_PATCH_LEVEL)
 #  define _LARGEFILE64_SOURCE         1
 #  define _THREAD_SAFE                1
 #  define TCL_THREADS                 1
@@ -171,12 +227,12 @@ typedef int32_t ssize_t;
 #  define HAVE_STRUCT_STAT64          1
 #  define PACKAGE                     "naviserver"
 #  define PACKAGE_NAME                "NaviServer"
-#  define PACKAGE_STRING              PACKAGE_NAME " " NS_PATCH_LEVEL
-#  define PACKAGE_TAG                 PACKAGE_STRING
-#  define PACKAGE_TARNAME             PACKAGE
-#  define PACKAGE_VERSION             NS_VERSION
+#  define PACKAGE_STRING              (PACKAGE_NAME " " NS_PATCH_LEVEL)
+#  define PACKAGE_TAG                 (PACKAGE_STRING)
+#  define PACKAGE_TARNAME             (PACKAGE)
+#  define PACKAGE_VERSION             (NS_VERSION)
 #  define PACKAGE_BUGREPORT           "naviserver-devel@lists.sourceforge.net"
-#  define TIME_T_MAX                  LONG_MAX
+#  define TIME_T_MAX                  (LONG_MAX)
 # endif
 
 /*
@@ -191,18 +247,34 @@ struct iovec {
 /*
  * The following is for supporting our own poll() emulation.
  */
-
-# define POLLIN                      0x0001
-# define POLLPRI                     0x0002
-# define POLLOUT                     0x0004
-# define POLLERR                     0x0008
-# define POLLHUP                     0x0010
+# ifndef POLLIN
+#  define POLLIN                      0x0001
+#  define POLLPRI                     0x0002
+#  define POLLOUT                     0x0004
+#  define POLLERR                     0x0008
+#  define POLLHUP                     0x0010
 
 struct pollfd {
-    NS_SOCKET      fd;
-    unsigned short events;
-    unsigned short revents;
+    NS_SOCKET fd;
+    short     events;
+    short     revents;
 };
+# endif
+
+
+/*
+ * Provide compatibility for shutdown() on sockets.
+ */
+
+# ifndef SHUT_RD
+#  define SHUT_RD SD_RECEIVE
+# endif
+# ifndef SHUT_WR
+#  define SHUT_WR SD_SEND
+# endif
+# ifndef SHUT_RDWR
+#  define SHUT_RDWR SD_BOTH
+# endif
 
 /*
  * The following is for supporting opendir/readdir functionality
@@ -213,11 +285,17 @@ struct dirent {
 };
 
 typedef struct DIR_ *DIR;
-
-# else
-/*
- * Not windows
+/* 
+ * End of Windows section 
  */
+# else
+/***************************************************************
+ *
+ * Not windows 
+ *
+ * mostly Unix style OSes, including Mac OS X
+ *
+ ***************************************************************/
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/time.h>
@@ -238,7 +316,10 @@ typedef struct DIR_ *DIR;
 #include <sys/mman.h>
 #include <poll.h>
 
-#define NS_SOCKET	int
+#define NS_SOCKET	      int
+#define NS_INVALID_SOCKET     (-1)
+#define NS_INVALID_PID        (-1)
+#define NS_INVALID_FD         (-1)
 
 /* 
  * Many modules use SOCKET and not NS_SOCKET; don't force updates for
@@ -290,23 +371,50 @@ typedef struct DIR_ *DIR;
 /*
  * Workaround until we have ENOTSUP in errno.h
  */
-#   define ENOTSUP                     EOPNOTSUPP
+#   define ENOTSUP                  EOPNOTSUPP
 #  endif
 # endif
 
-# define O_TEXT                      0
-# define O_BINARY                    0
+# define O_TEXT                     (0)
+# define O_BINARY                   (0)
 
-# define INVALID_SOCKET              (-1)
-# define SOCKET_ERROR                (-1)
+# define SOCKET_ERROR               (-1)
 
-# define NS_SIGHUP                   SIGHUP
-# define NS_SIGINT                   SIGINT
-# define NS_SIGQUIT                  SIGQUIT
-# define NS_SIGPIPE                  SIGPIPE
-# define NS_SIGTERM                  SIGTERM
+# define NS_SIGHUP                  (SIGHUP)
+# define NS_SIGINT                  (SIGINT)
+# define NS_SIGQUIT                 (SIGQUIT)
+# define NS_SIGPIPE                 (SIGPIPE)
+# define NS_SIGTERM                 (SIGTERM)
 
-# define DEVNULL	                    "/dev/null"
+# define DEVNULL	            "/dev/null"
+
+# define NS_MMAP_READ               (PROT_READ)
+# define NS_MMAP_WRITE              (PROT_WRITE)
+
+# define ns_mkstemp	 	    mkstemp
+
+# define ns_recv                    recv
+# define ns_send                    send
+# define ns_sockclose               close
+# define ns_sockdup                 dup
+# define ns_sockerrno               errno
+# define ns_sockioctl               ioctl
+# define ns_socknbclose             close
+# define ns_sockstrerror            strerror
+
+# define ns_open		    open
+# define ns_close		    close
+# define ns_read                    read
+# define ns_write                   write
+# define ns_dup		    	    dup
+# define ns_dup2	    	    dup2
+# define ns_lseek		    lseek
+
+# if __GNUC__
+#  if __x86_64__ || __ppc64__
+#   define HAVE_64BIT 1
+#  endif
+# endif
 
 # if __GNUC__ >= 4
 #  define NS_EXPORT                 __attribute__ ((visibility ("default")))
@@ -321,11 +429,13 @@ typedef struct DIR_ *DIR;
 # endif
 #endif /* _WIN32 */
 
-/*
+/***************************************************************
+ *
  * Common part, Unix and Windows
- */
+ *
+ ***************************************************************/
 
-#include "tcl.h"
+#include <tcl.h>
 #include <limits.h>
 #include <time.h>
 #include <fcntl.h>
@@ -334,10 +444,13 @@ typedef struct DIR_ *DIR;
 #include <ctype.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdarg.h>
 #include <assert.h>
 #include <sys/stat.h>
+
+#if !defined(NS_POLL_NFDS_TYPE) 
+# define NS_POLL_NFDS_TYPE unsigned int
+#endif
 
 #ifdef HAVE_INTTYPES_H
 #include <inttypes.h>
@@ -364,11 +477,11 @@ typedef struct DIR_ *DIR;
 #endif
 
 #ifndef S_ISREG
-#define S_ISREG(m)                  ((m)&_S_IFREG)
+#define S_ISREG(m)                  ((m) & _S_IFREG)
 #endif
 
 #ifndef S_ISDIR
-#define S_ISDIR(m)                  ((m)&_S_IFDIR)
+#define S_ISDIR(m)                  ((m) & _S_IFDIR)
 #endif
 
 #ifndef F_CLOEXEC
@@ -386,8 +499,9 @@ typedef struct DIR_ *DIR;
 #define PATH_MAX 1024
 #endif
 
-/* Some very old gcc versions do not have it defined, instead of messing with confiture here it
- * is a simple define for such cases
+/* 
+ * Some very old gcc versions do not have LLONG_* defined, instead of
+ * messing with configure here it is a simple define for such cases
  */
 
 #ifndef LLONG_MAX
@@ -434,7 +548,7 @@ typedef struct DIR_ *DIR;
 
 /*
  * Define a few macros from inttypes.h which are 
- * missing one some platforms.
+ * missing on some platforms.
  */
 #if !defined(PRId64)
 # define PRId64      "I64d"
@@ -452,6 +566,21 @@ typedef struct DIR_ *DIR;
 /*
  * There is apparently no platform independent print format for items
  * of size_t. Therefore, we invent here our own variant, trying to
+ * stick to the naming conventions.
+ */
+#if !defined(PRIuz) && defined(_WIN64)
+# define PRIuz "I64u"
+#endif
+#if !defined(PRIuz) && defined(_WIN32)
+# define PRIuz "I32u"
+#endif
+#if !defined(PRIuz)
+# define PRIuz "zu"
+#endif
+
+/*
+ * There is apparently no platform independent print format for items
+ * of ssize_t. Therefore, we invent here our own variant, trying to
  * stick to the naming conventions.
  */
 #if !defined(PRIdz) && defined(_WIN64)
@@ -526,12 +655,24 @@ typedef struct DIR_ *DIR;
 
 #if !defined(INT2PTR) && !defined(PTR2INT)
 #   if defined(HAVE_INTPTR_T) || defined(intptr_t)
-#       define INT2PTR(p) ((void *)(intptr_t)(p))
-#       define PTR2INT(p) ((int)(intptr_t)(p))
+#       define INT2PTR(p)  ((void *)(intptr_t)(p))
+#       define PTR2INT(p)  ((int)(intptr_t)(p))
+#       define UINT2PTR(p) ((void *)(uintptr_t)(p))
+#       define PTR2UINT(p) ((unsigned int)(uintptr_t)(p))
 #   else
-#       define INT2PTR(p) ((void *)(p))
-#       define PTR2INT(p) ((int)(p))
+#       define INT2PTR(p)  ((void *)(p))
+#       define PTR2INT(p)  ((int)(p))
+#       define UINT2PTR(p) ((void *)(p))
+#       define PTR2UINT(p) ((unsigned int)(p))
 #   endif
+#endif
+
+#ifdef _WIN32
+# define PTR2NSSOCK(p) PTR2UINT(p)
+# define NSSOCK2PTR(p) UINT2PTR(p)
+#else
+# define PTR2NSSOCK(p) PTR2INT(p)
+# define NSSOCK2PTR(p) INT2PTR(p)
 #endif
 
 #ifdef __cplusplus
@@ -541,17 +682,39 @@ typedef struct DIR_ *DIR;
 #endif
 
 /*
- * Various constants.
+ * Return codes. It would be probably a good idea to define an enum
+ * Ns_ReturnCode, but that would be a large change.
  */
-
 #define NS_OK                       0
 #define NS_ERROR                    (-1)
-#define NS_TIMEOUT                  (-2)
-#define NS_FATAL                    (-3)
 
-#define NS_THREAD_DETACHED          1
-#define NS_THREAD_JOINED            2
-#define NS_THREAD_EXITED            4
+/*
+ * The following are valid return codes from an Ns_UserAuthorizeProc.
+ */
+#define NS_TIMEOUT                  (-2)
+
+/*
+ * The following are valid return codes from an Ns_UserAuthorizeProc.
+ */
+                                        /* NS_OK The user's access is authorized */
+#define NS_UNAUTHORIZED            (-3) /* Bad user/passwd or unauthorized */
+#define NS_FORBIDDEN               (-4) /* Authorization is not possible */
+                                        /* NS_ERROR The authorization function failed */
+/*
+ * The following are valid return codes from an Ns_FilterProc.
+ */
+                                        /* NS_OK Run next filter */
+#define NS_FILTER_BREAK            (-5) /* Run next stage of connection */
+#define NS_FILTER_RETURN           (-6) /* Close connection */
+
+
+/*
+ * Constants for nsthread 
+ */
+#define NS_THREAD_DETACHED          0x01u
+#define NS_THREAD_JOINED            0x02u
+#define NS_THREAD_EXITED            0x04u
+    
 #define NS_THREAD_NAMESIZE          64
 #define NS_THREAD_MAXTLS            100
 
@@ -576,7 +739,7 @@ typedef struct Ns_Time {
 
 typedef void (Ns_ThreadProc) (void *arg);
 typedef void (Ns_TlsCleanup) (void *arg);
-typedef void (Ns_ThreadArgProc) (Tcl_DString *, void *proc, void *arg);
+typedef void (Ns_ThreadArgProc) (Tcl_DString *dsPtr, Ns_ThreadProc proc, const void *arg);
 
 /*
  * pthread.c
@@ -588,7 +751,7 @@ NS_EXTERN void Nsthreads_LibInit(void);
  * fork.c:
  */
 
-NS_EXTERN int ns_fork(void);
+NS_EXTERN pid_t ns_fork(void);
 
 /*
  * master.c:
@@ -601,11 +764,11 @@ NS_EXTERN void Ns_MasterUnlock(void);
  * memory.c:
  */
 
-NS_EXTERN void *ns_malloc(size_t size) NS_GNUC_MALLOC;
-NS_EXTERN void *ns_calloc(size_t num, size_t size) NS_GNUC_MALLOC;
+NS_EXTERN void *ns_malloc(size_t size) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
+NS_EXTERN void *ns_calloc(size_t num, size_t size) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
 NS_EXTERN void ns_free(void *buf);
 NS_EXTERN void *ns_realloc(void *buf, size_t size) NS_GNUC_WARN_UNUSED_RESULT;
-NS_EXTERN char *ns_strdup(const char *string) NS_GNUC_MALLOC;
+NS_EXTERN char *ns_strdup(const char *string) NS_GNUC_NONNULL(1) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
 NS_EXTERN char *ns_strcopy(const char *string) NS_GNUC_MALLOC;
 NS_EXTERN char *ns_strncopy(const char *string, ssize_t size) NS_GNUC_MALLOC;
 
@@ -613,77 +776,81 @@ NS_EXTERN char *ns_strncopy(const char *string, ssize_t size) NS_GNUC_MALLOC;
  * mutex.c:
  */
 
-NS_EXTERN void Ns_MutexInit(Ns_Mutex *mutexPtr);
+NS_EXTERN void Ns_MutexInit(Ns_Mutex *mutexPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_MutexDestroy(Ns_Mutex *mutexPtr);
-NS_EXTERN void Ns_MutexLock(Ns_Mutex *mutexPtr);
-NS_EXTERN int  Ns_MutexTryLock(Ns_Mutex *mutexPtr);
-NS_EXTERN void Ns_MutexUnlock(Ns_Mutex *mutexPtr);
-NS_EXTERN char *Ns_MutexGetName(Ns_Mutex *mutexPtr);
-NS_EXTERN void Ns_MutexSetName(Ns_Mutex *mutexPtr, CONST char *name);
-NS_EXTERN void Ns_MutexSetName2(Ns_Mutex *mutexPtr, CONST char *prefix,
-                                CONST char *name);
-NS_EXTERN void Ns_MutexList(Tcl_DString *dsPtr);
+NS_EXTERN void Ns_MutexLock(Ns_Mutex *mutexPtr)       NS_GNUC_NONNULL(1);
+NS_EXTERN int  Ns_MutexTryLock(Ns_Mutex *mutexPtr)    NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_MutexUnlock(Ns_Mutex *mutexPtr)     NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_MutexList(Tcl_DString *dsPtr)       NS_GNUC_NONNULL(1);
+NS_EXTERN const char *Ns_MutexGetName(Ns_Mutex *mutexPtr) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_MutexSetName(Ns_Mutex *mutexPtr, const char *name)
+  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN void Ns_MutexSetName2(Ns_Mutex *mutexPtr, const char *prefix, const char *name)
+  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
 /*
  * rwlock.c:
  */
 
-NS_EXTERN void Ns_RWLockInit(Ns_RWLock *lockPtr);
+NS_EXTERN void Ns_RWLockInit(Ns_RWLock *lockPtr)      NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_RWLockDestroy(Ns_RWLock *lockPtr);
-NS_EXTERN void Ns_RWLockRdLock(Ns_RWLock *lockPtr);
-NS_EXTERN void Ns_RWLockWrLock(Ns_RWLock *lockPtr);
-NS_EXTERN void Ns_RWLockUnlock(Ns_RWLock *lockPtr);
+NS_EXTERN void Ns_RWLockRdLock(Ns_RWLock *lockPtr)    NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_RWLockWrLock(Ns_RWLock *lockPtr)    NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_RWLockUnlock(Ns_RWLock *lockPtr)    NS_GNUC_NONNULL(1);
 
 /*
  * cslock.c;
  */
 
-NS_EXTERN void Ns_CsInit(Ns_Cs *csPtr);
+NS_EXTERN void Ns_CsInit(Ns_Cs *csPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_CsDestroy(Ns_Cs *csPtr);
 NS_EXTERN void Ns_CsEnter(Ns_Cs *csPtr);
-NS_EXTERN void Ns_CsLeave(Ns_Cs *csPtr);
+NS_EXTERN void Ns_CsLeave(Ns_Cs *csPtr)      NS_GNUC_NONNULL(1);
 
 /*
- * cond.c:
+ * pthread.c:
  */
 
-NS_EXTERN void Ns_CondInit(Ns_Cond *condPtr);
+NS_EXTERN void Ns_CondInit(Ns_Cond *condPtr)          NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_CondDestroy(Ns_Cond *condPtr);
-NS_EXTERN void Ns_CondSignal(Ns_Cond *condPtr);
-NS_EXTERN void Ns_CondBroadcast(Ns_Cond *condPtr);
-NS_EXTERN void Ns_CondWait(Ns_Cond *condPtr, Ns_Mutex *lockPtr);
+NS_EXTERN void Ns_CondSignal(Ns_Cond *condPtr)        NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_CondBroadcast(Ns_Cond *condPtr)     NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_CondWait(Ns_Cond *condPtr, Ns_Mutex *lockPtr)
+  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN int Ns_CondTimedWait(Ns_Cond *condPtr, Ns_Mutex *lockPtr,
-                Ns_Time *timePtr);
+			       const Ns_Time *timePtr)
+  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * reentrant.c:
  */
 
-NS_EXTERN struct dirent *ns_readdir(DIR * pDir);
-NS_EXTERN struct tm *ns_localtime(const time_t * clock);
-NS_EXTERN struct tm *ns_gmtime(const time_t * clock);
-NS_EXTERN char *ns_ctime(const time_t * clock);
-NS_EXTERN char *ns_asctime(const struct tm *tmPtr);
-NS_EXTERN char *ns_strtok(char *s1, const char *s2);
+NS_EXTERN struct dirent *ns_readdir(DIR *pDir)           NS_GNUC_NONNULL(1);
+NS_EXTERN struct tm *ns_localtime(const time_t *clock)   NS_GNUC_NONNULL(1);
+NS_EXTERN struct tm *ns_gmtime(const time_t *clock)      NS_GNUC_NONNULL(1);
+NS_EXTERN char *ns_ctime(const time_t *clock)            NS_GNUC_NONNULL(1);
+NS_EXTERN char *ns_asctime(const struct tm *tmPtr)       NS_GNUC_NONNULL(1);
+NS_EXTERN char *ns_strtok(char *s1, const char *s2)      NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_inet_ntoa(struct in_addr addr);
 
 /*
  * sema.c:
  */
 
-NS_EXTERN void Ns_SemaInit(Ns_Sema *semaPtr, int initCount);
-NS_EXTERN void Ns_SemaDestroy(Ns_Sema *semaPtr);
-NS_EXTERN void Ns_SemaWait(Ns_Sema *semaPtr);
-NS_EXTERN void Ns_SemaPost(Ns_Sema *semaPtr, int count);
+NS_EXTERN void Ns_SemaInit(Ns_Sema *semaPtr, int initCount) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaDestroy(Ns_Sema *semaPtr)             NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaWait(Ns_Sema *semaPtr)                NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaPost(Ns_Sema *semaPtr, int count)     NS_GNUC_NONNULL(1);
 
 /*
  * signal.c:
  */
 
 #ifndef _WIN32
-NS_EXTERN int ns_sigmask(int how, sigset_t * set, sigset_t * oset);
-NS_EXTERN int ns_sigwait(sigset_t * set, int *sig);
+NS_EXTERN int ns_sigmask(int how, sigset_t *set, sigset_t *oset) NS_GNUC_NONNULL(2);
+NS_EXTERN int ns_sigwait(sigset_t *set, int *sig) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN int ns_signal(int sig, void (*proc)(int));
 #endif
 
@@ -692,37 +859,38 @@ NS_EXTERN int ns_signal(int sig, void (*proc)(int));
  */
 
 NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stackSize,
-                Ns_Thread *resultPtr);
+			       Ns_Thread *resultPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadExit(void *arg);
-NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr);
+NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadYield(void);
-NS_EXTERN void Ns_ThreadSetName(char *name, ...);
+NS_EXTERN void Ns_ThreadSetName(const char *name, ...) NS_GNUC_NONNULL(1);
 NS_EXTERN uintptr_t Ns_ThreadId(void);
-NS_EXTERN void Ns_ThreadSelf(Ns_Thread *threadPtr);
-NS_EXTERN char *Ns_ThreadGetName(void);
-NS_EXTERN char *Ns_ThreadGetParent(void);
+NS_EXTERN void Ns_ThreadSelf(Ns_Thread *threadPtr) NS_GNUC_NONNULL(1);
+NS_EXTERN const char *Ns_ThreadGetName(void)       NS_GNUC_RETURNS_NONNULL;
+NS_EXTERN const char *Ns_ThreadGetParent(void)     NS_GNUC_RETURNS_NONNULL;
 NS_EXTERN long Ns_ThreadStackSize(long size);
-NS_EXTERN void Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc);
-NS_EXTERN void Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize);
+NS_EXTERN void Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize)
+  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
 /*
  * time.c:
  */
 
-NS_EXTERN void Ns_GetTime(Ns_Time *timePtr);
-NS_EXTERN void Ns_AdjTime(Ns_Time *timePtr);
-NS_EXTERN int  Ns_DiffTime(Ns_Time *t1, Ns_Time *t0, Ns_Time *resultPtr);
-NS_EXTERN void Ns_IncrTime(Ns_Time *timePtr, long sec, long usec);
-NS_EXTERN Ns_Time *Ns_AbsoluteTime(Ns_Time *absPtr, Ns_Time *adjPtr);
-
+NS_EXTERN void Ns_GetTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_AdjTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_IncrTime(Ns_Time *timePtr, long sec, long usec)  NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_Time *Ns_AbsoluteTime(Ns_Time *absPtr, Ns_Time *adjPtr)  NS_GNUC_NONNULL(1);
+NS_EXTERN int  Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *resultPtr)  
+  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 /*
  * tls.c:
  */
 
-NS_EXTERN void Ns_TlsAlloc(Ns_Tls *tlsPtr, Ns_TlsCleanup *cleanup);
-NS_EXTERN void Ns_TlsSet(Ns_Tls *tlsPtr, void *value);
-NS_EXTERN void *Ns_TlsGet(Ns_Tls *tlsPtr);
+NS_EXTERN void Ns_TlsAlloc(Ns_Tls *tlsPtr, Ns_TlsCleanup *cleanup) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_TlsSet(Ns_Tls *tlsPtr, void *value) NS_GNUC_NONNULL(1);
+NS_EXTERN void *Ns_TlsGet(Ns_Tls *tlsPtr) NS_GNUC_NONNULL(1);
 
 /*
  * winthread.c:
@@ -732,18 +900,45 @@ NS_EXTERN void *Ns_TlsGet(Ns_Tls *tlsPtr);
 NS_EXTERN DIR *opendir(char *pathname);
 NS_EXTERN struct dirent *readdir(DIR *dp);
 NS_EXTERN int closedir(DIR *dp);
-NS_EXTERN int truncate(char *file, off_t size);
 NS_EXTERN int link(char *from, char *to);
-NS_EXTERN int symlink(char *from, char *to);
-NS_EXTERN int kill(int pid, int sig);
+NS_EXTERN int symlink(const char *from, const char *to);
+NS_EXTERN int kill(pid_t pid, int sig);
+
+# ifdef _MSC_VER
+NS_EXTERN int truncate(const char *path, off_t length);
+# endif
 #endif
 
 /*
- * tcl 8.6 and TIP 330/336 compatability
+ * nswin32.c:
+ */
+#ifdef _WIN32
+NS_EXTERN int     ns_open(const char *path, int oflag, int mode);
+NS_EXTERN int     ns_close(int fildes);
+NS_EXTERN ssize_t ns_write(int fildes, const void *buf, size_t nbyte);
+NS_EXTERN ssize_t ns_read(int fildes, void *buf, size_t nbyte);
+NS_EXTERN off_t   ns_lseek(int fildes, off_t offset, int whence);
+NS_EXTERN int     ns_dup(int fildes);
+NS_EXTERN int     ns_dup2(int fildes, int fildes2);
+NS_EXTERN ssize_t ns_recv(NS_SOCKET socket, void *buffer, size_t length, int flags);
+NS_EXTERN ssize_t ns_send(NS_SOCKET socket, const void *buffer, size_t length, int flags);
+#endif
+
+/*
+ * Tcl 8.6 and TIP 330/336 compatability
  */
 
 #if (TCL_MAJOR_VERSION < 8) || (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION < 6)
-#define Tcl_GetErrorLine(interp) (interp->errorLine)
+#define Tcl_GetErrorLine(interp) ((interp)->errorLine)
 #endif
 
 #endif /* NSTHREAD_H */
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

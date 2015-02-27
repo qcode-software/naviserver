@@ -36,27 +36,27 @@
 
 #include "nsd.h"
 
-#define CREATE   NS_TRUE
-#define NOCREATE NS_FALSE
-
 
 /*
  * Static functions defined in this file.
  */
 
 static Ns_ObjvProc ObjvLimits;
-static NsLimits *FindLimits(char *limits, int create);
-static void LimitsResult(Tcl_Interp *interp, NsLimits *limitsPtr);
+static NsLimits *FindLimits(const char *limits, int create)
+    NS_GNUC_NONNULL(1);
+
+static void LimitsResult(Tcl_Interp *interp, const NsLimits *limitsPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
 /*
  * Static variables defined in this file.
  */
 
-static int            limid;
-static NsLimits      *defLimitsPtr; /* Default limits if none registered. */
-static Tcl_HashTable  limtable;     /* Process-wide hash of limits. */
-static Ns_Mutex       lock;         /* Lock for limtable and urlspecific data. */
+static int            limid = 0;
+static NsLimits      *defLimitsPtr;     /* Default limits if none registered. */
+static Tcl_HashTable  limtable;         /* Process-wide hash of limits. */
+static Ns_Mutex       lock = 0;         /* Lock for limtable and urlspecific data. */
 
 
 
@@ -104,15 +104,19 @@ NsInitLimits(void)
  */
 
 NsLimits *
-NsGetRequestLimits(NsServer *servPtr, char *method, char *url)
+NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
 {
     NsLimits *limitsPtr;
 
+    assert(servPtr != NULL);
+    assert(method != NULL);
+    assert(url != NULL);
+    
     Ns_MutexLock(&lock);
     limitsPtr = NsUrlSpecificGet(servPtr, method, url, limid, 0);
     Ns_MutexUnlock(&lock);
 
-    return (limitsPtr ? limitsPtr : defLimitsPtr);
+    return ((limitsPtr != NULL) ? limitsPtr : defLimitsPtr);
 }
 
 
@@ -133,12 +137,12 @@ NsGetRequestLimits(NsServer *servPtr, char *method, char *url)
  */
 
 int
-NsTclGetLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsLimits *limitsPtr;
 
     Ns_ObjvSpec args[] = {
-        {"limits", ObjvLimits, &limitsPtr, (void *) NOCREATE},
+        {"limits", ObjvLimits, &limitsPtr, INT2PTR(NS_FALSE)},
         {NULL, NULL, NULL, NULL}
     };
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
@@ -167,11 +171,11 @@ NsTclGetLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **obj
  */
 
 int
-NsTclListLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
-    char           *pattern;
+    const char     *pattern;
 
     if (objc > 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "?pattern?");
@@ -181,9 +185,9 @@ NsTclListLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **ob
     Ns_MutexLock(&lock);
     hPtr = Tcl_FirstHashEntry(&limtable, &search);
     while (hPtr != NULL) {
-        char *limits = Tcl_GetHashKey(&limtable, hPtr);
+        const char *limits = Tcl_GetHashKey(&limtable, hPtr);
 
-        if (pattern == NULL || Tcl_StringMatch(limits, pattern)) {
+        if (pattern == NULL || Tcl_StringMatch(limits, pattern) != 0) {
             Tcl_AppendElement(interp, limits);
         }
         hPtr = Tcl_NextHashEntry(&search);
@@ -212,7 +216,7 @@ NsTclListLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **ob
  */
 
 int
-NsTclSetLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsLimits *limitsPtr;
     int       maxrun = -1, maxwait = -1, maxupload = -1, timeout = -1;
@@ -226,23 +230,23 @@ NsTclSetLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **obj
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"limits", ObjvLimits, &limitsPtr, (void *) CREATE},
+        {"limits", ObjvLimits, &limitsPtr, INT2PTR(NS_TRUE)},
         {NULL, NULL, NULL, NULL}
     };
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
     if (maxrun > -1) {
-        limitsPtr->maxrun = maxrun;
+	limitsPtr->maxrun = (unsigned int)maxrun;
     }
     if (maxwait > -1) {
-        limitsPtr->maxwait = maxwait;
+        limitsPtr->maxwait = (unsigned int)maxwait;
     }
     if (maxupload > -1) {
-        limitsPtr->maxupload = maxupload;
+	limitsPtr->maxupload = (size_t)maxupload;
     }
     if (timeout > -1) {
-        limitsPtr->timeout = timeout;
+      limitsPtr->timeout = (long)timeout;
     }
     LimitsResult(interp, limitsPtr);
 
@@ -267,21 +271,22 @@ NsTclSetLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **obj
  */
 
 int
-NsTclRegisterLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp *itPtr = arg;
-    NsLimits *limitsPtr;
-    char     *method, *url, *server = itPtr->servPtr->server;
-    int       flags = 0;
+    NsInterp    *itPtr = clientData;
+    NsLimits    *limitsPtr;
+    const char  *method, *url, *server = itPtr->servPtr->server;
+    int          noinherit = 0;
+    unsigned int flags = 0U;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,   &flags,  (void *) NS_OP_NOINHERIT},
-        {"-server",    Ns_ObjvString, &server, NULL},
-        {"--",         Ns_ObjvBreak,  NULL,    NULL},
+        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(1)},
+        {"-server",    Ns_ObjvString, &server,    NULL},
+        {"--",         Ns_ObjvBreak,  NULL,       NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"limits", ObjvLimits,    &limitsPtr, (void *) NOCREATE},
+        {"limits", ObjvLimits,    &limitsPtr, INT2PTR(NS_FALSE)},
         {"method", Ns_ObjvString, &method,    NULL},
         {"url",    Ns_ObjvString, &url,       NULL},
         {NULL, NULL, NULL, NULL}
@@ -289,6 +294,7 @@ NsTclRegisterLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
+    if (noinherit != 0) {flags |= NS_OP_NOINHERIT;}
     Ns_MutexLock(&lock);
     Ns_UrlSpecificSet(server, method, url,
                       limid, limitsPtr, flags, NULL);
@@ -315,31 +321,33 @@ NsTclRegisterLimitsObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 static NsLimits *
-FindLimits(char *limits, int create)
+FindLimits(const char *limits, int create)
 {
     NsLimits      *limitsPtr;
     Tcl_HashEntry *hPtr;
     int            isNew;
 
+    assert(limits != NULL);
+    
     Ns_MutexLock(&lock);
-    if (!create) {
+    if (create == 0) {
         hPtr = Tcl_FindHashEntry(&limtable, limits);
     } else {
         hPtr = Tcl_CreateHashEntry(&limtable, limits, &isNew);
-        if (isNew) {
-            limitsPtr = ns_calloc(1, sizeof(NsLimits));
+        if (isNew != 0) {
+            limitsPtr = ns_calloc(1U, sizeof(NsLimits));
             limitsPtr->name = Tcl_GetHashKey(&limtable, hPtr);
             Ns_MutexInit(&limitsPtr->lock);
             Ns_MutexSetName2(&limitsPtr->lock, "ns:limits", limits);
-            limitsPtr->maxrun = limitsPtr->maxwait = 100;
-            limitsPtr->maxupload = 10 * 1024 * 1000; /* NB: 10meg limit. */
+            limitsPtr->maxrun = limitsPtr->maxwait = 100U;
+            limitsPtr->maxupload = 10U * 1024U * 1000U; /* NB: 10meg limit. */
             limitsPtr->timeout = 60;
             Tcl_SetHashValue(hPtr, limitsPtr);
         }
     }
     Ns_MutexUnlock(&lock);
 
-    return (hPtr ? Tcl_GetHashValue(hPtr) : NULL);
+    return ((hPtr != NULL) ? Tcl_GetHashValue(hPtr) : NULL);
 }
 
 
@@ -361,20 +369,19 @@ FindLimits(char *limits, int create)
  *----------------------------------------------------------------------
  */
 
-int
-ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
-           Tcl_Obj *CONST objv[])
+static int
+ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *CONST* objv)
 {
     NsLimits          **limitsPtrPtr = spec->dest;
-    int                 create = spec->arg ? 1 : 0;
-    static CONST char  *limitsType = "ns:limits";
+    int                 create = (spec->arg != NULL) ? 1 : 0;
+    static const char  *limitsType = "ns:limits";
 
     if (*objcPtr < 1) {
         return TCL_ERROR;
     }
     if (Ns_TclGetOpaqueFromObj(objv[0], limitsType, (void **) limitsPtrPtr)
         != TCL_OK) {
-        char *limits = Tcl_GetString(objv[0]);
+        const char *limits = Tcl_GetString(objv[0]);
         *limitsPtrPtr = FindLimits(limits, create);
         if (*limitsPtrPtr == NULL) {
             Tcl_AppendResult(interp, "no such limits: ", limits, NULL);
@@ -405,15 +412,18 @@ ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
  */
 
 static void
-LimitsResult(Tcl_Interp *interp, NsLimits *limitsPtr)
+LimitsResult(Tcl_Interp *interp, const NsLimits *limitsPtr)
 {
     Ns_DString ds;
 
+    assert(interp != NULL);
+    assert(limitsPtr != NULL);
+    
     Ns_DStringInit(&ds);
     Ns_DStringPrintf(&ds, "nrunning %u nwaiting %u"
                      " ntimeout %u ndropped %u noverflow %u"
                      " maxrun %u maxwait %u"
-                     " maxupload %lu timeout %d",
+                     " maxupload %lu timeout %ld",
                      limitsPtr->state.nrunning, limitsPtr->state.nwaiting,
                      limitsPtr->stats.ntimeout, limitsPtr->stats.ndropped,
                          limitsPtr->stats.noverflow,
@@ -421,3 +431,12 @@ LimitsResult(Tcl_Interp *interp, NsLimits *limitsPtr)
                      (unsigned long) limitsPtr->maxupload, limitsPtr->timeout);
     Tcl_DStringResult(interp, &ds);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

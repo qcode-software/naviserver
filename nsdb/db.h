@@ -33,14 +33,14 @@
 #include "nsdb.h"
 
 NS_EXTERN void NsDbInitPools(void);
-NS_EXTERN void NsDbInitServer(char *server);
+NS_EXTERN void NsDbInitServer(const char *server);
 NS_EXTERN Ns_TclTraceProc NsDbAddCmds, NsDbReleaseHandles;
-NS_EXTERN void 		NsDbClose(Ns_DbHandle *);
-NS_EXTERN void 		NsDbDisconnect(Ns_DbHandle *);
-NS_EXTERN struct DbDriver *NsDbGetDriver(Ns_DbHandle *);
-NS_EXTERN struct DbDriver *NsDbLoadDriver(char *driver);
-NS_EXTERN void 		NsDbLogSql(Ns_DbHandle *, char *sql);
-NS_EXTERN int 		NsDbOpen(Ns_DbHandle *);
-NS_EXTERN void 		NsDbDriverInit(char *server, struct DbDriver *);
+NS_EXTERN void 		NsDbClose(Ns_DbHandle *handle);
+NS_EXTERN void 		NsDbDisconnect(Ns_DbHandle *handle);
+NS_EXTERN struct DbDriver *NsDbGetDriver(Ns_DbHandle *handle);
+NS_EXTERN struct DbDriver *NsDbLoadDriver(const char *driver);
+NS_EXTERN void 		NsDbLogSql(Ns_DbHandle *handle, const char *sql);
+NS_EXTERN int 		NsDbOpen(Ns_DbHandle *handle);
+NS_EXTERN void 		NsDbDriverInit(const char *server, const struct DbDriver *driverPtr);
 
 #endif

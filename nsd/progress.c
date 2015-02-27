@@ -85,10 +85,10 @@ static Ns_Mutex      lock;            /* Lock around table and Progress struct. 
 void
 NsConfigProgress(void)
 {
-    progressMinSize =
+    progressMinSize = (size_t)
         Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "progressminsize", 0, 0, INT_MAX);
 
-    if (progressMinSize > 0) {
+    if (progressMinSize > 0u) {
         Ns_SlsAlloc(&slot, ResetProgress);
         Tcl_InitHashTable(&urlTable, TCL_STRING_KEYS);
         Ns_MutexSetName(&lock, "ns:progress");
@@ -117,13 +117,13 @@ NsConfigProgress(void)
  */
 
 int
-NsTclProgressObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclProgressObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "url");
         return TCL_ERROR;
     }
-    if (progressMinSize > 0) {
+    if (progressMinSize > 0u) {
         Tcl_HashEntry *hPtr;
         char          *url = Tcl_GetString(objv[1]);
 
@@ -137,9 +137,9 @@ NsTclProgressObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST
             resObj = Tcl_GetObjResult(interp);
 
             if (Tcl_ListObjAppendElement(interp, resObj,
-                                         Tcl_NewWideIntObj(pPtr->current)) != TCL_OK
+                                         Tcl_NewWideIntObj((Tcl_WideInt)pPtr->current)) != TCL_OK
                 || Tcl_ListObjAppendElement(interp, resObj,
-                                            Tcl_NewWideIntObj(pPtr->size)) != TCL_OK) {
+                                            Tcl_NewWideIntObj((Tcl_WideInt)pPtr->size)) != TCL_OK) {
                 Ns_MutexUnlock(&lock);
                 return TCL_ERROR;
             }
@@ -180,19 +180,25 @@ void
 NsUpdateProgress(Ns_Sock *sock)
 {
     Sock          *sockPtr = (Sock *) sock;
-    Request       *reqPtr  = sockPtr->reqPtr;
-    Ns_Request    *request = &reqPtr->request;
+    Request       *reqPtr;
+    Ns_Request    *request;
     Tcl_HashEntry *hPtr;
     Ns_DString     ds;
     int            isNew;
 
-    if (progressMinSize > 0
+    assert(sockPtr != NULL);
+    assert(sockPtr->reqPtr != NULL);
+
+    reqPtr  = sockPtr->reqPtr;
+    request = &reqPtr->request;
+
+    if (progressMinSize > 0u
         && request->url != NULL
         && sockPtr->reqPtr->length > progressMinSize) {
         Progress *pPtr = Ns_SlsGet(&slot, sock);
 
         if (pPtr == NULL) {
-            pPtr = ns_calloc(1, sizeof(Progress));
+            pPtr = ns_calloc(1U, sizeof(Progress));
             Ns_SlsSet(&slot, sock, pPtr);
         }
 
@@ -204,7 +210,7 @@ NsUpdateProgress(Ns_Sock *sock)
             pPtr->size = reqPtr->length;
             pPtr->current = reqPtr->avail;
 
-	    if (request->query) {
+	    if (request->query != NULL) {
 	      set = Ns_SetCreate(NULL);
 	      if (Ns_QueryToSet(request->query, set) == NS_OK) {
 		key = Ns_SetGet(set, "X-Progress-ID");
@@ -232,18 +238,18 @@ NsUpdateProgress(Ns_Sock *sock)
 
             Ns_MutexLock(&lock);
             hPtr = Tcl_CreateHashEntry(&urlTable, key, &isNew);
-            if (isNew) {
+            if (isNew != 0) {
                 pPtr->hPtr = hPtr;
                 Tcl_SetHashValue(pPtr->hPtr, pPtr);
             }
             Ns_MutexUnlock(&lock);
 
-            if (!isNew) {
+            if (isNew == 0) {
                 Ns_Log(Warning, "ns:progress(%" PRIdz "/%" PRIdz "): ignoring duplicate URL: %s",
                        reqPtr->avail, reqPtr->length, key);
             }
-	    if (set) {Ns_SetFree(set);}
-            if (dsPtr) {Ns_DStringFree(dsPtr);}
+	    if (set != NULL)   {Ns_SetFree(set);}
+            if (dsPtr != NULL) {Ns_DStringFree(dsPtr);}
 
         } else {
 
@@ -286,12 +292,21 @@ ResetProgress(void *arg)
 {
     Progress *pPtr = arg;
 
-    if (pPtr->hPtr) {
+    if (pPtr->hPtr != NULL) {
         Ns_MutexLock(&lock);
         Tcl_DeleteHashEntry(pPtr->hPtr);
         pPtr->hPtr = NULL;
-        pPtr->current = 0;
-        pPtr->size = 0;
+        pPtr->current = 0u;
+        pPtr->size = 0u;
         Ns_MutexUnlock(&lock);
     }
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

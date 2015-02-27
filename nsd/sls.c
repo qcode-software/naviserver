@@ -43,7 +43,7 @@
  * Static functions defined in this file.
  */
 
-static void **GetSlot(Ns_Sls *slsPtr, Ns_Sock *sock);
+static void **GetSlot(const Ns_Sls *slsPtr, Ns_Sock *sock);
 static Ns_Callback CleanupKeyed;
 
 /* 
@@ -74,7 +74,7 @@ static Ns_Sls        kslot;        /* Sls slot for keyed data. */
 void
 NsInitSls(void)
 {
-    cleanupProcs = ns_calloc(1, sizeof(Ns_Callback *));
+    cleanupProcs = ns_calloc(1U, sizeof(Ns_Callback *));
     Ns_SlsAlloc(&kslot, CleanupKeyed);
 }
 
@@ -98,7 +98,7 @@ NsInitSls(void)
 void
 Ns_SlsAlloc(Ns_Sls *slsPtr, Ns_Callback *cleanup)
 {
-    int id;
+    uintptr_t id;
 
     if (Ns_InfoStarted()) {
         Ns_Log(Bug, "Ns_SlsAlloc: server already started");
@@ -107,7 +107,7 @@ Ns_SlsAlloc(Ns_Sls *slsPtr, Ns_Callback *cleanup)
     cleanupProcs = ns_realloc(cleanupProcs, sizeof(Ns_Callback *) * nsconf.nextSlsId);
     cleanupProcs[id] = cleanup;
 
-    *slsPtr = (void *) (intptr_t)id;
+    *slsPtr = UINT2PTR(id);
 }
 
 
@@ -128,12 +128,12 @@ Ns_SlsAlloc(Ns_Sls *slsPtr, Ns_Callback *cleanup)
  */
 
 void
-Ns_SlsSet(Ns_Sls *slsPtr, Ns_Sock *sock, void *data)
+Ns_SlsSet(const Ns_Sls *slsPtr, Ns_Sock *sock, void *data)
 {
     void **slotPtr;
 
     slotPtr = GetSlot(slsPtr, sock);
-    if (slotPtr) {
+    if (slotPtr != NULL) {
         *slotPtr = data;
     }
 }
@@ -156,12 +156,12 @@ Ns_SlsSet(Ns_Sls *slsPtr, Ns_Sock *sock, void *data)
  */
 
 void *
-Ns_SlsGet(Ns_Sls *slsPtr, Ns_Sock *sock)
+Ns_SlsGet(const Ns_Sls *slsPtr, Ns_Sock *sock)
 {
     void **slotPtr;
 
     slotPtr = GetSlot(slsPtr, sock);
-    if (slotPtr) {
+    if (slotPtr != NULL) {
         return *slotPtr;
     }
     return NULL;
@@ -185,7 +185,7 @@ Ns_SlsGet(Ns_Sls *slsPtr, Ns_Sock *sock)
  */
 
 void
-Ns_SlsSetKeyed(Ns_Sock *sock, CONST char *key, CONST char *value)
+Ns_SlsSetKeyed(Ns_Sock *sock, const char *key, const char *value)
 {
     Tcl_HashTable *tblPtr;
     Tcl_HashEntry *hPtr;
@@ -193,7 +193,8 @@ Ns_SlsSetKeyed(Ns_Sock *sock, CONST char *key, CONST char *value)
     size_t        len;
     int           created;
 
-    if ((tblPtr = Ns_SlsGet(&kslot, sock)) == NULL) {
+    tblPtr = Ns_SlsGet(&kslot, sock);
+    if (tblPtr == NULL) {
         tblPtr = ns_malloc(sizeof(Tcl_HashTable));
         Tcl_InitHashTable(tblPtr, TCL_STRING_KEYS);
         Ns_SlsSet(&kslot, sock, tblPtr);
@@ -201,8 +202,8 @@ Ns_SlsSetKeyed(Ns_Sock *sock, CONST char *key, CONST char *value)
     hPtr = Tcl_CreateHashEntry(tblPtr, key, &created);
     len = strlen(value);
     old = Tcl_GetHashValue(hPtr);
-    new = ns_realloc(old, (size_t)(len+1));
-    memcpy(new, value, (size_t)(len+1));
+    new = ns_realloc(old, len + 1U);
+    memcpy(new, value, len + 1U);
     Tcl_SetHashValue(hPtr, new);
 }
 
@@ -223,18 +224,19 @@ Ns_SlsSetKeyed(Ns_Sock *sock, CONST char *key, CONST char *value)
  *----------------------------------------------------------------------
  */
 
-char *
-Ns_SlsGetKeyed(Ns_Sock *sock, CONST char *key)
+const char *
+Ns_SlsGetKeyed(Ns_Sock *sock, const char *key)
 {
     Tcl_HashTable *tblPtr;
     Tcl_HashEntry *hPtr;
-    char          *value = NULL;
+    const char    *value = NULL;
 
-    if ((tblPtr = Ns_SlsGet(&kslot, sock)) == NULL) {
+    tblPtr = Ns_SlsGet(&kslot, sock);
+    if (tblPtr == NULL) {
         return NULL;
     }
     hPtr = Tcl_FindHashEntry(tblPtr, key);
-    if (hPtr) {
+    if (hPtr != NULL) {
         value = Tcl_GetHashValue(hPtr);
     }
     return value;
@@ -265,7 +267,8 @@ Ns_SlsAppendKeyed(Ns_DString *dest, Ns_Sock *sock)
     Tcl_HashSearch  search;
     Tcl_HashEntry  *hPtr;
 
-    if ((tblPtr = Ns_SlsGet(&kslot, sock)) == NULL) {
+    tblPtr = Ns_SlsGet(&kslot, sock);
+    if (tblPtr == NULL) {
         return NULL;
     }
     hPtr = Tcl_FirstHashEntry(tblPtr, &search);
@@ -295,14 +298,15 @@ Ns_SlsAppendKeyed(Ns_DString *dest, Ns_Sock *sock)
  */
 
 void
-Ns_SlsUnsetKeyed(Ns_Sock *sock, CONST char *key)
+Ns_SlsUnsetKeyed(Ns_Sock *sock, const char *key)
 {
     Tcl_HashTable *tblPtr;
 
-    if ((tblPtr = Ns_SlsGet(&kslot, sock)) != NULL) {
+    tblPtr = Ns_SlsGet(&kslot, sock);
+    if (tblPtr != NULL) {
         Tcl_HashEntry *hPtr = Tcl_FindHashEntry(tblPtr, key);
 
-        if (hPtr) {
+        if (hPtr != NULL) {
             ns_free(Tcl_GetHashValue(hPtr));
             Tcl_DeleteHashEntry(hPtr);
         }
@@ -327,34 +331,34 @@ Ns_SlsUnsetKeyed(Ns_Sock *sock, CONST char *key)
  */
 
 int
-NsTclSlsObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclSlsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn    *conn;
-    Ns_Sock    *sock;
+    Ns_Sock    *sock = NULL;
     Ns_DString  ds;
-    char       *data;
+    const char *data;
     int         cmd;
 
-    static CONST char *cmds[] = {
+    static const char *cmds[] = {
         "array", "get", "set", "unset", NULL
     };
     enum ISubCmdIdx {
         CArrayIdx, CGetIdx, CSetIdx, CUnsetIdx
     };
 
-    if ((conn = Ns_TclGetConn(interp)) == NULL
-        || (sock = Ns_ConnSockPtr(conn)) == NULL) {
-
+    conn = Ns_TclGetConn(interp);
+    if (conn != NULL) {
+        sock = Ns_ConnSockPtr(conn);
+    }
+    if (sock == NULL) {
         Tcl_SetResult(interp, "No connection available.", NULL);
         return TCL_ERROR;
     }
-
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "command");
         return TCL_ERROR;
     }
-    if (Tcl_GetIndexFromObj(interp, objv[1], cmds, "command", 0, &cmd)
-            != TCL_OK) {
+    if (Tcl_GetIndexFromObj(interp, objv[1], cmds, "command", 0, &cmd) != TCL_OK) {
         return TCL_ERROR;
     }
 
@@ -362,7 +366,7 @@ NsTclSlsObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 
     case CArrayIdx:
         Ns_DStringInit(&ds);
-        Ns_SlsAppendKeyed(&ds, sock);
+        (void) Ns_SlsAppendKeyed(&ds, sock);
         Tcl_DStringResult(interp, &ds);
         break;
 
@@ -400,6 +404,10 @@ NsTclSlsObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         Ns_SlsUnsetKeyed(sock, Tcl_GetString(objv[2]));
         break;
 
+    default:
+        /* unexpected value */
+        assert(cmd && 0);
+        break;
     }
 
     return TCL_OK;
@@ -430,12 +438,14 @@ NsSlsCleanup(Sock *sockPtr)
     void *arg;
     int   trys, retry;
 
+    assert(sockPtr != NULL);
+    
     trys = 0;
     do {
-        int i = nsconf.nextSlsId;
+        uintptr_t i = nsconf.nextSlsId;
 
         retry = 0;
-        while (i-- > 0) {
+        while (i-- > 0u) {
             if (cleanupProcs[i] != NULL && sockPtr->sls[i] != NULL) {
                 arg = sockPtr->sls[i];
                 sockPtr->sls[i] = NULL;
@@ -443,7 +453,7 @@ NsSlsCleanup(Sock *sockPtr)
                 retry = 1;
             }
         }
-    } while (retry && trys++ < 5);
+    } while ((retry != 0) && trys++ < 5);
 }
 
 
@@ -464,13 +474,13 @@ NsSlsCleanup(Sock *sockPtr)
  */
 
 static void **
-GetSlot(Ns_Sls *slsPtr, Ns_Sock *sock)
+GetSlot(const Ns_Sls *slsPtr, Ns_Sock *sock)
 {
     Sock      *sockPtr = (Sock *) sock;
-    int        id      = (int)(intptr_t) *slsPtr;
+    uintptr_t  id      = (uintptr_t)(*slsPtr);
 
     if (id >= nsconf.nextSlsId) {
-        Ns_Fatal("Ns_Sls: invalid key: %d: must be between 0 and %d",
+        Ns_Fatal("Ns_Sls: invalid key: %td: must be between 0 and %td",
                  id, nsconf.nextSlsId -1);
     }
     return &sockPtr->sls[id];
@@ -508,3 +518,13 @@ CleanupKeyed(void *arg)
     Tcl_DeleteHashTable(tblPtr);
     ns_free(tblPtr);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */
+

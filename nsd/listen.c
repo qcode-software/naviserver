@@ -103,13 +103,16 @@ NsInitListen(void)
  */
 
 int
-Ns_SockListenCallback(char *addr, int port, Ns_SockProc *proc, void *arg)
+Ns_SockListenCallback(const char *addr, int port, Ns_SockProc *proc, void *arg)
 {
     Tcl_HashTable      *tablePtr = NULL;
     Tcl_HashEntry      *hPtr;
     NS_SOCKET           sock;
     int                 isNew, status;
     struct sockaddr_in  sa;
+
+    assert(proc != NULL);
+    assert(arg != NULL);
 
     if (Ns_GetSockAddr(&sa, addr, port) != NS_OK) {
         return NS_ERROR;
@@ -119,9 +122,9 @@ Ns_SockListenCallback(char *addr, int port, Ns_SockProc *proc, void *arg)
 	 * Make sure we can bind to the specified interface.
 	 */
 	
-        sa.sin_port = 0;
+        sa.sin_port = 0u;
         sock = Ns_SockBind(&sa);
-        if (sock == INVALID_SOCKET) {
+        if (sock == NS_INVALID_SOCKET) {
             return NS_ERROR;
         }
         ns_sockclose(sock);
@@ -134,26 +137,31 @@ Ns_SockListenCallback(char *addr, int port, Ns_SockProc *proc, void *arg)
      * we're listening on.
      */
   
-    hPtr = Tcl_CreateHashEntry(&portsTable, (char *)(intptr_t) port, &isNew);
-    if (!isNew) {
+    hPtr = Tcl_CreateHashEntry(&portsTable, INT2PTR(port), &isNew);
+    if (isNew == 0) {
         tablePtr = Tcl_GetHashValue(hPtr);
     } else {
         sock = Ns_SockListen(NULL, port);
-        if (sock == INVALID_SOCKET) {
+        if (sock == NS_INVALID_SOCKET) {
             Tcl_DeleteHashEntry(hPtr);
             status = NS_ERROR;
         } else {
-            Ns_SockSetNonBlocking(sock);
-            tablePtr = ns_malloc(sizeof(Tcl_HashTable));
+	    status = Ns_SockSetNonBlocking(sock);
+	}
+	if (status == NS_OK) {
+	    tablePtr = ns_malloc(sizeof(Tcl_HashTable));
             Tcl_InitHashTable(tablePtr, TCL_ONE_WORD_KEYS);
             Tcl_SetHashValue(hPtr, tablePtr);
-            Ns_SockCallback(sock, ListenCallback, tablePtr,
-			    NS_SOCK_READ | NS_SOCK_EXIT);
+            status = Ns_SockCallback(sock, ListenCallback, tablePtr,
+				     (unsigned int)NS_SOCK_READ | (unsigned int)NS_SOCK_EXIT);
         }
     }
     if (status == NS_OK) {
-        hPtr = Tcl_CreateHashEntry(tablePtr, (char *)(intptr_t) sa.sin_addr.s_addr, &isNew);
-        if (!isNew) {
+
+	assert(tablePtr != NULL);
+        hPtr = Tcl_CreateHashEntry(tablePtr, INT2PTR(sa.sin_addr.s_addr), &isNew);
+
+        if (isNew == 0) {
             status = NS_ERROR;
         } else {
 	     ListenData *ldPtr;
@@ -193,7 +201,7 @@ Ns_SockPortBound(int port)
     Tcl_HashEntry  *hPtr;
 
     Ns_MutexLock(&lock);
-    hPtr = Tcl_FindHashEntry(&portsTable, (char *)(intptr_t) port);
+    hPtr = Tcl_FindHashEntry(&portsTable, INT2PTR(port));
     Ns_MutexUnlock(&lock);
     return (hPtr != NULL ? 1 : 0);
 }
@@ -216,30 +224,32 @@ Ns_SockPortBound(int port)
  *----------------------------------------------------------------------
  */
 
-static int
-ListenCallback(NS_SOCKET sock, void *arg, int why)
+static bool
+ListenCallback(NS_SOCKET sock, void *arg, unsigned int why)
 {
     struct sockaddr_in  sa;
     socklen_t           len;
     Tcl_HashTable      *tablePtr;
     NS_SOCKET           newSock;
+    bool                success;
 
     tablePtr = arg;
-    if (why == NS_SOCK_EXIT) {
-        ns_sockclose(sock);
+    if (why == (unsigned int)NS_SOCK_EXIT) {
+        (void) ns_sockclose(sock);
         return NS_FALSE;
     }
+
     newSock = Ns_SockAccept(sock, NULL, NULL);
-    if (newSock != INVALID_SOCKET) {
+    if (likely(newSock != NS_INVALID_SOCKET)) {
         Tcl_HashEntry *hPtr;
         ListenData    *ldPtr;
 
-        Ns_SockSetBlocking(newSock);
-        len = sizeof(sa);
+        (void) Ns_SockSetBlocking(newSock);
+        len = (socklen_t)sizeof(sa);
         getsockname(newSock, (struct sockaddr *) &sa, &len);
         ldPtr = NULL;
         Ns_MutexLock(&lock);
-        hPtr = Tcl_FindHashEntry(tablePtr, (char *)(intptr_t) sa.sin_addr.s_addr);
+        hPtr = Tcl_FindHashEntry(tablePtr, INT2PTR(sa.sin_addr.s_addr));
         if (hPtr == NULL) {
             hPtr = Tcl_FindHashEntry(tablePtr, (char *) INADDR_ANY);
         }
@@ -248,10 +258,25 @@ ListenCallback(NS_SOCKET sock, void *arg, int why)
         }
         Ns_MutexUnlock(&lock);
         if (ldPtr == NULL) {
-            ns_sockclose(newSock);
+            int result = ns_sockclose(newSock);
+            success = (result == 0) ? NS_TRUE : NS_FALSE;
         } else {
-            (*ldPtr->proc) (newSock, ldPtr->arg, why);
+            /*
+             * For the time being
+             */
+            success = (*ldPtr->proc) (newSock, ldPtr->arg, why);
         }
+    } else {
+        success = NS_FALSE;
     }
-    return NS_TRUE;
+    return success;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

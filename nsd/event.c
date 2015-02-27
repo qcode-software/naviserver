@@ -46,13 +46,13 @@ typedef struct Event {
     Ns_EventProc      *proc;          /* Event callback. */
     void              *arg;           /* Callback data. */
     int                idx;           /* Poll index. */
-    int                events;        /* Poll events. */
+    short              events;        /* Poll events. */
     Ns_Time            timeout;       /* Non-null timeout data. */
     unsigned int       status;        /* Manipulated by Ns_EventCallback(). */
 } Event;
 
-#define EVENT_WAIT 1  /* Event callback has requested a wait. */
-#define EVENT_DONE 2  /* Event callback has signaled Event done. */
+#define NS_EVENT_WAIT 1U  /* Event callback has requested a wait. */
+#define NS_EVENT_DONE 2U  /* Event callback has signaled Event done. */
 
 /*
  * The following defines an event queue of sockets waiting for
@@ -81,9 +81,9 @@ typedef struct EventQueue {
  * Static variables defined in this file.
  */
 
-static struct {
-    int when;           /* Event when bit. */
-    int event;          /* Poll event bit. */
+static const struct {
+    Ns_SockState when;  /* Event when bit. */
+    const short  event;        /* Poll event bit. */
 } map[] = {
     {NS_SOCK_EXCEPTION, POLLPRI},
     {NS_SOCK_WRITE,     POLLOUT},
@@ -116,8 +116,8 @@ Ns_CreateEventQueue(int maxevents)
 
     assert(maxevents > 0);
 
-    queuePtr = ns_calloc(1, sizeof(EventQueue) + (sizeof(Event) * maxevents));
-    queuePtr->pfds = ns_calloc(maxevents + 1, sizeof(struct pollfd));
+    queuePtr = ns_calloc(1u, sizeof(EventQueue) + (sizeof(Event) * (size_t)maxevents));
+    queuePtr->pfds = ns_calloc((size_t)maxevents + 1u, sizeof(struct pollfd));
     if (ns_sockpair(queuePtr->trigger) != 0) {
         Ns_Fatal("taskqueue: ns_sockpair() failed: %s",
                  ns_sockstrerror(ns_sockerrno));
@@ -163,6 +163,10 @@ Ns_EventEnqueue(Ns_EventQueue *queue, NS_SOCKET sock, Ns_EventProc *proc, void *
     EventQueue *queuePtr = (EventQueue *) queue;
     Event      *evPtr;
 
+    assert(queue != NULL);
+    assert(proc != NULL);
+    assert(arg != NULL);
+    
     evPtr = queuePtr->firstFreePtr;
     if (evPtr != NULL) {
         queuePtr->firstFreePtr = evPtr->nextPtr;
@@ -171,7 +175,7 @@ Ns_EventEnqueue(Ns_EventQueue *queue, NS_SOCKET sock, Ns_EventProc *proc, void *
         evPtr->arg = arg;
         Push(evPtr, queuePtr->firstInitPtr);
     }
-    return evPtr ? NS_OK : NS_ERROR;
+    return (evPtr != NULL) ? NS_OK : NS_ERROR;
 }
 
 
@@ -195,18 +199,20 @@ Ns_EventEnqueue(Ns_EventQueue *queue, NS_SOCKET sock, Ns_EventProc *proc, void *
  */
 
 void
-Ns_EventCallback(Ns_Event *event, int when, Ns_Time *timeoutPtr)
+Ns_EventCallback(Ns_Event *event, Ns_SockState when, const Ns_Time *timeoutPtr)
 {
     Event *evPtr = (Event *) event;
     int    i;
+
+    assert(event != NULL);
 
     /*
      * Map from sock when bits to poll event bits.
      */
 
     evPtr->events = 0;
-    for (i = 0; i < 3; ++i) {
-        if (when & map[i].when) {
+    for (i = 0; i < Ns_NrElements(map); ++i) {
+        if (when == map[i].when) {
             evPtr->events |= map[i].event;
         }
     }
@@ -223,10 +229,10 @@ Ns_EventCallback(Ns_Event *event, int when, Ns_Time *timeoutPtr)
      * Add to the waiting list if there are events or a timeout.
      */
 
-    if (evPtr->events || timeoutPtr) {
-        evPtr->status = EVENT_WAIT;
+    if (evPtr->events != 0 || timeoutPtr != NULL) {
+        evPtr->status = NS_EVENT_WAIT;
     } else {
-        evPtr->status = EVENT_DONE;
+        evPtr->status = NS_EVENT_DONE;
     }
 }
 
@@ -257,16 +263,17 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
     int         i, n, nfds;
     char        c;
 
-    Ns_GetTime(&now);
+    assert(queue != NULL);
 
     /*
      * Process any new events.
      */
-
+    Ns_GetTime(&now);
+    
     while ((evPtr = queuePtr->firstInitPtr) != NULL) {
         queuePtr->firstInitPtr = evPtr->nextPtr;
         Call(evPtr, &now, NS_SOCK_INIT);
-        if (!evPtr->status) {
+        if (evPtr->status == 0U) {
             Ns_Log(Bug, "Ns_RunEventQueue: callback init failed");
             Push(evPtr, queuePtr->firstFreePtr);
         }
@@ -311,10 +318,11 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
      */
     ((void)(n)); /* ignore n */
 
-    if (queuePtr->pfds[0].revents & POLLIN
-        && recv(queuePtr->pfds[0].fd, &c, 1, 0) != 1) {
-        Ns_Fatal("event queue: trigger read() failed: %s",
-                 ns_sockstrerror(ns_sockerrno));
+    if (((queuePtr->pfds[0].revents & POLLIN) != 0)
+        && (recv(queuePtr->pfds[0].fd, &c, 1, 0) != 1)
+	) {
+	Ns_Fatal("event queue: trigger ns_read() failed: %s",
+		 ns_sockstrerror(ns_sockerrno));
     }
 
     /*
@@ -326,7 +334,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
     queuePtr->firstWaitPtr = NULL;
 
     while (evPtr != NULL) {
-	int revents;
+	short revents;
 
         nextPtr = evPtr->nextPtr;
 
@@ -338,9 +346,9 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
         if (revents & POLLHUP) {
             revents |= POLLIN;
         }
-        if (revents) {
-            for (i = 0; i < 3; ++i) {
-                if (revents & map[i].event) {
+        if (revents != 0) {
+            for (i = 0; i < Ns_NrElements(map); ++i) {
+                if ((revents & map[i].event) != 0) {
                     Call(evPtr, &now, map[i].when);
                 }
             }
@@ -349,7 +357,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
             Call(evPtr, &now, NS_SOCK_TIMEOUT);
         }
 
-        if (evPtr->status == EVENT_WAIT) {
+        if (evPtr->status == NS_EVENT_WAIT) {
             Push(evPtr, queuePtr->firstWaitPtr);
         } else {
             Push(evPtr, queuePtr->firstFreePtr);
@@ -357,7 +365,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
         evPtr = nextPtr;
     }
 
-    return queuePtr->firstWaitPtr ? NS_TRUE : NS_FALSE;
+    return (queuePtr->firstWaitPtr != NULL) ? NS_TRUE : NS_FALSE;
 }
 
 
@@ -381,6 +389,8 @@ void
 Ns_TriggerEventQueue(Ns_EventQueue *queue)
 {
     EventQueue *queuePtr = (EventQueue *) queue;
+
+    assert(queue != NULL);
 
     if (send(queuePtr->trigger[1], "", 1, 0) != 1) {
         Ns_Fatal("event queue: trigger send() failed: %s",
@@ -412,6 +422,8 @@ Ns_ExitEventQueue(Ns_EventQueue *queue)
     Event      *evPtr;
     Ns_Time     now;
 
+    assert(queue != NULL);
+
     Ns_GetTime(&now);
     evPtr = queuePtr->firstWaitPtr;
     queuePtr->firstWaitPtr = NULL;
@@ -420,3 +432,12 @@ Ns_ExitEventQueue(Ns_EventQueue *queue)
         evPtr = evPtr->nextPtr;
     }
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

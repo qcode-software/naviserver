@@ -48,7 +48,7 @@
 typedef struct Thread {
     struct Thread  *nextPtr;	     /* Next in list of all threads. */
     time_t	    ctime;	     /* Thread structure create time. */
-    int		    flags;	     /* Detached, joined, etc. */
+    unsigned int    flags;	     /* Detached, joined, etc. */
     Ns_ThreadProc  *proc;	     /* Thread startup routine. */
     void           *arg;	     /* Argument to startup proc. */
     uintptr_t       tid;             /* Id set by thread for logging. */
@@ -58,10 +58,10 @@ typedef struct Thread {
     char	    parent[NS_THREAD_NAMESIZE+1]; /* Parent name. */
 } Thread;
 
-static Thread *NewThread(void);
-static Thread *GetThread(void);
+static Thread *NewThread(void) NS_GNUC_RETURNS_NONNULL;
+static Thread *GetThread(void) NS_GNUC_RETURNS_NONNULL;
 static void CleanupThread(void *arg);
-static void SetBottomOfStack(void *ptr);
+static void SetBottomOfStack(void *ptr)  NS_GNUC_NONNULL(1);
 
 /*
  * The following pointer maintains a linked list of all threads.
@@ -98,7 +98,7 @@ NsInitThreads(void)
 {
     static int once = 0;
 
-    if (!once) {
+    if (once == 0) {
 	once = 1;
     	NsInitMaster();
     	NsInitReentrant();
@@ -128,6 +128,10 @@ Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stack,
     	    	Ns_Thread *resultPtr)
 {
     Thread *thrPtr;
+    size_t nameLength;
+    const char *name;
+
+    assert(proc != NULL);
 
     Ns_MasterLock();
 
@@ -146,8 +150,12 @@ Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stack,
     if (resultPtr == NULL) {
     	thrPtr->flags = NS_THREAD_DETACHED;
     }
-    strcpy(thrPtr->parent, Ns_ThreadGetName());
+    name = Ns_ThreadGetName();
+    nameLength = strlen(name);
+    assert(nameLength <= NS_THREAD_NAMESIZE);
+    memcpy(thrPtr->parent, name, nameLength + 1u);
     Ns_MasterUnlock();
+    
     NsCreateThread(thrPtr, stack, resultPtr);
 }
 
@@ -236,7 +244,7 @@ NsThreadMain(void *arg)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_ThreadGetName(void)
 {
     Thread *thisPtr = GetThread();
@@ -262,11 +270,13 @@ Ns_ThreadGetName(void)
  */
 
 void
-Ns_ThreadSetName(char *name,...)
+Ns_ThreadSetName(const char *name,...)
 {
     Thread *thisPtr = GetThread();
     va_list ap;
 
+    assert(name != NULL);
+    
     Ns_MasterLock();
     va_start(ap, name);
     vsnprintf(thisPtr->name, NS_THREAD_NAMESIZE, name, ap);
@@ -291,7 +301,7 @@ Ns_ThreadSetName(char *name,...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_ThreadGetParent(void)
 {
     Thread *thisPtr = GetThread();
@@ -322,25 +332,44 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
     Thread *thrPtr;
     char buf[100];
 
+    assert(dsPtr != NULL);
+
     Ns_MasterLock();
     thrPtr = firstThreadPtr;
     while (thrPtr != NULL) {
-        Tcl_DStringStartSublist(dsPtr);
-        Tcl_DStringAppendElement(dsPtr, thrPtr->name);
-        Tcl_DStringAppendElement(dsPtr, thrPtr->parent);
-        snprintf(buf, sizeof(buf), " %" PRIxPTR " %d %" PRIu64,
-                 thrPtr->tid, thrPtr->flags, (int64_t) thrPtr->ctime);
-        Tcl_DStringAppend(dsPtr, buf, -1);
-        if (proc != NULL) {
-            (*proc)(dsPtr, thrPtr->proc, thrPtr->arg);
-        } else {
-            snprintf(buf, sizeof(buf), " %p %p", thrPtr->proc, thrPtr->arg);
-            Tcl_DStringAppend(dsPtr, buf, -1);
-        }
-        snprintf(buf, sizeof(buf), " %" PRIuMAX , (uintmax_t) thrPtr->ostid);
-        Tcl_DStringAppend(dsPtr, buf, -1);
 
-        Tcl_DStringEndSublist(dsPtr);
+        if ((thrPtr->flags & NS_THREAD_EXITED) == 0u) {
+            int written;
+
+            Tcl_DStringStartSublist(dsPtr);
+            Tcl_DStringAppendElement(dsPtr, thrPtr->name);
+            Tcl_DStringAppendElement(dsPtr, thrPtr->parent);
+            snprintf(buf, sizeof(buf), " %" PRIxPTR " %d %" PRIu64,
+                     thrPtr->tid, thrPtr->flags, (int64_t) thrPtr->ctime);
+            Tcl_DStringAppend(dsPtr, buf, -1);
+            if (proc != NULL) {
+                (*proc)(dsPtr, thrPtr->proc, thrPtr->arg);
+            } else {
+                /* 
+                 * The only legal way to print a function pointer is by
+                 * printing the bytes via casting to a character array.
+                 */
+                unsigned char *p = (unsigned char *)thrPtr->proc;
+                int i;
+                
+                Tcl_DStringAppend(dsPtr, " 0x", 3);
+                for (i = 0; i < sizeof(thrPtr->proc); i++) {
+                    written = snprintf(buf, sizeof(buf), "%02x", p != NULL ? p[i] : 0);
+                    Tcl_DStringAppend(dsPtr, buf, written);
+                }
+                written = snprintf(buf, sizeof(buf), " %p", thrPtr->arg);
+                Tcl_DStringAppend(dsPtr, buf, written);
+            }
+            written = snprintf(buf, sizeof(buf), " %" PRIuMAX , (uintmax_t) thrPtr->ostid);
+            Tcl_DStringAppend(dsPtr, buf, written);
+
+            Tcl_DStringEndSublist(dsPtr);
+        }
         thrPtr = thrPtr->nextPtr;
     }
     Ns_MasterUnlock();
@@ -371,12 +400,13 @@ NewThread(void)
 {
     Thread *thrPtr;
 
-    thrPtr = ns_calloc(1, sizeof(Thread));
+    thrPtr = ns_calloc(1U, sizeof(Thread));
     thrPtr->ctime = time(NULL);
     Ns_MasterLock();
     thrPtr->nextPtr = firstThreadPtr;
     firstThreadPtr = thrPtr;
     Ns_MasterUnlock();
+
     return thrPtr;
 }
 
@@ -415,6 +445,34 @@ GetThread(void)
 #endif
     }
     return thrPtr;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsThreadShutdownStarted --
+ *
+ *  Record in the thread structure that this thread is currently exiting. When
+ *  e.g. a call during the (TLS)-cleanup calls Ns_ThreadList() or a similar
+ *  command, then the thread arg structure might be already freed by an
+ *  earlier cleanup call. By marking the thread as being deleted, we can
+ *  handle such cases.
+ *
+ * Results:
+ *  None.
+ *
+ * Side effects:
+ *  Adding thread flag NS_THREAD_EXITED
+ *
+ *----------------------------------------------------------------------
+ */
+void
+NsThreadShutdownStarted(void)
+{
+    Thread *thisPtr = GetThread();
+
+    thisPtr->flags |= NS_THREAD_EXITED;
 }
 
 
@@ -473,8 +531,9 @@ static void
 SetBottomOfStack(void *ptr) {
     Thread *thisPtr = GetThread();
 
+    assert(ptr != NULL);
+    
     thisPtr->bottomOfStack = ptr;
-    /*fprintf(stderr, "SetBottomOfStack %p %s bot %p\n", thisPtr, thisPtr->name, ptr);*/
 }
 
 
@@ -497,8 +556,20 @@ void
 Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize) {
   Thread *thisPtr = GetThread();
 
+  assert(maxStackSize != NULL);
+  assert(estimatedSize != NULL);
+  
   Ns_MasterLock();
   *maxStackSize = defstacksize;
   *estimatedSize = abs((int)(thisPtr->bottomOfStack - (unsigned char *)&thisPtr));
   Ns_MasterUnlock();  
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

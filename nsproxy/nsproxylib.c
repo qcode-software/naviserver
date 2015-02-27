@@ -153,17 +153,17 @@ typedef enum {
 } ReaperState;
 
 typedef struct Pool {
-    char          *name;     /* Name of pool */
+    const char    *name;     /* Name of pool */
     struct Proxy  *firstPtr; /* First in list of avail proxies */
     struct Proxy  *runPtr;   /* First in list of running proxies */
-    char          *exec;     /* Slave executable */
-    char          *init;     /* Init script to eval on proxy start */
-    char          *reinit;   /* Re-init scripts to eval on proxy put */
+    const char    *exec;     /* Slave executable */
+    const char    *init;     /* Init script to eval on proxy start */
+    const char    *reinit;   /* Re-init scripts to eval on proxy put */
     int            waiting;  /* Thread waiting for handles */
     int            maxslaves;/* Max number of allowed proxies */
     int            nfree;    /* Current number of available proxy handles */
     int            nused;    /* Current number of used proxy handles */
-    int            nextid;   /* Next in proxy unique ids */
+    uintptr_t      nextid;   /* Next in proxy unique ids */
     ProxyConf      conf;     /* Collection of config options to pass to proxy */
     Ns_Mutex       lock;     /* Lock around the pool */
     Ns_Cond        cond;     /* Cond for use while allocating handles */
@@ -207,17 +207,17 @@ static Tcl_InterpDeleteProc DeleteData;
 
 static Ns_ShutdownProc Shutdown;
 
-static Pool*  GetPool(char *poolName, InterpData *idataPtr);
+static Pool*  GetPool(const char *poolName, InterpData *idataPtr);
 static void   FreePool(Pool *poolPtr);
 
 static Proxy* CreateProxy(Pool *poolPtr);
 static Err    PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms);
 static void   PushProxy(Proxy *proxyPtr);
-static Proxy* GetProxy(Tcl_Interp *interp, char *proxyId, InterpData *idataPtr);
+static Proxy* GetProxy(Tcl_Interp *interp, const char *proxyId, InterpData *idataPtr);
 
-static int    Eval(Tcl_Interp *interp, Proxy *proxyPtr, char *script, int ms);
+static int    Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, int ms);
 
-static Err    Send(Tcl_Interp *interp, Proxy *proxyPtr, char *script);
+static Err    Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script);
 static Err    Wait(Tcl_Interp *interp, Proxy *proxyPtr, int ms);
 static Err    Recv(Tcl_Interp *interp, Proxy *proxyPtr, int *resultPtr);
 
@@ -226,7 +226,7 @@ static int    ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr);
 static void   CloseProxy(Proxy *proxyPtr);
 static void   FreeProxy(Proxy *proxyPtr);
 static void   ResetProxy(Proxy *proxyPtr);
-static char*  ProxyError(Tcl_Interp *interp, Err err);
+static const char*  ProxyError(Tcl_Interp *interp, Err err);
 static void   FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr);
 
 static void   ReleaseHandles(Tcl_Interp *interp, InterpData *idataPtr);
@@ -236,21 +236,21 @@ static Err    CreateSlave(Tcl_Interp *interp, Proxy *proxyPtr);
 static void   SetExpire(Slave *slavePtr, int ms);
 static int    SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr);
 static int    RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr);
-static int    WaitFd(int fd, int events, int ms);
+static int    WaitFd(int fd, short events, int ms);
 
 static int    Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr);
 static void   Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr);
 
 static void   UpdateIov(struct iovec *iov, int n);
-static void   SetOpt(char *str, char **optPtr);
+static void   SetOpt(const char *str, char const** optPtr);
 static void   ReaperThread(void *ignored);
 static void   CloseSlave(Slave *slavePtr, int ms);
 static void   ReapProxies(void);
 static void   Kill(pid_t pid, int sig);
 static int    GetTimeDiff(Ns_Time *tsPtr);
 
-static void   AppendStr(Tcl_Interp *interp, CONST char *flag, char *val);
-static void   AppendInt(Tcl_Interp *interp, CONST char *flag, int i);
+static void   AppendStr(Tcl_Interp *interp, const char *flag, const char *val);
+static void   AppendInt(Tcl_Interp *interp, const char *flag, int i);
 
 /*
  * Static variables defined in this file.
@@ -288,7 +288,7 @@ Nsproxy_LibInit(void)
 {
     static int once = 0;
 
-    if (!once) {
+    if (once == 0) {
         once = 1;
 
         Nsd_LibInit();
@@ -298,7 +298,7 @@ Nsproxy_LibInit(void)
         Tcl_InitHashTable(&pools, TCL_STRING_KEYS);
 
         Ns_RegisterAtShutdown(Shutdown, NULL);
-        Ns_RegisterProcInfo((void *)Shutdown, "nsproxy:shutdown", NULL);
+        Ns_RegisterProcInfo((Ns_Callback *)Shutdown, "nsproxy:shutdown", NULL);
     }
 }
 
@@ -324,7 +324,7 @@ Ns_ProxyTclInit(Tcl_Interp *interp)
 {
     InterpData *idataPtr;
 
-    idataPtr = ns_calloc(1, sizeof(InterpData));
+    idataPtr = ns_calloc(1U, sizeof(InterpData));
     Tcl_InitHashTable(&idataPtr->ids, TCL_STRING_KEYS);
     Tcl_InitHashTable(&idataPtr->cnts, TCL_ONE_WORD_KEYS);
     Tcl_SetAssocData(interp, ASSOC_DATA, DeleteData, idataPtr);
@@ -359,15 +359,15 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     Slave         proc;
     int          result, n, max = 0;
     Tcl_DString  in, out;
-    char        *script, *active, *dots;
-    char        *uarg = NULL, *user = NULL, *group = NULL;
+    const char  *script, *dots, *uarg = NULL, *user = NULL;
+    char        *group = NULL, *active;
     uint16       major, minor;
 
     Nsproxy_LibInit();
 
     if (argc > 4 || argc < 3) {
         char *pgm = strrchr(argv[0], '/');
-        Ns_Fatal("usage: %s pool id ?command?", pgm ? ++pgm : argv[0]);
+        Ns_Fatal("usage: %s pool id ?command?", (pgm != NULL) ? ++pgm : argv[0]);
     }
     if (argc < 4) {
         active = NULL;
@@ -387,22 +387,22 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
 
     major = htons(MAJOR_VERSION);
     minor = htons(MINOR_VERSION);
-    proc.pid = -1;
+    proc.pid = NS_INVALID_PID;
 
-    proc.rfd = dup(0);
+    proc.rfd = ns_dup(0);
     if (proc.rfd < 0) {
         Ns_Fatal("nsproxy: dup: %s", strerror(errno));
     }
-    proc.wfd = dup(1);
+    proc.wfd = ns_dup(1);
     if (proc.wfd < 0) {
         Ns_Fatal("nsproxy: dup: %s", strerror(errno));
     }
-    close(0);
-    if (open("/dev/null", O_RDONLY) != 0) {
+    ns_close(0);
+    if (ns_open("/dev/null", O_RDONLY, 0) != 0) {
         Ns_Fatal("nsproxy: open: %s", strerror(errno));
     }
-    close(1);
-    if (dup(2) != 1) {
+    ns_close(1);
+    if (ns_dup(2) != 1) {
         Ns_Fatal("nsproxy: dup: %s", strerror(errno));
     }
 
@@ -508,8 +508,8 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
         Tcl_DStringTrunc(&out, 0);
     }
 
-    if (uarg) {
-        ns_free(uarg);
+    if (uarg != NULL) {
+        ns_free((char *)uarg);
     }
     Tcl_DStringFree(&in);
     Tcl_DStringFree(&out);
@@ -536,7 +536,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
  */
 
 int
-Ns_ProxyCleanup(Tcl_Interp *interp, void *ignored)
+Ns_ProxyCleanup(Tcl_Interp *interp, const void *ignored)
 {
     InterpData *idataPtr = Tcl_GetAssocData(interp, ASSOC_DATA, NULL);
 
@@ -566,7 +566,7 @@ Ns_ProxyCleanup(Tcl_Interp *interp, void *ignored)
  */
 
 void
-Shutdown(Ns_Time *toutPtr, void *arg)
+Shutdown(const Ns_Time *toutPtr, void *arg)
 {
     Pool           *poolPtr;
     Proxy          *proxyPtr, *tmpPtr;
@@ -592,7 +592,7 @@ Shutdown(Ns_Time *toutPtr, void *arg)
             poolPtr->maxslaves = 0; /* Disable creation of new slaves */
             proxyPtr = poolPtr->firstPtr;
             while (proxyPtr != NULL) {
-                if (proxyPtr->slavePtr) {
+                if (proxyPtr->slavePtr != NULL) {
                     CloseSlave(proxyPtr->slavePtr, proxyPtr->conf.twait);
                 }
                 tmpPtr = proxyPtr->nextPtr;
@@ -618,7 +618,7 @@ Shutdown(Ns_Time *toutPtr, void *arg)
     reap = firstClosePtr != NULL || reaperState != Stopped;
     Ns_MutexUnlock(&plock);
 
-    if (!reap) {
+    if (reap == 0) {
         return;
     }
 
@@ -662,7 +662,7 @@ Shutdown(Ns_Time *toutPtr, void *arg)
  *----------------------------------------------------------------------
  */
 int
-Ns_ProxyGet(Tcl_Interp *interp, char *poolName, PROXY* handlePtr, int ms)
+Ns_ProxyGet(Tcl_Interp *interp, const char *poolName, PROXY* handlePtr, int ms)
 {
     Pool  *poolPtr;
     Proxy *proxyPtr;
@@ -674,7 +674,7 @@ Ns_ProxyGet(Tcl_Interp *interp, char *poolName, PROXY* handlePtr, int ms)
 
     poolPtr = GetPool(poolName, NULL);
     err = PopProxy(poolPtr, &proxyPtr, 1, ms);
-    if (err) {
+    if (err != 0) {
         Tcl_AppendResult(interp, "could not allocate from pool \"",
                          poolPtr->name, "\": ", ProxyError(interp, err), NULL);
         return TCL_ERROR;
@@ -735,7 +735,7 @@ Ns_ProxyPut(PROXY handle)
  *----------------------------------------------------------------------
  */
 
-int Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, char *script, int ms)
+int Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, const char *script, int ms)
 {
     return Eval(interp, (Proxy *)handle, script, ms);
 }
@@ -760,7 +760,8 @@ static Slave *
 ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
 {
     Pool  *poolPtr = proxyPtr->poolPtr;
-    char  *argv[5], active[100];
+    char  *argv[5];
+    char   active[100];
     Slave *slavePtr;
     int    rpipe[2], wpipe[2], len;
     pid_t  pid;
@@ -784,27 +785,27 @@ ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
     }
     if (ns_pipe(wpipe) != 0) {
         Tcl_AppendResult(interp, "pipe failed: ", Tcl_PosixError(interp), NULL);
-        close(rpipe[0]);
-        close(rpipe[1]);
+        ns_close(rpipe[0]);
+        ns_close(rpipe[1]);
         return NULL;
     }
 
     pid = Ns_ExecArgv(poolPtr->exec, NULL, rpipe[0], wpipe[1], argv, NULL);
 
-    close(rpipe[0]);
-    close(wpipe[1]);
+    ns_close(rpipe[0]);
+    ns_close(wpipe[1]);
 
     ns_free(argv[0]);
     ns_free(argv[1]);
 
-    if (pid < 0) {
+    if (pid == NS_INVALID_PID) {
         Tcl_AppendResult(interp, "exec failed: ", Tcl_PosixError(interp), NULL);
-        close(wpipe[0]);
-        close(rpipe[1]);
+        ns_close(wpipe[0]);
+        ns_close(rpipe[1]);
         return NULL;
     }
 
-    slavePtr = ns_calloc(1, sizeof(Slave));
+    slavePtr = ns_calloc(1U, sizeof(Slave));
     slavePtr->poolPtr = proxyPtr->poolPtr;
     slavePtr->pid = pid;
     slavePtr->rfd = wpipe[0];
@@ -865,7 +866,7 @@ SetExpire(Slave *slavePtr, int ms)
  */
 
 static int
-Eval(Tcl_Interp *interp, Proxy *proxyPtr, char *script, int ms)
+Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, int ms)
 {
     Err err;
     int status = TCL_ERROR;
@@ -899,7 +900,7 @@ Eval(Tcl_Interp *interp, Proxy *proxyPtr, char *script, int ms)
  */
 
 static Err
-Send(Tcl_Interp *interp, Proxy *proxyPtr, char *script)
+Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
 {
     Err err = ENone;
     Req req;
@@ -916,14 +917,14 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, char *script)
             err = CreateSlave(interp, proxyPtr);
         }
         if (err == ENone) {
-            int len = script ? strlen(script) : 0;
-            req.len   = htonl(len);
+	    size_t len = (script != NULL) ? strlen(script) : 0U;
+            req.len   = htonl((uint32_t)len);
             req.major = htons(MAJOR_VERSION);
             req.minor = htons(MINOR_VERSION);
             Tcl_DStringTrunc(&proxyPtr->in, 0);
             Tcl_DStringAppend(&proxyPtr->in, (char *) &req, sizeof(req));
-            if (len > 0) {
-                Tcl_DStringAppend(&proxyPtr->in, script, len);
+            if (len > 0U) {
+                Tcl_DStringAppend(&proxyPtr->in, script, (int)len);
             }
             proxyPtr->state = Busy;
 
@@ -947,8 +948,8 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, char *script)
     }
 
     if (err != ENone) {
-        Tcl_AppendResult(interp, "could not send script \"",
-                         script ? script : "<empty>",
+        Tcl_AppendResult(interp, "could not send script \"", 
+			 (script != NULL) ? script : "<empty>",
                          "\" to proxy \"", proxyPtr->id, "\": ",
                          ProxyError(interp, err), NULL);
     }
@@ -1183,7 +1184,7 @@ RecvBuf(Slave *slavePtr, int msec, Tcl_DString *dsPtr)
     ptr  = dsPtr->string + n;
     while (len > 0) {
         do {
-            n = read(slavePtr->rfd, ptr, len);
+            n = ns_read(slavePtr->rfd, ptr, len);
         } while (n == -1 && errno == EINTR);
         if (n == 0) {
             return 0; /* EOF */
@@ -1229,13 +1230,13 @@ RecvBuf(Slave *slavePtr, int msec, Tcl_DString *dsPtr)
  */
 
 static int
-WaitFd(int fd, int event, int ms)
+WaitFd(int fd, short events, int ms)
 {
     struct pollfd pfd;
     int n;
 
     pfd.fd = fd;
-    pfd.events = event | POLLPRI | POLLERR;
+    pfd.events = events | POLLPRI | POLLERR;
     pfd.revents = pfd.events;
     do {
         n = ns_poll(&pfd, 1, ms);
@@ -1302,21 +1303,21 @@ UpdateIov(struct iovec *iov, int n)
 static void
 Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
 {
-    Res   hdr;
-    char *einfo = NULL, *ecode = NULL, *result = NULL;
-    int   clen = 0, ilen = 0, rlen = 0;
+    Res         hdr;
+    const char *einfo = NULL, *ecode = NULL, *result = NULL;
+    size_t      clen = 0, ilen = 0, rlen = 0;
 
     if (interp != NULL) {
         if (code == TCL_OK) {
             einfo = NULL;
             ecode = NULL;
         } else {
-            ecode = (char *)Tcl_GetVar(interp, "errorCode", TCL_GLOBAL_ONLY);
-            einfo = (char *)Tcl_GetVar(interp, "errorInfo", TCL_GLOBAL_ONLY);
+            ecode = Tcl_GetVar(interp, "errorCode", TCL_GLOBAL_ONLY);
+            einfo = Tcl_GetVar(interp, "errorInfo", TCL_GLOBAL_ONLY);
         }
-        clen = ecode ? (strlen(ecode) + 1) : 0;
-        ilen = einfo ? (strlen(einfo) + 1) : 0;
-        result = (char *)Tcl_GetStringResult(interp);
+        clen = (ecode != NULL) ? (strlen(ecode) + 1) : 0;
+        ilen = (einfo != NULL) ? (strlen(einfo) + 1) : 0;
+        result = Tcl_GetStringResult(interp);
         rlen = strlen(result);
     }
     hdr.code = htonl(code);
@@ -1355,9 +1356,9 @@ Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
 static int
 Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr)
 {
-    Res  *resPtr;
-    char *str;
-    int   rlen, clen, ilen;
+    Res        *resPtr;
+    const char *str;
+    int         rlen, clen, ilen;
 
     if (dsPtr->length < sizeof(Res)) {
         return TCL_ERROR;
@@ -1377,7 +1378,7 @@ Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr)
         str += ilen;
     }
     if (rlen > 0) {
-        Tcl_SetResult(interp, str, TCL_VOLATILE);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(str, -1));
     }
     *resultPtr = ntohl(resPtr->code);
 
@@ -1402,19 +1403,18 @@ Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr)
  */
 
 static int
-ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc,
-            Tcl_Obj *CONST objv[])
+ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     InterpData    *idataPtr = data;
     Pool          *poolPtr, *thePoolPtr;
     Proxy         *proxyPtr;
     Err            err;
     int            ms, reap, opt, result = TCL_OK;
-    char          *proxyId;
+    const char    *proxyId;
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "get", "put", "release", "eval", "cleanup", "configure",
         "ping", "free", "active", "handles", "clear", "stop",
         "send", "wait", "recv", "pools", NULL
@@ -1582,7 +1582,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc,
         Ns_MutexLock(&poolPtr->lock);
         proxyPtr = poolPtr->runPtr;
         while (proxyPtr != NULL) {
-            if (proxyId == NULL || !strcmp(proxyId, proxyPtr->id)) {
+            if (proxyId == NULL || STREQ(proxyId, proxyPtr->id)) {
                 FmtActiveProxy(interp, proxyPtr);
             }
             proxyPtr = proxyPtr->runPtr;
@@ -1612,8 +1612,8 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc,
                 case PClearIdx: proxyPtr = poolPtr->firstPtr; break;
                 }
                 while (proxyPtr != NULL) {
-                    if (proxyId == NULL || !strcmp(proxyId, proxyPtr->id)) {
-                        if (proxyPtr->slavePtr) {
+                    if (proxyId == NULL || STREQ(proxyId, proxyPtr->id)) {
+                        if (proxyPtr->slavePtr != NULL) {
                             CloseSlave(proxyPtr->slavePtr,proxyPtr->conf.twait);
                             proxyPtr->slavePtr = NULL;
                             reap++;
@@ -1630,7 +1630,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc,
             hPtr = Tcl_NextHashEntry(&search);
         }
         Ns_MutexUnlock(&plock);
-        if (reap) {
+        if (reap != 0) {
             ReapProxies();
         }
         break;
@@ -1669,15 +1669,14 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc,
  */
 
 static int
-ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
-             Tcl_Obj *CONST objv[])
+ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     InterpData *idataPtr = data;
     Pool       *poolPtr;
     Proxy      *proxyPtr;
     int         flag, n, result, reap = 0;
 
-    static CONST char *flags[] = {
+    static const char *flags[] = {
         "-init", "-reinit", "-maxslaves", "-exec",
         "-gettimeout", "-evaltimeout", "-sendtimeout", "-recvtimeout",
         "-waittimeout", "-idletimeout", "-maxruns", NULL
@@ -1701,7 +1700,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
         }
     } else if (objc > 4) {
         int   i;
-	char *str;
+	const char *str;
 
         for (i = 3; i < (objc - 1); ++i) {
             if (Tcl_GetIndexFromObj(interp, objv[i], flags, "flags", 0,
@@ -1757,7 +1756,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
                     }
                     proxyPtr = poolPtr->firstPtr;
                     while (proxyPtr != NULL) {
-                        if (proxyPtr->slavePtr) {
+                        if (proxyPtr->slavePtr != NULL) {
                             SetExpire(proxyPtr->slavePtr, proxyPtr->conf.tidle);
                         }
                         proxyPtr = proxyPtr->nextPtr;
@@ -1857,7 +1856,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
      * enforce pool size constraints.
      */
 
-    if (reap) {
+    if (reap != 0) {
         ReapProxies();
     }
 
@@ -1866,10 +1865,10 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc,
 
 
 static void
-SetOpt(char *str, char **optPtr)
+SetOpt(const char *str, char const**optPtr)
 {
     if (*optPtr != NULL) {
-        ns_free(*optPtr);
+        ns_free((char*)*optPtr);
     }
     if (str != NULL && *str != '\0') {
         *optPtr = ns_strdup(str);
@@ -1879,7 +1878,7 @@ SetOpt(char *str, char **optPtr)
 }
 
 static void
-AppendInt(Tcl_Interp *interp, CONST char *flag, int i)
+AppendInt(Tcl_Interp *interp, const char *flag, int i)
 {
     char buf[TCL_INTEGER_SPACE];
 
@@ -1888,13 +1887,13 @@ AppendInt(Tcl_Interp *interp, CONST char *flag, int i)
 }
 
 static void
-AppendStr(Tcl_Interp *interp, CONST char *flag, char *val)
+AppendStr(Tcl_Interp *interp, const char *flag, const char *val)
 {
     if (flag != NULL) {
-        Tcl_AppendElement(interp, (char *)flag);
-        Tcl_AppendElement(interp, val ? val : "");
+        Tcl_AppendElement(interp, flag);
+        Tcl_AppendElement(interp, (val != NULL) ? val : "");
     } else {
-        Tcl_AppendResult(interp, val ? val : "", NULL);
+        Tcl_AppendResult(interp, (val != NULL) ? val : "", NULL);
     }
 }
 
@@ -1916,17 +1915,17 @@ AppendStr(Tcl_Interp *interp, CONST char *flag, char *val)
  */
 
 static int
-GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     InterpData    *idataPtr = data;
     Proxy         *proxyPtr, *firstPtr;
     Tcl_HashEntry *cntPtr, *idPtr;
     int            i, flag, isNew, nwant, n, ms;
-    char          *arg;
+    const char    *arg;
     Err            err;
     Pool          *poolPtr;
 
-    static CONST char *flags[] = {
+    static const char *flags[] = {
         "-timeout", "-handles", NULL
     };
     enum {
@@ -1938,7 +1937,7 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         return TCL_ERROR;
     }
     poolPtr = GetPool(Tcl_GetString(objv[2]), idataPtr);
-    assert(idataPtr);
+    assert(idataPtr != NULL);
     cntPtr = Tcl_CreateHashEntry(&idataPtr->cnts, (char *) poolPtr, &isNew);
     if ((intptr_t) Tcl_GetHashValue(cntPtr) > 0) {
         err = EDeadlock;
@@ -1980,7 +1979,7 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
      */
 
     err = PopProxy(poolPtr, &firstPtr, nwant, ms);
-    if (err) {
+    if (err != 0) {
     errout:
         Tcl_AppendResult(interp, "could not allocate from pool \"",
                          poolPtr->name, "\": ", ProxyError(interp, err), NULL);
@@ -1995,7 +1994,7 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
     proxyPtr = firstPtr;
     while (proxyPtr != NULL) {
         idPtr = Tcl_CreateHashEntry(&idataPtr->ids, proxyPtr->id, &isNew);
-        if (!isNew) {
+        if (isNew == 0) {
             Ns_Fatal("nsproxy: duplicate proxy entry");
         }
         Tcl_SetHashValue(idPtr, proxyPtr);
@@ -2150,7 +2149,7 @@ FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr)
     Tcl_DStringStartSublist(&ds);
     Ns_DStringPrintf(&ds, "handle %s slave %ld start %" PRIu64 ":%ld script",
                      proxyPtr->id,
-                     (long) (proxyPtr->slavePtr ? proxyPtr->slavePtr->pid : 0),
+                     (long) ((proxyPtr->slavePtr != NULL) ? proxyPtr->slavePtr->pid : 0),
                      (int64_t) proxyPtr->when.sec, proxyPtr->when.usec);
 
     Tcl_DStringAppendElement(&ds, Tcl_DStringValue(&proxyPtr->in) + sizeof(Req));
@@ -2177,7 +2176,7 @@ FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static Pool*
-GetPool(char *poolName, InterpData *idataPtr)
+GetPool(const char *poolName, InterpData *idataPtr)
 {
     Tcl_HashEntry *hPtr;
     Pool          *poolPtr;
@@ -2186,17 +2185,17 @@ GetPool(char *poolName, InterpData *idataPtr)
 
     Ns_MutexLock(&plock);
     hPtr = Tcl_CreateHashEntry(&pools, poolName, &isNew);
-    if (!isNew) {
+    if (isNew == 0) {
         poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
     } else {
-        char *path = NULL, *exec = NULL;
+        const char *path = NULL, *exec = NULL;
         int i;
 
-        poolPtr = ns_calloc(1, sizeof(Pool));
+        poolPtr = ns_calloc(1u, sizeof(Pool));
         Tcl_SetHashValue(hPtr, poolPtr);
         poolPtr->name = Tcl_GetHashKey(&pools, hPtr);
         if (idataPtr && idataPtr->server && idataPtr->module) {
-            path = Ns_ConfigGetPath(idataPtr->server, idataPtr->module, NULL);
+	  path = Ns_ConfigGetPath(idataPtr->server, idataPtr->module, (char *)0);
         }
         if (path != NULL && (exec = Ns_ConfigGetValue(path, "exec")) != NULL) {
             SetOpt(exec, &poolPtr->exec);
@@ -2255,17 +2254,20 @@ static Proxy*
 CreateProxy(Pool *poolPtr)
 {
     Proxy *proxyPtr;
-    char buf[32];
+    char buf[TCL_INTEGER_SPACE];
+    size_t nameLength;
+    int idLength;
 
-    sprintf(buf, "%d", poolPtr->nextid++);
+    idLength = snprintf(buf, sizeof(buf), "%" PRIuPTR, poolPtr->nextid++);
+    nameLength = strlen(poolPtr->name);
 
-    proxyPtr = ns_calloc(1, sizeof(Proxy));
-    proxyPtr->id = ns_calloc(1, strlen(buf) + strlen(poolPtr->name) + 2);
-
-    strcpy(proxyPtr->id, poolPtr->name);
-    strcat(proxyPtr->id, "-");
-    strcat(proxyPtr->id, buf);
+    proxyPtr = ns_calloc(1u, sizeof(Proxy));
     proxyPtr->poolPtr = poolPtr;
+
+    proxyPtr->id = ns_calloc(1u, strlen(buf) + nameLength + 2u);
+    memcpy(proxyPtr->id, poolPtr->name, nameLength);
+    *(proxyPtr->id + nameLength) = '-';
+    memcpy(proxyPtr->id + nameLength + 1u, buf, (size_t)idLength + 1u);
 
     Tcl_DStringInit(&proxyPtr->in);
     Tcl_DStringInit(&proxyPtr->out);
@@ -2291,12 +2293,12 @@ CreateProxy(Pool *poolPtr)
  */
 
 static Proxy*
-GetProxy(Tcl_Interp *interp, char *proxyId, InterpData *idataPtr)
+GetProxy(Tcl_Interp *interp, const char *proxyId, InterpData *idataPtr)
 {
     Tcl_HashEntry *hPtr;
 
     hPtr = Tcl_FindHashEntry(&idataPtr->ids, proxyId);
-    if (hPtr) {
+    if (hPtr != NULL) {
         return (Proxy *)Tcl_GetHashValue(hPtr);
     }
 
@@ -2365,7 +2367,7 @@ CreateSlave(Tcl_Interp *interp, Proxy *proxyPtr)
     Tcl_DStringInit(&ds);
     Ns_MutexLock(&poolPtr->lock);
     init = proxyPtr->poolPtr->init != NULL;
-    if (init) {
+    if (init != 0) {
         Tcl_DStringAppend(&ds, poolPtr->init, -1);
     }
     Ns_MutexUnlock(&poolPtr->lock);
@@ -2482,7 +2484,7 @@ CloseSlave(Slave *slavePtr, int ms)
      * Closing the write pipe should normally make proxy exit.
      */
 
-    close(slavePtr->wfd);
+    ns_close(slavePtr->wfd);
     slavePtr->signal  = 0;
     slavePtr->sigsent = 0;
 
@@ -2494,7 +2496,7 @@ CloseSlave(Slave *slavePtr, int ms)
     slavePtr->nextPtr = firstClosePtr;
     firstClosePtr = slavePtr;
 
-    Ns_Log(Debug, "nsproxy: slave %d closed", (int) slavePtr->pid);
+    Ns_Log(Debug, "nsproxy: slave %ld closed", (long) slavePtr->pid);
 }
 
 /*
@@ -2613,7 +2615,7 @@ ReaperThread(void *ignored)
 
             poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
             Ns_MutexLock(&poolPtr->lock);
-            if (poolPtr->conf.tidle) {
+            if (poolPtr->conf.tidle != 0) {
                 diff = now;
                 ms = poolPtr->conf.tidle;
                 Ns_IncrTime(&diff, ms/1000, (ms%1000) * 1000);
@@ -2634,7 +2636,7 @@ ReaperThread(void *ignored)
                 nextPtr = proxyPtr->nextPtr;
                 slavePtr = proxyPtr->slavePtr;
                 ntotal  = poolPtr->nfree + poolPtr->nused;
-                if (slavePtr) {
+                if (slavePtr != NULL) {
                     if (Ns_DiffTime(&slavePtr->expire, &tout, NULL) <= 0) {
                         tout = slavePtr->expire;
                     }
@@ -2652,13 +2654,13 @@ ReaperThread(void *ignored)
                     if (proxyPtr == poolPtr->firstPtr) {
                         poolPtr->firstPtr = proxyPtr->nextPtr;
                     }
-                    if (slavePtr) {
+                    if (slavePtr != NULL) {
                         CloseSlave(slavePtr, proxyPtr->conf.twait);
                     }
                     FreeProxy(proxyPtr);
                     proxyPtr = NULL;
                     poolPtr->nfree--;
-                } else if (expire) {
+                } else if (expire != 0) {
                     /*
                      * Close the slave but leave the proxy
                      */
@@ -2713,7 +2715,7 @@ ReaperThread(void *ignored)
                 if (slavePtr->signal >= 0) {
                     Ns_WaitProcess(slavePtr->pid); /* Should not really wait */
                 } else {
-                    Ns_Log(Warning, "nsproxy: zombie: %d", (int)slavePtr->pid);
+                    Ns_Log(Warning, "nsproxy: zombie: %ld", (long)slavePtr->pid);
                 }
                 if (prevSlavePtr != NULL) {
                     prevSlavePtr->nextPtr = slavePtr->nextPtr;
@@ -2722,7 +2724,7 @@ ReaperThread(void *ignored)
                 }
 
                 tmpSlavePtr = slavePtr->nextPtr;
-                close(slavePtr->rfd);
+                ns_close(slavePtr->rfd);
                 ns_free(slavePtr);
                 slavePtr = tmpSlavePtr;
 
@@ -2738,8 +2740,8 @@ ReaperThread(void *ignored)
                     tout = slavePtr->expire;
                 }
                 if (slavePtr->signal != slavePtr->sigsent) {
-                    Ns_Log(Warning, "[%s]: pid %d won't die, send signal %d",
-                           slavePtr->poolPtr->name, (int)slavePtr->pid,
+                    Ns_Log(Warning, "[%s]: pid %ld won't die, send signal %d",
+                           slavePtr->poolPtr->name, (long)slavePtr->pid,
                            (int)slavePtr->signal);
                     Kill(slavePtr->pid, slavePtr->signal);
                     slavePtr->sigsent = slavePtr->signal;
@@ -2823,20 +2825,20 @@ FreeProxy(Proxy *proxyPtr)
 static void
 FreePool(Pool *poolPtr)
 {
-    if (poolPtr->exec) {
-        ns_free(poolPtr->exec);
+    if (poolPtr->exec != NULL) {
+        ns_free((char *)poolPtr->exec);
     }
-    if (poolPtr->init) {
-        ns_free(poolPtr->init);
+    if (poolPtr->init != NULL) {
+        ns_free((char *)poolPtr->init);
     }
-    if (poolPtr->reinit) {
-        ns_free(poolPtr->reinit);
+    if (poolPtr->reinit != NULL) {
+        ns_free((char *)poolPtr->reinit);
     }
 
     Ns_CondDestroy(&poolPtr->cond);
     Ns_MutexDestroy(&poolPtr->lock);
 
-    ns_free(poolPtr);
+    ns_free((char *)poolPtr);
 }
 
 
@@ -2871,12 +2873,12 @@ PushProxy(Proxy *proxyPtr)
      * Divorce from the per-interpreter tables
      */
 
-    if (proxyPtr->cntPtr) {
+    if (proxyPtr->cntPtr != NULL) {
         intptr_t  nhave = (intptr_t) Tcl_GetHashValue(proxyPtr->cntPtr);
 
         nhave--;
         Tcl_SetHashValue(proxyPtr->cntPtr, (ClientData) nhave);
-        if (proxyPtr->idPtr) {
+        if (proxyPtr->idPtr != NULL) {
             Tcl_DeleteHashEntry(proxyPtr->idPtr);
             proxyPtr->idPtr = NULL;
         }
@@ -2893,7 +2895,7 @@ PushProxy(Proxy *proxyPtr)
     if ((poolPtr->nused + poolPtr->nfree) <= poolPtr->maxslaves) {
         proxyPtr->nextPtr = poolPtr->firstPtr;
         poolPtr->firstPtr = proxyPtr;
-        if (proxyPtr->slavePtr) {
+        if (proxyPtr->slavePtr != NULL) {
             SetExpire(proxyPtr->slavePtr, proxyPtr->conf.tidle);
         }
         proxyPtr->conf = poolPtr->conf;
@@ -2942,11 +2944,11 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
         Tcl_DStringInit(&ds);
         Ns_MutexLock(&proxyPtr->poolPtr->lock);
         reinit = proxyPtr->poolPtr->reinit != NULL;
-        if (reinit) {
+        if (reinit != 0) {
             Tcl_DStringAppend(&ds, proxyPtr->poolPtr->reinit, -1);
         }
         Ns_MutexUnlock(&proxyPtr->poolPtr->lock);
-        if (reinit) {
+        if (reinit != 0) {
             result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), -1);
         }
         Tcl_DStringFree(&ds);
@@ -2986,8 +2988,7 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static int
-RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc,
-            Tcl_Obj *CONST objv[])
+RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Proxy *proxyPtr = (Proxy *)clientData;
     int ms;
@@ -3175,10 +3176,10 @@ GetTimeDiff(Ns_Time *timePtr)
  *----------------------------------------------------------------------
  */
 
-static char *
+static const char *
 ProxyError(Tcl_Interp *interp, Err err)
 {
-    char *msg, *sysmsg, *code;
+    const char *msg, *sysmsg, *code;
 
     sysmsg = NULL;
     switch (err) {
@@ -3250,3 +3251,12 @@ ProxyError(Tcl_Interp *interp, Err err)
 
     return msg;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

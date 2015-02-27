@@ -59,12 +59,13 @@ Ns_ListNconc(Ns_List *l1Ptr, Ns_List *l2Ptr)
     Ns_List *lPtr;
 
     if (l1Ptr != NULL) {
-        for (lPtr = l1Ptr; ((lPtr->rest) != NULL); lPtr = lPtr->rest)
-	    ;
+        for (lPtr = l1Ptr; ((lPtr->rest) != NULL); lPtr = lPtr->rest) {
+            ;
+        }
         lPtr->rest = l2Ptr;
-        return (l1Ptr);
+        return l1Ptr;
     } else {
-        return (l2Ptr);
+        return l2Ptr;
     }
 }
 
@@ -155,8 +156,9 @@ Ns_ListLast(Ns_List *lPtr)
     if (lPtr == NULL) {
         return NULL;
     } else {
-        for (; lPtr->rest != NULL; lPtr = lPtr->rest)
+        for (; lPtr->rest != NULL; lPtr = lPtr->rest) {
 	    ;
+        }
         return lPtr;
     }
 }
@@ -234,8 +236,9 @@ Ns_IntPrint(int d)
  */
 
 void
-Ns_StringPrint(char *s)
+Ns_StringPrint(const char *s)
 {
+    assert(s != NULL);
     fputs(s, stdout);
 }
 
@@ -257,13 +260,14 @@ Ns_StringPrint(char *s)
  */
 
 void
-Ns_ListPrint(Ns_List *lPtr, Ns_ElemVoidProc *printProc)
+Ns_ListPrint(const Ns_List *lPtr, Ns_ElemVoidProc *printProc)
 {
     Ns_StringPrint("(");
     for (; lPtr != NULL; lPtr = lPtr->rest) {
         (*printProc) (lPtr->first);
-        if (lPtr->rest != NULL)
+        if (lPtr->rest != NULL) {
             Ns_StringPrint(" ");
+	}
     }
     Ns_StringPrint(")\n");
 }
@@ -286,9 +290,9 @@ Ns_ListPrint(Ns_List *lPtr, Ns_ElemVoidProc *printProc)
  */
 
 Ns_List *
-Ns_ListCopy(Ns_List *lPtr)
+Ns_ListCopy(const Ns_List *lPtr)
 {
-    Ns_List *curPtr = NULL, *newPtr = NULL, *headPtr = NULL;
+    Ns_List *curPtr, *newPtr = NULL, *headPtr;
 
     if (lPtr == NULL) {
         return NULL;
@@ -299,7 +303,7 @@ Ns_ListCopy(Ns_List *lPtr)
         curPtr->rest = newPtr;
         curPtr = newPtr;
     }
-    if (newPtr) {
+    if (newPtr != NULL) {
         newPtr->rest = NULL;
     }
     
@@ -324,12 +328,12 @@ Ns_ListCopy(Ns_List *lPtr)
  */
 
 int
-Ns_ListLength(Ns_List *lPtr)
+Ns_ListLength(const Ns_List *lPtr)
 {
     int i;
 
-    for (i = 0; lPtr != NULL; lPtr = lPtr->rest) {
-        i++;
+    for (i = 0; lPtr != NULL; lPtr = lPtr->rest, i++) {
+        ;
     }
     
     return i;
@@ -397,13 +401,13 @@ Ns_ListWeightSort(Ns_List *wPtr)
      * Sort the list of larger elements and append it to axis
      */
     
-    Ns_ListNconc(axisnodePtr, Ns_ListWeightSort(nPtr));
+    (void) Ns_ListNconc(axisnodePtr, Ns_ListWeightSort(nPtr));
 
     /*
      * Sort the list of smaller elements and append axis to it.
      */
     
-    return (Ns_ListNconc(Ns_ListWeightSort(mPtr), axisnodePtr));
+    return Ns_ListNconc(Ns_ListWeightSort(mPtr), axisnodePtr);
 }
 
 
@@ -459,8 +463,8 @@ Ns_ListSort(Ns_List *wPtr, Ns_SortProc *sortProc)
     *lastmPtrPtr = NULL;
     *lastnPtrPtr = NULL;
 
-    Ns_ListNconc(axisnodePtr, Ns_ListSort(nPtr, sortProc));
-    return (Ns_ListNconc(Ns_ListSort(mPtr, sortProc), axisnodePtr));
+    (void) Ns_ListNconc(axisnodePtr, Ns_ListSort(nPtr, sortProc));
+    return Ns_ListNconc(Ns_ListSort(mPtr, sortProc), axisnodePtr);
 }
 
 
@@ -652,7 +656,7 @@ Ns_ListNmapcar(Ns_List *lPtr, Ns_ElemValProc *valProc)
  */
 
 Ns_List *
-Ns_ListMapcar(Ns_List *lPtr, Ns_ElemValProc *valProc)
+Ns_ListMapcar(const Ns_List *lPtr, Ns_ElemValProc *valProc)
 {
     Ns_List *mPtr = NULL;
 
@@ -662,3 +666,12 @@ Ns_ListMapcar(Ns_List *lPtr, Ns_ElemValProc *valProc)
     
     return Ns_ListNreverse(mPtr);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

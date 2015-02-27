@@ -57,8 +57,8 @@
 char *
 Ns_DStringVarAppend(Ns_DString *dsPtr, ...)
 {
-    register char   *s;
-    va_list         ap;
+    register const char *s;
+    va_list              ap;
 
     va_start(ap, dsPtr);
     while ((s = va_arg(ap, char *)) != NULL) {
@@ -93,12 +93,14 @@ Ns_DStringExport(Ns_DString *dsPtr)
 {
     char *s;
 
+    assert(dsPtr != NULL);
+
     if (dsPtr->string != dsPtr->staticSpace) {
         s = dsPtr->string;
         dsPtr->string = dsPtr->staticSpace;
     } else {
-        s = ns_malloc((size_t) dsPtr->length+1);
-        memcpy(s, dsPtr->string, (size_t) (dsPtr->length+1));  
+        s = ns_malloc((size_t)dsPtr->length + 1u);
+        memcpy(s, dsPtr->string, (size_t)dsPtr->length + 1u);  
     }
     Ns_DStringFree(dsPtr);
 
@@ -122,9 +124,12 @@ Ns_DStringExport(Ns_DString *dsPtr)
  */
 
 char *
-Ns_DStringAppendArg(Ns_DString *dsPtr, CONST char *string)
+Ns_DStringAppendArg(Ns_DString *dsPtr, const char *bytes)
 {
-    return Ns_DStringNAppend(dsPtr, string, (int) strlen(string) + 1);
+    assert(dsPtr != NULL);
+    assert(bytes != NULL);
+    
+    return Ns_DStringNAppend(dsPtr, bytes, (int) strlen(bytes) + 1);
 }
 
 
@@ -144,10 +149,12 @@ Ns_DStringAppendArg(Ns_DString *dsPtr, CONST char *string)
  */
 
 char *
-Ns_DStringPrintf(Ns_DString *dsPtr, CONST char *fmt, ...)
+Ns_DStringPrintf(Ns_DString *dsPtr, const char *fmt, ...)
 {
     char           *str;
     va_list         ap;
+
+    assert(dsPtr != NULL);
 
     va_start(ap, fmt);
     str = Ns_DStringVPrintf(dsPtr, fmt, ap);
@@ -174,12 +181,16 @@ Ns_DStringPrintf(Ns_DString *dsPtr, CONST char *fmt, ...)
  */
 
 char *
-Ns_DStringVPrintf(Ns_DString *dsPtr, CONST char *fmt, va_list apSrc)
+Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
 {
     char    *buf;
-    int      origLength, newLength, bufLength, result;
+    int      origLength, newLength, result;
+    size_t   bufLength;
     va_list  ap;
 
+    assert(dsPtr != NULL);
+    assert(fmt != NULL);
+    
     origLength = dsPtr->length;
 
     /*
@@ -202,7 +213,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, CONST char *fmt, va_list apSrc)
      */
 
     buf = dsPtr->string + origLength;
-    bufLength = newLength - origLength;
+    bufLength = (size_t)newLength - (size_t)origLength;
 
     va_copy(ap, apSrc);
     result = vsnprintf(buf, bufLength, fmt, ap);
@@ -224,7 +235,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, CONST char *fmt, va_list apSrc)
         Ns_DStringSetLength(dsPtr, newLength);
 
         buf = dsPtr->string + origLength;
-        bufLength = newLength - origLength;
+        bufLength = (size_t)newLength - (size_t)origLength;
 
         va_copy(ap, apSrc);
         result = vsnprintf(buf, bufLength, fmt, ap);
@@ -272,11 +283,13 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
      * Determine the number of strings.
      */
 
+    assert(dsPtr != NULL);
+    
     argc = 0;
     s = dsPtr->string;
     while (*s != '\0') {
         ++argc;
-        s += strlen(s) + 1;
+        s += strlen(s) + 1u;
     }
 
     /*
@@ -285,7 +298,7 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
      */
 
     len = ((dsPtr->length / 8) + 1) * 8;
-    size = len + (sizeof(char *) * (argc + 1));
+    size = len + ((int)sizeof(char *) * (argc + 1));
     Ns_DStringSetLength(dsPtr, size);
 
     /*
@@ -296,7 +309,7 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
     argv = (char **) (s + len);
     for (i = 0; i < argc; ++i) {
         argv[i] = s;
-        s += strlen(s) + 1;
+        s += strlen(s) + 1u;
     }
     argv[i] = NULL;
 
@@ -404,31 +417,31 @@ Ns_DStringTrunc(Ns_DString *dsPtr, int length)
 #undef Ns_DStringNAppend
 
 char *
-Ns_DStringNAppend(Ns_DString *dsPtr, char *string, int length)
+Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, int length)
 {
-    return Tcl_DStringAppend(dsPtr, string, length);
+    return Tcl_DStringAppend(dsPtr, bytes, length);
 }
 
 #undef Ns_DStringAppend
 
 char *
-Ns_DStringAppend(Ns_DString *dsPtr, char *string)
+Ns_DStringAppend(Ns_DString *dsPtr, const char *bytes)
 {
-    return Tcl_DStringAppend(dsPtr, string, -1);
+    return Tcl_DStringAppend(dsPtr, bytes, -1);
 }
 
 #undef Ns_DStringAppendElement
 
 char *
-Ns_DStringAppendElement(Ns_DString *dsPtr, char *string)
+Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes)
 {
-    return Tcl_DStringAppendElement(dsPtr, string);
+    return Tcl_DStringAppendElement(dsPtr, bytes);
 }
 
 #undef Ns_DStringLength
 
 int
-Ns_DStringLength(Ns_DString *dsPtr)
+Ns_DStringLength(const Ns_DString *dsPtr)
 {
     return dsPtr->length;
 }
@@ -436,7 +449,16 @@ Ns_DStringLength(Ns_DString *dsPtr)
 #undef Ns_DStringValue
 
 char *
-Ns_DStringValue(Ns_DString *dsPtr)
+Ns_DStringValue(const Ns_DString *dsPtr)
 {
     return dsPtr->string;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

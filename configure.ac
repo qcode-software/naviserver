@@ -33,9 +33,9 @@
 #    NaviServer configure script.
 #
 
-AC_PREREQ([2.69])
+AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.6],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[4.99.7],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -191,7 +191,12 @@ AX_HAVE_MTSAFE_DNS
 AX_HAVE_GETTID
 AX_HAVE_TCP_FASTOPEN
 AX_CHECK_ZLIB
-
+AX_HAVE_GETPWNAM_R
+AX_HAVE_GETPWUID_R
+AX_HAVE_GETGRNAM_R
+AX_HAVE_GETGRGID_R
+AX_HAVE_ARC4RANDOM
+AX_HAVE_CRYPT_R
 
 AC_MSG_CHECKING([need for dup high])
 AC_RUN_IFELSE([AC_LANG_SOURCE([[
@@ -202,6 +207,10 @@ AC_RUN_IFELSE([AC_LANG_SOURCE([[
 ]])],[AC_DEFINE([USE_DUPHIGH], [1], need for dup high) as_ok=yes],[as_ok=no],[as_ok=no])
 AC_MSG_RESULT([$as_ok])
 
+AC_CHECK_TYPE([nfds_t],
+	[AC_DEFINE([NS_POLL_NFDS_TYPE],[nfds_t],[type of second ns_poll() argument])],
+	[AC_DEFINE([NS_POLL_NFDS_TYPE],[unsigned int],[type of second ns_poll() argument])],
+	[#include <poll.h>])
 
 #
 # Tcl_GetMemoryInfo() is exported depending on a complex set of compilation

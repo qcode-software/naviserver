@@ -42,9 +42,9 @@
  */
 
 typedef struct AdpRequest {
-    Ns_Time  expires;     /* Time to live for cached output. */
-    int      flags;       /* ADP options. */
-    char     file[1];     /* Optional, path to specific page. */
+    Ns_Time       expires;     /* Time to live for cached output. */
+    unsigned int  flags;       /* ADP options. */
+    char          file[1];     /* Optional, path to specific page. */
 } AdpRequest;
 
 
@@ -52,10 +52,14 @@ typedef struct AdpRequest {
  * Static functions defined in this file.
  */
 
-static int RegisterPage(ClientData arg, Tcl_Interp *interp,
-                        CONST char *method, CONST char *url, CONST char *file,
-                        Ns_Time *expiresPtr, int rflags, int aflags);
-static int PageRequest(Ns_Conn *conn, CONST char *file, Ns_Time *ttlPtr, int aflags);
+static int RegisterPage(ClientData arg, const char *method, 
+			const char *url, const char *file, const Ns_Time *expiresPtr, 
+			unsigned int rflags, unsigned int aflags)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+static int PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, 
+		       unsigned int aflags)
+    NS_GNUC_NONNULL(1);
 
 /*
  * Static variables defined in this file.
@@ -73,7 +77,7 @@ static Ns_ObjvTable adpOpts[] = {
     {"trace",        ADP_TRACE},
     {"trimspace",    ADP_TRIM},
     {"stream",       ADP_STREAM},
-    {NULL, 0}
+    {NULL, 0u}
 };
 
 
@@ -96,28 +100,36 @@ static Ns_ObjvTable adpOpts[] = {
  */
 
 int
-Ns_AdpRequest(Ns_Conn *conn, CONST char *file)
+Ns_AdpRequest(Ns_Conn *conn, const char *file)
 {
-    return PageRequest(conn, file, NULL, 0);
+    assert(conn != NULL);
+    assert(file != NULL);
+
+    return PageRequest(conn, file, NULL, 0U);
 }
 
 int
-Ns_AdpRequestEx(Ns_Conn *conn, CONST char *file, Ns_Time *expiresPtr)
+Ns_AdpRequestEx(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr)
 {
-    return PageRequest(conn, file, expiresPtr, 0);
+    assert(conn != NULL);
+    assert(file != NULL);
+
+    return PageRequest(conn, file, expiresPtr, 0U);
 }
 
 static int
-PageRequest(Ns_Conn *conn, CONST char *file, Ns_Time *expiresPtr, int aflags)
+PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned int aflags)
 {
     Conn         *connPtr = (Conn *) conn;
     Tcl_Interp   *interp;
     NsInterp     *itPtr;
-    char         *start, *type;
-    Ns_Set       *query;
+    char         *type;
+    const char   *start;
     NsServer     *servPtr;
     Tcl_Obj      *objv[2];
     int           result;
+
+    assert(connPtr != NULL);
 
     /*
      * Verify the file exists.
@@ -146,11 +158,14 @@ PageRequest(Ns_Conn *conn, CONST char *file, Ns_Time *expiresPtr, int aflags)
      */
 
     servPtr = connPtr->poolPtr->servPtr;
-    if ((servPtr->adp.flags & ADP_DEBUG) &&
+    if ((servPtr->adp.flags & ADP_DEBUG) != 0u &&
         conn->request->method != NULL &&
-        STREQ(conn->request->method, "GET") &&
-        (query = Ns_ConnGetQuery(conn)) != NULL) {
-        itPtr->adp.debugFile = Ns_SetIGet(query, "debug");
+        STREQ(conn->request->method, "GET")) {
+        Ns_Set *query = Ns_ConnGetQuery(conn);
+        
+        if (query != NULL) {
+            itPtr->adp.debugFile = Ns_SetIGet(query, "debug");
+        }
     }
 
     /*
@@ -159,7 +174,7 @@ PageRequest(Ns_Conn *conn, CONST char *file, Ns_Time *expiresPtr, int aflags)
 
     itPtr->adp.flags |= aflags;
     itPtr->adp.conn = conn;
-    start = (char*)(servPtr->adp.startpage ? servPtr->adp.startpage : file);
+    start = ((servPtr->adp.startpage != NULL) ? servPtr->adp.startpage : file);
     objv[0] = Tcl_NewStringObj(start, -1);
     objv[1] = Tcl_NewStringObj(file, -1);
     Tcl_IncrRefCount(objv[0]);
@@ -169,8 +184,7 @@ PageRequest(Ns_Conn *conn, CONST char *file, Ns_Time *expiresPtr, int aflags)
     Tcl_DecrRefCount(objv[1]);
 
     if (itPtr->adp.exception == ADP_TIMEOUT) {
-        Ns_ConnReturnUnavailable(conn);
-        return NS_OK;
+        return Ns_ConnReturnUnavailable(conn);
     }
 
     if (NsAdpFlush(itPtr, 0) != TCL_OK || result != TCL_OK) {
@@ -198,14 +212,15 @@ PageRequest(Ns_Conn *conn, CONST char *file, Ns_Time *expiresPtr, int aflags)
  */
 
 int
-NsTclRegisterAdpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclRegisterAdpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    char       *method, *url, *file = NULL;
-    int         rflags = 0, aflags = 0;
-    Ns_Time    *expiresPtr = NULL;
+    char         *method, *url, *file = NULL;
+    int           noinherit = 0;
+    unsigned int  rflags = 0U, aflags = 0U;
+    Ns_Time      *expiresPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &rflags,     (void *) NS_OP_NOINHERIT},
+	{"-noinherit", Ns_ObjvBool,  &noinherit,  INT2PTR(NS_TRUE)},
         {"-expires",   Ns_ObjvTime,  &expiresPtr, NULL},
         {"-options",   Ns_ObjvFlags, &aflags,     adpOpts},
         {"--",         Ns_ObjvBreak, NULL,        NULL},
@@ -220,18 +235,19 @@ NsTclRegisterAdpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
-    return RegisterPage(arg, interp, method, url, file,
-                        expiresPtr, rflags, aflags);
+    if (noinherit != 0) {rflags |= NS_OP_NOINHERIT;}
+    return RegisterPage(arg, method, url, file, expiresPtr, rflags, aflags);
 }
 
 int
-NsTclRegisterTclObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclRegisterTclObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int   rflags = 0;
-    char *method, *url, *file = NULL;
+    int          noinherit = 0;
+    unsigned int rflags = 0U;
+    char        *method, *url, *file = NULL;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &rflags, (void *) NS_OP_NOINHERIT},
+        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_TRUE)},
         {"--",         Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -244,21 +260,27 @@ NsTclRegisterTclObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
-    return RegisterPage(arg, interp, method, url, file,
-                        NULL, rflags, ADP_TCLFILE);
+    if (noinherit != 0) {rflags |= NS_OP_NOINHERIT;}
+    return RegisterPage(arg, method, url, file, NULL, rflags, ADP_TCLFILE);
 }
 
 static int
-RegisterPage(ClientData arg, Tcl_Interp *interp,
-             CONST char *method, CONST char *url, CONST char *file,
-             Ns_Time *expiresPtr, int rflags, int aflags)
+RegisterPage(ClientData arg,
+             const char *method, const char *url, const char *file,
+             const Ns_Time *expiresPtr, unsigned int rflags, unsigned int aflags)
 {
     NsInterp   *itPtr = arg;
     AdpRequest *adp;
+    size_t fileLength;
 
-    adp = ns_calloc(1, sizeof(AdpRequest) + (file ? strlen(file) : 0));
+    assert(itPtr != NULL);
+    assert(method != NULL);
+    assert(url != NULL);
+
+    fileLength = (file == NULL) ? 0u : strlen(file);
+    adp = ns_calloc(1u, sizeof(AdpRequest) + fileLength + 1u);
     if (file != NULL) {
-        strcpy(adp->file, file);
+        memcpy(adp->file, file, fileLength + 1u);
     }
     if (expiresPtr != NULL) {
         adp->expires = *expiresPtr;
@@ -295,7 +317,7 @@ NsAdpPageProc(void *arg, Ns_Conn *conn)
     AdpRequest *adp = arg;
     Ns_Time    *expiresPtr;
     Ns_DString  ds;
-    char       *file = NULL, *server = Ns_ConnServer(conn);
+    const char *file = NULL, *server = Ns_ConnServer(conn);
     int         status;
 
     Ns_DStringInit(&ds);
@@ -306,7 +328,7 @@ NsAdpPageProc(void *arg, Ns_Conn *conn)
         } else {
             file = ds.string;
         }
-    } else if (!Ns_PathIsAbsolute(adp->file)) {
+    } else if (Ns_PathIsAbsolute(adp->file) == NS_FALSE) {
         file = Ns_PagePath(&ds, server, adp->file, NULL);
     } else {
         file = adp->file;
@@ -343,10 +365,10 @@ NsAdpPageProc(void *arg, Ns_Conn *conn)
  */
 
 void
-NsAdpPageArgProc(Tcl_DString *dsPtr, void *arg)
+NsAdpPageArgProc(Tcl_DString *dsPtr, const void *arg)
 {
-    AdpRequest *adp = arg;
-    int         i;
+    const AdpRequest *adp = arg;
+    unsigned int  i;
 
     Ns_DStringPrintf(dsPtr, " %" PRIu64 ":%ld",
                      (int64_t) adp->expires.sec,
@@ -355,11 +377,11 @@ NsAdpPageArgProc(Tcl_DString *dsPtr, void *arg)
     Tcl_DStringAppendElement(dsPtr, adp->file);
 
     Tcl_DStringStartSublist(dsPtr);
-    if (adp->flags & ADP_TCLFILE) {
+    if ((adp->flags & ADP_TCLFILE) != 0U) {
         Tcl_DStringAppendElement(dsPtr, "tcl");
     }
-    for (i = 0; i < (sizeof(adpOpts) / sizeof(adpOpts[0])); i++) {
-        if (adp->flags & adpOpts[i].value) {
+    for (i = 0u; i < (sizeof(adpOpts) / sizeof(adpOpts[0])); i++) {
+	if ((adp->flags & adpOpts[i].value) != 0u) {
             Tcl_DStringAppendElement(dsPtr, adpOpts[i].key);
         }
     }
@@ -385,7 +407,7 @@ NsAdpPageArgProc(Tcl_DString *dsPtr, void *arg)
  */
 
 int
-Ns_AdpFlush(Tcl_Interp *interp, int stream)
+Ns_AdpFlush(Tcl_Interp *interp, int isStreaming)
 {
     NsInterp *itPtr;
 
@@ -394,29 +416,35 @@ Ns_AdpFlush(Tcl_Interp *interp, int stream)
         Tcl_SetResult(interp, "not a server interp", TCL_STATIC);
         return TCL_ERROR;
     }
-    return NsAdpFlush(itPtr, stream);
+    return NsAdpFlush(itPtr, isStreaming);
 }
 
 int
-NsAdpFlush(NsInterp *itPtr, int stream)
+NsAdpFlush(NsInterp *itPtr, int doStream)
 {
-    Ns_Conn    *conn;
-    Tcl_Interp *interp = itPtr->interp;
-    int         len, result = TCL_ERROR, flags = itPtr->adp.flags;
-    char       *buf;
+    Ns_Conn     *conn;
+    Tcl_Interp  *interp;
+    int          len, result = TCL_ERROR;
+    unsigned int flags;
+    char        *buf;
+
+    assert(itPtr != NULL);
+
+    interp = itPtr->interp;
+    flags = itPtr->adp.flags;
 
     /*
      * Verify output context.
      */
 
-    conn = itPtr->adp.conn ? itPtr->adp.conn : itPtr->conn;
+    conn = (itPtr->adp.conn != NULL) ? itPtr->adp.conn : itPtr->conn;
 
     if (conn == NULL) {
         assert(itPtr->adp.chan == NULL);
         Tcl_SetResult(interp, "no adp output context", TCL_STATIC);
         return TCL_ERROR;
     }
-    assert(conn);
+    assert(conn != NULL);
 
     buf = itPtr->adp.output.string;
     len = itPtr->adp.output.length;
@@ -426,8 +454,8 @@ NsAdpFlush(NsInterp *itPtr, int stream)
      * if this is the last flush.
      */
 
-    if (len < 1 && (flags & ADP_FLUSHED)) {
-        if (!stream) {
+    if (len < 1 && (flags & ADP_FLUSHED) != 0U) {
+        if (doStream == 0) {
             NsAdpReset(itPtr);
         }
         return NS_OK;
@@ -437,8 +465,8 @@ NsAdpFlush(NsInterp *itPtr, int stream)
      * If enabled, trim leading whitespace if no content has been sent yet.
      */
 
-    if ((flags & ADP_TRIM) && !(flags & ADP_FLUSHED)) {
-        while (len > 0 && isspace(UCHAR(*buf))) {
+    if ((flags & ADP_TRIM) != 0U && (flags & ADP_FLUSHED) == 0U) {
+        while (len > 0 && CHARTYPE(space, *buf) != 0) {
             ++buf;
             --len;
         }
@@ -458,7 +486,7 @@ NsAdpFlush(NsInterp *itPtr, int stream)
     if (itPtr->adp.exception == ADP_ABORT) {
         Tcl_SetResult(interp, "adp flush disabled: adp aborted", TCL_STATIC);
     } else
-    if ((conn->flags & NS_CONN_SENT_VIA_WRITER) || (len == 0 && stream)) {
+    if ((conn->flags & NS_CONN_SENT_VIA_WRITER) != 0U || (len == 0 && doStream != 0)) {
         result = TCL_OK;
     } else {
         if (itPtr->adp.chan != NULL) {
@@ -476,26 +504,26 @@ NsAdpFlush(NsInterp *itPtr, int stream)
                 result = TCL_OK;
             }
         } else {
-            if (conn->flags & NS_CONN_CLOSED) {
+            if ((conn->flags & NS_CONN_CLOSED) != 0u) {
                 result = TCL_OK;
                 Tcl_SetResult(interp, "adp flush failed: connection closed",
                               TCL_STATIC);
             } else {
 		struct iovec sbuf;
 
-                if (!(flags & ADP_FLUSHED) && (flags & ADP_EXPIRE)) {
+                if ((flags & ADP_FLUSHED) == 0u && (flags & ADP_EXPIRE) != 0u) {
                     Ns_ConnCondSetHeaders(conn, "Expires", "now");
                 }
 
-                if (conn->flags & NS_CONN_SKIPBODY) {
+                if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
                     buf = NULL;
                     len = 0;
                 }
 		
 		sbuf.iov_base = buf;
-		sbuf.iov_len  = len;
-                if (Ns_ConnWriteVChars(itPtr->conn, &sbuf, 1,
-				       stream ? NS_CONN_STREAM : 0) == NS_OK) {
+		sbuf.iov_len  = (size_t)len;
+                if (Ns_ConnWriteVChars(itPtr->conn, &sbuf, 1, 
+                                       (doStream != 0) ? NS_CONN_STREAM : 0u) == NS_OK) {
                     result = TCL_OK;
                 }
                 if (result != TCL_OK) {
@@ -511,7 +539,7 @@ NsAdpFlush(NsInterp *itPtr, int stream)
          * Raise an abort exception if autoabort is enabled.
          */
 
-        if (result != TCL_OK && (flags & ADP_AUTOABORT)) {
+        if (result != TCL_OK && (flags & ADP_AUTOABORT) != 0u) {
             Tcl_AddErrorInfo(interp, "\n    abort exception raised");
             NsAdpLogError(itPtr);
             itPtr->adp.exception = ADP_ABORT;
@@ -519,8 +547,17 @@ NsAdpFlush(NsInterp *itPtr, int stream)
     }
     Tcl_DStringTrunc(&itPtr->adp.output, 0);
 
-    if (!stream) {
+    if (doStream == 0) {
         NsAdpReset(itPtr);
     }
     return result;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

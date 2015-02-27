@@ -38,6 +38,7 @@
 
 #define TYPE_DEFAULT "*/*"
 
+
 /*
  * Local functions defined in this file.
  */
@@ -57,9 +58,9 @@ static char            *noextType = TYPE_DEFAULT;
  * the client.  Case in the extension is ignored.
  */
 
-static struct exttype {
-    CONST char     *ext;
-    CONST char     *type;
+static const struct exttype {
+    const char     *ext;
+    const char     *type;
 } typetab[] = {
 
     /*
@@ -712,10 +713,10 @@ void
 NsConfigMimeTypes(void)
 {
     Ns_Set     *set;
-    int         i;
+    size_t      i;
     static int  once = 0;
 
-    if (!once) {
+    if (once == 0) {
         once = 1;
 
         /*
@@ -728,7 +729,7 @@ NsConfigMimeTypes(void)
          * Add default system types first from above
          */
 
-        for (i = 0; typetab[i].ext != NULL; ++i) {
+        for (i = 0U; typetab[i].ext != NULL; ++i) {
             AddType(typetab[i].ext, typetab[i].type);
         }
     }
@@ -748,7 +749,7 @@ NsConfigMimeTypes(void)
         noextType = defaultType;
     }
 
-    for (i=0; i < Ns_SetSize(set); i++) {
+    for (i = 0U; i < Ns_SetSize(set); i++) {
         AddType(Ns_SetKey(set, i), Ns_SetValue(set, i));
     }
 }
@@ -772,12 +773,14 @@ NsConfigMimeTypes(void)
  */
 
 char *
-Ns_GetMimeType(CONST char *file)
+Ns_GetMimeType(const char *file)
 {
-    CONST char    *start, *ext;
+    const char    *start, *ext;
     Ns_DString     ds;
     Tcl_HashEntry *hPtr;
 
+    assert(file != NULL);
+    
     start = strrchr(file, '/');
     if (start == NULL) {
         start = file;
@@ -815,9 +818,9 @@ Ns_GetMimeType(CONST char *file)
  */
 
 int
-NsTclGuessTypeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclGuessTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    CONST char *type;
+    const char *type;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "filename");
@@ -848,15 +851,17 @@ NsTclGuessTypeObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj *CO
  */
 
 void
-NsGetMimeTypes(Ns_DString *dest)
+NsGetMimeTypes(Ns_DString *dsPtr)
 {
     Tcl_HashSearch  search;
     Tcl_HashEntry  *hPtr;
 
+    assert(dsPtr != NULL);
+    
     hPtr = Tcl_FirstHashEntry(&types, &search);
     while (hPtr != NULL) {
-        Tcl_DStringAppendElement(dest, Tcl_GetHashKey(&types, hPtr));
-        Tcl_DStringAppendElement(dest, Tcl_GetHashValue(hPtr));
+        Tcl_DStringAppendElement(dsPtr, Tcl_GetHashKey(&types, hPtr));
+        Tcl_DStringAppendElement(dsPtr, Tcl_GetHashValue(hPtr));
         hPtr = Tcl_NextHashEntry(&search);
     }
 }
@@ -890,7 +895,8 @@ AddType(CONST char *ext, CONST char *type)
     he = Tcl_CreateHashEntry(&types, ext, &isNew);
     if (isNew == 0) {
 	char *oldType = Tcl_GetHashValue(he);
-	if (strcmp(oldType, type) == 0) {
+
+	if (STREQ(oldType, type)) {
 	    Ns_Log(Warning, 
 		   "config mimtypes: redefine mime type for %s with identical value (%s); statement useless",
 		   ext, oldType);
@@ -932,8 +938,8 @@ LowerDString(Ns_DString *dsPtr, CONST char *ext)
     Ns_DStringAppend(dsPtr, ext);
     p = dsPtr->string;
     while (*p != '\0') {
-        if (isupper(UCHAR(*p))) {
-            *p = tolower(UCHAR(*p));
+        if (CHARTYPE(upper, *p) != 0) {
+            *p = CHARCONV(lower, *p);
         }
         ++p;
     }

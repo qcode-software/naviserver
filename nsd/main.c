@@ -57,7 +57,7 @@ static Ns_ServerInitProc ServerInit;
  */
 
 int
-main(int argc, char **argv)
+main(int argc, char *const* argv)
 {
     return Ns_Main(argc, argv, ServerInit);
 }
@@ -82,7 +82,7 @@ main(int argc, char **argv)
  */
 
 static int
-ServerInit(CONST char *server)
+ServerInit(const char *UNUSED(server))
 {
     /*
      * Add code here to initialize your server much like an ordinary

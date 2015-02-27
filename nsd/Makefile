@@ -28,13 +28,19 @@
 #
 #
 
+# IMPORTANT: Do NOT use the exact same base file name for both nsd.exe
+# an nsd.dll.  If you do, NaviServer runs just fine, but the nsd.pdb
+# file for nsd.exe OVERWRITES the nsd.pdb for nsd.dll!  The easiest
+# fix is to simply name the DLL libnsd.dll instead.
+
 INSTALL	= install-init
-LIB	= nsd
+LIBNM	= libnsd
+DLL	= $(LIBNM)
 PGM	= nsd
 PGMOBJS	= main.o
 HDRS	= nsd.h
 
-OBJS	= adpcmds.o adpeval.o adpparse.o adprequest.o auth.o binder.o \
+LIBOBJS = adpcmds.o adpeval.o adpparse.o adprequest.o auth.o binder.o \
 	  cache.o callbacks.o cls.o compress.o config.o conn.o connio.o cookies.o \
 	  crypt.o dns.o driver.o dstring.o encoding.o event.o exec.o \
 	  fastpath.o fd.o filter.o form.o httptime.o index.o info.o \
@@ -44,12 +50,10 @@ OBJS	= adpcmds.o adpeval.o adpparse.o adprequest.o auth.o binder.o \
 	  sched.o server.o set.o sls.o sock.o sockcallback.o sockfile.o str.o \
 	  task.o tclcache.o tclcallbacks.o tclcmds.o tclconf.o tclenv.o tclfile.o \
 	  tclhttp.o tclimg.o tclinit.o tcljob.o tclmisc.o tclobj.o tclobjv.o \
-	  tclrequest.o tclresp.o tclsched.o tclset.o tclsock.o \
+	  connchan.o tclrequest.o tclresp.o tclsched.o tclset.o tclsock.o \
 	  tclthread.o tcltime.o tclvar.o tclxkeylist.o stamp.o \
 	  url.o url2file.o urlencode.o urlopen.o urlspace.o uuencode.o \
 	  unix.o watchdog.o nswin32.o
-
-LIBOBJS	 = $(OBJS)
 
 include ../include/Makefile.build
 

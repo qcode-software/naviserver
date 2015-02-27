@@ -6,6 +6,9 @@
 /* Defined when cygwin/mingw does not support EXCEPTION DISPOSITION */
 #undef EXCEPTION_DISPOSITION
 
+/* Define to 1 if arc4random is available. */
+#undef HAVE_ARC4RANDOM
+
 /* Defined when compiler supports casting to union type. */
 #undef HAVE_CAST_TO_UNION
 
@@ -14,6 +17,9 @@
 
 /* Define to 1 if the native crypt library should be used */
 #undef HAVE_CRYPT
+
+/* Define to 1 if crypt_r is available. */
+#undef HAVE_CRYPT_R
 
 /* Define to 1 if you have the declaration of `tzname', and to 0 if you don't.
    */
@@ -27,6 +33,12 @@
 
 /* Define to 1 if you have the `getaddrinfo' function. */
 #undef HAVE_GETADDRINFO
+
+/* Define to 1 if getgrgid_r is available. */
+#undef HAVE_GETGRGID_R
+
+/* Define to 1 if getgrnam_r is available. */
+#undef HAVE_GETGRNAM_R
 
 /* Define to 1 if gethostbyaddr_r is available. */
 #undef HAVE_GETHOSTBYADDR_R
@@ -48,6 +60,12 @@
 
 /* Define to 1 if you have the `getnameinfo' function. */
 #undef HAVE_GETNAMEINFO
+
+/* Define to 1 if getpwnam_r is available. */
+#undef HAVE_GETPWNAM_R
+
+/* Define to 1 if getpwuid_r is available. */
+#undef HAVE_GETPWUID_R
 
 /* Define to 1 when gettid system call is available. */
 #undef HAVE_GETTID
@@ -245,6 +263,9 @@
 
 /* Do we have <values.h>? */
 #undef NO_VALUES_H
+
+/* type of second ns_poll() argument */
+#undef NS_POLL_NFDS_TYPE
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT

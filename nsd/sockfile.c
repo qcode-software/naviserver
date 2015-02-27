@@ -37,12 +37,18 @@
 
 #include "nsd.h"
 
+
+#ifdef _WIN32
+#include <io.h>
+ssize_t pread(int fd, char *buf, size_t count, off_t offset);
+#endif
+
 /*
  * Local functions defined in this file
  */
 
 static ssize_t SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
-                      Ns_Time *timeoutPtr, int flags,
+                      const Ns_Time *timeoutPtr, unsigned int flags,
                       Ns_DriverSendProc *sendProc);
 
 static Ns_DriverSendProc SendBufs;
@@ -67,13 +73,13 @@ static Ns_DriverSendProc SendBufs;
  */
 
 size_t
-Ns_SetFileVec(Ns_FileVec *bufs, int i,  int fd, CONST void *data,
+Ns_SetFileVec(Ns_FileVec *bufs, int i,  int fd, const void *data,
               off_t offset, size_t length)
 {
     bufs[i].fd = fd;
     bufs[i].length = length;
 
-    if (fd > -1) {
+    if (fd != NS_INVALID_FD) {
         bufs[i].offset = offset;
     } else {
         bufs[i].offset = ((off_t)(intptr_t) data) + offset;
@@ -104,17 +110,18 @@ Ns_ResetFileVec(Ns_FileVec *bufs, int nbufs, size_t sent)
 {
     int          i;
 
-    for (i = 0; i < nbufs && sent > 0; i++) {
+    for (i = 0; i < nbufs && sent > 0u; i++) {
 	int    fd     = bufs[i].fd;
 	size_t length = bufs[i].length;
 	off_t  offset = bufs[i].offset;
 
-        if (length > 0) {
+        if (length > 0u) {
             if (sent >= length) {
                 sent -= length;
-                Ns_SetFileVec(bufs, i, fd, NULL, 0, 0);
+                (void) Ns_SetFileVec(bufs, i, fd, NULL, 0, 0u);
             } else {
-	        Ns_SetFileVec(bufs, i, fd, NULL, (off_t)(offset + sent), length - sent);
+	        (void) Ns_SetFileVec(bufs, i, fd, NULL,
+                                     offset + (off_t)sent, length - sent);
                 break;
             }
         }
@@ -149,11 +156,11 @@ Ns_ResetFileVec(Ns_FileVec *bufs, int nbufs, size_t sent)
 #include <sys/sendfile.h>
 
 static ssize_t
-Sendfile(Ns_Sock *sock, int fd, off_t offset, size_t tosend, Ns_Time *timeoutPtr);
+Sendfile(Ns_Sock *sock, int fd, off_t offset, size_t toSend, const Ns_Time *timeoutPtr);
 
 ssize_t
-Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
-                    Ns_Time *timeoutPtr, int flags)
+Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
+                    const Ns_Time *timeoutPtr, unsigned int flags)
 {
 
     ssize_t       sent, towrite, nwrote;
@@ -178,7 +185,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
             /*
              * Coalesce runs of memory bufs into fixed-sized iovec.
              */
-            Ns_SetVec(sbufs, nsbufs++, (void *) (intptr_t) offset, length);
+	    (void) Ns_SetVec(sbufs, nsbufs++, INT2PTR(offset), length);
         }
 
         /* Flush pending memory bufs. */
@@ -188,7 +195,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
             || (fd >= 0
                 && nsbufs > 0)) {
 
-	    sent = NsDriverSend((Sock *)sock, sbufs, nsbufs, 0);
+	    sent = NsDriverSend((Sock *)sock, sbufs, nsbufs, 0U);
 
             nsbufs = 0;
             if (sent > 0) {
@@ -213,29 +220,29 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
         }
     }
 
-    return nwrote ? nwrote : sent;
+    return (nwrote != 0) ? nwrote : sent;
 }
 
 static ssize_t
-Sendfile(Ns_Sock *sock, int fd, off_t offset, size_t tosend, Ns_Time *timeoutPtr)
+Sendfile(Ns_Sock *sock, int fd, off_t offset, size_t toSend, const Ns_Time *timeoutPtr)
 {
     ssize_t sent;
 
-    sent = sendfile(sock->sock, fd, &offset, tosend);
+    sent = sendfile(sock->sock, fd, &offset, toSend);
 
     if (sent == -1) {
         switch (errno) {
 
         case EAGAIN:
             if (Ns_SockTimedWait(sock->sock, NS_SOCK_WRITE, timeoutPtr) == NS_OK) {
-                sent = sendfile(sock->sock, fd, &offset, tosend);
+                sent = sendfile(sock->sock, fd, &offset, toSend);
             }
             break;
 
         case EINVAL:
         case ENOSYS:
             /* File system does not support sendfile? */
-            sent = SendFd(sock, fd, offset, tosend, timeoutPtr, 0,
+            sent = SendFd(sock, fd, offset, toSend, timeoutPtr, 0,
                           SendBufs);
             break;
         }
@@ -247,8 +254,8 @@ Sendfile(Ns_Sock *sock, int fd, off_t offset, size_t tosend, Ns_Time *timeoutPtr
 #else /* Default implementation */
 
 ssize_t
-Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
-                    Ns_Time *timeoutPtr, int flags)
+Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
+                    const Ns_Time *timeoutPtr, unsigned int flags)
 {
     return NsSockSendFileBufsIndirect(sock, bufs, nbufs, timeoutPtr, flags,
                                       SendBufs);
@@ -278,8 +285,8 @@ Ns_SockSendFileBufs(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
  */
 
 ssize_t
-NsSockSendFileBufsIndirect(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
-                           Ns_Time *timeoutPtr, int flags,
+NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
+                           const Ns_Time *timeoutPtr, unsigned int flags,
                            Ns_DriverSendProc *sendProc)
 {
     ssize_t       sent, nwrote;
@@ -290,28 +297,28 @@ NsSockSendFileBufsIndirect(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
     sent = -1;
 
     for (i = 0; i < nbufs; i++) {
-	size_t  tosend = bufs[i].length;
+	size_t  toSend = bufs[i].length;
         int     fd     = bufs[i].fd;
 	off_t   offset = bufs[i].offset;
 
-        if (tosend > 0) {
+        if (toSend > 0u) {
             if (fd < 0) {
-                Ns_SetVec(&iov, 0, (void *) (intptr_t) offset, tosend);
+                (void) Ns_SetVec(&iov, 0, INT2PTR(offset), toSend);
                 sent = (*sendProc)(sock, &iov, 1, timeoutPtr, flags);
             } else {
-                sent = SendFd(sock, fd, offset, tosend,
+                sent = SendFd(sock, fd, offset, toSend,
                               timeoutPtr, flags, sendProc);
             }
             if (sent > 0) {
                 nwrote += sent;
             }
-            if (sent != tosend) {
+            if (sent != (ssize_t)toSend) {
                 break;
             }
         }
     }
 
-    return nwrote ? nwrote : sent;
+    return nwrote > 0 ? nwrote : sent;
 }
 
 
@@ -333,12 +340,11 @@ NsSockSendFileBufsIndirect(Ns_Sock *sock, CONST Ns_FileVec *bufs, int nbufs,
  *----------------------------------------------------------------------
  */
 #ifdef _WIN32
-#include <io.h>
-#include <stdio.h>
 
-int pread(unsigned int fd, char *buf, size_t count, off_t offset)
+
+ssize_t pread(int fd, char *buf, size_t count, off_t offset)
 {
-    OVERLAPPED overlapped = { 0 };
+    OVERLAPPED overlapped = { 0u };
     HANDLE fh = (HANDLE)_get_osfhandle(fd);
     DWORD ret, c = (DWORD)count;
 
@@ -348,13 +354,13 @@ int pread(unsigned int fd, char *buf, size_t count, off_t offset)
     }
 
     overlapped.Offset = (DWORD)offset;
-    overlapped.OffsetHigh = ((DWORD)offset >> 32);
+    overlapped.OffsetHigh = (DWORD)((uint64_t)offset >> 32);
 
-    if (!ReadFile(fh, buf, c, &ret, &overlapped)) {
+    if (ReadFile(fh, buf, c, &ret, &overlapped) == FALSE) {
         return -1;
     }
 
-    return ret;
+    return (ssize_t)ret;
 }
 #endif
 
@@ -380,10 +386,12 @@ int pread(unsigned int fd, char *buf, size_t count, off_t offset)
 int
 Ns_SockCork(Ns_Sock *sock, int cork)
 {
-    int success = 0;
+    int success = 1;
 #ifdef TCP_CORK
     Sock *sockPtr = (Sock *)sock;
 
+    assert(sock != NULL);
+    
     /* fprintf(stderr, "### Ns_SockCork sock %d %d\n", sockPtr->sock, cork); */
 
     if (cork == 1 && (sockPtr->flags & NS_CONN_SOCK_CORKED)) {
@@ -405,7 +413,7 @@ Ns_SockCork(Ns_Sock *sock, int cork)
 		   ns_sockstrerror(ns_sockerrno));
 	} else {
 	    success = 1;
-	    if (cork) {
+	    if (cork != 0) {
 		sockPtr->flags |= NS_CONN_SOCK_CORKED;
 	    } else {
 		sockPtr->flags &= ~NS_CONN_SOCK_CORKED;
@@ -439,27 +447,27 @@ Ns_SockCork(Ns_Sock *sock, int cork)
 
 static ssize_t
 SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
-       Ns_Time *timeoutPtr, int flags,
-       Ns_DriverSendProc *sendPtr)
+       const Ns_Time *timeoutPtr, unsigned int flags,
+       Ns_DriverSendProc *sendProc)
 {
     char          buf[16384];
     struct iovec  iov;
-    ssize_t       nwrote = 0, toread = length;
+    ssize_t       nwrote = 0, toRead = (ssize_t)length;
     int           decork;
 
     decork = Ns_SockCork(sock, 1);
-    while (toread > 0) {
+    while (toRead > 0) {
 	ssize_t sent, nread;
 
-        nread = pread(fd, buf, MIN(toread, sizeof(buf)), offset);
+        nread = pread(fd, buf, MIN((size_t)toRead, sizeof(buf)), offset);
         if (nread <= 0) {
             break;
         }
-        toread -= nread;
+        toRead -= nread;
         offset += (off_t)nread;
 
-        Ns_SetVec(&iov, 0, buf, nread);
-        sent = (*sendPtr)(sock, &iov, 1, timeoutPtr, flags);
+        (void) Ns_SetVec(&iov, 0, buf, (size_t)nread);
+        sent = (*sendProc)(sock, &iov, 1, timeoutPtr, flags);
         if (sent > 0) {
             nwrote += sent;
         }
@@ -469,8 +477,8 @@ SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
         }
     }
 
-    if (decork) {
-	Ns_SockCork(sock, 0);
+    if (decork != 0) {
+	(void) Ns_SockCork(sock, 0);
     }
 
     if (nwrote > 0) {
@@ -498,9 +506,18 @@ SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
  *----------------------------------------------------------------------
  */
 
-ssize_t
-SendBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
-         Ns_Time *timeoutPtr, int flags)
+static ssize_t
+SendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
+         const Ns_Time *timeoutPtr, unsigned int flags)
 {
     return Ns_SockSendBufs(sock, bufs, nbufs, timeoutPtr, flags);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -54,10 +54,14 @@
  */
 
 void
-Ns_SetUpdate(Ns_Set *set, CONST char *key, CONST char *value)
+Ns_SetUpdate(Ns_Set *set, const char *key, const char *value)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+    assert(value != NULL);
+
     Ns_SetDeleteKey(set, key);
-    Ns_SetPut(set, key, value);
+    (void)Ns_SetPut(set, key, value);
 }
 
 
@@ -78,13 +82,13 @@ Ns_SetUpdate(Ns_Set *set, CONST char *key, CONST char *value)
  */
 
 Ns_Set *
-Ns_SetCreate(CONST char *name)
+Ns_SetCreate(const char *name)
 {
     Ns_Set *setPtr;
 
     setPtr = ns_malloc(sizeof(Ns_Set));
-    setPtr->size = 0;
-    setPtr->maxSize = 10;
+    setPtr->size = 0U;
+    setPtr->maxSize = 10U;
     setPtr->name = ns_strcopy(name);
     setPtr->fields = ns_malloc(sizeof(Ns_SetField) * setPtr->maxSize);
     return setPtr;
@@ -111,14 +115,14 @@ void
 Ns_SetFree(Ns_Set *set)
 {
     if (set != NULL) {
-        int i;
+        size_t i;
 
-        for (i = 0; i < set->size; ++i) {
+        for (i = 0U; i < set->size; ++i) {
             ns_free(set->fields[i].name);
             ns_free(set->fields[i].value);
         }
         ns_free(set->fields);
-        ns_free(set->name);
+        ns_free((char *)set->name);
         ns_free(set);
     }
 }
@@ -140,15 +144,18 @@ Ns_SetFree(Ns_Set *set)
  *----------------------------------------------------------------------
  */
 
-int
-Ns_SetPutSz(Ns_Set *set, CONST char *key, CONST char *value, int size)
+size_t
+Ns_SetPutSz(Ns_Set *set, const char *key, const char *value, ssize_t size)
 {
-    int index;
+    size_t index;
+
+    assert(set != NULL);
+    assert(key != NULL);
 
     index = set->size;
     set->size++;
     if (set->size > set->maxSize) {
-        set->maxSize = set->size * 2;
+        set->maxSize = set->size * 2U;
         set->fields = ns_realloc(set->fields,
 				 sizeof(Ns_SetField) * set->maxSize);
     }
@@ -158,9 +165,12 @@ Ns_SetPutSz(Ns_Set *set, CONST char *key, CONST char *value, int size)
     return index;
 }
 
-int
-Ns_SetPut(Ns_Set *set, CONST char *key, CONST char *value)
+size_t
+Ns_SetPut(Ns_Set *set, const char *key, const char *value)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetPutSz(set, key, value, -1);
 }
 
@@ -183,20 +193,24 @@ Ns_SetPut(Ns_Set *set, CONST char *key, CONST char *value)
  */
 
 int
-Ns_SetUniqueCmp(Ns_Set *set, CONST char *key,
+Ns_SetUniqueCmp(const Ns_Set *set, const char *key,
                 int (*cmp) (CONST char *s1, CONST char *s2))
 {
-    int   i;
-    int   found;
+    size_t i;
+    int    found;
+
+    assert(set != NULL);
+    assert(key != NULL);
+    assert(cmp != NULL);
 
     found = 0;
-    for (i = 0; i < set->size; ++i) {
+    for (i = 0U; i < set->size; ++i) {
         char *name = set->fields[i].name;
 
-        if ((key == NULL && name == NULL) ||
-            (key != NULL && name != NULL && ((*cmp) (key, name)) == 0)) {
+        if ((name == NULL) ||
+            (name != NULL && ((*cmp) (key, name)) == 0)) {
 
-            if (found) {
+            if (found != 0) {
                 return NS_FALSE;
             }
             found = 1;
@@ -225,22 +239,26 @@ Ns_SetUniqueCmp(Ns_Set *set, CONST char *key,
  */
 
 int
-Ns_SetFindCmp(Ns_Set *set, CONST char *key,
-              int (*cmp) (CONST char *s1, CONST char *s2))
+Ns_SetFindCmp(const Ns_Set *set, const char *key,
+              int (*cmp) (const char *s1, const char *s2))
 {
-    int   i;
+    size_t i;
+
+    assert(set != NULL);
+    assert(cmp != NULL);
     
     if (likely(key != NULL)) {
-	for (i = 0; i < set->size; ++i) {
-	    char *name = set->fields[i].name;
+	for (i = 0u; i < set->size; ++i) {
+	    const char *name = set->fields[i].name;
+
 	    if (likely(name != NULL) && ((*cmp) (key, name)) == 0) {
-		return i;
+	      return (int)i;
 	    }
 	}
     } else {
-	for (i = 0; i < set->size; ++i) {
+	for (i = 0u; i < set->size; ++i) {
 	    if (unlikely(set->fields[i].name == NULL)) {
-		return i;
+	      return (int)i;
 	    }
 	}
     }
@@ -267,10 +285,14 @@ Ns_SetFindCmp(Ns_Set *set, CONST char *key,
  */
 
 char *
-Ns_SetGetCmp(Ns_Set *set, CONST char *key,
-             int (*cmp) (CONST char *s1, CONST char *s2))
+Ns_SetGetCmp(const Ns_Set *set, const char *key,
+             int (*cmp) (const char *s1, const char *s2))
 {
     int             i;
+
+    assert(set != NULL);
+    assert(key != NULL);
+    assert(cmp != NULL);
 
     i = Ns_SetFindCmp(set, key, cmp);
     if (i == -1) {
@@ -297,10 +319,13 @@ Ns_SetGetCmp(Ns_Set *set, CONST char *key,
  */
 
 int
-Ns_SetUnique(Ns_Set *set, CONST char *key)
+Ns_SetUnique(const Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetUniqueCmp(set, key,
-                           (int (*) (CONST char *, CONST char *)) strcmp);
+                           (int (*) (const char *left, const char *right)) strcmp);
 }
 
 
@@ -321,10 +346,13 @@ Ns_SetUnique(Ns_Set *set, CONST char *key)
  */
 
 int
-Ns_SetIUnique(Ns_Set *set, CONST char *key)
+Ns_SetIUnique(const Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetUniqueCmp(set, key,
-                           (int (*) (CONST char *, CONST char *)) strcasecmp);
+                           (int (*) (const char *s1, const char *s2)) strcasecmp);
 }
 
 
@@ -345,10 +373,13 @@ Ns_SetIUnique(Ns_Set *set, CONST char *key)
  */
 
 int
-Ns_SetFind(Ns_Set *set, CONST char *key)
+Ns_SetFind(const Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetFindCmp(set, key,
-                         (int (*) (CONST char *, CONST char *)) strcmp);
+                         (int (*) (const char *s1, const char *s2)) strcmp);
 }
 
 
@@ -369,10 +400,13 @@ Ns_SetFind(Ns_Set *set, CONST char *key)
  */
 
 int
-Ns_SetIFind(Ns_Set *set, CONST char *key)
+Ns_SetIFind(const Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetFindCmp(set, key,
-                         (int (*) (CONST char *, CONST char *)) strcasecmp);
+                         (int (*) (const char *s1, const char *s2)) strcasecmp);
 }
 
 
@@ -393,10 +427,13 @@ Ns_SetIFind(Ns_Set *set, CONST char *key)
  */
 
 char *
-Ns_SetGet(Ns_Set *set, CONST char *key)
+Ns_SetGet(const Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetGetCmp(set, key,
-                        (int (*) (CONST char *, CONST char *)) strcmp);
+                        (int (*) (const char *s1, const char *s2)) strcmp);
 }
 
 
@@ -417,10 +454,13 @@ Ns_SetGet(Ns_Set *set, CONST char *key)
  */
 
 char *
-Ns_SetIGet(Ns_Set *set, CONST char *key)
+Ns_SetIGet(const Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     return Ns_SetGetCmp(set, key,
-                        (int (*) (CONST char *, CONST char *)) strcasecmp);
+                        (int (*) (const char *s1, const char *s2)) strcasecmp);
 }
 
 /*
@@ -440,10 +480,19 @@ Ns_SetIGet(Ns_Set *set, CONST char *key)
  *----------------------------------------------------------------------
  */
 
-char *Ns_SetGetValue(Ns_Set *set, CONST char *key, CONST char *def)
+const char *
+Ns_SetGetValue(const Ns_Set *set, const char *key, const char *def)
 {
-    char *value = Ns_SetGet(set, key);
-    if (value == NULL || *value == '\0') value = (char*)def;
+    const char *value;
+
+    assert(set != NULL);
+    assert(key != NULL);
+
+    value = Ns_SetGet(set, key);
+
+    if (value == NULL || *value == '\0') {
+	value = def;
+    }
     return value;
 }
 
@@ -464,10 +513,19 @@ char *Ns_SetGetValue(Ns_Set *set, CONST char *key, CONST char *def)
  *----------------------------------------------------------------------
  */
 
-char *Ns_SetIGetValue(Ns_Set *set, CONST char *key, CONST char *def)
+const char *
+Ns_SetIGetValue(const Ns_Set *set, const char *key, const char *def)
 {
-    char *value = Ns_SetIGet(set, key);
-    if (value == NULL || *value == '\0') value = (char*)def;
+    const char *value;
+
+    assert(set != NULL);
+    assert(key != NULL);
+
+    value = Ns_SetIGet(set, key);
+
+    if (value == NULL || *value == '\0') {
+	value = def;
+    }
     return value;
 }
 
@@ -489,10 +547,12 @@ char *Ns_SetIGetValue(Ns_Set *set, CONST char *key, CONST char *def)
  */
 
 void
-Ns_SetTrunc(Ns_Set *set, int size)
+Ns_SetTrunc(Ns_Set *set, size_t size)
 {
+    assert(set != NULL);
+
     if (size < set->size) {
-	int index;
+	size_t index;
 
         for (index = size; index < set->size; index++) {
             ns_free(set->fields[index].name);
@@ -508,7 +568,8 @@ Ns_SetTrunc(Ns_Set *set, int size)
  *
  * Ns_SetDelete --
  *
- *	Delete a tuple from a set.
+ *	Delete a tuple from a set. If index is -1, this function does
+ *	nothing.
  *
  * Results:
  *	None.
@@ -522,15 +583,17 @@ Ns_SetTrunc(Ns_Set *set, int size)
 void
 Ns_SetDelete(Ns_Set *set, int index)
 {
-    if ((index != -1) && (index < set->size)) {
-	int i;
+    assert(set != NULL);
+
+    if ((index != -1) && (index < (int)set->size)) {
+	size_t i;
 
         ns_free(set->fields[index].name);
         ns_free(set->fields[index].value);
         --set->size;
-        for (i = index; i < set->size; ++i) {
-            set->fields[i].name = set->fields[i + 1].name;
-            set->fields[i].value = set->fields[i + 1].value;
+        for (i = (size_t)index; i < set->size; ++i) {
+            set->fields[i].name = set->fields[i + 1u].name;
+            set->fields[i].value = set->fields[i + 1u].value;
         }
     }
 }
@@ -553,9 +616,12 @@ Ns_SetDelete(Ns_Set *set, int index)
  */
 
 void
-Ns_SetPutValue(Ns_Set *set, int index, CONST char *value)
+Ns_SetPutValue(const Ns_Set *set, size_t index, const char *value)
 {
-    if ((index != -1) && (index < set->size)) {
+    assert(set != NULL);
+    assert(value != NULL);
+
+    if (index < set->size) {
         ns_free(set->fields[index].value);
         set->fields[index].value = ns_strcopy(value);
     }
@@ -579,8 +645,11 @@ Ns_SetPutValue(Ns_Set *set, int index, CONST char *value)
  */
 
 void
-Ns_SetDeleteKey(Ns_Set *set, CONST char *key)
+Ns_SetDeleteKey(Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     Ns_SetDelete(set, Ns_SetFind(set, key));
 }
 
@@ -602,8 +671,11 @@ Ns_SetDeleteKey(Ns_Set *set, CONST char *key)
  */
 
 void
-Ns_SetIDeleteKey(Ns_Set *set, CONST char *key)
+Ns_SetIDeleteKey(Ns_Set *set, const char *key)
 {
+    assert(set != NULL);
+    assert(key != NULL);
+
     Ns_SetDelete(set, Ns_SetIFind(set, key));
 }
 
@@ -626,8 +698,10 @@ Ns_SetIDeleteKey(Ns_Set *set, CONST char *key)
  */
 
 Ns_Set *
-Ns_SetListFind(Ns_Set **sets, CONST char *name)
+Ns_SetListFind(Ns_Set *const*sets, const char *name)
 {
+    assert(sets != NULL);
+
     while (*sets != NULL) {
         if (name == NULL) {
             if ((*sets)->name == NULL) {
@@ -668,19 +742,21 @@ Ns_SetListFind(Ns_Set **sets, CONST char *name)
  */
 
 Ns_Set **
-Ns_SetSplit(Ns_Set *set, char sep)
+Ns_SetSplit(const Ns_Set *set, char sep)
 {
-    int         i;
+    size_t      i;
     Ns_DString  ds;
     Ns_Set     *end = NULL;
 
-    Ns_DStringInit(&ds);
-    Ns_DStringNAppend(&ds, (char *) &end, sizeof(Ns_Set *));
+    assert(set != NULL);
 
-    for (i = 0; i < set->size; ++i) {
-        Ns_Set *next;
-        char   *name;
-        char   *key;
+    Ns_DStringInit(&ds);
+    Ns_DStringNAppend(&ds, (char *) &end, (int)sizeof(Ns_Set *));
+
+    for (i = 0U; i < set->size; ++i) {
+        Ns_Set     *next;
+        const char *name;
+        char       *key;
 
         key = strchr(set->fields[i].name, sep);
         if (key != NULL) {
@@ -697,9 +773,9 @@ Ns_SetSplit(Ns_Set *set, char sep)
             next = Ns_SetCreate(name);
             sp = (Ns_Set **) (ds.string + ds.length - sizeof(Ns_Set *));
             *sp = next;
-            Ns_DStringNAppend(&ds, (char *) &end, sizeof(Ns_Set *));
+            Ns_DStringNAppend(&ds, (char *) &end, (int)sizeof(Ns_Set *));
         }
-        Ns_SetPut(next, key, set->fields[i].value);
+        (void)Ns_SetPut(next, key, set->fields[i].value);
         if (name != NULL) {
             *--key = sep;
         }
@@ -729,6 +805,8 @@ Ns_SetListFree(Ns_Set **sets)
 {
     Ns_Set        **s;
 
+    assert(sets != NULL);
+
     s = sets;
     while (*s != NULL) {
         Ns_SetFree(*s);
@@ -755,14 +833,17 @@ Ns_SetListFree(Ns_Set **sets)
  */
 
 void
-Ns_SetMerge(Ns_Set *high, Ns_Set *low)
+Ns_SetMerge(Ns_Set *high, const Ns_Set *low)
 {
-    int i;
+    size_t i;
 
-    for (i = 0; i < low->size; ++i) {
+    assert(high != NULL);
+    assert(low != NULL);
+
+    for (i = 0U; i < low->size; ++i) {
         int j = Ns_SetFind(high, low->fields[i].name);
         if (j == -1) {
-            Ns_SetPut(high, low->fields[i].name, low->fields[i].value);
+            (void)Ns_SetPut(high, low->fields[i].name, low->fields[i].value);
         }
     }
 }
@@ -785,17 +866,17 @@ Ns_SetMerge(Ns_Set *high, Ns_Set *low)
  */
 
 Ns_Set *
-Ns_SetCopy(Ns_Set *old)
+Ns_SetCopy(const Ns_Set *old)
 {
-    int             i;
+    size_t          i;
     Ns_Set         *new;
 
     if (old == NULL) {
         return NULL;
     }
     new = Ns_SetCreate(old->name);
-    for (i = 0; i < old->size; ++i) {
-        Ns_SetPut(new, old->fields[i].name, old->fields[i].value);
+    for (i = 0U; i < old->size; ++i) {
+        (void)Ns_SetPut(new, old->fields[i].name, old->fields[i].value);
     }
 
     return new;
@@ -822,12 +903,15 @@ Ns_SetCopy(Ns_Set *old)
 void
 Ns_SetMove(Ns_Set *to, Ns_Set *from)
 {
-    int             i;
+    size_t       i;
 
-    for (i = 0; i < from->size; i++) {
-	Ns_SetPut(to, from->fields[i].name, from->fields[i].value);
+    assert(from != NULL);
+    assert(to != NULL);
+
+    for (i = 0U; i < from->size; i++) {
+	(void)Ns_SetPut(to, from->fields[i].name, from->fields[i].value);
     }
-    Ns_SetTrunc(from, 0);
+    Ns_SetTrunc(from, 0U);
 }
 
 
@@ -848,12 +932,14 @@ Ns_SetMove(Ns_Set *to, Ns_Set *from)
  */
 
 void
-Ns_SetPrint(Ns_Set *set)
+Ns_SetPrint(const Ns_Set *set)
 {
-    int             i;
+    size_t  i;
 
-    fprintf(stderr, "%s:\n", set->name ? set->name : "<Unamed set>");
-    for (i = 0; i < set->size; ++i) {
+    assert(set != NULL);
+
+    fprintf(stderr, "%s:\n", (set->name != NULL) ? set->name : "<Unamed set>");
+    for (i = 0U; i < set->size; ++i) {
         if (set->fields[i].name == NULL) {
             fprintf(stderr, "\t(null) = ");
         } else {
@@ -866,3 +952,12 @@ Ns_SetPrint(Ns_Set *set)
         }
     }
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -40,7 +40,7 @@
  * Local functions defined in this file.
  */
 
-static Tcl_Obj *GetFile(char *procname);
+static Tcl_Obj *GetFile(void);
 
 
 /*
@@ -60,12 +60,12 @@ static Tcl_Obj *GetFile(char *procname);
  */
 
 void
-NsCreatePidFile(char *procname)
+NsCreatePidFile(void)
 {
     Tcl_Obj     *path;
     Tcl_Channel  chan;
 
-    path = GetFile(procname);
+    path = GetFile();
     chan = Tcl_OpenFileChannel(NULL, Tcl_GetString(path), "w", 0644);
     if (chan == NULL) {
     	Ns_Log(Error, "pidfile: failed to open pid file '%s': '%s'",
@@ -75,16 +75,16 @@ NsCreatePidFile(char *procname)
     	Ns_Log(Error, "pidfile: failed to set channel option '%s': '%s'",
                Tcl_GetString(path), strerror(Tcl_GetErrno()));
     } else {
-        size_t towrite;
+        size_t toWrite;
         char   buf[TCL_INTEGER_SPACE + 1];
 
         snprintf(buf, sizeof(buf), "%d\n", nsconf.pid);
-        towrite = strlen(buf);
-        if ((size_t)Tcl_WriteChars(chan, buf, (int)towrite) != towrite) {
+        toWrite = strlen(buf);
+        if ((size_t)Tcl_WriteChars(chan, buf, (int)toWrite) != toWrite) {
             Ns_Log(Error, "pidfile: failed to write pid file '%s': '%s'",
                    Tcl_GetString(path), strerror(Tcl_GetErrno()));
         }
-        Tcl_Close(NULL, chan);
+        (void) Tcl_Close(NULL, chan);
     }
     Tcl_DecrRefCount(path);
 }
@@ -106,11 +106,11 @@ NsCreatePidFile(char *procname)
  */
 
 void
-NsRemovePidFile(char *procname)
+NsRemovePidFile(void)
 {
     Tcl_Obj *path;
 
-    path = GetFile(procname);
+    path = GetFile();
     Tcl_IncrRefCount(path);
     if (Tcl_FSDeleteFile(path) != 0) {
     	Ns_Log(Error, "pidfile: failed to remove '%s': '%s'",
@@ -120,9 +120,9 @@ NsRemovePidFile(char *procname)
 }
 
 static Tcl_Obj *
-GetFile(char *procname)
+GetFile(void)
 {
-    char *file;
+    const char *file;
     Tcl_Obj *path;
 
     file = Ns_ConfigGetValue(NS_CONFIG_PARAMETERS, "pidfile");
@@ -131,10 +131,10 @@ GetFile(char *procname)
 	Ns_Set *set;
 
         Ns_DStringInit(&ds);
-        if (Ns_HomePathExists("logs", NULL)) {
-            Ns_HomePath(&ds, "logs/nsd.pid", NULL);
+        if (Ns_HomePathExists("logs", (char *)0)) {
+	    (void) Ns_HomePath(&ds, "logs/nsd.pid", NULL);
         } else {
-            Ns_HomePath(&ds, "nsd.pid", NULL);
+            (void) Ns_HomePath(&ds, "nsd.pid", NULL);
         }
         path = Tcl_NewStringObj(ds.string, ds.length);
 
@@ -147,3 +147,12 @@ GetFile(char *procname)
     }
     return path;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

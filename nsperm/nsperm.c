@@ -53,7 +53,7 @@
 #define PERM_IMPLICIT_ALLOW   1
 
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 /*
  * The following structure is allocated for each instance of the module.
@@ -117,11 +117,12 @@ static Tcl_ObjCmdProc DelPermObjCmd;
 static Tcl_ObjCmdProc CheckPassObjCmd;
 static Tcl_ObjCmdProc SetPassObjCmd;
 
-static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[], int allow, int user);
+static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv, int allow, int user);
 
-static int ValidateUserAddr(User * userPtr, char *peer);
-static int AuthProc(char *server, char *method, char *url, char *user, char *pwd, char *peer);
-static void WalkCallback(Tcl_DString * dsPtr, void *arg);
+static int ValidateUserAddr(User * userPtr, const char *peer);
+static int AuthProc(const char *server, const char *method, const char *url, 
+		    const char *user, const char *pwd, const char *peer);
+static void WalkCallback(Tcl_DString * dsPtr, const void *arg);
 static int CreateNonce(const char *privatekey, char **nonce, char *uri);
 static int CreateHeader(Server * servPtr, Ns_Conn * conn, int stale);
 /*static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeout);*/
@@ -157,7 +158,7 @@ Ns_ModuleInit(char *server, char *module)
     Server *servPtr;
     /*char *path;*/
     Tcl_HashEntry *hPtr;
-    int isNew;
+    int isNew, result;
 
     if (uskey < 0) {
         double d;
@@ -187,10 +188,10 @@ Ns_ModuleInit(char *server, char *module)
     Tcl_InitHashTable(&servPtr->groups, TCL_STRING_KEYS);
     Ns_RWLockInit(&servPtr->lock);
     Ns_SetRequestAuthorizeProc(server, AuthProc);
-    Ns_TclRegisterTrace(server, AddCmds, servPtr, NS_TCL_TRACE_CREATE);
+    result = Ns_TclRegisterTrace(server, AddCmds, servPtr, NS_TCL_TRACE_CREATE);
     hPtr = Tcl_CreateHashEntry(&serversTable, server, &isNew);
     Tcl_SetHashValue(hPtr, servPtr);
-    return NS_OK;
+    return result;
 }
 
 
@@ -210,9 +211,9 @@ Ns_ModuleInit(char *server, char *module)
  *----------------------------------------------------------------------
  */
 
-static int AddCmds(Tcl_Interp * interpermPtr, void *arg)
+static int AddCmds(Tcl_Interp * interpermPtr, const void *arg)
 {
-    Tcl_CreateObjCommand(interpermPtr, "ns_perm", PermObjCmd, arg, NULL);
+  Tcl_CreateObjCommand(interpermPtr, "ns_perm", PermObjCmd, (ClientData)arg, NULL);
     return NS_OK;
 }
 
@@ -233,7 +234,7 @@ static int AddCmds(Tcl_Interp * interpermPtr, void *arg)
  *----------------------------------------------------------------------
  */
 
-static int PermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int PermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     int opt, status = TCL_OK;
@@ -355,7 +356,8 @@ static int PermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * 
  *----------------------------------------------------------------------
  */
 
-static int AuthProc(char *server, char *method, char *url, char *user, char *pwd, char *peer)
+static int AuthProc(const char *server, const char *method, const char *url, 
+		    const char *user, const char *pwd, const char *peer)
 {
     int status;
     Ns_Set *set;
@@ -421,7 +423,7 @@ static int AuthProc(char *server, char *method, char *url, char *user, char *pwd
      * define how to verify user
      */
 
-    if (!strcmp(auth, "Basic")) {
+    if (STREQ(auth, "Basic")) {
 
         /*
          * Basic Authentiction: Verify user password (if any).
@@ -439,16 +441,17 @@ static int AuthProc(char *server, char *method, char *url, char *user, char *pwd
                 goto done;
             }
         }
-    } else
+    } else {
 
         /*
          * Digest Authentication
          */
 
-    if (!strcmp(auth, "Digest")) {
+	if (STREQ(auth, "Digest")) {
 
+	}
     }
-
+    
     /*
      * Check for a vaild user address.
      */
@@ -557,7 +560,7 @@ static int AuthProc(char *server, char *method, char *url, char *user, char *pwd
  *----------------------------------------------------------------------
  */
 
-static int ValidateUserAddr(User * userPtr, char *peer)
+static int ValidateUserAddr(User *userPtr, const char *peer)
 {
     struct in_addr peerip, ip, mask;
     int retval;
@@ -703,7 +706,7 @@ int inet_aton(const char *addrString, struct in_addr *addr) {
  *----------------------------------------------------------------------
  */
 
-static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     User *userPtr;
@@ -717,9 +720,9 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     int isNew, i, nargs = 0, allow = 0, deny = 0, clear = 0;
 
     Ns_ObjvSpec opts[] = {
-        {"-allow", Ns_ObjvBool, &allow, (void *) NS_TRUE},
-        {"-deny", Ns_ObjvBool, &deny, (void *) NS_TRUE},
-        {"-clear", Ns_ObjvBool, &clear, (void *) NS_TRUE},
+        {"-allow", Ns_ObjvBool, &allow, INT2PTR(NS_TRUE)},
+        {"-deny", Ns_ObjvBool, &deny, INT2PTR(NS_TRUE)},
+        {"-clear", Ns_ObjvBool, &clear, INT2PTR(NS_TRUE)},
         {"-salt", Ns_ObjvString, &salt, NULL},
         {"--", Ns_ObjvBreak, NULL, NULL},
         {NULL, NULL, NULL, NULL}
@@ -735,8 +738,8 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
         return TCL_ERROR;
     }
 
-    userPtr = ns_calloc(1, sizeof(User));
-    if (clear) {
+    userPtr = ns_calloc(1U, sizeof(User));
+    if (clear != 0) {
         userPtr->flags |= USER_CLEAR_TEXT;
     }
     if (salt != NULL) {
@@ -812,7 +815,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
             hPtr = Tcl_CreateHashEntry(&userPtr->nets, (char *) (intptr_t) ip.s_addr, &isNew);
             Tcl_SetHashValue(hPtr, (ClientData) (intptr_t) mask.s_addr);
         }
-        if (!isNew) {
+        if (isNew == 0) {
             Tcl_AppendResult(interp, "duplicate entry: ", net, NULL);
             goto fail;
         }
@@ -824,7 +827,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
 
     Ns_RWLockWrLock(&servPtr->lock);
     hPtr = Tcl_CreateHashEntry(&servPtr->users, name, &isNew);
-    if (!isNew) {
+    if (isNew == 0) {
         Tcl_AppendResult(interp, "duplicate user: ", name, NULL);
         goto fail0;
     }
@@ -869,7 +872,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     char *name = NULL;
@@ -928,7 +931,7 @@ static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     struct in_addr ip;
@@ -945,7 +948,8 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         Tcl_AppendResult(interp, "{", Tcl_GetHashKey(&servPtr->users, hPtr), "} {", userPtr->pwd, "} {", NULL);
 
         if (userPtr->hosts.numEntries > 0 || userPtr->masks.numEntries > 0 || userPtr->nets.numEntries > 0) {
-            Tcl_AppendResult(interp, userPtr->flags & USER_FILTER_ALLOW ? " -allow " : " -deny ", NULL);
+            Tcl_AppendResult(interp,
+                             ((userPtr->flags & USER_FILTER_ALLOW) != 0u) ? " -allow " : " -deny ", NULL);
         }
         mPtr = Tcl_FirstHashEntry(&userPtr->nets, &msearch);
         while (mPtr != NULL) {
@@ -991,7 +995,7 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 
-static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     char *name, *user;
@@ -1034,7 +1038,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
          */
 
         hPtr = Tcl_CreateHashEntry(&groupPtr->users, user, &isNew);
-        if (!isNew) {
+        if (isNew == 0) {
           dupuser:
             Tcl_AppendResult(interp, "user \"", user, "\" already in group \"", name, "\"", NULL);
             goto fail;
@@ -1046,7 +1050,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
          */
 
         hPtr = Tcl_CreateHashEntry(&userPtr->groups, name, &isNew);
-        if (!isNew) {
+        if (isNew == 0) {
             goto dupuser;
         }
         Tcl_SetHashValue(hPtr, groupPtr);
@@ -1058,7 +1062,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
 
     Ns_RWLockWrLock(&servPtr->lock);
     hPtr = Tcl_CreateHashEntry(&servPtr->groups, name, &isNew);
-    if (!isNew) {
+    if (isNew == 0) {
         Tcl_AppendResult(interp, "duplicate group: ", name, NULL);
         goto fail0;
     }
@@ -1100,7 +1104,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 
-static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     char *name = NULL;
@@ -1119,7 +1123,7 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
 
     Ns_RWLockWrLock(&servPtr->lock);
     hPtr = Tcl_FindHashEntry(&servPtr->groups, name);
-    if (hPtr) {
+    if (hPtr != NULL) {
         groupPtr = Tcl_GetHashValue(hPtr);
         Tcl_DeleteHashEntry(hPtr);
     }
@@ -1157,7 +1161,7 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 
-static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     Tcl_HashSearch search;
@@ -1205,16 +1209,17 @@ static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_
  *----------------------------------------------------------------------
  */
 
-static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[], int allow, int user)
+static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv, int allow, int user)
 {
-    Server *servPtr = data;
-    Perm *permPtr;
-    Ns_DString base;
-    char *method, *url;
-    int i, isNew, flags = 0, nargs = 0;
+    Server      *servPtr = data;
+    Perm        *permPtr;
+    Ns_DString   base;
+    char        *method, *url;
+    int          i, isNew, noinherit = 0, nargs = 0;
+    unsigned int flags = 0U;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,   &flags,  (void *) NS_OP_NOINHERIT},
+        {"-noinherit", Ns_ObjvBool,   &flags,  INT2PTR(NS_TRUE)},
         {"--",         Ns_ObjvBreak,  NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -1227,6 +1232,7 @@ static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
     if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
+    if (noinherit != 0) {flags |= NS_OP_NOINHERIT;}
 
     /*
      * Construct the base url.
@@ -1246,7 +1252,7 @@ static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         permPtr = NULL;
     }
     if (permPtr == NULL) {
-        permPtr = ns_calloc(1, sizeof(Perm));
+        permPtr = ns_calloc(1U, sizeof(Perm));
         permPtr->baseurl = Ns_DStringExport(&base);
         Tcl_InitHashTable(&permPtr->allowuser, TCL_STRING_KEYS);
         Tcl_InitHashTable(&permPtr->denyuser, TCL_STRING_KEYS);
@@ -1254,21 +1260,21 @@ static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         Tcl_InitHashTable(&permPtr->denygroup, TCL_STRING_KEYS);
         Ns_UrlSpecificSet(servPtr->server, method, url, uskey, permPtr, flags, NULL);
     }
-    if (!allow) {
+    if (allow == 0) {
         permPtr->flags |= PERM_IMPLICIT_ALLOW;
     }
 
     for (i = objc - nargs; i < objc; i++) {
         char *key = Tcl_GetString(objv[i]);
 
-        if (user) {
-            if (allow) {
+        if (user != 0) {
+            if (allow != 0) {
                 (void) Tcl_CreateHashEntry(&permPtr->allowuser, key, &isNew);
             } else {
                 (void) Tcl_CreateHashEntry(&permPtr->denyuser, key, &isNew);
             }
         } else {
-            if (allow) {
+            if (allow != 0) {
                 (void) Tcl_CreateHashEntry(&permPtr->allowgroup, key, &isNew);
             } else {
                 (void) Tcl_CreateHashEntry(&permPtr->denygroup, key, &isNew);
@@ -1296,16 +1302,17 @@ static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 
-static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Server *servPtr = data;
-    Perm *permPtr;
-    Ns_DString base;
-    char *method, *url;
-    int flags = NS_OP_RECURSE;
+    Server      *servPtr = data;
+    Perm        *permPtr;
+    Ns_DString   base;
+    char        *method, *url;
+    int          noinherit = 0;
+    unsigned int flags = NS_OP_RECURSE;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool, &flags, (void *) NS_OP_NOINHERIT},
+        {"-noinherit", Ns_ObjvBool, &noinherit, INT2PTR(NS_TRUE)},
         {"--", Ns_ObjvBreak, NULL, NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -1318,6 +1325,7 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
+    if (noinherit != 0) {flags |= NS_OP_NOINHERIT;}
 
     /*
      * Construct the base url.
@@ -1333,7 +1341,7 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     Ns_RWLockWrLock(&servPtr->lock);
     permPtr = Ns_UrlSpecificGet(servPtr->server, method, url, uskey);
     if (permPtr != NULL) {
-        Ns_UrlSpecificDestroy(servPtr->server, method, url, uskey, NS_OP_RECURSE);
+        Ns_UrlSpecificDestroy(servPtr->server, method, url, uskey, flags);
         ns_free(permPtr->baseurl);
         Tcl_DeleteHashTable(&permPtr->allowuser);
         Tcl_DeleteHashTable(&permPtr->denyuser);
@@ -1362,7 +1370,7 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     Ns_DString ds;
@@ -1371,14 +1379,14 @@ static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
     Ns_RWLockRdLock(&servPtr->lock);
     Ns_UrlSpecificWalk(uskey, servPtr->server, WalkCallback, &ds);
     Ns_RWLockUnlock(&servPtr->lock);
-    Tcl_AppendResult(interp, ds.string, NULL);
-    Ns_DStringFree(&ds);
+
+    Tcl_DStringResult(interp, &ds);
     return TCL_OK;
 }
 
-static void WalkCallback(Tcl_DString * dsPtr, void *arg)
+static void WalkCallback(Tcl_DString * dsPtr, const void *arg)
 {
-    Perm *permPtr = arg;
+    Perm *permPtr = (Perm *)arg;
     Tcl_HashSearch search;
     Tcl_HashEntry *hPtr;
 
@@ -1427,7 +1435,7 @@ static void WalkCallback(Tcl_DString * dsPtr, void *arg)
  *----------------------------------------------------------------------
  */
 
-static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     int rc = TCL_ERROR;
@@ -1485,7 +1493,7 @@ static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 
-static int SetPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj * CONST objv[])
+static int SetPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
     Server *servPtr = data;
     int rc = 0;
@@ -1551,7 +1559,7 @@ static int CreateNonce(const char *privatekey, char **nonce, char *uri)
     char buf[33];
     char bufcoded[1 + (4 * 48) / 2];
 
-    if (!privatekey) {
+    if (privatekey == 0) {
         return NS_ERROR;
     }
 
@@ -1610,7 +1618,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
     unsigned char sig[16];
     time_t now, nonce_time;
 
-    if (!privatekey) {
+    if (privatekey == 0) {
         return NS_ERROR;
     }
 
@@ -1690,3 +1698,12 @@ static int CreateHeader(Server * servPtr, Ns_Conn * conn, int stale)
     Ns_ConnSetHeaders(conn, "WWW-Authenticate", ds.string);
     return NS_OK;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -39,19 +39,31 @@
 #include "nsd.h"
 #include <pwd.h>
 
+typedef enum {
+    PwUID, PwNAME, PwDIR, PwGID
+} PwElement;
+
+
 /*
  * Static functions defined in this file.
  */
 
-static int Pipe(int *fds, int sockpair);
+static int Pipe(int *fds, int sockpair)
+    NS_GNUC_NONNULL(1);
+
 static void Abort(int signal);
+
+static bool GetPwNam(const char *user, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5);
 
 /*
  * Static variables defined in this file.
  */
 
-static Ns_Mutex lock;
-static int debugMode;
+#if !defined(HAVE_GETPWNAM_R) || !defined(HAVE_GETPWUID_R) || !defined(HAVE_GETGRGID_R) || !defined(HAVE_GETGRNAM_R)
+static Ns_Mutex lock = NULL;
+#endif
+static int debugMode = 0;
 
 
 /*
@@ -59,7 +71,7 @@ static int debugMode;
  *
  * NsBlockSignal --
  *
- *      Mask one specific signale
+ *      Mask one specific signal.
  *
  * Results:
  *      None.
@@ -144,7 +156,7 @@ NsBlockSignals(int debug)
     sigaddset(&set, SIGTERM);
     sigaddset(&set, SIGHUP);
     sigaddset(&set, SIGQUIT);
-    if (!debugMode) {
+    if (debugMode == 0) {
         /* NB: Don't block SIGINT in debug mode for Solaris dbx. */
         sigaddset(&set, SIGINT);
     }
@@ -224,7 +236,7 @@ NsHandleSignals(void)
     sigaddset(&set, SIGTERM);
     sigaddset(&set, SIGHUP);
     sigaddset(&set, SIGQUIT);
-    if (!debugMode) {
+    if (debugMode == 0) {
         sigaddset(&set, SIGINT);
     }
     do {
@@ -295,25 +307,27 @@ NsSendSignal(int sig)
  */
 
 int
-NsMemMap(CONST char *path, int size, int mode, FileMap *mapPtr)
+NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
 {
+    assert(path != NULL);
+    assert(mapPtr != NULL);
+    
     /*
      * Open the file according to map mode
      */
-
     switch (mode) {
     case NS_MMAP_WRITE:
-        mapPtr->handle = open(path, O_BINARY | O_RDWR);
+        mapPtr->handle = ns_open(path, O_BINARY | O_RDWR, 0);
         break;
     case NS_MMAP_READ:
-        mapPtr->handle = open(path, O_BINARY | O_RDONLY);
+        mapPtr->handle = ns_open(path, O_BINARY | O_RDONLY, 0);
         break;
     default:
         return NS_ERROR;
     }
 
     if (mapPtr->handle == -1) {
-        Ns_Log(Warning, "mmap: open(%s) failed: %s", path, strerror(errno));
+        Ns_Log(Warning, "mmap: ns_open(%s) failed: %s", path, strerror(errno));
         return NS_ERROR;
     }
 
@@ -322,14 +336,14 @@ NsMemMap(CONST char *path, int size, int mode, FileMap *mapPtr)
      * per default.
      */
 
-    mapPtr->addr = mmap(0, (size_t)size, mode, MAP_SHARED, mapPtr->handle, 0);
+    mapPtr->addr = mmap(0, size, mode, MAP_SHARED, mapPtr->handle, 0);
     if (mapPtr->addr == MAP_FAILED) {
         Ns_Log(Warning, "mmap: mmap(%s) failed: %s", path, strerror(errno));
-        close(mapPtr->handle);
+        ns_close(mapPtr->handle);
         return NS_ERROR;
     }
 
-    close(mapPtr->handle);
+    ns_close(mapPtr->handle);
     mapPtr->size = size;
 
     return NS_OK;
@@ -353,9 +367,10 @@ NsMemMap(CONST char *path, int size, int mode, FileMap *mapPtr)
  */
 
 void
-NsMemUmap(FileMap *mapPtr)
+NsMemUmap(const FileMap *mapPtr)
 {
-    munmap(mapPtr->addr, (size_t)mapPtr->size);
+    assert(mapPtr != NULL);
+    munmap(mapPtr->addr, mapPtr->size);
 }
 
 
@@ -377,12 +392,15 @@ NsMemUmap(FileMap *mapPtr)
 int
 ns_sockpair(int *socks)
 {
+    assert(socks != NULL);
+    
     return Pipe(socks, 1);
 }
 
 int
 ns_pipe(int *fds)
 {
+    assert(fds != NULL);
     return Pipe(fds, 0);
 }
 
@@ -391,16 +409,204 @@ Pipe(int *fds, int sockpair)
 {
     int err;
 
-    if (sockpair) {
+    assert(fds != NULL);
+    
+    if (sockpair != 0) {
         err = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
     } else {
         err = pipe(fds);
     }
-    if (!err) {
+    if (err == 0) {
         fcntl(fds[0], F_SETFD, 1);
         fcntl(fds[1], F_SETFD, 1);
     }
     return err;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * ns_sock_set_blocking --
+ *
+ *      Set a channel blocking or non-blocking
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Change blocking state of a channel
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+ns_sock_set_blocking(NS_SOCKET fd, bool blocking) 
+{
+#if defined USE_FIONBIO
+    int state = (blocking == 0);
+    return ioctl(fd, FIONBIO, &state);
+#else
+    unsigned int flags = fcntl(fd, F_GETFL, 0);
+
+    if (blocking != 0) {
+	return fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+    } else {
+	return fcntl(fd, F_SETFL, flags|O_NONBLOCK);
+    }
+#endif
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * GetPwNam --
+ *
+ *      generalized version of getpwnam() and getpwnam_r
+ *
+ * Results:
+ *      NS_TRUE if user is found; NS_FALSE otherwise.
+ *
+ * Side effects:
+ *      returning results in arguments 3 or 4 and freePtr in arg 5.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static bool
+GetPwNam(const char *user, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr) {
+    struct passwd *pwPtr;
+    bool success;
+#if defined(HAVE_GETPWNAM_R)
+    struct passwd pw;
+    char *buffer;
+    size_t bufSize = 4096u;
+
+    assert(user != NULL);
+    assert(freePtr != NULL);
+    
+    pwPtr = NULL;
+    buffer = ns_malloc(bufSize);
+    do {
+        int errorCode = getpwnam_r(user, &pw, buffer, bufSize, &pwPtr);
+        if (errorCode != ERANGE) {
+            break;
+        }
+        bufSize *= 2u;
+        buffer = ns_realloc(buffer, bufSize);
+    } while (1);
+    *freePtr = buffer;
+#else
+    assert(user != NULL);
+    assert(freePtr != NULL);
+
+    Ns_MutexLock(&lock);
+    pwPtr = getpwnam(user);
+#endif    
+
+    if (pwPtr != NULL) {
+        success = NS_TRUE;
+
+        switch (elem) {
+        case PwUID: 
+            *intResult = (int) pwPtr->pw_uid;
+            break;
+        case PwGID: 
+            *intResult = (int) pwPtr->pw_gid;
+            break;
+        case PwNAME:
+            if (dsPtr != NULL) {
+                Ns_DStringAppend(dsPtr, pwPtr->pw_name);
+            }
+            break;
+        case PwDIR:
+            if (dsPtr != NULL) {
+                Ns_DStringAppend(dsPtr, pwPtr->pw_dir);
+            }
+            break;
+        }
+    } else {
+        success = NS_FALSE;
+    }
+
+#if !defined(HAVE_GETPWNAM_R)
+    Ns_MutexUnlock(&lock);
+#endif
+
+    return success;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * GetPwUID --
+ *
+ *      generalized version of getpwuid() and getpwuid_r
+ *
+ * Results:
+ *      NS_TRUE if user is found; NS_FALSE otherwise.
+ *
+ * Side effects:
+ *      returning results in arguments 3 or 4 and freePtr in arg 5.
+ *
+ *----------------------------------------------------------------------
+ */
+
+bool
+GetPwUID(int uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr) {
+    struct passwd *pwPtr;
+    bool success;
+#if defined(HAVE_GETPWUID_R)
+    struct passwd pw;
+    char *buffer;
+    size_t bufSize = 4096u;
+
+    pwPtr = NULL;
+    buffer = ns_malloc(bufSize);
+    do {
+        int errorCode = getpwuid_r(uid, &pw, buffer, bufSize, &pwPtr);
+        if (errorCode != ERANGE) {
+            break;
+        }
+        bufSize *= 2u;
+        buffer = ns_realloc(buffer, bufSize);
+    } while (1);
+    *freePtr = buffer;
+    
+#else
+    Ns_MutexLock(&lock);
+    pwPtr = getpwuid(uid);
+#endif
+
+    if (pwPtr != NULL) {
+        success = NS_TRUE;
+
+        switch (elem) {
+        case PwUID: 
+            *intResult = (int) pwPtr->pw_uid;
+            break;
+        case PwGID: 
+            *intResult = (int) pwPtr->pw_gid;
+            break;
+        case PwNAME:
+            if (dsPtr != NULL) {
+                Ns_DStringAppend(dsPtr, pwPtr->pw_name);
+            }
+            break;
+        case PwDIR:
+            if (dsPtr != NULL) {
+                Ns_DStringAppend(dsPtr, pwPtr->pw_dir);
+            }
+            break;
+        }
+    } else {
+        success = NS_FALSE;
+    }
+
+#if !defined(HAVE_GETPWUID_R)
+    Ns_MutexUnlock(&lock);
+#endif
+
+    return success;
 }
 
 
@@ -419,19 +625,19 @@ Pipe(int *fds, int sockpair)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_GetNameForUid(Ns_DString *dsPtr, int uid)
 {
-    struct passwd *pw = NULL;
+    char *ptr = NULL;
+    bool success;
 
-    Ns_MutexLock(&lock);
-    pw = getpwuid((uid_t)uid);
-    if (pw != NULL && dsPtr) {
-        Ns_DStringAppend(dsPtr, pw->pw_name);
+    assert(dsPtr != NULL);
+    
+    success = GetPwUID(uid, PwNAME, NULL, dsPtr, &ptr);
+    if (ptr != NULL) {
+        ns_free(ptr);
     }
-    Ns_MutexUnlock(&lock);
-
-    return (pw != NULL) ? NS_TRUE : NS_FALSE;
+    return success;
 }
 
 
@@ -450,19 +656,38 @@ Ns_GetNameForUid(Ns_DString *dsPtr, int uid)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_GetNameForGid(Ns_DString *dsPtr, int gid)
 {
-    struct group *gr = NULL;
+    struct group *grPtr;
+#if defined(HAVE_GETGRGID_R)
+    struct group gr;
+    size_t bufSize = 4096u;
+    char *buffer;
+    int errorCode = 0;
 
+    grPtr = NULL;
+    buffer = ns_malloc(bufSize);
+    do {
+        errorCode = getgrgid_r(gid, &gr, buffer, bufSize, &grPtr);
+        if (errorCode == ERANGE) {
+            bufSize *= 2u;
+            buffer = ns_realloc(buffer, bufSize);
+        }
+    } while (errorCode == ERANGE);
+    if (grPtr != NULL && dsPtr != NULL) {
+        Ns_DStringAppend(dsPtr, grPtr->gr_name);
+    }
+    ns_free(buffer);
+#else
     Ns_MutexLock(&lock);
-    gr = getgrgid((gid_t)gid);
-    if (gr != NULL && dsPtr) {
-        Ns_DStringAppend(dsPtr, gr->gr_name);
+    grPtr = getgrgid((gid_t)gid);
+    if (grPtr != NULL && dsPtr != NULL) {
+        Ns_DStringAppend(dsPtr, grPtr->gr_name);
     }
     Ns_MutexUnlock(&lock);
-
-    return (gr != NULL) ? NS_TRUE : NS_FALSE;
+#endif
+    return (grPtr != NULL) ? NS_TRUE : NS_FALSE;
 }
 
 
@@ -482,19 +707,19 @@ Ns_GetNameForGid(Ns_DString *dsPtr, int gid)
  *----------------------------------------------------------------------
  */
 
-int
-Ns_GetUserHome(Ns_DString *ds, char *user)
+bool
+Ns_GetUserHome(Ns_DString *dsPtr, const char *user)
 {
-    struct passwd *pw = NULL;
+    char *ptr = NULL;
+    bool success;
 
-    Ns_MutexLock(&lock);
-    pw = getpwnam(user);
-    if (pw != NULL) {
-        Ns_DStringAppend(ds, pw->pw_dir);
+    assert(dsPtr != NULL);
+    
+    success = GetPwNam(user, PwDIR, NULL, dsPtr, &ptr);
+    if (ptr != NULL) {
+        ns_free(ptr);
     }
-    Ns_MutexUnlock(&lock);
-
-    return (pw != NULL) ? NS_TRUE : NS_FALSE;
+    return success;
 }
 
 
@@ -514,20 +739,17 @@ Ns_GetUserHome(Ns_DString *ds, char *user)
  */
 
 int
-Ns_GetUserGid(char *user)
+Ns_GetUserGid(const char *user)
 {
-    struct passwd *pw;
-    int retcode;
+    char *ptr = NULL;
+    int retcode = -1;
 
-    Ns_MutexLock(&lock);
-    pw = getpwnam(user);
-    if (pw == NULL) {
-        retcode = -1;
-    } else {
-        retcode = (int) pw->pw_gid;
+    assert(user != NULL);
+    
+    (void) GetPwNam(user, PwGID, &retcode, NULL, &ptr);
+    if (ptr != NULL) {
+        ns_free(ptr);
     }
-    Ns_MutexUnlock(&lock);
-
     return retcode;
 }
 
@@ -548,20 +770,17 @@ Ns_GetUserGid(char *user)
  */
 
 int
-Ns_GetUid(char *user)
+Ns_GetUid(const char *user)
 {
-    struct passwd *pw;
-    int retcode;
+    char *ptr = NULL;
+    int retcode = -1;
 
-    Ns_MutexLock(&lock);
-    pw = getpwnam(user);
-    if (pw == NULL) {
-        retcode = -1;
-    } else {
-        retcode = (int) pw->pw_uid;
+    assert(user != NULL);
+
+    (void) GetPwNam(user, PwUID, &retcode, NULL, &ptr);
+    if (ptr != NULL) {
+        ns_free(ptr);
     }
-    Ns_MutexUnlock(&lock);
-
     return retcode;
 }
 
@@ -582,19 +801,41 @@ Ns_GetUid(char *user)
  */
 
 int
-Ns_GetGid(char *group)
+Ns_GetGid(const char *group)
 {
-    struct group *gr;
+    struct group *grPtr;
     int retcode;
+#if defined(HAVE_GETGRNAM_R)
+    struct group gr;
+    size_t bufSize = 4096u;
+    char *buffer;
+    int errorCode = 0;
+
+    assert(group != NULL);
+
+    grPtr = NULL;
+    buffer = ns_malloc(bufSize);
+    do {
+        errorCode = getgrnam_r(group, &gr, buffer, bufSize, &grPtr);
+        if (errorCode == ERANGE) {
+            bufSize *= 2u;
+            buffer = ns_realloc(buffer, bufSize);
+        }
+    } while (errorCode == ERANGE);
+    retcode = (grPtr == NULL) ? -1 : (int) grPtr->gr_gid;
+    ns_free(buffer);
+#else
+    assert(group != NULL);
 
     Ns_MutexLock(&lock);
-    gr = getgrnam(group);
-    if (gr == NULL) {
+    grPtr = getgrnam(group);
+    if (grPtr == NULL) {
         retcode = -1;
     } else {
-        retcode = (int) gr->gr_gid;
+        retcode = (int) grPtr->gr_gid;
     }
     Ns_MutexUnlock(&lock);
+#endif
 
     return retcode;
 }
@@ -615,7 +856,7 @@ Ns_GetGid(char *group)
  */
 
 int
-Ns_SetGroup(char *group)
+Ns_SetGroup(const char *group)
 {
     int nc;
 
@@ -623,7 +864,7 @@ Ns_SetGroup(char *group)
         int gid = Ns_GetGid(group);
 
         if (gid == -1) {
-            if (sscanf(group, "%d%n", (int*)&gid, &nc) != 1
+            if (sscanf(group, "%24d%n", (int*)&gid, &nc) != 1
                 || nc != strlen(group)
                 || Ns_GetNameForGid(NULL, (gid_t)gid) == NS_FALSE) {
                 Ns_Log(Error, "Ns_GetGroup: unknown group '%s'", group);
@@ -662,7 +903,7 @@ Ns_SetGroup(char *group)
  */
 
 int
-Ns_SetUser(char *user)
+Ns_SetUser(const char *user)
 {
     int nc, uid;
     Ns_DString ds;
@@ -678,7 +919,7 @@ Ns_SetUser(char *user)
              * Hm, try see if given as numeric uid...
              */
 
-            if (sscanf(user, "%d%n", &uid, &nc) != 1
+            if (sscanf(user, "%24d%n", &uid, &nc) != 1
                 || nc != strlen(user)
                 || Ns_GetNameForUid(&ds, (uid_t)uid) == NS_FALSE) {
                 Ns_Log(Error, "Ns_SetUser: unknown user '%s'", user);
@@ -713,8 +954,9 @@ Ns_SetUser(char *user)
 
 #ifdef HAVE_POLL
 int
-ns_poll(struct pollfd *fds, unsigned long int nfds, int timo)
+ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
 {
+    assert(fds != NULL);
     return poll(fds, nfds, timo);
 }
 #else
@@ -735,18 +977,20 @@ ns_poll(struct pollfd *fds, unsigned long int nfds, int timo)
  */
 
 int
-ns_poll(struct pollfd *fds, unsigned long int nfds, int timo)
+ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
 {
     struct timeval timeout, *toptr;
     fd_set ifds, ofds, efds;
     int i, rc, n = -1;
+
+    assert(fds != NULL);
 
     FD_ZERO(&ifds);
     FD_ZERO(&ofds);
     FD_ZERO(&efds);
 
     for (i = 0; i < nfds; ++i) {
-        if (fds[i].fd == -1) {
+        if (fds[i].fd == NS_INVALID_FD) {
             continue;
         }
         if (fds[i].fd > n) {
@@ -775,7 +1019,7 @@ ns_poll(struct pollfd *fds, unsigned long int nfds, int timo)
     }
     for (i = 0; i < nfds; ++i) {
         fds[i].revents = 0;
-        if (fds[i].fd == -1) {
+        if (fds[i].fd == NS_INVALID_FD) {
             continue;
         }
         if (FD_ISSET(fds[i].fd, &ifds)) {
@@ -818,3 +1062,12 @@ Abort(int signal)
 }
 
 #endif
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

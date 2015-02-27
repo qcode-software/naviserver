@@ -39,12 +39,24 @@
  * Local functions defined in this file.
  */
 
-static void ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding);
-static void ParseMultiInput(Conn *connPtr, char *start, char *end);
-static char *Ext2Utf(Tcl_DString *dsPtr, char *s, size_t len, Tcl_Encoding encoding, char unescape);
-static int GetBoundary(Tcl_DString *dsPtr, Ns_Conn *conn);
-static char *NextBoundry(Tcl_DString *dsPtr, char *s, char *e);
-static int GetValue(char *hdr, char *att, char **vsPtr, char **vePtr, char *unescape);
+static void ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void ParseMultiInput(Conn *connPtr, const char *start, char *end)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+static char *Ext2Utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding, char unescape)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static int GetBoundary(Tcl_DString *dsPtr, const Ns_Conn *conn)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static char *NextBoundry(const Tcl_DString *dsPtr, char *s, const char *e)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static bool GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePtr, char *uPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
 
 
 /*
@@ -69,7 +81,9 @@ Ns_ConnGetQuery(Ns_Conn *conn)
 {
     Conn           *connPtr = (Conn *) conn;
     Tcl_DString     bound;
-    char           *s, *e, *form;
+    char           *form, *s, *e;
+
+    assert(conn != NULL);
     
     if (connPtr->query == NULL) {
         connPtr->query = Ns_SetCreate(NULL);
@@ -83,20 +97,20 @@ Ns_ConnGetQuery(Ns_Conn *conn)
 		    * connection is already closed due to potentially
 		    * unmmapped memory.
 		    */
-		   (connPtr->flags & NS_CONN_CLOSED ) == 0  
+		   (connPtr->flags & NS_CONN_CLOSED ) == 0U
 		   && (form = connPtr->reqPtr->content) != NULL
 		   ) {
   	    Tcl_DStringInit(&bound);
-            if (!GetBoundary(&bound, conn)) {
+            if (GetBoundary(&bound, conn) == 0) {
                 ParseQuery(form, connPtr->query, connPtr->urlEncoding);
             } else {
-                char *formend = form + connPtr->reqPtr->length;
+		const char *formend = form + connPtr->reqPtr->length;
 
                 s = NextBoundry(&bound, form, formend);
                 while (s != NULL) {
                     s += bound.length;
-                    if (*s == '\r') ++s;
-                    if (*s == '\n') ++s;
+                    if (*s == '\r') {++s;}
+                    if (*s == '\n') {++s;}
                     e = NextBoundry(&bound, s, formend);
                     if (e != NULL) {
                         ParseMultiInput(connPtr, s, e);
@@ -122,7 +136,7 @@ Ns_ConnGetQuery(Ns_Conn *conn)
  *      reparsing, as when the encoding changes.
  *
  * Results:
- *      Query data or NULL if error 
+ *      None
  *
  * Side effects:
  *      None.
@@ -137,7 +151,9 @@ Ns_ConnClearQuery(Ns_Conn *conn)
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
 
-    if (connPtr == NULL || connPtr->query == NULL) {
+    assert(conn != NULL);
+    
+    if (connPtr->query == NULL) {
         return;
     }
 
@@ -176,6 +192,9 @@ Ns_ConnClearQuery(Ns_Conn *conn)
 int
 Ns_QueryToSet(char *query, Ns_Set *set)
 {
+    assert(query != NULL);
+    assert(set != NULL);
+    
     ParseQuery(query, set, NULL);
     return NS_OK;
 }
@@ -199,7 +218,7 @@ Ns_QueryToSet(char *query, Ns_Set *set)
  */
 
 int
-NsTclParseQueryObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclParseQueryObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Set *set;
 
@@ -239,14 +258,18 @@ static void
 ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
 {
     Tcl_DString  kds, vds;
-    char        *p;
+    char  *p;
+
+    assert(form != NULL);
+    assert(set != NULL);
 
     Tcl_DStringInit(&kds);
     Tcl_DStringInit(&vds);
     p = form;
 
     while (p != NULL) {
-	char *k, *v;
+	char *v;
+	const char *k;
 
         k = p;
         p = strchr(p, '&');
@@ -261,11 +284,11 @@ ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
         k = Ns_UrlQueryDecode(&kds, k, encoding);
         if (v != NULL) {
             Ns_DStringSetLength(&vds, 0);
-            Ns_UrlQueryDecode(&vds, v+1, encoding);
+            (void) Ns_UrlQueryDecode(&vds, v+1, encoding);
             *v = '=';
             v = vds.string;
         }
-        Ns_SetPut(set, k, v);
+        (void) Ns_SetPut(set, k, v);
         if (p != NULL) {
             *p++ = '&';
         }
@@ -292,14 +315,21 @@ ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
  */
 
 static void
-ParseMultiInput(Conn *connPtr, char *start, char *end)
+ParseMultiInput(Conn *connPtr, const char *start, char *end)
 {
-    Tcl_Encoding encoding = connPtr->urlEncoding;
+    Tcl_Encoding encoding;
     Tcl_DString  kds, vds;
-    char        *e, *ks, *ke, *fs, *fe, saveend, *disp, unescape;
+    char        *e, saveend, *disp, unescape;
+    const char  *ks, *ke;
     Ns_Set      *set;
     int          isNew;
 
+    assert(connPtr != NULL);
+    assert(start != NULL);
+    assert(end != NULL);
+
+    encoding = connPtr->urlEncoding;
+    
     Tcl_DStringInit(&kds);
     Tcl_DStringInit(&vds);
     set = Ns_SetCreate(NULL);
@@ -308,8 +338,8 @@ ParseMultiInput(Conn *connPtr, char *start, char *end)
      * Trim off the trailing \r\n and null terminate the input.
      */
 
-    if (end > start && end[-1] == '\n') --end;
-    if (end > start && end[-1] == '\r') --end;
+    if (end > start && *(end-1) == '\n') {--end;}
+    if (end > start && *(end-1) == '\r') {--end;}
     saveend = *end;
     *end = '\0';
 
@@ -317,12 +347,13 @@ ParseMultiInput(Conn *connPtr, char *start, char *end)
      * Parse header lines
      */
 
-    ks = fs = NULL;
+    ks = NULL;
     while ((e = strchr(start, '\n')) != NULL) {
-	char save, *s = start;
+	const char *s = start;
+	char save;
 
         start = e + 1;
-        if (e > s && e[-1] == '\r') {
+        if (e > s && *(e-1) == '\r') {
             --e;
         }
         if (s == e) {
@@ -330,7 +361,7 @@ ParseMultiInput(Conn *connPtr, char *start, char *end)
         }
         save = *e;
         *e = '\0';
-        Ns_ParseHeader(set, s, ToLower);
+        (void) Ns_ParseHeader(set, s, ToLower);
         *e = save;
     }
 
@@ -339,28 +370,28 @@ ParseMultiInput(Conn *connPtr, char *start, char *end)
      */
 
     disp = Ns_SetGet(set, "content-disposition");
-    if (disp != NULL && GetValue(disp, "name=", &ks, &ke, &unescape)) {
-        char *key = Ext2Utf(&kds, ks, ke-ks, encoding, unescape);
-	char *value;
+    if (disp != NULL && GetValue(disp, "name=", &ks, &ke, &unescape) == NS_TRUE) {
+	const char *key = Ext2Utf(&kds, ks, (size_t)(ke - ks), encoding, unescape);
+	const char *value, *fs = NULL, *fe = NULL;
 
-        if (!GetValue(disp, "filename=", &fs, &fe, &unescape)) {
-	    value = Ext2Utf(&vds, start, end-start, encoding, unescape);
+        if (GetValue(disp, "filename=", &fs, &fe, &unescape) == NS_FALSE) {
+	    value = Ext2Utf(&vds, start, (size_t)(end - start), encoding, unescape);
         } else {
 	    Tcl_HashEntry *hPtr;
 
-            value = Ext2Utf(&vds, fs, fe-fs, encoding, unescape);
+            value = Ext2Utf(&vds, fs, (size_t)(fe - fs), encoding, unescape);
             hPtr = Tcl_CreateHashEntry(&connPtr->files, key, &isNew);
-            if (isNew) {
+            if (isNew != 0) {
 	        FormFile *filePtr = ns_malloc(sizeof(FormFile));
 
                 filePtr->hdrs = set;
                 filePtr->off = (off_t)(start - connPtr->reqPtr->content);
-                filePtr->len = end - start;
+                filePtr->len = (size_t)(end - start);
                 Tcl_SetHashValue(hPtr, filePtr);
                 set = NULL;
             }
         }
-        Ns_SetPut(connPtr->query, key, value);
+        (void) Ns_SetPut(connPtr->query, key, value);
     }
 
     /*
@@ -393,18 +424,22 @@ ParseMultiInput(Conn *connPtr, char *start, char *end)
  */
 
 static int
-GetBoundary(Tcl_DString *dsPtr, Ns_Conn *conn)
+GetBoundary(Tcl_DString *dsPtr, const Ns_Conn *conn)
 {
-    CONST char *type, *bs;
+    const char *type, *bs;
+
+    assert(dsPtr != NULL);
+    assert(conn != NULL);
 
     type = Ns_SetIGet(conn->headers, "content-type");
     if (type != NULL
         && Ns_StrCaseFind(type, "multipart/form-data") != NULL
         && (bs = Ns_StrCaseFind(type, "boundary=")) != NULL) {
-        CONST char *be;
+        const char *be;
+
         bs += 9;
         be = bs;
-        while (*be && !isspace(UCHAR(*be))) {
+        while (*be != '\0' && CHARTYPE(space, *be) == 0) {
             ++be;
         }
         Tcl_DStringAppend(dsPtr, "--", 2);
@@ -432,14 +467,19 @@ GetBoundary(Tcl_DString *dsPtr, Ns_Conn *conn)
  */
 
 static char *
-NextBoundry(Tcl_DString *dsPtr, char *s, char *e)
+NextBoundry(const Tcl_DString *dsPtr, char *s, const char *e)
 {
-    char c, sc, *find;
+    char c, sc;
+    const char *find;
     size_t len;
+
+    assert(dsPtr != NULL);
+    assert(s != NULL);
+    assert(e != NULL);
 
     find = dsPtr->string;
     c = *find++;
-    len = dsPtr->length-1;
+    len = (size_t)(dsPtr->length - 1);
     e -= len;
     do {
         do {
@@ -463,7 +503,7 @@ NextBoundry(Tcl_DString *dsPtr, char *s, char *e)
  *      Determine start and end of a multipart form input value.
  *
  * Results:
- *      1 if attribute found and value parsed, 0 otherwise.
+ *      NS_TRUE if attribute found and value parsed, NS_FALSE otherwise.
  *
  * Side effects:
  *      Start and end are stored in given pointers, quoted character, 
@@ -472,27 +512,33 @@ NextBoundry(Tcl_DString *dsPtr, char *s, char *e)
  *----------------------------------------------------------------------
  */
 
-static int
-GetValue(char *hdr, char *att, char **vsPtr, char **vePtr, char *uPtr)
+static bool
+GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePtr, char *uPtr)
 {
-    CONST char *s, *e;
+    const char *s, *e;
+
+    assert(hdr != NULL);
+    assert(att != NULL);
+    assert(vsPtr != NULL);
+    assert(vePtr != NULL);
+    assert(uPtr != NULL);
 
     s = Ns_StrCaseFind(hdr, att);
     if (s == NULL) {
-        return 0;
+        return NS_FALSE;
     }
     s += strlen(att);
     e = s;
     if (*s != '"' && *s != '\'') {
         /* NB: End of unquoted att=value is next space. */
-        while (*e && !isspace(UCHAR(*e))) {
+        while (*e != '\0' && CHARTYPE(space, *e) == 0) {
             ++e;
         }
-	*uPtr = 0;
+	*uPtr = '\0';
     } else {
-        int escaped = 0;
+        bool escaped = NS_FALSE;
 
-	*uPtr = 0;
+	*uPtr = '\0';
         /* 
 	 * End of quoted att="value" is next quote.  A quote within
 	 * the quoted string could be escaped with a backslash. In
@@ -500,21 +546,21 @@ GetValue(char *hdr, char *att, char **vsPtr, char **vePtr, char *uPtr)
 	 * character as result.
 	 */
         ++e;
-        while (*e && (escaped || *e != *s)) {
-	    if (escaped) {
-	        escaped = 0;
+        while (*e != '\0' && (escaped == NS_TRUE || *e != *s)) {
+	    if (escaped == NS_TRUE) {
+	        escaped = NS_FALSE;
 	    } else if (*e == '\\') {
 	        *uPtr = *s;
-	        escaped = 1;
+	        escaped = NS_TRUE;
 	    }
             ++e;
         }
         ++s;
     }
-    *vsPtr = (char *) s;
-    *vePtr = (char *) e;
+    *vsPtr = s;
+    *vePtr = e;
 
-    return 1;
+    return NS_TRUE;
 }
 
 
@@ -536,8 +582,10 @@ GetValue(char *hdr, char *att, char **vsPtr, char **vePtr, char *uPtr)
  */
 
 static char *
-Ext2Utf(Tcl_DString *dsPtr, char *start, size_t len, Tcl_Encoding encoding, char unescape)
+Ext2Utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding, char unescape)
 {
+    assert(dsPtr != NULL);
+    assert(start != NULL);
 
     if (encoding == NULL) {
         Tcl_DStringSetLength(dsPtr, 0);
@@ -545,7 +593,7 @@ Ext2Utf(Tcl_DString *dsPtr, char *start, size_t len, Tcl_Encoding encoding, char
     } else {
         /* NB: ExternalToUtfDString will re-init dstring. */
         Tcl_DStringFree(dsPtr);
-        Tcl_ExternalToUtfDString(encoding, start, (int)len, dsPtr);
+        (void) Tcl_ExternalToUtfDString(encoding, start, (int)len, dsPtr);
     }
 
     /*
@@ -553,7 +601,7 @@ Ext2Utf(Tcl_DString *dsPtr, char *start, size_t len, Tcl_Encoding encoding, char
      * backslashes have to be removed. This will shorten the resulting
      * string.
      */
-    if (unescape) {
+    if (unescape != '\0') {
       int i, j, l = (int)len;
       char *buffer = dsPtr->string;
 
@@ -569,3 +617,12 @@ Ext2Utf(Tcl_DString *dsPtr, char *start, size_t len, Tcl_Encoding encoding, char
     }
     return dsPtr->string;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

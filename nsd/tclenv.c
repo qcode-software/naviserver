@@ -46,7 +46,7 @@ extern char **environ;
  * Local functions defined in this file.
  */
 
-static int PutEnv(Tcl_Interp *interp, char *name, char *value);
+static int PutEnv(Tcl_Interp *interp, const char *name, const char *value);
 
 /*
  * Loca variables defined in this file.
@@ -105,13 +105,15 @@ Ns_GetEnviron(void)
 char **
 Ns_CopyEnviron(Ns_DString *dsPtr)
 {
-    char *s, **envp;
+    char *const*envp;
     int i;
 
+    assert(dsPtr != NULL);
+    
     Ns_MutexLock(&lock);
     envp = Ns_GetEnviron();
-    for (i = 0; (s = envp[i]) != NULL; ++i) {
-        Ns_DStringAppendArg(dsPtr, s);
+    for (i = 0;  envp[i] != NULL; ++i) {
+        Ns_DStringAppendArg(dsPtr, envp[i]);
     }
     Ns_MutexUnlock(&lock);
 
@@ -122,7 +124,7 @@ Ns_CopyEnviron(Ns_DString *dsPtr)
 /*
  *----------------------------------------------------------------------
  *
- * NsTclEnvCmd --
+ * NsTclEnvObjCmd --
  *
  *      Implements the ns_env command.  No attempt is made to avoid the
  *      race condition between finding a variable and using it as it is
@@ -139,13 +141,14 @@ Ns_CopyEnviron(Ns_DString *dsPtr)
  */
 
 int
-NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    char        *name, *value, **envp;
+    const char  *name, *value;
+    char       **envp;
     int          status, i, opt;
     Tcl_Obj     *result;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "exists", "names", "get", "set", "unset", NULL
     };
     enum {
@@ -170,7 +173,7 @@ NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv
             Tcl_WrongNumArgs(interp, 2, objv, "name");
             goto done;
         }
-        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(getenv(Tcl_GetString(objv[2])) ? 1 : 0));
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(getenv(Tcl_GetString(objv[2])) != NULL ? 1 : 0));
         break;
 
     case INamesIdx:
@@ -180,7 +183,7 @@ NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv
             name = envp[i];
             value = strchr(name, '=');
             Tcl_ListObjAppendElement(interp, result,
-		     Tcl_NewStringObj(name, value ? (int)(value - name) : -1));
+		     Tcl_NewStringObj(name, (value != NULL) ? (int)(value - name) : -1));
         }
         break;
 
@@ -197,10 +200,17 @@ NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv
 
     case IGetIdx:
     case IUnsetIdx:
-        if ((objc != 3 && objc != 4)
-            || (objc == 4 && !STREQ(Tcl_GetString(objv[2]), "-nocomplain"))) {
+	if (objc != 3 && objc != 4) {
             Tcl_WrongNumArgs(interp, 2, objv, "?-nocomplain? name");
             goto done;
+        }
+
+        if (objc == 4) {
+	    const char *arg = Tcl_GetString(objv[2]);
+	    if (!STREQ(arg, "-nocomplain")) {
+		Tcl_WrongNumArgs(interp, 2, objv, "?-nocomplain? name");
+		goto done;
+	    }
         }
         name = Tcl_GetString(objv[2]);
         value = getenv(name);
@@ -211,8 +221,13 @@ NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv
         if (opt == IUnsetIdx && PutEnv(interp, name, NULL) != NS_OK) {
             goto done;
         } else {
-            Tcl_SetResult(interp, value, TCL_VOLATILE);
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(value, -1));
         }
+        break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
         break;
     }
     status = TCL_OK;
@@ -229,7 +244,7 @@ NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv
  *
  * PutEnv --
  *
- *      NsTclEnvCmd helper routine to update an environment variable.
+ *      NsTclEnvObjCmd helper routine to update an environment variable.
  *
  * Results:
  *      TCL_OK or TCL_ERROR.
@@ -241,10 +256,10 @@ NsTclEnvObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv
  */
 
 static int
-PutEnv(Tcl_Interp *interp, char *name, char *value)
+PutEnv(Tcl_Interp *interp, const char *name, const char *value)
 {
     char   *s;
-    size_t  len;
+    size_t  len, nameLength, valueLength;
 
 #ifdef HAVE_UNSETENV
     if (value == NULL) {
@@ -253,14 +268,19 @@ PutEnv(Tcl_Interp *interp, char *name, char *value)
     }
 #endif
 
-    len = strlen(name);
+    len = nameLength = strlen(name);
     if (value != NULL) {
-        len += strlen(value) + 1;
+        valueLength = strlen(value);
+        len += valueLength + 1u;
     } else {
-        len += 1;
+        len += 1u;
+        valueLength = 0u;
     }
-    /* NB: Use malloc() directly as putenv() would expect. */
-    s = malloc(len + 1);
+    /* 
+     * Use malloc() directly (and not ns_malloc())
+     * as putenv() expects. 
+     */
+    s = malloc(len + 1u);
     if (s == NULL) {
         Tcl_SetResult(interp, "could not allocate memory for new env entry",
                       TCL_STATIC);
@@ -281,22 +301,35 @@ PutEnv(Tcl_Interp *interp, char *name, char *value)
      * string. This method fails on such platforms.
      */
 
-    strcpy(s, name);
-    strcat(s, "=");
+    memcpy(s, name, nameLength);
+    *(s + nameLength) = '=';
+    *(s + nameLength + 1u) = '\0';
 
     if (value != NULL) {
-        strcat(s, value);
+        strncat(s + nameLength + 1, value, valueLength);
     }
+
     if (putenv(s) != 0) {
         Tcl_AppendResult(interp, "could not put environment entry \"",
                          s, "\": ", Tcl_PosixError(interp), NULL);
         free(s);
         return TCL_ERROR;
     }
+#if 0    
     if (value == NULL) {
-        strcpy(s, "=");
+        strncpy(s, "=", 2u);
         putenv(s);
     }
+#endif
 
     return TCL_OK;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

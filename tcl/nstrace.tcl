@@ -666,16 +666,28 @@ ns_runonce {
 
 	#
 	# helper proc for ensemble serialization
-	# 
-
-	proc _getensemble {cmd} {
-	    if {[namespace ensemble exists $cmd]} {
-		set _cfg [namespace ensemble configure $cmd]
-		set _enns [dict get $_cfg -namespace]
-		dict unset _cfg -namespace
-		set _encmd [list ::nstrace::_create_or_config_ensemble $cmd $_cfg]
-		return [list namespace eval $_enns $_encmd]\n
+	#
+	# Tcl versions before 8.5 do not have a namespace ensemble
+	# command.  NaviServer does not support on the Tcl layer older
+	# versions than 8.5, but if someone wants to check e.g. some
+	# basic properties with a Tcl 8.4 version, it should not break
+	# due to this small change. So we guard the definition of the
+	# ensemble serialization by checking Tcl's version number.
+	
+	if {$::tcl_version >= 8.5} {
+	    proc _getensemble {cmd} {
+		if {[namespace ensemble exists $cmd]} {
+		    set _cfg [namespace ensemble configure $cmd]
+		    set _enns [dict get $_cfg -namespace]
+		    dict unset _cfg -namespace
+		    set _encmd [list ::nstrace::_create_or_config_ensemble $cmd $_cfg]
+		    return [list namespace eval $_enns $_encmd]\n
+		}
 	    }
+	} else {
+	    proc _getensemble {cmd} {
+		# Do nothing.
+            }
 	}
 
         #
@@ -842,7 +854,7 @@ ns_runonce {
             ns_mutex lock $elock
             set old [nsv_set  nstrace lastepoch]
             set new [nsv_incr nstrace lastepoch]
-            nsv_lappend nstrace $new [ns_thread getid]
+            nsv_lappend nstrace $new [ns_thread id]
             if {$old >= 0} {
                 _copyepoch $old $new
                 _delepochs
@@ -889,7 +901,7 @@ ns_runonce {
         #
 
         proc _delepoch {epoch threads} {
-            set self [ns_thread getid] 
+            set self [ns_thread id] 
             foreach tid [nsv_set nstrace $epoch] {
                 if {$tid ne $self && [lsearch $threads $tid] >= 0} {
                     lappend alive $tid
@@ -914,7 +926,7 @@ ns_runonce {
 
         proc _useepoch {epoch} {
             if {$epoch >= 0} {
-                set tid [ns_thread getid]
+                set tid [ns_thread id]
                 if {[lsearch [nsv_set nstrace $epoch] $tid] == -1} {
                     nsv_lappend nstrace $epoch $tid
                 }
