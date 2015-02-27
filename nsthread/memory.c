@@ -57,13 +57,13 @@
 #if defined(SYSTEM_MALLOC)
 void *ns_realloc(void *ptr, size_t size)  { return realloc(ptr, size); }
 void *ns_malloc(size_t size)              { return malloc(size); }
-void ns_free(void *ptr)                   { /*fprintf(stderr, "free %p\n", ptr); if (ptr) */ {free(ptr);} }
+void ns_free(void *ptr)                   { /*fprintf(stderr, "free %p\n", ptr); if (ptr != NULL) */ {free(ptr);} }
 void *ns_calloc(size_t num, size_t esize) { return calloc(num, esize); }
 #else
 void *
 ns_realloc(void *ptr, size_t size)
 {
-  return (ptr ? ckrealloc(ptr, (int)size) : ckalloc((int)size));
+  return ((ptr != NULL) ? ckrealloc(ptr, (int)size) : ckalloc((int)size));
 }
 
 void *
@@ -107,9 +107,9 @@ ns_strncopy(const char *old, ssize_t size)
 
     if (likely(old != NULL)) {
         size = likely(size > 0) ? size : strlen(old);
-        new = ns_malloc(size + 1);
-        strncpy(new, old, size);
-        new[size] = 0;
+        size ++;
+        new = ns_malloc(size);
+        memcpy(new, old, size);
     }
     return new;
 }
@@ -117,10 +117,21 @@ ns_strncopy(const char *old, ssize_t size)
 char *
 ns_strdup(const char *old)
 {
-    char *new;
+    size_t length = strlen(old) + 1u;
+    char *p = ns_malloc(length);
 
-    new = ns_malloc(strlen(old) + 1);
-    strcpy(new, old);
-
-    return new;
+    assert(old != NULL);
+    
+    memcpy(p, old, length);
+    
+    return p;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

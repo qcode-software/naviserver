@@ -35,22 +35,26 @@
 
 #include "nsd.h"
 
-#define BUFSIZE 2048
+#define BUFSIZE 2048u
 
 typedef struct Stream {
     NS_SOCKET sock;
     int       error;
     size_t    cnt;
     char     *ptr;
-    char      buf[BUFSIZE+1];
+    char      buf[BUFSIZE + 1u];
 } Stream;
 
 /*
  * Local functions defined in this file
  */
 
-static int GetLine(Stream *sPtr, Ns_DString *dsPtr);
-static int FillBuf(Stream *sPtr);
+static bool GetLine(Stream *sPtr, Ns_DString *dsPtr)
+     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static bool FillBuf(Stream *sPtr)
+     NS_GNUC_NONNULL(1);
+
 
 
 /*
@@ -71,28 +75,33 @@ static int FillBuf(Stream *sPtr);
  */
 
 int
-Ns_FetchPage(Ns_DString *dsPtr, char *url, char *server)
+Ns_FetchPage(Ns_DString *dsPtr, const char *url, const char *server)
 {
     Ns_DString  ds;
-    Tcl_Channel chan = NULL;
+    Tcl_Channel chan;
+    int result = NS_OK;
+
+    assert(dsPtr != NULL);
+    assert(url != NULL);
+    assert(server != NULL);
 
     Ns_DStringInit(&ds);
-    Ns_UrlToFile(&ds, server, url);
+    (void) Ns_UrlToFile(&ds, server, url);
     chan = Tcl_OpenFileChannel(NULL, ds.string, "r", 0);
     Ns_DStringFree(&ds);
-    if (chan) {
+    if (chan != NULL) {
         char buf[1024];
         int  nread;
 
-        while ((nread = Tcl_Read(chan, buf, sizeof(buf))) > 0) {
+        while ((nread = Tcl_Read(chan, buf, (int)sizeof(buf))) > 0) {
             Ns_DStringNAppend(dsPtr, buf, nread);
         }
-        Tcl_Close(NULL, chan);
+        result = Tcl_Close(NULL, chan);
     } else {
-        return NS_ERROR;
+        result = NS_ERROR;
     }
 
-    return NS_OK;
+    return result;
 }
 
 
@@ -115,17 +124,20 @@ Ns_FetchPage(Ns_DString *dsPtr, char *url, char *server)
  */
 
 int
-Ns_FetchURL(Ns_DString *dsPtr, char *url, Ns_Set *headers)
+Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
 {
     NS_SOCKET       sock;
-    char           *p;
+    const char     *p;
     Ns_DString      ds;
-    Stream          stream;
+    Stream          s;
     Ns_Request      request;
-    int             status, n;
-    unsigned int    tosend;
+    int             status;
+    size_t          toSend;
 
-    sock = INVALID_SOCKET;
+    assert(dsPtr != NULL);
+    assert(url != NULL);
+
+    sock = NS_INVALID_SOCKET;
     Ns_DStringInit(&ds);
 
     /*
@@ -141,11 +153,11 @@ Ns_FetchURL(Ns_DString *dsPtr, char *url, Ns_Set *headers)
         Ns_Log(Notice, "urlopen: invalid url '%s'", url);
         goto done;
     }
-    if (request.port == 0) {
-        request.port = 80;
+    if (request.port == 0U) {
+        request.port = 80U;
     }
-    sock = Ns_SockConnect(request.host, request.port);
-    if (sock == INVALID_SOCKET) {
+    sock = Ns_SockConnect(request.host, (int)request.port);
+    if (sock == NS_INVALID_SOCKET) {
         Ns_Log(Error, "urlopen: failed to connect to '%s': '%s'",
                url, ns_sockstrerror(ns_sockerrno));
         goto done;
@@ -162,16 +174,16 @@ Ns_FetchURL(Ns_DString *dsPtr, char *url, Ns_Set *headers)
     }
     Ns_DStringAppend(&ds, " HTTP/1.0\r\nAccept: */*\r\n\r\n");
     p = ds.string;
-    tosend = ds.length;
-    while (tosend > 0) {
-        n = send(sock, p, tosend, 0);
-        if (n == SOCKET_ERROR) {
+    toSend = (size_t)ds.length;
+    while (toSend > 0u) {
+        ssize_t sent = ns_send(sock, p, toSend, 0);
+        if (sent < 0) {
             Ns_Log(Error, "urlopen: failed to send data to '%s': '%s'",
                    url, ns_sockstrerror(ns_sockerrno));
             goto done;
         }
-        tosend -= n;
-        p += n;
+        toSend -= (size_t)sent;
+        p += sent;
     }
 
     /*
@@ -179,21 +191,29 @@ Ns_FetchURL(Ns_DString *dsPtr, char *url, Ns_Set *headers)
      * consume the headers, parsing them into any given header set.
      */
 
-    stream.cnt = 0;
-    stream.error = 0;
-    stream.ptr = stream.buf;
-    stream.sock = sock;
-    if (!GetLine(&stream, &ds)) {
+    s.cnt = 0u;
+    s.error = 0;
+    s.ptr = s.buf;
+    s.sock = sock;
+
+    /*
+     * Read response line.
+     */
+    if (GetLine(&s, &ds) == NS_FALSE) {
         goto done;
     }
-    if (headers != NULL && strncmp(ds.string, "HTTP", 4) == 0) {
+    if (headers != NULL && strncmp(ds.string, "HTTP", 4u) == 0) {
         if (headers->name != NULL) {
-            ns_free(headers->name);
+	    ns_free((char *)headers->name);
         }
         headers->name = Ns_DStringExport(&ds);
     }
+    
+    /*
+     * Parse header lines
+     */
     do {
-        if (!GetLine(&stream, &ds)) {
+        if (GetLine(&s, &ds) == NS_FALSE) {
             goto done;
         }
         if (ds.length > 0
@@ -209,16 +229,17 @@ Ns_FetchURL(Ns_DString *dsPtr, char *url, Ns_Set *headers)
      */
     
     do {
-      Ns_DStringNAppend(dsPtr, stream.ptr, (int)stream.cnt);
-    } while (FillBuf(&stream));
-    if (!stream.error) {
+      Ns_DStringNAppend(dsPtr, s.ptr, (int)s.cnt);
+    } while (FillBuf(&s));
+
+    if (s.error == 0) {
         status = NS_OK;
     }
 
  done:
     Ns_ResetRequest(&request);
 
-    if (sock != INVALID_SOCKET) {
+    if (sock != NS_INVALID_SOCKET) {
         ns_sockclose(sock);
     }
     Ns_DStringFree(&ds);
@@ -244,20 +265,21 @@ Ns_FetchURL(Ns_DString *dsPtr, char *url, Ns_Set *headers)
  */
 
 int
-NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, 
-                  Tcl_Obj *CONST objv[])
+NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp   *itPtr = arg;
     Ns_DString  ds;
     Ns_Set     *headers;
     int         status, code;
-    char       *url;
+    const char *url;
 
     if ((objc != 3) && (objc != 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "url ?headersSetIdVar?");
         return TCL_ERROR;
     }
 
+    Ns_LogDeprecated(objv, 2, "ns_http queue ...; ns_http wait ...", NULL);
+    
     code = TCL_ERROR;
     if (objc == 2) {
         headers = NULL;
@@ -286,7 +308,7 @@ NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
             goto done;
         }
     }
-    Tcl_SetResult(interp, ds.string, TCL_VOLATILE);
+    Tcl_DStringResult(interp, &ds);
     code = TCL_OK;
 done:
     Ns_DStringFree(&ds);
@@ -311,27 +333,34 @@ done:
  *----------------------------------------------------------------------
  */
 
-static int
+static bool
 FillBuf(Stream *sPtr)
 {
-    int n;
+    ssize_t n;
     
-    n = recv(sPtr->sock, sPtr->buf, BUFSIZE, 0);
+    assert(sPtr != NULL);
+
+    n = ns_recv(sPtr->sock, sPtr->buf, BUFSIZE, 0);
     if (n <= 0) {
         if (n < 0) {
-            Ns_Log(Error, "urlopen: "
-                   "failed to fill socket stream buffer: '%s'", 
+            Ns_Log(Error, "urlopen: failed to fill socket stream buffer: '%s'", 
                    strerror(errno));
             sPtr->error = 1;
         }
-        return 0;
+        return NS_FALSE;
     }
+    assert(n > 0);
+
+    /*
+     * The recv() operation was sucessuful, fill values into result fields and
+     * return NS_TRUE.
+     */
 
     sPtr->buf[n] = '\0';
     sPtr->ptr = sPtr->buf;
-    sPtr->cnt = n;
+    sPtr->cnt = (size_t)n;
 
-    return 1;
+    return NS_TRUE;
 }
 
 
@@ -352,15 +381,18 @@ FillBuf(Stream *sPtr)
  *----------------------------------------------------------------------
  */
 
-static int
+static bool
 GetLine(Stream *sPtr, Ns_DString *dsPtr)
 {
     char   *eol;
     size_t  n;
 
+    assert(sPtr != NULL);
+    assert(dsPtr != NULL);
+
     Ns_DStringSetLength(dsPtr, 0);
     do {
-        if (sPtr->cnt > 0) {
+        if (sPtr->cnt > 0u) {
             eol = strchr(sPtr->ptr, '\n');
             if (eol == NULL) {
                 n = sPtr->cnt;
@@ -368,18 +400,27 @@ GetLine(Stream *sPtr, Ns_DString *dsPtr)
                 *eol++ = '\0';
                 n = eol - sPtr->ptr;
             }
-            Ns_DStringNAppend(dsPtr, sPtr->ptr, (int)(n - 1));
+            Ns_DStringNAppend(dsPtr, sPtr->ptr, (int)n - 1);
             sPtr->ptr += n;
             sPtr->cnt -= n;
             if (eol != NULL) {
-                n = dsPtr->length;
-                if (n > 0 && dsPtr->string[n-1] == '\r') {
-		  Ns_DStringSetLength(dsPtr, (int)(n - 1));
+                n = (size_t)dsPtr->length;
+                if (n > 0u && dsPtr->string[n - 1u] == '\r') {
+                    Ns_DStringSetLength(dsPtr, (int)n - 1);
                 }
-                return 1;
+                return NS_TRUE;
             }
         }
-    } while (FillBuf(sPtr));
+    } while (FillBuf(sPtr) == NS_TRUE);
 
-    return 0;
+    return NS_FALSE;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

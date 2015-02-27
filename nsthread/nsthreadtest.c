@@ -48,23 +48,21 @@
 #define PTHREAD_TEST 1
 #endif
 
-extern void Tcl_GetMemoryInfo(Tcl_DString *dsPtr);
-
 /*
  * Collection of synchronization objects for tests.
  */
 
-static Ns_Mutex block;
-static Ns_Mutex slock;
-static Ns_Mutex lock;
-static Ns_Cond  cond;
+static Ns_Mutex block = NULL;
+static Ns_Mutex slock = NULL;
+static Ns_Mutex lock  = NULL;
+static Ns_Cond  cond  = NULL;
 static Ns_Tls   key;
 static Ns_RWLock rwlock;
 static Ns_Sema  sema;
 static Ns_Cs    cs;
-static Ns_Mutex dlock;
-static Ns_Cond  dcond;
-static int      dstop;
+static Ns_Mutex dlock = NULL;
+static Ns_Cond  dcond = NULL;
+static int      dstop = 0;
 
 /*
  * Msg -
@@ -72,7 +70,7 @@ static int      dstop;
  *	Simple message logger with thread id and name.
  */
 
-void
+static void
 Msg(char *fmt,...)
 {
     va_list         ap;
@@ -82,7 +80,7 @@ Msg(char *fmt,...)
     time(&now);
     s = ns_ctime(&now);
     r = strchr(s, '\n');
-    if (r) {
+    if (r != NULL) {
 	*r = '\0';
     }
     va_start(ap, fmt);
@@ -100,7 +98,7 @@ Msg(char *fmt,...)
  *	Log and then free TLS slot data at thread exit.
  */
 
-void
+static void
 TlsLogArg(void *arg)
 {
     int            *ip = arg;
@@ -115,7 +113,7 @@ TlsLogArg(void *arg)
  *	Thread which recursively probes stack for max depth.
  */
 
-uintptr_t
+static uintptr_t
 RecursiveStackCheck(uintptr_t n)
 {
 #if 0
@@ -128,7 +126,7 @@ RecursiveStackCheck(uintptr_t n)
     return n;
 }
 
-void
+static void
 CheckStackThread(void *arg)
 {
     uintptr_t n;
@@ -143,7 +141,7 @@ CheckStackThread(void *arg)
  *	Thread which exercies a varity of sync objects and TLS.
  */
 
-void
+static void
 WorkThread(void *arg)
 {
     intptr_t        i = (intptr_t) arg;
@@ -243,7 +241,7 @@ MemThread(void *arg)
     Ns_MutexLock(&lock);
     ++nrunning;
     Ns_CondBroadcast(&cond);
-    while (!memstart) {
+    while (memstart == 0) {
 	Ns_CondWait(&cond, &lock);
     }
     Ns_MutexUnlock(&lock);
@@ -251,19 +249,19 @@ MemThread(void *arg)
     ptr = NULL;
     for (i = 0; i < NA; ++i) {
 	int n = rand() % BS;
-	if (arg) {
-	    if (ptr)
+	if (arg != NULL) {
+	    if (ptr != NULL)
 		ns_free(ptr);
 	    ptr = ns_malloc(n);
 	} else {
-	    if (ptr)
+	    if (ptr != NULL)
 		free(ptr);
 	    ptr = malloc(n);
 	}
     }
 }
 
-void
+static void
 MemTime(int ns)
 {
     Ns_Time         start, end, diff;
@@ -275,7 +273,7 @@ MemTime(int ns)
     nrunning = 0;
     memstart = 0;
     Ns_MutexUnlock(&lock);
-    printf("starting %d %smalloc threads...", nthreads, ns ? "ns_" : "");
+    printf("starting %d %smalloc threads...", nthreads, (ns != 0) ? "ns_" : "");
     fflush(stdout);
     for (i = 0; i < nthreads; ++i) {
         Ns_ThreadCreate(MemThread, (void *)(intptr_t) ns, 0, &tids[i]);
@@ -299,7 +297,7 @@ MemTime(int ns)
 }
 
 
-void
+static void
 DumpString(Tcl_DString *dsPtr)
 {
     char **largv;
@@ -311,13 +309,13 @@ DumpString(Tcl_DString *dsPtr)
 	for (i = 0; i < largc; ++i) {
 	    printf("\t%s\n", largv[i]);
 	}
-	ckfree((char *) largv);
+	Tcl_Free((char *) largv);
     }
     Tcl_DStringTrunc(dsPtr, 0);
 }
 
 
-void
+static void
 DumperThread(void *arg)
 {
     Ns_Time         to;
@@ -327,7 +325,7 @@ DumperThread(void *arg)
     Ns_ThreadSetName("-dumper-");
     Ns_MutexLock(&block);
     Ns_MutexLock(&dlock);
-    while (!dstop) {
+    while (dstop == 0) {
 	Ns_GetTime(&to);
 	Ns_IncrTime(&to, 1, 0);
 	Ns_CondTimedWait(&dcond, &dlock, &to);
@@ -354,18 +352,18 @@ DumperThread(void *arg)
  * can call Ns API's which will cleanup at thread exit.
  */
 
-static Ns_Mutex plock;
-static Ns_Cond pcond;
-static int pgo;
+static Ns_Mutex plock = NULL;
+static Ns_Cond pcond  = NULL;
+static int pgo = 0;
 
-void
+static void
 PthreadTlsCleanup(void *arg)
 {
     intptr_t i = (intptr_t) arg;
     printf("pthread[%" PRIxPTR "]: log: %" PRIdPTR"\n", (uintptr_t) pthread_self(), i);
 }
 
-void *
+static void *
 Pthread(void *arg)
 {
     static Ns_Tls tls;
@@ -390,7 +388,7 @@ Pthread(void *arg)
      */
 
     Ns_MutexLock(&plock);
-    while (!pgo) {
+    while (pgo == 0) {
 	Ns_CondWait(&pcond, &plock);
     }
     Ns_MutexUnlock(&plock);
@@ -417,6 +415,7 @@ int main(int argc, char *argv[])
     pthread_t tids[10];
 #endif
 
+    Tcl_FindExecutable(argv[0]);
     Nsthreads_LibInit();
 
     Ns_ThreadSetName("-main-");
@@ -431,7 +430,7 @@ int main(int argc, char *argv[])
 	    case 'n':
 		break;
 	    case 'm':
-	    	nthreads = atoi(p + 1);
+	    	nthreads = strtol(p + 1, NULL, 10);
 		goto mem;
 		break;
 	}
@@ -489,12 +488,15 @@ int main(int argc, char *argv[])
     Ns_MutexUnlock(&dlock);
     Ns_ThreadJoin(&dumper, NULL);
     Msg("threads joined");
-    for (i = 0; i < 10; ++i) {
-	Ns_ThreadCreate(CheckStackThread, NULL, 8192*(i+1), &threads[i]);
-    }
-    for (i = 0; i < 10; ++i) {
-        Ns_ThreadJoin(&threads[i], &arg);
-        printf("check stack %" PRIdPTR " = %" PRIdPTR "\n", i, (intptr_t) arg);
+    {
+        int i;
+        for (i = 0; i < 10; ++i) {
+            Ns_ThreadCreate(CheckStackThread, NULL, 8192*(i+1), &threads[i]);
+        }
+        for (i = 0; i < 10; ++i) {
+            Ns_ThreadJoin(&threads[i], &arg);
+            printf("check stack %d = %" PRIdPTR "\n", i, (intptr_t) arg);
+        }
     }
     /*Ns_ThreadEnum(DumpThreads, NULL);*/
     /*Ns_MutexEnum(DumpLocks, NULL);*/
@@ -503,3 +505,12 @@ mem:
     MemTime(1);
     return 0;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

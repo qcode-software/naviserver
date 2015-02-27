@@ -54,27 +54,32 @@ typedef struct Callback {
 
 static Ns_ThreadProc ShutdownThread;
 
-static void *RegisterAt(Callback **firstPtrPtr, Ns_Callback *proc, void *arg, int fifo);
-static void RunCallbacks(CONST char *list, Callback *firstPtr);
-static void AppendList(Tcl_DString *dsPtr, CONST char *list, Callback *firstPtr);
+static void *RegisterAt(Callback **firstPtrPtr, Ns_Callback *proc, void *arg, int fifo)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void RunCallbacks(const char *list, const Callback *cbPtr)
+    NS_GNUC_NONNULL(1);
+    
+static void AppendList(Tcl_DString *dsPtr, const char *list, const Callback *cbPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * Static variables defined in this file
  */
 
-static Callback *firstPreStartup;
-static Callback *firstStartup;
-static Callback *firstSignal;
-static Callback *firstShutdown;
-static Callback *firstExit;
-static Callback *firstReady;
+static Callback *firstPreStartup = NULL;
+static Callback *firstStartup = NULL;
+static Callback *firstSignal = NULL;
+static Callback *firstShutdown = NULL;
+static Callback *firstExit = NULL;
+static Callback *firstReady = NULL;
 
 static Ns_Mutex  lock;
 static Ns_Cond   cond;
 
-static int       shutdownPending;
-static int       shutdownComplete;
-static Ns_Thread shutdownThread;
+static int       shutdownPending  = 0;
+static int       shutdownComplete = 0;
+static Ns_Thread shutdownThread   = NULL;
 
 
 
@@ -99,6 +104,7 @@ static Ns_Thread shutdownThread;
 void *
 Ns_RegisterAtPreStartup(Ns_Callback *proc, void *arg)
 {
+    assert(proc != NULL);
     return RegisterAt(&firstPreStartup, proc, arg, 1);
 }
 
@@ -124,6 +130,7 @@ Ns_RegisterAtPreStartup(Ns_Callback *proc, void *arg)
 void *
 Ns_RegisterAtStartup(Ns_Callback *proc, void *arg)
 {
+    assert(proc != NULL);
     return RegisterAt(&firstStartup, proc, arg, 1);
 }
 
@@ -148,6 +155,7 @@ Ns_RegisterAtStartup(Ns_Callback *proc, void *arg)
 void *
 Ns_RegisterAtSignal(Ns_Callback *proc, void *arg)
 {
+    assert(proc != NULL);
     return RegisterAt(&firstSignal, proc, arg, 1);
 }
 
@@ -171,6 +179,7 @@ Ns_RegisterAtSignal(Ns_Callback *proc, void *arg)
 void *
 Ns_RegisterAtReady(Ns_Callback *proc, void *arg)
 {
+    assert(proc != NULL);
     return RegisterAt(&firstReady, proc, arg, 0);
 }
 
@@ -194,6 +203,7 @@ Ns_RegisterAtReady(Ns_Callback *proc, void *arg)
 void *
 Ns_RegisterAtShutdown(Ns_ShutdownProc *proc, void *arg)
 {
+    assert(proc != NULL);
     return RegisterAt(&firstShutdown, (Ns_Callback *)proc, arg, 0);
 }
 
@@ -217,6 +227,7 @@ Ns_RegisterAtShutdown(Ns_ShutdownProc *proc, void *arg)
 void *
 Ns_RegisterAtExit(Ns_Callback *proc, void *arg)
 {
+    assert(proc != NULL);
     return RegisterAt(&firstExit, proc, arg, 0);
 }
 
@@ -339,7 +350,7 @@ ShutdownThread(void *arg)
  */
 
 void
-NsWaitShutdownProcs(Ns_Time *toPtr)
+NsWaitShutdownProcs(const Ns_Time *toPtr)
 {
     Callback         *cbPtr;
     int               status = NS_OK;
@@ -354,7 +365,7 @@ NsWaitShutdownProcs(Ns_Time *toPtr)
      */
 
     Ns_MutexLock(&lock);
-    while (status == NS_OK && !shutdownComplete) {
+    while (status == NS_OK && shutdownComplete == 0) {
         status = Ns_CondTimedWait(&cond, &lock, toPtr);
     }
     Ns_MutexUnlock(&lock);
@@ -397,6 +408,8 @@ NsWaitShutdownProcs(Ns_Time *toPtr)
 void
 NsGetCallbacks(Tcl_DString *dsPtr)
 {
+    assert(dsPtr != NULL);
+        
     Ns_MutexLock(&lock);
     AppendList(dsPtr, "prestartup", firstPreStartup);
     AppendList(dsPtr, "startup", firstStartup);
@@ -407,12 +420,15 @@ NsGetCallbacks(Tcl_DString *dsPtr)
 }
 
 static void
-AppendList(Tcl_DString *dsPtr, CONST char *list, Callback *cbPtr)
+AppendList(Tcl_DString *dsPtr, const char *list, const Callback *cbPtr)
 {
+    assert(dsPtr != NULL);
+    assert(list != NULL);
+           
     while (cbPtr != NULL) {
         Tcl_DStringStartSublist(dsPtr);
         Tcl_DStringAppendElement(dsPtr, list);
-        Ns_GetProcInfo(dsPtr, (void *)cbPtr->proc, cbPtr->arg);
+        Ns_GetProcInfo(dsPtr, cbPtr->proc, cbPtr->arg);
         Tcl_DStringEndSublist(dsPtr);
 
         cbPtr = cbPtr->nextPtr;
@@ -442,22 +458,25 @@ RegisterAt(Callback **firstPtrPtr, Ns_Callback *proc, void *arg, int fifo)
     Callback   *cbPtr, *nextPtr;
     static int first = 1;
 
+    assert(firstPtrPtr != NULL);
+    assert(proc != NULL);
+
     cbPtr = ns_malloc(sizeof(Callback));
     cbPtr->proc = proc;
     cbPtr->arg = arg;
 
     Ns_MutexLock(&lock);
-    if (first) {
+    if (first != 0) {
         first = 0;
         Ns_MutexSetName(&lock, "ns:callbacks");
     }
-    if (shutdownPending) {
+    if (shutdownPending != 0) {
         ns_free(cbPtr);
         cbPtr = NULL;
     } else if (*firstPtrPtr == NULL) {
         *firstPtrPtr = cbPtr;
         cbPtr->nextPtr = NULL;
-    } else if (fifo) {
+    } else if (fifo != 0) {
         nextPtr = *firstPtrPtr;
         while (nextPtr->nextPtr != NULL) {
             nextPtr = nextPtr->nextPtr;
@@ -491,21 +510,33 @@ RegisterAt(Callback **firstPtrPtr, Ns_Callback *proc, void *arg, int fifo)
  */
 
 static void
-RunCallbacks(CONST char *list, Callback *cbPtr)
+RunCallbacks(const char *list, const Callback *cbPtr)
 {
+    assert(list != NULL);
+    
     while (cbPtr != NULL) {
 	Ns_Callback *proc;
 	Ns_DString   ds;
 
         if (Ns_LogSeverityEnabled(Debug)) {
             Ns_DStringInit(&ds);
-            Ns_GetProcInfo(&ds, (void *)cbPtr->proc, cbPtr->arg);
+            Ns_GetProcInfo(&ds, cbPtr->proc, cbPtr->arg);
             Ns_Log(Debug, "ns:callback: %s: %s", list, Ns_DStringValue(&ds));
             Ns_DStringFree(&ds);
         }
         proc = cbPtr->proc;
-        (*proc)(cbPtr->arg);
+       (*proc)(cbPtr->arg);
 
         cbPtr = cbPtr->nextPtr;
     }
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */
+

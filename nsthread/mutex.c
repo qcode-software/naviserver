@@ -36,6 +36,20 @@
 #include "thread.h"
 
 /*
+ * On Windows, Mutex timings can lead to a lock-up during start, when
+ * Tcl_GetTime() is used, since the first calls to the mutex are
+ * issued from DllMain() at a time before Tcl is initialized. Per
+ * default, Windows compilations use the windows-native get time
+ * implementation, so it does not harm. However, implementations might
+ * choose to compile without mutex timings. In such cases,
+ * NS_NO_MUTEX_TIMING should be set during compilation
+ */
+/*
+ * #define NS_NO_MUTEX_TIMING 1
+ */
+
+
+/*
  * The following structure defines a mutex with
  * string name and lock and busy counters.
  */
@@ -43,7 +57,7 @@
 typedef struct Mutex {
     void	    *lock;
     struct Mutex    *nextPtr;
-    unsigned int     id;
+    uintptr_t        id;
     unsigned long    nlock;
     unsigned long    nbusy;
     Ns_Time          start_time;
@@ -53,8 +67,8 @@ typedef struct Mutex {
     char	     name[NS_THREAD_NAMESIZE+1];
 } Mutex;
 
-#define GETMUTEX(mutex) (*(mutex) ? ((Mutex *)*(mutex)) : GetMutex((mutex)))
-static Mutex *GetMutex(Ns_Mutex *mutex);
+#define GETMUTEX(mutex) (*(mutex) != NULL ? ((Mutex *)*(mutex)) : GetMutex((mutex)))
+static Mutex *GetMutex(Ns_Mutex *mutex) NS_GNUC_NONNULL(1);
 static Mutex *firstMutexPtr;
 
 
@@ -79,15 +93,17 @@ void
 Ns_MutexInit(Ns_Mutex *mutex)
 {
     Mutex *mutexPtr;
-    static unsigned int nextid;
+    static uintptr_t nextid = 0u;
 
-    mutexPtr = ns_calloc(1, sizeof(Mutex));
+    assert(mutex != NULL);
+
+    mutexPtr = ns_calloc(1U, sizeof(Mutex));
     mutexPtr->lock = NsLockAlloc();
     Ns_MasterLock();
     mutexPtr->nextPtr = firstMutexPtr;
     firstMutexPtr = mutexPtr;
     mutexPtr->id = nextid++;
-    snprintf(mutexPtr->name, sizeof(mutexPtr->name), "mu%u", mutexPtr->id);
+    snprintf(mutexPtr->name, sizeof(mutexPtr->name), "mu%" PRIuPTR, mutexPtr->id);
     Ns_MasterUnlock();
     *mutex = (Ns_Mutex) mutexPtr;
 }
@@ -110,36 +126,44 @@ Ns_MutexInit(Ns_Mutex *mutex)
  */
 
 void
-Ns_MutexSetName(Ns_Mutex *mutex, CONST char *name)
+Ns_MutexSetName(Ns_Mutex *mutex, const char *name)
 {
+    assert(mutex != NULL);
+    assert(name != NULL);
+
     Ns_MutexSetName2(mutex, name, NULL);
 }
 
 void
-Ns_MutexSetName2(Ns_Mutex *mutex, CONST char *prefix, CONST char *name)
+Ns_MutexSetName2(Ns_Mutex *mutex, const char *prefix, const char *name)
 {
-    Mutex *mutexPtr = GETMUTEX(mutex);
-    size_t plen, nlen;
+    Mutex *mutexPtr;
+    size_t prefixLength, nameLength;
     char *p;
 
-    plen = strlen(prefix);
-    if (plen > NS_THREAD_NAMESIZE) {
-	plen = NS_THREAD_NAMESIZE;
-	nlen = 0;
-    } else {
-    	nlen = name ? strlen(name) : 0;
-	if ((nlen + plen + 1) > NS_THREAD_NAMESIZE) {
-	    nlen = NS_THREAD_NAMESIZE - plen - 1;
+    assert(mutex != NULL);
+    assert(prefix != NULL);
+
+    mutexPtr = GETMUTEX(mutex);
+    prefixLength = strlen(prefix);
+    if (prefixLength > NS_THREAD_NAMESIZE - 1) {
+	prefixLength = NS_THREAD_NAMESIZE - 1;
+	nameLength = 0u;
+    } else if (name != NULL) {
+	nameLength = strlen(name);
+	if ((nameLength + prefixLength + 1) > NS_THREAD_NAMESIZE) {
+	    nameLength = NS_THREAD_NAMESIZE - prefixLength - 1;
 	}
     }
     Ns_MasterLock();
-    p = strncpy(mutexPtr->name, prefix, (size_t)plen) + plen;
-    if (nlen > 0) {
+    p = mutexPtr->name;
+    memcpy(p, prefix, prefixLength + 1u);
+    if (name != NULL) {
+        p += prefixLength;
 	*p++ = ':';
-	assert(name);
-	p = strncpy(p, name, (size_t)nlen) + nlen;
+	assert(name != NULL);
+	memcpy(p, name, nameLength + 1u);
     }
-    *p = '\0';
     Ns_MasterUnlock();
 }
 
@@ -203,17 +227,25 @@ Ns_MutexDestroy(Ns_Mutex *mutex)
 void
 Ns_MutexLock(Ns_Mutex *mutex)
 {
-    Mutex *mutexPtr = GETMUTEX(mutex);
+    Mutex *mutexPtr;
+#ifndef NS_NO_MUTEX_TIMING
     Ns_Time end, diff, startTime;
 
     Ns_GetTime(&startTime);
+#endif
+
+    assert(mutex != NULL);
+    
+    mutexPtr = GETMUTEX(mutex);
     if (unlikely(!NsLockTry(mutexPtr->lock))) {
 	NsLockSet(mutexPtr->lock);
 	++mutexPtr->nbusy;
+
+#ifndef NS_NO_MUTEX_TIMING
         /*
          * Measure total and max waiting time for busy mutex locks.
          */
-        Ns_GetTime(&end);
+	Ns_GetTime(&end);
         Ns_DiffTime(&end, &startTime, &diff);
 	Ns_IncrTime(&mutexPtr->total_waiting_time, diff.sec, diff.usec);
 
@@ -233,9 +265,11 @@ Ns_MutexLock(Ns_Mutex *mutex)
             /*fprintf(stderr, "Mutex %s max time %" PRIu64 ".%06ld\n", 
 	      mutexPtr->name, (int64_t)diff.sec, diff.usec);*/
         }
+#endif
     }
-     
+#ifndef NS_NO_MUTEX_TIMING
     mutexPtr->start_time = startTime;
+#endif
     ++mutexPtr->nlock;
 
 }
@@ -260,8 +294,11 @@ Ns_MutexLock(Ns_Mutex *mutex)
 int
 Ns_MutexTryLock(Ns_Mutex *mutex)
 {
-    Mutex *mutexPtr = GETMUTEX(mutex);
+    Mutex *mutexPtr;
 
+    assert(mutex != NULL);
+
+    mutexPtr = GETMUTEX(mutex);
     if (!NsLockTry(mutexPtr->lock)) {
     	return NS_TIMEOUT;
     }
@@ -290,12 +327,14 @@ void
 Ns_MutexUnlock(Ns_Mutex *mutex)
 {
     Mutex *mutexPtr = (Mutex *) *mutex;
-    Ns_Time end, diff;
 
+#ifndef NS_NO_MUTEX_TIMING
+    Ns_Time end, diff;
 
     Ns_GetTime(&end);
     Ns_DiffTime(&end, &mutexPtr->start_time, &diff);
     Ns_IncrTime(&mutexPtr->total_lock_time, diff.sec, diff.usec);
+#endif
 
     NsLockUnset(mutexPtr->lock);
 
@@ -337,7 +376,8 @@ Ns_MutexList(Tcl_DString *dsPtr)
         Tcl_DStringStartSublist(dsPtr);
         Tcl_DStringAppendElement(dsPtr, mutexPtr->name);
         Tcl_DStringAppendElement(dsPtr, ""); /* unused? */
-        snprintf(buf, sizeof(buf), " %u %lu %lu %" PRIu64 ".%06ld %" PRIu64 ".%06ld %" PRIu64 ".%06ld", 
+        snprintf(buf, sizeof(buf),
+                 " %" PRIuPTR " %lu %lu %" PRIu64 ".%06ld %" PRIu64 ".%06ld %" PRIu64 ".%06ld", 
                  mutexPtr->id, mutexPtr->nlock, mutexPtr->nbusy, 
                  (int64_t)mutexPtr->total_waiting_time.sec, mutexPtr->total_waiting_time.usec,
                  (int64_t)mutexPtr->max_waiting_time.sec, mutexPtr->max_waiting_time.usec,
@@ -368,16 +408,20 @@ Ns_MutexList(Tcl_DString *dsPtr)
  */
 
 void
-NsMutexInitNext(Ns_Mutex *mutex, char *prefix, unsigned int *nextPtr)
+NsMutexInitNext(Ns_Mutex *mutex, const char *prefix, uintptr_t *nextPtr)
 {
-    unsigned int id;
+    uintptr_t id;
     char buf[NS_THREAD_NAMESIZE];
 
+    assert(mutex != NULL);
+    assert(prefix != NULL);
+    assert(nextPtr != NULL);
+    
     Ns_MasterLock();
     id = *nextPtr;
-    *nextPtr = id + 1;
+    *nextPtr = id + 1u;
     Ns_MasterUnlock();
-    snprintf(buf, sizeof(buf), "ns:%s:%u", prefix, id);
+    snprintf(buf, sizeof(buf), "ns:%s:%" PRIuPTR, prefix, id);
     Ns_MutexInit(mutex);
     Ns_MutexSetName(mutex, buf);
 }
@@ -402,8 +446,11 @@ NsMutexInitNext(Ns_Mutex *mutex, char *prefix, unsigned int *nextPtr)
 void *
 NsGetLock(Ns_Mutex *mutex)
 {
-    Mutex *mutexPtr = GETMUTEX(mutex);
+    Mutex *mutexPtr;
 
+    assert(mutex != NULL);
+    
+    mutexPtr = GETMUTEX(mutex);
     return mutexPtr->lock;
 }
 
@@ -427,6 +474,8 @@ NsGetLock(Ns_Mutex *mutex)
 static Mutex *
 GetMutex(Ns_Mutex *mutex)
 {
+    assert(mutex != NULL);
+    
     Ns_MasterLock();
     if (*mutex == NULL) {
 	Ns_MutexInit(mutex);
@@ -450,10 +499,22 @@ GetMutex(Ns_Mutex *mutex)
  *
  *----------------------------------------------------------------------
  */
-char *
+const char *
 Ns_MutexGetName(Ns_Mutex *mutex)
 {
-    Mutex *mutexPtr = GETMUTEX(mutex);
-
+    Mutex *mutexPtr;
+    
+    assert(mutex != NULL);
+    
+    mutexPtr = GETMUTEX(mutex);
     return mutexPtr->name;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

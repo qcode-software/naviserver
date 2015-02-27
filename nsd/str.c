@@ -55,9 +55,11 @@
  */
 
 char *
-Ns_StrTrim(char *string)
+Ns_StrTrim(char *chars)
 {
-    return Ns_StrTrimLeft(Ns_StrTrimRight(string));
+    assert(chars != NULL);
+
+    return Ns_StrTrimLeft(Ns_StrTrimRight(chars));
 }
 
 
@@ -80,14 +82,15 @@ Ns_StrTrim(char *string)
  */
 
 char *
-Ns_StrTrimLeft(char *string)
+Ns_StrTrimLeft(char *chars)
 {
-    if (string != NULL) {
-        while (isspace(UCHAR(*string))) {
-            ++string;
-        }
+    assert(chars != NULL);
+
+    while (CHARTYPE(space, *chars) != 0) {
+        ++chars;
     }
-    return string;
+    
+    return chars;
 }
 
 
@@ -110,18 +113,20 @@ Ns_StrTrimLeft(char *string)
  */
 
 char *
-Ns_StrTrimRight(char *string)
+Ns_StrTrimRight(char *chars)
 {
-    if (string != NULL) {
-        int len = (int)strlen(string);
+    int len;
+    
+    assert(chars != NULL);
+    
+    len = (int)strlen(chars);
 
-        while ((--len >= 0)
-               && (isspace(UCHAR(string[len]))
-                   || string[len] == '\n')) {
-            string[len] = '\0';
-        }
+    while ((--len >= 0)
+           && (CHARTYPE(space, chars[len]) != 0
+               || chars[len] == '\n')) {
+        chars[len] = '\0';
     }
-    return string;
+    return chars;
 }
 
 
@@ -142,18 +147,20 @@ Ns_StrTrimRight(char *string)
  */
 
 char *
-Ns_StrToLower(char *string)
+Ns_StrToLower(char *chars)
 {
-    char *s;
+    char *p;
+    
+    assert(chars != NULL);
 
-    s = string;
-    while (*s != '\0') {
-        if (isupper(UCHAR(*s))) {
-            *s = tolower(UCHAR(*s));
+    p = chars;
+    while (*p != '\0') {
+        if (CHARTYPE(upper, *p) != 0) {
+            *p = CHARCONV(lower, *p);
         }
-        ++s;
+        ++p;
     }
-    return string;
+    return chars;
 }
 
 
@@ -165,7 +172,7 @@ Ns_StrToLower(char *string)
  *      All alph. chars in a string will be made to be uppercase.
  *
  * Results:
- *      Same string as pssed in.
+ *      Same string as passed in.
  *
  * Side effects:
  *      Will modify string.
@@ -174,18 +181,20 @@ Ns_StrToLower(char *string)
  */
 
 char *
-Ns_StrToUpper(char *string)
+Ns_StrToUpper(char *chars)
 {
     char *s;
 
-    s = string;
+    assert(chars != NULL);
+
+    s = chars;
     while (*s != '\0') {
-        if (islower(UCHAR(*s))) {
-            *s = toupper(UCHAR(*s));
+        if (CHARTYPE(lower, *s) != 0) {
+            *s = CHARCONV(upper, *s);
         }
         ++s;
     }
-    return string;
+    return chars;
 }
 
 
@@ -209,18 +218,21 @@ Ns_StrToUpper(char *string)
  */
 
 int
-Ns_StrToInt(CONST char *string, int *intPtr)
+Ns_StrToInt(const char *chars, int *intPtr)
 {
     long  lval;
     char *ep;
 
+    assert(chars != NULL);
+    assert(intPtr != NULL);
+
     errno = 0;
-    lval = strtol(string, &ep, string[0] == '0' && string[1] == 'x' ? 16 : 10);
-    if (string[0] == '\0' || *ep != '\0') {
+    lval = strtol(chars, &ep, chars[0] == '0' && chars[1] == 'x' ? 16 : 10);
+    if (chars[0] == '\0' || *ep != '\0') {
         return NS_ERROR;
     }
     if ((errno == ERANGE && (lval == LONG_MAX || lval == LONG_MIN))
-         || (lval > INT_MAX || lval < INT_MIN)) {
+        || (lval > INT_MAX || lval < INT_MIN)) {
         return NS_ERROR;
     }
     *intPtr = (int) lval;
@@ -248,14 +260,14 @@ Ns_StrToInt(CONST char *string, int *intPtr)
  */
 
 int
-Ns_StrToWideInt(CONST char *string, Tcl_WideInt *intPtr)
+Ns_StrToWideInt(const char *chars, Tcl_WideInt *intPtr)
 {
     Tcl_WideInt  lval;
     char *ep;
 
     errno = 0;
-    lval = strtoll(string, &ep, string[0] == '0' && string[1] == 'x' ? 16 : 10);
-    if (string[0] == '\0' || *ep != '\0') {
+    lval = strtoll(chars, &ep, chars[0] == '0' && chars[1] == 'x' ? 16 : 10);
+    if (chars[0] == '\0' || *ep != '\0') {
         return NS_ERROR;
     }
     if ((errno == ERANGE && (lval == LLONG_MAX || lval == LLONG_MIN))) {
@@ -285,13 +297,13 @@ Ns_StrToWideInt(CONST char *string, Tcl_WideInt *intPtr)
  *----------------------------------------------------------------------
  */
 
-CONST char *
-Ns_Match(CONST char *a, CONST char *b)
+const char *
+Ns_Match(const char *a, const char *b)
 {
     if (a != NULL && b != NULL) {
         while (*a != '\0' && *b != '\0') {
-            char c1 = islower(UCHAR(*a)) ? *a : tolower(UCHAR(*a));
-            char c2 = islower(UCHAR(*b)) ? *b : tolower(UCHAR(*b));
+            char c1 = CHARTYPE(lower, *a) != 0 ? *a : CHARCONV(lower, *a);
+            char c2 = CHARTYPE(lower, *b) != 0 ? *b : CHARCONV(lower, *b);
             if (c1 != c2) {
                 return NULL;
             }
@@ -299,7 +311,7 @@ Ns_Match(CONST char *a, CONST char *b)
             b++;
         }
     }
-    return (char *) b;
+    return b;
 }
 
 
@@ -320,13 +332,13 @@ Ns_Match(CONST char *a, CONST char *b)
  *----------------------------------------------------------------------
  */
 
-CONST char *
-Ns_NextWord(CONST char *line)
+const char *
+Ns_NextWord(const char *line)
 {
-    while (*line != '\0' && !isspace(UCHAR(*line))) {
+    while (*line != '\0' && CHARTYPE(space, *line) == 0) {
         ++line;
     }
-    while (*line != '\0' && isspace(UCHAR(*line))) {
+    while (*line != '\0' && CHARTYPE(space, *line) != 0) {
         ++line;
     }
     return line;
@@ -349,21 +361,27 @@ Ns_NextWord(CONST char *line)
  *----------------------------------------------------------------------
  */
 
-CONST char *
-Ns_StrNStr(CONST char *string, CONST char *substring)
+const char *
+Ns_StrNStr(const char *chars, const char *subString)
 {
-    return Ns_StrCaseFind(string, substring);
+    assert(chars != NULL);
+    assert(subString != NULL);
+
+    return Ns_StrCaseFind(chars, subString);
 }
 
-CONST char *
-Ns_StrCaseFind(CONST char *string, CONST char *substring)
+const char *
+Ns_StrCaseFind(const char *chars, const char *subString)
 {
-    if (strlen(string) > strlen(substring)) {
-        while (*string != '\0') {
-            if (Ns_Match(string, substring)) {
-                return string;
+    assert(chars != NULL);
+    assert(subString != NULL);
+
+    if (strlen(chars) > strlen(subString)) {
+        while (*chars != '\0') {
+            if (Ns_Match(chars, subString)) {
+                return chars;
             }
-            ++string;
+            ++chars;
         }
     }
     return NULL;
@@ -389,17 +407,26 @@ Ns_StrCaseFind(CONST char *string, CONST char *substring)
  */
 
 int
-Ns_StrIsHost(CONST char *string)
+Ns_StrIsHost(const char *chars)
 {
-    register CONST char *p;
+    register const char *p;
 
-    for (p = string; *p != '\0'; p++) {
-        if (!isalnum(UCHAR(*p)) && *p != ':'
+    for (p = chars; *p != '\0'; p++) {
+	if (CHARTYPE(alnum, *p) == 0 && *p != ':'
             && (*p != '.' || (p[0] == '.' && p[1] == '.'))) {
-
+	    
             return NS_FALSE;
         }
     }
 
     return NS_TRUE;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

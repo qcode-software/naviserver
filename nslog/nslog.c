@@ -38,28 +38,28 @@
 #include "ns.h"
 #include <ctype.h>  /* isspace */
 
-#define LOG_COMBINED      (1<<0)
-#define LOG_FMTTIME       (1<<1)
-#define LOG_REQTIME       (1<<2)
-#define LOG_PARTIALTIMES  (1<<3)
-#define LOG_CHECKFORPROXY (1<<4)
-#define LOG_SUPPRESSQUERY (1<<5)
+#define LOG_COMBINED      0x01u
+#define LOG_FMTTIME       0x02u
+#define LOG_REQTIME       0x04u
+#define LOG_PARTIALTIMES  0x08u
+#define LOG_CHECKFORPROXY 0x10u
+#define LOG_SUPPRESSQUERY 0x20u
 
 #if !defined(PIPE_BUF)
 # define PIPE_BUF 512
 #endif
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 typedef struct {
     Ns_Mutex     lock;
-    char        *module;
-    char        *file;
-    char        *rollfmt;
-    CONST char **extheaders;
+    const char  *module;
+    const char  *file;
+    const char  *rollfmt;
+    const char **extheaders;
     int          numheaders;
     int          fd;
-    int          flags;
+    unsigned int flags;
     int          maxbackup;
     int          maxlines;
     int          curlines;
@@ -102,31 +102,32 @@ static int LogClose(Log *logPtr);
  */
 
 NS_EXPORT int
-Ns_ModuleInit(char *server, char *module)
+Ns_ModuleInit(const char *server, const char *module)
 {
-    CONST char *path, *file;
+    const char *path, *file;
     Log        *logPtr;
     Ns_DString  ds;
     static int  first = 1;
+    int         result;
 
     /*
      * Register the info callbacks just once. This assumes we are
      * called w/o locking from within the server startup.
      */
 
-    if (first) {
+    if (first != 0) {
         first = 0;
-        Ns_RegisterProcInfo((void *)LogRollCallback, "nslog:roll", LogArg);
-        Ns_RegisterProcInfo((void *)LogCloseCallback, "nslog:close", LogArg);
-        Ns_RegisterProcInfo((void *)LogTrace, "nslog:conntrace", LogArg);
-        Ns_RegisterProcInfo((void *)AddCmds, "nslog:initinterp", LogArg);
+        Ns_RegisterProcInfo((Ns_Callback *)LogRollCallback, "nslog:roll", LogArg);
+        Ns_RegisterProcInfo((Ns_Callback *)LogCloseCallback, "nslog:close", LogArg);
+        Ns_RegisterProcInfo((Ns_Callback *)LogTrace, "nslog:conntrace", LogArg);
+        Ns_RegisterProcInfo((Ns_Callback *)AddCmds, "nslog:initinterp", LogArg);
     }
 
     Ns_DStringInit(&ds);
 
-    logPtr = ns_calloc(1,sizeof(Log));
+    logPtr = ns_calloc(1U, sizeof(Log));
     logPtr->module = module;
-    logPtr->fd = -1;
+    logPtr->fd = NS_INVALID_FD;
     Ns_MutexInit(&logPtr->lock);
     Ns_MutexSetName2(&logPtr->lock, "nslog", server);
     Ns_DStringInit(&logPtr->buffer);
@@ -138,7 +139,7 @@ Ns_ModuleInit(char *server, char *module)
      */
 
     file = Ns_ConfigString(path, "file", "access.log");
-    if (Ns_PathIsAbsolute(file)) {
+    if (Ns_PathIsAbsolute(file) == NS_TRUE) {
         logPtr->file = ns_strdup(file);
     } else {
         /*
@@ -148,25 +149,25 @@ Ns_ModuleInit(char *server, char *module)
          */
 
         if (Ns_HomePathExists("logs", NULL)) {
-            Ns_HomePath(&ds, "logs", "/", file, NULL);
+            (void) Ns_HomePath(&ds, "logs", "/", file, NULL);
         } else {
             Tcl_Obj *dirpath;
 	    int status;
 
             Ns_DStringTrunc(&ds, 0);
-            Ns_ModulePath(&ds, server, module, NULL, NULL);
+            (void) Ns_ModulePath(&ds, server, module, NULL, (char *)0);
             dirpath = Tcl_NewStringObj(ds.string, -1);
             Tcl_IncrRefCount(dirpath);
             status = Tcl_FSCreateDirectory(dirpath);
             Tcl_DecrRefCount(dirpath);
-            if (status && Tcl_GetErrno() != EEXIST && Tcl_GetErrno() != EISDIR) {
+            if (status != 0 && Tcl_GetErrno() != EEXIST && Tcl_GetErrno() != EISDIR) {
                 Ns_Log(Error,"nslog: create directory (%s) failed: '%s'",
                        ds.string, strerror(Tcl_GetErrno()));
                 Ns_DStringFree(&ds);
                 return NS_ERROR;
             }
             Ns_DStringTrunc(&ds, 0);
-            Ns_ModulePath(&ds, server, module, file, NULL);
+            (void) Ns_ModulePath(&ds, server, module, file, (char *)0);
         }
         logPtr->file = Ns_DStringExport(&ds);
     }
@@ -233,17 +234,17 @@ Ns_ModuleInit(char *server, char *module)
 
     Ns_RegisterServerTrace(server, LogTrace, logPtr);
     Ns_RegisterAtShutdown(LogCloseCallback, logPtr);
-    Ns_TclRegisterTrace(server, AddCmds, logPtr, NS_TCL_TRACE_CREATE);
+    result = Ns_TclRegisterTrace(server, AddCmds, logPtr, NS_TCL_TRACE_CREATE);
 
-    return NS_OK;
+    return result;
 }
 
 static int
-AddCmds(Tcl_Interp *interp, void *arg)
+AddCmds(Tcl_Interp *interp, const void *arg)
 {
-    Log *logPtr = arg;
+    const Log *logPtr = arg;
 
-    Tcl_CreateObjCommand(interp, "ns_accesslog", LogObjCmd, logPtr, NULL);
+    Tcl_CreateObjCommand(interp, "ns_accesslog", LogObjCmd, (ClientData)logPtr, NULL);
     return NS_OK;
 }
 
@@ -265,10 +266,9 @@ AddCmds(Tcl_Interp *interp, void *arg)
  */
 
 static int
-LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    char        *strarg;
-    CONST char **hdrs;
+    const char  *strarg, **hdrs;
     int          status, intarg, cmd;
     Ns_DString   ds;
     Log         *logPtr = arg;
@@ -277,7 +277,7 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         ROLLFMT, MAXBACKUP, MAXBUFFER, EXTHDRS,
         FLAGS, FILE, ROLL
     };
-    static CONST char *subcmd[] = {
+    static const char *subcmd[] = {
         "rollfmt", "maxbackup", "maxbuffer", "extendedheaders",
         "flags", "file", "roll", NULL
     };
@@ -296,8 +296,8 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         Ns_MutexLock(&logPtr->lock);
         if (objc > 2) {
             strarg = ns_strdup(Tcl_GetString(objv[2]));
-            if (logPtr->rollfmt) {
-                ns_free(logPtr->rollfmt);
+            if (logPtr->rollfmt != NULL) {
+                ns_free((char *)logPtr->rollfmt);
             }
             logPtr->rollfmt = strarg;
         }
@@ -355,7 +355,7 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         }
         Ns_MutexLock(&logPtr->lock);
         if (objc > 2) {
-            if (logPtr->extheaders) {
+            if (logPtr->extheaders != NULL) {
                 Tcl_Free((char*)logPtr->extheaders);
             }
             logPtr->extheaders = hdrs;
@@ -363,7 +363,7 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         }
         strarg = Tcl_Merge(logPtr->numheaders, logPtr->extheaders);
         Ns_MutexUnlock(&logPtr->lock);
-        Tcl_SetResult(interp, strarg, TCL_DYNAMIC);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(strarg, -1));
         break;
 
     case FLAGS:
@@ -417,8 +417,7 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
         if ((status & LOG_SUPPRESSQUERY)) {
             Ns_DStringAppend(&ds, "suppressquery ");
         }
-        Tcl_AppendResult(interp, ds.string, NULL);
-        Ns_DStringFree(&ds);
+        Tcl_DStringResult(interp, &ds);
         break;
 
     case FILE:
@@ -431,14 +430,14 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
             }
             Ns_MutexLock(&logPtr->lock);
             LogClose(logPtr);
-            ns_free(logPtr->file);
+            ns_free((char *)logPtr->file);
             logPtr->file = ns_strdup(strarg);
             Ns_DStringFree(&ds);
             LogOpen(logPtr);
         } else {
             Ns_MutexLock(&logPtr->lock);
         }
-        Tcl_SetResult(interp, logPtr->file, TCL_STATIC);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->file, -1));
         Ns_MutexUnlock(&logPtr->lock);
         break;
 
@@ -500,10 +499,10 @@ static void
 LogTrace(void *arg, Ns_Conn *conn)
 {
     Log         *logPtr = arg;
-    CONST char **h;
-    char        *p, *user, buffer[PIPE_BUF], *bufferPtr = NULL;
-    int          n, status, i, fd;
-    size_t	 bufferSize = 0;
+    const char **h, *user, *p;
+    char         buffer[PIPE_BUF], *bufferPtr = NULL;
+    int          n, status, i;
+    size_t	 bufferSize = 0u;
     Ns_DString   ds;
 
     Ns_DStringInit(&ds);
@@ -534,9 +533,9 @@ LogTrace(void *arg, Ns_Conn *conn)
     } else {
         int quote = 0;
         for (p = user; *p && !quote; p++) {
-            quote = isspace((unsigned char)*p);
+	    quote = (CHARTYPE(space, *p) != 0);
         }
-        if (quote) {
+        if (quote != 0) {
             Ns_DStringVarAppend(&ds, " - \"", user, "\" ", NULL);
         } else {
             Ns_DStringVarAppend(&ds," - ", user, " ", NULL);
@@ -560,7 +559,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
 
     if (likely(conn->request != NULL)) {
-	char *string = (logPtr->flags & LOG_SUPPRESSQUERY) ? 
+	const char *string = (logPtr->flags & LOG_SUPPRESSQUERY) ? 
 	    conn->request->url : 
 	    conn->request->line;
 
@@ -574,8 +573,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
 
     n = Ns_ConnResponseStatus(conn);
-    Ns_DStringPrintf(&ds, "%d %" TCL_LL_MODIFIER "d",
-                     n ? n : 200, Ns_ConnContentSent(conn));
+    Ns_DStringPrintf(&ds, "%d %" PRIdz, (n != 0) ? n : 200, Ns_ConnContentSent(conn));
 
     /*
      * Append the referer and user-agent headers (if any)
@@ -584,12 +582,12 @@ LogTrace(void *arg, Ns_Conn *conn)
     if ((logPtr->flags & LOG_COMBINED)) {
         Ns_DStringAppend(&ds, " \"");
         p = Ns_SetIGet(conn->headers, "referer");
-        if (p) {
+        if (p != NULL) {
             Ns_DStringAppend(&ds, p);
         }
         Ns_DStringAppend(&ds, "\" \"");
         p = Ns_SetIGet(conn->headers, "user-agent");
-        if (p) {
+        if (p != NULL) {
             Ns_DStringAppend(&ds, p);
         }
         Ns_DStringAppend(&ds, "\"");
@@ -633,7 +631,7 @@ LogTrace(void *arg, Ns_Conn *conn)
         Ns_DStringVarAppend(&ds, " \"", p, "\"", NULL);
     }
 
-    for (i=0; i<ds.length; i++) {
+    for (i = 0; i < ds.length; i++) {
       /* 
        * Quick fix to disallow terminal escape characters in the log
        * file. See e.g. http://www.securityfocus.com/bid/37712/info
@@ -651,11 +649,11 @@ LogTrace(void *arg, Ns_Conn *conn)
     Ns_DStringAppend(&ds, "\n");
 
     if (logPtr->maxlines == 0) {
-        bufferSize = ds.length ;
+        bufferSize = ds.length;
 	if (bufferSize < PIPE_BUF) {
-	  /* only those write() operations are guaranteed to be atomic */
+	  /* only those ns_write() operations are guaranteed to be atomic */
 	    bufferPtr = ds.string;
-            status = NS_OK;
+           status = NS_OK;
 	} else {
 	    status = LogFlush(logPtr, &ds);
 	}
@@ -664,7 +662,7 @@ LogTrace(void *arg, Ns_Conn *conn)
         if (++logPtr->curlines > logPtr->maxlines) {
 	    bufferSize = logPtr->buffer.length;
             if (bufferSize < PIPE_BUF) {
-              /* only those write() are guaranteed to be atomic */
+              /* only those ns_write() are guaranteed to be atomic */
               /* in most cases, we will fall into the other branch */
 	      memcpy(buffer, logPtr->buffer.string, bufferSize);  
 	      bufferPtr = buffer;
@@ -678,13 +676,12 @@ LogTrace(void *arg, Ns_Conn *conn)
             status = NS_OK;
         }
     }
-    ((void)(status)); /* ignore status */
-
-    fd = logPtr->fd;
     Ns_MutexUnlock(&logPtr->lock);
 
-    if (likely(bufferPtr != NULL) && likely(fd >= 0) && likely(bufferSize > 0)) {
-      NsAsyncWrite(fd, bufferPtr, bufferSize);
+    (void)(status); /* ignore status */
+
+    if (likely(bufferPtr != NULL) && likely(logPtr->fd >= 0) && likely(bufferSize > 0)) {
+        NsAsyncWrite(logPtr->fd, bufferPtr, bufferSize);
     }
 
     Ns_DStringFree(&ds);
@@ -713,14 +710,14 @@ LogOpen(Log *logPtr)
 {
     int fd;
 
-    fd = open(logPtr->file, O_APPEND|O_WRONLY|O_CREAT, 0644);
-    if (fd == -1) {
+    fd = ns_open(logPtr->file, O_APPEND|O_WRONLY|O_CREAT, 0644);
+    if (fd == NS_INVALID_FD) {
         Ns_Log(Error,"nslog: error '%s' opening '%s'",
                strerror(errno), logPtr->file);
         return NS_ERROR;
     }
     if (logPtr->fd >= 0) {
-        close(logPtr->fd);
+        ns_close(logPtr->fd);
     }
 
     logPtr->fd = fd;
@@ -754,8 +751,8 @@ LogClose(Log *logPtr)
 
     if (logPtr->fd >= 0) {
         status = LogFlush(logPtr, &logPtr->buffer);
-        close(logPtr->fd);
-        logPtr->fd = -1;
+        ns_close(logPtr->fd);
+        logPtr->fd = NS_INVALID_FD;
         Ns_DStringFree(&logPtr->buffer);
         Ns_Log(Notice,"nslog: closed '%s'", logPtr->file);
     }
@@ -788,16 +785,16 @@ LogFlush(Log *logPtr, Ns_DString *dsPtr)
     char *buf = dsPtr->string;
 
     if (len > 0) {
-        if (logPtr->fd >= 0 && write(logPtr->fd, buf, len) != len) {
-            Ns_Log(Error, "nslog: logging disabled: write() failed: '%s'",
+        if (logPtr->fd >= 0 && ns_write(logPtr->fd, buf, len) != len) {
+            Ns_Log(Error, "nslog: logging disabled: ns_write() failed: '%s'",
                    strerror(errno));
-            close(logPtr->fd);
-            logPtr->fd = -1;
+            ns_close(logPtr->fd);
+            logPtr->fd = NS_INVALID_FD;
         }
         Ns_DStringTrunc(dsPtr, 0);
     }
 
-    return (logPtr->fd == -1) ? NS_ERROR : NS_OK;
+    return (logPtr->fd == NS_INVALID_FD) ? NS_ERROR : NS_OK;
 }
 
 
@@ -847,9 +844,11 @@ LogRoll(Log *logPtr)
             char        timeBuf[512];
             Ns_DString  ds;
 	    Tcl_Obj    *newpath;
-            struct tm  *ptm = ns_localtime(&now);
+            struct tm  *ptm;
 
-            strftime(timeBuf, sizeof(timeBuf)-1, logPtr->rollfmt, ptm);
+            ptm = ns_localtime(&now);
+            (void) strftime(timeBuf, sizeof(timeBuf)-1, logPtr->rollfmt, ptm);
+
             Ns_DStringInit(&ds);
             Ns_DStringVarAppend(&ds, logPtr->file,".", timeBuf, NULL);
             newpath = Tcl_NewStringObj(ds.string, -1);
@@ -921,7 +920,7 @@ LogCallback(int(proc)(Log *), void *arg, char *desc)
 }
 
 static void
-LogCloseCallback(Ns_Time *toPtr, void *arg)
+LogCloseCallback(const Ns_Time *toPtr, void *arg)
 {
     if (toPtr == NULL) {
         LogCallback(LogClose, arg, "close");
@@ -952,9 +951,18 @@ LogRollCallback(void *arg)
  */
 
 static void
-LogArg(Tcl_DString *dsPtr, void *arg)
+LogArg(Tcl_DString *dsPtr, const void *arg)
 {
-    Log *logPtr = arg;
+    const Log *logPtr = arg;
 
     Tcl_DStringAppendElement(dsPtr, logPtr->file);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

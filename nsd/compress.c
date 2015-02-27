@@ -35,11 +35,11 @@
 
 #include "nsd.h"
 
-#define COMPRESS_SENT_HEADER 0x01
-#define COMPRESS_FLUSHED     0x02
-
-
 #ifdef HAVE_ZLIB_H
+
+# define COMPRESS_SENT_HEADER 0x01U
+# define COMPRESS_FLUSHED     0x02U
+
 
 /*
  * Static functions defined in this file.
@@ -67,12 +67,12 @@ static void ZFree(voidpf arg, voidpf address);
  */
 
 int
-Ns_CompressInit(Ns_CompressStream *stream)
+Ns_CompressInit(Ns_CompressStream *cStream)
 {
-    z_stream *z = &stream->z;
+    z_stream *z = &cStream->z;
     int       status;
 
-    stream->flags = 0;
+    cStream->flags = 0U;
     z->zalloc = ZAlloc;
     z->zfree = ZFree;
     z->opaque = Z_NULL;
@@ -98,11 +98,11 @@ Ns_CompressInit(Ns_CompressStream *stream)
        */
       if (status == Z_STREAM_ERROR) {
         Ns_Log(Notice, "Ns_CompressInit: zlib error: %d (%s): %s",
-                 status, zError(status), z->msg ? z->msg : "(none)");
+                 status, zError(status), (z->msg != NULL) ? z->msg : "(none)");
 	return NS_ERROR;
       } else {
         Ns_Fatal("Ns_CompressInit: zlib error: %d (%s): %s",
-                 status, zError(status), z->msg ? z->msg : "(none)");
+                 status, zError(status), (z->msg != NULL) ? z->msg : "(none)");
       }
     }
 
@@ -110,15 +110,15 @@ Ns_CompressInit(Ns_CompressStream *stream)
 }
 
 void
-Ns_CompressFree(Ns_CompressStream *stream)
+Ns_CompressFree(Ns_CompressStream *cStream)
 {
-    z_stream *z = &stream->z;
+    z_stream *z = &cStream->z;
 
-    if (z->zalloc) {
+    if (z->zalloc != NULL) {
 	int status = deflateEnd(z);
 	if (status != Z_OK && status != Z_DATA_ERROR) {
 	    Ns_Log(Bug, "Ns_CompressFree: deflateEnd: %d (%s): %s",
-		   status, zError(status), z->msg ? z->msg : "(unknown)");
+		   status, zError(status), (z->msg != NULL) ? z->msg : "(unknown)");
 	}
     }
 }
@@ -141,9 +141,9 @@ Ns_CompressFree(Ns_CompressStream *stream)
  */
 
 int
-Ns_InflateInit(Ns_CompressStream *stream)
+Ns_InflateInit(Ns_CompressStream *cStream)
 {
-    z_stream *zPtr = &stream->z;
+    z_stream *zPtr = &cStream->z;
     int       status, result = TCL_OK;
 
     zPtr->zalloc   = ZAlloc;
@@ -154,7 +154,7 @@ Ns_InflateInit(Ns_CompressStream *stream)
     status = inflateInit2(zPtr, 15 + 16); /* windowBits: 15 (max), +16 (Gzip header/footer). */
     if (status != Z_OK) {
 	Ns_Log(Bug, "Ns_Compress: inflateInit: %d (%s): %s",
-	       status, zError(status), zPtr->msg ? zPtr->msg : "(unknown)");
+	       status, zError(status), (zPtr->msg != NULL) ? zPtr->msg : "(unknown)");
 	result = NS_ERROR;
     }
     return result;
@@ -162,29 +162,29 @@ Ns_InflateInit(Ns_CompressStream *stream)
 
 
 int
-Ns_InflateBufferInit(Ns_CompressStream *stream, char *in, int inSize) 
+Ns_InflateBufferInit(Ns_CompressStream *cStream, const char *buffer, size_t inSize) 
 {
-    z_stream *zPtr = &stream->z;
+    z_stream *zPtr = &cStream->z;
 
     zPtr->avail_in = inSize;
-    zPtr->next_in  = (unsigned char *)in;
+    zPtr->next_in  = (unsigned char *)buffer;
 
     return TCL_OK;
 }
 
 int
-Ns_InflateBuffer(Ns_CompressStream *stream, char *out, int outSize, int *nrBytes) 
+Ns_InflateBuffer(Ns_CompressStream *cStream, const char *buffer, size_t outSize, size_t *nrBytes) 
 {
-    z_stream *zPtr = &stream->z;
+    z_stream *zPtr = &cStream->z;
     int       status, result = TCL_OK;
     
     zPtr->avail_out = outSize;
-    zPtr->next_out  = (unsigned char *)out;
+    zPtr->next_out  = (unsigned char *)buffer;
     status = inflate(zPtr, Z_NO_FLUSH);
 
     if (status != Z_OK && status != Z_PARTIAL_FLUSH) {
 	Ns_Log(Bug, "Ns_Compress: inflateBuffer: %d (%s); %s",
-	       status, zError(status), zPtr->msg ? zPtr->msg : "(unknown)");
+	       status, zError(status), (zPtr->msg != NULL) ? zPtr->msg : "(unknown)");
 	result = TCL_ERROR;
     } else if (zPtr->avail_out == 0) {
 	result = TCL_CONTINUE;
@@ -196,15 +196,15 @@ Ns_InflateBuffer(Ns_CompressStream *stream, char *out, int outSize, int *nrBytes
 }
 
 int
-Ns_InflateEnd(Ns_CompressStream *stream) 
+Ns_InflateEnd(Ns_CompressStream *cStream) 
 {
-    z_stream *zPtr = &stream->z;
+    z_stream *zPtr = &cStream->z;
     int       status, result = TCL_OK;
 
     status = inflateEnd(zPtr);
     if (status != Z_OK) {
 	Ns_Log(Bug, "Ns_Compress: inflateEnd: %d (%s); %s",
-	       status, zError(status), zPtr->msg ? zPtr->msg : "(unknown)");
+	       status, zError(status), (zPtr->msg != NULL) ? zPtr->msg : "(unknown)");
 	result = TCL_ERROR;
     }
     return result;
@@ -232,16 +232,21 @@ Ns_InflateEnd(Ns_CompressStream *stream)
  */
 
 int
-Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
+Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
                     Ns_DString *dsPtr, int level, int flush)
 {
-    z_stream   *z = &stream->z;
+    z_stream   *z = &cStream->z;
     size_t      toCompress, nCompressed, compressLen;
     ptrdiff_t   offset;
     int         flushFlags;
 
+    assert(cStream != NULL);
+    assert(bufs != NULL);
+    assert(dsPtr != NULL);
+    assert(nbufs > 0);
+
     if (z->zalloc == NULL) {
-	Ns_CompressInit(stream);
+	Ns_CompressInit(cStream);
     }
 
     offset = (ptrdiff_t) Ns_DStringLength(dsPtr);
@@ -249,14 +254,14 @@ Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
 
     compressLen = compressBound(toCompress) + 12;
 
-    if (!(stream->flags & COMPRESS_SENT_HEADER)) {
-        stream->flags |= COMPRESS_SENT_HEADER;
+    if (!(cStream->flags & COMPRESS_SENT_HEADER)) {
+        cStream->flags |= COMPRESS_SENT_HEADER;
         compressLen += 10; /* Gzip header length. */
         (void) deflateParams(z,
                              MIN(MAX(level, 1), 9),
                              Z_DEFAULT_STRATEGY);
     }
-    if (flush) {
+    if (flush != 0) {
         compressLen += 4; /* Gzip footer. */
     }
     Ns_DStringSetLength(dsPtr, compressLen);
@@ -271,7 +276,7 @@ Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
     nCompressed = 0;
 
     if (nbufs == 0) {
-	flushFlags = flush ? Z_FINISH : Z_SYNC_FLUSH;
+	flushFlags = (flush != 0) ? Z_FINISH : Z_SYNC_FLUSH;
         DeflateOrAbort(z, flushFlags);
     } else {
 	int i;
@@ -285,7 +290,7 @@ Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
 		continue;
 	    }
 	    if (nCompressed == toCompress) {
-		flushFlags = flush ? Z_FINISH : Z_SYNC_FLUSH;
+		flushFlags = (flush != 0) ? Z_FINISH : Z_SYNC_FLUSH;
 	    } else {
 		flushFlags = Z_NO_FLUSH;
 	    }
@@ -295,9 +300,9 @@ Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
     }
     Ns_DStringSetLength(dsPtr, dsPtr->length - z->avail_out);
 
-    if (flush) {
+    if (flush != 0) {
         (void) deflateReset(z);
-        stream->flags = 0;
+        cStream->flags = 0U;
     }
 
     return NS_OK;
@@ -323,15 +328,18 @@ Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
 int
 Ns_CompressGzip(const char *buf, int len, Ns_DString *dsPtr, int level)
 {
-    Ns_CompressStream  stream;
+    Ns_CompressStream  cStream;
     struct iovec       iov;
     int                status;
 
-    status = Ns_CompressInit(&stream);
+    assert(buf != NULL);
+    assert(dsPtr != NULL);
+    
+    status = Ns_CompressInit(&cStream);
     if (status == NS_OK) {
       Ns_SetVec(&iov, 0, buf, len);
-      status = Ns_CompressBufsGzip(&stream, &iov, 1, dsPtr, level, 1);
-      Ns_CompressFree(&stream);
+      status = Ns_CompressBufsGzip(&cStream, &iov, 1, dsPtr, level, 1);
+      Ns_CompressFree(&cStream);
     }
 
     return status;
@@ -368,7 +376,7 @@ DeflateOrAbort(z_stream *z, int flushFlags)
 
         Ns_Fatal("Ns_CompressBufsGzip: zlib error: %d (%s): %s:"
                  " avail_in: %d, avail_out: %d",
-                 status, zError(status), z->msg ? z->msg : "(unknown)",
+                 status, zError(status), (z->msg != NULL) ? z->msg : "(unknown)",
                  z->avail_in, z->avail_out);
     }
 }
@@ -405,49 +413,50 @@ ZFree(voidpf arg, voidpf address)
 #else /* ! HAVE_ZLIB_H */
 
 int
-Ns_CompressInit(Ns_CompressStream *stream)
+Ns_CompressInit(Ns_CompressStream *UNUSED(cStream))
 {
     return NS_ERROR;
 }
 
 void
-Ns_CompressFree(Ns_CompressStream *stream)
+Ns_CompressFree(Ns_CompressStream *UNUSED(cStream))
 {
     return;
 }
 
 int
-Ns_CompressBufsGzip(Ns_CompressStream *stream, struct iovec *bufs, int nbufs,
-                    Ns_DString *dsPtr, int level, int flush)
+Ns_CompressBufsGzip(Ns_CompressStream *UNUSED(cStream), struct iovec *UNUSED(bufs), int UNUSED(nbufs),
+                    Ns_DString *UNUSED(dsPtr), int UNUSED(level), int UNUSED(flush))
 {
     return NS_ERROR;
 }
 
 int
-Ns_CompressGzip(const char *buf, int len, Tcl_DString *outPtr, int level)
+Ns_CompressGzip(const char *UNUSED(buf), int UNUSED(len), Tcl_DString *UNUSED(outPtr), int UNUSED(level))
 {
     return NS_ERROR;
 }
 
 int 
-Ns_InflateInit(Ns_CompressStream *stream) 
+Ns_InflateInit(Ns_CompressStream *UNUSED(cStream)) 
 {
     return NS_ERROR;
 }
 
 int
-Ns_InflateBufferInit(Ns_CompressStream *stream, char *in, int inSize) 
+Ns_InflateBufferInit(Ns_CompressStream *UNUSED(cStream), const char *UNUSED(buffer), size_t UNUSED(inSize)) 
 {
     return NS_ERROR;
 }
 int
-Ns_InflateBuffer(Ns_CompressStream *stream, char *out, int outSize, int *nrBytes) 
+Ns_InflateBuffer(Ns_CompressStream *UNUSED(cStream), const char *UNUSED(buffer),
+		 size_t UNUSED(outSize), size_t *UNUSED(nrBytes)) 
 {
     return NS_ERROR;
 }
 
 int
-Ns_InflateEnd(Ns_CompressStream *stream) 
+Ns_InflateEnd(Ns_CompressStream *UNUSED(cStream)) 
 {
     return NS_ERROR;
 }

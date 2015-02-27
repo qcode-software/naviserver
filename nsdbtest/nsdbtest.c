@@ -31,7 +31,7 @@
 
 #include "../nsdb/nsdb.h"
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 
 /*
@@ -42,8 +42,8 @@ static char   *DbType(Ns_DbHandle *handle);
 static int     OpenDb(Ns_DbHandle *handle);
 static int     CloseDb(Ns_DbHandle *handle);
 static Ns_Set *BindRow(Ns_DbHandle *handle);
-static int     Exec(Ns_DbHandle *handle, char *sql);
-static int     GetRow(Ns_DbHandle *handle, Ns_Set *row);
+static int     Exec(const Ns_DbHandle *handle, char *sql);
+static int     GetRow(Ns_DbHandle *handle, const Ns_Set *row);
 static int     Flush(Ns_DbHandle *handle);
 static int     ResetHandle(Ns_DbHandle *handle);
 
@@ -51,7 +51,7 @@ static int     ResetHandle(Ns_DbHandle *handle);
  * Local variables defined in this file.
  */
 
-static Ns_DbProc procs[] = {
+static const Ns_DbProc procs[] = {
     {DbFn_DbType,       (Ns_Callback *)DbType},
     {DbFn_Name,         (Ns_Callback *)DbType},
     {DbFn_OpenDb,       (Ns_Callback *)OpenDb},
@@ -62,7 +62,7 @@ static Ns_DbProc procs[] = {
     {DbFn_Flush,        (Ns_Callback *)Flush},
     {DbFn_Cancel,       (Ns_Callback *)Flush},
     {DbFn_ResetHandle,  (Ns_Callback *)ResetHandle},
-    {0, NULL}
+    {(Ns_DbProcId)0, NULL}
 };
 
 static char *dbName = "nsdbtest";
@@ -85,7 +85,7 @@ static char *dbName = "nsdbtest";
  */
 
 NS_EXPORT int
-Ns_DbDriverInit(char *driver, char *configPath)
+Ns_DbDriverInit(const char *driver, const char *UNUSED(configPath))
 {
     return Ns_DbRegisterDriver(driver, &procs[0]);
 }
@@ -108,7 +108,7 @@ Ns_DbDriverInit(char *driver, char *configPath)
  */
 
 static char *
-DbType(Ns_DbHandle *handle)
+DbType(Ns_DbHandle *UNUSED(handle))
 {
     return dbName;
 }
@@ -131,7 +131,7 @@ DbType(Ns_DbHandle *handle)
  */
 
 static int
-OpenDb(Ns_DbHandle *handle)
+OpenDb(Ns_DbHandle *UNUSED(handle))
 {
     return NS_OK;
 }
@@ -154,7 +154,7 @@ OpenDb(Ns_DbHandle *handle)
  */
 
 static int
-CloseDb(Ns_DbHandle *handle)
+CloseDb(Ns_DbHandle *UNUSED(handle))
 {
     return NS_OK;
 }
@@ -203,9 +203,9 @@ BindRow(Ns_DbHandle *handle)
  */
 
 static int
-Exec(Ns_DbHandle *handle, char *sql)
+Exec(const Ns_DbHandle *handle, char *sql)
 {
-    if (handle->verbose) {
+    if (handle->verbose != 0) {
         Ns_Log(Notice, "nsdbtest(%s): Querying '%s'", handle->driver, sql);
     }
 
@@ -236,9 +236,9 @@ Exec(Ns_DbHandle *handle, char *sql)
  */
 
 static int
-GetRow(Ns_DbHandle *handle, Ns_Set *row)
+GetRow(Ns_DbHandle *UNUSED(handle), const Ns_Set *row)
 {
-    Ns_SetPutValue(row, 0, "ok");
+    Ns_SetPutValue(row, 0U, "ok");
 
     return NS_END_DATA;
 }
@@ -261,7 +261,7 @@ GetRow(Ns_DbHandle *handle, Ns_Set *row)
  */
 
 static int
-Flush(Ns_DbHandle *handle)
+Flush(Ns_DbHandle *UNUSED(handle))
 {
     return NS_OK;
 }
@@ -284,7 +284,7 @@ Flush(Ns_DbHandle *handle)
  */
 
 static int
-ResetHandle(Ns_DbHandle *handle)
+ResetHandle(Ns_DbHandle *UNUSED(handle))
 {
     return NS_OK;
 }

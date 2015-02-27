@@ -121,7 +121,7 @@ Nsthreads_LibInit(void)
 {
     static int once = 0;
 
-    if (!once) {
+    if (once == 0) {
         once = 1;
         tlskey = TlsAlloc();
         if (tlskey == 0xFFFFFFFF) {
@@ -161,7 +161,7 @@ DllMain(HANDLE hModule, DWORD why, LPVOID lpReserved)
         /* FALLTHROUGH */
 
     case DLL_THREAD_ATTACH:
-        wPtr = ns_calloc(1, sizeof(WinThread));
+        wPtr = ns_calloc(1U, sizeof(WinThread));
         wPtr->event = CreateEvent(NULL, TRUE, FALSE, NULL);
         if (wPtr->event == NULL) {
             NsThreadFatal("DllMain", "CreateEvent", GetLastError());
@@ -179,7 +179,7 @@ DllMain(HANDLE hModule, DWORD why, LPVOID lpReserved)
          */
 
         wPtr = TlsGetValue(tlskey);
-        if (wPtr) {
+        if (wPtr != NULL) {
             NsCleanupTls(wPtr->slots);
             if (!CloseHandle(wPtr->event)) {
                 NsThreadFatal("DllMain", "CloseHandle", GetLastError());
@@ -243,7 +243,7 @@ NsGetTls(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 NsThreadLibName(void)
 {
     return "win32";
@@ -271,7 +271,7 @@ NsLockAlloc(void)
 {
     CRITICAL_SECTION *csPtr;
 
-    csPtr = (CRITICAL_SECTION *)ns_calloc(1, sizeof(CRITICAL_SECTION));
+    csPtr = (CRITICAL_SECTION *)ns_calloc(1U, sizeof(CRITICAL_SECTION));
     InitializeCriticalSection(csPtr);
 
     return (void *)csPtr;
@@ -396,7 +396,7 @@ Ns_CondInit(Ns_Cond *cond)
 {
     Cond *condPtr;
 
-    condPtr = ns_calloc(1, sizeof(Cond));
+    condPtr = ns_calloc(1U, sizeof(Cond));
     InitializeCriticalSection(&condPtr->critsec);
     *cond = (Ns_Cond)condPtr;
 }
@@ -575,7 +575,7 @@ Ns_CondWait(Ns_Cond *cond, Ns_Mutex *mutex)
  */
 
 int
-Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, Ns_Time *timePtr)
+Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, const Ns_Time *timePtr)
 {
     int         status;
     Cond       *condPtr;
@@ -631,7 +631,7 @@ Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, Ns_Time *timePtr)
      */
 
     EnterCriticalSection(&condPtr->critsec);
-    if (!wPtr->condwait) {
+    if (wPtr->condwait == 0) {
         status = NS_OK;
     } else {
         WinThread  **waitPtrPtr;
@@ -694,12 +694,12 @@ NsCreateThread(void *arg, long stacksize, Ns_Thread *resultPtr)
     unsigned   tid, flags;
     uintptr_t  hdl;
 
-    flags = (resultPtr ? CREATE_SUSPENDED : 0);
+    flags = ((resultPtr != NULL) ? CREATE_SUSPENDED : 0U);
     argPtr = ns_malloc(sizeof(ThreadArg));
     argPtr->arg = arg;
     argPtr->self = NULL;
     hdl = _beginthreadex(NULL, stacksize, ThreadMain, argPtr, flags, &tid);
-    if (hdl == 0) {
+    if (hdl == 0U) {
         NsThreadFatal("NsCreateThread", "_beginthreadex", errno);
     }
     if (resultPtr == NULL) {
@@ -732,7 +732,8 @@ NsCreateThread(void *arg, long stacksize, Ns_Thread *resultPtr)
 void
 Ns_ThreadExit(void *arg)
 {
-    _endthreadex((unsigned) arg);
+    NsThreadShutdownStarted();
+    _endthreadex( PTR2UINT(arg) ); 
 }
 
 
@@ -768,7 +769,7 @@ Ns_ThreadJoin(Ns_Thread *thread, void **argPtr)
         NsThreadFatal("Ns_ThreadJoin", "CloseHandle", GetLastError());
     }
     if (argPtr != NULL) {
-        *argPtr = (void *) exitcode;
+        *argPtr = UINT2PTR(exitcode);
     }
 }
 
@@ -1085,7 +1086,7 @@ link(char *from, char *to)
 }
 
 int
-symlink(char *from, char *to)
+symlink(const char *from, const char *to)
 {
     errno = EINVAL;
     return -1;
@@ -1113,7 +1114,7 @@ symlink(char *from, char *to)
 #endif
 
 int
-kill(int pid, int sig)
+kill(pid_t pid, int sig)
 {
     HANDLE handle;
     BOOL rv;
@@ -1132,10 +1133,10 @@ kill(int pid, int sig)
     case SIGKILL:
         handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE,
                              FALSE, pid);
-        if (handle) {
+        if (handle != NULL) {
             rv = TerminateProcess(handle, 0);
             CloseHandle(handle);
-            if (rv) {
+            if (rv != 0) {
                 break;
             }
         }
@@ -1165,21 +1166,32 @@ kill(int pid, int sig)
  */
 
 int
-truncate(char *file, off_t size)
+truncate(const char *path, off_t length)
 {
     int fd;
 
-    fd = open(file, O_WRONLY|O_BINARY);
+    fd = _open(path, O_WRONLY|O_BINARY);
     if (fd < 0) {
         return -1;
     }
-    size = _chsize(fd, size);
-    close(fd);
-    if (size != 0) {
+    length = _chsize(fd, length);
+    _close(fd);
+    if (length != 0) {
         return -1;
     }
 
     return 0;
 }
-
+#else
+/* avoid empty translation unit */
+   typedef void empty; 
 #endif
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

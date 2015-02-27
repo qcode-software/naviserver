@@ -40,7 +40,7 @@
  * W2000 has no getaddrinfo, requires special headers for inline functions
  */
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #  include <Ws2tcpip.h>
 /*#  include <Wspiapi.h>*/
 #endif
@@ -60,7 +60,7 @@ extern int h_errno;
 #endif
 
 
-typedef int (GetProc)(Ns_DString *dsPtr, char *key);
+typedef int (GetProc)(Ns_DString *dsPtr, const char *key);
 
 
 /*
@@ -70,7 +70,9 @@ typedef int (GetProc)(Ns_DString *dsPtr, char *key);
 static GetProc GetAddr;
 static GetProc GetHost;
 static int DnsGet(GetProc *getProc, Ns_DString *dsPtr,
-                  Ns_Cache *cache, char *key, int all);
+                  Ns_Cache *cache, const char *key, int all)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
+
 
 #if !defined(HAVE_GETADDRINFO) && !defined(HAVE_GETNAMEINFO)
 static void LogError(char *func, int h_errnop);
@@ -107,21 +109,21 @@ static int       timeout;   /* Time in seconds to wait for concurrent update.  *
 void
 NsConfigDNS(void)
 {
-    int         max;
-    CONST char *path = NS_CONFIG_PARAMETERS;
+    const char *path = NS_CONFIG_PARAMETERS;
 
-    if (Ns_ConfigBool(path, "dnscache", NS_TRUE)
-        && (max = Ns_ConfigIntRange(path, "dnscachemaxsize",
-                                    1024*500, 0, INT_MAX)) > 0) {
+    if (Ns_ConfigBool(path, "dnscache", NS_TRUE) == NS_TRUE) {
+        int max = Ns_ConfigIntRange(path, "dnscachemaxsize", 1024*500, 0, INT_MAX);
+        
+        if (max > 0) {
+            timeout = Ns_ConfigIntRange(path, "dnswaittimeout",  5, 0, INT_MAX);
+            ttl = Ns_ConfigIntRange(path, "dnscachetimeout", 60, 0, INT_MAX);
+            ttl *= 60; /* NB: Config specifies minutes, seconds used internally. */
 
-        timeout = Ns_ConfigIntRange(path, "dnswaittimeout",  5, 0, INT_MAX);
-        ttl = Ns_ConfigIntRange(path, "dnscachetimeout", 60, 0, INT_MAX);
-        ttl *= 60; /* NB: Config specifies minutes, seconds used internally. */
-
-        hostCache = Ns_CacheCreateSz("ns:dnshost", TCL_STRING_KEYS,
-                                     (size_t) max, ns_free);
-        addrCache = Ns_CacheCreateSz("ns:dnsaddr", TCL_STRING_KEYS,
-                                     (size_t) max, ns_free);
+            hostCache = Ns_CacheCreateSz("ns:dnshost", TCL_STRING_KEYS,
+                                         (size_t) max, ns_free);
+            addrCache = Ns_CacheCreateSz("ns:dnsaddr", TCL_STRING_KEYS,
+                                         (size_t) max, ns_free);
+        }
     }
 }
 
@@ -144,30 +146,43 @@ NsConfigDNS(void)
  */
 
 int
-Ns_GetHostByAddr(Ns_DString *dsPtr, char *addr)
+Ns_GetHostByAddr(Ns_DString *dsPtr, const char *addr)
 {
+    assert(dsPtr != NULL);
+    assert(addr != NULL);
+    
     return DnsGet(GetHost, dsPtr, hostCache, addr, 0);
 }
 
 int
-Ns_GetAddrByHost(Ns_DString *dsPtr, char *host)
+Ns_GetAddrByHost(Ns_DString *dsPtr, const char *host)
 {
+    assert(dsPtr != NULL);
+    assert(host != NULL);
+
     return DnsGet(GetAddr, dsPtr, addrCache, host, 0);
 }
 
 int
-Ns_GetAllAddrByHost(Ns_DString *dsPtr, char *host)
+Ns_GetAllAddrByHost(Ns_DString *dsPtr, const char *host)
 {
+    assert(dsPtr != NULL);
+    assert(host != NULL);
+    
     return DnsGet(GetAddr, dsPtr, addrCache, host, 1);
 }
 
 static int
-DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, char *key, int all)
+DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, int all)
 {
     Ns_DString  ds;
-    Ns_Time     time;
+    Ns_Time     t;
     int         isNew, status;
 
+    assert(getProc != NULL);
+    assert(dsPtr != NULL);
+    assert(key != NULL);
+        
     /*
      * Call getProc directly or through cache.
      */
@@ -178,17 +193,17 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, char *key, int all)
     } else {
         Ns_Entry   *entry;
 
-        Ns_GetTime(&time);
-        Ns_IncrTime(&time, timeout, 0);
+        Ns_GetTime(&t);
+        Ns_IncrTime(&t, timeout, 0);
 
         Ns_CacheLock(cache);
-        entry = Ns_CacheWaitCreateEntry(cache, key, &isNew, &time);
+        entry = Ns_CacheWaitCreateEntry(cache, key, &isNew, &t);
         if (entry == NULL) {
             Ns_CacheUnlock(cache);
             Ns_Log(Notice, "dns: timeout waiting for concurrent update");
             return NS_FALSE;
         }
-        if (isNew) {
+        if (isNew != 0) {
             Ns_CacheUnlock(cache);
             status = (*getProc)(&ds, key);
             Ns_CacheLock(cache);
@@ -198,10 +213,10 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, char *key, int all)
 	        Ns_Time endTime, diffTime;
 
                 Ns_GetTime(&endTime);
-		Ns_DiffTime(&endTime, &time, &diffTime);
+		Ns_DiffTime(&endTime, &t, &diffTime);
                 Ns_IncrTime(&endTime, ttl, 0);
-                Ns_CacheSetValueExpires(entry, ns_strdup(ds.string), ds.length,
-                                        &endTime, 
+                Ns_CacheSetValueExpires(entry, ns_strdup(ds.string), 
+					(size_t)ds.length, &endTime, 
 					(int)(diffTime.sec * 1000000 + diffTime.usec));
             }
             Ns_CacheBroadcast(cache);
@@ -214,9 +229,9 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, char *key, int all)
     }
 
     if (status == NS_TRUE) {
-        if (getProc == GetAddr && !all) {
-            char *p = ds.string;
-            while (*p && !isspace(UCHAR(*p))) {
+        if (getProc == GetAddr && all == 0) {
+            const char *p = ds.string;
+            while (*p != '\0' && CHARTYPE(space, *p) == 0) {
                 ++p;
             }
             Ns_DStringSetLength(&ds, (int)(p - ds.string));
@@ -251,7 +266,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, char *key, int all)
 #if defined(HAVE_GETNAMEINFO)
 
 static int
-GetHost(Ns_DString *dsPtr, char *addr)
+GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct sockaddr_in sa;
     char buf[NI_MAXHOST];
@@ -261,8 +276,6 @@ GetHost(Ns_DString *dsPtr, char *addr)
     static Ns_Cs cs;
     Ns_CsEnter(&cs);
 #endif
-
-    Ns_Log(Notice, "======== GetHost %s", addr);
 
     memset(&sa, 0, sizeof(struct sockaddr_in));
 
@@ -274,7 +287,7 @@ GetHost(Ns_DString *dsPtr, char *addr)
 
     result = getnameinfo((const struct sockaddr *) &sa,
                          sizeof(struct sockaddr_in), buf, sizeof(buf),
-                         NULL, 0, NI_NAMEREQD);
+                         NULL, 0u, NI_NAMEREQD);
     if (result == 0) {
         Ns_DStringAppend(dsPtr, buf);
         status = NS_TRUE;
@@ -291,7 +304,7 @@ GetHost(Ns_DString *dsPtr, char *addr)
 #elif defined(HAVE_GETHOSTBYADDR_R)
 
 static int
-GetHost(Ns_DString *dsPtr, char *addr)
+GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct hostent he, *hePtr;
     struct sockaddr_in sa;
@@ -322,7 +335,7 @@ GetHost(Ns_DString *dsPtr, char *addr)
  */
 
 static int
-GetHost(Ns_DString *dsPtr, char *addr)
+GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct sockaddr_in sa;
     static Ns_Cs cs;
@@ -351,12 +364,11 @@ GetHost(Ns_DString *dsPtr, char *addr)
 #if defined(HAVE_GETADDRINFO)
 
 static int
-GetAddr(Ns_DString *dsPtr, char *host)
+GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct addrinfo hints;
     struct addrinfo *res, *ptr;
-    int result;
-    int status = NS_FALSE;
+    int result, status = NS_FALSE;
 #ifndef HAVE_MTSAFE_DNS
     static Ns_Cs cs;
     Ns_CsEnter(&cs);
@@ -366,7 +378,8 @@ GetAddr(Ns_DString *dsPtr, char *host)
     hints.ai_family = PF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((result = getaddrinfo(host, NULL, &hints, &res)) == 0) {
+    result = getaddrinfo(host, NULL, &hints, &res);
+    if (result == 0) {
         ptr = res;
         while (ptr != NULL) {
             Tcl_DStringAppendElement(dsPtr,
@@ -388,17 +401,20 @@ GetAddr(Ns_DString *dsPtr, char *host)
 #elif defined(HAVE_GETHOSTBYNAME_R)
 
 static int
-GetAddr(Ns_DString *dsPtr, char *host)
+GetAddr(Ns_DString *dsPtr, const char *host)
 {
-    struct hostent he;
     struct in_addr ia, *ptr;
-#ifdef HAVE_GETHOSTBYNAME_R_3
-    struct hostent_data data;
-#endif
     char buf[2048];
     int result = 0;
     int h_errnop = 0;
     int status = NS_FALSE;
+#if defined(HAVE_GETHOSTBYNAME_R_6) || defined(HAVE_GETHOSTBYNAME_R_5)
+    struct hostent he;
+#endif
+#ifdef HAVE_GETHOSTBYNAME_R_3
+    struct hostent_data data;
+#endif
+
 
     memset(buf, 0, sizeof(buf));
 
@@ -442,7 +458,7 @@ GetAddr(Ns_DString *dsPtr, char *host)
  */
 
 static int
-GetAddr(Ns_DString *dsPtr, char *host)
+GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct hostent *he;
     struct in_addr ia, *ptr;
@@ -490,7 +506,8 @@ GetAddr(Ns_DString *dsPtr, char *host)
 static void
 LogError(char *func, int h_errnop)
 {
-    char *h, *e, buf[100];
+    char        buf[100];
+    const char *h, *e;
 
     e = NULL;
     switch (h_errnop) {
@@ -523,7 +540,16 @@ LogError(char *func, int h_errnop)
         h = buf;
     }
 
-    Ns_Log(Error, "dns: %s failed: %s%s", func, h, e ? e : "");
+    Ns_Log(Error, "dns: %s failed: %s%s", func, h, (e != 0) ? e : "");
 }
 
 #endif
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

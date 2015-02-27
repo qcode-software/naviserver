@@ -42,33 +42,42 @@
  */
 
 typedef struct TclThreadArg {
-    char *server;
-    int   detached;
-    char  script[1];
+    const char *server;
+    const char *threadName;
+    bool        detached;
+    char        script[1];
 } TclThreadArg;
+
+static Ns_Tls argtls = NULL;
 
 /*
  * Local functions defined in this file
  */
 
-static void CreateTclThread(NsInterp *itPtr, char *script, int detached,
-                            Ns_Thread *thrPtr);
-static void *CreateSynchObject(NsInterp *,
-                               Tcl_HashTable *, unsigned int *idPtr,
-                               Ns_Callback *initProc, CONST char *type,
-                               Tcl_Obj *objPtr, int cnt);
+static void CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
+                            const char *threadName, Ns_Thread *thrPtr)
+     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void *CreateSynchObject(const NsInterp *itPtr,
+                               Tcl_HashTable *typeTable, unsigned int *idPtr,
+                               Ns_Callback *initProc, const char *type,
+                               Tcl_Obj *objPtr, int cnt)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(5);
+
+static void ThreadArgFree(void *arg)
+    NS_GNUC_NONNULL(1);
+
 
 /*
  * Local variables defined in this file.
  */
 
-static CONST char *mutexType  = "ns:mutex";
-static CONST char *csType     = "ns:critsec";
-static CONST char *semaType   = "ns:semaphore";
-static CONST char *condType   = "ns:condition";
-static CONST char *rwType     = "ns:rwlock";
-
-static CONST char *threadType = "ns:thread";
+static const char *mutexType  = "ns:mutex";
+static const char *csType     = "ns:critsec";
+static const char *semaType   = "ns:semaphore";
+static const char *condType   = "ns:condition";
+static const char *rwType     = "ns:rwlock";
+static const char *threadType = "ns:thread";
 
 
 /*
@@ -88,11 +97,13 @@ static CONST char *threadType = "ns:thread";
  */
 
 int
-Ns_TclThread(Tcl_Interp *interp, char *script, Ns_Thread *thrPtr)
+Ns_TclThread(Tcl_Interp *interp, const char *script, Ns_Thread *thrPtr)
 {
-    NsInterp *itPtr = NsGetInterpData(interp);
+    assert(interp != NULL);
+    assert(script != NULL);
 
-    CreateTclThread(itPtr, script, (thrPtr == NULL), thrPtr);
+    CreateTclThread(NsGetInterpData(interp), script, (thrPtr == NULL ? NS_TRUE : NS_FALSE),
+                    NULL, thrPtr);
     return NS_OK;
 }
 
@@ -114,8 +125,11 @@ Ns_TclThread(Tcl_Interp *interp, char *script, Ns_Thread *thrPtr)
  */
 
 int
-Ns_TclDetachedThread(Tcl_Interp *interp, char *script)
+Ns_TclDetachedThread(Tcl_Interp *interp, const char *script)
 {
+    assert(interp != NULL);
+    assert(script != NULL);
+
     return Ns_TclThread(interp, script, NULL);
 }
 
@@ -140,72 +154,92 @@ Ns_TclDetachedThread(Tcl_Interp *interp, char *script)
  */
 
 int
-NsTclThreadObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclThreadObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp  *itPtr = arg;
     void      *tidArg;
     Ns_Thread  tid;
     void      *result;
-    char      *script;
     int        opt;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "begin", "begindetached", "create", "wait", "join",
-        "name", "get", "getid", "id", "yield", "stackinfo", NULL
+        "name", "get", "getid", "handle", "id", "yield", "stackinfo", NULL
     };
     enum {
         TBeginIdx, TBeginDetachedIdx, TCreateIdx, TWaitIdx, TJoinIdx,
-        TNameIdx, TGetIdx, TGetIdIdx, TIdIdx, TYieldIdx, TStackinfoIdx
+        TNameIdx, TGetIdx, TGetIdIdx, THandleIdx, TIdIdx, TYieldIdx, TStackinfoIdx
     };
 
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "cmd ?arg ...?");
         return TCL_ERROR;
     }
-    if (Tcl_GetIndexFromObj(interp, objv[1], opts, "cmd", 0, &opt)
-        != TCL_OK) {
+    if (Tcl_GetIndexFromObj(interp, objv[1], opts, "cmd", 0, &opt) != TCL_OK) {
         return TCL_ERROR;
     }
 
     switch (opt) {
+    case TCreateIdx:
+        Ns_LogDeprecated(objv, 2, "ns_thread begin ...", NULL);
+        /* lint -fallthrough */
     case TBeginIdx:
     case TBeginDetachedIdx:
-    case TCreateIdx:
-        if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "script");
-            return TCL_ERROR;
-        }
-        script = Tcl_GetString(objv[2]);
-        if (opt == TBeginDetachedIdx) {
-            CreateTclThread(itPtr, script, 1, NULL);
-        } else {
-            CreateTclThread(itPtr, script, 0, &tid);
-            Ns_TclSetAddrObj(Tcl_GetObjResult(interp), threadType, tid);
-        }
-        break;
+        {
+            const char *threadName = NULL, *script;
+            Ns_ObjvSpec lopts[] = {
+                {"-name", Ns_ObjvString, &threadName, NULL},
+                {"--",    Ns_ObjvBreak,  NULL,    NULL},
+                {NULL, NULL, NULL, NULL}
+            };
+            Ns_ObjvSpec args[] = {
+                {"script", Ns_ObjvString, &script, NULL},
+                {NULL, NULL, NULL, NULL}
+            };
 
-    case TWaitIdx:
+            if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
+                return TCL_ERROR;
+            }
+
+            if (opt == TBeginDetachedIdx) {
+                CreateTclThread(itPtr, script, NS_TRUE, threadName, NULL);
+            } else {
+                CreateTclThread(itPtr, script, NS_FALSE, threadName, &tid);
+                Ns_TclSetAddrObj(Tcl_GetObjResult(interp), threadType, tid);
+            }
+            break;
+        }
+
     case TJoinIdx:
+        Ns_LogDeprecated(objv, 2, "ns_thread wait ...", NULL);
+        /* lint -fallthrough */
+    case TWaitIdx:
         if (objc != 3) {
             Tcl_WrongNumArgs(interp, 2, objv, "tid");
             return TCL_ERROR;
         }
-        if (Ns_TclGetAddrFromObj(interp, objv[2], threadType, &tidArg)
-            != TCL_OK) {
+        if (Ns_TclGetAddrFromObj(interp, objv[2], threadType, &tidArg) != TCL_OK) {
             return TCL_ERROR;
         }
         tid = tidArg;
         Ns_ThreadJoin(&tid, &result);
-        Tcl_SetResult(interp, (char *) result, (Tcl_FreeProc *) ns_free);
+        Tcl_SetResult(interp, result, (Tcl_FreeProc *) ns_free);
         break;
 
+
     case TGetIdx:
+        Ns_LogDeprecated(objv, 2, "ns_thread handle ...", NULL);
+        /* lint -fallthrough */
+    case THandleIdx:
         Ns_ThreadSelf(&tid);
         Ns_TclSetAddrObj(Tcl_GetObjResult(interp), threadType, tid);
         break;
 
-    case TIdIdx:
+
     case TGetIdIdx:
+        Ns_LogDeprecated(objv, 2, "ns_thread id ...", NULL);
+        /* lint -fallthrough */
+    case TIdIdx:
         Ns_TclPrintfResult(interp, "%" PRIxPTR, Ns_ThreadId());
         break;
 
@@ -213,7 +247,7 @@ NsTclThreadObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
         if (objc > 2) {
             Ns_ThreadSetName(Tcl_GetString(objv[2]));
         }
-        Tcl_SetResult(interp, Ns_ThreadGetName(), TCL_VOLATILE);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ThreadGetName(), -1));
         break;
 
     case TStackinfoIdx: {
@@ -226,6 +260,11 @@ NsTclThreadObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
 
     case TYieldIdx:
         Ns_ThreadYield();
+        break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
         break;
     }
 
@@ -250,14 +289,14 @@ NsTclThreadObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
  */
 
 int
-NsTclMutexObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclMutexObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp *itPtr   = arg;
     NsServer *servPtr = itPtr->servPtr;
     Ns_Mutex *lockPtr;
     int       opt, status = TCL_OK;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "create", "destroy", "eval", "lock", "trylock", "unlock", NULL
     };
     enum {
@@ -309,6 +348,11 @@ NsTclMutexObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST ob
     case MDestroyIdx:
         /* No-op. */
         break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
+        break;
     }
 
     return status;
@@ -332,14 +376,14 @@ NsTclMutexObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST ob
  */
 
 int
-NsTclCritSecObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclCritSecObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp *itPtr   = arg;
     NsServer *servPtr = itPtr->servPtr;
     Ns_Cs    *csPtr;
     int       opt, status = TCL_OK;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "create", "destroy", "enter", "eval", "leave", NULL
     };
     enum {
@@ -385,6 +429,11 @@ NsTclCritSecObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST 
     case CDestroyIdx:
         /* No-op. */
         break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
+        break;
     }
 
     return status;
@@ -408,14 +457,14 @@ NsTclCritSecObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST 
  */
 
 int
-NsTclSemaObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclSemaObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp *itPtr   = arg;
     NsServer *servPtr = itPtr->servPtr;
     Ns_Sema  *semaPtr;
     int       opt, cnt;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "create", "destroy", "release", "wait", NULL
     };
     enum {
@@ -440,7 +489,7 @@ NsTclSemaObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
     semaPtr = CreateSynchObject(itPtr,
                                 &servPtr->tcl.synch.semaTable,
                                 &servPtr->tcl.synch.semaId,
-                                (Ns_Callback *) -1,
+                                NULL,
                                 semaType,
                                 objc == 3 ? objv[2] : NULL, cnt);
     switch (opt) {
@@ -463,6 +512,11 @@ NsTclSemaObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
 
     case SDestroyIdx:
         /* No-op. */
+        break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
         break;
     }
 
@@ -488,7 +542,7 @@ NsTclSemaObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
  */
 
 int
-NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp *itPtr   = arg;
     NsServer *servPtr = itPtr->servPtr;
@@ -497,7 +551,7 @@ NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
     Ns_Time   timeout, abstime;
     int       opt, result;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "abswait", "broadcast", "create", "destroy", "set",
         "signal", "wait", NULL
     };
@@ -518,7 +572,7 @@ NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
                                 &servPtr->tcl.synch.condId,
                                 (Ns_Callback *) Ns_CondInit,
                                 condType,
-                                objc == 3 ? objv[2] : NULL, -1);
+                                objc > 2 ? objv[2] : NULL, -1);
     switch (opt) {
     case ECreateIdx:
         /* Handled above. */
@@ -576,6 +630,11 @@ NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
     case EDestroyIdx:
         /* No-op. */
         break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
+        break;
     }
 
     return TCL_OK;
@@ -599,14 +658,14 @@ NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
  */
 
 int
-NsTclRWLockObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclRWLockObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp  *itPtr   = arg;
     NsServer  *servPtr = itPtr->servPtr;
     Ns_RWLock *rwlockPtr;
     int        opt, status = TCL_OK;
 
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "create", "destroy", "readlock", "readunlock", "readeval",
         "writelock", "writeunlock", "writeeval", "unlock", NULL
     };
@@ -670,9 +729,42 @@ NsTclRWLockObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
     case RDestroyIdx:
         /* No-op. */
         break;
+
+    default:
+        /* unexpected value */
+        assert(opt && 0);
+        break;
     }
 
     return status;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ThreadArgFree --
+ *
+ *      Free the argument structure of a NsTclThread.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Free memory.
+ *
+ *----------------------------------------------------------------------
+ */
+static void ThreadArgFree(void *arg)
+{
+    TclThreadArg *argPtr = (TclThreadArg *)arg;
+    
+    assert(arg != NULL);
+    
+    if (argPtr->threadName != NULL) {
+        ns_free((char *)argPtr->threadName);
+    }
+    ns_free(argPtr);
 }
 
 
@@ -692,32 +784,65 @@ NsTclRWLockObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST o
  *
  *----------------------------------------------------------------------
  */
-
 void
 NsTclThread(void *arg)
 {
-    TclThreadArg *argPtr = arg;
-    Ns_DString    ds, *dsPtr;
-    int           detached = argPtr->detached;
+    TclThreadArg    *argPtr = arg;
+    Ns_DString       ds, *dsPtr;
+    bool             detached;
+    static bool      initialized = NS_FALSE;
 
-    if (detached) {
+    assert(arg != NULL);
+
+    /*
+     * The argument structure is a TclThreadArg, which has to be freed when
+     * the thread shuts down.  The argument is used e.g. by the arg proc in
+     * Ns_ThreadList(), which might be called during thread shutdown. To
+     * ensure consistent cleanup in all success and error cases, we use a
+     * thread local variable with ThreadArgFree() as cleanup proc.
+     *
+     * On the first call, allocate the thread local storage slot. This
+     * initialization might be moved into some tclThreadInit() code, which
+     * does not exist.
+     */
+    if (initialized == NS_FALSE) {
+        Ns_TlsAlloc(&argtls, ThreadArgFree);
+        initialized = NS_TRUE;
+    }
+
+    Ns_TlsSet(&argtls, argPtr);
+    
+    if (argPtr->threadName != NULL) {
+        static uintptr_t id = 0u;
+        Ns_ThreadSetName("-tcl-%s:%" PRIuPTR "-", argPtr->threadName, id++);
+    }
+
+    detached = argPtr->detached;
+    if (detached == NS_TRUE) {
         dsPtr = NULL;
     } else {
         Ns_DStringInit(&ds);
         dsPtr = &ds;
     }
-
+    
     /*
-     * Need to ensure that the server has completed it's initializtion
+     * Need to ensure that the server has completed it's initialization
      * prior to initiating TclEval.
      */
-
-    Ns_WaitForStartup();
+    (void) Ns_WaitForStartup();
 
     (void) Ns_TclEval(dsPtr, argPtr->server, argPtr->script);
-    ns_free(argPtr);
-    if (!detached) {
+    
+    /*
+     * No matter if the Tcl eval was successul or not, return in the
+     * non-detached case the dstring result, since some other thread might be
+     * waiting for a result. In the detached case, there is no dstring
+     * content.
+     */
+    if (detached == NS_FALSE) {
         Ns_ThreadExit(Ns_DStringExport(&ds));
+    } else {
+        Ns_ThreadExit(NULL);
     }
 }
 
@@ -739,12 +864,12 @@ NsTclThread(void *arg)
  */
 
 void
-NsTclThreadArgProc(Tcl_DString *dsPtr, void *arg)
+NsTclThreadArgProc(Tcl_DString *dsPtr, const void *arg)
 {
-    TclThreadArg *argPtr = arg;
+    const TclThreadArg *argPtr = arg;
 
     Tcl_DStringAppendElement(dsPtr, argPtr->server);
-    if (argPtr->detached) {
+    if (argPtr->detached == NS_TRUE) {
         Tcl_DStringAppendElement(dsPtr, "detached");
     }
     Tcl_DStringAppendElement(dsPtr, argPtr->script);
@@ -768,14 +893,22 @@ NsTclThreadArgProc(Tcl_DString *dsPtr, void *arg)
  */
 
 static void
-CreateTclThread(NsInterp *itPtr, char *script, int detached, Ns_Thread *thrPtr)
+CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
+                const char *threadName, Ns_Thread *thrPtr)
 {
     TclThreadArg *argPtr;
+    size_t scriptLength;
 
-    argPtr = ns_malloc(sizeof(TclThreadArg) + strlen(script));
+    assert(itPtr != NULL);
+    assert(script != NULL);
+
+    scriptLength = strlen(script);
+    argPtr = ns_malloc(sizeof(TclThreadArg) + scriptLength);
     argPtr->detached = detached;
-    strcpy(argPtr->script, script);
-    if (itPtr != NULL && itPtr->servPtr != NULL) {
+    argPtr->threadName = threadName;
+    memcpy(argPtr->script, script, scriptLength + 1u);
+    
+    if (itPtr->servPtr != NULL) {
         argPtr->server = itPtr->servPtr->server;
     } else {
         argPtr->server = NULL;
@@ -803,24 +936,32 @@ CreateTclThread(NsInterp *itPtr, char *script, int detached, Ns_Thread *thrPtr)
  */
 
 static void *
-CreateSynchObject(NsInterp *itPtr,
+CreateSynchObject(const NsInterp *itPtr,
                   Tcl_HashTable *typeTable, unsigned int *idPtr,
-                  Ns_Callback *initProc, CONST char *type,
+                  Ns_Callback *initProc, const char *type,
                   Tcl_Obj *objPtr, int cnt)
 {
-    NsServer      *servPtr = itPtr->servPtr;
-    Tcl_Interp    *interp  = itPtr->interp;
+    NsServer      *servPtr;
+    Tcl_Interp    *interp;
     Tcl_HashEntry *hPtr;
     Ns_DString     ds;
     void          *addr;
     int            isNew;
 
+    assert(itPtr != NULL);
+    assert(typeTable != NULL);
+    assert(idPtr != NULL);
+    assert(type != NULL);
+
+    interp  = itPtr->interp;
+
     if (objPtr != NULL
-            && Ns_TclGetOpaqueFromObj(objPtr, type, &addr) == TCL_OK) {
+	&& Ns_TclGetOpaqueFromObj(objPtr, type, &addr) == TCL_OK) {
         Tcl_SetObjResult(interp, objPtr);
         return addr;
     }
 
+    servPtr = itPtr->servPtr;
     Ns_MutexLock(&servPtr->tcl.synch.lock);
 
     if (objPtr == NULL) {
@@ -829,7 +970,7 @@ CreateSynchObject(NsInterp *itPtr,
             Ns_DStringTrunc(&ds, 0);
             Ns_DStringPrintf(&ds, "%s:tcl:%u", type, (*idPtr)++);
             hPtr = Tcl_CreateHashEntry(typeTable, ds.string, &isNew);
-        } while (!isNew);
+        } while (isNew == 0);
 
         objPtr = Tcl_NewStringObj(ds.string, ds.length);
         Tcl_SetObjResult(interp, objPtr);
@@ -840,12 +981,12 @@ CreateSynchObject(NsInterp *itPtr,
         Tcl_SetObjResult(interp, objPtr);
     }
 
-    if (isNew) {
-        addr = ns_calloc(1, sizeof(void *));
+    if (isNew != 0) {
+        addr = ns_calloc(1U, sizeof(void *));
         if (cnt > -1) {
             Ns_SemaInit((Ns_Sema *) addr, cnt);
-        } else {
-            initProc(addr);
+        } else if (initProc != NULL) {
+	  (*initProc)(addr);
         }
         Tcl_SetHashValue(hPtr, addr);
         Ns_TclSetOpaqueObj(objPtr, type, addr);
@@ -856,3 +997,12 @@ CreateSynchObject(NsInterp *itPtr,
 
     return addr;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

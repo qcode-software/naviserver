@@ -36,7 +36,7 @@
 
 #include "nsproxy.h"
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 typedef struct {
     char *server;
@@ -96,29 +96,32 @@ Ns_ModuleInit(CONST char *server, CONST char *module)
 {
     SrvMod *smPtr;
     static  int once = 0;
+    int     result;
 
-    if (!once) {
+    if (once == 0) {
         once = 1;
         Nsproxy_LibInit();
-        Ns_RegisterProcInfo((void *)InitInterp, "nsproxy:initinterp", NULL);
-        Ns_RegisterProcInfo((void *)Ns_ProxyCleanup, "nsproxy:cleanup", NULL);
+        Ns_RegisterProcInfo((Ns_Callback *)InitInterp, "nsproxy:initinterp", NULL);
+        Ns_RegisterProcInfo((Ns_Callback *)Ns_ProxyCleanup, "nsproxy:cleanup", NULL);
     }
 
     smPtr = ns_malloc(sizeof(SrvMod));
     smPtr->server = ns_strdup(server);
     smPtr->module = ns_strdup(module);
 
-    Ns_TclRegisterTrace(server, InitInterp, smPtr, NS_TCL_TRACE_CREATE);
-    Ns_TclRegisterTrace(server, Ns_ProxyCleanup, NULL, NS_TCL_TRACE_DEALLOCATE);
+    result = Ns_TclRegisterTrace(server, InitInterp, smPtr, NS_TCL_TRACE_CREATE);
+    if (result == NS_OK) {
+      result = Ns_TclRegisterTrace(server, Ns_ProxyCleanup, NULL, NS_TCL_TRACE_DEALLOCATE);
+    }
 
-    return NS_OK;
+    return result;
 }
 
 static int
-InitInterp(Tcl_Interp *interp, void *arg)
+InitInterp(Tcl_Interp *interp, const void *arg)
 {
-    SrvMod *smPtr = arg;
-    int     status;
+    const SrvMod *smPtr = arg;
+    int           status;
 
     status = Ns_ProxyTclInit(interp);
 

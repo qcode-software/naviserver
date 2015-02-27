@@ -40,7 +40,14 @@
  * Local functions defined in this file.
  */
 
-static Ns_Conn *GetConn(Tcl_Interp *interp);
+static Ns_Conn *GetConn(Tcl_Interp *interp)
+    NS_GNUC_NONNULL(1);
+
+static int SearchFirstCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName, const char *name) 
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+
+static int DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 
 /*
@@ -62,36 +69,42 @@ static Ns_Conn *GetConn(Tcl_Interp *interp);
  */
 
 static int 
-SearchFirstCookie(Ns_DString *dest, Ns_Set *hdrs,  char *setName, char *name) 
+SearchFirstCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName, const char *name) 
 {
-    char    *p, *q;
-    char     save;
-    int      i, index = -1;
-    size_t   nameLen;
+    int      index = -1;
+    size_t   nameLen, i;
+
+    assert(hdrs != NULL);
+    assert(setName != NULL);
+    assert(name != NULL);
 
     nameLen = strlen(name);
 
-    for (i = 0; i < hdrs->size; ++i) {
-        if (strcasecmp(hdrs->fields[i].name, setName) == 0
-            && (p = strstr(hdrs->fields[i].value, name)) != NULL) {
-
-            if (*(p += nameLen) == '=') {
-		if (dest) {
-		    ++p; /* advance past equals sign */
-		    if (*p == '"') {
-			++p; /* advance past optional quote mark */
-		    }
-		    q = p;
-		    while (*q != '"' && *q != ';' && *q != '\0') {
-			++q;
-		    }
-		    save = *q;
-		    *q = '\0';
-		    Ns_UrlQueryDecode(dest, p, NULL);
-		    *q = save;
-		}
-		index = i;
-                break;
+    for (i = 0u; i < hdrs->size; ++i) {
+        if (strcasecmp(hdrs->fields[i].name, setName) == 0) {
+            char *p = strstr(hdrs->fields[i].value, name);
+            
+            if (p != NULL) {
+                if (*(p += nameLen) == '=') {
+                    if (dest != 0) {
+                        char *q, save;
+                                        
+                        ++p; /* advance past equals sign */
+                        if (*p == '"') {
+                            ++p; /* advance past optional quote mark */
+                        }
+                        q = p;
+                        while (*q != '"' && *q != ';' && *q != '\0') {
+                            ++q;
+                        }
+                        save = *q;
+                        *q = '\0';
+                        Ns_UrlQueryDecode(dest, p, NULL);
+                        *q = save;
+                    }
+                    index = (int) i;
+                    break;
+                }
             }
         }
     }
@@ -116,9 +129,13 @@ SearchFirstCookie(Ns_DString *dest, Ns_Set *hdrs,  char *setName, char *name)
  */
 
 static int
-DeleteNamedCookies(Ns_Set *hdrs, char *setName, char *name)
+DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
 {
     int success = 0;
+
+    assert(hdrs != NULL);
+    assert(setName != NULL);
+    assert(name != NULL);
 
     while (1) {
 	int idx = SearchFirstCookie(NULL, hdrs, setName, name);
@@ -151,13 +168,16 @@ DeleteNamedCookies(Ns_Set *hdrs, char *setName, char *name)
  */
 
 void
-Ns_ConnSetCookieEx(Ns_Conn *conn,  char *name, char *value, time_t maxage,
-                   char *domain, char *path, int flags)
+Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value, time_t maxage,
+                   const char *domain, const char *path, unsigned int flags)
 {
     Ns_DString  cookie;
 
-    if (flags & NS_COOKIE_REPLACE) {
-	DeleteNamedCookies(Ns_ConnOutputHeaders(conn), "set-cookie", name);
+    assert(conn != NULL);
+    assert(name != NULL);
+    
+    if ((flags & NS_COOKIE_REPLACE) != 0U) {
+	(void)DeleteNamedCookies(Ns_ConnOutputHeaders(conn), "set-cookie", name);
     }
 
     Ns_DStringInit(&cookie);
@@ -166,12 +186,16 @@ Ns_ConnSetCookieEx(Ns_Conn *conn,  char *name, char *value, time_t maxage,
         Ns_UrlQueryEncode(&cookie, value, NULL);
     }
     Ns_DStringAppend(&cookie, "\"");
-    if (maxage == TIME_T_MAX) {
+    if ((flags & NS_COOKIE_EXPIRENOW) != 0U) {
+        Ns_DStringAppend(&cookie, "; Expires=Fri, 01-Jan-1980 01:00:00 GMT");
+    } else if (maxage == TIME_T_MAX) {
         Ns_DStringAppend(&cookie, "; Expires=Fri, 01-Jan-2035 01:00:00 GMT");
     } else if (maxage > 0) {
         Ns_DStringPrintf(&cookie, "; Max-Age=%ld", maxage);
-    } else if (maxage < 0) {
-        Ns_DStringAppend(&cookie, "; Expires=Fri, 01-Jan-1980 01:00:00 GMT");
+    } else {
+	/* 
+	 * maxage == 0, don't specify any expiry
+	 */
     }
     /* ignore empty domain, since IE rejects it */
     if (domain != NULL && *domain != '\0') {
@@ -180,13 +204,13 @@ Ns_ConnSetCookieEx(Ns_Conn *conn,  char *name, char *value, time_t maxage,
     if (path != NULL) {
         Ns_DStringVarAppend(&cookie, "; Path=", path, NULL);
     }
-    if (flags & NS_COOKIE_SECURE) {
+    if ((flags & NS_COOKIE_SECURE) != 0U) {
         Ns_DStringAppend(&cookie, "; Secure");
     }
-    if (flags & NS_COOKIE_DISCARD) {
+    if ((flags & NS_COOKIE_DISCARD) != 0U) {
         Ns_DStringAppend(&cookie, "; Discard");
     }
-    if (!(flags & NS_COOKIE_SCRIPTABLE)) {
+    if ((flags & NS_COOKIE_SCRIPTABLE) == 0U) {
         Ns_DStringAppend(&cookie, "; HttpOnly");
     }
 
@@ -195,14 +219,20 @@ Ns_ConnSetCookieEx(Ns_Conn *conn,  char *name, char *value, time_t maxage,
 }
 
 void
-Ns_ConnSetCookie(Ns_Conn *conn,  char *name, char *value, time_t maxage)
+Ns_ConnSetCookie(const Ns_Conn *conn, const char *name, const char *value, time_t maxage)
 {
-    Ns_ConnSetCookieEx(conn, name, value, maxage, NULL, NULL, 0);
+    assert(conn != NULL);
+    assert(name != NULL);
+    
+    Ns_ConnSetCookieEx(conn, name, value, maxage, NULL, NULL, 0U);
 }
 
 void
-Ns_ConnSetSecureCookie(Ns_Conn *conn,  char *name, char *value, time_t maxage)
+Ns_ConnSetSecureCookie(const Ns_Conn *conn, const char *name, const char *value, time_t maxage)
 {
+    assert(conn != NULL);
+    assert(name != NULL);
+
     Ns_ConnSetCookieEx(conn, name, value, maxage, NULL, NULL, NS_COOKIE_SECURE);
 }
 
@@ -224,15 +254,21 @@ Ns_ConnSetSecureCookie(Ns_Conn *conn,  char *name, char *value, time_t maxage)
  */
 
 void
-Ns_ConnDeleteCookie(Ns_Conn *conn, char *name, char *domain, char *path)
+Ns_ConnDeleteCookie(const Ns_Conn *conn, const char *name, const char *domain, const char *path)
 {
-    Ns_ConnSetCookieEx(conn, name, NULL, -1, domain, path, 0);
+    assert(conn != NULL);
+    assert(name != NULL);
+    
+    Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW);
 }
 
 void
-Ns_ConnDeleteSecureCookie(Ns_Conn *conn, char *name, char *domain, char *path)
+Ns_ConnDeleteSecureCookie(const Ns_Conn *conn, const char *name, const char *domain, const char *path)
 {
-    Ns_ConnSetCookieEx(conn, name, NULL, -1, domain, path, NS_COOKIE_SECURE);
+    assert(conn != NULL);
+    assert(name != NULL);
+    
+    Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW|NS_COOKIE_SECURE);
 }
 
 
@@ -254,9 +290,15 @@ Ns_ConnDeleteSecureCookie(Ns_Conn *conn, char *name, char *domain, char *path)
 
 
 char *
-Ns_ConnGetCookie(Ns_DString *dest, Ns_Conn *conn, char *name)
+Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
 {
-    int idx = SearchFirstCookie(dest, Ns_ConnHeaders(conn), "cookie", name);
+    int idx;
+
+    assert(dest != NULL);
+    assert(conn != NULL);
+    assert(name != NULL);
+      
+    idx = SearchFirstCookie(dest, Ns_ConnHeaders(conn), "cookie", name);
     
     return idx != -1 ? Ns_DStringValue(dest) : NULL;
 }
@@ -280,13 +322,14 @@ Ns_ConnGetCookie(Ns_DString *dest, Ns_Conn *conn, char *name)
  */
 
 int
-NsTclSetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Conn  *conn = GetConn(interp);
-    char     *name, *data, *domain = NULL, *path = NULL;
-    int       flags = 0, secure = 0, scriptable = 0, discard = 0, replace = 0;
-    time_t    maxage;
-    Ns_Time  *expiresPtr = NULL;
+    Ns_Conn     *conn = GetConn(interp);
+    const char  *name, *data, *domain = NULL, *path = NULL;
+    int          secure = 0, scriptable = 0, discard = 0, replace = 0;
+    unsigned int flags = 0u;
+    time_t       maxage;
+    Ns_Time     *expiresPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
         {"-discard",    Ns_ObjvBool,   &discard,    NULL},
@@ -308,16 +351,16 @@ NsTclSetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
         return TCL_ERROR;
     }
 
-    if (secure) {
+    if (secure != 0) {
         flags |= NS_COOKIE_SECURE;
     }
-    if (scriptable) {
+    if (scriptable != 0) {
         flags |= NS_COOKIE_SCRIPTABLE;
     }
-    if (discard) {
+    if (discard != 0) {
         flags |= NS_COOKIE_DISCARD;
     }
-    if (replace) {
+    if (replace != 0) {
         flags |= NS_COOKIE_REPLACE;
     }
 
@@ -330,11 +373,11 @@ NsTclSetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
     if (expiresPtr != NULL) {
         Ns_Time *nowPtr = Ns_ConnStartTime(conn); /* Approximately now... */
         if (expiresPtr->sec < 0) {
-	  maxage = TIME_T_MAX;
+            maxage = TIME_T_MAX;
         } else if (expiresPtr->sec > nowPtr->sec) {
-	  maxage = (time_t)(expiresPtr->sec - nowPtr->sec);
+            maxage = (time_t)expiresPtr->sec - (time_t)nowPtr->sec;
         } else {
-	  maxage = expiresPtr->sec;
+            maxage = expiresPtr->sec;
         }
     } else {
         maxage = 0;
@@ -364,19 +407,19 @@ NsTclSetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
  */
 
 int
-NsTclGetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn     *conn;
     Ns_DString   ds;
-    char        *name;
+    const char  *name;
     int          status = TCL_OK, nextArgIdx, idx = -1;
 
-    static CONST char  *options[]           = {"-include_set_cookies", NULL};
+    static const char  *options[]           = {"-include_set_cookies", NULL};
     enum                                      {OSetCookiesIdx};
-    ClientData          optionClientData[2] = {NULL};
-    Ns_OptionConverter *optionConverter[2]  = {Ns_OptionBoolean};
+    ClientData          optionClientData[1] = {NULL};
+    Ns_OptionConverter *optionConverter[1]  = {Ns_OptionBoolean};
 
-    if (objc < 1) {
+    if (unlikely(objc < 1)) {
     usage_error:
 	if (*Tcl_GetStringResult(interp) == '\0') {
 	    Tcl_WrongNumArgs(interp, 1, objv, "?-include_set_cookies bool? ?--? name ?default?");
@@ -390,7 +433,8 @@ NsTclGetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
     }
     if (objc - nextArgIdx < 1 || objc - nextArgIdx > 2) {goto usage_error;}
 
-    if ((conn = GetConn(interp)) == NULL) {
+    conn = GetConn(interp);
+    if (unlikely(conn == NULL)) {
         return TCL_ERROR;
     }
 
@@ -435,13 +479,14 @@ NsTclGetCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
  */
 
 int
-NsTclDeleteCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclDeleteCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Conn  *conn = GetConn(interp);
-    char     *name, *domain = NULL, *path = NULL;
-    int       flags = NS_COOKIE_SCRIPTABLE, secure = 0, replace = 0;
+    Ns_Conn     *conn = GetConn(interp);
+    const char  *name, *domain = NULL, *path = NULL;
+    unsigned int flags = NS_COOKIE_SCRIPTABLE;
+    int          secure = 0, replace = 0;
 
-    Ns_ObjvSpec opts[] = {
+    Ns_ObjvSpec  opts[] = {
         {"-secure",  Ns_ObjvBool,   &secure,  NULL},
         {"-domain",  Ns_ObjvString, &domain,  NULL},
         {"-path",    Ns_ObjvString, &path,    NULL},
@@ -457,14 +502,14 @@ NsTclDeleteCookieObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *C
         return TCL_ERROR;
     }
 
-    if (replace) {
+    if (replace != 0) {
         flags |= NS_COOKIE_REPLACE;
     }
-    if (secure) {
+    if (secure != 0) {
         flags |= NS_COOKIE_SECURE;
     }
 
-    Ns_ConnSetCookieEx(conn, name, NULL, -1, domain, path, flags);
+    Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW|flags);
 
     return TCL_OK;
 }
@@ -492,6 +537,8 @@ GetConn(Tcl_Interp *interp)
 {
     Ns_Conn *conn;
 
+    assert(interp != NULL);
+    
     conn = Ns_TclGetConn(interp);
     if (conn == NULL) {
         Tcl_SetResult(interp, "No connection available.", TCL_STATIC);
@@ -499,3 +546,12 @@ GetConn(Tcl_Interp *interp)
 
     return conn;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

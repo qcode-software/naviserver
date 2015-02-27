@@ -58,7 +58,7 @@ typedef struct Event {
     time_t          lastqueue;  /* Last time queued for run. */
     time_t          laststart;  /* Last time run started. */
     time_t          lastend;    /* Last time run finished. */
-    int             flags;      /* One or more of NS_SCHED_ONCE, NS_SCHED_THREAD,
+    unsigned int    flags;      /* One or more of NS_SCHED_ONCE, NS_SCHED_THREAD,
                                  * NS_SCHED_DAILY, or NS_SCHED_WEEKLY. */
     int             interval;   /* Interval specification. */
     Ns_SchedProc   *proc;       /* Procedure to execute. */
@@ -73,8 +73,12 @@ typedef struct Event {
 static Ns_ThreadProc SchedThread;       /* Detached event firing thread. */
 static Ns_ThreadProc EventThread;       /* Proc for NS_SCHED_THREAD events. */
 static Event *DeQueueEvent(int qid);    /* Remove event from heap. */
-static void FreeEvent(Event *ePtr);     /* Free completed or cancelled event. */
-static void QueueEvent(Event *ePtr, time_t *nowPtr);    /* Queue event on heap. */
+static void FreeEvent(Event *ePtr)      /* Free completed or cancelled event. */
+    NS_GNUC_NONNULL(1);
+static void QueueEvent(Event *ePtr, const time_t *nowPtr);    /* Queue event on heap. */
+static void Exchange(int i, int j);     /* Exchange elements in the global queue */
+
+
 /*
  * Static variables defined in this file.
  */
@@ -88,22 +92,39 @@ static Event *firstEventPtr = NULL; /* Pointer to the first event */
 static int nqueue = 0;              /* Number of events in queue. */
 static int maxqueue = 0;            /* Max queue events (dynamically re-sized). */
 
-static intptr_t nThreads = 0;       /* Total number of running threads */
-static intptr_t nIdleThreads = 0;   /* Number of idle threads */
+static int nThreads = 0;            /* Total number of running threads */
+static int nIdleThreads = 0;        /* Number of idle threads */
 
 static int running = 0;
 static int shutdownPending = 0;
 static Ns_Thread schedThread;
 
+
 /*
- * Macro to exchange two events in the heap, used in QueueEvent() and DeQueueEvent().
+ *----------------------------------------------------------------------
+ *
+ * Exchange --
+ *
+ *     Helper function to exchange two events in the global queue,
+ *     used in QueueEvent() and DeQueueEvent().
+ *
+ * Results:
+ *     None.
+ *
+ * Side effects:
+ *     Queue elements flipped.
+ *
+ *----------------------------------------------------------------------
  */
 
-#define EXCH(i,j) {\
-      Event *tmp = queue[(i)];\
-      queue[(i)] = queue[(j)], queue[(j)] = tmp;\
-      queue[(i)]->qid = (i), queue[(j)]->qid = (j);\
-    }
+static void Exchange(int i, int j) {
+    Event *tmp = queue[i];
+
+    queue[i] = queue[j];
+    queue[j] = tmp;
+    queue[i]->qid = i;
+    queue[j]->qid = j;
+}
 
 
 /*
@@ -136,7 +157,7 @@ NsInitSched(void)
  *
  * Ns_After --
  *
- *  Schedule a one-shot event.
+ *  Schedule a one-shot event after the speficied delay in seconds.
  *
  * Results:
  *  Event id or NS_ERROR if delay is out of range.
@@ -150,6 +171,8 @@ NsInitSched(void)
 int
 Ns_After(int delay, Ns_Callback *proc, void *arg, Ns_Callback *deleteProc)
 {
+    assert(proc != NULL);
+    
     if (delay < 0) {
         return NS_ERROR;
     }
@@ -176,10 +199,12 @@ Ns_After(int delay, Ns_Callback *proc, void *arg, Ns_Callback *deleteProc)
 int
 Ns_ScheduleProc(Ns_Callback *proc, void *arg, int thread, int interval)
 {
+    assert(proc != NULL);
+    
     if (interval < 0) {
         return NS_ERROR;
     }
-    return Ns_ScheduleProcEx((Ns_SchedProc *) proc, arg, thread ? NS_SCHED_THREAD : 0, interval, NULL);
+    return Ns_ScheduleProcEx((Ns_SchedProc *) proc, arg, (thread != 0) ? NS_SCHED_THREAD : 0u, interval, NULL);
 }
 
 
@@ -200,10 +225,12 @@ Ns_ScheduleProc(Ns_Callback *proc, void *arg, int thread, int interval)
  */
 
 int
-Ns_ScheduleDaily(Ns_SchedProc * proc, void *clientData, int flags,
-    int hour, int minute, Ns_SchedProc *cleanupProc)
+Ns_ScheduleDaily(Ns_SchedProc * proc, void *clientData, unsigned int flags,
+                 int hour, int minute, Ns_SchedProc *cleanupProc)
 {
     int seconds;
+
+    assert(proc != NULL);
 
     if (hour > 23 || hour < 0 || minute > 59 || minute < 0) {
         return NS_ERROR;
@@ -230,10 +257,12 @@ Ns_ScheduleDaily(Ns_SchedProc * proc, void *clientData, int flags,
  */
 
 int
-Ns_ScheduleWeekly(Ns_SchedProc * proc, void *clientData, int flags,
+Ns_ScheduleWeekly(Ns_SchedProc * proc, void *clientData, unsigned int flags,
     int day, int hour, int minute, Ns_SchedProc *cleanupProc)
 {
     int seconds;
+
+    assert(proc != NULL);
 
     if (day < 0 || day > 6 || hour > 23 || hour < 0 || minute > 59 || minute < 0) {
         return NS_ERROR;
@@ -262,13 +291,15 @@ Ns_ScheduleWeekly(Ns_SchedProc * proc, void *clientData, int flags,
  */
 
 int
-Ns_ScheduleProcEx(Ns_SchedProc *proc, void *arg, int flags,
-    int interval, Ns_SchedProc *deleteProc)
+Ns_ScheduleProcEx(Ns_SchedProc *proc, void *clientData, unsigned int flags,
+    int interval, Ns_SchedProc *cleanupProc)
 {
     Event          *ePtr;
     int             id, isNew;
     time_t          now;
 
+    assert(proc != NULL);
+    
     if (interval < 0) {
         return NS_ERROR;
     }
@@ -280,23 +311,23 @@ Ns_ScheduleProcEx(Ns_SchedProc *proc, void *arg, int flags,
     ePtr->lastqueue = ePtr->laststart = ePtr->lastend = -1;
     ePtr->interval = interval;
     ePtr->proc = proc;
-    ePtr->deleteProc = deleteProc;
-    ePtr->arg = arg;
+    ePtr->deleteProc = cleanupProc;
+    ePtr->arg = clientData;
 
     Ns_MutexLock(&lock);
-    if (shutdownPending) {
+    if (shutdownPending != 0) {
         id = NS_ERROR;
         ns_free(ePtr);
     } else {
         do {
-	    static int nextId;
+	    static int nextId = 0;
 
             id = nextId++;
             if (nextId < 0) {
                 nextId = 0;
             }
-            ePtr->hPtr = Tcl_CreateHashEntry(&eventsTable, (char *)(intptr_t)id, &isNew);
-        } while (!isNew);
+            ePtr->hPtr = Tcl_CreateHashEntry(&eventsTable, INT2PTR(id), &isNew);
+        } while (isNew == 0);
         Tcl_SetHashValue(ePtr->hPtr, ePtr);
         ePtr->id = id;
         QueueEvent(ePtr, &now);
@@ -327,7 +358,7 @@ Ns_ScheduleProcEx(Ns_SchedProc *proc, void *arg, int flags,
 void
 Ns_UnscheduleProc(int id)
 {
-    Ns_Cancel(id);
+    (void) Ns_Cancel(id);
 }
 
 int
@@ -338,21 +369,21 @@ Ns_Cancel(int id)
 
     cancelled = 0;
     Ns_MutexLock(&lock);
-    if (!shutdownPending) {
-        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&eventsTable, (char *)(intptr_t) id);
+    if (shutdownPending == 0) {
+	Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&eventsTable, INT2PTR(id));
 
         if (hPtr != NULL) {
             ePtr = Tcl_GetHashValue(hPtr);
             Tcl_DeleteHashEntry(hPtr);
             ePtr->hPtr = NULL;
             if (ePtr->qid > 0) {
-                DeQueueEvent(ePtr->qid);
+                (void) DeQueueEvent(ePtr->qid);
                 cancelled = 1;
             }
         }
     }
     Ns_MutexUnlock(&lock);
-    if (cancelled) {
+    if (cancelled != 0) {
         FreeEvent(ePtr);
     }
     return cancelled;
@@ -383,15 +414,15 @@ Ns_Pause(int id)
 
     paused = 0;
     Ns_MutexLock(&lock);
-    if (!shutdownPending) {
-        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&eventsTable, (char *)(intptr_t) id);
+    if (shutdownPending == 0) {
+        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&eventsTable, INT2PTR(id));
 
         if (hPtr != NULL) {
             ePtr = Tcl_GetHashValue(hPtr);
-            if (!(ePtr->flags & NS_SCHED_PAUSED)) {
+            if ((ePtr->flags & NS_SCHED_PAUSED) == 0U) {
                 ePtr->flags |= NS_SCHED_PAUSED;
                 if (ePtr->qid > 0) {
-                    DeQueueEvent(ePtr->qid);
+                    (void) DeQueueEvent(ePtr->qid);
                 }
                 paused = 1;
             }
@@ -427,12 +458,12 @@ Ns_Resume(int id)
 
     resumed = 0;
     Ns_MutexLock(&lock);
-    if (!shutdownPending) {
-        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&eventsTable, (char *)(intptr_t) id);
+    if (shutdownPending == 0) {
+        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&eventsTable, INT2PTR(id));
 
         if (hPtr != NULL) {
             ePtr = Tcl_GetHashValue(hPtr);
-            if ((ePtr->flags & NS_SCHED_PAUSED)) {
+            if ((ePtr->flags & NS_SCHED_PAUSED) != 0U) {
                 ePtr->flags &= ~NS_SCHED_PAUSED;
                 time(&now);
                 QueueEvent(ePtr, &now);
@@ -465,7 +496,7 @@ void
 NsStartSchedShutdown(void)
 {
     Ns_MutexLock(&lock);
-    if (running) {
+    if (running == 1) {
         Ns_Log(Notice, "sched: shutdown pending");
         shutdownPending = 1;
         Ns_CondSignal(&schedcond);
@@ -474,13 +505,13 @@ NsStartSchedShutdown(void)
 }
 
 void
-NsWaitSchedShutdown(Ns_Time *toPtr)
+NsWaitSchedShutdown(const Ns_Time *toPtr)
 {
     int status;
 
     Ns_MutexLock(&lock);
     status = NS_OK;
-    while (status == NS_OK && running) {
+    while (status == NS_OK && running == 1) {
         status = Ns_CondTimedWait(&schedcond, &lock, toPtr);
     }
     Ns_MutexUnlock(&lock);
@@ -509,11 +540,11 @@ NsWaitSchedShutdown(Ns_Time *toPtr)
  */
 
 static void
-QueueEvent(Event *ePtr, time_t *nowPtr)
+QueueEvent(Event *ePtr, const time_t *nowPtr)
 {
     struct tm      *tp;
 
-    if (ePtr->flags & NS_SCHED_PAUSED) {
+    if ((ePtr->flags & NS_SCHED_PAUSED) != 0U) {
         return;
     }
 
@@ -521,17 +552,17 @@ QueueEvent(Event *ePtr, time_t *nowPtr)
      * Calculate the time from now in seconds this event should run.
      */
 
-    if (ePtr->flags & (NS_SCHED_DAILY | NS_SCHED_WEEKLY)) {
+    if ((ePtr->flags & (NS_SCHED_DAILY | NS_SCHED_WEEKLY)) != 0U) {
         tp = ns_localtime(nowPtr);
         tp->tm_sec = ePtr->interval;
         tp->tm_hour = 0;
         tp->tm_min = 0;
-        if (ePtr->flags & NS_SCHED_WEEKLY) {
+        if ((ePtr->flags & NS_SCHED_WEEKLY) != 0U) {
             tp->tm_mday -= tp->tm_wday;
         }
         ePtr->nextqueue = mktime(tp);
         if (ePtr->nextqueue <= *nowPtr) {
-            tp->tm_mday += (ePtr->flags & NS_SCHED_WEEKLY) ? 7 : 1;
+            tp->tm_mday += (ePtr->flags & NS_SCHED_WEEKLY) != 0U ? 7 : 1;
             ePtr->nextqueue = mktime(tp);
         }
     } else {
@@ -547,7 +578,7 @@ QueueEvent(Event *ePtr, time_t *nowPtr)
     ePtr->qid = ++nqueue;
     if (maxqueue <= nqueue) {
         maxqueue += 25;
-        queue = ns_realloc(queue, (sizeof(Event *)) * (maxqueue + 1));
+        queue = ns_realloc(queue, sizeof(Event *) * ((size_t)maxqueue + 1u));
     }
     queue[nqueue] = ePtr;
     if (nqueue > 1) {
@@ -556,7 +587,7 @@ QueueEvent(Event *ePtr, time_t *nowPtr)
         k = nqueue;
         j = k / 2;
         while (k > 1 && queue[j]->nextqueue > queue[k]->nextqueue) {
-            EXCH(j, k);
+            Exchange(j, k);
             k = j;
             j = k / 2;
         }
@@ -566,7 +597,7 @@ QueueEvent(Event *ePtr, time_t *nowPtr)
      * Signal or create the SchedThread if necessary.
      */
 
-    if (running) {
+    if (running == 1) {
         Ns_CondSignal(&schedcond);
     } else {
         running = 1;
@@ -591,8 +622,8 @@ QueueEvent(Event *ePtr, time_t *nowPtr)
  *----------------------------------------------------------------------
  */
 
-static Event   *
-DeQueueEvent(int k)
+static Event *
+DeQueueEvent(int qid)
 {
     Event          *ePtr;
     int             j;
@@ -602,19 +633,19 @@ DeQueueEvent(int k)
      * order of events to be fired.
      */
 
-    EXCH(k, nqueue);
+    Exchange(qid, nqueue);
     ePtr = queue[nqueue--];
     ePtr->qid = 0;
 
-    while ((j = 2 * k) <= nqueue) {
+    while ((j = 2 * qid) <= nqueue) {
         if (j < nqueue && queue[j]->nextqueue > queue[j + 1]->nextqueue) {
             ++j;
         }
-        if (queue[j]->nextqueue > queue[k]->nextqueue) {
+        if (queue[j]->nextqueue > queue[qid]->nextqueue) {
             break;
         }
-        EXCH(k, j);
-        k = j;
+        Exchange(qid, j);
+        qid = j;
     }
 
     return ePtr;
@@ -646,12 +677,12 @@ EventThread(void *arg)
 
     jpt = njobs = nsconf.sched.jobsperthread;
 
-    Ns_ThreadSetName("-sched:idle%" PRIdPTR "-", (intptr_t)arg);
+    Ns_ThreadSetName("-sched:idle%" PRIdPTR "-", arg);
     Ns_Log(Notice, "starting");
 
     Ns_MutexLock(&lock);
     while (jpt == 0 || njobs > 0) {
-        while (firstEventPtr == NULL && !shutdownPending) {
+        while (firstEventPtr == NULL && shutdownPending == 0) {
             Ns_CondWait(&eventcond, &lock);
         }
         if (firstEventPtr == NULL) {
@@ -667,7 +698,7 @@ EventThread(void *arg)
 
         Ns_ThreadSetName("-sched:%d-", ePtr->id);
         (*ePtr->proc) (ePtr->arg, ePtr->id);
-        Ns_ThreadSetName("-sched:idle%" PRIdPTR "-", (intptr_t)arg);
+        Ns_ThreadSetName("-sched:idle%" PRIdPTR "-", arg);
         time(&now);
 
         Ns_MutexLock(&lock);
@@ -682,14 +713,13 @@ EventThread(void *arg)
             QueueEvent(ePtr, &now);
         }
         /* Served given # of jobs in this thread */
-        if (jpt && --njobs <= 0) {
+        if (jpt != 0 && --njobs <= 0) {
             break;
         }
     }
     --nThreads;
     --nIdleThreads;
-    Ns_Log(Notice, "exiting, %" PRIdPTR " threads, %" PRIdPTR " idle",
-           nThreads, nIdleThreads);
+    Ns_Log(Notice, "exiting, %d threads, %d idle", nThreads, nIdleThreads);
 
     Ns_CondSignal(&schedcond);
     Ns_MutexUnlock(&lock);
@@ -715,6 +745,8 @@ EventThread(void *arg)
 static void
 FreeEvent(Event *ePtr)
 {
+    assert(ePtr != NULL);
+
     if (ePtr->deleteProc != NULL) {
         (*ePtr->deleteProc) (ePtr->arg, ePtr->id);
     }
@@ -739,20 +771,20 @@ FreeEvent(Event *ePtr)
  */
 
 static void
-SchedThread(void *ignored)
+SchedThread(void *UNUSED(arg))
 {
     time_t          now;
-    Ns_Time         timeout;
-    int             elapsed;
+    Ns_Time         timeout = {0,0};
+    long            elapsed;
     Event          *ePtr, *readyPtr = NULL;
 
-    Ns_WaitForStartup();
+    (void) Ns_WaitForStartup();
 
     Ns_ThreadSetName("-sched-");
     Ns_Log(Notice, "sched: starting");
 
     Ns_MutexLock(&lock);
-    while (!shutdownPending) {
+    while (shutdownPending == 0) {
 
         /*
          * For events ready to run, either create a thread for
@@ -762,12 +794,12 @@ SchedThread(void *ignored)
         time(&now);
         while (nqueue > 0 && queue[1]->nextqueue <= now) {
             ePtr = DeQueueEvent(1);
-            if (ePtr->flags & NS_SCHED_ONCE) {
+            if ((ePtr->flags & NS_SCHED_ONCE) != 0U) {
                 Tcl_DeleteHashEntry(ePtr->hPtr);
                 ePtr->hPtr = NULL;
             }
             ePtr->lastqueue = now;
-            if (ePtr->flags & NS_SCHED_THREAD) {
+            if ((ePtr->flags & NS_SCHED_THREAD) != 0U) {
                 ePtr->flags |= NS_SCHED_RUNNING;
                 ePtr->laststart = now;
                 ePtr->nextPtr = firstEventPtr;
@@ -784,7 +816,7 @@ SchedThread(void *ignored)
 
         if (firstEventPtr != NULL) {
             if (nIdleThreads == 0) {
-                Ns_ThreadCreate(EventThread, (void *)nThreads, 0, NULL);
+		Ns_ThreadCreate(EventThread, INT2PTR(nThreads), 0, NULL);
                 ++nIdleThreads;
                 ++nThreads;
             }
@@ -803,9 +835,9 @@ SchedThread(void *ignored)
             (*ePtr->proc) (ePtr->arg, ePtr->id);
 
             time(&now);
-            elapsed = (int) difftime(now, ePtr->laststart);
+            elapsed = (long) difftime(now, ePtr->laststart);
             if (elapsed > nsconf.sched.maxelapsed) {
-                Ns_Log(Warning, "sched: excessive time taken by proc %d (%d seconds)",
+                Ns_Log(Warning, "sched: excessive time taken by proc %d (%ld seconds)",
                        ePtr->id, elapsed);
             }
             if (ePtr->hPtr == NULL) {
@@ -826,10 +858,10 @@ SchedThread(void *ignored)
 
         if (nqueue == 0) {
             Ns_CondWait(&schedcond, &lock);
-        } else if (!shutdownPending) {
+        } else if (shutdownPending == 0) {
 	    timeout.sec  = (long)queue[1]->nextqueue;
             timeout.usec = 0;
-            Ns_CondTimedWait(&schedcond, &lock, &timeout);
+            (void) Ns_CondTimedWait(&schedcond, &lock, &timeout);
         }
 
     }
@@ -842,11 +874,11 @@ SchedThread(void *ignored)
 
     Ns_Log(Notice, "sched: shutdown started");
     if (nThreads > 0) {
-        Ns_Log(Notice, "sched: waiting for %" PRIdPTR "/%" PRIdPTR " event threads...",
+        Ns_Log(Notice, "sched: waiting for %d/%d event threads...",
                nThreads, nIdleThreads);
         Ns_CondBroadcast(&eventcond);
         while (nThreads > 0) {
-            Ns_CondTimedWait(&schedcond, &lock, &timeout);
+            (void) Ns_CondTimedWait(&schedcond, &lock, &timeout);
         }
     }
     Ns_MutexUnlock(&lock);
@@ -870,6 +902,8 @@ NsGetScheduled(Tcl_DString *dsPtr)
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
 
+    assert(dsPtr != NULL);
+    
     Ns_MutexLock(&lock);
     hPtr = Tcl_FirstHashEntry(&eventsTable, &search);
     while (hPtr != NULL) {
@@ -880,9 +914,18 @@ NsGetScheduled(Tcl_DString *dsPtr)
             ePtr->id, ePtr->flags, ePtr->interval,
             (int64_t) ePtr->nextqueue, (int64_t) ePtr->lastqueue,
             (int64_t) ePtr->laststart, (int64_t) ePtr->lastend);
-        Ns_GetProcInfo(dsPtr, (void *)ePtr->proc, ePtr->arg);
+        Ns_GetProcInfo(dsPtr, (Ns_Callback *)ePtr->proc, ePtr->arg);
         Tcl_DStringEndSublist(dsPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
     Ns_MutexUnlock(&lock);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

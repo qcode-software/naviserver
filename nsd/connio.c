@@ -50,15 +50,22 @@
  * Local functions defined in this file
  */
 
-static int ConnSend(Ns_Conn *conn, Tcl_WideInt nsend, Tcl_Channel chan,
-                    FILE *fp, int fd);
-static int ConnCopy(Ns_Conn *conn, size_t ncopy, Tcl_Channel chan,
-                    FILE *fp, int fd);
+static int ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan,
+                    FILE *fp, int fd)
+    NS_GNUC_NONNULL(1);
 
-static int CheckKeep(Conn *connPtr);
-static int CheckCompress(Conn *connPtr, struct iovec *bufs, int nbufs, int ioflags);
-static int HdrEq(Ns_Set *set, char *name, char *value);
+static int ConnCopy(Ns_Conn *conn, size_t toCopy, Tcl_Channel chan,
+                    FILE *fp, int fd)
+    NS_GNUC_NONNULL(1);
 
+static bool CheckKeep(const Conn *connPtr)
+    NS_GNUC_NONNULL(1);
+
+static int CheckCompress(Conn *connPtr, const struct iovec *bufs, int nbufs, unsigned int ioflags)
+    NS_GNUC_NONNULL(1);
+
+static bool HdrEq(const Ns_Set *set, const char *name, const char *value)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 
 /*
@@ -81,17 +88,17 @@ static int HdrEq(Ns_Set *set, char *name, char *value);
  */
 
 int
-Ns_ConnWriteChars(Ns_Conn *conn, CONST char *buf, size_t towrite, int flags)
+Ns_ConnWriteChars(Ns_Conn *conn, const char *buf, size_t toWrite, unsigned int flags)
 {
     struct iovec sbuf;
 
     sbuf.iov_base = (void *) buf;
-    sbuf.iov_len = towrite;
+    sbuf.iov_len  = toWrite;
     return Ns_ConnWriteVChars(conn, &sbuf, 1, flags);
 }
 
 int
-Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
+Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int flags)
 {
     Conn              *connPtr   = (Conn *) conn;
     Ns_DString         encDs, gzDs;
@@ -106,24 +113,24 @@ Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
      */
 
     if (connPtr->outputEncoding != NULL
-        && !NsEncodingIsUtf8(connPtr->outputEncoding)
+        && NsEncodingIsUtf8(connPtr->outputEncoding) == 0
         && nbufs > 0
-        && bufs[0].iov_len > 0) {
+        && bufs[0].iov_len > 0u) {
         int i;
 
         for (i = 0; i < nbufs; i++) {
-	    CONST char *utfBytes;
+	    const char *utfBytes;
 	    size_t      utfLen;
 
             utfBytes = bufs[i].iov_base;
             utfLen   = bufs[i].iov_len;
 
-            if (utfLen > 0) {
+            if (utfLen > 0u) {
                 (void) Tcl_UtfToExternalDString(connPtr->outputEncoding,
                                                 utfBytes, (int)utfLen, &encDs);
             }
         }
-        Ns_SetVec(&iov, 0, encDs.string, encDs.length);
+        (void)Ns_SetVec(&iov, 0, encDs.string, (size_t)encDs.length);
         bufs = &iov;
         nbufs = 1;
     }
@@ -135,13 +142,14 @@ Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
     if (connPtr->compress < 0) {
         connPtr->compress = CheckCompress(connPtr, bufs, nbufs, flags);
     }
-    if (connPtr->compress > 0) {
-        int flush = (flags & NS_CONN_STREAM) ? 0 : 1;
+    if (connPtr->compress > 0 && nbufs > 0) {
+        int flush = ((flags & NS_CONN_STREAM) != 0u) ? 0 : 1;
 
-        if (Ns_CompressBufsGzip(&connPtr->stream, bufs, nbufs, &gzDs,
+        assert(bufs != NULL);
+        if (Ns_CompressBufsGzip(&connPtr->cStream, bufs, nbufs, &gzDs,
                                 connPtr->compress, flush) == NS_OK) {
             /* NB: Compression will always succeed. */
-            Ns_SetVec(&iov, 0, gzDs.string, gzDs.length);
+            (void)Ns_SetVec(&iov, 0, gzDs.string, (size_t)gzDs.length);
             bufs = &iov;
             nbufs = 1;
         }
@@ -165,7 +173,7 @@ Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
  *      Is compression enabled, and at what level.
  *
  * Results:
- *      0-9. Will return 0 if gzip support compiled out.
+ *      compress level 0-9
  *
  * Side effects:
  *      May set the Content-Encoding and Vary headers.
@@ -174,32 +182,37 @@ Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
  */
 
 static int
-CheckCompress(Conn *connPtr, struct iovec *bufs, int nbufs, int ioflags)
+CheckCompress(Conn *connPtr, const struct iovec *bufs, int nbufs, unsigned int ioflags)
 {
     Ns_Conn  *conn    = (Ns_Conn *) connPtr;
-    NsServer *servPtr = connPtr->poolPtr->servPtr;
+    NsServer *servPtr;
     int       level, compress = 0;
 
-    /* Check the default setting and explicit overide. */
+    assert(connPtr != NULL);
 
-    if ((level = Ns_ConnGetCompression(conn)) > 0) {
+    servPtr = connPtr->poolPtr->servPtr;
 
+    /* 
+     * Check the default setting and explicit overide. 
+     */
+    level = Ns_ConnGetCompression(conn);
+
+    if (level > 0) {
         /*
          * Make sure the length is above the minimum threshold, or
          * we're streaming (assume length is long enough for streams).
          */
-
-        if ((ioflags & NS_CONN_STREAM)
-            || (bufs && Ns_SumVec(bufs, nbufs) >= (size_t)servPtr->compress.minsize)
+        if (((ioflags & NS_CONN_STREAM) != 0u)
+            || (bufs != NULL && Ns_SumVec(bufs, nbufs) >= (size_t)servPtr->compress.minsize)
             || connPtr->responseLength >= servPtr->compress.minsize) {
-
-            /* We won't be compressing if there are no headers or body. */
-
-            if (!(connPtr->flags & NS_CONN_SENTHDRS)
-		&& !(connPtr->flags & NS_CONN_SKIPBODY)) {
+            /* 
+	     * We won't be compressing if there are no headers or body. 
+	     */
+            if (((connPtr->flags & NS_CONN_SENTHDRS) == 0u)
+		&& ((connPtr->flags & NS_CONN_SKIPBODY) == 0u)) {
 	        Ns_ConnSetHeaders(conn, "Vary", "Accept-Encoding");
 
-                if (connPtr->flags & NS_CONN_ZIPACCEPTED) {
+                if ((connPtr->flags & NS_CONN_ZIPACCEPTED) != 0u) {
                     Ns_ConnSetHeaders(conn, "Content-Encoding", "gzip");
                     compress = level;
                 }
@@ -228,25 +241,28 @@ CheckCompress(Conn *connPtr, struct iovec *bufs, int nbufs, int ioflags)
  */
 
 int
-Ns_ConnWriteData(Ns_Conn *conn, CONST void *buf, size_t towrite, int flags)
+Ns_ConnWriteData(Ns_Conn *conn, const void *buf, size_t toWrite, unsigned int flags)
 {
     struct iovec vbuf;
 
     vbuf.iov_base = (void *) buf;
-    vbuf.iov_len = towrite;
+    vbuf.iov_len  = toWrite;
 
     return Ns_ConnWriteVData(conn, &vbuf, 1, flags);
 }
 
 int
-Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
+Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int flags)
 {
     Conn         *connPtr = (Conn *) conn;
     Ns_DString    ds;
     int           nsbufs, sbufIdx;
-    size_t        bodyLength, towrite;
+    size_t        bodyLength, toWrite, neededBufs;
     ssize_t       nwrote;
-    struct iovec  sbufs[32], *sbufPtr = sbufs;
+    struct iovec  sbufs[32], *sbufPtr;
+
+    assert(connPtr != NULL);
+    assert(nbufs < 1 || bufs != NULL);
 
     Ns_DStringInit(&ds);
 
@@ -256,8 +272,11 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
      * HTTP chunked header/footer pair. Use the stack if possible.
      */
 
-    if (nbufs + 2 + 1 > (sizeof(sbufs) / sizeof(struct iovec))) {
-        sbufPtr = ns_calloc(nbufs + 2 + 1, sizeof(struct iovec));
+    neededBufs = (size_t)nbufs + 2u + 1u;
+    if (neededBufs > (sizeof(sbufs) / sizeof(struct iovec))) {
+        sbufPtr = ns_calloc(neededBufs, sizeof(struct iovec));
+    } else {
+        sbufPtr = sbufs;
     }
     nsbufs = 0;
     sbufIdx = 0;
@@ -266,10 +285,10 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
      * Work out the body length for non-chunking case.
      */
 
-    bodyLength = bufs ? Ns_SumVec(bufs, nbufs) : 0;
-    towrite = 0;
+    bodyLength = (bufs != NULL) ? Ns_SumVec(bufs, nbufs) : 0u;
+    toWrite = 0u;
 
-    if (flags & NS_CONN_STREAM) {
+    if ((flags & NS_CONN_STREAM) != 0u) {
 	connPtr->flags |= NS_CONN_STREAM;
     }
 
@@ -277,11 +296,12 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
      * Send headers if not already sent.
      */
 
-    if (!(conn->flags & NS_CONN_SENTHDRS)) {
+    if (((conn->flags & NS_CONN_SENTHDRS) == 0u)) {
         conn->flags |= NS_CONN_SENTHDRS;
-        if (Ns_CompleteHeaders(conn, bodyLength, flags, &ds)) {
-            towrite += Ns_SetVec(sbufPtr, sbufIdx++,
-                                 Ns_DStringValue(&ds), Ns_DStringLength(&ds));
+        if (Ns_CompleteHeaders(conn, bodyLength, flags, &ds) == NS_TRUE) {
+            toWrite += Ns_SetVec(sbufPtr, sbufIdx++,
+                                 Ns_DStringValue(&ds), 
+				 (size_t)Ns_DStringLength(&ds));
             nsbufs++;
         }
     }
@@ -290,9 +310,9 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
      * Send body.
      */
 
-    if (!(conn->flags & NS_CONN_SKIPBODY)) {
+    if ((conn->flags & NS_CONN_SKIPBODY) == 0u) {
 
-        if (!(conn->flags & NS_CONN_CHUNK)) {
+        if ((conn->flags & NS_CONN_CHUNK) == 0u) {
             /*
              * Output content without chunking header/trailers.
              */
@@ -300,39 +320,43 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
             if (sbufIdx == 0) {
                 sbufPtr = bufs;
                 nsbufs = nbufs;
-            } else {
-                (void) memcpy(sbufPtr + sbufIdx, bufs, nbufs * sizeof(struct iovec));
+            } else if (nbufs > 0) {
+		assert(bufs != NULL);
+                (void) memcpy(sbufPtr + sbufIdx, bufs, (size_t)nbufs * sizeof(struct iovec));
                 nsbufs += nbufs;
             }
-            towrite += bodyLength;
+            toWrite += bodyLength;
 
         } else {
 
-            if (bodyLength > 0) {
+            if (bodyLength > 0u) {
 		char hdr[32];
+		size_t len;
 
+		assert(nbufs > 0);
+		assert(bufs != NULL);
                 /*
                  * Output length header followed by content and then trailer.
                  */
 
-                towrite += Ns_SetVec(sbufPtr, sbufIdx++,
-                                     hdr, sprintf(hdr, "%lx\r\n", (unsigned long)bodyLength));
+		len = (size_t)sprintf(hdr, "%lx\r\n", (unsigned long)bodyLength);
+                toWrite += Ns_SetVec(sbufPtr, sbufIdx++, hdr, len);
 
-                (void) memcpy(sbufPtr + sbufIdx, bufs, nbufs * sizeof(struct iovec));
+                (void) memcpy(sbufPtr + sbufIdx, bufs, (size_t)nbufs * sizeof(struct iovec));
                 sbufIdx += nbufs;
-                towrite += bodyLength;
+                toWrite += bodyLength;
 
-                towrite += Ns_SetVec(sbufPtr, sbufIdx++, "\r\n", 2);
+                toWrite += Ns_SetVec(sbufPtr, sbufIdx++, "\r\n", (size_t)2);
 
                 nsbufs += nbufs + 2;
             }
 
-	    if (flags & NS_CONN_STREAM_CLOSE) {
+	    if ((flags & NS_CONN_STREAM_CLOSE) != 0u) {
                 /*
                  * Output end-of-content trailer for chunked encoding
                  */
 
-                towrite += Ns_SetVec(sbufPtr, sbufIdx, "0\r\n\r\n", 5);
+                toWrite += Ns_SetVec(sbufPtr, sbufIdx, "0\r\n\r\n", (size_t)5);
 
                 nsbufs += 1;
                 connPtr->flags &= ~NS_CONN_STREAM;
@@ -352,7 +376,7 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
         ns_free(sbufPtr);
     }
 
-    return (nwrote < (ssize_t)towrite) ? NS_ERROR : NS_OK;
+    return (nwrote < (ssize_t)toWrite) ? NS_ERROR : NS_OK;
 }
 
 
@@ -373,36 +397,57 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, int flags)
  */
 
 int
-Ns_ConnSendChannel(Ns_Conn *conn, Tcl_Channel chan, Tcl_WideInt nsend)
+Ns_ConnSendChannel(Ns_Conn *conn, Tcl_Channel chan, size_t nsend)
 {
     return ConnSend(conn, nsend, chan, NULL, -1);
 }
 
 int
-Ns_ConnSendFp(Ns_Conn *conn, FILE *fp, Tcl_WideInt nsend)
+Ns_ConnSendFp(Ns_Conn *conn, FILE *fp, size_t nsend)
 {
     return ConnSend(conn, nsend, NULL, fp, -1);
 }
 
 int
-Ns_ConnSendFd(Ns_Conn *conn, int fd, Tcl_WideInt nsend)
+Ns_ConnSendFd(Ns_Conn *conn, int fd, size_t nsend)
 {
     return ConnSend(conn, nsend, NULL, NULL, fd);
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ConnSend --
+ *
+ *      Send an open channel, FILE or fd. Read the content from the
+ *      various sources into a buffer and send the data to the client
+ *      via Ns_ConnWriteVData(). Stop transmission when errors or
+ *      0-byte reads occur.
+ *
+ * Results:
+ *      NS_OK/NS_ERROR.
+ *
+ * Side effects:
+ *      Send data to client
+ *
+ *----------------------------------------------------------------------
+ */
 static int
-ConnSend(Ns_Conn *conn, Tcl_WideInt nsend, Tcl_Channel chan, FILE *fp, int fd)
+ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd)
 {
     int          status;
-    size_t       nread;
+    int          nread;
     char         buf[IOBUFSZ];
+
+    assert(conn != NULL);
 
     /*
      * Even if nsend is 0 ensure HTTP response headers get written.
      */
 
-    if (nsend == 0) {
-        return Ns_ConnWriteVData(conn, NULL, 0, 0);
+    if (nsend == 0u) {
+        return Ns_ConnWriteVData(conn, NULL, 0, 0u);
     }
 
     /*
@@ -410,21 +455,21 @@ ConnSend(Ns_Conn *conn, Tcl_WideInt nsend, Tcl_Channel chan, FILE *fp, int fd)
      */
 
     status = NS_OK;
-    while (status == NS_OK && nsend > 0) {
-        size_t toread = (size_t)nsend;
+    while (status == NS_OK && nsend > 0u) {
+        size_t toRead = nsend;
 
-        if (toread > sizeof(buf)) {
-            toread = sizeof(buf);
+        if (toRead > sizeof(buf)) {
+            toRead = sizeof(buf);
         }
         if (chan != NULL) {
-	    nread = Tcl_Read(chan, buf, (int)toread);
+	    nread = Tcl_Read(chan, buf, (int)toRead);
         } else if (fp != NULL) {
-            nread = fread(buf, 1, toread, fp);
+	    nread = (int)fread(buf, 1u, toRead, fp);
             if (ferror(fp)) {
                 nread = -1;
             }
         } else {
-            nread = read(fd, buf, toread);
+            nread = ns_read(fd, buf, toRead);
         }
 
         if (nread == -1 || nread == 0 /* NB: truncated file */) {
@@ -432,10 +477,11 @@ ConnSend(Ns_Conn *conn, Tcl_WideInt nsend, Tcl_Channel chan, FILE *fp, int fd)
         } else {
 	    struct iovec vbuf;
 
-	    vbuf.iov_base = (void *) buf;
-	    vbuf.iov_len = nread;
-	    if ((status = Ns_ConnWriteVData(conn, &vbuf, 1, 0)) == NS_OK) {
-		nsend -= nread;
+	    vbuf.iov_base = (void *)buf;
+	    vbuf.iov_len  = (size_t)nread;
+	    status = Ns_ConnWriteVData(conn, &vbuf, 1, 0u);
+	    if (status == NS_OK) {
+		nsend -= (size_t)nread;
 	    }
 	}
     }
@@ -466,32 +512,32 @@ Ns_ConnSendFileVec(Ns_Conn *conn, Ns_FileVec *bufs, int nbufs)
 {
     Conn        *connPtr = (Conn *) conn;
     int          i;
-    ssize_t      towrite, nwrote;
+    size_t       toWrite, nwrote;
 
-    nwrote = 0;
-    towrite = 0;
+    nwrote = 0u;
+    toWrite = 0u;
 
     for (i = 0; i < nbufs; i++) {
-        towrite += bufs[i].length;
+        toWrite += bufs[i].length;
     }
 
-    while (towrite > 0) {
-        ssize_t sent = NsDriverSendFile(connPtr->sockPtr, bufs, nbufs, 0);
+    while (toWrite > 0u) {
+        ssize_t sent = NsDriverSendFile(connPtr->sockPtr, bufs, nbufs, 0u);
 
         if (sent < 1) {
             break;
         }
-        if (sent < towrite) {
-            Ns_ResetFileVec(bufs, nbufs, sent);
+        if ((size_t)sent < toWrite) {
+            (void)Ns_ResetFileVec(bufs, nbufs, (size_t)sent);
         }
-        nwrote += sent;
-        towrite -= sent;
+        nwrote += (size_t)sent;
+        toWrite -= (size_t)sent;
     }
-    if (nwrote > 0) {
+    if (nwrote > 0u) {
         connPtr->nContentSent += nwrote;
     }
 
-    return nwrote < towrite ? NS_ERROR : NS_OK;
+    return nwrote < toWrite ? NS_ERROR : NS_OK;
 }
 
 
@@ -514,11 +560,11 @@ Ns_ConnSendFileVec(Ns_Conn *conn, Ns_FileVec *bufs, int nbufs)
  */
 
 int
-Ns_ConnPuts(Ns_Conn *conn, CONST char *string)
+Ns_ConnPuts(Ns_Conn *conn, const char *s)
 {
     struct iovec vbuf;
-    vbuf.iov_base = (void *) string;
-    vbuf.iov_len  = strlen(string);
+    vbuf.iov_base = (void *) s;
+    vbuf.iov_len  = strlen(s);
     return Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
 }
 
@@ -540,12 +586,12 @@ Ns_ConnPuts(Ns_Conn *conn, CONST char *string)
  */
 
 int
-Ns_ConnSendDString(Ns_Conn *conn, Ns_DString *dsPtr)
+Ns_ConnSendDString(Ns_Conn *conn, const Ns_DString *dsPtr)
 {
     struct iovec vbuf;
 
     vbuf.iov_base = dsPtr->string;
-    vbuf.iov_len  = dsPtr->length;
+    vbuf.iov_len  = (size_t)dsPtr->length;
     return Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
 }
 
@@ -574,44 +620,52 @@ Ns_ConnSend(Ns_Conn *conn, struct iovec *bufs, int nbufs)
 {
     Conn    *connPtr = (Conn *) conn;
     int      i;
-    size_t   towrite;
+    size_t   toWrite;
     ssize_t  nwrote, sent;
 
     if (connPtr->sockPtr == NULL) {
         return -1;
     }
 
-    towrite = nwrote = sent = 0;
+    toWrite = 0u;
+    nwrote = 0;
+
+    assert(nbufs <= 0 || bufs != NULL);
 
     for (i = 0; i < nbufs; i++) {
-        towrite += bufs[i].iov_len;
+        toWrite += bufs[i].iov_len;
     }
    
-    if (towrite == 0) {
+    if (toWrite == 0u) {
 	return 0;
     }
 
-    if (NsWriterQueue(conn, towrite, NULL, NULL, -1, bufs, nbufs, 0) == NS_OK) {
-	Ns_Log(Debug, "==== writer sent %" PRIdz " bytes\n", towrite);
-	return towrite;
+    if (NsWriterQueue(conn, toWrite, NULL, NULL, -1, bufs, nbufs, 0) == NS_OK) {
+	Ns_Log(Debug, "==== writer sent %" PRIdz " bytes\n", toWrite);
+	return (ssize_t)toWrite;
     }
-
+    
+    /*
+     * Perform the actual send operation.
+     */
     {
 	Ns_Time timeout;
 	
 	timeout.sec = connPtr->sockPtr->drvPtr->sendwait;
 	timeout.usec = 0;
       
-	sent = Ns_SockSendBufs((Ns_Sock*)connPtr->sockPtr, bufs, nbufs, &timeout, 0);
+	sent = Ns_SockSendBufs((Ns_Sock*)connPtr->sockPtr, bufs, nbufs, &timeout, 0u);
     }
-    /*towrite -= sent;*/
+
+    /*
+     * Update counters;
+     */
     nwrote += sent;
-
     if (nwrote > 0) {
-	connPtr->nContentSent += nwrote;
+	connPtr->nContentSent += (size_t)nwrote;
     }
 
-    return (nwrote ? nwrote : sent);
+    return (nwrote > 0) ? nwrote : sent;
 }
 
 
@@ -641,7 +695,7 @@ Ns_ConnFlushContent(Ns_Conn *conn)
         return -1;
     }
     reqPtr->next  += reqPtr->avail;
-    reqPtr->avail  = 0;
+    reqPtr->avail  = 0u;
 
     return NS_OK;
 }
@@ -669,19 +723,22 @@ int
 Ns_ConnClose(Ns_Conn *conn)
 {
     Conn *connPtr = (Conn *) conn;
+
+    assert(conn != NULL);
     
     Ns_Log(Debug, "Ns_ConnClose %p stream %.6x chunk %.6x via writer %.6x sockPtr %p", 
-	   connPtr, 
+	   (void *)connPtr, 
 	   connPtr->flags & NS_CONN_STREAM, 
 	   connPtr->flags & NS_CONN_CHUNK, 
 	   connPtr->flags & NS_CONN_SENT_VIA_WRITER, 
-	   connPtr->sockPtr);
+	   (void *)connPtr->sockPtr);
 
     if (connPtr->sockPtr != NULL) {
 
-        if (connPtr->flags & NS_CONN_STREAM
-             && (connPtr->flags & NS_CONN_CHUNK
-                 || connPtr->compress > 0)) {
+        if ((connPtr->flags & NS_CONN_STREAM) != 0u
+	    && ((connPtr->flags & NS_CONN_CHUNK) != 0u
+		|| (connPtr->compress > 0)
+		)) {
             /*
              * Streaming:
              *   In chunked mode, write the end-of-content trailer.
@@ -694,8 +751,8 @@ Ns_ConnClose(Ns_Conn *conn)
 	 * Close the connection to the client either here or in the
 	 * writer thread.
 	 */
-	if ((connPtr->flags & NS_CONN_SENT_VIA_WRITER) == 0) {
-	    int keep = connPtr->keep > 0 ? 1 : 0;
+	if ((connPtr->flags & NS_CONN_SENT_VIA_WRITER) == 0u) {
+	    bool keep = connPtr->keep > 0 ? NS_TRUE : NS_FALSE;
 	    NsSockClose(connPtr->sockPtr, keep);
 	}
 
@@ -728,7 +785,7 @@ Ns_ConnClose(Ns_Conn *conn)
  */
 
 int
-Ns_ConnWrite(Ns_Conn *conn, CONST void *buf, size_t towrite)
+Ns_ConnWrite(Ns_Conn *conn, const void *buf, size_t toWrite)
 {
     Conn  *connPtr = (Conn *) conn;
     size_t n;
@@ -736,32 +793,32 @@ Ns_ConnWrite(Ns_Conn *conn, CONST void *buf, size_t towrite)
     struct iovec vbuf;
 
     vbuf.iov_base = (void *) buf;
-    vbuf.iov_len  = towrite;
+    vbuf.iov_len  = toWrite;
 
-    n = (size_t)connPtr->nContentSent;
-    status = Ns_ConnWriteVData(conn, &vbuf, 1, 0);
+    n = connPtr->nContentSent;
+    status = Ns_ConnWriteVData(conn, &vbuf, 1, 0u);
     if (status == NS_OK) {
-      return (int)(connPtr->nContentSent - n);
+        return (int)connPtr->nContentSent - (int)n;
     }
     return -1;
 }
 
 int
-Ns_WriteConn(Ns_Conn *conn, CONST char *buf, size_t towrite)
+Ns_WriteConn(Ns_Conn *conn, const char *buf, size_t toWrite)
 {
     struct iovec vbuf;
     vbuf.iov_base = (void *) buf;
-    vbuf.iov_len  = towrite;
+    vbuf.iov_len  = toWrite;
     return Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
 }
 
 int
-Ns_WriteCharConn(Ns_Conn *conn, CONST char *buf, size_t towrite)
+Ns_WriteCharConn(Ns_Conn *conn, const char *buf, size_t toWrite)
 {
     struct iovec sbuf;
 
     sbuf.iov_base = (void *)buf;
-    sbuf.iov_len = towrite;
+    sbuf.iov_len = toWrite;
     return Ns_ConnWriteVChars(conn, &sbuf, 1, NS_CONN_STREAM);
 }
 
@@ -789,8 +846,8 @@ Ns_ConnGets(char *buf, size_t bufsize, Ns_Conn *conn)
     char *p;
 
     p = buf;
-    while (bufsize > 1) {
-        if (Ns_ConnRead(conn, p, 1) != 1) {
+    while (bufsize > 1u) {
+        if (Ns_ConnRead(conn, p, 1u) != 0u) {
             return NULL;
         }
         if (*p++ == '\n') {
@@ -821,22 +878,22 @@ Ns_ConnGets(char *buf, size_t bufsize, Ns_Conn *conn)
  */
 
 size_t
-Ns_ConnRead(Ns_Conn *conn, void *vbuf, size_t toread)
+Ns_ConnRead(Ns_Conn *conn, void *vbuf, size_t toRead)
 {
     Conn    *connPtr = (Conn *) conn;
     Request *reqPtr = connPtr->reqPtr;
 
     if (connPtr->sockPtr == NULL) {
-        return -1;
+        return 0u;
     }
-    if (toread > reqPtr->avail) {
-        toread = reqPtr->avail;
+    if (toRead > reqPtr->avail) {
+        toRead = reqPtr->avail;
     }
-    memcpy(vbuf, reqPtr->next, toread);
-    reqPtr->next  += toread;
-    reqPtr->avail -= toread;
+    memcpy(vbuf, reqPtr->next, toRead);
+    reqPtr->next  += toRead;
+    reqPtr->avail -= toRead;
 
-    return toread;
+    return toRead;
 }
 
 
@@ -876,7 +933,7 @@ Ns_ConnReadLine(Ns_Conn *conn, Ns_DString *dsPtr, size_t *nreadPtr)
     if (nreadPtr != NULL) {
         *nreadPtr = nread;
     }
-    if (ncopy > 0 && eol[-1] == '\r') {
+    if (ncopy > 0u && *(eol-1) == '\r') {
         --ncopy;
     }
     Ns_DStringNAppend(dsPtr, reqPtr->next, (int)ncopy);
@@ -912,8 +969,8 @@ Ns_ConnReadHeaders(Ns_Conn *conn, Ns_Set *set, size_t *nreadPtr)
     int             status;
 
     Ns_DStringInit(&ds);
-    nread = 0;
-    maxhdr = connPtr->drvPtr->maxheaders;
+    nread = 0u;
+    maxhdr = (size_t)connPtr->drvPtr->maxheaders;
     status = NS_OK;
     while (nread < maxhdr && status == NS_OK) {
         Ns_DStringSetLength(&ds, 0);
@@ -956,17 +1013,17 @@ Ns_ConnReadHeaders(Ns_Conn *conn, Ns_Set *set, size_t *nreadPtr)
  */
 
 int
-Ns_ConnCopyToDString(Ns_Conn *conn, size_t tocopy, Ns_DString *dsPtr)
+Ns_ConnCopyToDString(Ns_Conn *conn, size_t toCopy, Ns_DString *dsPtr)
 {
     Conn    *connPtr = (Conn *) conn;
     Request *reqPtr = connPtr->reqPtr;
 
-    if (connPtr->sockPtr == NULL || reqPtr->avail < tocopy) {
+    if (connPtr->sockPtr == NULL || reqPtr->avail < toCopy) {
         return NS_ERROR;
     }
-    Ns_DStringNAppend(dsPtr, reqPtr->next, (int)tocopy);
-    reqPtr->next  += tocopy;
-    reqPtr->avail -= tocopy;
+    Ns_DStringNAppend(dsPtr, reqPtr->next, (int)toCopy);
+    reqPtr->next  += toCopy;
+    reqPtr->avail -= toCopy;
 
     return NS_OK;
 }
@@ -1007,32 +1064,37 @@ Ns_ConnCopyToFd(Ns_Conn *conn, size_t ncopy, int fd)
 }
 
 static int
-ConnCopy(Ns_Conn *conn, size_t tocopy, Tcl_Channel chan, FILE *fp, int fd)
+ConnCopy(Ns_Conn *conn, size_t toCopy, Tcl_Channel chan, FILE *fp, int fd)
 {
     Conn    *connPtr = (Conn *) conn;
-    Request *reqPtr = connPtr->reqPtr;
-    long     nwrote, ncopy = (long)tocopy;
+    Request *reqPtr;
+    size_t   ncopy = toCopy;
+    ssize_t  nwrote;
 
-    if (connPtr->sockPtr == NULL || reqPtr->avail < tocopy) {
+    assert(conn != NULL);
+
+    reqPtr = connPtr->reqPtr;
+
+    if (connPtr->sockPtr == NULL || reqPtr->avail < toCopy) {
         return NS_ERROR;
     }
     while (ncopy > 0) {
         if (chan != NULL) {
-            nwrote = Tcl_Write(chan, reqPtr->next, ncopy);
+            nwrote = Tcl_Write(chan, reqPtr->next, (int)ncopy);
         } else if (fp != NULL) {
-	  nwrote = (long)fwrite(reqPtr->next, 1, (size_t)ncopy, fp);
+	    nwrote = (ssize_t)fwrite(reqPtr->next, 1u, ncopy, fp);
             if (ferror(fp)) {
                 nwrote = -1;
             }
         } else {
-            nwrote = write(fd, reqPtr->next, (size_t)ncopy);
+            nwrote = ns_write(fd, reqPtr->next, ncopy);
         }
         if (nwrote < 0) {
             return NS_ERROR;
         }
-        ncopy -= nwrote;
+        ncopy -= (size_t)nwrote;
         reqPtr->next  += nwrote;
-        reqPtr->avail -= nwrote;
+        reqPtr->avail -= (size_t)nwrote;
     }
     return NS_OK;
 }
@@ -1055,53 +1117,58 @@ ConnCopy(Ns_Conn *conn, size_t tocopy, Tcl_Channel chan, FILE *fp, int fd)
  *----------------------------------------------------------------------
  */
 
-int
-Ns_CompleteHeaders(Ns_Conn *conn, Tcl_WideInt dataLength, int flags,
-		   Ns_DString *dsPtr)
+bool
+Ns_CompleteHeaders(Ns_Conn *conn, size_t dataLength, 
+		   unsigned int flags, Ns_DString *dsPtr)
 {
     Conn       *connPtr = (Conn *) conn;
-    CONST char *keep;
+    const char *keepString;
 
-    if (conn->flags & NS_CONN_SKIPHDRS) {
-        return 0;
+    assert(conn != NULL);
+    assert(dsPtr != NULL);
+
+    if ((conn->flags & NS_CONN_SKIPHDRS) != 0u) {
+        return NS_FALSE;
     }
 
     /*
      * Check for streaming vs. non-streaming.
      */
 
-    if (flags & NS_CONN_STREAM) {
+    if ((flags & NS_CONN_STREAM) != 0u) {
 
         conn->flags |= NS_CONN_STREAM;
 
         if (connPtr->responseLength < 0
             && conn->request->version > 1.0
             && connPtr->keep != 0
-            && !HdrEq(connPtr->outputheaders, "Content-Type",
-                                              "multipart/byteranges")) {
+            && HdrEq(connPtr->outputheaders, "Content-Type",
+                                              "multipart/byteranges") == NS_FALSE) {
             conn->flags |= NS_CONN_CHUNK;
         }
+
     } else if (connPtr->responseLength < 0) {
-        Ns_ConnSetLengthHeader(conn, dataLength);
+      Ns_ConnSetLengthHeader(conn, dataLength, 0);
     }
 
     /*
      * Set and construct the headers.
      */
 
-    if ((connPtr->keep = CheckKeep(connPtr))) {
-        keep = "keep-alive";
+    connPtr->keep = CheckKeep(connPtr);
+    if (connPtr->keep != 0) {
+        keepString = "keep-alive";
     } else {
-        keep = "close";
+        keepString = "close";
     }
-    Ns_ConnSetHeaders(conn, "Connection", keep);
+    Ns_ConnSetHeaders(conn, "Connection", keepString);
 
-    if (conn->flags & NS_CONN_CHUNK) {
+    if ((conn->flags & NS_CONN_CHUNK) != 0u) {
         Ns_ConnSetHeaders(conn, "Transfer-Encoding", "chunked");
     }
     Ns_ConnConstructHeaders(conn, dsPtr);
 
-    return 1;
+    return NS_TRUE;
 }
 
 
@@ -1121,9 +1188,11 @@ Ns_CompleteHeaders(Ns_Conn *conn, Tcl_WideInt dataLength, int flags,
  *----------------------------------------------------------------------
  */
 
-static int
-CheckKeep(Conn *connPtr)
+static bool
+CheckKeep(const Conn *connPtr)
 {
+    assert(connPtr != NULL);
+
     if (connPtr->drvPtr->keepwait > 0) {
 
         /*
@@ -1131,7 +1200,7 @@ CheckKeep(Conn *connPtr)
          */
 
         if (connPtr->keep > 0) {
-            return 1;
+            return NS_TRUE;
         }
 
         /*
@@ -1145,42 +1214,45 @@ CheckKeep(Conn *connPtr)
              * HTTP 1.0/1.1 keep-alive header checks.
              */
             if ((connPtr->request->version == 1.0
-                 && HdrEq(connPtr->headers, "connection", "keep-alive"))
+                 && HdrEq(connPtr->headers, "connection", "keep-alive") == NS_TRUE)
                 || (connPtr->request->version > 1.0
-                    && !HdrEq(connPtr->headers, "connection", "close"))) {
+                    && HdrEq(connPtr->headers, "connection", "close") == NS_FALSE)) {
 
                 /*
                  * POST, PUT etc. require a content-length header to allow keep-alive
                  */
-                if (connPtr->contentLength > 0
-		    && !Ns_SetIGet(connPtr->headers, "Content-Length")) {
-                    return 0;
+                if (connPtr->contentLength > 0u
+		    && Ns_SetIGet(connPtr->headers, "Content-Length") == NULL) {
+                    return NS_FALSE;
                 }
 
-		if (connPtr->drvPtr->keepmaxuploadsize
-		    && connPtr->contentLength > (size_t)connPtr->drvPtr->keepmaxuploadsize) {
-		    Ns_Log(Notice, "Disallow keep-alive, content-Length %" PRIdz " larger keepmaxuploadsize %d: %s",
+		if (connPtr->drvPtr->keepmaxuploadsize > 0u
+		    && connPtr->contentLength > connPtr->drvPtr->keepmaxuploadsize) {
+		    Ns_Log(Notice, 
+			   "Disallow keep-alive, content-Length %" PRIdz 
+			   " larger keepmaxuploadsize %" PRIdz ": %s",
 			   connPtr->contentLength, connPtr->drvPtr->keepmaxuploadsize,
 			   connPtr->request->line);
-		    return 0;
-		} else if (connPtr->drvPtr->keepmaxdownloadsize
-			   && connPtr->responseLength > connPtr->drvPtr->keepmaxdownloadsize) {
-		    Ns_Log(Notice, "Disallow keep-alive response length %" TCL_LL_MODIFIER
-			   "d larger keepmaxdownloadsize %d: %s",
+		    return NS_FALSE;
+		} else if (connPtr->drvPtr->keepmaxdownloadsize > 0u
+			   && connPtr->responseLength > 0
+			   && (size_t)connPtr->responseLength > connPtr->drvPtr->keepmaxdownloadsize) {
+		    Ns_Log(Notice, 
+			   "Disallow keep-alive response length %" PRIdz " "
+			   "larger keepmaxdownloadsize %" PRIdz ": %s",
 			   connPtr->responseLength, connPtr->drvPtr->keepmaxdownloadsize,
 			   connPtr->request->line);
-		    return 0;
+		    return NS_FALSE;
 		}
 		
                 /*
                  * We allow keep-alive for chunked encoding variants or a valid
                  * content-length header.
                  */
-		if ((connPtr->flags & NS_CONN_CHUNK)
-                        || Ns_SetIGet(connPtr->outputheaders, "Content-Length")
-                        || HdrEq(connPtr->outputheaders, "Content-Type",
-                                 "multipart/byteranges")) {
-		    return 1;
+		if (((connPtr->flags & NS_CONN_CHUNK) != 0u)
+                        || Ns_SetIGet(connPtr->outputheaders, "Content-Length") != NULL
+                        || HdrEq(connPtr->outputheaders, "Content-Type", "multipart/byteranges") == NS_TRUE) {
+		    return NS_TRUE;
                 }
             }
         }
@@ -1189,7 +1261,7 @@ CheckKeep(Conn *connPtr)
     /*
      * Don't allow keep-alive.
      */
-    return 0;
+    return NS_FALSE;
 }
 
 
@@ -1210,15 +1282,28 @@ CheckKeep(Conn *connPtr)
  *----------------------------------------------------------------------
  */
 
-static int
-HdrEq(Ns_Set *set, char *name, char *value)
+static bool
+HdrEq(const Ns_Set *set, const char *name, const char *value)
 {
-    char *hdrvalue;
+    const char *hdrvalue;
 
-    if (set != NULL
-        && (hdrvalue = Ns_SetIGet(set, name)) != NULL
-        && strncasecmp(hdrvalue, value, strlen(value)) == 0) {
-        return 1;
+    assert(set != NULL);
+    assert(name != NULL);
+    assert(value != NULL);
+
+    hdrvalue = Ns_SetIGet(set, name);
+
+    if ((hdrvalue != NULL) && strncasecmp(hdrvalue, value, strlen(value)) == 0) {
+        return NS_TRUE;
     }
-    return 0;
+    return NS_FALSE;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -36,224 +36,12 @@
 #include "nsd.h"
 
 /*
- * Tcl object and string commands.
- */
-
-extern Tcl_ObjCmdProc
-    NsTclAdpAbortObjCmd,
-    NsTclAdpAppendObjCmd,
-    NsTclAdpArgcObjCmd,
-    NsTclAdpArgvObjCmd,
-    NsTclAdpBindArgsObjCmd,
-    NsTclAdpBreakObjCmd,
-    NsTclAdpCloseObjCmd,
-    NsTclAdpCompressObjCmd,
-    NsTclAdpDebugObjCmd,
-    NsTclAdpInfoObjCmd,
-    NsTclAdpCtlObjCmd,
-    NsTclAdpDirObjCmd,
-    NsTclAdpDumpObjCmd,
-    NsTclAdpEvalObjCmd,
-    NsTclAdpExceptionObjCmd,
-    NsTclAdpFlushObjCmd,
-    NsTclAdpIdentObjCmd,
-    NsTclAdpIncludeObjCmd,
-    NsTclAdpMimeTypeObjCmd,
-    NsTclAdpParseObjCmd,
-    NsTclAdpPutsObjCmd,
-    NsTclAdpRegisterAdpObjCmd,
-    NsTclAdpRegisterProcObjCmd,
-    NsTclAdpRegisterScriptObjCmd,
-    NsTclAdpRegisterTagObjCmd,
-    NsTclAdpRegisterAdptagObjCmd,
-    NsTclAdpReturnObjCmd,
-    NsTclAdpSafeEvalObjCmd,
-    NsTclAdpTellObjCmd,
-    NsTclAdpTruncObjCmd,
-    NsTclAtCloseObjCmd,
-    NsTclAfterObjCmd,
-    NsTclAtCloseObjCmd,
-    NsTclAtExitObjCmd,
-    NsTclAtPreStartupObjCmd,
-    NsTclAtShutdownObjCmd,
-    NsTclAtSignalObjCmd,
-    NsTclAtStartupObjCmd,
-    NsTclCacheAppendObjCmd,
-    NsTclCacheCreateObjCmd,
-    NsTclCacheEvalObjCmd,
-    NsTclCacheFlushObjCmd,
-    NsTclCacheGetObjCmd,
-    NsTclCacheIncrObjCmd,
-    NsTclCacheKeysObjCmd,
-    NsTclCacheLappendObjCmd,
-    NsTclCacheNamesObjCmd,
-    NsTclCacheStatsObjCmd,
-    NsTclCancelObjCmd,
-    NsTclChanObjCmd,
-    NsTclCharsetsObjCmd,
-    NsTclCondObjCmd,
-    NsTclConfigObjCmd,
-    NsTclConfigSectionObjCmd,
-    NsTclConfigSectionsObjCmd,
-    NsTclConnObjCmd,
-    NsTclConnSendFpObjCmd,
-    NsTclCritSecObjCmd,
-    NsTclCryptObjCmd,
-    NsTclDeleteCookieObjCmd,
-    NsTclEncodingForCharsetObjCmd,
-    NsTclEnvObjCmd,
-    NsTclFastPathCacheStatsObjCmd,
-    NsTclFTruncateObjCmd,
-    NsTclGetAddrObjCmd,
-    NsTclGetCookieObjCmd,
-    NsTclGetHostObjCmd,
-    NsTclGetLimitsObjCmd,
-    NsTclGetUrlObjCmd,
-    NsTclGifSizeObjCmd,
-    NsTclGmTimeObjCmd,
-    NsTclGuessTypeObjCmd,
-    NsTclHTUUDecodeObjCmd,
-    NsTclHTUUEncodeObjCmd,
-    NsTclHashPathObjCmd,
-    NsTclHeadersObjCmd,
-    NsTclHttpObjCmd,
-    NsTclHttpTimeObjCmd,
-    NsTclICtlObjCmd,
-    NsTclInfoObjCmd,
-    NsTclImgSizeObjCmd,
-    NsTclImgTypeObjCmd,
-    NsTclImgMimeObjCmd,
-    NsTclJobObjCmd,
-    NsTclJpegSizeObjCmd,
-    NsTclKillObjCmd,
-    NsTclListLimitsObjCmd,
-    NsTclLocalTimeObjCmd,
-    NsTclLocationProcObjCmd,
-    NsTclLogCtlObjCmd,
-    NsTclLogObjCmd,
-    NsTclLogRollObjCmd,
-    NsTclModuleLoadObjCmd,
-    NsTclModulePathObjCmd,
-    NsTclMutexObjCmd,
-    NsTclNormalizePathObjCmd,
-    NsTclNsvAppendObjCmd,
-    NsTclNsvArrayObjCmd,
-    NsTclNsvBucketObjCmd,
-    NsTclNsvExistsObjCmd,
-    NsTclNsvGetObjCmd,
-    NsTclNsvIncrObjCmd,
-    NsTclNsvLappendObjCmd,
-    NsTclNsvNamesObjCmd,
-    NsTclNsvSetObjCmd,
-    NsTclNsvUnsetObjCmd,
-    NsTclPagePathObjCmd,
-    NsTclParseArgsObjCmd,
-    NsTclParseHttpTimeObjCmd,
-    NsTclParseQueryObjCmd,
-    NsTclPngSizeObjCmd,
-    NsTclPauseObjCmd,
-    NsTclProgressObjCmd,
-    NsTclPurgeFilesObjCmd,
-    NsTclInternalRedirectObjCmd,
-    NsTclRWLockObjCmd,
-    NsTclRandObjCmd,
-    NsTclRegisterAdpObjCmd,
-    NsTclRegisterFastPathObjCmd,
-    NsTclRegisterFastUrl2FileObjCmd,
-    NsTclRegisterFilterObjCmd,
-    NsTclRegisterLimitsObjCmd,
-    NsTclRegisterProcObjCmd,
-    NsTclRegisterProxyObjCmd,
-    NsTclRegisterTclObjCmd,
-    NsTclRegisterTraceObjCmd,
-    NsTclRegisterUrl2FileObjCmd,
-    NsTclRequestAuthorizeObjCmd,
-    NsTclRespondObjCmd,
-    NsTclResumeObjCmd,
-    NsTclReturnBadRequestObjCmd,
-    NsTclReturnErrorObjCmd,
-    NsTclReturnFileObjCmd,
-    NsTclReturnForbiddenObjCmd,
-    NsTclReturnFpObjCmd,
-    NsTclReturnMovedObjCmd,
-    NsTclReturnNotFoundObjCmd,
-    NsTclReturnNoticeObjCmd,
-    NsTclReturnObjCmd,
-    NsTclReturnRedirectObjCmd,
-    NsTclReturnUnauthorizedObjCmd,
-    NsTclReturnUnavailableObjCmd,
-    NsTclRollFileObjCmd,
-    NsTclRunOnceObjCmd,
-    NsTclSHA1ObjCmd,
-    NsTclMD5ObjCmd,
-    NsTclSchedDailyObjCmd,
-    NsTclSchedObjCmd,
-    NsTclSchedWeeklyObjCmd,
-    NsTclSelectObjCmd,
-    NsTclSemaObjCmd,
-    NsTclServerObjCmd,
-    NsTclServerPathObjCmd,
-    NsTclServerRootProcObjCmd,
-    NsTclSetCookieObjCmd,
-    NsTclSetGroupObjCmd,
-    NsTclSetLimitsObjCmd,
-    NsTclSetObjCmd,
-    NsTclSetUserObjCmd,
-    NsTclShortcutFilterObjCmd,
-    NsTclShutdownObjCmd,
-    NsTclSleepObjCmd,
-    NsTclSlsObjCmd,
-    NsTclSockAcceptObjCmd,
-    NsTclSockCallbackObjCmd,
-    NsTclSockCheckObjCmd,
-    NsTclSockListenCallbackObjCmd,
-    NsTclSockListenObjCmd,
-    NsTclSockNReadObjCmd,
-    NsTclSockOpenObjCmd,
-    NsTclSockSetBlockingObjCmd,
-    NsTclSockSetNonBlockingObjCmd,
-    NsTclSocketPairObjCmd,
-    NsTclStartContentObjCmd,
-    NsTclStrftimeObjCmd,
-    NsTclSymlinkObjCmd,
-    NsTclThreadObjCmd,
-    NsTclTimeObjCmd,
-    NsTclTmpNamObjCmd,
-    NsTclTruncateObjCmd,
-    NsTclUnRegisterOpObjCmd,
-    NsTclUnRegisterUrl2FileObjCmd,
-    NsTclUnscheduleObjCmd,
-    NsTclUrl2FileObjCmd,
-    NsTclUrlDecodeObjCmd,
-    NsTclUrlEncodeObjCmd,
-    NsTclWriteContentObjCmd,
-    NsTclWriteFpObjCmd,
-    NsTclWriteObjCmd,
-    NsTclWriterObjCmd,
-    NsTclFileStatObjCmd;
-
-extern Tcl_CmdProc
-    NsTclAdpStatsCmd,
-    NsTclHrefsCmd,
-    NsTclLibraryCmd,
-    NsTclMkTempCmd,
-    NsTclParseHeaderCmd,
-    NsTclQuoteHtmlCmd,
-    NsTclRegisterTagCmd,
-    NsTclShareCmd,
-    NsTclStripHtmlCmd,
-    TclX_KeyldelObjCmd,
-    TclX_KeylgetObjCmd,
-    TclX_KeylkeysObjCmd,
-    TclX_KeylsetObjCmd;
-
-/*
  * The following structure defines a command to be created
  * in new interps.
  */
 
 typedef struct Cmd {
-    char *name;
+    const char *name;
     Tcl_CmdProc *proc;
     Tcl_ObjCmdProc *objProc;
 } Cmd;
@@ -263,12 +51,12 @@ typedef struct Cmd {
  * and virtual server interps.
  */
 
-static Cmd basicCmds[] = {
-    {"env", NULL, NsTclEnvObjCmd},
-    {"keyldel", TclX_KeyldelObjCmd, NULL},
-    {"keylget", TclX_KeylgetObjCmd, NULL},
-    {"keylkeys", TclX_KeylkeysObjCmd, NULL},
-    {"keylset", TclX_KeylsetObjCmd, NULL},
+static const Cmd basicCmds[] = {
+    {"env",      NULL, NsTclEnvObjCmd},
+    {"keyldel",  NULL, TclX_KeyldelObjCmd},
+    {"keylget",  NULL, TclX_KeylgetObjCmd},
+    {"keylkeys", NULL, TclX_KeylkeysObjCmd},
+    {"keylset",  NULL, TclX_KeylsetObjCmd},
     {"ns_addrbyhost", NULL, NsTclGetAddrObjCmd},
     {"ns_after", NULL, NsTclAfterObjCmd},
     {"ns_atexit", NULL, NsTclAtExitObjCmd},
@@ -372,7 +160,7 @@ static Cmd basicCmds[] = {
  * are available only in virtual server interps.
  */
 
-static Cmd servCmds[] = {
+static const Cmd servCmds[] = {
     {"_ns_adp_include", NULL, NsTclAdpIncludeObjCmd},
     {"ns_adp_abort", NULL, NsTclAdpAbortObjCmd},
     {"ns_adp_append", NULL, NsTclAdpAppendObjCmd},
@@ -417,6 +205,7 @@ static Cmd servCmds[] = {
     {"ns_checkurl", NULL, NsTclRequestAuthorizeObjCmd},
     {"ns_cond", NULL, NsTclCondObjCmd},
     {"ns_conn", NULL, NsTclConnObjCmd},
+    {"ns_connchan", NULL, NsTclConnChanObjCmd},
     {"ns_conncptofp", NULL, NsTclWriteContentObjCmd},
     {"ns_connsendfp", NULL, NsTclConnSendFpObjCmd},
     {"ns_critsec", NULL, NsTclCritSecObjCmd},
@@ -495,7 +284,51 @@ static Cmd servCmds[] = {
     {NULL, NULL, NULL}
 };
 
+/* 
+ * Locally defined functions.
+ */
+static void AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
+     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * AddCmds --
+ *
+ *      Add an array of commands or objCommands to the passed
+ *      interpreter.  The array is terminated by an entry with 
+ *      name == NULL.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      registered commands.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void
+AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
+{
+    assert(cmdPtr != NULL);
+    assert(itPtr != NULL);
+
+    while (cmdPtr->name != NULL) {
+	/*
+	 * One has to provide wither an objProc or a proc.
+	 */
+        if (cmdPtr->objProc != NULL) {
+	    (void)Tcl_CreateObjCommand(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);
+        } else {
+	    assert(cmdPtr->proc != NULL);
+            (void)Tcl_CreateCommand(itPtr->interp, cmdPtr->name, cmdPtr->proc, itPtr, NULL);
+        }
+        ++cmdPtr;
+    }
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -512,29 +345,25 @@ static Cmd servCmds[] = {
  *----------------------------------------------------------------------
  */
 
-static void
-AddCmds(Cmd *cmdPtr, NsInterp *itPtr)
-{
-    Tcl_Interp *interp = itPtr->interp;
-
-    while (cmdPtr->name != NULL) {
-        if (cmdPtr->objProc != NULL) {
-            Tcl_CreateObjCommand(interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);
-        } else {
-            Tcl_CreateCommand(interp, cmdPtr->name, cmdPtr->proc, itPtr, NULL);
-        }
-        ++cmdPtr;
-    }
-}
-
 void
 NsTclAddBasicCmds(NsInterp *itPtr)
 {
+    assert(itPtr != NULL);
     AddCmds(basicCmds, itPtr);
 }
 
 void
 NsTclAddServerCmds(NsInterp *itPtr)
 {
+    assert(itPtr != NULL);
     AddCmds(servCmds, itPtr);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

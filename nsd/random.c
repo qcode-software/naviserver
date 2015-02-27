@@ -50,9 +50,9 @@ static unsigned long Roulette(void);
  */
 
 static volatile unsigned long counter;  /* Counter in counting thread */
-static volatile char fRun; /* Flag for counting thread outer loop. */
-static volatile char fCount; /* Flag for counting thread inner loop. */
-static Ns_Sema sema;	/* Semaphore that controls counting threads. */
+static volatile int fRun; 	/* Flag for counting thread outer loop. */
+static volatile int fCount; 	/* Flag for counting thread inner loop. */
+static Ns_Sema       sema;	/* Semaphore that controls counting threads. */
 
 /*
  * Critical section around initial and subsequent seed generation.
@@ -88,7 +88,7 @@ static volatile int initialized;
  */
 
 int
-NsTclRandObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclRandObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     double d;
 
@@ -109,7 +109,7 @@ NsTclRandObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
 		    Tcl_GetString(objv[1]), "\": must be > 0", NULL);
 	    return TCL_ERROR;
 	}
-        Tcl_SetObjResult(interp, Tcl_NewIntObj((int) (d * maxValue)));
+        Tcl_SetObjResult(interp, Tcl_NewIntObj((int) (d * (double)maxValue)));
     } else {
         Tcl_SetObjResult(interp, Tcl_NewDoubleObj(d));
     }
@@ -137,12 +137,12 @@ NsTclRandObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST obj
 double
 Ns_DRand(void)
 {
-    if (!initialized) {
+    if (initialized == 0) {
 	Ns_CsEnter(&lock);
-	if (!initialized) {
+	if (initialized == 0) {
 	    unsigned long seed;
 	    Ns_GenSeeds(&seed, 1);
-#ifdef HAVE_DRAND48
+#if defined(HAVE_DRAND48)
     	    srand48((long) seed);
 #elif defined(HAVE_RANDOM)
     	    srandom((unsigned int) seed);
@@ -153,12 +153,14 @@ Ns_DRand(void)
 	}
 	Ns_CsLeave(&lock);
     }
-#if HAVE_DRAND48
+#if defined(HAVE_ARC4RANDOM)
+    return ((double)(arc4random() % (unsigned)RAND_MAX) / ((double)RAND_MAX + 1.0));
+#elif defined(HAVE_DRAND48)
     return drand48();
-#elif HAVE_RANDOM
-    return ((double) random() / (LONG_MAX + 1.0));
+#elif defined(HAVE_RANDOM)
+    return ((double) random() / ((double)LONG_MAX + 1.0));
 #else
-    return ((double) rand() / (RAND_MAX + 1.0));
+    return ((double) rand() / ((double)RAND_MAX + 1.0));
 #endif
 }
 
@@ -222,12 +224,12 @@ Ns_GenSeeds(unsigned long *seedsPtr, int nseeds)
  */
 
 static void
-CounterThread(void *ignored)
+CounterThread(void *UNUSED(arg))
 {
-    while (fRun) {
+    while (fRun != 0) {
         Ns_SemaWait(&sema);
-        if (fRun) {
-	    while (fCount) {
+        if (fRun != 0) {
+	    while (fCount != 0) {
 		counter++;
             }
         }
@@ -264,7 +266,7 @@ TrueRand(void)
     int i;
 
     for (i = 0; i < ROULETTE_PRE_ITERS; i++) {
-	Roulette();
+        (void) Roulette();
     }
     return Roulette();
 }
@@ -272,19 +274,28 @@ TrueRand(void)
 static unsigned long
 Roulette(void)
 {
-    static unsigned long ocount, randbuf;
+    static unsigned long ocount = 0u, randbuf = 0u;
     struct timeval tv;
 
-    counter = 0;
+    counter = 0u;
     fCount = 1;
     Ns_SemaPost(&sema, 1);
-    tv.tv_sec = (time_t)0;
+    tv.tv_sec =  0;
     tv.tv_usec = MSEC_TO_COUNT * 1000;
     select(0, NULL, NULL, NULL, &tv);
     fCount = 0;
     counter ^= (counter >> 3) ^ (counter >> 6) ^ (ocount);
-    counter &= 0x7;
+    counter &= 0x7U;
     ocount = counter;
     randbuf = (randbuf<<3) ^ counter;
     return randbuf;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

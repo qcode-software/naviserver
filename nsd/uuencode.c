@@ -42,7 +42,7 @@
  * of the 64 6-bit characters.
  */
 
-static char    six2pr[64] = {
+static const char six2pr[64] = {
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
     'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
@@ -55,7 +55,7 @@ static char    six2pr[64] = {
  * either the corresponding 6-bit value or -1 for invalid character.
  */
 
-static int pr2six[256] = {
+static const int pr2six[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63, 
@@ -74,8 +74,8 @@ static int pr2six[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 };
 
-#define ENC(c) (six2pr[(c)])
-#define DEC(c) ((unsigned char) pr2six[(int)(c)])
+#define Encode(c) (UCHAR(six2pr[(c)]))
+#define Decode(c) (UCHAR(pr2six[(int)(c)]))
 
 
 /*
@@ -97,11 +97,15 @@ static int pr2six[256] = {
  */
 
 size_t
-Ns_HtuuEncode(unsigned char *input, size_t len, char *output)
+Ns_HtuuEncode(const unsigned char *input, size_t bufSize, char *buf)
 {
-    register unsigned char  *p, *q;
+    register const unsigned char *p;
+    register unsigned char *q;
     register int line = 0;
-    register size_t n = 0;
+    register size_t n;
+
+    assert(input != NULL);
+    assert(buf != NULL);
 
     /*
      * Convert every three input bytes into four output
@@ -109,21 +113,21 @@ Ns_HtuuEncode(unsigned char *input, size_t len, char *output)
      */
 
     p = input;
-    q = (unsigned char *) output;
-    for (n = len / 3; n > 0; --n) {
+    q = (unsigned char *) buf;
+    for (n = bufSize / 3u; n > 0u; --n) {
         /*
          * Add wrapping newline to be compatible with GNU uuencode
          * if line length exceeds max line length - without adding
          * extra newline character
          */
         if (line >= 60) {
-            *q++ = '\n'; 
+	    *q++ = UCHAR('\n'); 
 	    line = 0;
         }       
-	*q++ = ENC(p[0] >> 2);
-	*q++ = ENC(((p[0] << 4) & 060) | ((p[1] >> 4) & 017));
-	*q++ = ENC(((p[1] << 2) & 074) | ((p[2] >> 6) & 03));
-	*q++ = ENC(p[2] & 077);
+	*q++ = Encode(p[0] >> 2);
+	*q++ = Encode((UCHAR(p[0] << 4) & 0x30U) | ((p[1] >> 4) & 0x0FU));
+        *q++ = Encode((UCHAR(p[1] << 2) & 0x3CU) | ((p[2] >> 6) & 0x03U));
+	*q++ = Encode(p[2] & 0x3FU);
 	p += 3;
         line += 4;
     }
@@ -132,20 +136,20 @@ Ns_HtuuEncode(unsigned char *input, size_t len, char *output)
      * Convert and pad any remaining bytes.
      */
 
-    n = len % 3;
-    if (n > 0) {
-	*q++ = ENC(p[0] >> 2);
-	if (n == 1) {
-	    *q++ = ENC((p[0] << 4) & 060);
-	    *q++ = '=';
+    n = bufSize % 3u;
+    if (n > 0u) {
+	*q++ = Encode(p[0] >> 2);
+	if (n == 1u) {
+	    *q++ = Encode(UCHAR(p[0] << 4) & 0x30U);
+	    *q++ = UCHAR('=');
 	} else {
-	    *q++ = ENC(((p[0] << 4) & 060) | ((p[1] >> 4) & 017));
-	    *q++ = ENC((p[1] << 2) & 074);
+	    *q++ = Encode((UCHAR(p[0] << 4) & 0x30U) | ((p[1] >> 4) & 0x0FU));
+	    *q++ = Encode(UCHAR( p[1] << 2) & 0x3CU);
 	}
-	*q++ = '=';
+	*q++ = UCHAR('=');
     }
-    *q = '\0';
-    return (q - (unsigned char *) output);
+    *q = UCHAR('\0');
+    return ((char *)q - buf);
 }
 
 
@@ -168,13 +172,16 @@ Ns_HtuuEncode(unsigned char *input, size_t len, char *output)
  */
 
 size_t
-Ns_HtuuDecode(char *input, unsigned char *output, size_t outputlen)
+Ns_HtuuDecode(const char *input, unsigned char *buf, size_t bufSize)
 {
     register int n;
-    unsigned char buf[4];
-    register unsigned char *p, *q;
+    unsigned char chars[4] = {0u, 0u, 0u, 0u};
+    register const unsigned char *p;
+    register unsigned char *q;
 
-
+    assert(input != NULL);
+    assert(buf != NULL);
+    
     /*
      * Skip leading space, if any.
      */
@@ -188,15 +195,15 @@ Ns_HtuuDecode(char *input, unsigned char *output, size_t outputlen)
      */
 
     n = 0;
-    p = (unsigned char *) input;
-    q = output;
+    p = (const unsigned char *) input;
+    q = buf;
     while (*p) {
         if (pr2six[(int)(*p)] >= 0) {
-            buf[n++] = *p;
+            chars[n++] = *p;
 	    if (n == 4) {
-		*q++ = DEC(buf[0]) << 2 | DEC(buf[1]) >> 4;
-		*q++ = DEC(buf[1]) << 4 | DEC(buf[2]) >> 2;
-		*q++ = DEC(buf[2]) << 6 | DEC(buf[3]);
+		*q++ = UCHAR(Decode(chars[0]) << 2) | Decode(chars[1]) >> 4;
+		*q++ = UCHAR(Decode(chars[1]) << 4) | Decode(chars[2]) >> 2;
+		*q++ = UCHAR(Decode(chars[2]) << 6) | Decode(chars[3]);
 		n = 0;
 	    }
         }
@@ -208,13 +215,22 @@ Ns_HtuuDecode(char *input, unsigned char *output, size_t outputlen)
      */
 
     if (n > 1) {
-	*q++ = DEC(buf[0]) << 2 | DEC(buf[1]) >> 4;
+	*q++ = UCHAR(Decode(chars[0]) << 2) | Decode(chars[1]) >> 4;
     }
     if (n > 2) {
-	*q++ = DEC(buf[1]) << 4 | DEC(buf[2]) >> 2;
+	*q++ = UCHAR(Decode(chars[1]) << 4) | Decode(chars[2]) >> 2;
     }
-    if ((size_t)(q - output) < outputlen) {
-	*q = '\0';
+    if ((size_t)(q - buf) < bufSize) {
+	*q = UCHAR('\0');
     }
-    return (q - output);
+    return (size_t)(q - buf);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

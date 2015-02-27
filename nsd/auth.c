@@ -40,7 +40,7 @@
  * could be useful for global modules (e.g., nscp).
  */
 
-static Ns_UserAuthorizeProc    *userProcPtr;
+static Ns_UserAuthorizeProc    *userProcPtr = NULL;
 
 
 /*
@@ -64,12 +64,17 @@ static Ns_UserAuthorizeProc    *userProcPtr;
  */
 
 int
-Ns_AuthorizeRequest(char *server, char *method, char *url,
-	            char *user, char *passwd, char *peer)
+Ns_AuthorizeRequest(const char *server, const char *method, const char *url,
+	            const char *user, const char *passwd, const char *peer)
 {
-    NsServer *servPtr = NsGetServer(server);
+    NsServer *servPtr;
 
-    if (servPtr == NULL || servPtr->request.authProc == NULL) {
+    assert(server != NULL);
+    assert(method != NULL);
+    assert(url != NULL);
+    
+    servPtr = NsGetServer(server);
+    if (unlikely(servPtr == NULL) || servPtr->request.authProc == NULL) {
     	return NS_OK;
     }
     return (*servPtr->request.authProc)(server, method, url, user, passwd, peer);
@@ -93,12 +98,16 @@ Ns_AuthorizeRequest(char *server, char *method, char *url,
  */
 
 void
-Ns_SetRequestAuthorizeProc(char *server, Ns_RequestAuthorizeProc *proc)
+Ns_SetRequestAuthorizeProc(const char *server, Ns_RequestAuthorizeProc *procPtr)
 {
-    NsServer *servPtr = NsGetServer(server);
+    NsServer *servPtr;
 
+    assert(server != NULL);
+    assert(procPtr != NULL);
+    
+    servPtr = NsGetServer(server);
     if (servPtr != NULL) {
-	servPtr->request.authProc = proc;
+	servPtr->request.authProc = procPtr;
     }
 }
 
@@ -120,8 +129,7 @@ Ns_SetRequestAuthorizeProc(char *server, Ns_RequestAuthorizeProc *proc)
  */
 
 int
-NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-			    Tcl_Obj *CONST objv[])
+NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp   *itPtr = arg;
     int         status;
@@ -184,8 +192,11 @@ NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-Ns_AuthorizeUser(char *user, char *passwd)
+Ns_AuthorizeUser(const char *user, const char *passwd)
 {
+    assert(user != NULL);
+    assert(passwd != NULL);
+    
     if (userProcPtr == NULL) {
 	return NS_ERROR;
     }
@@ -212,6 +223,8 @@ Ns_AuthorizeUser(char *user, char *passwd)
 void
 Ns_SetUserAuthorizeProc(Ns_UserAuthorizeProc *procPtr)
 {
+    assert(procPtr != NULL);
+    
     userProcPtr = procPtr;
 }
 
@@ -236,12 +249,15 @@ NsParseAuth(Conn *connPtr, char *auth)
 {
     register char *p;
 
+    assert(connPtr != NULL);
+    assert(auth != NULL);
+    
     if (connPtr->auth == NULL) {
         connPtr->auth = Ns_SetCreate(NULL);
     }
 
     p = auth;
-    while (*p != '\0' && !isspace(UCHAR(*p))) {
+    while (*p != '\0' && CHARTYPE(space, *p) == 0) {
         ++p;
     }
     if (*p != '\0') {
@@ -254,39 +270,39 @@ NsParseAuth(Conn *connPtr, char *auth)
         if (STRIEQ(auth, "Basic")) {
 	    size_t size;
 
-            Ns_SetPut(connPtr->auth, "AuthMethod", "Basic");
+            (void)Ns_SetPut(connPtr->auth, "AuthMethod", "Basic");
 
             /* Skip spaces */
             q = p + 1;
-            while (*q != '\0' && isspace(UCHAR(*q))) {
+            while (*q != '\0' && CHARTYPE(space, *q) != 0) {
                 q++;
             }
 
-            size = strlen(q) + 3;
+            size = strlen(q) + 3U;
             v = ns_malloc(size);
             size = Ns_HtuuDecode(q, (unsigned char *) v, size);
             v[size] = '\0';
             q = strchr(v, ':');
             if (q != NULL) {
                 *q++ = '\0';
-                Ns_SetPut(connPtr->auth, "Password", q);
+                (void)Ns_SetPut(connPtr->auth, "Password", q);
             }
-            Ns_SetPut(connPtr->auth, "Username", v);
+            (void)Ns_SetPut(connPtr->auth, "Username", v);
             ns_free(v);
         } else
 
         if (STRIEQ(auth, "Digest")) {
-            Ns_SetPut(connPtr->auth, "AuthMethod", "Digest");
+	    (void)Ns_SetPut(connPtr->auth, "AuthMethod", "Digest");
 
             /* Skip spaces */
             q = p + 1;
-            while (*q != '\0' && isspace(UCHAR(*q))) {
+            while (*q != '\0' && CHARTYPE(space, *q) != 0) {
                 q++;
             }
 
             while (q != NULL && *q != '\0') {
-		int  idx;
-		char save2;
+		size_t idx;
+		char   save2;
 
                 p = strchr(q, '=');
                 if (p == NULL) {
@@ -294,7 +310,7 @@ NsParseAuth(Conn *connPtr, char *auth)
                 }
                 v = p - 1;
                 /* Trim trailing spaces */
-                while (v > q && isspace(UCHAR(*v))) {
+                while (v > q && CHARTYPE(space, *v) != 0) {
                     v--;
                 }
                 /* Remember position */
@@ -305,7 +321,7 @@ NsParseAuth(Conn *connPtr, char *auth)
                 *v = save2;
                 /* Skip = and optional spaces */
                 p++;
-                while (*p != '\0' && isspace(UCHAR(*p))) {
+                while (*p != '\0' && CHARTYPE(space, *p) != 0) {
                     p++;
                 }
                 if (*p == '\0') {
@@ -315,7 +331,7 @@ NsParseAuth(Conn *connPtr, char *auth)
                 if (*p == '"') {
                     for (q = ++p; *q != '\0' && *q != '"'; q++);
                 } else {
-                    for (q = p; *q != '\0' && *q != ',' && !isspace(UCHAR(*q)); q++);
+                    for (q = p; *q != '\0' && *q != ',' && CHARTYPE(space, *q) == 0; q++);
                 }
                 save2 = *q;
                 *q = '\0';
@@ -323,14 +339,23 @@ NsParseAuth(Conn *connPtr, char *auth)
                 Ns_SetPutValue(connPtr->auth, idx, p);
                 *q = save2;
                 /* Advance to the end of the param value, can be end or next name*/
-                while (*q != '\0' && (*q == ',' || *q == '"' || isspace(UCHAR(*q)))) {
+                while (*q != '\0' && (*q == ',' || *q == '"' || CHARTYPE(space, *q) != 0)) {
                     q++;
                 }
             }
 
         }
-        if (p) {
+        if (p != NULL) {
 	    *p = save;
 	}
     }
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

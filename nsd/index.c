@@ -40,8 +40,22 @@
  * Local functions defined in this file
  */
 
-static int BinSearch(void **elp, void **list, int n, Ns_IndexCmpProc *cmp);
-static int BinSearchKey(void *key, void **list, int n, Ns_IndexCmpProc *cmp);
+static int BinSearch(void *const*elPtrPtr, void *const* listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
+static int BinSearchKey(const void *key, void *const*listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
+
+static int CmpStr(const char *const*leftPtr, const char *const*rightPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static int CmpKeyWithStr(const char *key, const char *const*elPtr)       NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static int CmpInts(const int *leftPtr, const int *rightPtr)    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static int CmpKeyWithInt(const int *keyPtr, const int *elPtr)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+#ifdef _MSC_VER_VERY_OLD
+static void * 
+NsBsearch (register const void *key, register const void *base,
+           register size_t nmemb, register size_t size,
+           int (*compar)(const void *left, const void *right));
+#endif
 
 
 /*
@@ -62,9 +76,14 @@ static int BinSearchKey(void *key, void **list, int n, Ns_IndexCmpProc *cmp);
 
 void
 Ns_IndexInit(Ns_Index *indexPtr, int inc,
-	     int (*CmpEls) (const void *, const void *),
-	     int (*CmpKeyWithEl) (const void *, const void *))
+	     int (*CmpEls) (const void *left, const void *right),
+	     int (*CmpKeyWithEl) (const void *left, const void *right))
 {
+
+    assert(indexPtr != NULL);
+    assert(CmpEls != NULL);
+    assert(CmpKeyWithEl != NULL);
+    
     indexPtr->n = 0;
     indexPtr->max = inc;
     indexPtr->inc = inc;
@@ -72,7 +91,7 @@ Ns_IndexInit(Ns_Index *indexPtr, int inc,
     indexPtr->CmpEls = CmpEls;
     indexPtr->CmpKeyWithEl = CmpKeyWithEl;
 
-    indexPtr->el = (void **) ns_malloc(inc * sizeof(void *));
+    indexPtr->el = (void **) ns_malloc((size_t)inc * sizeof(void *));
 }
 
 
@@ -95,10 +114,12 @@ Ns_IndexInit(Ns_Index *indexPtr, int inc,
 void
 Ns_IndexTrunc(Ns_Index* indexPtr)
 {
+    assert(indexPtr != NULL);
+    
     indexPtr->n = 0;
     ns_free(indexPtr->el);
     indexPtr->max = indexPtr->inc;
-    indexPtr->el = (void **) ns_malloc(indexPtr->inc * sizeof(void *));
+    indexPtr->el = (void **) ns_malloc((size_t)indexPtr->inc * sizeof(void *));
 }
 
 
@@ -121,6 +142,8 @@ Ns_IndexTrunc(Ns_Index* indexPtr)
 void
 Ns_IndexDestroy(Ns_Index *indexPtr)
 {
+    assert(indexPtr != NULL);
+    
     indexPtr->CmpEls = NULL;
     indexPtr->CmpKeyWithEl = NULL;
     ns_free(indexPtr->el);
@@ -144,14 +167,16 @@ Ns_IndexDestroy(Ns_Index *indexPtr)
  */
 
 Ns_Index *
-Ns_IndexDup(Ns_Index *indexPtr)
+Ns_IndexDup(const Ns_Index *indexPtr)
 {
     Ns_Index *newPtr;
 
+    assert(indexPtr != NULL);
+
     newPtr = (Ns_Index *) ns_malloc(sizeof(Ns_Index));
     memcpy(newPtr, indexPtr, sizeof(Ns_Index));
-    newPtr->el = (void **) ns_malloc(indexPtr->max * sizeof(void *));
-    memcpy(newPtr->el, indexPtr->el, indexPtr->n * sizeof(void *));
+    newPtr->el = (void **) ns_malloc((size_t)indexPtr->max * sizeof(void *));
+    memcpy(newPtr->el, indexPtr->el, (size_t)indexPtr->n * sizeof(void *));
 
     return newPtr;
 }
@@ -174,14 +199,17 @@ Ns_IndexDup(Ns_Index *indexPtr)
  */
 
 void *
-Ns_IndexFind(Ns_Index *indexPtr, void *key)
+Ns_IndexFind(const Ns_Index *indexPtr, const void *key)
 {
     void **pPtrPtr;
+
+    assert(indexPtr != NULL);
+    assert(key != NULL);
 
     pPtrPtr = (void **) bsearch(key, indexPtr->el, (size_t)indexPtr->n, 
                                 sizeof(void *), indexPtr->CmpKeyWithEl);
 
-    return pPtrPtr ? *pPtrPtr : NULL;
+    return (pPtrPtr != NULL) ? *pPtrPtr : NULL;
 }
 
 
@@ -204,8 +232,11 @@ Ns_IndexFind(Ns_Index *indexPtr, void *key)
  */
 
 void *
-Ns_IndexFindInf(Ns_Index *indexPtr, void *key)
+Ns_IndexFindInf(const Ns_Index *indexPtr, const void *key)
 {
+    assert(indexPtr != NULL);
+    assert(key != NULL);
+  
     if (indexPtr->n > 0) {
         int i;
 
@@ -246,9 +277,12 @@ Ns_IndexFindInf(Ns_Index *indexPtr, void *key)
  */
 
 void **
-Ns_IndexFindMultiple(Ns_Index *indexPtr, void *key)
+Ns_IndexFindMultiple(const Ns_Index *indexPtr, const void *key)
 {
     void **firstPtrPtr;
+
+    assert(indexPtr != NULL);
+    assert(key != NULL);
 
     /*
      * Find a place in the array that matches the key
@@ -275,16 +309,16 @@ Ns_IndexFindMultiple(Ns_Index *indexPtr, void *key)
 	 * Search linearly forward to find out how many there are
 	 */
 	
-        n = indexPtr->n - (firstPtrPtr - indexPtr->el);
-        for (i = 1; i < n &&
-		 indexPtr->CmpKeyWithEl(key, firstPtrPtr + i) == 0; i++)
+        n = indexPtr->n - (size_t)(firstPtrPtr - indexPtr->el);
+        for (i = 1u; i < n &&
+                 indexPtr->CmpKeyWithEl(key, firstPtrPtr + i) == 0; i++) {
 	    ;
-
+	}
         /*
 	 * Build array of values to return
 	 */
 	
-        retPtrPtr = ns_malloc((i + 1) * sizeof(void *));
+        retPtrPtr = ns_malloc((i + 1u) * sizeof(void *));
         memcpy(retPtrPtr, firstPtrPtr, i * sizeof(void *));
         retPtrPtr[i] = NULL;
 
@@ -311,15 +345,20 @@ Ns_IndexFindMultiple(Ns_Index *indexPtr, void *key)
  */
 
 static int
-BinSearch(void **elPtrPtr, void **listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
+BinSearch(void *const* elPtrPtr, void *const* listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
 {
     int low = 0, high = n-1, mid = 0;
+
+    assert(elPtrPtr != NULL);
+    assert(listPtrPtr != NULL);
+    assert(cmpProc != NULL);
 
     while (low <= high) {
 	int cond;
 
         mid = (low + high) / 2;
-        if ((cond = (*cmpProc) (elPtrPtr, listPtrPtr + mid)) < 0) {
+        cond = (*cmpProc) (elPtrPtr, ((const unsigned char *const*)listPtrPtr) + mid);
+        if (cond < 0) {
             high = mid - 1;
         } else if (cond > 0) {
             low = mid + 1;
@@ -349,15 +388,20 @@ BinSearch(void **elPtrPtr, void **listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
  */
 
 static int
-BinSearchKey(void *key, void **listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
+BinSearchKey(const void *key, void *const* listPtrPtr, int n, Ns_IndexCmpProc *cmpProc)
 {
     int low = 0, high = n-1, mid = 0;
+
+    assert(key != NULL);
+    assert(listPtrPtr != NULL);
+    assert(cmpProc != NULL);
 
     while (low <= high) {
 	int cond;
 
         mid = (low + high) / 2;
-        if ((cond = (*cmpProc) (key, listPtrPtr + mid)) < 0) {
+        cond = (*cmpProc)(key, ((const unsigned char *const*)listPtrPtr) + mid);
+        if (cond < 0) {
             high = mid - 1;
         } else if (cond > 0) {
             low = mid + 1;
@@ -390,13 +434,16 @@ Ns_IndexAdd(Ns_Index *indexPtr, void *el)
 {
     int i;
 
+    assert(indexPtr != NULL);
+    assert(el != NULL);
+
     if (indexPtr->n == indexPtr->max) {
         indexPtr->max += indexPtr->inc;
         indexPtr->el = (void **) ns_realloc(indexPtr->el,
-					    indexPtr->max * sizeof(void *));
+					    (size_t)indexPtr->max * sizeof(void *));
     } else if (indexPtr->max == 0) {
         indexPtr->max += indexPtr->inc;
-        indexPtr->el = (void **) ns_malloc(indexPtr->max * sizeof(void *));
+        indexPtr->el = (void **) ns_malloc((size_t)indexPtr->max * sizeof(void *));
     }
     if (indexPtr->n > 0) {
         i = BinSearch(&el, indexPtr->el, indexPtr->n, indexPtr->CmpEls);
@@ -432,14 +479,15 @@ Ns_IndexAdd(Ns_Index *indexPtr, void *el)
  */
 
 void
-Ns_IndexDel(Ns_Index *indexPtr, void *el)
+Ns_IndexDel(Ns_Index *indexPtr, const void *el)
 {
-    int i;
-    int done;
-    int j;
+    int i, j, done;
+
+    assert(indexPtr != NULL);
+    assert(el != NULL);
 
     done = 0;
-    for (i = 0; i < indexPtr->n && !done; i++) {
+    for (i = 0; i < indexPtr->n && done == 0; i++) {
         if (indexPtr->el[i] == el) {
             indexPtr->n--;
             if (i < indexPtr->n) {
@@ -470,8 +518,10 @@ Ns_IndexDel(Ns_Index *indexPtr, void *el)
  */
 
 void *
-Ns_IndexEl(Ns_Index *indexPtr, int i)
+Ns_IndexEl(const Ns_Index *indexPtr, int i)
 {
+    assert(indexPtr != NULL);
+
     return indexPtr->el[i];
 }
 
@@ -493,8 +543,11 @@ Ns_IndexEl(Ns_Index *indexPtr, int i)
  */
 
 static int
-CmpStr(char **leftPtr, char **rightPtr)
+CmpStr(const char *const*leftPtr, const char *const*rightPtr)
 {
+    assert(leftPtr != NULL);
+    assert(rightPtr != NULL);
+
     return strcmp(*leftPtr, *rightPtr);
 }
 
@@ -516,8 +569,11 @@ CmpStr(char **leftPtr, char **rightPtr)
  */
 
 static int
-CmpKeyWithStr(char *key, char **elPtr)
+CmpKeyWithStr(const char *key, const char *const*elPtr)
 {
+    assert(key != NULL);
+    assert(elPtr != NULL);
+
     return strcmp(key, *elPtr);
 }
 
@@ -542,8 +598,11 @@ CmpKeyWithStr(char *key, char **elPtr)
 void
 Ns_IndexStringInit(Ns_Index *indexPtr, int inc)
 {
-    Ns_IndexInit(indexPtr, inc, (int (*) (const void *, const void *)) CmpStr,
-        (int (*) (const void *, const void *)) CmpKeyWithStr);
+    assert(indexPtr != NULL);
+
+    Ns_IndexInit(indexPtr, inc, 
+		 (int (*) (const void *left, const void *right)) CmpStr,
+		 (int (*) (const void *left, const void *right)) CmpKeyWithStr);
 }
 
 
@@ -565,14 +624,16 @@ Ns_IndexStringInit(Ns_Index *indexPtr, int inc)
  */
 
 Ns_Index *
-Ns_IndexStringDup(Ns_Index *indexPtr)
+Ns_IndexStringDup(const Ns_Index *indexPtr)
 {
     Ns_Index *newPtr;
     int       i;
 
+    assert(indexPtr != NULL);
+
     newPtr = (Ns_Index *) ns_malloc(sizeof(Ns_Index));
     memcpy(newPtr, indexPtr, sizeof(Ns_Index));
-    newPtr->el = (void **) ns_malloc(indexPtr->max * sizeof(void *));
+    newPtr->el = (void **) ns_malloc((size_t)indexPtr->max * sizeof(void *));
 
     for (i = 0; i < newPtr->n; i++) {
         newPtr->el[i] = ns_strdup(indexPtr->el[i]);
@@ -599,9 +660,12 @@ Ns_IndexStringDup(Ns_Index *indexPtr)
  */
 
 void
-Ns_IndexStringAppend(Ns_Index *addtoPtr, Ns_Index *addfromPtr)
+Ns_IndexStringAppend(Ns_Index *addtoPtr, const Ns_Index *addfromPtr)
 {
     int i;
+
+    assert(addtoPtr != NULL);
+    assert(addfromPtr != NULL);
 
     for (i = 0; i < addfromPtr->n; i++) {
         Ns_IndexAdd(addtoPtr, ns_strdup(addfromPtr->el[i]));
@@ -630,6 +694,8 @@ Ns_IndexStringDestroy(Ns_Index *indexPtr)
 {
     int i;
 
+    assert(indexPtr != NULL);
+    
     for (i = 0; i < indexPtr->n; i++) {
         ns_free(indexPtr->el[i]);
     }
@@ -659,6 +725,8 @@ Ns_IndexStringTrunc(Ns_Index *indexPtr)
 {
     int i;
 
+    assert(indexPtr != NULL);
+
     for (i = 0; i < indexPtr->n; i++) {
         ns_free(indexPtr->el[i]);
     }
@@ -684,8 +752,12 @@ Ns_IndexStringTrunc(Ns_Index *indexPtr)
  */
 
 static int
-CmpInts(int *leftPtr, int *rightPtr)
+CmpInts(const int *leftPtr, const int *rightPtr)
 {
+
+    assert(leftPtr != NULL);
+    assert(rightPtr != NULL);
+
     if (*leftPtr == *rightPtr) {
         return 0;
     } else {
@@ -711,8 +783,11 @@ CmpInts(int *leftPtr, int *rightPtr)
  */
 
 static int
-CmpKeyWithInt(int *keyPtr, int *elPtr)
+CmpKeyWithInt(const int *keyPtr, const int *elPtr)
 {
+    assert(keyPtr != NULL);
+    assert(elPtr != NULL);
+
     if (*keyPtr == *elPtr) {
         return 0;
     } else {
@@ -740,12 +815,15 @@ CmpKeyWithInt(int *keyPtr, int *elPtr)
 void
 Ns_IndexIntInit(Ns_Index *indexPtr, int inc)
 {
-    Ns_IndexInit(indexPtr, inc, (int (*) (const void *, const void *)) CmpInts,
-        (int (*) (const void *, const void *)) CmpKeyWithInt);
+    assert(indexPtr != NULL);
+    
+    Ns_IndexInit(indexPtr, inc, 
+		 (int (*) (const void *left, const void *right)) CmpInts,
+		 (int (*) (const void *left, const void *right)) CmpKeyWithInt);
 }
 
-#ifdef _WIN32
-#define bsearch(a,b,c,d,e) NsBsearch(a,b,c,d,e)
+#ifdef _MSC_VER_VERY_OLD
+#define bsearch(a,b,c,d,e) NsBsearch((a),(b),(c),(d),(e))
 
 /*
  *----------------------------------------------------------------------
@@ -769,7 +847,7 @@ Ns_IndexIntInit(Ns_Index *indexPtr, int inc)
 static void * 
 NsBsearch (register const void *key, register const void *base,
            register size_t nmemb, register size_t size,
-           int (*compar)(const void *, const void *))
+           int (*compar)(const void *key, const void *value))
 {
     while (nmemb > 0) {
 	register const void *mid_point;
@@ -784,7 +862,15 @@ NsBsearch (register const void *key, register const void *base,
         } else
             nmemb >>= 1;
     }
-    return (void *)NULL;
+    return NULL;
 }
 #endif
 
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

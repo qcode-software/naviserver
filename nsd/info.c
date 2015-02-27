@@ -35,9 +35,6 @@
 
 #include "nsd.h"
 
-EXTERN void Tcl_GetMemoryInfo(Tcl_DString *dsPtr);
-NS_EXTERN char *nsBuildDate;
-
 /*
  * Static variables defined in this file.
  */
@@ -61,7 +58,7 @@ static Ns_ThreadArgProc ThreadArgProc;
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoHomePath(void)
 {
     return nsconf.home;
@@ -130,7 +127,7 @@ Ns_InfoServerVersion(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoConfigFile(void)
 {
     return nsconf.config;
@@ -153,7 +150,7 @@ Ns_InfoConfigFile(void)
  *----------------------------------------------------------------------
  */
 
-int
+pid_t
 Ns_InfoPid(void)
 {
     return nsconf.pid;
@@ -253,10 +250,10 @@ Ns_InfoPlatform(void)
  *----------------------------------------------------------------------
  */
 
-int
+long
 Ns_InfoUptime(void)
 {
-    return (int) difftime(time(NULL), nsconf.boot_t);
+    return (long)difftime(time(NULL), nsconf.boot_t);
 }
 
 
@@ -474,15 +471,15 @@ Ns_InfoTag(void)
  */
 
 int
-NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int         opt;
+    int         opt, result;
     NsInterp    *itPtr = arg;
-    char        *server, *elog;
+    const char  *server;
+    const char  *elog;
     Tcl_DString ds;
 
-
-    static CONST char *opts[] = {
+    static const char *opts[] = {
         "address", "argv0", "boottime", "builddate", "callbacks",
         "config", "home", "hostname", "locks", "log",
         "major", "minor", "mimetypes", "name", "nsd", "pagedir", 
@@ -538,7 +535,7 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         return TCL_OK;
 
     case IConfigIdx:
-        Tcl_SetResult(interp, Ns_InfoConfigFile(), TCL_STATIC);
+	Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoConfigFile(), -1));
         return TCL_OK;
 
     case ICallbacksIdx:
@@ -575,7 +572,7 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 
     case ILogIdx:
         elog = Ns_InfoErrorLog();
-        Tcl_SetResult(interp, elog == NULL ? "STDOUT" : elog, TCL_STATIC);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(elog == NULL ? "STDOUT" : elog, -1));
         return TCL_OK;
 
     case IPlatformIdx:
@@ -592,15 +589,15 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         return TCL_OK;
 
     case IUptimeIdx:
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoUptime()));
+	Tcl_SetObjResult(interp, Tcl_NewLongObj(Ns_InfoUptime()));
         return TCL_OK;
 
     case IBoottimeIdx:
-        Tcl_SetObjResult(interp, Tcl_NewWideIntObj(Ns_InfoBootTime()));
+        Tcl_SetObjResult(interp, Tcl_NewLongObj((long)Ns_InfoBootTime()));
         return TCL_OK;
 
     case IPidIdx:
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoPid()));
+	Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)Ns_InfoPid()));
         return TCL_OK;
 
     case IMajorIdx:
@@ -625,7 +622,7 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         return TCL_OK;
 
     case IHomeIdx:
-        Tcl_SetResult(interp, Ns_InfoHomePath(), TCL_STATIC);
+	Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHomePath(), -1));
         return TCL_OK;
 
     case IWinntIdx:
@@ -646,8 +643,15 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
         return TCL_OK;
 
     case IServersIdx:
-        Tcl_SetResult(interp, nsconf.servers.string, TCL_STATIC);
-        return TCL_OK;
+        {
+            Tcl_DString *dsPtr = &nsconf.servers;
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(dsPtr->string, dsPtr->length));
+            return TCL_OK;
+        }
+
+    default:
+        /* cases handled below */
+        break;
     }
 
     /*
@@ -660,6 +664,7 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
     }
 
     server = itPtr->servPtr->server;
+    result = TCL_OK;
 
     switch (opt) {
     case IPageDirIdx:
@@ -667,45 +672,48 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
 	Ns_LogDeprecated(objv, 2, "ns_server ?-server s? pagedir", NULL);
         NsPageRoot(&ds, itPtr->servPtr, NULL);
         Tcl_DStringResult(interp, &ds);
-        return TCL_OK;
+        break;
 
     case IServerIdx:
-        Tcl_SetResult(interp, server, TCL_STATIC);
-        return TCL_OK;
+        Tcl_SetObjResult(interp,  Tcl_NewStringObj(server, -1));
+        break;
 
     case ITclLibIdx:
 	Ns_LogDeprecated(objv, 2, "ns_server ?-server s? tcllib", NULL);
-        Tcl_SetResult(interp, itPtr->servPtr->tcl.library, TCL_STATIC);
-        return TCL_OK;
+	Tcl_SetObjResult(interp, Tcl_NewStringObj(itPtr->servPtr->tcl.library, -1));
+        break;
 
     case IFiltersIdx:
 	Ns_LogDeprecated(objv, 2, "ns_server ?-server s? filters", NULL);
         NsGetFilters(&ds, server);
         Tcl_DStringResult(interp, &ds);
-        return TCL_OK;
+        break;
 
     case ITracesIdx:
 	Ns_LogDeprecated(objv, 2, "ns_server ?-server s? traces", NULL);
         NsGetTraces(&ds, server);
         Tcl_DStringResult(interp, &ds);
-        return TCL_OK;
+        break;
 
     case IRequestProcsIdx:
 	Ns_LogDeprecated(objv, 2, "ns_server ?-server s? requestprocs", NULL);
         NsGetRequestProcs(&ds, server);
         Tcl_DStringResult(interp, &ds);
-        return TCL_OK;
+        break;
 
     case IUrl2FileIdx:
 	Ns_LogDeprecated(objv, 2, "ns_server ?-server s? url2file", NULL);
         NsGetUrl2FileProcs(&ds, server);
         Tcl_DStringResult(interp, &ds);
-        return TCL_OK;
+        break;
+
+    default:
+        Tcl_SetResult(interp, "unrecognized option", TCL_STATIC);
+        result = TCL_ERROR;
+        break;
     }
 
-    Tcl_SetResult(interp, "unrecognized option", TCL_STATIC);
-
-    return TCL_ERROR;
+    return result;
 }
 
 
@@ -726,36 +734,46 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
  */
 
 int
-NsTclLibraryCmd(ClientData arg, Tcl_Interp *interp, int argc, char **argv)
+NsTclLibraryCmd(ClientData arg, Tcl_Interp *interp, int argc, CONST84 char *argv[])
 {
     NsInterp *itPtr = arg;
-    char *lib;
+    const char *lib;
     Ns_DString ds;
 
     if (argc != 2 && argc != 3) {
-    Tcl_AppendResult(interp, "wrong # args: should be \"",
-        argv[0], " library ?module?\"", NULL);
-    return TCL_ERROR;
+	Tcl_AppendResult(interp, "wrong # args: should be \"",
+			 argv[0], " library ?module?\"", NULL);
+	return TCL_ERROR;
     }
     if (STREQ(argv[1], "private")) {
         lib = itPtr->servPtr->tcl.library;
     } else if (STREQ(argv[1], "shared")) {
         lib = nsconf.tcl.sharedlibrary;
     } else {
-    Tcl_AppendResult(interp, "unknown library \"",
-       argv[1], "\": should be private or shared", NULL);
-    return TCL_ERROR;
+	Tcl_AppendResult(interp, "unknown library \"",
+			 argv[1], "\": should be private or shared", NULL);
+	return TCL_ERROR;
     }
     Ns_DStringInit(&ds);
     Ns_MakePath(&ds, lib, argv[2], NULL);
-    Tcl_SetResult(interp, ds.string, TCL_VOLATILE);
+    Tcl_DStringResult(interp, &ds);
     Ns_DStringFree(&ds);
+
     return TCL_OK;
 }
 
 
 static void
-ThreadArgProc(Tcl_DString *dsPtr, void *proc, void *arg)
+ThreadArgProc(Tcl_DString *dsPtr, Ns_ThreadProc proc, const void *arg)
 {
-    Ns_GetProcInfo(dsPtr, proc, arg);
+    Ns_GetProcInfo(dsPtr, (Ns_Callback *)proc, arg);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

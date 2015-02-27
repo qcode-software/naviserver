@@ -144,7 +144,19 @@ install-examples:
 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/pages/examples/; \
 	done
 
-DTPLITE=dtplite
+
+# On some systems you may need a special shell script to control the
+# PATH seen by dtplite, as that influences which versions of tclsh and
+# Tcllib dtplite uses.  I personally found it necessary to use a
+# one-line script like this for the DTPLITE command:
+#   env PATH=/usr/sbin:/usr/bin:/sbin:/bin dtplite "$@"
+# --atp@piskorski.com, 2014/08/27 10:52 EDT
+
+ifeq ($(DTPLITE),)
+  DTPLITE=dtplite
+else
+  # Do nothing, use the environment variable as is.
+endif
 
 build-doc:
 	$(RM) doc/html doc/man doc/tmp
@@ -219,12 +231,12 @@ helgrind: all
 	$(LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
 cppcheck:
-	cppcheck --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
-		-I./include -I/usr/include $(DEFS)
+	cppcheck --verbose --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
 checkexports: all
 	@for i in $(dirs); do \
-		nm -p $$i/*.so | awk '$$2 ~ /[TDB]/ { print $$3 }' | sort -n | uniq | grep -v '^[Nn]s\|^TclX\|^_'; \
+		nm -p $$i/*${LIBEXT} | awk '$$2 ~ /[TDB]/ { print $$3 }' | sort -n | uniq | grep -v '^[Nn]s\|^TclX\|^_'; \
 	done
 
 clean:

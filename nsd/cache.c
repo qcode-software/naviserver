@@ -63,7 +63,6 @@ typedef struct Entry {
 typedef struct Cache {
     Entry         *firstEntryPtr;
     Entry         *lastEntryPtr;
-    Tcl_HashEntry *hPtr;
     int            keys;
     size_t         maxSize;
     size_t         currentSize;
@@ -89,9 +88,14 @@ typedef struct Cache {
  * Local functions defined in this file
  */
 
-static int  Expired(Entry *ePtr, Ns_Time *nowPtr);
-static void Delink(Entry *ePtr);
-static void Push(Entry *ePtr);
+static bool Expired(const Entry *ePtr, const Ns_Time *nowPtr)
+    NS_GNUC_NONNULL(1);
+
+static void Delink(Entry *ePtr)
+    NS_GNUC_NONNULL(1);
+
+static void Push(Entry *ePtr)
+    NS_GNUC_NONNULL(1);
 
 
 /*
@@ -111,21 +115,27 @@ static void Push(Entry *ePtr);
  */
 
 Ns_Cache *
-Ns_CacheCreateSz(CONST char *name, int keys, size_t maxSize, Ns_Callback *freeProc)
+Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_Callback *freeProc)
 {
     Cache *cachePtr;
+    size_t nameLength;
 
-    cachePtr = ns_calloc(1, sizeof(Cache) + strlen(name));
-    strcpy(cachePtr->name, name);
+    assert(name != NULL);
+
+    nameLength = strlen(name);
+
+    cachePtr = ns_calloc(1U, sizeof(Cache) + nameLength);
+    memcpy(cachePtr->name, name, nameLength + 1u);
+    
     cachePtr->freeProc       = freeProc;
     cachePtr->maxSize        = maxSize;
-    cachePtr->currentSize    = 0;
+    cachePtr->currentSize    = 0u;
     cachePtr->keys           = keys;
-    cachePtr->stats.nhit     = 0;
-    cachePtr->stats.nmiss    = 0;
-    cachePtr->stats.nexpired = 0;
-    cachePtr->stats.nflushed = 0;
-    cachePtr->stats.npruned  = 0;
+    cachePtr->stats.nhit     = 0u;
+    cachePtr->stats.nmiss    = 0u;
+    cachePtr->stats.nexpired = 0u;
+    cachePtr->stats.nflushed = 0u;
+    cachePtr->stats.npruned  = 0u;
 
     Ns_MutexSetName2(&cachePtr->lock, "ns:cache", name);
     Tcl_InitHashTable(&cachePtr->entriesTable, keys);
@@ -155,7 +165,7 @@ Ns_CacheDestroy(Ns_Cache *cache)
 {
     Cache      *cachePtr = (Cache *) cache;
 
-    Ns_CacheFlush(cache);
+    (void) Ns_CacheFlush(cache);
     Ns_MutexDestroy(&cachePtr->lock);
     Ns_CondDestroy(&cachePtr->cond);
     Tcl_DeleteHashTable(&cachePtr->entriesTable);
@@ -181,11 +191,14 @@ Ns_CacheDestroy(Ns_Cache *cache)
  */
 
 Ns_Entry *
-Ns_CacheFindEntry(Ns_Cache *cache, CONST char *key)
+Ns_CacheFindEntry(Ns_Cache *cache, const char *key)
 {
     Cache         *cachePtr = (Cache *) cache;
     Tcl_HashEntry *hPtr;
     Entry         *ePtr;
+
+    assert(cache != NULL);
+    assert(key != NULL);
 
     hPtr = Tcl_FindHashEntry(&cachePtr->entriesTable, key);
     if (hPtr == NULL) {
@@ -203,7 +216,7 @@ Ns_CacheFindEntry(Ns_Cache *cache, CONST char *key)
         ++cachePtr->stats.nmiss;
         return NULL;
     }
-    if (Expired(ePtr, NULL)) {
+    if (Expired(ePtr, NULL) == NS_TRUE) {
         /*
          * Entry exists but has expired.
          */
@@ -238,23 +251,27 @@ Ns_CacheFindEntry(Ns_Cache *cache, CONST char *key)
  */
 
 Ns_Entry *
-Ns_CacheCreateEntry(Ns_Cache *cache, CONST char *key, int *newPtr)
+Ns_CacheCreateEntry(Ns_Cache *cache, const char *key, int *newPtr)
 {
     Cache         *cachePtr = (Cache *) cache;
     Tcl_HashEntry *hPtr;
     Entry         *ePtr;
     int            isNew;
 
+    assert(cache != NULL);
+    assert(key != NULL);
+    assert(newPtr != NULL);
+
     hPtr = Tcl_CreateHashEntry(&cachePtr->entriesTable, key, &isNew);
-    if (isNew) {
-        ePtr = ns_calloc(1, sizeof(Entry));
+    if (isNew != 0) {
+        ePtr = ns_calloc(1U, sizeof(Entry));
         ePtr->hPtr = hPtr;
         ePtr->cachePtr = cachePtr;
         Tcl_SetHashValue(hPtr, ePtr);
         ++cachePtr->stats.nmiss;
     } else {
         ePtr = Tcl_GetHashValue(hPtr);
-        if (Expired(ePtr, NULL)) {
+        if (Expired(ePtr, NULL) == NS_TRUE) {
             ++cachePtr->stats.nexpired;
             Ns_CacheUnsetValue((Ns_Entry *) ePtr);
             isNew = 1;
@@ -290,19 +307,23 @@ Ns_CacheCreateEntry(Ns_Cache *cache, CONST char *key, int *newPtr)
  */
 
 Ns_Entry *
-Ns_CacheWaitCreateEntry(Ns_Cache *cache, CONST char *key, int *newPtr,
-                        Ns_Time *timeoutPtr)
+Ns_CacheWaitCreateEntry(Ns_Cache *cache, const char *key, int *newPtr,
+                        const Ns_Time *timeoutPtr)
 {
     Ns_Entry      *entry;
     int            isNew, status = NS_OK;
 
+    assert(cache != NULL);
+    assert(key != NULL);
+    assert(newPtr != NULL);
+
     entry = Ns_CacheCreateEntry(cache, key, &isNew);
-    if (!isNew && Ns_CacheGetValue(entry) == NULL) {
+    if (isNew == 0 && Ns_CacheGetValue(entry) == NULL) {
         do {
             status = Ns_CacheTimedWait(cache, timeoutPtr);
             entry = Ns_CacheCreateEntry(cache, key, &isNew);
         } while (status == NS_OK
-                 && !isNew
+                 && isNew == 0
                  && Ns_CacheGetValue(entry) == NULL);
     }
     *newPtr = isNew;
@@ -327,10 +348,12 @@ Ns_CacheWaitCreateEntry(Ns_Cache *cache, CONST char *key, int *newPtr,
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_CacheKey(Ns_Entry *entry)
 {
     Entry *ePtr = (Entry *) entry;
+
+    assert(entry != NULL);
 
     return Tcl_GetHashKey(&ePtr->cachePtr->entriesTable, ePtr->hPtr);
 }
@@ -353,21 +376,24 @@ Ns_CacheKey(Ns_Entry *entry)
  */
 
 void *
-Ns_CacheGetValue(Ns_Entry *entry)
+Ns_CacheGetValue(const Ns_Entry *entry)
 {
-    return ((Entry *) entry)->value;
+    assert(entry != NULL);
+    return ((const Entry *) entry)->value;
 }
 
 size_t
-Ns_CacheGetSize(Ns_Entry *entry)
+Ns_CacheGetSize(const Ns_Entry *entry)
 {
-    return ((Entry *) entry)->size;
+    assert(entry != NULL);
+    return ((const Entry *) entry)->size;
 }
 
-Ns_Time *
-Ns_CacheGetExpirey(Ns_Entry *entry)
+const Ns_Time *
+Ns_CacheGetExpirey(const Ns_Entry *entry)
 {
-    return &((Entry *) entry)->expires;
+    assert(entry != NULL);
+    return &((const Entry *) entry)->expires;
 }
 
 
@@ -392,21 +418,29 @@ Ns_CacheGetExpirey(Ns_Entry *entry)
 void
 Ns_CacheSetValue(Ns_Entry *entry, void *value)
 {
-    Ns_CacheSetValueSz(entry, value, 0);
+    assert(entry != NULL);
+    assert(value != NULL);
+    Ns_CacheSetValueSz(entry, value, 0u);
 }
 
 void
 Ns_CacheSetValueSz(Ns_Entry *entry, void *value, size_t size)
 {
-  Ns_CacheSetValueExpires(entry, value, size, NULL, 0);
+    assert(entry != NULL);
+    assert(value != NULL);
+    Ns_CacheSetValueExpires(entry, value, size, NULL, 0);
 }
 
 void
 Ns_CacheSetValueExpires(Ns_Entry *entry, void *value, size_t size,
-                        Ns_Time *timeoutPtr, int cost)
+                        const Ns_Time *timeoutPtr, int cost)
 {
     Entry *ePtr = (Entry *) entry;
-    Cache *cachePtr = ePtr->cachePtr;
+    Cache *cachePtr;
+
+    assert(entry != NULL);
+
+    cachePtr = ePtr->cachePtr;
 
     Ns_CacheUnsetValue(entry);
     ePtr->value = value;
@@ -418,7 +452,7 @@ Ns_CacheSetValueExpires(Ns_Entry *entry, void *value, size_t size,
         ePtr->expires = *timeoutPtr;
     }
     cachePtr->currentSize += size;
-    if (cachePtr->maxSize > 0) {
+    if (cachePtr->maxSize > 0u) {
         /* 
 	 * Make space for the new entry, but don't delete the current
 	 * entry, and don't delete other newborn entries (with a value
@@ -457,8 +491,11 @@ void
 Ns_CacheUnsetValue(Ns_Entry *entry)
 {
     Entry *ePtr = (Entry *) entry;
-    void *value = ePtr->value;
+    void *value;
     Cache *cachePtr;
+
+    assert(entry != NULL);
+    value = ePtr->value;
 
     if (value != NULL) {
 	/*
@@ -471,7 +508,7 @@ Ns_CacheUnsetValue(Ns_Entry *entry)
 	 */
         cachePtr = ePtr->cachePtr;
         cachePtr->currentSize -= ePtr->size;
-	ePtr->size = 0;
+	ePtr->size = 0u;
         ePtr->value = NULL;
         ePtr->expires.sec = ePtr->expires.usec = 0;
 		
@@ -505,6 +542,8 @@ Ns_CacheFlushEntry(Ns_Entry *entry)
 {
     Entry *ePtr = (Entry *) entry;
 
+    assert(entry != NULL);
+
     ePtr->cachePtr->stats.nflushed++;
     Ns_CacheDeleteEntry(entry);
 }
@@ -513,6 +552,8 @@ void
 Ns_CacheDeleteEntry(Ns_Entry *entry)
 {
     Entry *ePtr = (Entry *) entry;
+
+    assert(entry != NULL);
 
     Ns_CacheUnsetValue(entry);
     Delink(ePtr);
@@ -544,6 +585,8 @@ Ns_CacheFlush(Ns_Cache *cache)
     Ns_CacheSearch  search;
     Ns_Entry       *entry;
     int             nflushed = 0;
+
+    assert(cache != NULL);
 
     entry = Ns_CacheFirstEntry(cache, &search);
     while (entry != NULL) {
@@ -580,13 +623,16 @@ Ns_CacheFirstEntry(Ns_Cache *cache, Ns_CacheSearch *search)
     Cache          *cachePtr = (Cache *) cache;
     Tcl_HashEntry  *hPtr;
 
+    assert(cache != NULL);
+    assert(search != NULL);
+
     Ns_GetTime(&search->now);
     hPtr = Tcl_FirstHashEntry(&cachePtr->entriesTable, &search->hsearch);
     while (hPtr != NULL) {
         Ns_Entry  *entry = Tcl_GetHashValue(hPtr);
 
         if (Ns_CacheGetValue(entry) != NULL) {
-            if (!Expired((Entry *) entry, &search->now)) {
+            if (Expired((Entry *) entry, &search->now) == NS_FALSE) {
                 return entry;
             }
             ++cachePtr->stats.nexpired;
@@ -620,12 +666,14 @@ Ns_CacheNextEntry(Ns_CacheSearch *search)
 {
     Tcl_HashEntry  *hPtr;
 
+    assert(search != NULL);
+
     hPtr = Tcl_NextHashEntry(&search->hsearch);
     while (hPtr != NULL) {
         Ns_Entry *entry = Tcl_GetHashValue(hPtr);
 
         if (Ns_CacheGetValue(entry) != NULL) {
-            if (!Expired((Entry *) entry, &search->now)) {
+            if (Expired((Entry *) entry, &search->now) == NS_FALSE) {
                 return entry;
             }
             ((Entry *) entry)->cachePtr->stats.nexpired++;
@@ -658,6 +706,7 @@ Ns_CacheLock(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     Ns_MutexLock(&cachePtr->lock);
 }
 
@@ -683,6 +732,7 @@ Ns_CacheTryLock(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     return Ns_MutexTryLock(&cachePtr->lock);
 }
 
@@ -708,6 +758,7 @@ Ns_CacheUnlock(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     Ns_MutexUnlock(&cachePtr->lock);
 }
 
@@ -729,17 +780,19 @@ Ns_CacheUnlock(Ns_Cache *cache)
  *----------------------------------------------------------------------
  */
 
-void
+int
 Ns_CacheWait(Ns_Cache *cache)
 {
-    Ns_CacheTimedWait(cache, NULL);
+    assert(cache != NULL);
+    return Ns_CacheTimedWait(cache, NULL);
 }
 
 int
-Ns_CacheTimedWait(Ns_Cache *cache, Ns_Time *timePtr)
+Ns_CacheTimedWait(Ns_Cache *cache, const Ns_Time *timePtr)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     return Ns_CondTimedWait(&cachePtr->cond, &cachePtr->lock, timePtr);
 }
 
@@ -769,6 +822,7 @@ Ns_CacheSignal(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     Ns_CondSignal(&cachePtr->cond);
 }
 
@@ -795,6 +849,7 @@ Ns_CacheBroadcast(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     Ns_CondBroadcast(&cachePtr->cond);
 }
 
@@ -819,18 +874,21 @@ char *
 Ns_CacheStats(Ns_Cache *cache, Ns_DString *dest)
 {
     Cache          *cachePtr = (Cache *)cache;
-    unsigned long   total, hitrate;
+    unsigned long   count, hitrate;
     Entry          *ePtr;
     Ns_CacheSearch  search;
     double          savedCost = 0.0;
 
-    total = cachePtr->stats.nhit + cachePtr->stats.nmiss;
-    hitrate = (total ? (cachePtr->stats.nhit * 100) / total : 0);
+    assert(cache != NULL);
+    assert(dest != NULL);
+
+    count = cachePtr->stats.nhit + cachePtr->stats.nmiss;
+    hitrate = ((count != 0u) ? (cachePtr->stats.nhit * 100u) / count : 0u);
 
     ePtr = (Entry *)Ns_CacheFirstEntry(cache, &search);
     while (ePtr != NULL) {
-      savedCost += ((int64_t) ePtr->count * ePtr->cost) / 1000000.0;
-      ePtr = (Entry *)Ns_CacheNextEntry(&search);
+        savedCost += ((double)ePtr->count * (double)ePtr->cost) / 1000000.0;
+        ePtr = (Entry *)Ns_CacheNextEntry(&search);
     }
 
     return Ns_DStringPrintf(dest, "maxsize %lu size %lu entries %d "
@@ -866,6 +924,7 @@ Ns_CacheResetStats(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;
 
+    assert(cache != NULL);
     memset(&cachePtr->stats, 0, sizeof(cachePtr->stats));
 }
 
@@ -878,7 +937,7 @@ Ns_CacheResetStats(Ns_Cache *cache)
  *      Has the absolute ttl expired?
  *
  * Results:
- *      1 if entry has expired, 0 otherwise.
+ *      NS_TRUE if entry has expired, NS_FALSE otherwise.
  *
  * Side effects:
  *      None.
@@ -886,10 +945,12 @@ Ns_CacheResetStats(Ns_Cache *cache)
  *----------------------------------------------------------------------
  */
 
-static int
-Expired(Entry *ePtr, Ns_Time *nowPtr)
+static bool
+Expired(const Entry *ePtr, const Ns_Time *nowPtr)
 {
     Ns_Time  now;
+
+    assert(ePtr != NULL);
 
     if (unlikely(ePtr->expires.sec > 0)) {
         if (nowPtr == NULL) {
@@ -897,10 +958,10 @@ Expired(Entry *ePtr, Ns_Time *nowPtr)
             nowPtr = &now;
         }
         if (Ns_DiffTime(&ePtr->expires, nowPtr, NULL) < 0) {
-            return 1;
+            return NS_TRUE;
         }
     }
-    return 0;
+    return NS_FALSE;
 }
 
 
@@ -925,6 +986,8 @@ Expired(Entry *ePtr, Ns_Time *nowPtr)
 static void
 Delink(Entry *ePtr)
 {
+    assert(ePtr != NULL);
+
     if (ePtr->prevPtr != NULL) {
         ePtr->prevPtr->nextPtr = ePtr->nextPtr;
     } else {
@@ -959,6 +1022,8 @@ Delink(Entry *ePtr)
 static void
 Push(Entry *ePtr)
 {
+    assert(ePtr != NULL);
+
     if (likely(ePtr->cachePtr->firstEntryPtr != NULL)) {
         ePtr->cachePtr->firstEntryPtr->prevPtr = ePtr;
     }
@@ -969,3 +1034,14 @@ Push(Entry *ePtr)
         ePtr->cachePtr->lastEntryPtr = ePtr;
     }
 }
+
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */
+

@@ -40,10 +40,13 @@
  * Local functions defined in this file
  */
 
-static int ReturnOpen(Ns_Conn *conn, int status, CONST char *type, Tcl_Channel chan,
-                      FILE *fp, int fd, size_t len);
-static int ReturnRange(Ns_Conn *conn, CONST char *type,
-                       int fd, CONST void *data, size_t len);
+static int ReturnOpen(Ns_Conn *conn, int status, const char *type, Tcl_Channel chan,
+                      FILE *fp, int fd, size_t len)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+
+static int ReturnRange(Ns_Conn *conn, const char *type,
+                       int fd, const void *data, size_t len)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * This structure connections HTTP response codes to their descriptions.
@@ -51,7 +54,7 @@ static int ReturnRange(Ns_Conn *conn, CONST char *type,
 
 static struct {
     int         status;
-    CONST char *reason;
+    const char *reason;
 } reasons[] = {
     {100, "Continue"},
     {101, "Switching Protocols"},
@@ -106,7 +109,7 @@ static struct {
  * Static variables defined in this file.
  */
 
-static int nreasons = (sizeof(reasons) / sizeof(reasons[0]));
+static const size_t nreasons = (sizeof(reasons) / sizeof(reasons[0]));
 
 
 
@@ -127,9 +130,9 @@ static int nreasons = (sizeof(reasons) / sizeof(reasons[0]));
  */
 
 void
-Ns_ConnSetHeaders(Ns_Conn *conn, CONST char *field, CONST char *value)
+Ns_ConnSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
-    Ns_SetPut(conn->outputheaders, field, value);
+  (void) Ns_SetPut(conn->outputheaders, field, value);
 }
 
 /*
@@ -149,7 +152,7 @@ Ns_ConnSetHeaders(Ns_Conn *conn, CONST char *field, CONST char *value)
  */
 
 void
-Ns_ConnUpdateHeaders(Ns_Conn *conn, CONST char *field, CONST char *value)
+Ns_ConnUpdateHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
     Ns_SetUpdate(conn->outputheaders, field, value);
 }
@@ -171,7 +174,7 @@ Ns_ConnUpdateHeaders(Ns_Conn *conn, CONST char *field, CONST char *value)
  */
 
 void
-Ns_ConnPrintfHeaders(Ns_Conn *conn, CONST char *field, CONST char *fmt,...)
+Ns_ConnPrintfHeaders(const Ns_Conn *conn, const char *field, const char *fmt,...)
 {
     Ns_DString ds;
     va_list ap;
@@ -180,7 +183,7 @@ Ns_ConnPrintfHeaders(Ns_Conn *conn, CONST char *field, CONST char *fmt,...)
     va_start(ap, fmt);
     Ns_DStringVPrintf(&ds, fmt, ap);
     va_end(ap);
-    Ns_SetPut(conn->outputheaders, field, ds.string);
+    (void) Ns_SetPut(conn->outputheaders, field, ds.string);
     Ns_DStringFree(&ds);
 }
 
@@ -202,10 +205,10 @@ Ns_ConnPrintfHeaders(Ns_Conn *conn, CONST char *field, CONST char *fmt,...)
  */
 
 void
-Ns_ConnCondSetHeaders(Ns_Conn *conn, CONST char *field, CONST char *value)
+Ns_ConnCondSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
     if (Ns_SetIGet(conn->outputheaders, field) == NULL) {
-        Ns_SetPut(conn->outputheaders, field, value);
+        (void) Ns_SetPut(conn->outputheaders, field, value);
     }
 }
 
@@ -228,7 +231,7 @@ Ns_ConnCondSetHeaders(Ns_Conn *conn, CONST char *field, CONST char *value)
  */
 
 void
-Ns_ConnReplaceHeaders(Ns_Conn *conn, Ns_Set *newheaders)
+Ns_ConnReplaceHeaders(Ns_Conn *conn, const Ns_Set *newheaders)
 {
     Ns_SetFree(conn->outputheaders);
     conn->outputheaders = Ns_SetCopy(newheaders);
@@ -252,7 +255,7 @@ Ns_ConnReplaceHeaders(Ns_Conn *conn, Ns_Set *newheaders)
  */
 
 void
-Ns_ConnSetTypeHeader(Ns_Conn *conn, CONST char *type)
+Ns_ConnSetTypeHeader(const Ns_Conn *conn, const char *type)
 {
     Ns_ConnUpdateHeaders(conn, "Content-Type", type);
 }
@@ -277,27 +280,27 @@ Ns_ConnSetTypeHeader(Ns_Conn *conn, CONST char *type)
  */
 
 void
-Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, CONST char *type)
+Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, const char *mimeType)
 {
     Tcl_Encoding  encoding;
-    CONST char   *charset;
+    const char   *charset;
     Ns_DString    ds;
     size_t        len;
 
     Ns_DStringInit(&ds);
-    charset = NsFindCharset(type, &len);
+    charset = NsFindCharset(mimeType, &len);
 
     if (charset != NULL) {
-        encoding = Ns_GetCharsetEncodingEx(charset, len);
+	encoding = Ns_GetCharsetEncodingEx(charset, (int)len);
         Ns_ConnSetEncoding(conn, encoding);
     } else {
         encoding = Ns_ConnGetEncoding(conn);
         charset = Ns_GetEncodingCharset(encoding);
-        Ns_DStringVarAppend(&ds, type, "; charset=", charset, NULL);
-        type = ds.string;
+        Ns_DStringVarAppend(&ds, mimeType, "; charset=", charset, NULL);
+        mimeType = ds.string;
     }
 
-    Ns_ConnSetTypeHeader(conn, type);
+    Ns_ConnSetTypeHeader(conn, mimeType);
     conn->flags |= NS_CONN_WRITE_ENCODED;
 
     Ns_DStringFree(&ds);
@@ -321,18 +324,23 @@ Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, CONST char *type)
  */
 
 void
-Ns_ConnSetLengthHeader(Ns_Conn *conn, Tcl_WideInt length)
+Ns_ConnSetLengthHeader(Ns_Conn *conn, size_t length, int doStream)
 {
     Conn *connPtr = (Conn *) conn;
 
-    if (length >= 0) {
-        char strlength[TCL_INTEGER_SPACE];
-        snprintf(strlength, sizeof(strlength), "%" TCL_LL_MODIFIER "d", length);
-        Ns_ConnUpdateHeaders(conn, "Content-Length", strlength);
+    if (doStream == 0) {
+	char buffer[TCL_INTEGER_SPACE];
+
+	snprintf(buffer, sizeof(buffer), "%" PRIuz, length);
+	Ns_ConnUpdateHeaders(conn, "Content-Length", buffer);
+	connPtr->responseLength = (ssize_t)length;
     } else {
+	/*
+	 * In the streaming case, make sure no Content-Length is set.
+	 */
         Ns_SetIDeleteKey(conn->outputheaders, "Content-Length");
+	connPtr->responseLength = -1;
     }
-    connPtr->responseLength = length;
 }
 
 
@@ -353,9 +361,12 @@ Ns_ConnSetLengthHeader(Ns_Conn *conn, Tcl_WideInt length)
  */
 
 void
-Ns_ConnSetLastModifiedHeader(Ns_Conn *conn, time_t *mtime)
+Ns_ConnSetLastModifiedHeader(const Ns_Conn *conn, const time_t *mtime)
 {
     Ns_DString ds;
+
+    assert(conn != NULL);
+    assert(mtime != NULL);
 
     Ns_DStringInit(&ds);
     Ns_ConnCondSetHeaders(conn, "Last-Modified", Ns_HttpTime(&ds, mtime));
@@ -380,7 +391,7 @@ Ns_ConnSetLastModifiedHeader(Ns_Conn *conn, time_t *mtime)
  */
 
 void
-Ns_ConnSetExpiresHeader(Ns_Conn *conn, CONST char *expires)
+Ns_ConnSetExpiresHeader(const Ns_Conn *conn, const char *expires)
 {
     Ns_ConnSetHeaders(conn, "Expires", expires);
 }
@@ -407,15 +418,16 @@ void
 Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
 {
     Conn       *connPtr = (Conn *) conn;
-    int         i;
-    CONST char *reason, *value;
+    Ns_Sock    *sockPtr;
+    size_t      i;
+    const char *reason, *value;
 
     /*
      * Construct the HTTP response status line.
      */
 
     reason = "Unknown Reason";
-    for (i = 0; i < nreasons; i++) {
+    for (i = 0u; i < nreasons; i++) {
         if (reasons[i].status == connPtr->responseStatus) {
             reason = reasons[i].reason;
             break;
@@ -429,22 +441,37 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
 
     /*
      * Add the basic required headers if they.
+     *
+     * Earlier versions included 
+     *
+     *       "MIME-Version: 1.0\r\n"
+     *
+     * However, MIME_Version is a MIME header, not a HTTP header (allthough
+     * allowed in HTTP/1.1); it's only used when HTTP messages are moved over
+     * MIME-based protocols (e.g., SMTP), which is uncommon. The HTTP mime
+     * message parsing semantics are defined by this RFC 2616 and not any MIME
+     * specification.  
+     *
+     * For full backwards compatibility, a MIME-Version header could be added
+     * for a site via nssocket/nsssl driver parameter "extraheaders".
      */
 
     Ns_DStringVarAppend(dsPtr,
-			"MIME-Version: 1.0\r\n"
 			"Server: ", Ns_InfoServerName(), "/", Ns_InfoServerVersion(), "\r\n",
 			"Date: ",
 			NULL);
-    Ns_HttpTime(dsPtr, NULL);
+    (void)Ns_HttpTime(dsPtr, NULL);
     Ns_DStringNAppend(dsPtr, "\r\n", 2);
 
     /*
      * Add extra headers from config file, if available.
      */
-    value = Ns_ConnSockPtr(conn)->driver->extraHeaders;
-    if (value != NULL) {
-      Ns_DStringNAppend(dsPtr, value, -1);
+    sockPtr = Ns_ConnSockPtr(conn);
+    if (sockPtr != NULL) {
+        value = sockPtr->driver->extraHeaders;
+        if (value != NULL) {
+            Ns_DStringNAppend(dsPtr, value, -1);
+        }
     }
 
     /*
@@ -452,18 +479,18 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
      */
 
     if (conn->outputheaders != NULL) {
-        for (i = 0; i < Ns_SetSize(conn->outputheaders); i++) {
-	    CONST char *key;
+        for (i = 0u; i < Ns_SetSize(conn->outputheaders); i++) {
+	    const char *key;
 
             key = Ns_SetKey(conn->outputheaders, i);
             value = Ns_SetValue(conn->outputheaders, i);
             if (key != NULL && value != NULL) {
-		char *lineBreak = strchr(value, '\n');
+		char *lineBreak = strchr(value, (int)UCHAR('\n'));
 
-		if (!lineBreak) {
+		if (lineBreak == NULL) {
 		    Ns_DStringVarAppend(dsPtr, key, ": ", value, "\r\n", NULL);
 		} else {
-		    Ns_DString sanitize, *sPtr = &sanitize;
+		    Ns_DString sanitize, *sanitizePtr = &sanitize;
 		    /*
 		     * We have to sanititize the header field to avoid
 		     * a HTTP response splitting attack. After each
@@ -474,23 +501,23 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
 		    Ns_DStringInit(&sanitize);
 
 		    do {
-			size_t offset = lineBreak - value;
+			size_t offset = (size_t)(lineBreak - value);
 			
-			if (offset > 0) {
-			    Tcl_DStringAppend(sPtr, value, offset);
+			if (offset > 0u) {
+			    Tcl_DStringAppend(sanitizePtr, value, (int)offset);
 			}
-			Tcl_DStringAppend(sPtr, "\n\t", 2);
+			Tcl_DStringAppend(sanitizePtr, "\n\t", 2);
 
 			offset ++;
 			value += offset;
-			lineBreak = strchr(value, '\n');
+			lineBreak = strchr(value, (int)UCHAR('\n'));
 
 		    } while (lineBreak != NULL);
 
-		    Tcl_DStringAppend(sPtr, value, -1);
+		    Tcl_DStringAppend(sanitizePtr, value, -1);
 
-		    Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sPtr), "\r\n", NULL);
-		    Ns_DStringFree(sPtr);
+		    Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sanitizePtr), "\r\n", NULL);
+		    Ns_DStringFree(sanitizePtr);
 		}
             }
         }
@@ -523,25 +550,33 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
 void
 Ns_ConnQueueHeaders(Ns_Conn *conn, int status)
 {
+    /* 
+     * Deprecated
+     */
     Ns_ConnSetResponseStatus(conn, status);
 }
 
-Tcl_WideInt
+size_t
 Ns_ConnFlushHeaders(Ns_Conn *conn, int status)
 {
     Conn *connPtr = (Conn *) conn;
-
+    /* 
+     * Deprecated
+     */
     Ns_ConnSetResponseStatus(conn, status);
-    Ns_ConnWriteVData(conn, NULL, 0, 0);
+    (void) Ns_ConnWriteVData(conn, NULL, 0, 0u);
 
     return connPtr->nContentSent;
 }
 
 void
-Ns_ConnSetRequiredHeaders(Ns_Conn *conn, CONST char *type, size_t length)
+Ns_ConnSetRequiredHeaders(Ns_Conn *conn, const char *type, size_t length)
 {
+    /* 
+     * Deprecated
+     */
     Ns_ConnSetTypeHeader(conn, type);
-    Ns_ConnSetLengthHeader(conn, length);
+    Ns_ConnSetLengthHeader(conn, length, 0);
 }
 
 
@@ -562,7 +597,7 @@ Ns_ConnSetRequiredHeaders(Ns_Conn *conn, CONST char *type, size_t length)
  */
 
 int
-Ns_ConnResetReturn(Ns_Conn *conn)
+Ns_ConnResetReturn(Ns_Conn *UNUSED(conn))
 {
     return NS_OK;
 }
@@ -587,7 +622,7 @@ Ns_ConnResetReturn(Ns_Conn *conn)
 
 int
 Ns_ConnReturnAdminNotice(Ns_Conn *conn, int status,
-                         CONST char *title, CONST char *notice)
+                         const char *title, const char *notice)
 {
     return Ns_ConnReturnNotice(conn, status, title, notice);
 }
@@ -611,32 +646,32 @@ Ns_ConnReturnAdminNotice(Ns_Conn *conn, int status,
 
 int
 Ns_ConnReturnNotice(Ns_Conn *conn, int status,
-                    CONST char *title, CONST char *notice)
+                    const char *title, const char *notice)
 {
     Conn       *connPtr = (Conn *) conn;
-    NsServer   *servPtr = connPtr->poolPtr->servPtr;
+    NsServer   *servPtr;
     Ns_DString  ds;
     int         result;
 
+    assert(conn != NULL);
+    assert(title != NULL);
+    assert(notice != NULL);
+
+    servPtr = connPtr->poolPtr->servPtr;
     Ns_DStringInit(&ds);
-    if (title == NULL) {
-        title = "Server Message";
-    }
     Ns_DStringVarAppend(&ds,
             "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n"
             "<HTML>\n<HEAD>\n"
             "<TITLE>", title, "</TITLE>\n"
             "</HEAD>\n<BODY>\n"
             "<H2>", title, "</H2>\n", NULL);
-    if (notice != NULL) {
-        Ns_DStringVarAppend(&ds, notice, "\n", NULL);
-    }
+    Ns_DStringVarAppend(&ds, notice, "\n", NULL);
 
     /*
      * Detailed server information at the bottom of the page.
      */
 
-    if (servPtr->opts.noticedetail) {
+    if (servPtr->opts.noticedetail != 0) {
         Ns_DStringVarAppend(&ds, "<P ALIGN=RIGHT><SMALL><I>",
                             Ns_InfoServerName(), "/",
                             Ns_InfoServerVersion(), " on ",
@@ -682,21 +717,22 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
  */
 
 int
-Ns_ConnReturnData(Ns_Conn *conn, int status, CONST char *data, 
-		  ssize_t len, CONST char *type)
+Ns_ConnReturnData(Ns_Conn *conn, int status, const char *data, 
+		  ssize_t len, const char *type)
 {
     int result;
+    size_t length;
 
-    if (type != NULL) {
-        Ns_ConnSetTypeHeader(conn, type);
-    }
-    if (len < 0) {
-        len = data ? strlen(data) : 0;
-    }
+    assert(conn != NULL);
+    assert(data != NULL);
+    assert(type != NULL);
+
+    Ns_ConnSetTypeHeader(conn, type);
+    length = (len < 0) ? strlen(data) : (size_t)len;
     Ns_ConnSetResponseStatus(conn, status);
 
-    result = ReturnRange(conn, type, -1, data, len);
-    Ns_ConnClose(conn);
+    result = ReturnRange(conn, type, -1, data, length);
+    (void) Ns_ConnClose(conn);
 
     return result;
 }
@@ -720,22 +756,27 @@ Ns_ConnReturnData(Ns_Conn *conn, int status, CONST char *data,
  */
 
 int
-Ns_ConnReturnCharData(Ns_Conn *conn, int status, CONST char *data, 
-		      ssize_t len, CONST char *type)
+Ns_ConnReturnCharData(Ns_Conn *conn, int status, const char *data, 
+		      ssize_t len, const char *type)
 {
     struct iovec sbuf;
+    int result;
 
+    assert(conn != NULL);
+    assert(data != NULL);
+    
     if (type != NULL) {
         Ns_ConnSetEncodedTypeHeader(conn, type);
     }
 
     sbuf.iov_base = (void *)data;
-    sbuf.iov_len = len < 0 ? (data ? strlen(data) : 0) : len;
+    sbuf.iov_len = len < 0 ? strlen(data) : (size_t)len;
 
     Ns_ConnSetResponseStatus(conn, status);
-    Ns_ConnWriteVChars(conn, &sbuf, 1, 0);
+    result = Ns_ConnWriteVChars(conn, &sbuf, 1, 0u);
+    (void) Ns_ConnClose(conn);
 
-    return Ns_ConnClose(conn);
+    return result;
 }
 
 
@@ -756,7 +797,7 @@ Ns_ConnReturnCharData(Ns_Conn *conn, int status, CONST char *data,
  */
 
 int
-Ns_ConnReturnHtml(Ns_Conn *conn, int status, CONST char *html, ssize_t len)
+Ns_ConnReturnHtml(Ns_Conn *conn, int status, const char *html, ssize_t len)
 {
     return Ns_ConnReturnCharData(conn, status, html, len, "text/html");
 }
@@ -787,31 +828,40 @@ Ns_ConnReturnHtml(Ns_Conn *conn, int status, CONST char *html, ssize_t len)
  */
 
 int
-Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, CONST char *type,
+Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, const char *type,
                          Tcl_Channel chan, size_t len)
 {
+    assert(conn != NULL);
+    assert(type != NULL);
     return ReturnOpen(conn, status, type, chan, NULL, -1, len);
 }
 
 int
-Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, CONST char *type,
+Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, const char *type,
                       FILE *fp, size_t len)
 {
+    assert(conn != NULL);
+    assert(type != NULL);
     return ReturnOpen(conn, status, type, NULL, fp, -1, len);
 }
 
 int
-Ns_ConnReturnOpenFd(Ns_Conn *conn, int status, CONST char *type,
+Ns_ConnReturnOpenFd(Ns_Conn *conn, int status, const char *type,
                     int fd, size_t len)
 {
+    assert(conn != NULL);
+    assert(type != NULL);
     return ReturnOpen(conn, status, type, NULL, NULL, fd, len);
 }
 
 static int
-ReturnOpen(Ns_Conn *conn, int status, CONST char *type, Tcl_Channel chan,
+ReturnOpen(Ns_Conn *conn, int status, const char *type, Tcl_Channel chan,
            FILE *fp, int fd, size_t len)
 {
     int result;
+
+    assert(conn != NULL);
+    assert(type != NULL);
 
     Ns_ConnSetTypeHeader(conn, type);
     Ns_ConnSetResponseStatus(conn, status);
@@ -822,16 +872,16 @@ ReturnOpen(Ns_Conn *conn, int status, CONST char *type, Tcl_Channel chan,
     }
 
     if (chan != NULL) {
-        Ns_ConnSetLengthHeader(conn, len);
+        Ns_ConnSetLengthHeader(conn, len, 0);
         result = Ns_ConnSendChannel(conn, chan, len);
     } else if (fp != NULL) {
-        Ns_ConnSetLengthHeader(conn, len);
+        Ns_ConnSetLengthHeader(conn, len, 0);
         result = Ns_ConnSendFp(conn, fp, len);
     } else {
         result = ReturnRange(conn, type, fd, NULL, len);
     }
 
-    Ns_ConnClose(conn);
+    (void) Ns_ConnClose(conn);
 
     return result;
 }
@@ -857,13 +907,16 @@ ReturnOpen(Ns_Conn *conn, int status, CONST char *type, Tcl_Channel chan,
  */
 
 static int
-ReturnRange(Ns_Conn *conn, CONST char *type,
-            int fd, CONST void *data, size_t len)
+ReturnRange(Ns_Conn *conn, const char *type,
+            int fd, const void *data, size_t len)
 {
     Ns_DString  ds;
     Ns_FileVec  bufs[32];
-    int         nbufs = sizeof(bufs) / sizeof(bufs[0]);
+    int         nbufs = (int)(sizeof(bufs) / sizeof(bufs[0]));
     int         rangeCount, result = NS_ERROR;
+
+    assert(conn != NULL);
+    assert(type != NULL);
 
     Ns_DStringInit(&ds);
     rangeCount = NsConnParseRange(conn, type, fd, data, len,
@@ -872,14 +925,14 @@ ReturnRange(Ns_Conn *conn, CONST char *type,
     /*
      * Don't use writer when only headers are returned
      */
-    if ((conn->flags & NS_CONN_SKIPBODY) == 0) {
+    if ((conn->flags & NS_CONN_SKIPBODY) == 0u) {
 
 	/*
 	 * We are able to handle the following cases via writer:
 	 * - iovec based requests: all range request up to 32 ranges.
 	 * - fd based requests: 0 or 1 range requests
 	 */
-	if (fd == -1) {
+	if (fd == NS_INVALID_FD) {
 	    int nvbufs;
 	    struct iovec vbuf[32];
 
@@ -891,9 +944,9 @@ ReturnRange(Ns_Conn *conn, CONST char *type,
 		int i;
 
 		nvbufs = rangeCount;
-		len = 0;
+		len = 0u;
 		for (i = 0; i < rangeCount; i++) {
-		    vbuf[i].iov_base = (void *)(intptr_t)bufs[i].offset;
+		    vbuf[i].iov_base = INT2PTR(bufs[i].offset);
 		    vbuf[i].iov_len  = bufs[i].length;
 		    len += bufs[i].length;
 		}
@@ -905,7 +958,10 @@ ReturnRange(Ns_Conn *conn, CONST char *type,
 	    }
 	} else if (rangeCount < 2) {
 	    if (rangeCount == 1) {
-		lseek(fd, bufs[0].offset, SEEK_SET);
+		if (ns_lseek(fd, bufs[0].offset, SEEK_SET) == -1) {
+                    Ns_Log(Warning, "seek operation with offset %" PROTd " failed: %s",
+                           bufs[0].offset, strerror(errno));
+                }
 		len = bufs[0].length;
 	    }
 	    if (NsWriterQueue(conn, len, NULL, NULL, fd, NULL, 0, 0) == NS_OK) {
@@ -917,16 +973,18 @@ ReturnRange(Ns_Conn *conn, CONST char *type,
     
     if (rangeCount >= 0) {
 	if (rangeCount == 0) {
-            Ns_ConnSetLengthHeader(conn, len);
+            Ns_ConnSetLengthHeader(conn, len, 0);
 
-	    if ((conn->flags & NS_CONN_SKIPBODY)) {
-	      len = 0;
+	    if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
+	      len = 0u;
 	    }
 
-            Ns_SetFileVec(bufs, 0, fd, data, 0, len);
+            (void) Ns_SetFileVec(bufs, 0, fd, data, 0, len);
             nbufs = 1;
         }
-        if ((result = Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM)) == NS_OK) {
+
+	result = Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM);
+        if (result == NS_OK) {
             result = Ns_ConnSendFileVec(conn, bufs, nbufs);
         }
     }
@@ -934,3 +992,12 @@ ReturnRange(Ns_Conn *conn, CONST char *type,
 
     return result;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

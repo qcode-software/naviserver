@@ -41,10 +41,10 @@
  */
 
 static Ns_ObjvTable filters[] = {
-    {"preauth",  NS_FILTER_PRE_AUTH},
-    {"postauth", NS_FILTER_POST_AUTH},
-    {"trace",    NS_FILTER_TRACE},
-    {NULL, 0}
+    {"preauth",  (unsigned int)NS_FILTER_PRE_AUTH},
+    {"postauth", (unsigned int)NS_FILTER_POST_AUTH},
+    {"trace",    (unsigned int)NS_FILTER_TRACE},
+    {NULL, 0U}
 };
 
 
@@ -65,13 +65,13 @@ static Ns_ObjvTable filters[] = {
  */
 
 int
-Ns_TclRequest(Ns_Conn *conn, CONST char *name)
+Ns_TclRequest(Ns_Conn *conn, const char *name)
 {
     Ns_TclCallback cb;
 
-    cb.cbProc = (Ns_Callback *) &NsTclRequestProc;
+    cb.cbProc = (Ns_Callback *) NsTclRequestProc;
     cb.server = Ns_ConnServer(conn);
-    cb.script = (char *) name;
+    cb.script = name;
     cb.argc   = 0;
     cb.argv   = NULL;
 
@@ -96,18 +96,18 @@ Ns_TclRequest(Ns_Conn *conn, CONST char *name)
  */
 
 int
-NsTclRegisterProcObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                        Tcl_Obj *CONST objv[], int adp)
+NsTclRegisterProcObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp       *itPtr = arg;
     Ns_TclCallback *cbPtr;
     Tcl_Obj        *scriptObj;
-    char           *method, *url;
-    int             flags = 0, remain = 0;
+    const char     *method, *url;
+    int             remain = 0, noinherit = 0;
+    unsigned int    flags = 0U;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &flags, (void *) NS_OP_NOINHERIT},
-        {"--",         Ns_ObjvBreak, NULL,   NULL},
+        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(1)},
+        {"--",         Ns_ObjvBreak, NULL,       NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -120,6 +120,8 @@ NsTclRegisterProcObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
+
+    if (noinherit != 0) {flags |= NS_OP_NOINHERIT;}
 
     cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclRequestProc, scriptObj,
                               remain, objv + (objc - remain));
@@ -147,13 +149,12 @@ NsTclRegisterProcObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclRegisterProxyObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                        Tcl_Obj *CONST objv[], int adp)
+NsTclRegisterProxyObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp       *itPtr = arg;
     Ns_TclCallback *cbPtr;
     Tcl_Obj        *scriptObj;
-    char           *method, *protocol;
+    const char     *method, *protocol;
     int             remain = 0;
 
     Ns_ObjvSpec opts[] = {
@@ -197,16 +198,16 @@ NsTclRegisterProxyObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclRegisterFastPathObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                            Tcl_Obj *CONST objv[], int adp)
+NsTclRegisterFastPathObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp       *itPtr = arg;
-    char           *method, *url;
-    int             flags = 0;
+    const char     *method, *url;
+    int             noinherit = 0;
+    unsigned int    flags = 0U;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &flags, (void *) NS_OP_NOINHERIT},
-        {"--",         Ns_ObjvBreak, NULL,   NULL},
+        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_OP_NOINHERIT)},
+        {"--",         Ns_ObjvBreak, NULL,       NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -216,6 +217,10 @@ NsTclRegisterFastPathObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     };
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
+    }
+
+    if (noinherit != 0) {
+	flags |= NS_OP_NOINHERIT;
     }
 
     Ns_RegisterRequest(itPtr->servPtr->server, method, url,
@@ -242,15 +247,15 @@ NsTclRegisterFastPathObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclUnRegisterOpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclUnRegisterOpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp *itPtr = arg;
-    char     *method = NULL, *url = NULL;
-    int       noinherit = 0, recurse = 0;
+    NsInterp   *itPtr = arg;
+    const char *method = NULL, *url = NULL;
+    int         noinherit = 0, recurse = 0;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &noinherit, (void *) NS_OP_NOINHERIT},
-        {"-recurse",   Ns_ObjvBool,  &recurse,   (void *) NS_OP_RECURSE},
+        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_OP_NOINHERIT)},
+        {"-recurse",   Ns_ObjvBool,  &recurse,   INT2PTR(NS_OP_RECURSE)},
         {"--",         Ns_ObjvBreak, NULL,   NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -263,7 +268,7 @@ NsTclUnRegisterOpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *C
         return TCL_ERROR;
     }
     Ns_UnRegisterRequestEx(itPtr->servPtr->server, method, url,
-                           (noinherit | recurse));
+                           ((unsigned int)noinherit | (unsigned int)recurse));
 
     return TCL_OK;
 }
@@ -286,16 +291,17 @@ NsTclUnRegisterOpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *C
  */
 
 int
-NsTclRegisterFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclRegisterFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp        *itPtr = arg;
     Ns_TclCallback  *cbPtr;
-    char            *method, *urlPattern;
+    const char      *method, *urlPattern;
     Tcl_Obj         *scriptObj;
-    int              remain = 0, when = 0;
+    int              remain = 0, first = 0;
+    unsigned int     when = 0U;
 
     Ns_ObjvSpec opts[] = {
-        {"-first", Ns_ObjvBool,  &when, (void *) NS_FILTER_FIRST},
+        {"-first", Ns_ObjvBool,  &first, INT2PTR(1)},
         {"--",     Ns_ObjvBreak, NULL,   NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -313,8 +319,8 @@ NsTclRegisterFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj 
 
     cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclFilterProc, 
 			      scriptObj, remain, objv + (objc - remain));
-    Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
-                      NsTclFilterProc, when, cbPtr);
+    (void)Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
+			    NsTclFilterProc, (Ns_FilterType)when, cbPtr, first);
 
     return TCL_OK;
 }
@@ -337,12 +343,12 @@ NsTclRegisterFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclShortcutFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclShortcutFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp  *itPtr = arg;
-    char      *server = itPtr->servPtr->server;
-    char      *method, *urlPattern;
-    int        when = NS_FILTER_FIRST;
+    NsInterp    *itPtr = arg;
+    const char  *server = itPtr->servPtr->server;
+    const char  *method, *urlPattern;
+    unsigned int when = 0U;
 
     Ns_ObjvSpec args[] = {
         {"when",       Ns_ObjvFlags,  &when,       filters},
@@ -354,8 +360,8 @@ NsTclShortcutFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj 
         return TCL_ERROR;
     }
 
-    Ns_RegisterFilter(server, method, urlPattern,
-                      NsShortcutFilterProc, when, NULL);
+    (void)Ns_RegisterFilter(server, method, urlPattern,
+			    NsShortcutFilterProc, (Ns_FilterType)when, NULL, 0);
 
     return TCL_OK;
 }
@@ -378,11 +384,11 @@ NsTclShortcutFilterObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclRegisterTraceObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+NsTclRegisterTraceObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp       *itPtr = arg;
     Ns_TclCallback *cbPtr;
-    char           *method, *urlPattern;
+    const char     *method, *urlPattern;
     Tcl_Obj        *scriptObj;
     int             remain = 0;
 
@@ -399,8 +405,8 @@ NsTclRegisterTraceObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *
 
     cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclFilterProc, 
 			      scriptObj, remain, objv + (objc - remain));
-    Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
-                      NsTclFilterProc, NS_FILTER_VOID_TRACE, cbPtr);
+    (void)Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
+			    NsTclFilterProc, NS_FILTER_VOID_TRACE, cbPtr, 0);
 
     return TCL_OK;
 }
@@ -432,15 +438,15 @@ NsTclRequestProc(void *arg, Ns_Conn *conn)
     int             status = NS_OK;
 
     interp = Ns_GetConnInterp(conn);
-    if (Ns_TclEvalCallback(interp, cbPtr, NULL, NULL) != TCL_OK) {
-        if (NsTclTimeoutException(interp)) {
+    if (Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0) != TCL_OK) {
+        if (NsTclTimeoutException(interp) == NS_TRUE) {
             Ns_DStringInit(&ds);
-            Ns_GetProcInfo(&ds, (void *)NsTclRequestProc, arg);
+            Ns_GetProcInfo(&ds, (Ns_Callback *)NsTclRequestProc, arg);
             Ns_Log(Dev, "%s: %s", ds.string, Tcl_GetStringResult(interp));
             Ns_DStringFree(&ds);
             status = Ns_ConnReturnUnavailable(conn);
         } else {
-            Ns_TclLogError(interp);
+	    (void) Ns_TclLogErrorInfo(interp, "\n(context: request proc)");
             status = Ns_ConnReturnInternalError(conn);
         }
     }
@@ -466,13 +472,13 @@ NsTclRequestProc(void *arg, Ns_Conn *conn)
  */
 
 int
-NsTclFilterProc(void *arg, Ns_Conn *conn, int why)
+NsTclFilterProc(void *arg, Ns_Conn *conn, Ns_FilterType why)
 {
     Ns_TclCallback      *cbPtr = arg;
     Tcl_DString          ds;
     Tcl_Interp          *interp;
     int                  ii, status;
-    CONST char          *result;
+    const char          *result;
 
     interp = Ns_GetConnInterp(conn);
     Tcl_DStringInit(&ds);
@@ -500,6 +506,10 @@ NsTclFilterProc(void *arg, Ns_Conn *conn, int why)
     case NS_FILTER_VOID_TRACE:
         /* Registered with ns_register_trace; always type VOID TRACE, so don't append. */
         break;
+    default:
+        /* unexpected value */
+        assert(why && 0);
+        break;
     }
 
     /*
@@ -525,13 +535,13 @@ NsTclFilterProc(void *arg, Ns_Conn *conn, int why)
          * Handle Tcl errors and timeouts.
          */
 
-        if (NsTclTimeoutException(interp)) {
-	  Ns_GetProcInfo(&ds, (void *)NsTclFilterProc, arg);
-            Ns_Log(Dev, "%s: %s", ds.string, result);
-            Ns_ConnReturnUnavailable(conn);
+        if (NsTclTimeoutException(interp) == NS_TRUE) {
+	    Ns_GetProcInfo(&ds, (Ns_Callback *)NsTclFilterProc, arg);
+	    Ns_Log(Dev, "%s: %s", ds.string, result);
+            (void) Ns_ConnReturnUnavailable(conn);
             status = NS_FILTER_RETURN;
         } else {
-            Ns_TclLogError(interp);
+            (void) Ns_TclLogErrorInfo(interp, "\n(context: filter proc)");
             status = NS_ERROR;
         }
     } else {
@@ -577,7 +587,7 @@ NsTclFilterProc(void *arg, Ns_Conn *conn, int why)
  */
 
 int
-NsShortcutFilterProc(void *arg, Ns_Conn *conn, int why)
+NsShortcutFilterProc(void *UNUSED(arg), Ns_Conn *UNUSED(conn), Ns_FilterType UNUSED(why))
 {
     return NS_FILTER_BREAK;
 }
@@ -599,14 +609,25 @@ NsShortcutFilterProc(void *arg, Ns_Conn *conn, int why)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 NsTclTimeoutException(Tcl_Interp *interp)
 {
-    CONST char *errorCode;
+    const char *errorCode;
 
+    assert(interp != NULL);
+    
     errorCode = Tcl_GetVar(interp, "errorCode", TCL_GLOBAL_ONLY);
-    if (strncmp(errorCode, "NS_TIMEOUT", 10) == 0) {
-        return 1;
+    if (strncmp(errorCode, "NS_TIMEOUT", 10u) == 0) {
+        return NS_TRUE;
     }
-    return 0;
+    return NS_FALSE;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

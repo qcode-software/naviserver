@@ -96,7 +96,7 @@
 
 
 #if __GNUC_PREREQ(2,7)
-# define NS_GNUC_UNUSED __attribute__((__unused__))
+# define NS_GNUC_UNUSED __attribute__((unused))
 # define NS_GNUC_NORETURN __attribute__((__noreturn__))
 # define NS_GNUC_PRINTF(m, n) __attribute__((__format__ (__printf__, m, n))) NS_GNUC_NONNULL(m)
 # define NS_GNUC_SCANF(m, n) __attribute__((__format__ (__scanf__, m, n))) NS_GNUC_NONNULL(m)
@@ -107,6 +107,18 @@
 # define NS_GNUC_SCANF(fmtarg, firstvararg)
 #endif
 
+/*
+ * Tries to use gcc __attribute__ unused and mangles the name, so the
+ * attribute could not be used, if declared as unused.
+ */
+#ifdef UNUSED
+#elif __GNUC_PREREQ(2, 7)
+# define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#elif defined(__LCLINT__)
+# define UNUSED(x) /*@unused@*/ (x)
+#else
+# define UNUSED(x) (x)
+#endif
 
 #if __GNUC_PREREQ(2,96)
 # define NS_GNUC_MALLOC __attribute__((__malloc__))
@@ -116,6 +128,12 @@
 # define NS_GNUC_MALLOC
 # define NS_GNUC_PURE
 # define NS_GNUC_CONST
+#endif
+
+#if __GNUC_PREREQ(4, 9)
+# define NS_GNUC_RETURNS_NONNULL __attribute__((returns_nonnull))
+#else
+# define NS_GNUC_RETURNS_NONNULL
 #endif
 
 #endif /* NSCHECK_H */

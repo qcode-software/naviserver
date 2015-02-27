@@ -50,7 +50,7 @@ typedef struct Args {
  * when looking at the code
  */
 
-typedef enum _runState {
+typedef enum {
     starting,  /* == 0 */
     running,   /* == 1 */
     stopping,  /* == 2 */
@@ -63,13 +63,13 @@ typedef enum _runState {
 
 static Ns_ThreadProc CmdThread;
 
-static void UsageError(char *msg, ...);
+static void UsageError(const char *msg, ...);
 static void StatusMsg(runState state);
 static void LogTclVersion(void);
-static char *MakePath(char *file);
-static char *SetCwd(char *homedir);
+static const char *MakePath(char *file);
+static const char *SetCwd(const char *path);
 
-#if (STATIC_BUILD == 1)
+#if defined(STATIC_BUILD) && (STATIC_BUILD == 1)
 extern void NsthreadsInit();
 extern void NsdInit();
 #endif
@@ -95,18 +95,19 @@ extern void NsdInit();
  */
 
 int
-Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
+Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
 {
     Args      cmd;
-    int       i, sig, optind;
-    char     *config = NULL;
+    int       sig, optind;
+    const char *config = NULL;
     Ns_Time   timeout;
     Ns_Set   *set;
 
 #ifndef _WIN32
-    int       debug = 0, mode = 0;
-    char     *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
-    char     *bindargs = NULL, *bindfile = NULL, *procname = NULL;
+    int       debug = 0;
+    char      mode = '\0';
+    const char     *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
+    const char     *bindargs = NULL, *bindfile = NULL;
     Ns_Set   *servers;
     struct rlimit  rl;
 #else
@@ -115,9 +116,9 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
      * preserve their values when Ns_Main is re-entered by
      * the Win32 service control manager.
      */
-    static int     mode = 0;
+    static char    mode = '\0';
     static Ns_Set *servers;
-    static char   *procname, *server;
+    static char   *procname, *server = NULL;
 #endif
 
     /*
@@ -143,6 +144,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
 
 #ifdef _WIN32
     if (mode == 'S') {
+	Ns_ThreadSetName("-service-");
         goto contservice;
     }
 #endif
@@ -172,7 +174,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
         case 'i':
         case 'w':
 #endif
-            if (mode != 0) {
+            if (mode != '\0') {
 #ifdef _WIN32
                 UsageError("only one of -c, -f, -I, -R, or -S"
                            " options may be specified");
@@ -262,7 +264,8 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
     }
 
     if (mode == 'c') {
-        cmd.argv = ns_calloc((size_t) argc - optind + 2, sizeof(char *));
+	int i;
+        cmd.argv = ns_calloc((size_t)argc - (size_t)optind + 2u, sizeof(char *));
         cmd.argc = 0;
         cmd.argv[cmd.argc++] = argv[0];
         for (i = optind; i < argc; i++) {
@@ -298,7 +301,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
      */
 
     if (mode == 0 || mode == 'w') {
-        i = ns_fork();
+	int i = ns_fork();
         if (i == -1) {
             Ns_Fatal("nsmain: fork() failed: '%s'", strerror(errno));
         }
@@ -370,7 +373,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
         }
     }
 
-    if (!(mode == 'c' && nsconf.config == NULL)) {
+    if (mode != 'c' || nsconf.config != NULL) {
 	config = NsConfigRead(nsconf.config);
     }
 
@@ -440,13 +443,13 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
 
 #endif /* ! _WIN32 */
 
-    if (config) {
+    if (config != NULL) {
 	/*
 	 * Evaluate the config file.
 	 */
 	
 	NsConfigEval(config, argc, argv, optind);
-	ns_free(config);
+	ns_free((char *)config);
     }
 
     /*
@@ -455,7 +458,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
      */
 
     servers = Ns_ConfigCreateSection("ns/servers");
-    if (Ns_SetSize(servers) == 0) {
+    if (Ns_SetSize(servers) == 0U) {
         Ns_SetPut(servers, "default", "Default NaviServer");
     }
 
@@ -467,17 +470,17 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
      */
 
     if (server != NULL) {
-        i = Ns_SetFind(servers, server);
+        int i = Ns_SetFind(servers, server);
         if (i < 0) {
+            Ns_Log(Error, "nsmain: no such server '%s' in config file '%s'",
+                   server, nsconf.config);
+            Ns_Log(Warning, "nsmain: Writing the server names we DO have to stderr now:");
+            Ns_SetPrint(servers);
             Ns_Fatal("nsmain: no such server '%s'", server);
         }
         server = Ns_SetKey(servers, i);
     }
 
-    /*
-     * Set the procname used for the pid file.
-     */
-    procname = (server ? server : Ns_SetKey(servers, 0));
 
     /*
      * Verify and change to the home directory.
@@ -538,14 +541,20 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
 #ifdef _WIN32
 
     /*
+     * Set the procname used for the pid file.
+     */
+    procname = ((server != NULL) ? server : Ns_SetKey(servers, 0));
+
+    /*
      * Connect to the service control manager if running
      * as a service (see service comment above).
      */
 
     if (mode == 'I' || mode == 'R' || mode == 'S') {
-        int status;
+	int status = TCL_OK;
 
         Ns_ThreadSetName("-service-");
+
         switch (mode) {
         case 'I':
             status = NsInstallService(procname);
@@ -556,6 +565,10 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
         case 'S':
             status = NsConnectService();
             break;
+	default:
+	    /* cannot happen */
+	    assert(0);
+	    break;
         }
         return (status == NS_OK ? 0 : 1);
     }
@@ -612,7 +625,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
      * Create the pid file.
      */
 
-    NsCreatePidFile(procname);
+    NsCreatePidFile();
 
     /*
      * Initialize the virtual servers.
@@ -621,7 +634,9 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
     if (server != NULL) {
         NsInitServer(server, initProc);
     } else {
-        for (i = 0; i < Ns_SetSize(servers); ++i) {
+	size_t i;
+
+        for (i = 0U; i < Ns_SetSize(servers); ++i) {
             server = Ns_SetKey(servers, i);
             NsInitServer(server, initProc);
         }
@@ -736,7 +751,7 @@ Ns_Main(int argc, char **argv, Ns_ServerInitProc *initProc)
      * status message and return to main.
      */
 
-    NsRemovePidFile(procname);
+    NsRemovePidFile();
     StatusMsg(exiting);
 
     /*
@@ -772,12 +787,12 @@ Ns_WaitForStartup(void)
     /*
      * This dirty-read is worth the effort.
      */
-    if (nsconf.state.started) {
+    if (nsconf.state.started != 0) {
         return NS_OK;
     }
 
     Ns_MutexLock(&nsconf.state.lock);
-    while (!nsconf.state.started) {
+    while (nsconf.state.started == 0) {
         Ns_CondWait(&nsconf.state.cond, &nsconf.state.lock);
     }
     Ns_MutexUnlock(&nsconf.state.lock);
@@ -804,7 +819,7 @@ Ns_WaitForStartup(void)
 void
 Ns_StopServer(char *server)
 {
-    Ns_Log(Warning, "nsmain: immediate server shutdown requested");
+    Ns_Log(Warning, "nsmain: immediate shutdown of server %s requested", server);
     NsSendSignal(NS_SIGTERM);
 }
 
@@ -828,14 +843,14 @@ Ns_StopServer(char *server)
  */
 
 int
-NsTclShutdownObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **objv)
+NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int timeout = 0, signal = NS_SIGTERM;
+    int timeout = 0, sig = NS_SIGTERM;
 
     Ns_ObjvSpec opts[] = {
-        {"-restart", Ns_ObjvBool,  &signal, (void *) NS_SIGINT},
-        {"--",       Ns_ObjvBreak, NULL,    NULL},
-        {NULL,       NULL,         NULL,    NULL}
+        {"-restart", Ns_ObjvBool,  &sig, INT2PTR(NS_SIGINT)},
+        {"--",       Ns_ObjvBreak, NULL, NULL},
+        {NULL,       NULL,         NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
         {"?timeout", Ns_ObjvInt, &timeout, NULL},
@@ -854,7 +869,7 @@ NsTclShutdownObjCmd(ClientData dummy, Tcl_Interp *interp, int objc, Tcl_Obj **ob
     }
     Ns_MutexUnlock(&nsconf.state.lock);
 
-    NsSendSignal(signal);
+    NsSendSignal(sig);
     Tcl_SetObjResult(interp, Tcl_NewIntObj(timeout));
 
     return TCL_OK;
@@ -956,7 +971,7 @@ LogTclVersion(void)
  */
 
 static void
-UsageError(char *msg, ...)
+UsageError(const char *msg, ...)
 {
     if (msg != NULL) {
     	va_list ap;
@@ -996,7 +1011,7 @@ UsageError(char *msg, ...)
         "  -s  use server named <server> in config file\n"
         "  -t  read config from <file>\n"
         "\n", nsconf.argv0);
-    exit(msg ? 1 : 0);
+    exit ((msg != NULL) ? 1 : 0);
 }
 
 /*
@@ -1015,12 +1030,13 @@ UsageError(char *msg, ...)
  *----------------------------------------------------------------------
  */
 
-static char *
+static const char *
 MakePath(char *file)
 {
-    if (Ns_PathIsAbsolute(nsconf.nsd)) {
-        char *str, *path = NULL;
-        Tcl_Obj *obj;
+    if (Ns_PathIsAbsolute(nsconf.nsd) == NS_TRUE) {
+	char *str;
+	const char *path = NULL;
+	Tcl_Obj *obj;
 
         str = strstr(nsconf.nsd, "/bin/");
         if (str == NULL) {
@@ -1039,7 +1055,7 @@ MakePath(char *file)
 
         Tcl_IncrRefCount(obj);
         if (Tcl_FSGetNormalizedPath(NULL, obj)) {
-            path = (char *)Tcl_FSGetTranslatedStringPath(NULL, obj);
+	  path = Tcl_FSGetTranslatedStringPath(NULL, obj);
         }
         Tcl_DecrRefCount(obj);
 
@@ -1047,8 +1063,8 @@ MakePath(char *file)
          * If file name was given, check if the file exists
          */
 
-        if (path != NULL && *file != 0 && access(path, F_OK) != 0) {
-            ns_free(path);
+        if (path != NULL && *file != '\0' && access(path, F_OK) != 0) {
+            ns_free((void *)path);
             return NULL;
         }
         return path;
@@ -1076,8 +1092,8 @@ MakePath(char *file)
  *----------------------------------------------------------------------
  */
 
-char *
-SetCwd(char *path)
+static const char *
+SetCwd(const char *path)
 {
     Tcl_Obj *pathObj;
 
@@ -1092,7 +1108,7 @@ SetCwd(char *path)
         Ns_Fatal("nsmain: can't resolve home directory path");
     }
 
-    return (char *)Tcl_FSGetTranslatedStringPath(NULL, pathObj);
+    return Tcl_FSGetTranslatedStringPath(NULL, pathObj);
 }
 
 
@@ -1119,10 +1135,19 @@ CmdThread(void *arg)
 
     Ns_ThreadSetName("-command-");
 
-    Ns_WaitForStartup();
+    (void)Ns_WaitForStartup();
 
     NsRestoreSignals();
     NsBlockSignal(NS_SIGPIPE);
 
     Tcl_Main(cmd->argc, cmd->argv, NsTclAppInit);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

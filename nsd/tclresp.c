@@ -40,8 +40,14 @@
  * Static functions defined in this file.
  */
 
-static int Result(Tcl_Interp *interp, int result);
-static int GetConn(ClientData arg, Tcl_Interp *interp, Ns_Conn **connPtr);
+static int Result(Tcl_Interp *interp, int result) NS_GNUC_NONNULL(1);
+
+static int GetConn(ClientData arg, Tcl_Interp *interp, Ns_Conn **connPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+static int ReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, int (*proc) (Ns_Conn *conn))
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 
 
 
@@ -66,16 +72,15 @@ static int GetConn(ClientData arg, Tcl_Interp *interp, Ns_Conn **connPtr);
  */
 
 int
-NsTclHeadersObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                   Tcl_Obj *CONST objv[])
+NsTclHeadersObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp *itPtr = arg;
-    Ns_Conn  *conn = NULL;
-    int       status, length = -1, binary = 0;
-    char     *type = NULL;
+    NsInterp   *itPtr = arg;
+    Ns_Conn    *conn = NULL;
+    int         status, length = -1, binary = 0;
+    const char *type = NULL;
 
     Ns_ObjvSpec opts[] = {
-        {"-binary", Ns_ObjvBool,  &binary, (void *) NS_TRUE},
+        {"-binary", Ns_ObjvBool,  &binary, INT2PTR(NS_TRUE)},
         {"--",      Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -93,17 +98,17 @@ NsTclHeadersObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     Ns_ConnSetResponseStatus(conn, status);
 
     if (type != NULL) {
-        if (binary) {
+        if (binary != 0) {
             Ns_ConnSetTypeHeader(conn, type);
         } else {
             Ns_ConnSetEncodedTypeHeader(conn, type);
         }
-    } else if (binary) {
+    } else if (binary != 0) {
         conn->flags |= NS_CONN_WRITE_ENCODED;
     }
 
     if (length > -1) {
-        Ns_ConnSetLengthHeader(conn, length);
+	Ns_ConnSetLengthHeader(conn, (size_t)length, 0);
     }
 
     /*
@@ -136,13 +141,12 @@ NsTclHeadersObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclStartContentObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                        Tcl_Obj **objv)
+NsTclStartContentObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp     *itPtr = arg;
     Ns_Conn      *conn = NULL;
     Tcl_Encoding  encoding = NULL;
-    char         *charset = NULL, *type = NULL;
+    const char   *charset = NULL, *type = NULL;
 
     Ns_ObjvSpec opts[] = {
         {"-charset", Ns_ObjvString, &charset, NULL},
@@ -202,12 +206,12 @@ NsTclStartContentObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                 Tcl_Obj *CONST objv[])
+NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp     *itPtr = arg;
     Ns_Conn      *conn  = NULL;
-    int           length, i, n, flags, binary, status;
+    int           length, i, n, binary, status;
+    unsigned int  flags;
     struct iovec  iov[32];
     struct iovec *sbufs = iov;
 
@@ -216,6 +220,10 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         return TCL_ERROR;
     }
     if (GetConn(arg, interp, &conn) != TCL_OK) {
+        return TCL_ERROR;
+    }
+    if (Ns_ConnSockPtr(conn) == NULL) {
+        Ns_TclPrintfResult(interp, "connection channels is detached");
         return TCL_ERROR;
     }
     objv++;
@@ -227,8 +235,8 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
      * or this is some other protocol.
      */
 
-    if (!(conn->flags & NS_CONN_SENTHDRS)
-            && !(itPtr->nsconn.flags & CONN_TCLHTTP)) {
+    if ((conn->flags & NS_CONN_SENTHDRS) == 0u
+	&& (itPtr->nsconn.flags & CONN_TCLHTTP) == 0u) {
         conn->flags |= NS_CONN_SKIPHDRS;
     }
 
@@ -236,8 +244,8 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
      * Allocate space for large numbers of buffers.
      */
 
-    if (objc > sizeof(iov) / sizeof(struct iovec)) {
-        sbufs = ns_calloc(objc, sizeof(struct iovec));
+    if (objc > (int)(sizeof(iov) / sizeof(struct iovec))) {
+        sbufs = ns_calloc((size_t)objc, sizeof(struct iovec));
     }
 
     /*
@@ -251,16 +259,19 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
      * text objects...
      */
 
-    binary = (conn->flags & NS_CONN_WRITE_ENCODED) ? 0 : 1;
+    binary = (conn->flags & NS_CONN_WRITE_ENCODED) != 0u ? NS_FALSE : NS_TRUE;
 
     for (i = 0, n = 0; i < objc; i++) {
-        if (binary || (binary = NsTclObjIsByteArray(objv[i]))) {
-            sbufs[n].iov_base = Tcl_GetByteArrayFromObj(objv[i], &length);
+	if (binary == NS_FALSE) {
+	    binary = NsTclObjIsByteArray(objv[i]);
+	}
+	if (binary == NS_TRUE) {
+	    sbufs[n].iov_base = (void *)Tcl_GetByteArrayFromObj(objv[i], &length);
         } else {
             sbufs[n].iov_base = Tcl_GetStringFromObj(objv[i], &length);
         }
         if (length > 0) {
-            sbufs[n].iov_len = length;
+            sbufs[n].iov_len = (size_t)length;
             n++;
         }
     }
@@ -270,12 +281,12 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
      * as chunking would alter this.
      */
 
-    flags = 0;
+    flags = 0U;
     if (Ns_ConnResponseLength(conn) < 0) {
         flags |= NS_CONN_STREAM;
     }
 
-    if (binary) {
+    if (binary != 0) {
         status = Ns_ConnWriteVData(conn, sbufs, n, flags);
     } else {
         status = Ns_ConnWriteVChars(conn, sbufs, n, flags);
@@ -308,16 +319,15 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                  Tcl_Obj *CONST objv[])
+NsTclReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Conn *conn = NULL;
-    Tcl_Obj *dataObj;
-    char    *type, *data;
-    int      status, len, result, binary = NS_FALSE;
+    Ns_Conn    *conn = NULL;
+    Tcl_Obj    *dataObj;
+    const char *type, *data;
+    int         status, len, result, binary = NS_FALSE;
 
     Ns_ObjvSpec opts[] = {
-        {"-binary",  Ns_ObjvBool, &binary, (void *) NS_TRUE},
+        {"-binary",  Ns_ObjvBool, &binary, INT2PTR(NS_TRUE)},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -332,8 +342,8 @@ NsTclReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     if (GetConn(arg, interp, &conn) != TCL_OK) {
         return TCL_ERROR;
     }
-    if (binary || NsTclObjIsByteArray(dataObj)) {
-        data = (char *) Tcl_GetByteArrayFromObj(dataObj, &len);
+    if (binary == NS_TRUE || NsTclObjIsByteArray(dataObj) == NS_TRUE) {
+        data = (const char *) Tcl_GetByteArrayFromObj(dataObj, &len);
         result = Ns_ConnReturnData(conn, status, data, len, type);
     } else {
         data = Tcl_GetStringFromObj(dataObj, &len);
@@ -364,23 +374,21 @@ NsTclReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclRespondObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                   Tcl_Obj *CONST objv[])
+NsTclRespondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn     *conn = NULL;
-    int          status = 200, length = -1;
-    char        *type = "*/*", *setid = NULL, *binary = NULL;
-    char        *string = NULL, *filename = NULL, *chanid = NULL;
+    int          result, status = 200, length = -1;
+    const char  *type = "*/*", *setid = NULL, *binary = NULL;
+    const char  *chars = NULL, *filename = NULL, *chanid = NULL;
     Ns_Set      *set = NULL;
     Tcl_Channel  chan;
-    int          result;
 
     Ns_ObjvSpec opts[] = {
         {"-status",   Ns_ObjvInt,       &status,   NULL},
         {"-type",     Ns_ObjvString,    &type,     NULL},
         {"-length",   Ns_ObjvInt,       &length,   NULL},
         {"-headers",  Ns_ObjvString,    &setid,    NULL},
-        {"-string",   Ns_ObjvString,    &string,   NULL},
+        {"-string",   Ns_ObjvString,    &chars,    NULL},
         {"-file",     Ns_ObjvString,    &filename, NULL},
         {"-fileid",   Ns_ObjvString,    &chanid,   NULL},
         {"-binary",   Ns_ObjvByteArray, &binary,   &length},
@@ -395,7 +403,7 @@ NsTclRespondObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
                       TCL_STATIC);
         return TCL_ERROR;
     }
-    if ((binary != NULL) + (string != NULL) + (filename != NULL)
+    if ((binary != NULL) + (chars != NULL) + (filename != NULL)
         + (chanid != NULL) != 1) {
         Tcl_SetResult(interp, "must specify only one of -string, "
                       "-file, -binary or -fileid", TCL_STATIC);
@@ -423,7 +431,7 @@ NsTclRespondObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
         if (Ns_TclGetOpenChannel(interp, chanid, 0, 1, &chan) != TCL_OK) {
             return TCL_ERROR;
         }
-        result = Ns_ConnReturnOpenChannel(conn, status, type, chan, length);
+        result = Ns_ConnReturnOpenChannel(conn, status, type, chan, (size_t)length);
 
     } else if (filename != NULL) {
         /*
@@ -441,10 +449,10 @@ NsTclRespondObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
 
     } else {
         /*
-         * We'll be returning a string now.
+         * We'll be returning chars.
          */
 
-        result = Ns_ConnReturnCharData(conn, status, string, length, type);
+        result = Ns_ConnReturnCharData(conn, status, chars, length, type);
     }
 
     return Result(interp, result);
@@ -471,8 +479,7 @@ NsTclRespondObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnFileObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                      Tcl_Obj *CONST objv[])
+NsTclReturnFileObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      status, result;
@@ -514,8 +521,7 @@ NsTclReturnFileObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                    Tcl_Obj *CONST objv[])
+NsTclReturnFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     int          len, status, result;
     Tcl_Channel  chan;
@@ -534,13 +540,12 @@ NsTclReturnFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     if (Tcl_GetIntFromObj(interp, objv[4], &len) != TCL_OK) {
         return TCL_ERROR;
     }
-    if (Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[3]), 0, 1, &chan)
-        != TCL_OK) {
+    if (Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[3]), 0, 1, &chan) != TCL_OK) {
         return TCL_ERROR;
     }
 
     result = Ns_ConnReturnOpenChannel(conn, status, Tcl_GetString(objv[2]),
-                                      chan, len);
+                                      chan, (size_t)len);
 
     return Result(interp, result);
 }
@@ -564,8 +569,7 @@ NsTclReturnFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclConnSendFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                      Tcl_Obj *CONST objv[])
+NsTclConnSendFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn     *conn = NULL;
     Tcl_Channel  chan;
@@ -578,8 +582,7 @@ NsTclConnSendFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     if (GetConn(arg, interp, &conn) != TCL_OK) {
         return TCL_ERROR;
     }
-    if (Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[1]), 0, 1, &chan)
-        != TCL_OK) {
+    if (Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[1]), 0, 1, &chan) != TCL_OK) {
         return TCL_ERROR;
     }
     if (Tcl_GetIntFromObj(interp, objv[2], &len) != TCL_OK) {
@@ -589,7 +592,7 @@ NsTclConnSendFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
     Ns_LogDeprecated(objv, 3, "ns_writefp fileid ?nbytes?", NULL);
 
     conn->flags |= NS_CONN_SKIPHDRS;
-    if (Ns_ConnSendChannel(conn, chan, len) != NS_OK) {
+    if (Ns_ConnSendChannel(conn, chan, (size_t)len) != NS_OK) {
         Ns_TclPrintfResult(interp, "could not send %d bytes from channel %s",
                            len, Tcl_GetString(objv[1]));
         return TCL_ERROR;
@@ -618,8 +621,7 @@ NsTclConnSendFpObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnBadRequestObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                            Tcl_Obj *CONST objv[])
+NsTclReturnBadRequestObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      result;
@@ -657,10 +659,14 @@ NsTclReturnBadRequestObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 static int
-ReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-        Tcl_Obj *CONST objv[], int (*proc) (Ns_Conn *))
+ReturnObjCmd(ClientData arg, Tcl_Interp *interp, 
+	     int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv), 
+	     int (*proc) (Ns_Conn *conn))
 {
     Ns_Conn *conn = NULL;
+
+    assert(arg != NULL);
+    assert(interp != NULL);
 
     if (GetConn(arg, interp, &conn) != TCL_OK) {
         return TCL_ERROR;
@@ -670,36 +676,31 @@ ReturnObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
 }
 
 int
-NsTclReturnNotFoundObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                          Tcl_Obj *CONST objv[])
+NsTclReturnNotFoundObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     return ReturnObjCmd(arg, interp, objc, objv, Ns_ConnReturnNotFound);
 }
 
 int
-NsTclReturnUnauthorizedObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                              Tcl_Obj *CONST objv[])
+NsTclReturnUnauthorizedObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     return ReturnObjCmd(arg, interp, objc, objv, Ns_ConnReturnUnauthorized);
 }
 
 int
-NsTclReturnForbiddenObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                           Tcl_Obj *CONST objv[])
+NsTclReturnForbiddenObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     return ReturnObjCmd(arg, interp, objc, objv, Ns_ConnReturnForbidden);
 }
 
 int
-NsTclReturnUnavailableObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                             Tcl_Obj *CONST objv[])
+NsTclReturnUnavailableObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     return ReturnObjCmd(arg, interp, objc, objv, Ns_ConnReturnUnavailable);
 }
 
 int
-NsTclReturnTooLargeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                          Tcl_Obj *CONST objv[])
+NsTclReturnTooLargeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     return ReturnObjCmd(arg, interp, objc, objv, Ns_ConnReturnEntityTooLarge);
 }
@@ -724,8 +725,7 @@ NsTclReturnTooLargeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnErrorObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                       Tcl_Obj *CONST objv[])
+NsTclReturnErrorObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      status, result;
@@ -765,8 +765,7 @@ NsTclReturnErrorObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnMovedObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                          Tcl_Obj *CONST objv[])
+NsTclReturnMovedObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      result;
@@ -803,8 +802,7 @@ NsTclReturnMovedObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnNoticeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                        Tcl_Obj *CONST objv[])
+NsTclReturnNoticeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      status, result;
@@ -845,8 +843,7 @@ NsTclReturnNoticeObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclReturnRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-                          Tcl_Obj *CONST objv[])
+NsTclReturnRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      result;
@@ -881,8 +878,7 @@ NsTclReturnRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclInternalRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
-			  Tcl_Obj *CONST objv[])
+NsTclInternalRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_Conn *conn = NULL;
     int      result;
@@ -903,6 +899,7 @@ NsTclInternalRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc,
 static int
 Result(Tcl_Interp *interp, int result)
 {
+    assert(interp != NULL);
     Tcl_SetObjResult(interp, Tcl_NewBooleanObj(result == NS_OK ? 1 : 0));
     return TCL_OK;
 }
@@ -913,6 +910,10 @@ GetConn(ClientData arg, Tcl_Interp *interp, Ns_Conn **connPtr)
 {
     NsInterp *itPtr = arg;
 
+    assert(arg != NULL);
+    assert(interp != NULL);
+    assert(connPtr != NULL);
+
     if (itPtr->conn == NULL) {
         Tcl_SetResult(interp, "no connection", TCL_STATIC);
         return TCL_ERROR;
@@ -922,3 +923,12 @@ GetConn(ClientData arg, Tcl_Interp *interp, Ns_Conn **connPtr)
 
     return TCL_OK;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

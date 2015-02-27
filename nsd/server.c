@@ -50,7 +50,8 @@ typedef struct ServerInit {
  * Local functions defined in this file.
  */
 
-static void CreatePool(NsServer *servPtr, char *pool);
+static void CreatePool(NsServer *servPtr, const char *pool)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
 /*
@@ -80,7 +81,7 @@ static ServerInit *lastInitPtr;  /* Last in list of server config callbacks. */
  */
 
 NsServer *
-NsGetServer(CONST char *server)
+NsGetServer(const char *server)
 {
     if (server != NULL) {
         Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
@@ -165,11 +166,13 @@ NsStartServers(void)
  */
 
 void
-NsStopServers(Ns_Time *toPtr)
+NsStopServers(const Ns_Time *toPtr)
 {
     NsServer      *servPtr;
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
+
+    assert(toPtr != NULL);
 
     hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
     while (hPtr != NULL) {
@@ -203,18 +206,21 @@ NsStopServers(Ns_Time *toPtr)
  */
 
 void
-NsInitServer(char *server, Ns_ServerInitProc *staticInitProc)
+NsInitServer(const char *server, Ns_ServerInitProc *initProc)
 {
     Tcl_HashEntry     *hPtr;
     Ns_DString         ds;
     NsServer          *servPtr;
     ServerInit        *initPtr;
-    CONST char        *path, *p;
+    const char        *path, *p;
     Ns_Set            *set;
-    int                i, n;
+    size_t             i;
+    int                n;
+
+    assert(server != NULL);
 
     hPtr = Tcl_CreateHashEntry(&nsconf.servertable, server, &n);
-    if (!n) {
+    if (n == 0) {
         Ns_Log(Error, "duplicate server: %s", server);
         return;
     }
@@ -223,7 +229,7 @@ NsInitServer(char *server, Ns_ServerInitProc *staticInitProc)
      * Create a new NsServer.
      */
 
-    servPtr = ns_calloc(1, sizeof(NsServer));
+    servPtr = ns_calloc(1U, sizeof(NsServer));
     servPtr->server = server;
 
     Tcl_SetHashValue(hPtr, servPtr);
@@ -241,7 +247,7 @@ NsInitServer(char *server, Ns_ServerInitProc *staticInitProc)
     }
 
     Ns_DStringInit(&ds);
-    path = Ns_ConfigGetPath(server, NULL, NULL);
+    path = Ns_ConfigGetPath(server, NULL, (char *)0);
 
     /*
      * Set some server options.
@@ -273,8 +279,8 @@ NsInitServer(char *server, Ns_ServerInitProc *staticInitProc)
      * static modules.
      */
 
-    if (staticInitProc != NULL) {
-        (void) (*staticInitProc)(server);
+    if (initProc != NULL) {
+        (void) (*initProc)(server);
     }
 
     /*
@@ -289,7 +295,7 @@ NsInitServer(char *server, Ns_ServerInitProc *staticInitProc)
     CreatePool(servPtr, "");
     path = Ns_ConfigGetPath(server, NULL, "pools", NULL);
     set = Ns_ConfigGetSection(path);
-    for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
+    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
     }
     NsTclInitServer(server);
@@ -319,6 +325,8 @@ void
 NsRegisterServerInit(Ns_ServerInitProc *proc)
 {
     ServerInit *initPtr;
+
+    assert(proc != NULL);
 
     initPtr = ns_malloc(sizeof(ServerInit));
     initPtr->proc = proc;
@@ -350,30 +358,34 @@ NsRegisterServerInit(Ns_ServerInitProc *proc)
  */
 
 static void
-CreatePool(NsServer *servPtr, char *pool)
+CreatePool(NsServer *servPtr, const char *pool)
 {
-    ConnPool *poolPtr;
-    Conn     *connBufPtr, *connPtr;
-    int       i, n, maxconns, lowwatermark, highwatermark, queueLength;
-    char     *path;
+    ConnPool   *poolPtr;
+    Conn       *connBufPtr, *connPtr;
+    int         n, maxconns, lowwatermark, highwatermark, queueLength;
+    const char *path;
 
-    poolPtr = ns_calloc(1, sizeof(ConnPool));
+    assert(servPtr != NULL);
+    assert(pool != NULL);
+
+    poolPtr = ns_calloc(1U, sizeof(ConnPool));
     poolPtr->pool = pool;
     poolPtr->servPtr = servPtr;
     if (*pool == '\0') {
         /* NB: Default options from pre-4.0 ns/server/server1 section. */
-        path = Ns_ConfigGetPath(servPtr->server, NULL, NULL);
+	path = Ns_ConfigGetPath(servPtr->server, NULL, (char *)0);
         servPtr->pools.defaultPtr = poolPtr;
     } else {
 	Ns_Set *set;
+	size_t  i;
         /*
          * Map requested method/URL's to this pool.
          */
 
         path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, NULL);
         set = Ns_ConfigGetSection(path);
-        for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
-            if (!strcasecmp(Ns_SetKey(set, i), "map")) {
+        for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
+            if (strcasecmp(Ns_SetKey(set, i), "map") == 0) {
                 NsMapPool(poolPtr, Ns_SetValue(set, i));
             }
         }
@@ -395,7 +407,7 @@ CreatePool(NsServer *servPtr, char *pool)
     for (n = 0; n < maxconns - 1; ++n) {
         connPtr = &connBufPtr[n];
         connPtr->nextPtr = &connBufPtr[n+1];
-        Ns_CompressInit(&connPtr->stream);
+        (void) Ns_CompressInit(&connPtr->cStream);
     }
     connBufPtr[n].nextPtr = NULL;
     poolPtr->wqueue.freePtr = &connBufPtr[0];
@@ -432,17 +444,18 @@ CreatePool(NsServer *servPtr, char *pool)
      */
     {
 	char name[128] = "nsd:";
+	int  j;
 	
-	if (*pool == 0) {
+	if (*pool == '\0') {
 	    pool = "default";
 	}
-	strncat(name, pool, 120);
+	strncat(name, pool, 120U);
 	
-	for (i = 0; i < maxconns; i++) {
+	for (j = 0; j < maxconns; j++) {
 	    char buffer[64];
-	    sprintf(buffer, "connthread:%d", i);
-	    Ns_MutexInit(&poolPtr->tqueue.args[i].lock);
-	    Ns_MutexSetName2(&poolPtr->tqueue.args[i].lock, name, buffer);
+	    sprintf(buffer, "connthread:%d", j);
+	    Ns_MutexInit(&poolPtr->tqueue.args[j].lock);
+	    Ns_MutexSetName2(&poolPtr->tqueue.args[j].lock, name, buffer);
 	}
 	Ns_MutexInit(&poolPtr->tqueue.lock);
 	Ns_MutexSetName2(&poolPtr->tqueue.lock, name, "tqueue");

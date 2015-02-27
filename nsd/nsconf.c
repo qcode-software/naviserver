@@ -35,7 +35,7 @@
 
 #include "nsd.h"
 
-struct _nsconf nsconf;
+struct nsconf nsconf;
 
 
 
@@ -118,13 +118,14 @@ NsInitInfo(void)
     Ns_DString addr;
 
     if (gethostname(nsconf.hostname, sizeof(nsconf.hostname)) != 0) {
-        strcpy(nsconf.hostname, "localhost");
+        memcpy(nsconf.hostname, "localhost", 10u);
     }
     Ns_DStringInit(&addr);
     if (Ns_GetAddrByHost(&addr, nsconf.hostname)) {
-        strcpy(nsconf.address, addr.string);
+        assert(addr.length < sizeof(nsconf.address));
+        memcpy(nsconf.address, addr.string, (size_t)addr.length + 1u);
     } else {
-        strcpy(nsconf.address, "0.0.0.0");
+        memcpy(nsconf.address, "0.0.0.0", 8u);
     }
     Ns_DStringFree(&addr);
 }
@@ -152,7 +153,7 @@ NsConfUpdate(void)
 {
     int i;
     Ns_DString ds;
-    char *path = NS_CONFIG_PARAMETERS;
+    const char *path = NS_CONFIG_PARAMETERS;
 
     NsConfigLog();
     NsConfigAdp();
@@ -168,10 +169,12 @@ NsConfUpdate(void)
      * Set a default stacksize, if specified. Use OS default otherwise.
      */
 
-    if ((i = Ns_ConfigIntRange(NS_CONFIG_THREADS, "stacksize", 0, 0, INT_MAX)) > 0
-        || (i = Ns_ConfigIntRange(path, "stacksize", 0, 0, INT_MAX)) > 0) {
-
-        Ns_ThreadStackSize(i);
+    i = Ns_ConfigIntRange(NS_CONFIG_THREADS, "stacksize", 0, 0, INT_MAX);
+    if (i == 0) {
+        i = Ns_ConfigIntRange(path, "stacksize", 0, 0, INT_MAX);
+    }
+    if (i > 0) {
+	(void) Ns_ThreadStackSize((long)i);
     }
 
     /*
@@ -206,8 +209,8 @@ NsConfUpdate(void)
      */
 
     Ns_DStringInit(&ds);
-    nsconf.tcl.sharedlibrary = (char*)Ns_ConfigString(path, "tcllibrary", "tcl");
-    if (!Ns_PathIsAbsolute(nsconf.tcl.sharedlibrary)) {
+    nsconf.tcl.sharedlibrary = Ns_ConfigString(path, "tcllibrary", "tcl");
+    if (Ns_PathIsAbsolute(nsconf.tcl.sharedlibrary) == NS_FALSE) {
 	Ns_Set *set = Ns_ConfigCreateSection(NS_CONFIG_PARAMETERS);
 
         Ns_HomePath(&ds, nsconf.tcl.sharedlibrary, NULL);
@@ -218,3 +221,12 @@ NsConfUpdate(void)
     nsconf.tcl.lockoninit = Ns_ConfigBool(path, "tclinitlock", NS_FALSE);
     Ns_DStringFree(&ds);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

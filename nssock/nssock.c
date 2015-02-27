@@ -36,7 +36,7 @@
 
 #include "ns.h"
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 
 typedef struct Config {
@@ -56,7 +56,8 @@ static Ns_DriverSendFileProc SendFile;
 static Ns_DriverKeepProc Keep;
 static Ns_DriverCloseProc Close;
 
-static void SetNodelay(Ns_Driver *driver, NS_SOCKET sock);
+static void SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
+    NS_GNUC_NONNULL(1);
 
 
 /*
@@ -76,13 +77,13 @@ static void SetNodelay(Ns_Driver *driver, NS_SOCKET sock);
  */
 
 NS_EXPORT int
-Ns_ModuleInit(char *server, char *module)
+Ns_ModuleInit(const char *server, const char *module)
 {
     Ns_DriverInitData  init = {0};
     Config            *cfg;
-    CONST char        *path;
+    const char        *path;
 
-    path = Ns_ConfigGetPath(server, module, NULL);
+    path = Ns_ConfigGetPath(server, module, (char *)0);
     cfg = ns_malloc(sizeof(Config));
     cfg->deferaccept = Ns_ConfigBool(path, "deferaccept", NS_FALSE);
     cfg->nodelay = Ns_ConfigBool(path, "nodelay", NS_FALSE);
@@ -113,7 +114,7 @@ Ns_ModuleInit(char *server, char *module)
  *      Open a listening TCP socket in non-blocking mode.
  *
  * Results:
- *      The open socket or INVALID_SOCKET on error.
+ *      The open socket or NS_INVALID_SOCKET on error.
  *
  * Side effects:
  *      Enable TCP_DEFER_ACCEPT if available.
@@ -122,16 +123,16 @@ Ns_ModuleInit(char *server, char *module)
  */
 
 static NS_SOCKET
-Listen(Ns_Driver *driver, CONST char *address, int port, int backlog)
+Listen(Ns_Driver *driver, const char *address, int port, int backlog)
 {
     NS_SOCKET sock;
 
     sock = Ns_SockListenEx((char*)address, port, backlog);
-    if (sock != INVALID_SOCKET) {
+    if (sock != NS_INVALID_SOCKET) {
 	Config *cfg = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
-	if (cfg->deferaccept) {
+	if (cfg->deferaccept != 0) {
 	    Ns_SockSetDeferAccept(sock, driver->recvwait);
 	}
     }
@@ -159,13 +160,13 @@ Listen(Ns_Driver *driver, CONST char *address, int port, int backlog)
  
 static NS_DRIVER_ACCEPT_STATUS
 Accept(Ns_Sock *sock, NS_SOCKET listensock,
-       struct sockaddr *sockaddrPtr, int *socklenPtr)
+       struct sockaddr *sockaddrPtr, socklen_t *socklenPtr)
 {
     Config *cfg    = sock->driver->arg;
     int     status = NS_DRIVER_ACCEPT_ERROR;
 
     sock->sock = Ns_SockAccept(listensock, sockaddrPtr, socklenPtr);
-    if (sock->sock != INVALID_SOCKET) {
+    if (sock->sock != NS_INVALID_SOCKET) {
 
 #ifdef __APPLE__
       /* 
@@ -178,8 +179,7 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock,
 #endif
         Ns_SockSetNonBlocking(sock->sock);
 	SetNodelay(sock->driver, sock->sock);
-        status = cfg->deferaccept
-            ? NS_DRIVER_ACCEPT_DATA : NS_DRIVER_ACCEPT;
+        status = (cfg->deferaccept != 0) ? NS_DRIVER_ACCEPT_DATA : NS_DRIVER_ACCEPT;
     }
     return status;
 }
@@ -204,7 +204,7 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock,
 
 static ssize_t
 Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
-     Ns_Time *timeoutPtr, int flags)
+     Ns_Time *timeoutPtr, unsigned int flags)
 {
     ssize_t n;
     
@@ -235,8 +235,8 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  */
 
 static ssize_t
-Send(Ns_Sock *sockPtr, struct iovec *bufs, int nbufs,
-     Ns_Time *timeoutPtr, int flags)
+Send(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
+     const Ns_Time *timeoutPtr, unsigned int flags)
 {
     ssize_t   n;
     int       decork;
@@ -244,43 +244,31 @@ Send(Ns_Sock *sockPtr, struct iovec *bufs, int nbufs,
 
     decork = Ns_SockCork(sockPtr, 1);
 
-#ifdef _WIN32
-    DWORD n1;
-    if (WSASend(sock, (LPWSABUF)bufs, nbufs, &n1, flags,
-                NULL, NULL) != 0) {
-        n1 = -1;
-    }
-    n = n1;
-#else
     {
+#ifdef _WIN32
+	DWORD n1;
+	if (WSASend(sock, (LPWSABUF)bufs, nbufs, &n1, flags,
+		    NULL, NULL) != 0) {
+	    n1 = -1;
+	}
+	n = n1;
+#else
 	struct msghdr msg;
       
 	memset(&msg, 0, sizeof(msg));
-	msg.msg_iov = bufs;
+	msg.msg_iov = (struct iovec *)bufs;
 	msg.msg_iovlen = nbufs;
 
-#if 0
-	{ int i;
-	    for (i=0; i<nbufs; i++) {
-		fprintf(stderr, "%d: <%s> (%ld)\n",i, (char*)bufs[i].iov_base, bufs[i].iov_len);
-		fprintf(stderr, "%d: len %ld\n",i, bufs[i].iov_len);
-	    }
-	}
-#endif	
-	
 	n = sendmsg(sock, &msg, flags);
-#if 0
-	fprintf(stderr, "=>sent %ld\n",n);
-	if (n<=0) {printf("sendmsg sock %d error %d %s\n",sock, errno,strerror(errno));}
-#endif
 	
 	if (n < 0) {
 	    Ns_Log(Debug, "SockSend: %s",
 		   ns_sockstrerror(ns_sockerrno));
 	}
-    }
 #endif
-    if (decork) {
+    }
+
+    if (decork != 0) {
       Ns_SockCork(sockPtr, 0);
     }
     return n;
@@ -307,7 +295,7 @@ Send(Ns_Sock *sockPtr, struct iovec *bufs, int nbufs,
 
 static ssize_t
 SendFile(Ns_Sock *sock, Ns_FileVec *bufs, int nbufs,
-         Ns_Time *timeoutPtr, int flags)
+         Ns_Time *timeoutPtr, unsigned int flags)
 {
     return Ns_SockSendFileBufs(sock, bufs, nbufs, timeoutPtr, flags);
 }
@@ -321,7 +309,7 @@ SendFile(Ns_Sock *sock, Ns_FileVec *bufs, int nbufs,
  *      We are always to try keepalive if the upper layers are.
  *
  * Results:
- *      1, always.
+ *      NS_TRUE, always.
  *
  * Side effects:
  *      None.
@@ -329,10 +317,10 @@ SendFile(Ns_Sock *sock, Ns_FileVec *bufs, int nbufs,
  *----------------------------------------------------------------------
  */
 
-static int
+static bool
 Keep(Ns_Sock *sock)
 {
-    return 1;
+    return NS_TRUE;
 }
 
 
@@ -355,9 +343,9 @@ Keep(Ns_Sock *sock)
 static void
 Close(Ns_Sock *sock)
 {
-    if (sock->sock > -1) {
+    if (sock->sock != NS_INVALID_SOCKET) {
         ns_sockclose(sock->sock);
-        sock->sock = -1;
+        sock->sock = NS_INVALID_SOCKET;
     }
 }
 
@@ -365,19 +353,31 @@ Close(Ns_Sock *sock)
 static void
 SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
 {
-    Config *cfg = driver->arg;
-
-    if (cfg->nodelay) {
 #ifdef TCP_NODELAY
+    Config *cfg;
+
+    assert(driver != NULL);
+    
+    cfg = driver->arg;
+    if (cfg->nodelay != 0) {
 	int value = 1;
 
         if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
-                       &value, sizeof(value)) == -1) {
+                       (const void *)&value, sizeof(value)) == -1) {
             Ns_Log(Error, "nssock: setsockopt(TCP_NODELAY): %s",
                    ns_sockstrerror(ns_sockerrno));
         } else {
 	    Ns_Log(Debug, "nodelay: socket option TCP_NODELAY activated");
 	}
-#endif
     }
+#endif
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -44,8 +44,8 @@
  */
 
 static Ns_ServerInitProc ConfigServerRedirects;
-static int ReturnRedirect(Ns_Conn *conn, int status, int *resultPtr);
-
+static int ReturnRedirect(Ns_Conn *conn, int status, int *resultPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 
 /*
@@ -73,25 +73,25 @@ NsConfigRedirects(void)
 }
 
 static int
-ConfigServerRedirects(CONST char *server)
+ConfigServerRedirects(const char *server)
 {
     NsServer   *servPtr = NsGetServer(server);
     Ns_Set     *set;
-    CONST char *path;
-    int         i;
+    const char *path;
+    size_t      i;
 
     Tcl_InitHashTable(&servPtr->request.redirect, TCL_ONE_WORD_KEYS);
 
     path = Ns_ConfigGetPath(server, NULL, "redirects", NULL);
     set = Ns_ConfigGetSection(path);
 
-    for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
-        CONST char *key, *map;
+    for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
+        const char *key, *map;
 	int status;
 
         key = Ns_SetKey(set, i);
         map = Ns_SetValue(set, i);
-        status = atoi(key);
+        status = strtol(key, NULL, 10);
         if (status <= 0 || *map == '\0') {
             Ns_Log(Error, "redirects[%s]: invalid redirect '%s=%s'",
                    server, key, map);
@@ -123,7 +123,7 @@ ConfigServerRedirects(CONST char *server)
  */
 
 void
-Ns_RegisterReturn(int status, CONST char *url)
+Ns_RegisterReturn(int status, const char *url)
 {
     NsServer      *servPtr;
     int            isNew;
@@ -131,8 +131,8 @@ Ns_RegisterReturn(int status, CONST char *url)
     servPtr = NsGetInitServer();
     if (servPtr != NULL) {
         Tcl_HashEntry *hPtr = Tcl_CreateHashEntry(&servPtr->request.redirect,
-						  (char *)(intptr_t) status, &isNew);
-        if (!isNew) {
+						  INT2PTR(status), &isNew);
+        if (isNew == 0) {
             ns_free(Tcl_GetHashValue(hPtr));
         }
         if (url == NULL) {
@@ -165,11 +165,13 @@ Ns_ConnReturnStatus(Ns_Conn *conn, int status)
 {
     int result;
 
+    assert(conn != NULL);
+    
     if (ReturnRedirect(conn, status, &result)) {
         return result;
     }
     Ns_ConnSetResponseStatus(conn, status);
-    return Ns_ConnWriteVData(conn, NULL, 0, 0);
+    return Ns_ConnWriteVData(conn, NULL, 0, 0U);
 }
 
 
@@ -192,6 +194,7 @@ Ns_ConnReturnStatus(Ns_Conn *conn, int status)
 int
 Ns_ConnReturnOk(Ns_Conn *conn)
 {
+    assert(conn != NULL);
     return Ns_ConnReturnStatus(conn, 200);
 }
 
@@ -214,16 +217,18 @@ Ns_ConnReturnOk(Ns_Conn *conn)
  */
 
 int
-Ns_ConnReturnMoved(Ns_Conn *conn, CONST char *url)
+Ns_ConnReturnMoved(Ns_Conn *conn, const char *url)
 {
     Ns_DString ds, msg;
     int        result;
+
+    assert(conn != NULL);
 
     Ns_DStringInit(&ds);
     Ns_DStringInit(&msg);
     if (url != NULL) {
         if (*url == '/') {
-            Ns_ConnLocationAppend(conn, &ds);
+            (void) Ns_ConnLocationAppend(conn, &ds);
         }
         Ns_DStringAppend(&ds, url);
         Ns_ConnSetHeaders(conn, "Location", ds.string);
@@ -258,6 +263,7 @@ Ns_ConnReturnMoved(Ns_Conn *conn, CONST char *url)
 int
 Ns_ConnReturnNoResponse(Ns_Conn *conn)
 {
+    assert(conn != NULL);
     return Ns_ConnReturnStatus(conn, 204);
 }
 
@@ -280,16 +286,18 @@ Ns_ConnReturnNoResponse(Ns_Conn *conn)
  */
 
 int
-Ns_ConnReturnRedirect(Ns_Conn *conn, CONST char *url)
+Ns_ConnReturnRedirect(Ns_Conn *conn, const char *url)
 {
     Ns_DString ds, msg;
     int        result;
+
+    assert(conn != NULL);
 
     Ns_DStringInit(&ds);
     Ns_DStringInit(&msg);
     if (url != NULL) {
         if (*url == '/') {
-            Ns_ConnLocationAppend(conn, &ds);
+            (void) Ns_ConnLocationAppend(conn, &ds);
         }
         Ns_DStringAppend(&ds, url);
         Ns_ConnSetHeaders(conn, "Location", ds.string);
@@ -324,10 +332,12 @@ Ns_ConnReturnRedirect(Ns_Conn *conn, CONST char *url)
  */
 
 int
-Ns_ConnReturnBadRequest(Ns_Conn *conn, CONST char *reason)
+Ns_ConnReturnBadRequest(Ns_Conn *conn, const char *reason)
 {
     Ns_DString ds;
     int        result;
+
+    assert(conn != NULL);
 
     if (ReturnRedirect(conn, 400, &result)) {
         return result;
@@ -369,6 +379,8 @@ Ns_ConnReturnUnauthorized(Ns_Conn *conn)
     Ns_DString  ds;
     int         result;
 
+    assert(conn != NULL);
+
     if (Ns_SetIGet(conn->outputheaders, "WWW-Authenticate") == NULL) {
         Ns_DStringInit(&ds);
         Ns_DStringVarAppend(&ds, "Basic realm=\"",
@@ -407,6 +419,8 @@ Ns_ConnReturnForbidden(Ns_Conn *conn)
 {
     int result;
 
+    assert(conn != NULL);
+
     if (ReturnRedirect(conn, 403, &result)) {
         return result;
     }
@@ -437,6 +451,8 @@ Ns_ConnReturnNotFound(Ns_Conn *conn)
 {
     int result;
 
+    assert(conn != NULL);
+    
     if (ReturnRedirect(conn, 404, &result)) {
         return result;
     }
@@ -464,6 +480,8 @@ Ns_ConnReturnNotFound(Ns_Conn *conn)
 int
 Ns_ConnReturnNotModified(Ns_Conn *conn)
 {
+    assert(conn != NULL);
+
     return Ns_ConnReturnStatus(conn, 304);
 }
 
@@ -486,6 +504,8 @@ int
 Ns_ConnReturnEntityTooLarge(Ns_Conn *conn)
 {
     int result;
+
+    assert(conn != NULL);
 
     if (ReturnRedirect(conn, 413, &result)) {
         return result;
@@ -513,6 +533,8 @@ int
 Ns_ConnReturnRequestURITooLong(Ns_Conn *conn)
 {
     int result;
+
+    assert(conn != NULL);
 
     if (ReturnRedirect(conn, 414, &result)) {
         return result;
@@ -542,6 +564,8 @@ Ns_ConnReturnHeaderLineTooLong(Ns_Conn *conn)
 {
     int result;
 
+    assert(conn != NULL);
+
     if (ReturnRedirect(conn, 431, &result)) {
         return result;
     }
@@ -570,6 +594,8 @@ int
 Ns_ConnReturnNotImplemented(Ns_Conn *conn)
 {
     int result;
+
+    assert(conn != NULL);
 
     if (ReturnRedirect(conn, 501, &result)) {
         return result;
@@ -602,7 +628,9 @@ Ns_ConnReturnInternalError(Ns_Conn *conn)
 {
     int result;
 
-    Ns_SetTrunc(conn->outputheaders, 0);
+    assert(conn != NULL);
+
+    Ns_SetTrunc(conn->outputheaders, 0u);
     if (ReturnRedirect(conn, 500, &result)) {
         return result;
     }
@@ -634,7 +662,9 @@ Ns_ConnReturnUnavailable(Ns_Conn *conn)
 {
     int result;
 
-    Ns_SetTrunc(conn->outputheaders, 0);
+    assert(conn != NULL);
+
+    Ns_SetTrunc(conn->outputheaders, 0u);
     if (ReturnRedirect(conn, 503, &result)) {
         return result;
     }
@@ -667,10 +697,15 @@ ReturnRedirect(Ns_Conn *conn, int status, int *resultPtr)
 {
     Tcl_HashEntry *hPtr;
     Conn          *connPtr = (Conn *) conn;
-    NsServer      *servPtr = connPtr->poolPtr->servPtr;
+    NsServer      *servPtr;
 
-    hPtr = Tcl_FindHashEntry(&servPtr->request.redirect,
-                             (char *)(intptr_t) status);
+    assert(conn != NULL);
+    assert(resultPtr != NULL);
+
+    servPtr = connPtr->poolPtr->servPtr;
+    assert(servPtr != NULL);
+
+    hPtr = Tcl_FindHashEntry(&servPtr->request.redirect, INT2PTR(status));
     if (hPtr != NULL) {
         if (++connPtr->recursionCount > MAX_RECURSION) {
             Ns_Log(Error, "return: failed to redirect '%d': "
@@ -683,3 +718,12 @@ ReturnRedirect(Ns_Conn *conn, int status, int *resultPtr)
     }
     return 0;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

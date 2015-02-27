@@ -35,7 +35,7 @@
 
 #include "db.h"
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 
 /*
@@ -55,11 +55,12 @@ NS_EXPORT int Ns_ModuleVersion = 1;
  */
 
 NS_EXPORT int
-Ns_ModuleInit(char *server, char *module)
+Ns_ModuleInit(const char *server, const char *module)
 {
-    static int once;
+    static int once = 0;
 
-    if (!once) {
+    if (once == 0) {
+        Ns_LogSqlDebug = Ns_CreateLogSeverity("Debug(sql)");
 	NsDbInitPools();
 	once = 1;
     }
@@ -70,8 +71,17 @@ Ns_ModuleInit(char *server, char *module)
                                NS_TCL_TRACE_DEALLOCATE) != NS_OK) {
         return NS_ERROR;
     }
-    Ns_RegisterProcInfo((void *)NsDbAddCmds, "nsdb:initinterp", NULL);
-    Ns_RegisterProcInfo((void *)NsDbReleaseHandles, "nsdb:releasehandles", NULL);
+    Ns_RegisterProcInfo((Ns_Callback *)NsDbAddCmds, "nsdb:initinterp", NULL);
+    Ns_RegisterProcInfo((Ns_Callback *)NsDbReleaseHandles, "nsdb:releasehandles", NULL);
 
     return NS_OK;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

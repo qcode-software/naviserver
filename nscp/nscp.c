@@ -44,8 +44,8 @@
 
 typedef struct Mod {
     Tcl_HashTable users;
-    char *server;
-    char *addr;
+    const char *server;
+    const char *addr;
     int port;
     int echo;
     int commandLogging;
@@ -59,16 +59,20 @@ static Ns_ThreadProc EvalThread;
 
 typedef struct Sess {
     Mod *modPtr;
-    char *user;
+    const char *user;
     int id;
     NS_SOCKET sock;
     struct sockaddr_in sa;
 } Sess;
 
+/*
+ * The following functions are defined locally.
+ */
+
 static Ns_SockProc AcceptProc;
 static Tcl_CmdProc ExitCmd;
-static int Login(Sess *sessPtr, Tcl_DString *unameDS);
-static int GetLine(NS_SOCKET sock, char *prompt, Tcl_DString *dsPtr, int echo);
+static int Login(const Sess *sessPtr, Tcl_DString *unameDSPtr);
+static int GetLine(NS_SOCKET sock, const char *prompt, Tcl_DString *dsPtr, int echo);
 static Ns_ArgProc ArgProc;
 
 /*
@@ -76,21 +80,25 @@ static Ns_ArgProc ArgProc;
  * and disable password prompt echo.
  */
 
-#define TN_IAC  255
-#define TN_WILL 251
-#define TN_WONT 252
-#define TN_DO   253
-#define TN_DONT 254
-#define TN_EOF  236
-#define TN_IP   244
-#define TN_ECHO   1
+#define TN_IAC  255U
+#define TN_WILL 251U
+#define TN_WONT 252U
+#define TN_DO   253U
+#define TN_DONT 254U
+#define TN_EOF  236U
+#define TN_IP   244U
+#define TN_ECHO   1U
 
-static unsigned char do_echo[]    = {TN_IAC, TN_DO,   TN_ECHO};
-static unsigned char dont_echo[]  = {TN_IAC, TN_DONT, TN_ECHO};
-static unsigned char will_echo[]  = {TN_IAC, TN_WILL, TN_ECHO};
-static unsigned char wont_echo[]  = {TN_IAC, TN_WONT, TN_ECHO};
+static const unsigned char do_echo[]    = {TN_IAC, TN_DO,   TN_ECHO};
+static const unsigned char dont_echo[]  = {TN_IAC, TN_DONT, TN_ECHO};
+static const unsigned char will_echo[]  = {TN_IAC, TN_WILL, TN_ECHO};
+static const unsigned char wont_echo[]  = {TN_IAC, TN_WONT, TN_ECHO};
 
-NS_EXPORT int Ns_ModuleVersion = 1;
+/*
+ * Define the version of the module (ususally 1).
+ */
+
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 
 /*
@@ -112,11 +120,13 @@ NS_EXPORT int Ns_ModuleVersion = 1;
  */
 
 NS_EXPORT int
-Ns_ModuleInit(char *server, char *module)
+Ns_ModuleInit(const char *server, const char *module)
 {
     Mod           *modPtr;
-    char          *path, *addr, *end;
-    int            i, isNew, port;
+    char          *end;
+    const char    *addr, *path;
+    int            isNew, port, result;
+    size_t         i;
     NS_SOCKET      lsock;
     Tcl_HashEntry *hPtr;
     Ns_Set        *set;
@@ -125,14 +135,16 @@ Ns_ModuleInit(char *server, char *module)
      * Create the listening socket and callback.
      */
 
-    path = Ns_ConfigGetPath(server, module, NULL);
-    if (((addr = (char*)Ns_ConfigString(path, "address", "127.0.0.1")) == NULL)
-	 || (port = Ns_ConfigInt(path, "port", 2080)) <= 0 )  {
+    path = Ns_ConfigGetPath(server, module, (char *)0);
+    addr = Ns_ConfigString(path, "address", "127.0.0.1");
+    port = Ns_ConfigInt(path, "port", 2080);
+
+    if ((addr == NULL) || (port <= 0 ))  {
 	Ns_Log(Error, "nscp: address and port must be specified in config");
 	return NS_ERROR;
     }
     lsock = Ns_SockListen(addr, port);
-    if (lsock == INVALID_SOCKET) {
+    if (lsock == NS_INVALID_SOCKET) {
 	Ns_Log(Error, "nscp: could not listen on %s:%d", addr, port);
 	return NS_ERROR;
     }
@@ -159,56 +171,89 @@ Ns_ModuleInit(char *server, char *module)
      */
 
     Tcl_InitHashTable(&modPtr->users, TCL_STRING_KEYS);
-    path = Ns_ConfigGetPath(server, module, "users", NULL);
+    path = Ns_ConfigGetPath(server, module, "users", (char *)0);
     set = Ns_ConfigGetSection(path);
 
     /*
      * In default local mode just create empty user without password
      */
 
-    if (set == NULL && !strcmp(addr, "127.0.0.1")) {
+    if (set == NULL && STREQ(addr, "127.0.0.1")) {
         Ns_DString ds;
 
         Ns_DStringInit(&ds);
-        path = Ns_ModulePath(&ds, server, module, "users", NULL);
+        path = Ns_ModulePath(&ds, server, module, "users", (char *)0);
         set = Ns_ConfigCreateSection(path);
         Ns_SetUpdate(set, "user", "::");
         Ns_DStringFree(&ds);
     }
 
-    for (i = 0; set != NULL && i < Ns_SetSize(set); ++i) {
-	char *pass;
-	char *key = Ns_SetKey(set, i);
-	char *user = Ns_SetValue(set, i);
-
-	if (!STRIEQ(key, "user") || (pass = strchr(user, ':')) == NULL) {
+    /*
+     * Process the setup ns_set
+     */
+    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
+	const char *key  = Ns_SetKey(set, i);
+	const char *user = Ns_SetValue(set, i);
+        const char *passPart;
+        char *scratch, *p;
+        size_t userLength;
+ 
+        if (!STRIEQ(key, "user")) {
+            continue;
+        }
+        passPart = strchr(user, ':');
+        if (passPart == NULL) {
+            Ns_Log(Warning, "nscp: user entry '%s' contains no colon; ignored.", user);
 	    continue;
-	}
-	*pass = '\0';
-	hPtr = Tcl_CreateHashEntry(&modPtr->users, user, &isNew);
-	if (isNew) {
-	    Ns_Log(Notice, "nscp: added user: %s", user);
+        }
+
+        /*
+         * Copy string to avoid conflicts with const property.
+         */
+        p = scratch = ns_strdup(user);
+
+        /*
+         * Terminate user part.
+         */
+        userLength = (size_t)(passPart - user);
+	*(p + userLength) = '\0';
+
+	hPtr = Tcl_CreateHashEntry(&modPtr->users, p, &isNew);
+	if (isNew != 0) {
+	    Ns_Log(Notice, "nscp: added user: %s", p);
 	} else {
-	    Ns_Log(Warning, "nscp: duplicate user: %s", user);
+	    Ns_Log(Warning, "nscp: duplicate user: %s", p);
 	    ns_free(Tcl_GetHashValue(hPtr));
 	}
-	*pass++ = ':';
-	end = strchr(pass, ':');
+        /*
+         * Advance to password part in scratch copy.
+         */
+	p += userLength + 1u;
+
+        /* 
+         * look for end of password.
+         */
+	end = strchr(p, ':');
 	if (end != NULL) {
 	    *end = '\0';
 	}
-	pass = ns_strdup(pass);
-	if (end != NULL) {
-	    *end = ':';
-	}
-	Tcl_SetHashValue(hPtr, pass);
+
+        /*
+         * Save the password.
+         */
+	Tcl_SetHashValue(hPtr, ns_strdup(p));
+
+        ns_free(scratch);
     }
     if (modPtr->users.numEntries == 0) {
 	Ns_Log(Warning, "nscp: no authorized users");
     }
-    Ns_SockCallback(lsock, AcceptProc, modPtr, NS_SOCK_READ|NS_SOCK_EXIT);
-    Ns_RegisterProcInfo((void *)AcceptProc, "nscp", ArgProc);
-    return NS_OK;
+    result = Ns_SockCallback(lsock, AcceptProc, modPtr, 
+                             ((unsigned int)NS_SOCK_READ | (unsigned int)NS_SOCK_EXIT));
+    if (result == TCL_OK) {
+        Ns_RegisterProcInfo((Ns_Callback *)AcceptProc, "nscp", ArgProc);
+    }
+    return result;
 }
 
 
@@ -229,9 +274,9 @@ Ns_ModuleInit(char *server, char *module)
  */
 
 static void
-ArgProc(Tcl_DString *dsPtr, void *arg)
+ArgProc(Tcl_DString *dsPtr, const void *arg)
 {
-    Mod *modPtr = arg;
+    const Mod *modPtr = arg;
 
     Tcl_DStringStartSublist(dsPtr);
     Ns_DStringPrintf(dsPtr, "%s %d", modPtr->addr, modPtr->port);
@@ -255,28 +300,30 @@ ArgProc(Tcl_DString *dsPtr, void *arg)
  *----------------------------------------------------------------------
  */
 
-static int
-AcceptProc(NS_SOCKET lsock, void *arg, int why)
+static bool
+AcceptProc(NS_SOCKET sock, void *arg, unsigned int why)
 {
-    Mod *modPtr = arg;
-    Sess *sessPtr;
-    int len;
+    Mod       *modPtr = arg;
+    Sess      *sessPtr;
+    socklen_t  len;
 
-    if (why == NS_SOCK_EXIT) {
+    if (why == (unsigned int)NS_SOCK_EXIT) {
 	Ns_Log(Notice, "nscp: shutdown");
-	ns_sockclose(lsock);
+	(void )ns_sockclose(sock);
 	return NS_FALSE;
     }
+
     sessPtr = ns_malloc(sizeof(Sess));
     sessPtr->modPtr = modPtr;
-    len = sizeof(struct sockaddr_in);
-    sessPtr->sock = Ns_SockAccept(lsock, (struct sockaddr *) &sessPtr->sa, &len);
-    if (sessPtr->sock == INVALID_SOCKET) {
+    len = (socklen_t)sizeof(struct sockaddr_in);
+    sessPtr->sock = Ns_SockAccept(sock, (struct sockaddr *) &sessPtr->sa, &len);
+    if (sessPtr->sock == NS_INVALID_SOCKET) {
 	Ns_Log(Error, "nscp: accept() failed: %s",
 	       ns_sockstrerror(ns_sockerrno));
 	ns_free(sessPtr);
     } else {
-        static int next;
+        static int next = 0;
+
 	sessPtr->id = ++next;
 	Ns_ThreadCreate(EvalThread, sessPtr, 0, NULL);
     }
@@ -306,11 +353,11 @@ EvalThread(void *arg)
     Tcl_Interp *interp;
     Tcl_DString ds;
     Tcl_DString unameDS;
-    char buf[64], *res;
-    int n, ncmd, stop;
-    unsigned int len;
+    char buf[64];
+    int ncmd, stop;
+    size_t len;
     Sess *sessPtr = arg;
-    char *server = sessPtr->modPtr->server;
+    const char *res, *server = sessPtr->modPtr->server;
 
     /*
      * Initialize the thread and login the user.
@@ -322,7 +369,7 @@ EvalThread(void *arg)
     snprintf(buf, sizeof(buf), "-nscp:%d-", sessPtr->id);
     Ns_ThreadSetName(buf);
     Ns_Log(Notice, "nscp: %s connected", ns_inet_ntoa(sessPtr->sa.sin_addr));
-    if (!Login(sessPtr, &unameDS)) {
+    if (Login(sessPtr, &unameDS) == 0) {
 	goto done;
     }
 
@@ -343,13 +390,13 @@ EvalThread(void *arg)
     Tcl_CreateCommand(interp, "exit", ExitCmd, (ClientData) &stop, NULL);
 
     ncmd = 0;
-    while (!stop) {
+    while (stop == 0) {
 	Tcl_DStringTrunc(&ds, 0);
 	++ncmd;
 retry:
 	snprintf(buf, sizeof(buf), "%s:nscp %d> ", server, ncmd);
 	while (1) {
-	    if (!GetLine(sessPtr->sock, buf, &ds, 1)) {
+	    if (GetLine(sessPtr->sock, buf, &ds, 1) == 0) {
 		goto done;
 	    }
 	    if (Tcl_CommandComplete(ds.string)) {
@@ -364,23 +411,26 @@ retry:
 	    goto retry; /* Empty command - try again. */
 	}
 
-        if (sessPtr->modPtr->commandLogging) {
+        if (sessPtr->modPtr->commandLogging != 0) {
             Ns_Log(Notice, "nscp: %s %d: %s", sessPtr->user, ncmd, ds.string);
         }
 
 	if (Tcl_RecordAndEval(interp, ds.string, 0) != TCL_OK) {
-	    Ns_TclLogError(interp);
+	    (void) Ns_TclLogErrorInfo(interp, "\n(context: nscp)");
 	}
 	Tcl_AppendResult(interp, "\r\n", NULL);
-	res = (char*)Tcl_GetStringResult(interp);;
+	res = Tcl_GetStringResult(interp);
 	len = strlen(res);
-	while (len > 0) {
-	    if ((n = send(sessPtr->sock, res, len, 0)) <= 0) goto done;
-	    len -= n;
-	    res += n;
+	while (len > 0u) {
+	    ssize_t sent = ns_send(sessPtr->sock, res, len, 0);
+	    if (sent <= 0) {
+		goto done;
+	    }
+	    len -= (size_t)sent;
+	    res += sent;
 	}
 
-        if (sessPtr->modPtr->commandLogging) {
+        if (sessPtr->modPtr->commandLogging != 0) {
             Ns_Log(Notice, "nscp: %s %d: done", sessPtr->user, ncmd);
         }
     }
@@ -414,31 +464,35 @@ done:
  */
 
 static int
-GetLine(NS_SOCKET sock, char *prompt, Tcl_DString *dsPtr, int echo)
+GetLine(NS_SOCKET sock, const char *prompt, Tcl_DString *dsPtr, int echo)
 {
-    unsigned char buf[2048];
-    int n, result = 0, retry = 0;
+    char   buf[2048];
+    int    result = 0, retry = 0;
+    ssize_t n;
+    size_t promptLength;
 
     /*
      * Suppress output on things like password prompts.
      */
 
-    if (!echo) {
-	send(sock, will_echo, 3, 0);
-	send(sock, dont_echo, 3, 0);
-	recv(sock, buf, sizeof(buf), 0); /* flush client ack thingies */
+    if (echo == 0) {
+	(void)ns_send(sock, (const void*)will_echo, 3u, 0);
+	(void)ns_send(sock, (const void*)dont_echo, 3u, 0);
+	(void)ns_recv(sock, buf, sizeof(buf), 0); /* flush client ack thingies */
     }
-    n = strlen(prompt);
-    if (send(sock, prompt, (size_t)n, 0) != n) {
+    promptLength = strlen(prompt);
+    if (ns_send(sock, prompt, promptLength, 0) != (ssize_t)promptLength) {
 	result = 0;
 	goto bail;
     }
 
     do {
-	if ((n = recv(sock, buf, sizeof(buf), 0)) <= 0) {
+	n = ns_recv(sock, buf, sizeof(buf), 0);
+	if (n <= 0) {
 	    result = 0;
 	    goto bail;
 	}
+
 	if (n > 1 && buf[n-1] == '\n' && buf[n-2] == '\r') {
 	    buf[n-2] = '\n';
 	    --n;
@@ -447,7 +501,7 @@ GetLine(NS_SOCKET sock, char *prompt, Tcl_DString *dsPtr, int echo)
 	/*
 	 * This EOT checker cannot happen in the context of telnet.
 	 */
-	if (n == 1 && buf[0] == 4) {
+	if (n == 1 && buf[0] == '\4') {
 	    result = 0;
 	    goto bail;
 	}
@@ -456,14 +510,14 @@ GetLine(NS_SOCKET sock, char *prompt, Tcl_DString *dsPtr, int echo)
 	 * Deal with telnet IAC commands in some sane way.
 	 */
 
-	if (n > 1 && buf[0] == TN_IAC) {
-	    if ( buf[1] == TN_EOF) {
+	if (n > 1 && UCHAR(buf[0]) == TN_IAC) {
+	    if ( UCHAR(buf[1]) == TN_EOF) {
 		result = 0;
 		goto bail;
-	    } else if (buf[1] == TN_IP) {
+	    } else if (UCHAR(buf[1]) == TN_IP) {
 		result = 0;
 		goto bail;
-            } else if ((buf[1] == TN_WONT) && (retry < 2)) {
+            } else if ((UCHAR(buf[1]) == TN_WONT) && (retry < 2)) {
                 /*
                  * It seems like the flush at the bottom of this func
                  * does not always get all the acks, thus an echo ack
@@ -481,16 +535,16 @@ GetLine(NS_SOCKET sock, char *prompt, Tcl_DString *dsPtr, int echo)
 	    }
 	}
 
-	Tcl_DStringAppend(dsPtr, (char *) buf, n);
+	Tcl_DStringAppend(dsPtr, buf, (int)n);
 	result = 1;
 
     } while (buf[n-1] != '\n');
 
  bail:
-    if (!echo) {
-	send(sock, wont_echo, 3, 0);
-	send(sock, do_echo, 3, 0);
-	recv(sock, buf, sizeof(buf), 0); /* flush client ack thingies */
+    if (echo == 0) {
+	(void)ns_send(sock, (const void*)wont_echo, 3u, 0);
+	(void)ns_send(sock, (const void*)do_echo, 3u, 0);
+	(void)ns_recv(sock, buf, sizeof(buf), 0); /* flush client ack thingies */
     }
     return result;
 }
@@ -513,35 +567,39 @@ GetLine(NS_SOCKET sock, char *prompt, Tcl_DString *dsPtr, int echo)
  */
 
 static int
-Login(Sess *sessPtr, Tcl_DString *unameDSPtr)
+Login(const Sess *sessPtr, Tcl_DString *unameDSPtr)
 {
     Tcl_DString uds, pds, msgDs;
-    char       *user = NULL;
+    const char *user = NULL;
     int         ok = 0;
 
     Tcl_DStringInit(&uds);
     Tcl_DStringInit(&pds);
-    if (GetLine(sessPtr->sock, "login: ", &uds, 1) &&
-	GetLine(sessPtr->sock, "Password: ", &pds, sessPtr->modPtr->echo)) {
+    if (GetLine(sessPtr->sock, "login: ", &uds, 1) != 0 &&
+	GetLine(sessPtr->sock, "Password: ", &pds, sessPtr->modPtr->echo) != 0) {
         Tcl_HashEntry  *hPtr;
-	char           *pass;
+	const char     *pass;
 
 	user = Ns_StrTrim(uds.string);
 	pass = Ns_StrTrim(pds.string);
     	hPtr = Tcl_FindHashEntry(&sessPtr->modPtr->users, user);
 	if (hPtr != NULL) {
-	    char *encpass = Tcl_GetHashValue(hPtr);
+	    const char *encpass = Tcl_GetHashValue(hPtr);
 	    char  buf[NS_ENCRYPT_BUFSIZE];
 
-	    Ns_Encrypt(pass, encpass, buf);
+	    (void) Ns_Encrypt(pass, encpass, buf);
     	    if (STREQ(buf, encpass)) {
 		ok = 1;
 	    }
 	}
     }
 
+    /*
+     * Report the result of the login to the user.
+     */
+
     Ns_DStringInit(&msgDs);
-    if (ok) {
+    if (ok != 0) {
         Ns_Log(Notice, "nscp: %s logged in", user);
         Tcl_DStringAppend(unameDSPtr, user, -1);
         Ns_DStringPrintf(&msgDs,
@@ -552,10 +610,10 @@ Login(Sess *sessPtr, Tcl_DString *unameDSPtr)
             Ns_InfoServerName(), Ns_InfoServerVersion(),
             Ns_InfoPlatform(), Ns_InfoBuildDate(), Ns_InfoTag());
     } else {
-        Ns_Log(Warning, "nscp: login failed: '%s'", user ? user : "?");
+	Ns_Log(Warning, "nscp: login failed: '%s'", (user != NULL) ? user : "?");
         Ns_DStringAppend(&msgDs, "Access denied!\n");
     }
-    (void) send(sessPtr->sock, msgDs.string, msgDs.length, 0);
+    (void) ns_send(sessPtr->sock, msgDs.string, (size_t)msgDs.length, 0);
 
     Tcl_DStringFree(&msgDs);
     Tcl_DStringFree(&uds);
@@ -582,13 +640,13 @@ Login(Sess *sessPtr, Tcl_DString *unameDSPtr)
  */
 
 static int
-ExitCmd(ClientData arg, Tcl_Interp *interp, int argc, CONST char **argv)
+ExitCmd(ClientData arg, Tcl_Interp *interp, int argc, CONST84 char *argv[])
 {
     int *stopPtr;
 
     if (argc != 1) {
 	Tcl_AppendResult(interp, "wrong # args: should be \"",
-	    (char*)argv[0], "\"", NULL);
+			 argv[0], "\"", NULL);
 	return TCL_ERROR;
     }
 
@@ -597,3 +655,12 @@ ExitCmd(ClientData arg, Tcl_Interp *interp, int argc, CONST char **argv)
     Tcl_SetResult(interp, "\nGoodbye!", TCL_STATIC);
     return TCL_OK;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

@@ -61,14 +61,17 @@
  */
 
 void
-Ns_DbQuoteValue(Ns_DString *pds, char *string)
+Ns_DbQuoteValue(Ns_DString *dsPtr, const char *chars)
 {
-    while (*string != '\0') {
-        if (*string == '\'') {
-            Ns_DStringNAppend(pds, "'", 1);
+    assert(dsPtr != NULL);
+    assert(chars != NULL);
+
+    while (*chars != '\0') {
+        if (*chars == '\'') {
+            Ns_DStringNAppend(dsPtr, "'", 1);
         }
-        Ns_DStringNAppend(pds, string, 1);
-        ++string;
+        Ns_DStringNAppend(dsPtr, chars, 1);
+        ++chars;
     }
 }
 
@@ -94,9 +97,13 @@ Ns_DbQuoteValue(Ns_DString *pds, char *string)
  */
 
 Ns_Set *
-Ns_Db0or1Row(Ns_DbHandle *handle, char *sql, int *nrows)
+Ns_Db0or1Row(Ns_DbHandle *handle, const char *sql, int *nrows)
 {
     Ns_Set *row;
+
+    assert(handle != NULL);
+    assert(sql != NULL);
+    assert(nrows != NULL);
 
     row = Ns_DbSelect(handle, sql);
     if (row != NULL) {
@@ -111,7 +118,7 @@ Ns_Db0or1Row(Ns_DbHandle *handle, char *sql, int *nrows)
 		case NS_OK:
 		    Ns_DbSetException(handle, NS_SQLERRORCODE,
 			"Query returned more than one row.");
-		    Ns_DbFlush(handle);
+		    (void) Ns_DbFlush(handle);
 		    /* FALLTHROUGH */
 
 		case NS_ERROR:
@@ -119,7 +126,6 @@ Ns_Db0or1Row(Ns_DbHandle *handle, char *sql, int *nrows)
 
 		default:
 		    return NULL;
-		    break;
 	    }
         }
         row = Ns_SetCopy(row);
@@ -147,10 +153,13 @@ Ns_Db0or1Row(Ns_DbHandle *handle, char *sql, int *nrows)
  */
 
 Ns_Set *
-Ns_Db1Row(Ns_DbHandle *handle, char *sql)
+Ns_Db1Row(Ns_DbHandle *handle, const char *sql)
 {
     Ns_Set         *row;
     int             nrows;
+
+    assert(handle != NULL);
+    assert(sql != NULL);
 
     row = Ns_Db0or1Row(handle, sql, &nrows);
     if (row != NULL) {
@@ -184,12 +193,15 @@ Ns_Db1Row(Ns_DbHandle *handle, char *sql)
  */
 
 int
-Ns_DbInterpretSqlFile(Ns_DbHandle *handle, char *filename)
+Ns_DbInterpretSqlFile(Ns_DbHandle *handle, const char *filename)
 {
     FILE           *fp;
     Ns_DString      dsSql;
     int             i, status, inquote;
     char            c, lastc;
+
+    assert(handle != NULL);
+    assert(filename != NULL);
 
     fp = fopen(filename, "rt");
     if (fp == NULL) {
@@ -206,11 +218,12 @@ Ns_DbInterpretSqlFile(Ns_DbHandle *handle, char *filename)
         lastc = c;
         c = (char) i;
  loopstart:
-        if (inquote) {
+        if (inquote != 0) {
             if (c != '\'') {
                 Ns_DStringNAppend(&dsSql, &c, 1);
             } else {
-                if ((i = getc(fp)) == EOF) {
+	      i = getc(fp);
+                if (i == EOF) {
                     break;
                 }
                 lastc = c;
@@ -227,7 +240,8 @@ Ns_DbInterpretSqlFile(Ns_DbHandle *handle, char *filename)
         } else {
             /* Check to see if it is a comment */
             if ((c == '-') && (lastc == '\n')) {
-                if ((i = getc(fp)) == EOF) {
+                i = getc(fp);
+                if (i == EOF) {
                     break;
                 }
                 lastc = c;
@@ -263,10 +277,10 @@ Ns_DbInterpretSqlFile(Ns_DbHandle *handle, char *filename)
      * If dstring contains anything but whitespace, return error
      */
     if (status != NS_ERROR) {
-        char *p;
+        const char *p;
 
         for (p = dsSql.string; *p != '\0'; p++) {
-            if (isspace(UCHAR(*p)) == 0) {
+            if (CHARTYPE(space, *p) == 0) {
                 Ns_DbSetException(handle, NS_SQLERRORCODE,
                     "File ends with unterminated SQL");
                 status = NS_ERROR;
@@ -296,10 +310,22 @@ Ns_DbInterpretSqlFile(Ns_DbHandle *handle, char *filename)
  */
 
 void
-Ns_DbSetException(Ns_DbHandle *handle, char *code, char *msg)
+Ns_DbSetException(Ns_DbHandle *handle, const char *code, const char *msg)
 {
-    strcpy(handle->cExceptionCode, code);
+    assert(handle != NULL);
+    assert(code != NULL);
+    assert(msg != NULL);
+
+    strncpy(handle->cExceptionCode, code, sizeof(handle->cExceptionCode));
     Ns_DStringFree(&(handle->dsExceptionMsg));
     Ns_DStringAppend(&(handle->dsExceptionMsg), msg);
 }
 
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

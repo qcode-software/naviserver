@@ -43,7 +43,7 @@
 
 typedef struct Info {
     Ns_ArgProc  *proc;
-    char        *desc;
+    const char  *desc;
 } Info;
 
 /*
@@ -51,35 +51,36 @@ typedef struct Info {
  */
 
 static Ns_ArgProc ServerArgProc;
-static void AppendAddr(Tcl_DString *dsPtr, char *prefix, void *addr);
+static void AppendAddr(Tcl_DString *dsPtr, const char *prefix, const void *addr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * Static variables defined in this file.
  */
 
-static Tcl_HashTable info;
+static Tcl_HashTable infoHashTable;
 
 static struct proc {
-    void       *procAddr;
-    char       *desc;
-    Ns_ArgProc *argProc;
+    Ns_Callback *procAddr;
+    const char  *desc;
+    Ns_ArgProc  *argProc;
 } procs[] = {
-    {(void *) NsTclThread,         "ns:tclthread",        NsTclThreadArgProc},
-    {(void *) Ns_TclCallbackProc,  "ns:tclcallback",      Ns_TclCallbackArgProc},
-    {(void *) NsTclConnLocation,   "ns:tclconnlocation",  Ns_TclCallbackArgProc},
-    {(void *) NsTclSchedProc,      "ns:tclschedproc",     Ns_TclCallbackArgProc},
-    {(void *) NsTclServerRoot,     "ns:tclserverroot",    Ns_TclCallbackArgProc},
-    {(void *) NsTclSockProc,       "ns:tclsockcallback",  NsTclSockArgProc},
-    {(void *) NsConnThread,        "ns:connthread",       NsConnArgProc},
-    {(void *) NsTclFilterProc,     "ns:tclfilter",        Ns_TclCallbackArgProc},
-    {(void *) NsShortcutFilterProc, "ns:shortcutfilter",  NULL},
-    {(void *) NsTclRequestProc,    "ns:tclrequest",       Ns_TclCallbackArgProc},
-    {(void *) NsAdpPageProc,       "ns:adppage",          NsAdpPageArgProc},
-    {(void *) Ns_FastPathProc,     "ns:fastget",          NULL},
-    {(void *) NsTclTraceProc,      "ns:tcltrace",         Ns_TclCallbackArgProc},
-    {(void *) NsTclUrl2FileProc,   "ns:tclurl2file",      Ns_TclCallbackArgProc},
-    {(void *) NsMountUrl2FileProc, "ns:mounturl2file",    NsMountUrl2FileArgProc},
-    {(void *) Ns_FastUrl2FileProc, "ns:fasturl2file",     ServerArgProc},
+    {                NsTclThread,          "ns:tclthread",        NsTclThreadArgProc},
+    {                Ns_TclCallbackProc,   "ns:tclcallback",      Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsTclConnLocation,    "ns:tclconnlocation",  Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsTclSchedProc,       "ns:tclschedproc",     Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsTclServerRoot,      "ns:tclserverroot",    Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsTclSockProc,        "ns:tclsockcallback",  NsTclSockArgProc},
+    {                NsConnThread,         "ns:connthread",       NsConnArgProc},
+    { (Ns_Callback *)NsTclFilterProc,      "ns:tclfilter",        Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsShortcutFilterProc, "ns:shortcutfilter",   NULL},
+    { (Ns_Callback *)NsTclRequestProc,     "ns:tclrequest",       Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsAdpPageProc,        "ns:adppage",          NsAdpPageArgProc},
+    { (Ns_Callback *)Ns_FastPathProc,      "ns:fastget",          NULL},
+    { (Ns_Callback *)NsTclTraceProc,       "ns:tcltrace",         Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsTclUrl2FileProc,    "ns:tclurl2file",      Ns_TclCallbackArgProc},
+    { (Ns_Callback *)NsMountUrl2FileProc,  "ns:mounturl2file",    NsMountUrl2FileArgProc},
+    { (Ns_Callback *)Ns_FastUrl2FileProc,  "ns:fasturl2file",     ServerArgProc},
     {NULL, NULL, NULL}
 };
 
@@ -105,7 +106,7 @@ NsInitProcInfo(void)
 {
     struct proc *procPtr;
 
-    Tcl_InitHashTable(&info, TCL_ONE_WORD_KEYS);
+    Tcl_InitHashTable(&infoHashTable, TCL_ONE_WORD_KEYS);
     procPtr = procs;
     while (procPtr->procAddr != NULL) {
         Ns_RegisterProcInfo(procPtr->procAddr, procPtr->desc,
@@ -134,21 +135,24 @@ NsInitProcInfo(void)
  */
 
 void
-Ns_RegisterProcInfo(void *procAddr, char *desc, Ns_ArgProc *argProc)
+Ns_RegisterProcInfo(Ns_Callback procAddr, const char *desc, Ns_ArgProc *argProc)
 {
     Tcl_HashEntry *hPtr;
-    Info          *iPtr;
+    Info          *infoPtr;
     int            isNew;
 
-    hPtr = Tcl_CreateHashEntry(&info, (char *) procAddr, &isNew);
-    if (!isNew) {
-        iPtr = Tcl_GetHashValue(hPtr);
+    assert(procAddr != NULL);
+    assert(desc != NULL);
+    
+    hPtr = Tcl_CreateHashEntry(&infoHashTable, (char *)procAddr, &isNew);
+    if (isNew == 0) {
+        infoPtr = Tcl_GetHashValue(hPtr);
     } else {
-        iPtr = ns_malloc(sizeof(Info));
-        Tcl_SetHashValue(hPtr, iPtr);
+        infoPtr = ns_malloc(sizeof(Info));
+        Tcl_SetHashValue(hPtr, infoPtr);
     }
-    iPtr->desc = desc;
-    iPtr->proc = argProc;
+    infoPtr->desc = desc;
+    infoPtr->proc = argProc;
 }
 
 
@@ -170,25 +174,27 @@ Ns_RegisterProcInfo(void *procAddr, char *desc, Ns_ArgProc *argProc)
  */
 
 void
-Ns_GetProcInfo(Tcl_DString *dsPtr, void *procAddr, void *arg)
+Ns_GetProcInfo(Tcl_DString *dsPtr, Ns_Callback procAddr, const void *arg)
 {
     Tcl_HashEntry          *hPtr;
-    Info                   *iPtr;
+    Info                   *infoPtr;
     static Info nullInfo =  {NULL, NULL};
 
-    hPtr = Tcl_FindHashEntry(&info, (char *) procAddr);
+    assert(dsPtr != NULL);
+    
+    hPtr = Tcl_FindHashEntry(&infoHashTable, (char *) procAddr);
     if (hPtr != NULL) {
-        iPtr = Tcl_GetHashValue(hPtr);
+        infoPtr = Tcl_GetHashValue(hPtr);
     } else {
-        iPtr = &nullInfo;
+        infoPtr = &nullInfo;
     }
-    if (iPtr->desc != NULL) {
-        Tcl_DStringAppendElement(dsPtr, iPtr->desc);
+    if (infoPtr->desc != NULL) {
+        Tcl_DStringAppendElement(dsPtr, infoPtr->desc);
     } else {
-      AppendAddr(dsPtr, "p", (void *)procAddr);
+        AppendAddr(dsPtr, "p", (void *)procAddr);
     }
-    if (iPtr->proc != NULL) {
-        (*iPtr->proc)(dsPtr, arg);
+    if (infoPtr->proc != NULL) {
+        (*infoPtr->proc)(dsPtr, arg);
     } else {
         AppendAddr(dsPtr, "a", arg);
     }
@@ -216,7 +222,9 @@ Ns_StringArgProc(Tcl_DString *dsPtr, void *arg)
 {
     char *str = arg;
 
-    Tcl_DStringAppendElement(dsPtr, str ? str : "");
+    assert(dsPtr != NULL);
+    
+    Tcl_DStringAppendElement(dsPtr, (str != NULL) ? str : "");
 }
 
 
@@ -236,12 +244,12 @@ Ns_StringArgProc(Tcl_DString *dsPtr, void *arg)
  *----------------------------------------------------------------------
  */
 
-void
-ServerArgProc(Tcl_DString *dsPtr, void *arg)
+static void
+ServerArgProc(Tcl_DString *dsPtr, const void *arg)
 {
-    NsServer *servPtr = arg;
+    const NsServer *servPtr = arg;
 
-    Tcl_DStringAppendElement(dsPtr, servPtr ? servPtr->server : "");
+    Tcl_DStringAppendElement(dsPtr, (servPtr != NULL) ? servPtr->server : "");
 }
 
 
@@ -262,7 +270,18 @@ ServerArgProc(Tcl_DString *dsPtr, void *arg)
  */
 
 static void
-AppendAddr(Tcl_DString *dsPtr, char *prefix, void *addr)
+AppendAddr(Tcl_DString *dsPtr, const char *prefix, const void *addr)
 {
+    assert(dsPtr != NULL);
+    assert(prefix != NULL);
     Ns_DStringPrintf(dsPtr, " %s:%p", prefix, addr);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */
