@@ -1,3 +1,9 @@
+naviserver (4.99.8~20150304-1) stable; urgency=low
+
+  * Import 4.99.8~20150304 from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 04 Mar 2015 14:30:09 +0000
+
 naviserver (4.99.7-1) wheezy; urgency=low
 
   * Import 4.99.7 from upstream
