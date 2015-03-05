@@ -765,10 +765,10 @@ chmod 644 $CONF
 
 # create the system pageroot dir if it does not exist
 
-if [ ! -d /var/www ]; then
-        mkdir -p /var/www
-        chown root:root /var/www
-        chmod 755 /var/www
+if [ ! -d /var/www/html ]; then
+        mkdir -p /var/www/html
+        chown root:root /var/www/html
+        chmod 755 /var/www/html
 fi
 
 # assign ownership of run and log directories to www-data if they don't already exist.
