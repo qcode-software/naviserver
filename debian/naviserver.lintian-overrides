@@ -1,0 +1,2 @@
+# rpath allowed to add non-standard library path (like /usr/lib/<package>) to libraries that are only intended to be used by the executables or other libraries within the same package
+naviserver binary: binary-or-shlib-defines-rpath *
