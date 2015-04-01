@@ -2,7 +2,7 @@ naviserver (4.99.8~20150401-1) stable; urgency=low
 
   * Import from upstream (after ns_md5 fix)
 
- -- Qcode Software Ltd <hackers@.qcode.co.uk>  Wed, 01 Apr 2015 11:03:53 +0100
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 01 Apr 2015 11:03:53 +0100
 
 naviserver (4.99.8~20150304-3) stable; urgency=low
 
