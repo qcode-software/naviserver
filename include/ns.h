@@ -1371,7 +1371,7 @@ Ns_WaitForProcess(pid_t pid, int *exitcodePtr);
  */
 
 NS_EXTERN int
-Ns_ConnReturnFile(Ns_Conn *conn, int status, const char *type, const char *file)
+Ns_ConnReturnFile(Ns_Conn *conn, int status, const char *mimeType, const char *file)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
 NS_EXTERN const char *
@@ -2145,7 +2145,7 @@ Ns_ConnPrintfHeaders(const Ns_Conn *conn, const char *field, const char *fmt, ..
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_PRINTF(3, 4);
 
 NS_EXTERN void
-Ns_ConnSetTypeHeader(const Ns_Conn *conn, const char *type)
+Ns_ConnSetTypeHeader(const Ns_Conn *conn, const char *mimeType)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN void
@@ -2184,30 +2184,30 @@ Ns_ConnReturnHtml(Ns_Conn *conn, int status, const char *html, ssize_t len)
 
 NS_EXTERN int
 Ns_ConnReturnCharData(Ns_Conn *conn, int status, const char *data, 
-		      ssize_t len, const char *type)
+		      ssize_t len, const char *mimeType)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN int
 Ns_ConnReturnData(Ns_Conn *conn, int status, const char *data, 
-		  ssize_t len, const char *type)
+		  ssize_t len, const char *mimeType)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(5);
 
 NS_EXTERN int
-Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, const char *type,
+Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, const char *mimeType,
                          Tcl_Channel chan, size_t len)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 NS_EXTERN int
-Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, const char *type,
+Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, const char *mimeType,
                       FILE *fp, size_t len)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 NS_EXTERN int
-Ns_ConnReturnOpenFd(Ns_Conn *conn, int status, const char *type, int fd, size_t len)
+Ns_ConnReturnOpenFd(Ns_Conn *conn, int status, const char *mimeType, int fd, size_t len)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN void
-Ns_ConnSetRequiredHeaders(Ns_Conn *conn, const char *type, size_t length)
+Ns_ConnSetRequiredHeaders(Ns_Conn *conn, const char *mimeType, size_t length)
     NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED;
 
 NS_EXTERN void
@@ -2578,8 +2578,8 @@ Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
                     const Ns_Time *timeoutPtr, unsigned int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN int
-Ns_SockCork(Ns_Sock *sock, int cork)
+NS_EXTERN bool
+Ns_SockCork(Ns_Sock *sock, bool cork)
     NS_GNUC_NONNULL(1);
 
 /*
