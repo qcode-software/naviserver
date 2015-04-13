@@ -35,7 +35,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.7],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[4.99.8],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -133,8 +133,8 @@ case "$system" in
     LDSO="\$(LDLIB)"
     CCRPATHS="\$(CCRPATH)"
     LDRPATHS="\$(LDRPATH)"
-    CCRFLAG=$TCL_CC_SEARCH_FLAGS
-    LDRFLAG=$TCL_LD_SEARCH_FLAGS
+    CCRFLAG=$CC_SEARCH_FLAGS
+    LDRFLAG=$LD_SEARCH_FLAGS
     if test "$CCRFLAG" = "" ; then
       CCRPATH=
     fi
