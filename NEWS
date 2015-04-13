@@ -1,4 +1,72 @@
 ======================================
+NaviServer 4.99.8, released 2015-04-13
+======================================
+
+Changes relative to 4.99.7
+  55 files changed, 1088 insertions(+), 527 deletions(-)
+
+New Features:
+  * ns_md5, ns_sha1: added binary support
+    When binary data is passed to this function, use
+    Tcl byte-array operations instead of string operations
+  * Added ability to debug configuration of nscgi via
+    "ns_logctl severity Debug(cgi) on"    
+  * Added config parameter "compresspreinit": Setting this parameter
+    to true (default is false) will cause the compression stream
+    buffers to be allocated and initialized at server startup.
+    Without it, they will be allocated and initialized as needed.  This
+    change drops the initial memory footprint of a server with a
+    default config significantly.
+
+Bug Fixes:
+  * Fixed bug reported by Wolfgang Winkler, when " ns_urldecode --" was 
+    called (switched to regular argv parser)
+  * Fixed bug, when "ns_conn content" was called without content
+    potential race conditions on thread exits
+  * Fixed potential race conditions on thread exits
+  * ns_md5: Code generation was broken
+    (probably since a long time, due to a mix up of somewhat tricky casts)
+  * Fixed warning in interaction between TCP_CORK and nsssl
+  * Fixed bug, where one thread frees a nsv-array, but an internal
+    representation of an Tcl_Obj for this array was still active in
+    another thread
+  * Fixed bug where ns_imgsize returned an error where it should return
+    success and width and height returned as 0 (according to documentation)
+  * Avoid potential access of string past null character
+  * Fixed a bug with in https client commands (ns_ssl) when paths and parameters
+    are passed.
+  * Fixed nsphp compilation (and "make php").
+    Many thanks to Branden Graves for feedback and testing.
+    
+Documentation improvements:
+  * Added documentation for ns_md5
+  * Improved documentation for ns_img commands
+  * Improved documentation for nscgi
+  
+Configuration Changes:
+  * Improved sample configuration for OpenACS and nsssl
+  * Improved Makefiles (reduce redundancy for CFLAGS)
+  * Improved rpath handling in configure.ac for Linux distros,
+    where TCL_CC_SEARCH_FLAGS and TCL_LD_SEARCH_FLAGS are set
+    empty, like e.g.Debian  
+
+Code Changes:
+  * Extended Regression Test:
+    - Added test set for ns_md5, compared results with other implementations
+    - Added binary regression test for ns_md5 and ns_sha1
+    - Added test set for ns_md5
+    - Improved robustness of tests for ns_parseargs
+    - Added tests for "ns_urldecode --"
+    - Added test set infrastructure (nstest::https, server setup) and
+      test cases for nsssl
+    - Added test set for ns_img* commands
+    - Number of regression tests passed 1000
+    
+  * Reduced implicit type conversions and other minor code cleanups
+  * Protect against potential buffer overruns
+
+
+======================================
 NaviServer 4.99.7, released 2015-02-23
 ======================================
 

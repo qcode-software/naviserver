@@ -273,6 +273,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     servPtr->compress.enable = Ns_ConfigBool(path, "compressenable", NS_FALSE);
     servPtr->compress.level = Ns_ConfigIntRange(path, "compresslevel", 4, 1, 9);
     servPtr->compress.minsize = Ns_ConfigIntRange(path, "compressminsize", 512, 0, INT_MAX);
+    servPtr->compress.preinit = Ns_ConfigBool(path, "compresspreinit", NS_FALSE);
 
     /*
      * Call the static server init proc, if any, which may register
@@ -399,15 +400,25 @@ CreatePool(NsServer *servPtr, const char *pool)
      * to repeatedly allocate and free them at run time and to ensure there
      * is a per-set maximum number of simultaneous connections to handle
      * before NsQueueConn begins to return NS_ERROR.
+     * 
+     * If compression is enabled for this server and the "compresspreinit" 
+     * parameter is set for this pool, also initialize the compression 
+     * stream buffers.  This allocates a fair chunk of memory per connection,
+     * so skip it if not needed.  The streams will be initialized later 
+     * if necessary.
      */
 
     maxconns = Ns_ConfigIntRange(path, "maxconnections", 100, 1, INT_MAX);
     poolPtr->wqueue.maxconns = maxconns;
     connBufPtr = ns_calloc((size_t) maxconns, sizeof(Conn));
+    
     for (n = 0; n < maxconns - 1; ++n) {
         connPtr = &connBufPtr[n];
         connPtr->nextPtr = &connBufPtr[n+1];
-        (void) Ns_CompressInit(&connPtr->cStream);
+        if (servPtr->compress.enable == NS_TRUE
+	    && servPtr->compress.preinit == NS_TRUE) {
+            (void) Ns_CompressInit(&connPtr->cStream);
+        }
     }
     connBufPtr[n].nextPtr = NULL;
     poolPtr->wqueue.freePtr = &connBufPtr[0];

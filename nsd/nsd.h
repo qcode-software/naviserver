@@ -905,6 +905,7 @@ typedef struct NsServer {
         bool enable;    /* on/off */
         int  level;     /* 1-9 */
         int  minsize;   /* min size of response to compress, in bytes */
+        bool preinit;   /* initialize the compression stream buffers in advance */
     } compress;
 
     /*
@@ -1585,6 +1586,8 @@ NS_EXTERN int NsConnRunProxyRequest(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 #endif /* NSD_H */
+
+EXTERN bool NS_shutdown;
 
 /*
  * Local Variables:
