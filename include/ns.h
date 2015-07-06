@@ -311,9 +311,6 @@ struct Ns_ObjvSpec;
 typedef int   (Ns_ObjvProc) (struct Ns_ObjvSpec *spec, Tcl_Interp *interp,
                              int *objcPtr, Tcl_Obj *CONST* objv);
 
-typedef int (Ns_OptionConverter) (Tcl_Interp *interp, Tcl_Obj *labelObj, 
-				  Tcl_Obj *objPtr, ClientData *clientData);
-
 /*
  * The field of a key-value data structure.
  */
@@ -1416,7 +1413,7 @@ Ns_RegisterCleanup(Ns_TraceProc *proc, void *arg)
  */
 
 NS_EXTERN size_t
-Ns_HtuuEncode(const unsigned char *input, size_t bufSize, char *buf)
+Ns_HtuuEncode(const unsigned char *input, size_t inputSize, char *buf)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN size_t
@@ -1671,22 +1668,13 @@ NS_EXTERN Ns_ObjvProc Ns_ObjvIndex;
 NS_EXTERN Ns_ObjvProc Ns_ObjvInt;
 NS_EXTERN Ns_ObjvProc Ns_ObjvLong;
 NS_EXTERN Ns_ObjvProc Ns_ObjvObj;
+NS_EXTERN Ns_ObjvProc Ns_ObjvServer;
 NS_EXTERN Ns_ObjvProc Ns_ObjvSet;
 NS_EXTERN Ns_ObjvProc Ns_ObjvString;
 NS_EXTERN Ns_ObjvProc Ns_ObjvTime;
 NS_EXTERN Ns_ObjvProc Ns_ObjvWideInt;
 
-NS_EXTERN Ns_OptionConverter Ns_OptionBoolean;
-NS_EXTERN Ns_OptionConverter Ns_OptionObj;
-NS_EXTERN Ns_OptionConverter Ns_OptionString;
-NS_EXTERN Ns_OptionConverter Ns_OptionServer;
-
 #define Ns_NrElements(arr)  ((int) (sizeof(arr) / sizeof((arr)[0])))
-
-NS_EXTERN int
-Ns_ParseOptions(const char *options[], Ns_OptionConverter *const converter[], 
-		ClientData clientData[], Tcl_Interp *interp, int offset, 
-		int max, int *nextArg, int objc, Tcl_Obj *CONST* objv);
 
 /*
  * tclthread.c:

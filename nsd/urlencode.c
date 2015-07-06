@@ -469,16 +469,6 @@ Ns_DecodeUrlCharset(Ns_DString *dsPtr, const char *urlSegment, const char *chars
  *
  *----------------------------------------------------------------------
  */
-Ns_OptionConverter Ns_OptionEnumPart;
-
-int
-Ns_OptionEnumPart(Tcl_Interp *interp, Tcl_Obj *UNUSED(labelObj), Tcl_Obj *objPtr, ClientData *clientData) {
-    int index, result;
-    static const char *opts[] = {"query", "path", NULL};
-    result = Tcl_GetIndexFromObj(interp, objPtr, opts, "-part", 0, &index);
-    *clientData = INT2PTR(index + 1);
-    return result;
-}
 
 int
 NsTclUrlEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
@@ -489,9 +479,9 @@ NsTclUrlEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
     const char  *charset = NULL;
     char         part = 'q';
     Ns_ObjvTable parts[] = {
-        {"query",    'q'},
-        {"path",     'p'},
-        {NULL,       0}
+        {"query",    UCHAR('q')},
+        {"path",     UCHAR('p')},
+        {NULL,       0u}
     };
     Ns_ObjvSpec lopts[] = {
         {"-charset", Ns_ObjvString, &charset, NULL},
@@ -553,9 +543,9 @@ NsTclUrlDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
     char                part = 'q';
     Tcl_Encoding        encoding = NULL;
     Ns_ObjvTable parts[] = {
-        {"query",    'q'},
-        {"path",     'p'},
-        {NULL,       0}
+        {"query",    UCHAR('q')},
+        {"path",     UCHAR('p')},
+        {NULL,       0u}
     };
     Ns_ObjvSpec lopts[] = {
         {"-charset", Ns_ObjvString, &charset, NULL},
