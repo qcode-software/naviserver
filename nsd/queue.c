@@ -526,71 +526,63 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 int
 NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int          subcmd, value = 0, nextArgIdx;
+    int          subcmd = 0, value = 0;
     NsInterp    *itPtr = arg;
-    NsServer    *servPtr;
+    NsServer    *servPtr = NULL;
     ConnPool    *poolPtr;
-    char        *pool, *optArg = NULL, buf[100];
+    char        *pool = NULL, *optArg = NULL, buf[100];
     Tcl_DString ds, *dsPtr = &ds;
-
-    static const char * subcmds[] = {
-        "active", "all", "connections", 
-	"filters",
-	"keepalive", 
-	"maxthreads", "minthreads", 
-	"pagedir", "pools", "queued",
-	"requestprocs",
-	"serverdir", "stats", 
-	"tcllib", "threads", "traces",
-	"url2file", "waiting", 
-	NULL
-    };
 
     enum {
         SActiveIdx, SAllIdx, SConnectionsIdx, 
-	SFiltersIdx,
-	SKeepaliveIdx, 
-	SMaxthreadsIdx, SMinthreadsIdx,
-	SPagedirIdx, SPoolsIdx, SQueuedIdx, 
-	SRequestprocsIdx,
-	SServerdirIdx, SStatsIdx, 
-	STcllibIdx, SThreadsIdx, STracesIdx,
-	SUrl2fileIdx, SWaitingIdx
+        SFiltersIdx,
+        SKeepaliveIdx, 
+        SMaxthreadsIdx, SMinthreadsIdx,
+        SPagedirIdx, SPoolsIdx, SQueuedIdx, 
+        SRequestprocsIdx,
+        SServerdirIdx, SStatsIdx, 
+        STcllibIdx, SThreadsIdx, STracesIdx,
+        SUrl2fileIdx, SWaitingIdx
+    };
+    
+    static Ns_ObjvTable subcmds[] = {
+        {"active",       (unsigned int)SActiveIdx},
+        {"all",          (unsigned int)SAllIdx},
+        {"connections",  (unsigned int)SConnectionsIdx},
+        {"filters",      (unsigned int)SFiltersIdx},
+        {"keepalive",    (unsigned int)SKeepaliveIdx},
+        {"maxthreads",   (unsigned int)SMaxthreadsIdx},
+        {"minthreads",   (unsigned int)SMinthreadsIdx},
+        {"pagedir",      (unsigned int)SPagedirIdx},
+        {"pools",        (unsigned int)SPoolsIdx},
+        {"queued",       (unsigned int)SQueuedIdx},
+        {"requestprocs", (unsigned int)SRequestprocsIdx},
+        {"serverdir",    (unsigned int)SServerdirIdx},
+        {"stats",        (unsigned int)SStatsIdx},
+        {"tcllib",       (unsigned int)STcllibIdx},
+        {"threads",      (unsigned int)SThreadsIdx},
+        {"traces",       (unsigned int)STracesIdx},
+        {"url2file",     (unsigned int)SUrl2fileIdx},
+        {"waiting",      (unsigned int)SWaitingIdx},
+        {NULL,           0u}
+    };
+    
+    Ns_ObjvSpec opts[] = {
+        {"-server", Ns_ObjvServer,  &servPtr, NULL},
+        {"-pool",   Ns_ObjvString,  &pool,    NULL},
+        {"--",      Ns_ObjvBreak,   NULL,     NULL},
+        {NULL, NULL,  NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"subcmd",  Ns_ObjvIndex,  &subcmd,   subcmds},
+        {"?arg",    Ns_ObjvString, &optArg,   NULL},
+        {NULL, NULL, NULL, NULL}
     };
 
-    static const char  *options[]           = {"-server", "-pool", NULL};
-    enum                                      {OServerIdx, OPoolIdx};
-    ClientData          optionClientData[2] = {NULL, NULL};
-    Ns_OptionConverter *optionConverter[2]  = {Ns_OptionServer, Ns_OptionString};
-
-    if (objc < 2) {
-    usage_error:
-        Tcl_WrongNumArgs(interp, 1, objv, "?-server server? ?-pool pool? ?--? subcmd ?arg?");
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
-
-    if (Ns_ParseOptions(options, optionConverter, optionClientData, interp, 1, 
-			Ns_NrElements(options)-1, &nextArgIdx, objc, objv) != TCL_OK) {
-	return TCL_ERROR;
-    }
-
-    servPtr = optionClientData[OServerIdx];
-    pool    = optionClientData[OPoolIdx];
-
-    if (objc < nextArgIdx) {goto usage_error;}
-
-    Tcl_ResetResult(interp);
-    if (Tcl_GetIndexFromObj(interp, objv[nextArgIdx], subcmds, "subcmd", 0,
-                            &subcmd) != TCL_OK) {
-        return TCL_ERROR;
-    }
-
-    if ((objc - nextArgIdx) > 2) {
-	goto usage_error;
-    } else if ((objc - nextArgIdx) == 2) {
-	optArg = Tcl_GetString(objv[nextArgIdx+1]);
-    }
-
+    
     if ((subcmd == SPoolsIdx 
 	 || subcmd == SFiltersIdx
 	 || subcmd == SPagedirIdx
@@ -607,7 +599,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
 	 * just for backwards compatibility
 	 */
 	if (optArg != NULL) {
-	    Ns_LogDeprecated(objv, nextArgIdx + 2, "ns_server ?-pool p? ...", 
+	    Ns_LogDeprecated(objv, objc, "ns_server ?-pool p? ...", 
 			     "Passing pool as second argument is deprected.");
 	    pool = optArg;
 	}
@@ -629,7 +621,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
     } else {
 	poolPtr = servPtr->pools.defaultPtr;
     }
-
+    
     switch (subcmd) {
 	/* 
 	 * These subcommands are server specific (do not allow -pool option)
@@ -691,7 +683,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         break;
 
     case SKeepaliveIdx:
-	Ns_LogDeprecated(objv, nextArgIdx + 1, "ns_conn keepalive", NULL);
+	Ns_LogDeprecated(objv, objc, "ns_conn keepalive", NULL);
         Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
         break;
 
@@ -1164,19 +1156,38 @@ NsConnThread(void *arg)
 		
 		if (status == NS_TIMEOUT) {
 		    if (argPtr->connPtr != NULL) {
-			/* this should not happen; probably a signal was lost */
+			/* 
+                         * This should not happen: we had a timeout, but there
+                         * is a connection to be handled; when a connection
+                         * comes in, we get signaled and should see therefore
+                         * no timeout.  Maybe the signal was lost?
+                         */
 			Ns_Log(Warning, "signal lost, resuming after timeout");
 			status = NS_OK;
-		    }
-		    if (poolPtr->threads.current <= poolPtr->threads.min) {continue;}
-		    /* 
-		     * We have a timeout, and the thread can exit 
-		     */
-		    break;
+
+		    } else if (poolPtr->threads.current <= poolPtr->threads.min) {
+                        /* 
+                         * We have a timeout, but we should not reduce the
+                         * number of threads below min-threads.
+                         */
+                        continue;
+                        
+                    } else {
+                        /* 
+                         * We have a timeout, and the thread can exit 
+                         */
+                        break;
+                    }
 		}
-		if (argPtr->connPtr != NULL) {break;}
-		
-		Ns_Log(Debug, "CondTimedWait returned an unexpected result, maybe shutdown?");
+
+		if (argPtr->connPtr != NULL) {
+                    /*
+                     * We got something to do
+                     */
+                    break;
+                }
+
+                Ns_Log(Debug, "Unexpected condition after CondTimedWait; maybe shutdown?");
 	    }
 
 	    Ns_MutexUnlock(&argPtr->lock);

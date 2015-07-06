@@ -68,100 +68,6 @@ static Tcl_ObjType specType = {
     SetSpecFromAny
 };
 
-
-// document me
-
-int
-Ns_OptionObj(Tcl_Interp *UNUSED(interp), Tcl_Obj *UNUSED(labelObj), Tcl_Obj *objPtr, ClientData *clientData) {
-    *clientData = objPtr;
-    return TCL_OK;
-}
-int
-Ns_OptionString(Tcl_Interp *UNUSED(interp), Tcl_Obj *UNUSED(labelObj), Tcl_Obj *objPtr, ClientData *clientData) {
-    *clientData = Tcl_GetString(objPtr);
-    return TCL_OK;
-}
-
-int
-Ns_OptionBoolean(Tcl_Interp *interp, Tcl_Obj *UNUSED(labelObj), Tcl_Obj *objPtr, ClientData *clientData) {
-    int boolValue, result;
-
-    result = Tcl_GetBooleanFromObj(interp, objPtr, &boolValue);
-    if (result == TCL_OK) {
-	*clientData = INT2PTR(boolValue);
-	return TCL_OK;
-    }
-    return TCL_ERROR;
-}
-
-int
-Ns_OptionServer(Tcl_Interp *UNUSED(interp), Tcl_Obj *UNUSED(labelObj), Tcl_Obj *objPtr, ClientData *clientData) {
-    NsServer *servPtr = NsGetServer(Tcl_GetString(objPtr));
-    *clientData = servPtr;
-    return (servPtr != NULL) ? TCL_OK : TCL_ERROR;
-}
-
-int 
-Ns_ParseOptions(const char *options[], Ns_OptionConverter *const converter[], 
-		ClientData clientData[], Tcl_Interp *interp, int offset, 
-		int max, int *nextArg, int objc, Tcl_Obj *CONST* objv) {
-    int i = offset, opt;
-
-    Tcl_ResetResult(interp);
-    
-    while (1) {
-	if (objc == i) {break;}
-	if (objc < i)  {return TCL_ERROR;}
-	if (Tcl_GetIndexFromObj(interp, objv[i], options, "option", 0, &opt) != TCL_OK) {
-	    break;
-	}
-	if (opt > max) {
-	    Ns_TclPrintfResult(interp, "lookup error for %s", 
-			       Tcl_GetString(objv[i]));
-	    return TCL_ERROR;
-	}
-	if (converter[opt] == NULL) {
-	    clientData[opt] = INT2PTR(1);
-	    i++;
-	} else {
-	    if (objc < i + 1) {
-		Ns_TclPrintfResult(interp, "missing argument for %s", 
-				   Tcl_GetString(objv[i]));
-		return TCL_ERROR;
-	    }
-	    if ((converter[opt])(interp, objv[i], objv[i+1], &clientData[opt]) != TCL_OK) {
-		/* preserve the error message of the converter */
-		if (*Tcl_GetStringResult(interp) == '\0') {
-		    Ns_TclPrintfResult(interp, "invalid argument for %s: %s", 
-				       Tcl_GetString(objv[i]), 
-				       Tcl_GetString(objv[i+1]));
-		}
-		return TCL_ERROR;
-	    }
-	    i += 2;
-	}
-    }
-    if (objc > i) {
-        const char *nextArgString = Tcl_GetString(objv[i]);
-
-	if (*nextArgString == '-') {
-	    if (*(nextArgString+1) == '-' && *(nextArgString+2) == '\0') {
-		/* handle '--' */
-		i++;
-	    } 
-#if 0	
-	    else if (*(nextArgString+1) != '\0') {
-		/* don't allow the next to start with '-' */
-		return TCL_ERROR;
-	    }
-#endif
-	}
-    }
-    *nextArg = i;
-    return TCL_OK;
-}
-
-
 
 /*
  *----------------------------------------------------------------------
@@ -780,6 +686,46 @@ Ns_ObjvArgs(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp),
     *objcPtr = 0;
 
     return TCL_OK;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ObjvServer --
+ *
+ *      Get server from argument, consume it, put result into "dest".
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR.
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+Ns_ObjvServer(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *CONST* objv)
+{
+    NsServer **dest = spec->dest;
+    int        result = TCL_OK;
+
+    if (likely(*objcPtr > 0) && likely(dest != NULL)) {
+        NsServer *servPtr = NsGetServer(Tcl_GetString(objv[0]));
+        
+        if (likely(servPtr != NULL)) {
+            *dest = servPtr;
+            *objcPtr -= 1;
+        } else {
+            Ns_TclPrintfResult(interp, "invalid server: '%s'", Tcl_GetString(objv[0]));
+            result = TCL_ERROR;
+        }
+    } else {
+        result = TCL_ERROR;
+    }
+
+    return result;
 }
 
 
