@@ -1,6 +1,7 @@
 naviserver (4.99.9~20150706-2) stable; urgency=low
 
-  * Content headers updated case insensitively. keep_host_header switch for HttpConnect.
+  * Content headers updated case insensitively. 
+  * keep_host_header switch for HttpConnect.
 
  -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 07 Jul 2015 09:55:15 +0100
 
