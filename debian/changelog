@@ -1,3 +1,9 @@
+naviserver (4.99.9~20150730-1) stable; urgency=low
+
+  * Import from upstream (introduces binary support for ns_http -body)
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 30 Jul 2015 11:55:57 +0100
+
 naviserver (4.99.9~20150706-2) stable; urgency=low
 
   * Content headers updated case insensitively. 
