@@ -1,3 +1,9 @@
+naviserver (4.99.9~20150730-3) wheezy; urgency=low
+
+  * Fix for null chars being logged in access log
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 03 Aug 2015 15:42:07 +0100
+
 naviserver (4.99.9~20150730-2) stable; urgency=low
 
   * Typo patch for nslog.c
