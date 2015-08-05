@@ -1,3 +1,9 @@
+naviserver (4.99.9~20150805-1) wheezy; urgency=low
+
+  * Import from upstream (better handling of binary data in POSTS)
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 05 Aug 2015 10:57:36 +0100
+
 naviserver (4.99.9~20150730-3) wheezy; urgency=low
 
   * Fix for null chars being logged in access log
