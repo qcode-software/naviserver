@@ -129,6 +129,11 @@ Ns_RegisterRequest(const char *server, const char *method, const char *url,
 {
     Req *reqPtr;
 
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(proc != NULL);
+
     reqPtr = ns_malloc(sizeof(Req));
     reqPtr->proc = proc;
     reqPtr->deleteCallback = deleteCallback;
@@ -165,8 +170,16 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
 {
     Req *reqPtr;
 
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(procPtr != NULL);
+    NS_NONNULL_ASSERT(argPtr != NULL);
+    NS_NONNULL_ASSERT(flagsPtr != NULL);
+
     Ns_MutexLock(&ulock);
-    reqPtr = Ns_UrlSpecificGet(server, method, url, uid);
+    reqPtr = NsUrlSpecificGet(NsGetServer(server), method, url, uid,
+                              0u, NS_URLSPACE_DEFAULT);
     if (reqPtr != NULL) {
         *procPtr = reqPtr->proc;
         *deletePtr = reqPtr->deleteCallback;
@@ -176,7 +189,7 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
         *procPtr = NULL;
         *deletePtr = NULL;
         *argPtr = NULL;
-        *flagsPtr = 0U;
+        *flagsPtr = 0u;
     }
     Ns_MutexUnlock(&ulock);
 }
@@ -203,7 +216,11 @@ void
 Ns_UnRegisterRequest(const char *server, const char *method, const char *url,
                      int inherit)
 {
-    Ns_UnRegisterRequestEx(server, method, url, (inherit != 0) ? 0U : NS_OP_NOINHERIT);
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+
+    Ns_UnRegisterRequestEx(server, method, url, (inherit != 0) ? 0u : NS_OP_NOINHERIT);
 }
 
 
@@ -228,6 +245,10 @@ void
 Ns_UnRegisterRequestEx(const char *server, const char *method, const char *url,
                        unsigned int flags)
 {
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    
     Ns_MutexLock(&ulock);
     (void)Ns_UrlSpecificDestroy(server, method, url, uid, flags);
     Ns_MutexUnlock(&ulock);
@@ -254,9 +275,12 @@ Ns_UnRegisterRequestEx(const char *server, const char *method, const char *url,
 int
 Ns_ConnRunRequest(Ns_Conn *conn)
 {
-    int         status  = NS_OK;
-    Conn       *connPtr = (Conn *) conn;
-    const char *server  = Ns_ConnServer(conn);
+    int         status = NS_OK;
+    Conn       *connPtr;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    connPtr = (Conn *) conn;
 
     /*
      * Return error messages for invalid headers and 
@@ -272,25 +296,30 @@ Ns_ConnRunRequest(Ns_Conn *conn)
         connPtr->flags &= ~NS_CONN_LINETOOLONG;
         return Ns_ConnReturnHeaderLineTooLong(conn);
     }
-    /*
-     * true requests.
-     */
 
-    if (conn->request->method != NULL && conn->request->url != NULL) {
-        Req  *reqPtr;
+    /*
+     * True requests.
+     */
+    
+    if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
+        Req        *reqPtr;
+
         Ns_MutexLock(&ulock);
-        reqPtr = Ns_UrlSpecificGet(server, conn->request->method, conn->request->url, uid);
+        reqPtr = NsUrlSpecificGet(connPtr->poolPtr->servPtr,
+                                  conn->request.method, conn->request.url, uid,
+                                  0u, NS_URLSPACE_DEFAULT);
         if (reqPtr == NULL) {
             Ns_MutexUnlock(&ulock);
-            if (STREQ(conn->request->method, "BAD")) {
+            if (STREQ(conn->request.method, "BAD")) {
                 return Ns_ConnReturnBadRequest(conn, NULL);
             } else {
-                return Ns_ConnReturnNotFound(conn);
+                return Ns_ConnReturnInvalidMethod(conn);
             }
         }
         ++reqPtr->refcnt;
         Ns_MutexUnlock(&ulock);
         status = (*reqPtr->proc) (reqPtr->arg, conn);
+
         Ns_MutexLock(&ulock);
         FreeReq(reqPtr);
         Ns_MutexUnlock(&ulock);
@@ -324,19 +353,22 @@ Ns_ConnRedirect(Ns_Conn *conn, const char *url)
 {
     int status;
 
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+
     /*
      * Update the request URL.
      */
 
-    Ns_SetRequestUrl(conn->request, url);
+    Ns_SetRequestUrl(&conn->request, url);
 
     /*
      * Re-authorize and run the request.
      */
 
     status = Ns_AuthorizeRequest(Ns_ConnServer(conn),
-                                 conn->request->method,
-                                 conn->request->url,
+                                 conn->request.method,
+                                 conn->request.url,
                                  Ns_ConnAuthUser(conn),
                                  Ns_ConnAuthPasswd(conn),
                                  Ns_ConnPeer(conn));
@@ -387,6 +419,11 @@ Ns_RegisterProxyRequest(const char *server, const char *method, const char *prot
     int            isNew;
     Tcl_HashEntry *hPtr;
 
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(protocol != NULL);
+    NS_NONNULL_ASSERT(proc != NULL);
+
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
         Ns_Log(Error, "Ns_RegisterProxyRequest: no such server: %s", server);
@@ -399,7 +436,7 @@ Ns_RegisterProxyRequest(const char *server, const char *method, const char *prot
     reqPtr->proc = proc;
     reqPtr->deleteCallback = deleteCallback;
     reqPtr->arg = arg;
-    reqPtr->flags = 0U;
+    reqPtr->flags = 0u;
     Ns_MutexLock(&servPtr->request.plock);
     hPtr = Tcl_CreateHashEntry(&servPtr->request.proxy, ds.string, &isNew);
     if (isNew == 0) {
@@ -433,7 +470,11 @@ Ns_UnRegisterProxyRequest(const char *server, const char *method,
                           const char *protocol)
 {
     NsServer      *servPtr;
-
+    
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(protocol != NULL);
+    
     servPtr = NsGetServer(server);
     if (servPtr != NULL) {
         Tcl_HashEntry *hPtr;
@@ -475,19 +516,17 @@ NsConnRunProxyRequest(Ns_Conn *conn)
 {
     Conn          *connPtr = (Conn *) conn;
     NsServer      *servPtr;
-    Ns_Request    *request;
     Req           *reqPtr = NULL;
     int            status;
     Ns_DString     ds;
     Tcl_HashEntry *hPtr;
 
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
     
     servPtr = connPtr->poolPtr->servPtr;
-    request = conn->request;
 
     Ns_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, request->method, request->protocol, NULL);
+    Ns_DStringVarAppend(&ds, conn->request.method, conn->request.protocol, NULL);
     Ns_MutexLock(&servPtr->request.plock);
     hPtr = Tcl_FindHashEntry(&servPtr->request.proxy, ds.string);
     if (hPtr != NULL) {
@@ -530,8 +569,8 @@ NsGetRequestProcs(Tcl_DString *dsPtr, const char *server)
 {
     NsServer *servPtr;
 
-    assert(dsPtr != NULL);
-    assert(server != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
     
     servPtr = NsGetServer(server);
     assert(servPtr != NULL);
@@ -546,8 +585,8 @@ WalkCallback(Tcl_DString *dsPtr, const void *arg)
 {
      const Req *reqPtr = arg;
 
-     assert(dsPtr != NULL);
-     assert(arg != NULL);
+     NS_NONNULL_ASSERT(dsPtr != NULL);
+     NS_NONNULL_ASSERT(arg != NULL);
      
      Ns_GetProcInfo(dsPtr, (Ns_Callback *)reqPtr->proc, reqPtr->arg);
 }
@@ -574,7 +613,7 @@ FreeReq(void *arg)
 {
     Req *reqPtr = (Req *) arg;
 
-    assert(arg != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
 
     if (--reqPtr->refcnt == 0) {
         if (reqPtr->deleteCallback != NULL) {

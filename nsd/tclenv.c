@@ -108,7 +108,7 @@ Ns_CopyEnviron(Ns_DString *dsPtr)
     char *const*envp;
     int i;
 
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
     
     Ns_MutexLock(&lock);
     envp = Ns_GetEnviron();
@@ -148,7 +148,7 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
     int          status, i, opt;
     Tcl_Obj     *result;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "exists", "names", "get", "set", "unset", NULL
     };
     enum {

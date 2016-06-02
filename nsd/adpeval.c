@@ -155,7 +155,7 @@ static int
 ConfigServerAdp(const char *server)
 {
     NsServer   *servPtr = NsGetServer(server); 
-    CONST char *path;
+    const char *path;
 
     path = Ns_ConfigGetPath(server, NULL, "adp", NULL);
 
@@ -181,7 +181,7 @@ ConfigServerAdp(const char *server)
     servPtr->adp.cachesize = (size_t)Ns_ConfigInt(path, "cachesize", 5000 * 1024);
     servPtr->adp.bufsize   = (size_t)Ns_ConfigInt(path, "bufsize",   1 * 1024 * 1000);
 
-    servPtr->adp.flags = 0U;
+    servPtr->adp.flags = 0u;
     (void) Ns_ConfigFlag(path, "cache",        ADP_CACHE,     0, &servPtr->adp.flags);
     (void) Ns_ConfigFlag(path, "stream",       ADP_STREAM,    0, &servPtr->adp.flags);
     (void) Ns_ConfigFlag(path, "enableexpire", ADP_EXPIRE,    0, &servPtr->adp.flags);
@@ -220,7 +220,7 @@ ConfigServerAdp(const char *server)
 int
 NsAdpEval(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     return AdpEval(itPtr, objc, objv, resvar);
 }
@@ -228,7 +228,7 @@ NsAdpEval(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
 int
 NsAdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     itPtr->adp.flags |= ADP_ADPFILE;
     return AdpEval(itPtr, objc, objv, resvar);
@@ -243,7 +243,7 @@ AdpEval(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
     int           result;
     char         *obj0;
 
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     interp = itPtr->interp;
     /*
@@ -253,7 +253,7 @@ AdpEval(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
 
     Tcl_DStringInit(&output);
     obj0 = Tcl_GetString(objv[0]);
-    if ((itPtr->adp.flags & ADP_ADPFILE) != 0U) {
+    if ((itPtr->adp.flags & ADP_ADPFILE) != 0u) {
         result = AdpSource(itPtr, objc, objv, obj0, NULL, &output);
     } else {
         NsAdpParse(&code, itPtr->servPtr, obj0, itPtr->adp.flags, NULL);
@@ -307,8 +307,8 @@ NsAdpInclude(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file, 
 {
     Ns_DString *outputPtr;
 
-    assert(itPtr != NULL);
-    assert(file != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(file != NULL);
 
     /*
      * If an ADP execution is already active, use the current output
@@ -343,7 +343,7 @@ NsAdpInclude(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file, 
 void
 NsAdpInit(NsInterp *itPtr)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     Tcl_DStringInit(&itPtr->adp.output);
     NsAdpReset(itPtr);
@@ -352,7 +352,7 @@ NsAdpInit(NsInterp *itPtr)
 void
 NsAdpFree(NsInterp *itPtr)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     if (itPtr->adp.cache != NULL) {
         Ns_CacheDestroy(itPtr->adp.cache);
@@ -382,7 +382,7 @@ NsAdpFree(NsInterp *itPtr)
 void
 NsAdpReset(NsInterp *itPtr)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     itPtr->adp.exception = ADP_OK;
     itPtr->adp.debugLevel = 0;
@@ -394,8 +394,8 @@ NsAdpReset(NsInterp *itPtr)
         itPtr->adp.bufsize = itPtr->servPtr->adp.bufsize;
         itPtr->adp.flags = itPtr->servPtr->adp.flags;
     } else {
-        itPtr->adp.bufsize = 1024U * 1000U;
-        itPtr->adp.flags = 0U;
+        itPtr->adp.bufsize = 1024u * 1000u;
+        itPtr->adp.flags = 0u;
     }
     Tcl_DStringTrunc(&itPtr->adp.output, 0);
 }
@@ -436,9 +436,9 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
     const char     *p;
     int             result;
 
-    assert(itPtr != NULL);
-    assert(file != NULL);
-    assert(outputPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(file != NULL);
+    NS_NONNULL_ASSERT(outputPtr != NULL);
 
     servPtr = itPtr->servPtr;
     interp = itPtr->interp;
@@ -469,7 +469,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
 
     if (itPtr->adp.debugLevel > 0) {
         ++itPtr->adp.debugLevel;
-    } else if (((itPtr->adp.flags & ADP_DEBUG) != 0U)
+    } else if (((itPtr->adp.flags & ADP_DEBUG) != 0u)
                    && itPtr->adp.debugFile != NULL
                    && (p = strrchr(file, '/')) != NULL
                    && Tcl_StringMatch(p+1, itPtr->adp.debugFile) != 0) {
@@ -588,7 +588,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
 	int   cacheGen = 0;
 
         pagePtr = ipagePtr->pagePtr;
-        if (expiresPtr == NULL || (itPtr->adp.flags & ADP_CACHE) == 0U) {
+        if (expiresPtr == NULL || (itPtr->adp.flags & ADP_CACHE) == 0u) {
             cachePtr = NULL;
         } else {
 
@@ -631,7 +631,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
                  * inside the script
                  */
 
-                if (result == TCL_OK && (itPtr->adp.flags & ADP_CACHE) != 0U) {
+                if (result == TCL_OK && (itPtr->adp.flags & ADP_CACHE) != 0u) {
                     cachePtr = ns_malloc(sizeof(AdpCache));
 
                     /*
@@ -730,7 +730,7 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
     Tcl_DString  ds;
     int          code;
 
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     interp = itPtr->interp;
 
@@ -848,9 +848,9 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
     size_t        size;
     Page         *pagePtr;
 
-    assert(itPtr != NULL);
-    assert(file != NULL);
-    assert(stPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(file != NULL);
+    NS_NONNULL_ASSERT(stPtr != NULL);
 
     interp = itPtr->interp;
 
@@ -876,13 +876,13 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
             goto done;
         }
         size = (size_t)stPtr->st_size;
-        buf = ns_realloc(buf, size + 1U);
+        buf = ns_realloc(buf, size + 1u);
 
         /*
          * Attempt to read +1 byte to catch the file growing.
          */
 
-        n = ns_read(fd, buf, size + 1U);
+        n = ns_read(fd, buf, size + 1u);
         if (n < 0) {
             Tcl_AppendResult(interp, "could not read \"", file,
                              "\": ", Tcl_PosixError(interp), NULL);
@@ -903,7 +903,7 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
     } while ((size_t)n != size && ++trys < 10);
 
     if ((size_t)n != size) {
-        Tcl_AppendResult(interp, "inconsistant file: ", file, NULL);
+        Tcl_AppendResult(interp, "inconsistent file: ", file, NULL);
     } else {
         char *page;
 
@@ -959,15 +959,18 @@ done:
 void
 NsAdpLogError(NsInterp *itPtr)
 {
-    Tcl_Interp  *interp = itPtr->interp;
-    Ns_Conn     *conn = itPtr->conn;
+    Tcl_Interp  *interp;
+    Ns_Conn     *conn;
     Ns_DString   ds;
     AdpFrame    *framePtr;
     char        *inc, *dot;
     int          len;
     const char  *err, *adp;
 
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+
+    interp = itPtr->interp;
+    conn = itPtr->conn;
 
     framePtr = itPtr->adp.framePtr;
     Ns_DStringInit(&ds);
@@ -990,7 +993,7 @@ NsAdpLogError(NsInterp *itPtr)
                 len = 150;
                 dot = "...";
             }
-            while (((unsigned char)adp[len] & 0xC0U) == 0x80U) {
+            while (((unsigned char)adp[len] & 0xC0u) == 0x80u) {
                 /* NB: Avoid truncating multi-byte UTF-8 character. */
                 len--;
                 dot = "...";
@@ -1001,20 +1004,20 @@ NsAdpLogError(NsInterp *itPtr)
         framePtr = framePtr->prevPtr;
         inc = "\n    included from ";
     }
-    if (conn != NULL && (itPtr->adp.flags & ADP_DETAIL) != 0U) {
+    if (conn != NULL && (itPtr->adp.flags & ADP_DETAIL) != 0u) {
 	size_t i;
 
         Ns_DStringPrintf(&ds, "\n    while processing connection %s:\n%8s%s",
                          NsConnIdStr(conn), "",
-                         conn->request->line);
-        for (i = 0U; i < Ns_SetSize(conn->headers); ++i) {
+                         conn->request.line);
+        for (i = 0u; i < Ns_SetSize(conn->headers); ++i) {
             Ns_DStringPrintf(&ds, "\n        %s: %s",
                              Ns_SetKey(conn->headers, i),
                              Ns_SetValue(conn->headers, i));
         }
     }
     err = Ns_TclLogErrorInfo(interp, ds.string);
-    if ((itPtr->adp.flags & ADP_DISPLAY) != 0U) {
+    if ((itPtr->adp.flags & ADP_DISPLAY) != 0u) {
         Ns_DStringTrunc(&ds, 0);
         Ns_DStringAppend(&ds, "<br><pre>\n");
         Ns_QuoteHtml(&ds, err);
@@ -1069,9 +1072,9 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
     int         nscript, nblocks, result, i;
     const char *ptr, *savecwd;
 
-    assert(itPtr != NULL);
-    assert(codePtr != NULL);
-    assert(outputPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(codePtr != NULL);
+    NS_NONNULL_ASSERT(outputPtr != NULL);
 
     interp = itPtr->interp;
 
@@ -1118,7 +1121,7 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
 
         frame.line = (unsigned short)AdpCodeLine(codePtr, i);
         len = AdpCodeLen(codePtr, i);
-        if ((itPtr->adp.flags & ADP_TRACE) != 0U) {
+        if ((itPtr->adp.flags & ADP_TRACE) != 0u) {
             AdpTrace(itPtr, ptr, len);
         }
         if (len > 0) {
@@ -1159,10 +1162,10 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
          */
 
         if (result != TCL_OK && itPtr->adp.exception == ADP_OK) {
-            if ((itPtr->adp.flags & ADP_ERRLOGGED) == 0U) {
+            if ((itPtr->adp.flags & ADP_ERRLOGGED) == 0u) {
                 NsAdpLogError(itPtr);
             }
-            if ((itPtr->adp.flags & ADP_STRICT) != 0U) {
+            if ((itPtr->adp.flags & ADP_STRICT) != 0u) {
                 itPtr->adp.flags |= ADP_ERRLOGGED;
                 break;
             }
@@ -1231,8 +1234,8 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
     Ns_DString  ds;
     int         code, fd;
 
-    assert(itPtr != NULL);
-    assert(ptr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(ptr != NULL);
 
     interp = itPtr->interp;
     level  = itPtr->adp.debugLevel;
@@ -1334,7 +1337,7 @@ AllocObjs(int nobjs)
 {
     Objs *objsPtr;
 
-    objsPtr = ns_calloc(1U, sizeof(Objs) + ((size_t)nobjs * sizeof(Tcl_Obj *)));
+    objsPtr = ns_calloc(1u, sizeof(Objs) + ((size_t)nobjs * sizeof(Tcl_Obj *)));
     objsPtr->nobjs = nobjs;
 
     return objsPtr;
@@ -1362,7 +1365,7 @@ FreeObjs(Objs *objsPtr)
 {
     int i;
 
-    assert(objsPtr != NULL);
+    NS_NONNULL_ASSERT(objsPtr != NULL);
 
     for (i = 0; i < objsPtr->nobjs; ++i) {
         if (objsPtr->objs[i] != NULL) {
@@ -1393,7 +1396,7 @@ FreeObjs(Objs *objsPtr)
 static void
 DecrCache(AdpCache *cachePtr)
 {
-    assert(cachePtr != NULL);
+    NS_NONNULL_ASSERT(cachePtr != NULL);
 
     if (--cachePtr->refcnt == 0) {
         NsAdpFreeCode(&cachePtr->code);
@@ -1423,8 +1426,8 @@ AdpTrace(const NsInterp *itPtr, const char *ptr, int len)
 {
     char type;
     
-    assert(itPtr != NULL);
-    assert(ptr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(ptr != NULL);
 
     if (len >= 0) {
         type = 'T';

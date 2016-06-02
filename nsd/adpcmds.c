@@ -72,8 +72,8 @@ Ns_AdpAppend(Tcl_Interp *interp, const char *buf, int len)
 {
     NsInterp *itPtr;
 
-    assert(interp != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     if (GetInterp(interp, &itPtr) != TCL_OK) {
         return TCL_ERROR;
@@ -86,15 +86,15 @@ NsAdpAppend(NsInterp *itPtr, const char *buf, int len)
 {
     Tcl_DString *bufPtr;
 
-    assert(itPtr != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     if (GetOutput(itPtr, &bufPtr) != TCL_OK) {
         return TCL_ERROR;
     }
     Ns_DStringNAppend(bufPtr, buf, len);
     if (
-	((itPtr->adp.flags & ADP_STREAM) != 0U
+	((itPtr->adp.flags & ADP_STREAM) != 0u
 	 || (size_t)bufPtr->length > itPtr->adp.bufsize
 	 ) 
 	&& NsAdpFlush(itPtr, 1) != TCL_OK) {
@@ -134,7 +134,7 @@ Ns_AdpGetOutput(Tcl_Interp *interp, Tcl_DString **dsPtrPtr,
         return TCL_ERROR;
     }
     if (doStreamPtr != NULL) {
-        *doStreamPtr = (itPtr->adp.flags & ADP_STREAM) != 0U ? 1 : 0;
+        *doStreamPtr = (itPtr->adp.flags & ADP_STREAM) != 0u ? 1 : 0;
     }
     if (maxBufferPtr != NULL) {
         *maxBufferPtr = itPtr->adp.bufsize;
@@ -236,7 +236,7 @@ NsTclAdpCtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         { "stricterror",  ADP_STRICT },
         { "trace",        ADP_TRACE },
         { "trimspace",    ADP_TRIM },
-        { NULL, 0U}
+        { NULL, 0u}
     };
 
 
@@ -317,7 +317,7 @@ NsTclAdpCtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
                 itPtr->adp.flags &= ~flag;
             }
         }
-        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(oldFlag != 0U));
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(oldFlag != 0u));
         break;
     }
 
@@ -360,7 +360,7 @@ NsTclAdpSafeEvalObjCmd(ClientData arg, Tcl_Interp *UNUSED(interp), int objc, Tcl
 static int
 EvalObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     if (objc < 2) {
         Tcl_WrongNumArgs(itPtr->interp, 1, objv, "page ?args ...?");
@@ -436,7 +436,7 @@ NsTclAdpIncludeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CON
             return TCL_ERROR;
         }
         Tcl_DStringAppend(dsPtr, "<% ns_adp_include", -1);
-        if ((itPtr->adp.flags & ADP_TCLFILE) != 0U) {
+        if ((itPtr->adp.flags & ADP_TCLFILE) != 0u) {
             Tcl_DStringAppendElement(dsPtr, "-tcl");
         }
         for (i = 0; i < objc; ++i) {
@@ -688,7 +688,7 @@ NsTclAdpAbortObjCmd(ClientData arg, Tcl_Interp *UNUSED(interp), int objc,  Tcl_O
 static int
 ExceptionObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, AdpResult exception)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     if (objc != 1 && objc != 2) {
         Tcl_WrongNumArgs(itPtr->interp, 1, objv, "?retval?");
@@ -1202,11 +1202,12 @@ NsTclAdpMimeTypeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CO
 static int
 GetFrame(ClientData arg, AdpFrame **framePtrPtr)
 {
-    NsInterp *itPtr = arg;
+    NsInterp *itPtr;
 
-    assert(arg != NULL);
-    assert(framePtrPtr != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
+    NS_NONNULL_ASSERT(framePtrPtr != NULL);
 
+    itPtr = arg;
     if (itPtr->adp.framePtr == NULL) {
         Tcl_SetResult(itPtr->interp, "no active adp", TCL_STATIC);
         return TCL_ERROR;
@@ -1238,8 +1239,8 @@ GetOutput(ClientData arg, Tcl_DString **dsPtrPtr)
 {
     AdpFrame *framePtr = NULL;
 
-    assert(arg != NULL);
-    assert(dsPtrPtr != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
+    NS_NONNULL_ASSERT(dsPtrPtr != NULL);
 
     if (GetFrame(arg, &framePtr) != TCL_OK) {
         return TCL_ERROR;
@@ -1271,8 +1272,8 @@ GetInterp(Tcl_Interp *interp, NsInterp **itPtrPtr)
 {
     NsInterp *itPtr;
 
-    assert(interp != NULL);
-    assert(itPtrPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(itPtrPtr != NULL);
 
     itPtr = NsGetInterpData(interp);
     if (itPtr == NULL) {

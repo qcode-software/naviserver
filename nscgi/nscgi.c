@@ -35,10 +35,10 @@
 #define BUFSIZE	    4096
 #define NDSTRINGS   5
 
-#define CGI_NPH	    	0x01U
-#define CGI_GETHOST	0x02U
-#define CGI_ECONTENT	0x04U
-#define CGI_SYSENV	0x08U
+#define CGI_NPH	    	0x01u
+#define CGI_GETHOST	0x02u
+#define CGI_ECONTENT	0x04u
+#define CGI_SYSENV	0x08u
 
 /*
  * The following structure is allocated for each instance the module is
@@ -160,6 +160,8 @@ Ns_ModuleInit(const char *server, const char *module)
     Mod		   *modPtr;
     static int	    initialized = 0;
 
+    NS_NONNULL_ASSERT(module != NULL);
+
     /*
      * On the first (and likely only) load, register
      * the temp file cleanup routine and open devNull
@@ -186,7 +188,7 @@ Ns_ModuleInit(const char *server, const char *module)
      */
 
     path = Ns_ConfigGetPath(server, module, (char *)0);
-    modPtr = ns_calloc(1U, sizeof(Mod));
+    modPtr = ns_calloc(1u, sizeof(Mod));
     modPtr->module = module;
     modPtr->server = server;
     Ns_MutexInit(&modPtr->lock);
@@ -231,7 +233,7 @@ Ns_ModuleInit(const char *server, const char *module)
      * Register all requested mappings.
      */
     set = Ns_ConfigGetSection(path);
-    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
+    for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         const char *key   = Ns_SetKey(set, i);
         const char *value = Ns_SetValue(set, i);
 
@@ -282,8 +284,8 @@ CgiRequest(void *arg, Ns_Conn *conn)
     if (CgiInit(&cgi, mapPtr, conn) != NS_OK) {
 	return Ns_ConnReturnNotFound(conn);
     } else if (cgi.interp == NULL && access(cgi.exec, X_OK) != 0) {
-        if (STREQ(conn->request->method, "GET") ||
-	    STREQ(conn->request->method, "HEAD")) {
+        if (STREQ(conn->request.method, "GET") ||
+	    STREQ(conn->request.method, "HEAD")) {
 
 	    /*
 	     * Evidently people are storing images and such in
@@ -390,12 +392,12 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     size_t          ulen, plen;
     struct stat     st;
     char           *e, *s;
-    const char     *url = conn->request->url;
+    const char     *url = conn->request.url;
     const char	   *server = Ns_ConnServer(conn);
 
-    assert(cgiPtr != NULL);
-    assert(mapPtr != NULL);
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(mapPtr != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
 
     modPtr = mapPtr->modPtr;
     memset(cgiPtr, 0, (size_t)((char *)&cgiPtr->ds[0] - (char *)cgiPtr));
@@ -525,7 +527,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     *s = '\0';
     cgiPtr->dir = Ns_DStringAppend(CgiDs(cgiPtr), cgiPtr->path);
     *s++ = '/';
-    if (strncmp(s, "nph-", 4U) == 0) {
+    if (strncmp(s, "nph-", 4u) == 0) {
         cgiPtr->flags |= CGI_NPH;
     }
 
@@ -586,8 +588,8 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
     size_t  len;
     const char   *content, *err;
 
-    assert(cgiPtr != NULL);
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
 
     err = NULL;
     len = conn->contentLength;
@@ -632,7 +634,7 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
 static Ns_DString *
 CgiDs(Cgi *cgiPtr)
 {
-    assert(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
 
     if (cgiPtr->nextds < NDSTRINGS) {
         return &cgiPtr->ds[cgiPtr->nextds++];
@@ -662,7 +664,7 @@ CgiDs(Cgi *cgiPtr)
 static void
 CgiFree(Cgi *cgiPtr)
 {
-    assert(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
 
     /*
      * Close the pipe.
@@ -730,11 +732,12 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     int i, opipe[2];
     char *s, *e, *p;
     Ns_DString *dsPtr;
-    Mod *modPtr = cgiPtr->modPtr;
+    Mod *modPtr;
 
-    assert(cgiPtr != NULL);
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
 
+    modPtr = cgiPtr->modPtr;
     /*
      * Get a dstring which will be used to setup env variables
      * and the arg list.
@@ -815,7 +818,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), NULL);
     Ns_SetUpdate(cgiPtr->env, "SERVER_SOFTWARE", dsPtr->string);
     Ns_DStringTrunc(dsPtr, 0);
-    Ns_DStringPrintf(dsPtr, "HTTP/%2.1f", conn->request->version);
+    Ns_DStringPrintf(dsPtr, "HTTP/%2.1f", conn->request.version);
     Ns_SetUpdate(cgiPtr->env, "SERVER_PROTOCOL", dsPtr->string);
     Ns_DStringTrunc(dsPtr, 0);
 
@@ -825,8 +828,9 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
 
     s = Ns_ConnLocationAppend(conn, dsPtr);
     s = strchr(s, ':');
-    s += 3;               /* Get past the protocol://  */
-    p = strchr(s, ':');   /* Get to the port number    */
+    s += 3;                        /* Get past the protocol://  */
+    Ns_HttpParseHost(s, NULL, &p); /* Get to the port number    */
+
     if (p != NULL) {
 	int j;
 
@@ -851,12 +855,14 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
 
     Ns_SetUpdate(cgiPtr->env, "AUTH_TYPE", "Basic");
     Ns_SetUpdate(cgiPtr->env, "REMOTE_USER", Ns_ConnAuthUser(conn));
+
     {
         const char *peer = Ns_ConnPeer(conn);
+        
         if (peer != NULL) {
             Ns_SetUpdate(cgiPtr->env, "REMOTE_ADDR", peer);
             if ((modPtr->flags & CGI_GETHOST)) {
-                if (Ns_GetHostByAddr(dsPtr, peer)) {
+                if (Ns_GetHostByAddr(dsPtr, peer) == NS_TRUE) {
                     Ns_SetUpdate(cgiPtr->env, "REMOTE_HOST", dsPtr->string);
                 }
                 Ns_DStringTrunc(dsPtr, 0);
@@ -870,12 +876,12 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
      * Provide request information.
      */
 
-    Ns_SetUpdate(cgiPtr->env, "REQUEST_METHOD", conn->request->method);
-    Ns_SetUpdate(cgiPtr->env, "QUERY_STRING", conn->request->query);
+    Ns_SetUpdate(cgiPtr->env, "REQUEST_METHOD", conn->request.method);
+    Ns_SetUpdate(cgiPtr->env, "QUERY_STRING", conn->request.query);
 
     s = Ns_SetIGet(conn->headers, "Content-Type");
     if (s == NULL) {
-        if (STREQ("POST", conn->request->method)) {
+        if (STREQ("POST", conn->request.method)) {
             s = "application/x-www-form-urlencoded";
         } else {
             s = "";
@@ -931,7 +937,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     if (cgiPtr->path != NULL) {
         Ns_DStringAppendArg(dsPtr, cgiPtr->path);
     }
-    s = conn->request->query;
+    s = conn->request.query;
     if (s != NULL) {
 	if (strchr(s, '=') == NULL) {
     	    do {
@@ -1002,7 +1008,7 @@ CgiRead(Cgi *cgiPtr)
 {
     ssize_t n;
 
-    assert(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
 
     cgiPtr->ptr = cgiPtr->buf;
     do {
@@ -1040,8 +1046,8 @@ CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr)
     char    c;
     ssize_t n;
 
-    assert(cgiPtr != NULL);
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
 
     do {
 	while (cgiPtr->cnt > 0) {
@@ -1087,8 +1093,8 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_Set         *hdrs;
     ssize_t         n;
 
-    assert(cgiPtr != NULL);
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(cgiPtr != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
 
     /*
      * Skip to copy for nph CGI's.
@@ -1192,7 +1198,7 @@ copy:
 static char    *
 NextWord(char *s)
 {
-    assert(s != NULL);
+    NS_NONNULL_ASSERT(s != NULL);
 
     while (*s != '\0' && CHARTYPE(space, *s) == 0) {
         ++s;
@@ -1232,8 +1238,8 @@ CgiRegister(Mod *modPtr, const char *map)
     Ns_DString      ds1, ds2;
     Map     	   *mapPtr;
 
-    assert(modPtr != NULL);
-    assert(map != NULL);
+    NS_NONNULL_ASSERT(modPtr != NULL);
+    NS_NONNULL_ASSERT(map != NULL);
 
     Ns_DStringInit(&ds1);
     Ns_DStringInit(&ds2);
@@ -1321,9 +1327,9 @@ SetAppend(const Ns_Set *set, int index, const char *sep, char *value)
 {
     Ns_DString ds;
 
-    assert(set != NULL);
-    assert(sep != NULL);
-    assert(value != NULL);
+    NS_NONNULL_ASSERT(set != NULL);
+    NS_NONNULL_ASSERT(sep != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
 
     Ns_DStringInit(&ds);
     Ns_DStringVarAppend(&ds, Ns_SetValue(set, index),

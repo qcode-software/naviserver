@@ -81,14 +81,15 @@ static const Cmd basicCmds[] = {
     {"ns_gmtime", NULL, NsTclGmTimeObjCmd},
     {"ns_guesstype", NULL, NsTclGuessTypeObjCmd},
     {"ns_hashpath", NULL, NsTclHashPathObjCmd},
+    {"ns_hmac_sha2", NULL, NsTclHMACSHA2ObjCmd},
     {"ns_hostbyaddr", NULL, NsTclGetHostObjCmd},
     {"ns_hrefs", NsTclHrefsCmd, NULL},
     {"ns_http", NULL, NsTclHttpObjCmd},
     {"ns_httptime", NULL, NsTclHttpTimeObjCmd},
-    {"ns_info", NULL, NsTclInfoObjCmd},
-    {"ns_imgsize", NULL, NsTclImgSizeObjCmd},
     {"ns_imgmime", NULL, NsTclImgMimeObjCmd},
+    {"ns_imgsize", NULL, NsTclImgSizeObjCmd},
     {"ns_imgtype", NULL, NsTclImgTypeObjCmd},
+    {"ns_info", NULL, NsTclInfoObjCmd},
     {"ns_job", NULL, NsTclJobObjCmd},
     {"ns_jpegsize", NULL, NsTclJpegSizeObjCmd},
     {"ns_kill", NULL, NsTclKillObjCmd},
@@ -97,9 +98,9 @@ static const Cmd basicCmds[] = {
     {"ns_log", NULL, NsTclLogObjCmd},
     {"ns_logctl", NULL, NsTclLogCtlObjCmd},
     {"ns_logroll", NULL, NsTclLogRollObjCmd},
-    {"ns_normalizepath", NULL, NsTclNormalizePathObjCmd},
     {"ns_mktemp", NsTclMkTempCmd, NULL},
     {"ns_modulepath", NULL, NsTclModulePathObjCmd},
+    {"ns_normalizepath", NULL, NsTclNormalizePathObjCmd},
     {"ns_pagepath", NULL, NsTclPagePathObjCmd},
     {"ns_parseargs", NULL, NsTclParseArgsObjCmd},
     {"ns_parseheader", NsTclParseHeaderCmd, NULL},
@@ -119,6 +120,7 @@ static const Cmd basicCmds[] = {
     {"ns_serverrootproc", NULL, NsTclServerRootProcObjCmd},
     {"ns_set", NULL, NsTclSetObjCmd},
     {"ns_sha1", NULL, NsTclSHA1ObjCmd},
+    {"ns_sha2", NULL, NsTclSHA2ObjCmd},
     {"ns_md5", NULL, NsTclMD5ObjCmd},
     {"ns_shortcut_filter", NULL, NsTclShortcutFilterObjCmd},
     {"ns_sleep", NULL, NsTclSleepObjCmd},
@@ -263,6 +265,7 @@ static const Cmd servCmds[] = {
     {"ns_unregister_url2file", NULL, NsTclUnRegisterUrl2FileObjCmd},
     {"ns_upload_stats", NULL, NsTclProgressObjCmd},
     {"ns_url2file", NULL, NsTclUrl2FileObjCmd},
+    {"ns_urlspace", NULL, NsTclUrlSpaceObjCmd},
     {"ns_write", NULL, NsTclWriteObjCmd},
     {"ns_writecontent", NULL, NsTclWriteContentObjCmd},
     {"ns_writer", NULL, NsTclWriterObjCmd},
@@ -276,7 +279,6 @@ static const Cmd servCmds[] = {
     {"nsv_names", NULL, NsTclNsvNamesObjCmd},
     {"nsv_set", NULL, NsTclNsvSetObjCmd},
     {"nsv_unset", NULL, NsTclNsvUnsetObjCmd},
-
     /*
      * Add more server Tcl commands here.
      */
@@ -312,8 +314,8 @@ static void AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
 static void
 AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
 {
-    assert(cmdPtr != NULL);
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(cmdPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     while (cmdPtr->name != NULL) {
 	/*
@@ -348,14 +350,16 @@ AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
 void
 NsTclAddBasicCmds(NsInterp *itPtr)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    
     AddCmds(basicCmds, itPtr);
 }
 
 void
 NsTclAddServerCmds(NsInterp *itPtr)
 {
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    
     AddCmds(servCmds, itPtr);
 }
 

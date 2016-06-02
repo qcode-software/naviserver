@@ -99,8 +99,8 @@ static const char *threadType = "ns:thread";
 int
 Ns_TclThread(Tcl_Interp *interp, const char *script, Ns_Thread *thrPtr)
 {
-    assert(interp != NULL);
-    assert(script != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(script != NULL);
 
     CreateTclThread(NsGetInterpData(interp), script, (thrPtr == NULL ? NS_TRUE : NS_FALSE),
                     NULL, thrPtr);
@@ -127,8 +127,8 @@ Ns_TclThread(Tcl_Interp *interp, const char *script, Ns_Thread *thrPtr)
 int
 Ns_TclDetachedThread(Tcl_Interp *interp, const char *script)
 {
-    assert(interp != NULL);
-    assert(script != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(script != NULL);
 
     return Ns_TclThread(interp, script, NULL);
 }
@@ -162,7 +162,7 @@ NsTclThreadObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
     void      *result;
     int        opt;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "begin", "begindetached", "create", "wait", "join",
         "name", "get", "getid", "handle", "id", "yield", "stackinfo", NULL
     };
@@ -296,7 +296,7 @@ NsTclMutexObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
     Ns_Mutex *lockPtr;
     int       opt, status = TCL_OK;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "create", "destroy", "eval", "lock", "trylock", "unlock", NULL
     };
     enum {
@@ -383,7 +383,7 @@ NsTclCritSecObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST*
     Ns_Cs    *csPtr;
     int       opt, status = TCL_OK;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "create", "destroy", "enter", "eval", "leave", NULL
     };
     enum {
@@ -464,7 +464,7 @@ NsTclSemaObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
     Ns_Sema  *semaPtr;
     int       opt, cnt;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "create", "destroy", "release", "wait", NULL
     };
     enum {
@@ -551,7 +551,7 @@ NsTclCondObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
     Ns_Time   timeout, abstime;
     int       opt, result;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "abswait", "broadcast", "create", "destroy", "set",
         "signal", "wait", NULL
     };
@@ -665,7 +665,7 @@ NsTclRWLockObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
     Ns_RWLock *rwlockPtr;
     int        opt, status = TCL_OK;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "create", "destroy", "readlock", "readunlock", "readeval",
         "writelock", "writeunlock", "writeeval", "unlock", NULL
     };
@@ -759,7 +759,7 @@ static void ThreadArgFree(void *arg)
 {
     TclThreadArg *argPtr = (TclThreadArg *)arg;
     
-    assert(arg != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
     
     if (argPtr->threadName != NULL) {
         ns_free((char *)argPtr->threadName);
@@ -792,7 +792,7 @@ NsTclThread(void *arg)
     bool             detached;
     static bool      initialized = NS_FALSE;
 
-    assert(arg != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
 
     /*
      * The argument structure is a TclThreadArg, which has to be freed when
@@ -899,8 +899,8 @@ CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
     TclThreadArg *argPtr;
     size_t scriptLength;
 
-    assert(itPtr != NULL);
-    assert(script != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(script != NULL);
 
     scriptLength = strlen(script);
     argPtr = ns_malloc(sizeof(TclThreadArg) + scriptLength);
@@ -948,10 +948,10 @@ CreateSynchObject(const NsInterp *itPtr,
     void          *addr;
     int            isNew;
 
-    assert(itPtr != NULL);
-    assert(typeTable != NULL);
-    assert(idPtr != NULL);
-    assert(type != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(typeTable != NULL);
+    NS_NONNULL_ASSERT(idPtr != NULL);
+    NS_NONNULL_ASSERT(type != NULL);
 
     interp  = itPtr->interp;
 
@@ -982,7 +982,7 @@ CreateSynchObject(const NsInterp *itPtr,
     }
 
     if (isNew != 0) {
-        addr = ns_calloc(1U, sizeof(void *));
+        addr = ns_calloc(1u, sizeof(void *));
         if (cnt > -1) {
             Ns_SemaInit((Ns_Sema *) addr, cnt);
         } else if (initProc != NULL) {

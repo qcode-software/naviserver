@@ -220,6 +220,13 @@ gdbtest: all
 	$(LD_LIBRARY_PATH) gdb -x gdb.run ./nsd/nsd
 	rm gdb.run
 
+lldbtest: all
+	$(LD_LIBRARY_PATH) lldb -o run -- ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL) 
+
+lldb-sample: all
+	lldb -o run -- $(DESTDIR)$(NAVISERVER)/bin/nsd -f -u nsadmin -t $(DESTDIR)$(NAVISERVER)/conf/nsd-config.tcl
+
+
 gdbruntest: all
 	@echo set args $(NS_TEST_CFG) > gdb.run
 	$(LD_LIBRARY_PATH) gdb -x gdb.run ./nsd/nsd
@@ -231,7 +238,7 @@ helgrind: all
 	$(LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
 cppcheck:
-	cppcheck --verbose --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	cppcheck --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
 checkexports: all

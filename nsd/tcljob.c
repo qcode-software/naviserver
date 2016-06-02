@@ -270,7 +270,7 @@ NsTclInitQueueType(void)
     Tcl_InitHashTable(&tp.queues, TCL_STRING_KEYS);
     Ns_MutexSetName(&tp.queuelock, "jobThreadPool");
     tp.nextThreadId = 0;
-    tp.nextQueueId = 0U;
+    tp.nextQueueId = 0u;
     tp.maxThreads = 0;
     tp.nthreads = 0;
     tp.nidle = 0;
@@ -380,7 +380,7 @@ NsTclJobObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* obj
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "cancel", "create", "delete", "genid", "jobs", "joblist",
         "threadlist", "queue", "queues", "queuelist", "wait",
         "waitany",  "exists", "configure", NULL
@@ -644,11 +644,11 @@ NsTclJobObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* obj
              * Wait for the specified job.
              */
 
-            Ns_Time     timeout = {0,0}, delta_timeout;
+            Ns_Time     timeout = {0,0}, *deltaTimeoutPtr = NULL;
 	    const char *jobIdString, *queueIdString;
-	    Tcl_Obj    *timeoutObj = NULL;
+
             Ns_ObjvSpec lopts[] = {
-                {"-timeout",  Ns_ObjvObj,    &timeoutObj, NULL},
+                {"-timeout",  Ns_ObjvTime,   &deltaTimeoutPtr, NULL},                
                 {NULL, NULL, NULL, NULL}
             };
             Ns_ObjvSpec args[] = {
@@ -661,17 +661,13 @@ NsTclJobObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* obj
                 return TCL_ERROR;
             }
 
-	    if (timeoutObj != NULL) {
-		if (Ns_TclGetTimeFromObj(interp, timeoutObj, &delta_timeout) != TCL_OK) {
-		    return TCL_ERROR;
-		}
-		
+	    if (deltaTimeoutPtr != NULL) {
 		/*
 		 * Set the timeout time. This is an absolute time.
 		 */
 		
 		Ns_GetTime(&timeout);
-		Ns_IncrTime(&timeout, delta_timeout.sec, delta_timeout.usec);
+		Ns_IncrTime(&timeout, deltaTimeoutPtr->sec, deltaTimeoutPtr->usec);
             }
 	    
             if (LookupQueue(interp, queueIdString, &queue, 0) != TCL_OK) {
@@ -704,7 +700,7 @@ NsTclJobObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* obj
 
             jobPtr->req = JOB_WAIT;
 
-            if (timeoutObj != NULL) {
+            if (deltaTimeoutPtr != NULL) {
                 while (jobPtr->state != JOB_DONE) {
                     int timedOut = Ns_CondTimedWait(&queue->cond,
 						    &queue->lock, &timeout);
@@ -839,33 +835,28 @@ NsTclJobObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* obj
              * Wait for any job on the queue complete.
              */
 
-            Ns_Time     timeout = {0,0}, delta_timeout;
-	    Tcl_Obj    *timeoutObj = NULL;
+            Ns_Time     timeout = {0,0}, *deltaTimeoutPtr = NULL;
 	    const char *queueIdString;
 
             Ns_ObjvSpec lopts[] = {
-                {"-timeout",  Ns_ObjvObj,    &timeoutObj, NULL},
+                {"-timeout",  Ns_ObjvTime,   &deltaTimeoutPtr, NULL},                
                 {NULL, NULL, NULL, NULL}
             };
             Ns_ObjvSpec args[] = {
-                {"queueId",  Ns_ObjvString,  &queueIdString,  NULL},
+                {"queueId",  Ns_ObjvString,  &queueIdString,   NULL},
                 {NULL, NULL, NULL, NULL}
             };
             if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
                 return TCL_ERROR;
             }
 
-            if (timeoutObj != NULL) {
-		if (Ns_TclGetTimeFromObj(interp, timeoutObj, &delta_timeout) != TCL_OK) {
-		    return TCL_ERROR;
-		}
-
+            if (deltaTimeoutPtr != NULL) {
 		/*
 		 * Set the timeout time. This is an absolute time.
 		 */
 		
 		Ns_GetTime(&timeout);
-		Ns_IncrTime(&timeout,delta_timeout.sec,delta_timeout.usec);
+		Ns_IncrTime(&timeout, deltaTimeoutPtr->sec, deltaTimeoutPtr->usec);
             }
 
             if (LookupQueue(interp, queueIdString, &queue, 0) != TCL_OK) {
@@ -878,7 +869,7 @@ NsTclJobObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* obj
              * on the queue condition variable.
              */
 
-            if (timeoutObj != NULL) {
+            if (deltaTimeoutPtr != NULL) {
                 while ((Tcl_FirstHashEntry(&queue->jobs, &search) != NULL)
                        && AnyDone(queue) == 0) {
                     int timedOut = Ns_CondTimedWait(&queue->cond,
@@ -1261,7 +1252,7 @@ JobThread(void *UNUSED(arg))
 
         jobPtr->state  = JOB_DONE;
         jobPtr->code   = code;
-        jobPtr->tid    = 0U;
+        jobPtr->tid    = 0u;
         jobPtr->async  = NULL;
 
         Ns_GetTime(&jobPtr->endTime);
@@ -1438,10 +1429,10 @@ NewQueue(const char *queueName, const char *queueDesc, int maxThreads)
 {
     Queue *queue;
 
-    assert(queueName != NULL);
-    assert(queueDesc != NULL);
+    NS_NONNULL_ASSERT(queueName != NULL);
+    NS_NONNULL_ASSERT(queueDesc != NULL);
 
-    queue = ns_calloc(1U, sizeof(Queue));
+    queue = ns_calloc(1u, sizeof(Queue));
     queue->req = QUEUE_REQ_NONE;
 
     queue->name = ns_strdup(queueName);
@@ -1478,7 +1469,7 @@ NewQueue(const char *queueName, const char *queueDesc, int maxThreads)
 static void
 FreeQueue(Queue *queue)
 {
-    assert(queue != NULL);
+    NS_NONNULL_ASSERT(queue != NULL);
 
     Ns_MutexDestroy(&queue->lock);
     Tcl_DeleteHashTable(&queue->jobs);
@@ -1509,10 +1500,10 @@ NewJob(const char* server, const char* queueName, JobTypes type, const char *scr
 {
     Job *jobPtr;
 
-    assert(queueName != NULL);
-    assert(script != NULL);
+    NS_NONNULL_ASSERT(queueName != NULL);
+    NS_NONNULL_ASSERT(script != NULL);
 
-    jobPtr = ns_calloc(1U, sizeof(Job));
+    jobPtr = ns_calloc(1u, sizeof(Job));
 
     jobPtr->server = server;
     jobPtr->type   = type;
@@ -1550,7 +1541,7 @@ NewJob(const char* server, const char* queueName, JobTypes type, const char *scr
 static void
 FreeJob(Job *jobPtr)
 {
-    assert(jobPtr != NULL);
+    NS_NONNULL_ASSERT(jobPtr != NULL);
 
     Tcl_DStringFree(&jobPtr->results);
     Tcl_DStringFree(&jobPtr->script);
@@ -1595,8 +1586,8 @@ LookupQueue(Tcl_Interp *interp, const char *queueName, Queue **queuePtr,
 {
     Tcl_HashEntry *hPtr;
     
-    assert(queuePtr != NULL);
-    assert(queueName != NULL);
+    NS_NONNULL_ASSERT(queuePtr != NULL);
+    NS_NONNULL_ASSERT(queueName != NULL);
 
     if (locked == 0) {
         Ns_MutexLock(&tp.queuelock);
@@ -1651,7 +1642,7 @@ ReleaseQueue(Queue *queue, int locked)
     Tcl_HashSearch  search;
     int             deleted = 0;
 
-    assert(queue != NULL);
+    NS_NONNULL_ASSERT(queue != NULL);
 
     --queue->refCount;
 
@@ -1712,7 +1703,7 @@ AnyDone(Queue *queue)
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
     
-    assert(queue != NULL);
+    NS_NONNULL_ASSERT(queue != NULL);
 
     hPtr = Tcl_FirstHashEntry(&queue->jobs, &search);
 
@@ -1749,7 +1740,7 @@ static const char*
 GetJobCodeStr(int code)
 {
     static const int max_code_index = 5;
-    static const char *codeArr[] = {
+    static const char *const codeArr[] = {
         "TCL_OK",       /* 0 */
         "TCL_ERROR",    /* 1 */
         "TCL_RETURN",   /* 2 */
@@ -1786,7 +1777,7 @@ GetJobCodeStr(int code)
 static const char*
 GetJobStateStr(JobStates state)
 {
-    static const char *stateArr[] = {
+    static const char *const stateArr[] = {
         "scheduled",        /* 0 */
         "running",          /* 1 */
         "done",             /* 2 */
@@ -1818,7 +1809,7 @@ GetJobStateStr(JobStates state)
 static const char*
 GetJobTypeStr(JobTypes type)
 {
-    static const char *typeArr[] = {
+    static const char *const typeArr[] = {
         "nondetached",     /* 0 */
         "detached",        /* 1 */
         "unknown"          /* 2 */
@@ -1849,7 +1840,7 @@ GetJobTypeStr(JobTypes type)
 static const char*
 GetJobReqStr(JobRequests req)
 {
-    static const char *reqArr[] = {
+    static const char *const reqArr[] = {
         "none",     /* 0 */
         "wait",     /* 1 */
         "unknown"   /* 2 */
@@ -1880,7 +1871,7 @@ GetJobReqStr(JobRequests req)
 static const char*
 GetQueueReqStr(QueueRequests req)
 {
-    static const char *reqArr[] = {
+    static const char *const reqArr[] = {
         "none",      /* 0 */
         "delete",    /* 1 */
         "unknown"    /* 2 */
@@ -1911,7 +1902,7 @@ GetQueueReqStr(QueueRequests req)
 static const char*
 GetTpReqStr(ThreadPoolRequests req)
 {
-    static const char *reqArr[] = {
+    static const char *const reqArr[] = {
         "none",      /* 0 */
         "stop",      /* 1 */
         "unknown"    /* 2 */
@@ -1945,9 +1936,9 @@ AppendField(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
 {
     Tcl_Obj *elObj;
 
-    assert(list != NULL);
-    assert(name != NULL);
-    assert(value != NULL);
+    NS_NONNULL_ASSERT(list != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
 
     /*
      * Note: If there is an error occurs within Tcl_ListObjAppendElement
@@ -1986,8 +1977,8 @@ AppendFieldInt(Tcl_Interp *interp, Tcl_Obj *list, const char *name, int value)
 {
     Tcl_Obj *elObj;
 
-    assert(list != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(list != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
 
     /*
      * Note: If there is an error occurs within Tcl_ListObjAppendElement
@@ -2029,8 +2020,8 @@ AppendFieldLong(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
 {
     Tcl_Obj *elObj;
 
-    assert(list != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(list != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
 
     elObj = Tcl_NewStringObj(name, -1);
     if (Tcl_ListObjAppendElement(interp, list, elObj) != TCL_OK) {
@@ -2067,8 +2058,8 @@ AppendFieldDouble(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
 {
     Tcl_Obj *elObj;
 
-    assert(list != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(list != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
 
     elObj = Tcl_NewStringObj(name, -1);
     if (Tcl_ListObjAppendElement(interp, list, elObj) != TCL_OK) {
@@ -2104,8 +2095,8 @@ ComputeDelta(const Ns_Time *start, const Ns_Time *end)
 {
     Ns_Time diff;
 
-    assert(start != NULL);
-    assert(end != NULL);
+    NS_NONNULL_ASSERT(start != NULL);
+    NS_NONNULL_ASSERT(end != NULL);
 
     Ns_DiffTime(end, start, &diff);
 

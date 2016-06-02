@@ -62,7 +62,9 @@ static const char *GetEncodingFormat(const char *encodingString,
  *
  * Ns_ResetRequest --
  *
- *	Free an Ns_Request members.
+ *	Free the Ns_Request members. This function is usually called on
+ *	embedded Ns_Request structures, such as these part of the Request
+ *	structure. 
  *
  * Results:
  *	None. 
@@ -76,15 +78,24 @@ static const char *GetEncodingFormat(const char *encodingString,
 void
 Ns_ResetRequest(Ns_Request *request)
 {
-    if (request != NULL) {
-        ns_free((char *)request->line);
-        ns_free((char *)request->method);
-        ns_free((char *)request->protocol);
-        ns_free((char *)request->host);
-        ns_free(request->query);
-        FreeUrl(request);
-        memset(request, 0, sizeof(Ns_Request));
+    NS_NONNULL_ASSERT(request != NULL);
+    
+    if (request->line != NULL) {
+        Ns_Log(Ns_LogRequestDebug, "end %s", request->line);
     }
+    ns_free((char *)request->line);
+    ns_free((char *)request->method);
+    ns_free((char *)request->protocol);
+    ns_free((char *)request->host);
+    ns_free(request->query);
+    FreeUrl(request);
+        
+    /*
+     * There is no need to clear the full structuce, since
+     * Ns_ParseRequest() clears all fields. However, we have to protect
+     * against multiple invocations.
+     */
+    memset(request, 0, sizeof(Ns_Request));
 }
 
 /*
@@ -107,6 +118,11 @@ void
 Ns_FreeRequest(Ns_Request *request)
 {
     if (request != NULL) {
+        
+        if (request->line != NULL) {
+            Ns_Log(Ns_LogRequestDebug, "end %s", request->line);
+        }
+
         ns_free((char *)request->line);
         ns_free((char *)request->method);
         ns_free((char *)request->protocol);
@@ -121,7 +137,7 @@ Ns_FreeRequest(Ns_Request *request)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ParseRequest --
+ * Ns_ParseRequests --
  *
  *	Parse a request from a browser into an Ns_Request structure. 
  *
@@ -140,12 +156,12 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     char       *url, *l, *p;
     Ns_DString  ds;
 
-    assert(line != NULL);
+    NS_NONNULL_ASSERT(line != NULL);
 
     if (request == NULL) {
         return NS_ERROR;
     }
-
+    
     memset(request, 0, sizeof(Ns_Request));
     Ns_DStringInit(&ds);
 
@@ -164,10 +180,13 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
      */
     
     request->line = ns_strdup(l);
-    /*Ns_Log(Notice, "Ns_ParseRequest %p %s", request, request->line);*/
+    
+    Ns_Log(Ns_LogRequestDebug, "begin %s", request->line);
 
     /*
      * Look for the minimum of method and url.
+     *
+     * Collect non-space characters as first token.
      */
     
     url = l;
@@ -177,42 +196,67 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     if (*url == '\0') {
         goto done;
     }
+
+    /*
+     * Mark the end of the first token and remember it as HTTP-method.
+     */
     *url++ = '\0';
+    request->method = ns_strdup(l);
+    
+    /*
+     * Skip spaces.
+     */
     while (*url != '\0' && CHARTYPE(space, *url) != 0)  {
         ++url;
     }
     if (*url == '\0') {
         goto done;
     }
-    request->method = ns_strdup(l);
+
 
     /*
-     * Look for a valid version.
+     * Look for a valid version. Typically, the HTTP-version number is of the
+     * form "HTTP/1.0". However, in HTTP 0.9, the HTTP-version number was not
+     * specified.
      */
-
     request->version = 0.0;
-    p = url + strlen(url);
-    while (p-- > url) {
-        if (CHARTYPE(digit, *p) == 0 && *p != '.') {
-            break;
-        }
-    }
-    p -= (sizeof(HTTP) - 2u);
-    if (p >= url) {
-        if (strncmp(p, HTTP, sizeof(HTTP) - 1u) == 0) {
 
+    /*
+     * Search from the end for the last space.
+     */
+    p = strrchr(url, ' ');
+    if (likely(p != NULL)) {
+        /*
+         * We have a final token. Let see, if this a HTTP-version string.
+         */
+        if (likely(strncmp(p + 1, HTTP, sizeof(HTTP) - 1u) == 0)) {
             /*
-             * If atof fails, version will be set to 0 and the server
-             * will treat the connection as if it had no HTTP/n.n keyword.
+             * The HTTP-Version string starts really with HTTP/
+             *
+             * If strtod fails, version will be set to 0 and the server will
+             * treat the connection as if it had no HTTP/n.n keyword.
              */
-
             *p = '\0';
-            p += sizeof(HTTP) - 1u;
+            p += sizeof(HTTP);
             request->version = strtod(p, NULL);
+        } else {
+            /*
+             * The last token does not have the form of an HTTP-version
+             * string. Report result as invalid request.
+             */
+            goto done;
+        }
+    } else {
+        /*
+         * Let us assume, the request is HTTP 0.9, when the url starts with a
+         * slash. HTTP 0.9 did not have proxy functionality.
+         */
+        if (*url != '/') {
+            goto done;
         }
     }
 
-    url = Ns_StrTrim(url);
+    url = Ns_StrTrimRight(url);
     if (*url == '\0') {
         goto done;
     }
@@ -220,7 +264,6 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     /*
      * Look for a protocol in the URL.
      */
-
     request->protocol = NULL;
     request->host = NULL;
     request->port = 0u;
@@ -241,17 +284,20 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
             url = p;
             if ((strlen(url) > 3u) && (*p++ == '/')
                 && (*p++ == '/') && (*p != '\0') && (*p != '/')) {
-                char *h;
+                char *h = p;
 
-                h = p;
-                while (*p != '\0' && *p != '/') {
-                    ++p;
+                while ((*p != '\0') && (*p != '/')) {
+                    p++;
                 }
                 if (*p == '/') {
                     *p++ = '\0';
                 }
                 url = p;
-                p = strchr(h, ':');
+                
+                /*
+                 * Check for port
+                 */
+                Ns_HttpParseHost(h, NULL, &p);
                 if (p != NULL) {
                     *p++ = '\0';
                     request->port = (unsigned short)strtol(p, NULL, 10);
@@ -260,12 +306,14 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
             }
         }
     }
+
     SetUrl(request, url);
+
     Ns_DStringFree(&ds);
     return NS_OK;
 
 done:
-    Ns_ResetRequest(request);
+    Ns_Log(Warning, "Ns_ParseRequest <%s> -> ERROR", line);
     Ns_DStringFree(&ds);
     return NS_ERROR;
 }
@@ -292,7 +340,7 @@ Ns_SkipUrl(const Ns_Request *request, int n)
 {
     size_t skip;
 
-    assert(request != NULL);
+    NS_NONNULL_ASSERT(request != NULL);
 
     if (n > request->urlc) {
         return NULL;
@@ -326,8 +374,8 @@ Ns_SetRequestUrl(Ns_Request *request, const char *url)
 {
     Ns_DString      ds;
 
-    assert(request != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(request != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
 
     FreeUrl(request);
     Ns_DStringInit(&ds);
@@ -356,7 +404,7 @@ Ns_SetRequestUrl(Ns_Request *request, const char *url)
 static void
 FreeUrl(Ns_Request *request)
 {
-    assert(request != NULL);
+    NS_NONNULL_ASSERT(request != NULL);
 
     if (request->url != NULL) {
 	ns_free((char *)request->url);
@@ -392,8 +440,8 @@ SetUrl(Ns_Request *request, char *url)
     Tcl_DString  ds1, ds2;
     char       *p;
 
-    assert(request != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(request != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
 
     Tcl_DStringInit(&ds1);
     Tcl_DStringInit(&ds2);
@@ -408,7 +456,9 @@ SetUrl(Ns_Request *request, char *url)
         if (request->query != NULL) {
             ns_free(request->query);
         }
-        request->query = ns_strdup(p);
+        if (*p != '\0') {
+            request->query = ns_strdup(p);
+        }
     }
 
     /*
@@ -499,8 +549,8 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
      * they must be in well form key: value form.
      */
 
-    assert(set != NULL);
-    assert(line != NULL);
+    NS_NONNULL_ASSERT(set != NULL);
+    NS_NONNULL_ASSERT(line != NULL);
 
     if (CHARTYPE(space, *line) != 0) {
         if (Ns_SetSize(set) == 0u) {
@@ -572,8 +622,8 @@ static const char *
 GetQvalue(const char *str, int *lenPtr) {
     const char *resultString;
 
-    assert(str != NULL);
-    assert(lenPtr != NULL);
+    NS_NONNULL_ASSERT(str != NULL);
+    NS_NONNULL_ASSERT(lenPtr != NULL);
 
     for (; *str == ' '; str++) {
         ;
@@ -649,9 +699,9 @@ static const char *
 GetEncodingFormat(const char *encodingString, const char *encodingFormat, double *qValue) {
     const char *encodingStr;
 
-    assert(encodingString != NULL);
-    assert(encodingFormat != NULL);
-    assert(qValue != NULL);
+    NS_NONNULL_ASSERT(encodingString != NULL);
+    NS_NONNULL_ASSERT(encodingFormat != NULL);
+    NS_NONNULL_ASSERT(qValue != NULL);
 
     encodingStr = strstr(encodingString, encodingFormat);
 
@@ -695,7 +745,7 @@ NsParseAcceptEncoding(double version, const char *hdr)
     double gzipQvalue = -1.0, starQvalue = -1.0, identityQvalue = -1.0;
     int gzip = 0;
 
-    assert(hdr != NULL);
+    NS_NONNULL_ASSERT(hdr != NULL);
 
     if (GetEncodingFormat(hdr, "gzip", &gzipQvalue) != NULL) {
 	/* we have gzip specified in accept-encoding */

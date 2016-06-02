@@ -70,8 +70,8 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
     va_list     ap;
     Tcl_DString ds;
 
-    assert(interp != NULL);
-    assert(fmt != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(fmt != NULL);
 
     Tcl_DStringInit(&ds);
     va_start(ap, fmt);
@@ -170,11 +170,11 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
     if (itPtr != NULL && itPtr->conn != NULL) {
         Ns_Conn *conn = itPtr->conn;
         Ns_DStringInit(&ds);
-        if (conn->request->method != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request->method, " ", NULL);
+        if (conn->request.method != NULL) {
+            Ns_DStringVarAppend(&ds, conn->request.method, " ", NULL);
         }
-        if (conn->request->url != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request->url, ", ", NULL);
+        if (conn->request.url != NULL) {
+            Ns_DStringVarAppend(&ds, conn->request.url, ", ", NULL);
         }
         Ns_DStringVarAppend(&ds, "PeerAddress: ", Ns_ConnPeer(conn), NULL);
 
@@ -649,7 +649,7 @@ NsTclCrashCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
 static int
 WordEndsInSemi(const char *ip)
 {
-    assert(ip != NULL);
+    NS_NONNULL_ASSERT(ip != NULL);
     
     /* advance past the first '&' so we can check for a second
        (i.e. to handle "ben&jerry&nbsp;")
@@ -690,8 +690,6 @@ WordEndsInSemi(const char *ip)
  *  This Tcl library was hacked by Jon Salz <jsalz@mit.edu>.
  *
  */
-
-static const char hexChars[] = "0123456789ABCDEF";
 
 /*
  * Define to 1 for FIPS 180.1 version (with extra rotate in prescheduling),
@@ -824,7 +822,7 @@ SHATransform(Ns_CtxSHA1 *sha)
     register uint32_t t;
 #endif
 
-    assert(sha != NULL);
+    NS_NONNULL_ASSERT(sha != NULL);
 
     /* Set up first buffer */
     A = sha->iv[0];
@@ -931,8 +929,8 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
 {
     unsigned i;
 
-    assert(ctx != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(ctx != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     /* Update bitcount */
 
@@ -1036,13 +1034,38 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
     memset(ctx, 0, sizeof(Ns_CtxSHA1)); 			/* In case it's sensitive */
 }
 
-void Ns_CtxString(const unsigned char *digest, char *buf, int size)
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_HexString --
+ *
+ *      Transform binary data to hex. The provided buffer must be
+ *      at least size*2 + 1 bytes long.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updates passed-in buffer (2nd argument).
+ *
+ *----------------------------------------------------------------------
+ */
+void Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUpper)
 {
     int i;
-
-    for (i = 0; i < size; ++i) {
-        buf[i * 2] = hexChars[digest[i] >> 4];
-        buf[i * 2 + 1] = hexChars[digest[i] & 0xFu];
+    static const char hexCharsUpper[] = "0123456789ABCDEF";
+    static const char hexCharsLower[] = "0123456789abcdef";
+    
+    if (isUpper == NS_TRUE) {
+        for (i = 0; i < size; ++i) {
+            buf[i * 2] = hexCharsUpper[digest[i] >> 4];
+            buf[i * 2 + 1] = hexCharsUpper[digest[i] & 0xFu];
+        }
+    } else {
+        for (i = 0; i < size; ++i) {
+            buf[i * 2] = hexCharsLower[digest[i] >> 4];
+            buf[i * 2 + 1] = hexCharsLower[digest[i] & 0xFu];
+        }
     }
     buf[size * 2] = '\0';
 }
@@ -1082,7 +1105,7 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 
     binary = NsTclObjIsByteArray(objv[1]);
     if (binary == NS_TRUE) {
-        str = (char*)Tcl_GetByteArrayFromObj(objv[1], &length);
+        str = (char *)Tcl_GetByteArrayFromObj(objv[1], &length);
     } else {
         str = Tcl_GetStringFromObj(objv[1], &length);
     }    
@@ -1091,11 +1114,193 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     Ns_CtxSHAUpdate(&ctx, (const unsigned char *) str, (size_t) length);
     Ns_CtxSHAFinal(&ctx, digest);
 
-    Ns_CtxString(digest, digestChars, 20);
+    Ns_HexString(digest, digestChars, 20, NS_TRUE);
     Tcl_AppendResult(interp, digestChars, NULL);
 
     return NS_OK;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclSHA2ObjCmd --
+ *
+ *      Returns a hex-encoded string containing the SHA2
+ *      hash of the first argument.
+ *
+ * Results:
+ *	NS_OK
+ *
+ * Side effects:
+ *	Tcl result is set to a string value.
+ *
+ *----------------------------------------------------------------------
+ */
+#include "sha2.h"
+int
+NsTclSHA2ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    unsigned char  digest[SHA512_DIGEST_SIZE];
+    char           digestChars[SHA512_DIGEST_SIZE * 2 + 1];
+    Tcl_Obj       *data;
+    const char    *str;
+    int            length;
+    bool           binary;
+    char           digestSpec = '2';
+    Ns_ObjvTable   digestSpecs[] = {
+        {"224",    UCHAR('1')},
+        {"256",    UCHAR('2')},
+        {"384",    UCHAR('3')},
+        {"512",    UCHAR('5')},
+        {NULL,     0u}
+    };
+    Ns_ObjvSpec lopts[] = {
+        {"-length",  Ns_ObjvIndex, &digestSpec, digestSpecs},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"data", Ns_ObjvObj, &data, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(lopts, args, interp, 1, objc, objv) != NS_OK) {
+        return TCL_ERROR;
+    }
+
+    binary = NsTclObjIsByteArray(data);
+    if (binary == NS_TRUE) {
+        str = (char *)Tcl_GetByteArrayFromObj(data, &length);
+    } else {
+        str = Tcl_GetStringFromObj(data, &length);
+    }
+
+    switch (digestSpec) {
+    case '1': {
+        sha224( (const unsigned char *)str, (unsigned int)length, digest);
+        Ns_HexString( digest, digestChars, SHA224_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    case '2': {
+        sha256( (const unsigned char *)str, (unsigned int)length, digest);
+        Ns_HexString( digest, digestChars, SHA256_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    case '3': {
+        sha384( (const unsigned char *)str, (unsigned int)length, digest);
+        Ns_HexString( digest, digestChars, SHA384_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    case '5': {
+       sha512( (const unsigned char *)str, (unsigned int)length, digest);
+       Ns_HexString( digest, digestChars, SHA512_DIGEST_SIZE, NS_FALSE);
+       break;
+    }
+    }
+
+    Tcl_AppendResult(interp, digestChars, NULL);
+    
+    return NS_OK;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclHMACSHA2ObjCmd --
+ *
+ *      Returns a Hash-based message authentication code of the provided message
+ *
+ * Results:
+ *	NS_OK
+ *
+ * Side effects:
+ *	Tcl result is set to a string value.
+ *
+ *----------------------------------------------------------------------
+ */
+#include "hmac_sha2.h"
+int
+NsTclHMACSHA2ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    unsigned char  digest[64];
+    char           digestChars[64*2+1];
+    Tcl_Obj       *keyObj, *messageObj;
+    const char    *key, *message;
+    int            keyLength, messageLength;
+    bool           binary;
+    char           digestSpec = '2';
+    Ns_ObjvTable   digestSpecs[] = {
+        {"224",    UCHAR('1')},
+        {"256",    UCHAR('2')},
+        {"384",    UCHAR('3')},
+        {"512",    UCHAR('5')},
+        {NULL,     0u}
+    };
+    Ns_ObjvSpec lopts[] = {
+        {"-length",  Ns_ObjvIndex, &digestSpec, digestSpecs},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"key", Ns_ObjvObj, &keyObj, NULL},
+        {"message", Ns_ObjvObj, &messageObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(lopts, args, interp, 1, objc, objv) != NS_OK) {
+        return TCL_ERROR;
+    }
+
+    binary = NsTclObjIsByteArray(keyObj);
+    if (binary == NS_TRUE) {
+        key = (char *)Tcl_GetByteArrayFromObj(keyObj, &keyLength);
+    } else {
+        key = Tcl_GetStringFromObj(keyObj, &keyLength);
+    }
+
+    binary = NsTclObjIsByteArray(messageObj);
+    if (binary == NS_TRUE) {
+        message = (char *)Tcl_GetByteArrayFromObj(messageObj, &messageLength);
+    } else {
+        message = Tcl_GetStringFromObj(messageObj, &messageLength);
+    }
+
+    switch (digestSpec) {
+    case '1': {
+        hmac_sha224( (const unsigned char *)key, (unsigned int)keyLength,
+                     (const unsigned char *)message, (unsigned int)messageLength,
+                     digest, SHA224_DIGEST_SIZE);
+        Ns_HexString( digest, digestChars, SHA224_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    case '2': {
+        hmac_sha256( (const unsigned char *)key, (unsigned int)keyLength,
+                     (const unsigned char *)message, (unsigned int)messageLength,
+                     digest, SHA256_DIGEST_SIZE);
+        Ns_HexString( digest, digestChars, SHA256_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    case '3': {
+        hmac_sha384( (const unsigned char *)key, (unsigned int)keyLength,
+                     (const unsigned char *)message, (unsigned int)messageLength,
+                     digest, SHA384_DIGEST_SIZE);
+        Ns_HexString( digest, digestChars, SHA384_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    case '5': {
+        hmac_sha512( (const unsigned char *)key, (unsigned int)keyLength,
+                     (const unsigned char *)message, (unsigned int)messageLength,
+                     digest, SHA512_DIGEST_SIZE);
+        Ns_HexString( digest, digestChars, SHA512_DIGEST_SIZE, NS_FALSE);
+        break;
+    }
+    }
+
+    Tcl_AppendResult(interp, digestChars, NULL);
+    
+    return NS_OK;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -1178,7 +1383,7 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  * with every copy.
  *
  * To compute the message digest of a chunk of bytes, declare an
- * MD5Context structure, pass it to MD5Init, call MD5update as
+ * MD5Context structure, pass it to MD5Init, call MD5Update as
  * needed on buffers full of bytes, and then call MD5Final, which
  * will fill a supplied 16-byte array with the digest.
  */
@@ -1230,8 +1435,8 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, unsigned const char *buf, size_t len)
 {
     uint32_t t;
 
-    assert(ctx != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(ctx != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     /* Update bitcount */
 
@@ -1283,11 +1488,13 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
 {
     unsigned count;
     uint8_t  *p;
-    uint32_t *words = (uint32_t *)ctx->in;
+    uint32_t *words;
 
-    assert(ctx != NULL);
-    assert(digest != NULL);
+    NS_NONNULL_ASSERT(ctx != NULL);
+    NS_NONNULL_ASSERT(digest != NULL);
 
+    words = (uint32_t *)ctx->in;
+    
     /* Compute number of bytes mod 64 */
     count = (ctx->bits[0] >> 3) & 0x3Fu;
 
@@ -1369,8 +1576,8 @@ static void MD5Transform(uint32_t buf[4], uint8_t const block[64])
     }
 #endif
 
-    assert(buf != NULL);
-    assert(block != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
+    NS_NONNULL_ASSERT(block != NULL);
     
     a = buf[0];
     b = buf[1];
@@ -1485,7 +1692,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
     
     binary = NsTclObjIsByteArray(objv[1]);
     if (binary == NS_TRUE) {
-        str = (char*)Tcl_GetByteArrayFromObj(objv[1], &length);
+        str = (char *)Tcl_GetByteArrayFromObj(objv[1], &length);
     } else {
         str = Tcl_GetStringFromObj(objv[1], &length);
     }
@@ -1494,7 +1701,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
     Ns_CtxMD5Update(&ctx, (const unsigned char *) str, (size_t)length);
     Ns_CtxMD5Final(&ctx, digest);
 
-    Ns_CtxString(digest, digestChars, 16);
+    Ns_HexString(digest, digestChars, 16, NS_TRUE);
     Tcl_AppendResult(interp, digestChars, NULL);
 
     return NS_OK;

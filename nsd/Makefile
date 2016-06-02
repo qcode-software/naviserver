@@ -41,16 +41,17 @@ PGMOBJS	= main.o
 HDRS	= nsd.h
 
 LIBOBJS = adpcmds.o adpeval.o adpparse.o adprequest.o auth.o binder.o \
-	  cache.o callbacks.o cls.o compress.o config.o conn.o connio.o cookies.o \
+	  cache.o callbacks.o cls.o compress.o config.o conn.o connio.o \
+	  cookies.o connchan.o \
 	  crypt.o dns.o driver.o dstring.o encoding.o event.o exec.o \
-	  fastpath.o fd.o filter.o form.o httptime.o index.o info.o \
+	  fastpath.o fd.o filter.o form.o hmac_sha2.o httptime.o index.o info.o \
 	  init.o limits.o lisp.o listen.o log.o mimetypes.o modload.o nsconf.o \
 	  nsmain.o nsthread.o op.o pathname.o pidfile.o proc.o progress.o queue.o \
 	  quotehtml.o random.o range.o request.o return.o returnresp.o rollfile.o \
-	  sched.o server.o set.o sls.o sock.o sockcallback.o sockfile.o str.o \
+	  sha2.o sched.o server.o set.o sls.o sock.o sockcallback.o sockfile.o str.o \
 	  task.o tclcache.o tclcallbacks.o tclcmds.o tclconf.o tclenv.o tclfile.o \
 	  tclhttp.o tclimg.o tclinit.o tcljob.o tclmisc.o tclobj.o tclobjv.o \
-	  connchan.o tclrequest.o tclresp.o tclsched.o tclset.o tclsock.o \
+	  tclrequest.o tclresp.o tclsched.o tclset.o tclsock.o sockaddr.o \
 	  tclthread.o tcltime.o tclvar.o tclxkeylist.o stamp.o \
 	  url.o url2file.o urlencode.o urlopen.o urlspace.o uuencode.o \
 	  unix.o watchdog.o nswin32.o

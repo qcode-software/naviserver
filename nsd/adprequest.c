@@ -102,19 +102,19 @@ static Ns_ObjvTable adpOpts[] = {
 int
 Ns_AdpRequest(Ns_Conn *conn, const char *file)
 {
-    assert(conn != NULL);
-    assert(file != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(file != NULL);
 
-    return PageRequest(conn, file, NULL, 0U);
+    return PageRequest(conn, file, NULL, 0u);
 }
 
 int
 Ns_AdpRequestEx(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr)
 {
-    assert(conn != NULL);
-    assert(file != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(file != NULL);
 
-    return PageRequest(conn, file, expiresPtr, 0U);
+    return PageRequest(conn, file, expiresPtr, 0u);
 }
 
 static int
@@ -129,7 +129,7 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
     Tcl_Obj      *objv[2];
     int           result;
 
-    assert(connPtr != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
 
     /*
      * Verify the file exists.
@@ -159,8 +159,8 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
 
     servPtr = connPtr->poolPtr->servPtr;
     if ((servPtr->adp.flags & ADP_DEBUG) != 0u &&
-        conn->request->method != NULL &&
-        STREQ(conn->request->method, "GET")) {
+        conn->request.method != NULL &&
+        STREQ(conn->request.method, "GET")) {
         Ns_Set *query = Ns_ConnGetQuery(conn);
         
         if (query != NULL) {
@@ -216,7 +216,7 @@ NsTclRegisterAdpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CO
 {
     char         *method, *url, *file = NULL;
     int           noinherit = 0;
-    unsigned int  rflags = 0U, aflags = 0U;
+    unsigned int  rflags = 0u, aflags = 0u;
     Ns_Time      *expiresPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
@@ -243,7 +243,7 @@ int
 NsTclRegisterTclObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     int          noinherit = 0;
-    unsigned int rflags = 0U;
+    unsigned int rflags = 0u;
     char        *method, *url, *file = NULL;
 
     Ns_ObjvSpec opts[] = {
@@ -273,9 +273,9 @@ RegisterPage(ClientData arg,
     AdpRequest *adp;
     size_t fileLength;
 
-    assert(itPtr != NULL);
-    assert(method != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
 
     fileLength = (file == NULL) ? 0u : strlen(file);
     adp = ns_calloc(1u, sizeof(AdpRequest) + fileLength + 1u);
@@ -317,13 +317,16 @@ NsAdpPageProc(void *arg, Ns_Conn *conn)
     AdpRequest *adp = arg;
     Ns_Time    *expiresPtr;
     Ns_DString  ds;
-    const char *file = NULL, *server = Ns_ConnServer(conn);
+    const char *file = NULL, *server;
     int         status;
 
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    server = Ns_ConnServer(conn);
     Ns_DStringInit(&ds);
 
     if (adp->file[0] == '\0') {
-        if (Ns_UrlToFile(&ds, server, conn->request->url) != NS_OK) {
+        if (Ns_UrlToFile(&ds, server, conn->request.url) != NS_OK) {
             file = NULL;
         } else {
             file = ds.string;
@@ -377,7 +380,7 @@ NsAdpPageArgProc(Tcl_DString *dsPtr, const void *arg)
     Tcl_DStringAppendElement(dsPtr, adp->file);
 
     Tcl_DStringStartSublist(dsPtr);
-    if ((adp->flags & ADP_TCLFILE) != 0U) {
+    if ((adp->flags & ADP_TCLFILE) != 0u) {
         Tcl_DStringAppendElement(dsPtr, "tcl");
     }
     for (i = 0u; i < (sizeof(adpOpts) / sizeof(adpOpts[0])); i++) {
@@ -428,7 +431,7 @@ NsAdpFlush(NsInterp *itPtr, int doStream)
     unsigned int flags;
     char        *buf;
 
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
 
     interp = itPtr->interp;
     flags = itPtr->adp.flags;
@@ -454,7 +457,7 @@ NsAdpFlush(NsInterp *itPtr, int doStream)
      * if this is the last flush.
      */
 
-    if (len < 1 && (flags & ADP_FLUSHED) != 0U) {
+    if (len < 1 && (flags & ADP_FLUSHED) != 0u) {
         if (doStream == 0) {
             NsAdpReset(itPtr);
         }
@@ -465,7 +468,7 @@ NsAdpFlush(NsInterp *itPtr, int doStream)
      * If enabled, trim leading whitespace if no content has been sent yet.
      */
 
-    if ((flags & ADP_TRIM) != 0U && (flags & ADP_FLUSHED) == 0U) {
+    if ((flags & ADP_TRIM) != 0u && (flags & ADP_FLUSHED) == 0u) {
         while (len > 0 && CHARTYPE(space, *buf) != 0) {
             ++buf;
             --len;
@@ -486,7 +489,7 @@ NsAdpFlush(NsInterp *itPtr, int doStream)
     if (itPtr->adp.exception == ADP_ABORT) {
         Tcl_SetResult(interp, "adp flush disabled: adp aborted", TCL_STATIC);
     } else
-    if ((conn->flags & NS_CONN_SENT_VIA_WRITER) != 0U || (len == 0 && doStream != 0)) {
+    if ((conn->flags & NS_CONN_SENT_VIA_WRITER) != 0u || (len == 0 && doStream != 0)) {
         result = TCL_OK;
     } else {
         if (itPtr->adp.chan != NULL) {

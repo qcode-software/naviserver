@@ -341,7 +341,7 @@ Ns_DbDML(Ns_DbHandle *handle, const char *sql)
     if (driverPtr != NULL && handle->connected == NS_TRUE) {
 
 	if (driverPtr->execProc != NULL) {
-    	    status = Ns_DbExec(handle, sql);
+	  status = Ns_DbExec(handle, sql);
 	    if (status == NS_DML) {
 		status = NS_OK;
 	    } else {
@@ -353,8 +353,11 @@ Ns_DbDML(Ns_DbHandle *handle, const char *sql)
 		status = NS_ERROR;
 	    }
 	} else if (driverPtr->dmlProc != NULL) {
+	    Ns_Time startTime;
+	    
+	    Ns_GetTime(&startTime);
     	    status = (*driverPtr->dmlProc)(handle, sql);
-	    NsDbLogSql(handle, sql);
+	    NsDbLogSql(&startTime, handle, sql);
 	}
     }
     
@@ -396,9 +399,12 @@ Ns_DbSelect(Ns_DbHandle *handle, const char *sql)
 		}
 	    }
 	} else if (driverPtr->selectProc != NULL) {
-    	    Ns_SetTrunc(handle->row, 0U);
+	    Ns_Time startTime;
+	    
+	    Ns_GetTime(&startTime);
+    	    Ns_SetTrunc(handle->row, 0u);
     	    setPtr = (*driverPtr->selectProc)(handle, sql);	
-	    NsDbLogSql(handle, sql);
+	    NsDbLogSql(&startTime, handle, sql);
 	}
     }
     
@@ -431,9 +437,11 @@ Ns_DbExec(Ns_DbHandle *handle, const char *sql)
     if (handle->connected != NS_FALSE &&
 	driverPtr != NULL &&
 	driverPtr->execProc != NULL) {
-
+        Ns_Time startTime;
+	    
+	Ns_GetTime(&startTime);
     	status = (*driverPtr->execProc)(handle, sql);
-	NsDbLogSql(handle, sql);
+	NsDbLogSql(&startTime, handle, sql);
     }
 
     return status;
@@ -468,7 +476,7 @@ Ns_DbBindRow(Ns_DbHandle *handle)
 	driverPtr != NULL &&
 	driverPtr->bindProc != NULL) {
 
-    	Ns_SetTrunc(handle->row, 0U);
+    	Ns_SetTrunc(handle->row, 0u);
     	setPtr = (*driverPtr->bindProc)(handle);
     }
     
@@ -669,6 +677,8 @@ NsDbLoadDriver(const char *driver)
     DbDriver	   *driverPtr;
     static int 	    initialized = NS_FALSE;
 
+    NS_NONNULL_ASSERT(driver != NULL);
+    
     if (initialized == NS_FALSE) {
 	Tcl_InitHashTable(&driversTable, TCL_STRING_KEYS);
 	initialized = NS_TRUE;
@@ -690,6 +700,15 @@ NsDbLoadDriver(const char *driver)
 	} else {
 	    const char *path = Ns_ConfigGetPath(NULL, NULL, "db", "driver", driver, NULL);
 
+	    /*
+	     * For unknown reasons, Ns_ModuleLoad is called with a
+	     * argument meanings. Typically, the argument list is
+	     *
+	     *    interp,server,module,file,init
+	     *
+	     * here it the 2nd arg is "driver" (like e.g. "postgres")
+	     * and the 3rd argument is "path" (like e.g. "ns/db/driver/postgres")
+	     */
             if (Ns_ModuleLoad(NULL, driver, path, module, "Ns_DbDriverInit")
 		    != NS_OK) {
 		Ns_Log(Error, "dbdrv: failed to load driver '%s'",
@@ -967,7 +986,7 @@ Ns_DbSpGetParams(Ns_DbHandle *handle)
     DbDriver *driverPtr = NsDbGetDriver(handle);
     Ns_Set   *aset = NULL;
 
-    Ns_SetTrunc(handle->row, 0U);
+    Ns_SetTrunc(handle->row, 0u);
     if (handle->connected == NS_TRUE &&
 	driverPtr != NULL &&
 	driverPtr->spgetparamsProc != NULL) {

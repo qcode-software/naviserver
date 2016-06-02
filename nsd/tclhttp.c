@@ -44,9 +44,9 @@ static int HttpWaitCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv)
 static int HttpQueueCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, int run)
     NS_GNUC_NONNULL(1);
 static int HttpConnect(Tcl_Interp *interp, const char *method, const char *url,
-                       Ns_Set *hdrPtr, Tcl_Obj *bodyPtr, bool keep_host_header,
-                       Ns_HttpTask **httpPtrPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(7);
+                       Ns_Set *hdrPtr, Tcl_Obj *bodyPtr, const char *bodyFileName,
+                       bool keep_host_header, Ns_HttpTask **httpPtrPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(8);
 
 static bool HttpGet(NsInterp *itPtr, const char *id, Ns_HttpTask **httpPtrPtr, bool removeRequest)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
@@ -95,7 +95,7 @@ NsTclHttpObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
     Tcl_HashSearch search;
     int result, opt, run = 0;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
        "cancel", "cleanup", "run", "queue", "wait", "list",
        NULL
     };
@@ -199,7 +199,7 @@ HttpQueueCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, int run)
     Tcl_HashEntry *hPtr;
     Ns_HttpTask *httpPtr;
     char buf[TCL_INTEGER_SPACE + 4];
-    const char *method = "GET", *url = NULL;
+    const char *method = "GET", *url = NULL, *bodyFileName = NULL;
     Ns_Set *hdrPtr = NULL;
     Tcl_Obj *bodyPtr = NULL;
     Ns_Time *incrPtr = NULL;
@@ -210,6 +210,7 @@ HttpQueueCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, int run)
         {"-headers",  Ns_ObjvSet,    &hdrPtr,   NULL},
         {"-method",   Ns_ObjvString, &method,   NULL},
         {"-body",     Ns_ObjvObj,    &bodyPtr,  NULL},
+        {"-body_file",Ns_ObjvString, &bodyFileName, NULL},
         {"-keep_host_header", Ns_ObjvBool, &keep_host_header,  INT2PTR(NS_TRUE)},
         {NULL, NULL,  NULL, NULL}
     };
@@ -218,13 +219,13 @@ HttpQueueCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, int run)
         {NULL, NULL, NULL, NULL}
     };
 
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
     interp = itPtr->interp;
 
     if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
-    if (HttpConnect(interp, method, url, hdrPtr, bodyPtr, keep_host_header, &httpPtr) != TCL_OK) {
+    if (HttpConnect(interp, method, url, hdrPtr, bodyPtr, bodyFileName, keep_host_header, &httpPtr) != TCL_OK) {
 	return TCL_ERROR;
     }
     Ns_GetTime(&httpPtr->stime);
@@ -289,9 +290,9 @@ HttpParseHeaders(char *response, Ns_Set *hdrPtr, int *statusPtr)
     char *p, *eol;
     int firsthdr = 1, major, minor;
 
-    assert(hdrPtr != NULL);
-    assert(response != NULL);
-    assert(statusPtr != NULL);
+    NS_NONNULL_ASSERT(hdrPtr != NULL);
+    NS_NONNULL_ASSERT(response != NULL);
+    NS_NONNULL_ASSERT(statusPtr != NULL);
 
     sscanf(response, "HTTP/%2d.%2d %3d", &major, &minor, statusPtr);
     p = response;
@@ -338,7 +339,7 @@ ProcessReplyHeaderFields(Ns_HttpTask *httpPtr)
 {
     const char *encString;
 
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
 
     Ns_Log(Ns_LogTaskDebug, "ProcessReplyHeaderFields %p", (void *)httpPtr->replyHeaders);
 
@@ -348,7 +349,7 @@ ProcessReplyHeaderFields(Ns_HttpTask *httpPtr)
       httpPtr->flags |= NS_HTTP_FLAG_GZIP_ENCODING;
 
       if ((httpPtr->flags & NS_HTTP_FLAG_GUNZIP) == NS_HTTP_FLAG_GUNZIP) {
-	  httpPtr->compress = ns_calloc(1U, sizeof(Ns_CompressStream));
+	  httpPtr->compress = ns_calloc(1u, sizeof(Ns_CompressStream));
 	  (void) Ns_InflateInit(httpPtr->compress);
       }
     }
@@ -379,13 +380,13 @@ ProcessReplyHeaderFields(Ns_HttpTask *httpPtr)
 void
 Ns_HttpCheckHeader(Ns_HttpTask *httpPtr)
 {
-    char *eoh;
-    
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
 
     if (httpPtr->replyHeaderSize == 0) {
 	Ns_MutexLock(&httpPtr->lock);
 	if (httpPtr->replyHeaderSize == 0) {
+            char *eoh;
+
 	    eoh = strstr(httpPtr->ds.string, "\r\n\r\n");
 	    if (eoh != NULL) {
 		httpPtr->replyHeaderSize = (int)(eoh - httpPtr->ds.string) + 4;
@@ -429,7 +430,7 @@ Ns_HttpCheckHeader(Ns_HttpTask *httpPtr)
 void
 Ns_HttpCheckSpool(Ns_HttpTask *httpPtr)
 {
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
 
     /*
      * There is a header, but it is not parsed yet. We are already waiting for
@@ -467,7 +468,7 @@ Ns_HttpCheckSpool(Ns_HttpTask *httpPtr)
 		     * in httpPtr->spoolFd to flag that later receives
 		     * will write there.
 		     */
-		    httpPtr->spoolFileName = ns_malloc(strlen(nsconf.tmpDir) + 13U);
+		    httpPtr->spoolFileName = ns_malloc(strlen(nsconf.tmpDir) + 13u);
 		    sprintf(httpPtr->spoolFileName, "%s/http.XXXXXX", nsconf.tmpDir);
 		    fd = ns_mkstemp(httpPtr->spoolFileName);
 		    
@@ -531,8 +532,8 @@ HttpWaitCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv)
 {
     Tcl_Interp  *interp;
     Tcl_Obj     *valPtr, 
-	*elapsedVarPtr = NULL, *resultVarPtr = NULL, 
-	*statusVarPtr = NULL, *fileVarPtr = NULL;
+	        *elapsedVarPtr = NULL, *resultVarPtr = NULL, 
+	        *statusVarPtr = NULL, *fileVarPtr = NULL;
     Ns_Time     *timeoutPtr = NULL;
     const char  *id = NULL;
     Ns_Set      *hdrPtr = NULL;
@@ -556,7 +557,7 @@ HttpWaitCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv)
         {NULL, NULL, NULL, NULL}
     };
 
-    assert(itPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
     interp = itPtr->interp;
 
     if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
@@ -577,6 +578,7 @@ HttpWaitCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv)
        * length of the reply.
        */
       hdrPtr = Ns_SetCreate("outputHeaders");
+      Ns_TclEnterSet(interp, hdrPtr, NS_TCL_SET_DYNAMIC);
     }
     httpPtr->spoolLimit = spoolLimit;
     httpPtr->replyHeaders = hdrPtr;
@@ -617,8 +619,27 @@ HttpWaitCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv)
 	(void) ns_close(httpPtr->spoolFd);
 	valPtr = Tcl_NewObj();
     } else {
-        const char *contentType = hdrPtr != NULL ? Ns_SetIGet(hdrPtr, "Content-Type") : NULL;
-        bool binary = (contentType == NULL ? NS_TRUE : Ns_IsBinaryMimeType(contentType));
+        bool binary = NS_TRUE;
+
+        if (hdrPtr != NULL) {
+            const char *contentEncoding = Ns_SetIGet(hdrPtr, "Content-Encoding");
+            
+            /*
+             * Does the contentEncoding allow text transfers? Not, if the
+             * content is compressed.
+             */
+
+            if (contentEncoding == NULL || strncmp(contentEncoding, "gzip", 4u) != 0) {
+                const char *contentType = Ns_SetIGet(hdrPtr, "Content-Type");
+                
+                if (contentType != NULL) {
+                    /*
+                     * Determine binary via contentType
+                     */
+                    binary = Ns_IsBinaryMimeType(contentType);
+                }
+            }
+        }
 
         if (binary == NS_TRUE)  {
             valPtr = Tcl_NewByteArrayObj((unsigned char*)httpPtr->ds.string + httpPtr->replyHeaderSize, 
@@ -673,9 +694,9 @@ HttpGet(NsInterp *itPtr, const char *id, Ns_HttpTask **httpPtrPtr, bool removeRe
 {
     Tcl_HashEntry *hPtr;
 
-    assert(itPtr != NULL);
-    assert(id != NULL);
-    assert(httpPtrPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(id != NULL);
+    NS_NONNULL_ASSERT(httpPtrPtr != NULL);
 
     hPtr = Tcl_FindHashEntry(&itPtr->httpRequests, id);
     if (hPtr == NULL) {
@@ -689,6 +710,115 @@ HttpGet(NsInterp *itPtr, const char *id, Ns_HttpTask **httpPtrPtr, bool removeRe
     return NS_TRUE;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_HttpLocationString --
+ *
+ *	Build a http location string following the IP literation notation in
+ *	RFC 3986 section 3.2.2 if needed. In case protoString is non-null,
+ *	perpend the protocol. In case port != defPort, append the the port.
+ *
+ * Results:
+ *
+ *	location strings such as e.g.
+ *          [2001:db8:1f70::999:de8:7648:6e8]:8000    (IP-literal notation)
+ *          https://openacs.org                       (reg-name notation)
+ *
+ * Side effects:
+ *
+ *	Updating DString
+ *
+ *----------------------------------------------------------------------
+ */
+char *
+Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *hostString, int port, int defPort)
+{
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(hostString != NULL);
+
+    if (protoString != NULL) {
+        Ns_DStringVarAppend(dsPtr, protoString, "://", NULL);
+    }
+    if (strchr(hostString, ':') != NULL) {
+        Ns_DStringVarAppend(dsPtr, "[", hostString, "]", NULL);
+    } else {
+        Ns_DStringVarAppend(dsPtr, hostString, NULL);
+    }
+    if (port != defPort) {
+        (void) Ns_DStringPrintf(dsPtr, ":%d", port);
+    }
+    return dsPtr->string;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_HttpParseHost --
+ *
+ *	Obtain the host name from a writable string from a syntax as specified
+ *	in RFC 3986 section 3.2.2. 
+ *      Examples: 
+ *          [2001:db8:1f70::999:de8:7648:6e8]:8000    (IP-literal notation)
+ *          openacs.org:80                            (reg-name notation)
+ *
+ * Results:
+ *
+ *	As a result, "portStart" will point to the terminating 
+ *      char (e.g. ':') if the host name. If a port is indicated after the host
+ *	name, the variable "portStart" will return a string starting with ":",
+ *	otherwise NULL. If "hostStart" is non-null, a pointer will point to the
+ *	host name, which will be terminated by char 0 in case of a IPv6 address
+ *      in IP-literal notation.
+ *
+ * Side effects:
+ *
+ *	Will potentially write a null character into the string passed in
+ *	"hostString".
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
+{
+    bool ipv6 = NS_FALSE;
+    
+    NS_NONNULL_ASSERT(hostString != NULL);
+    NS_NONNULL_ASSERT(portStart != NULL);
+    
+    if (*hostString == '[') {
+        char *p;
+        
+        /*
+         * Maybe this is an IPv6 address in square braces
+         */
+        p = strchr(hostString + 1, ']');
+        if (p != NULL) {
+            ipv6 = NS_TRUE;
+            
+            /*
+             * Terminate the IP-literal if hostStart is given.
+             */
+            if (hostStart != NULL) {
+                *p = '\0';
+                *hostStart = hostString + 1;
+            }
+            p++;
+            if (*p == ':') {
+                *portStart = p;
+            } else {
+                *portStart = NULL;
+            }
+        }
+    }
+    if (ipv6 == NS_FALSE) {
+        *portStart = strchr(hostString, ':');
+        if (hostStart != NULL) {
+            *hostStart = hostString;
+        }
+    }
+}
+ 
 
 /*
  *----------------------------------------------------------------------
@@ -709,19 +839,24 @@ HttpGet(NsInterp *itPtr, const char *id, Ns_HttpTask **httpPtrPtr, bool removeRe
  */
 static int
 HttpConnect(Tcl_Interp *interp, const char *method, const char *url, Ns_Set *hdrPtr,
-	    Tcl_Obj *bodyPtr, bool keep_host_header, Ns_HttpTask **httpPtrPtr)
+	    Tcl_Obj *bodyPtr, const char *bodyFileName,
+            bool keep_host_header, Ns_HttpTask **httpPtrPtr)
 {
     NS_SOCKET    sock;
     Ns_HttpTask *httpPtr;
     int          portNr, uaFlag = -1;
+    int          bodyFileSize = 0, bodyFileFd = 0;
     char        *url2, *host, *file, *portString;
     const char  *contentType = NULL;
 
-    assert(interp != NULL);
-    assert(method != NULL);
-    assert(url != NULL);
-    assert(httpPtrPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(httpPtrPtr != NULL);
 
+    /*
+     * Parse and split url
+     */
     if (strncmp(url, "http://", 7u) != 0 || url[7] == '\0') {
 	Tcl_AppendResult(interp, "invalid url: ", url, NULL);
         return TCL_ERROR;
@@ -750,17 +885,40 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url, Ns_Set *hdr
     if (file != NULL) {
         *file = '\0';
     }
-    
-    portString = strchr(host, ':');
+
+    Ns_HttpParseHost(host, &host, &portString);
+
     if (portString != NULL) {
         *portString = '\0';
         portNr = (int) strtol(portString + 1, NULL, 10);
     } else {
         portNr = 80;
     }
-
     sock = Ns_SockAsyncConnect(host, portNr);
 
+#if DEACTIVATED__WAIT_FOR_ASYNC_CONNECT_UNTIL_SOCKET_IS_WRITEABLE
+    if (sock != NS_INVALID_SOCKET) {
+          struct pollfd  pollfd;
+          int retval;
+
+          pollfd.events = POLLOUT;
+          pollfd.fd = sock;
+
+          while (1) {
+              fprintf(stderr, "# call poll on %d\n", sock);
+              retval = poll(&pollfd, 1, 1000);
+              fprintf(stderr, "# call poll on %d => %d\n", sock, retval);
+              if (retval != 0) {
+                  break;
+              }
+          }
+          if (retval != 1) {
+              fprintf(stderr, "# ... make sock %d invalid \n", sock);
+              sock = NS_INVALID_SOCKET;
+          }
+    }
+#endif
+    
     if (sock == NS_INVALID_SOCKET) {
 	Tcl_AppendResult(interp, "connect to \"", url, "\" failed: ",
 	 		 ns_sockstrerror(ns_sockerrno), NULL);
@@ -768,7 +926,13 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url, Ns_Set *hdr
 	return TCL_ERROR;
     }
 
-    if (bodyPtr != NULL) {
+    if ((bodyPtr != NULL) || (bodyFileName != NULL)) {
+        if ((bodyPtr != NULL) && (bodyFileName != NULL)) {
+            Tcl_AppendResult(interp, "either -body or -body_file may be specified", NULL);
+            ns_free(url2);
+            return TCL_ERROR;
+        }
+        
         if (hdrPtr != NULL) {
             contentType = Ns_SetIGet(hdrPtr, "Content-Type");
         }
@@ -777,12 +941,36 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url, Ns_Set *hdr
             ns_free(url2);
             return TCL_ERROR;
         }
+        if (bodyFileName != NULL) {
+            struct stat bodyStat;
+            
+            if (Ns_Stat(bodyFileName, &bodyStat) == NS_FALSE) {
+                Tcl_AppendResult(interp, "cannot stat file ", bodyFileName, NULL);
+                ns_free(url2);
+                return TCL_ERROR;
+            }
+            bodyFileSize = bodyStat.st_size;
+
+            bodyFileFd = ns_open(bodyFileName, O_RDONLY, 0);
+            if (unlikely(bodyFileFd == NS_INVALID_FD)) {
+                Tcl_AppendResult(interp, "cannot open file ", bodyFileName, NULL);
+                ns_free(url2);
+                return TCL_ERROR;
+            }
+        }
     }
+    /*
+     * All error checking from parameter processing is done, allocate the
+     * Ns_HttpTask structure.
+     */
     
-    httpPtr = ns_calloc(1U, sizeof(Ns_HttpTask));
-    httpPtr->sock            = sock;
-    httpPtr->spoolLimit      = -1;
-    httpPtr->url             = url2;
+    httpPtr = ns_calloc(1u, sizeof(Ns_HttpTask));
+    httpPtr->sock           = sock;
+    httpPtr->spoolLimit     = -1;
+    httpPtr->url            = url2;
+    httpPtr->bodyFileFd     = bodyFileFd;
+    httpPtr->sendSpoolMode  = NS_FALSE;
+
     Ns_MutexInit(&httpPtr->lock);
     /*Ns_MutexSetName(&httpPtr->lock, name, buffer);*/
     Tcl_DStringInit(&httpPtr->ds);
@@ -809,7 +997,7 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url, Ns_Set *hdr
 	Ns_SetIDeleteKey(hdrPtr, "Connection");
 	Ns_SetIDeleteKey(hdrPtr, "Content-Length");
 
-	for (i = 0U; i < Ns_SetSize(hdrPtr); i++) {
+	for (i = 0u; i < Ns_SetSize(hdrPtr); i++) {
 	    const char *key = Ns_SetKey(hdrPtr, i);
 	    if (uaFlag != 0) {
 		uaFlag = strcasecmp(key, "User-Agent");
@@ -833,31 +1021,38 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url, Ns_Set *hdr
     }
     
     if (keep_host_header == NS_FALSE) {
-        if (portString == NULL) {
-	    Ns_DStringPrintf(&httpPtr->ds, "Host: %s\r\n", host);
-        } else {
-	    Ns_DStringPrintf(&httpPtr->ds, "Host: %s:%d\r\n", host, portNr);
-        }
+        Ns_DStringNAppend(&httpPtr->ds, "Host: ", 6);
+        Ns_HttpLocationString(&httpPtr->ds, NULL, host, portNr, 80);
+        Ns_DStringNAppend(&httpPtr->ds, "\r\n", 2);
     }
 
-    if (bodyPtr != NULL) {
-        int length = 0;
-	const char *bodyString;
-        bool binary = NsTclObjIsByteArray(bodyPtr);
+    /*
+     * The body of the request might be specified via Tcl_Obj containing the
+     * content, or via filename.
+     */
+    if ((bodyPtr != NULL) || (bodyFileName != NULL)) {
 
-        if (contentType != NULL && binary == NS_FALSE) {
-            /*const Tcl_Encoding enc = Ns_GetTypeEncoding(contentType);*/
-            binary = Ns_IsBinaryMimeType(contentType);
-        }
+        if (bodyFileName == NULL) {
+            int length = 0;
+            const char *bodyString;
+            bool binary = NsTclObjIsByteArray(bodyPtr);
+
+            if (contentType != NULL && binary == NS_FALSE) {
+                binary = Ns_IsBinaryMimeType(contentType);
+            }
         
-	if (binary == NS_TRUE) {
-	    bodyString = (void *)Tcl_GetByteArrayFromObj(bodyPtr, &length);
+            if (binary == NS_TRUE) {
+                bodyString = (void *)Tcl_GetByteArrayFromObj(bodyPtr, &length);
+            } else {
+                bodyString = Tcl_GetStringFromObj(bodyPtr, &length);
+            }
+            Ns_DStringPrintf(&httpPtr->ds, "Content-Length: %d\r\n\r\n", length);
+            Tcl_DStringAppend(&httpPtr->ds, bodyString, length);
+
         } else {
-            bodyString = Tcl_GetStringFromObj(bodyPtr, &length);
+            Ns_DStringPrintf(&httpPtr->ds, "Content-Length: %d\r\n\r\n", bodyFileSize);
         }
 
-	Ns_DStringPrintf(&httpPtr->ds, "Content-Length: %d\r\n\r\n", length);
-        Tcl_DStringAppend(&httpPtr->ds, bodyString, length);
     } else {
         Tcl_DStringAppend(&httpPtr->ds, "\r\n", 2);
     }
@@ -907,11 +1102,12 @@ HttpAppendRawBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t outSize)
 {
     int status = TCL_OK;
 
-    assert(httpPtr != NULL);
-    assert(buffer != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+    NS_NONNULL_ASSERT(buffer != NULL);
 
     if (httpPtr->spoolFd > 0) {
 	ssize_t written = ns_write(httpPtr->spoolFd, buffer, outSize);
+
 	if (written == -1) {
 	    Ns_Log(Error, "task: spooling of received content failed");
 	    status = TCL_ERROR;
@@ -928,8 +1124,8 @@ Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
 {
     int status = TCL_OK;
 
-    assert(httpPtr != NULL);
-    assert(buffer != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+    NS_NONNULL_ASSERT(buffer != NULL);
 
     Ns_Log(Ns_LogTaskDebug, "Ns_HttpAppendBuffer: got %" PRIdz " bytes flags %.6x", inSize, httpPtr->flags);
     
@@ -982,12 +1178,13 @@ Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
 static void
 HttpClose(Ns_HttpTask *httpPtr)
 {
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
 
     if (httpPtr->task != NULL)          {(void) Ns_TaskFree(httpPtr->task);}
     if (httpPtr->sock > 0)              {ns_sockclose(httpPtr->sock);}
     if (httpPtr->spoolFileName != NULL) {ns_free(httpPtr->spoolFileName);}
     if (httpPtr->spoolFd > 0)           {(void) ns_close(httpPtr->spoolFd);}
+    if (httpPtr->bodyFileFd > 0)        {(void) ns_close(httpPtr->bodyFileFd);}
     if (httpPtr->compress != NULL)      {
 	(void) Ns_InflateEnd(httpPtr->compress);
 	ns_free(httpPtr->compress);
@@ -1002,7 +1199,7 @@ HttpClose(Ns_HttpTask *httpPtr)
 static void
 HttpCancel(const Ns_HttpTask *httpPtr)
 {
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
 
     (void) Ns_TaskCancel(httpPtr->task);
     (void) Ns_TaskWait(httpPtr->task, NULL);
@@ -1012,7 +1209,7 @@ HttpCancel(const Ns_HttpTask *httpPtr)
 static void
 HttpAbort(Ns_HttpTask *httpPtr)
 {
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
 
     HttpCancel(httpPtr);
     HttpClose(httpPtr);
@@ -1039,12 +1236,14 @@ HttpAbort(Ns_HttpTask *httpPtr)
 static void
 HttpProc(Ns_Task *task, NS_SOCKET sock, void *arg, Ns_SockState why)
 {
-    Ns_HttpTask *httpPtr = arg;
+    Ns_HttpTask *httpPtr;
     char buf[16384];
     ssize_t n;
 
-    assert(task != NULL);
-    assert(httpPtr != NULL);
+    NS_NONNULL_ASSERT(task != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
+
+    httpPtr = arg;
 
     switch (why) {
     case NS_SOCK_INIT:
@@ -1052,22 +1251,61 @@ HttpProc(Ns_Task *task, NS_SOCKET sock, void *arg, Ns_SockState why)
 	return;
 
     case NS_SOCK_WRITE:
-        n = ns_send(sock, httpPtr->next, httpPtr->len, 0);
-    	if (n < 0) {
-	    httpPtr->error = "send failed";
-	} else {
-    	    httpPtr->next += n;
-    	    httpPtr->len -= (size_t)n;
-    	    if (httpPtr->len == 0u) {
-            	Tcl_DStringTrunc(&httpPtr->ds, 0);
-	    	Ns_TaskCallback(task, NS_SOCK_READ, &httpPtr->timeout);
-	    }
-	    return;
-	}
+        /*
+         * Send the request data either from the DString, or from a file. The
+         * latter case is flagged via member sendSpoolMode.
+         */
+        if (httpPtr->sendSpoolMode == NS_TRUE) {
+            Ns_Log(Ns_LogTaskDebug, "HttpProc read data from file, buffer size %d", Tcl_DStringLength(&httpPtr->ds));
+            n = ns_read(httpPtr->bodyFileFd, httpPtr->ds.string, 32768);
+            if (n < 0) {
+                httpPtr->error = "read failed";
+            } else {
+                Ns_Log(Ns_LogTaskDebug, "HttpProc send read data from file");
+                n = ns_send(sock, httpPtr->ds.string, (size_t)n, 0);
+                if (n < 0) {
+                    httpPtr->error = "send failed";
+                } else {
+                    if (n < 32768) {
+                        Ns_Log(Ns_LogTaskDebug, "HttpProc all data spooled, switch to read reply");
+                        Tcl_DStringTrunc(&httpPtr->ds, 0);
+                        Ns_TaskCallback(task, NS_SOCK_READ, &httpPtr->timeout);
+                    }
+                    return;
+                }
+            }
+        } else {
+            n = ns_send(sock, httpPtr->next, httpPtr->len, 0);            
+            if (n < 0) {
+                httpPtr->error = "send failed";
+            } else {
+                httpPtr->next += n;
+                httpPtr->len -= (size_t)n;
+                Ns_Log(Ns_LogTaskDebug, "HttpProc sent %ld bytes from memory, remaining %lu", n, httpPtr->len);
+
+                if (httpPtr->len == 0u) {
+                    /*
+                     * All data from ds has been sent. Check, if the is a file to
+                     * append, and if yes, which to sendSpoolMode.
+                     */
+                    if (httpPtr->bodyFileFd > 0) {
+                        httpPtr->sendSpoolMode = NS_TRUE;
+                        Ns_Log(Ns_LogTaskDebug, "HttpProc all data sent, switch to spool mode using fd %d", httpPtr->bodyFileFd);
+                        Tcl_DStringTrunc(&httpPtr->ds, 32768);
+                    } else {
+                        Ns_Log(Ns_LogTaskDebug, "HttpProc all data sent, switch to read reply");
+                        Tcl_DStringTrunc(&httpPtr->ds, 0);
+                        Ns_TaskCallback(task, NS_SOCK_READ, &httpPtr->timeout);
+                    }
+                }
+                return;
+            }
+        }
 	break;
 
     case NS_SOCK_READ:
     	n = ns_recv(sock, buf, sizeof(buf), 0);
+
     	if (likely(n > 0)) {
 
 	    /* 
@@ -1095,6 +1333,7 @@ HttpProc(Ns_Task *task, NS_SOCKET sock, void *arg, Ns_SockState why)
 	    return;
 	}
 	if (n < 0) {
+            Ns_Log(Warning, "client http request: receive failed, error: %s\n", strerror(errno));
 	    httpPtr->error = "recv failed";
 	}
 	break;

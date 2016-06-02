@@ -48,13 +48,15 @@ typedef struct Config {
  * Local functions defined in this file.
  */
 
-static Ns_DriverListenProc Listen;
-static Ns_DriverAcceptProc Accept;
-static Ns_DriverRecvProc Recv;
-static Ns_DriverSendProc Send;
+NS_EXPORT Ns_DriverListenProc Ns_DriverSockListen;
+NS_EXPORT Ns_DriverAcceptProc Ns_DriverSockAccept;
+NS_EXPORT Ns_DriverRecvProc Ns_DriverSockRecv;
+NS_EXPORT Ns_DriverSendProc Ns_DriverSockSend;
+NS_EXPORT Ns_DriverCloseProc Ns_DriverSockClose;
 static Ns_DriverSendFileProc SendFile;
 static Ns_DriverKeepProc Keep;
-static Ns_DriverCloseProc Close;
+
+NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
 static void SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
     NS_GNUC_NONNULL(1);
@@ -83,21 +85,23 @@ Ns_ModuleInit(const char *server, const char *module)
     Config            *cfg;
     const char        *path;
 
+    NS_NONNULL_ASSERT(module != NULL);
+    
     path = Ns_ConfigGetPath(server, module, (char *)0);
     cfg = ns_malloc(sizeof(Config));
     cfg->deferaccept = Ns_ConfigBool(path, "deferaccept", NS_FALSE);
     cfg->nodelay = Ns_ConfigBool(path, "nodelay", NS_FALSE);
 
-    init.version = NS_DRIVER_VERSION_2;
+    init.version = NS_DRIVER_VERSION_3;
     init.name = "nssock";
-    init.listenProc = Listen;
-    init.acceptProc = Accept;
-    init.recvProc = Recv;
-    init.sendProc = Send;
+    init.listenProc = Ns_DriverSockListen;
+    init.acceptProc = Ns_DriverSockAccept;
+    init.recvProc = Ns_DriverSockRecv;
+    init.sendProc = Ns_DriverSockSend;
     init.sendFileProc = SendFile;
     init.keepProc = Keep;
     init.requestProc = NULL;
-    init.closeProc = Close;
+    init.closeProc = Ns_DriverSockClose;
     init.opts = NS_DRIVER_ASYNC;
     init.arg = cfg;
     init.path = (char*)path;
@@ -109,7 +113,7 @@ Ns_ModuleInit(const char *server, const char *module)
 /*
  *----------------------------------------------------------------------
  *
- * Listen --
+ * Ns_DriverSockListen --
  *
  *      Open a listening TCP socket in non-blocking mode.
  *
@@ -122,8 +126,8 @@ Ns_ModuleInit(const char *server, const char *module)
  *----------------------------------------------------------------------
  */
 
-static NS_SOCKET
-Listen(Ns_Driver *driver, const char *address, int port, int backlog)
+NS_SOCKET
+Ns_DriverSockListen(Ns_Driver *driver, const char *address, int port, int backlog)
 {
     NS_SOCKET sock;
 
@@ -143,7 +147,7 @@ Listen(Ns_Driver *driver, const char *address, int port, int backlog)
 /*
  *----------------------------------------------------------------------
  *
- * Accept --
+ * Ns_DriverSockAccept --
  *
  *      Accept a new TCP socket in non-blocking mode.
  *
@@ -158,8 +162,8 @@ Listen(Ns_Driver *driver, const char *address, int port, int backlog)
  *----------------------------------------------------------------------
  */
  
-static NS_DRIVER_ACCEPT_STATUS
-Accept(Ns_Sock *sock, NS_SOCKET listensock,
+NS_DRIVER_ACCEPT_STATUS
+Ns_DriverSockAccept(Ns_Sock *sock, NS_SOCKET listensock,
        struct sockaddr *sockaddrPtr, socklen_t *socklenPtr)
 {
     Config *cfg    = sock->driver->arg;
@@ -188,7 +192,7 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock,
 /*
  *----------------------------------------------------------------------
  *
- * Recv --
+ * Ns_DriverSockRecv --
  *
  *      Receive data into given buffers.
  *
@@ -202,15 +206,22 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock,
  *----------------------------------------------------------------------
  */
 
-static ssize_t
-Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
+ssize_t
+Ns_DriverSockRecv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
      Ns_Time *timeoutPtr, unsigned int flags)
 {
     ssize_t n;
     
     n = Ns_SockRecvBufs(sock->sock, bufs, nbufs, timeoutPtr, flags);
     if (n == 0) {
-	/* this means usually eof, return value of 0 means in the driver SOCK_MORE */
+	/* 
+         * n == 0 this means usually eof (peer closed connection), return
+         * value of 0 means in the driver SOCK_MORE. In order to cause a close
+         * of the socket, return -1, but clear the errno. This might not be
+         * the cleanest solution, but lets us to perform a proper close
+         * operation without logging an error.
+         */
+        errno = 0;
 	n = -1;
     }
     return n;
@@ -220,7 +231,7 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
 /*
  *----------------------------------------------------------------------
  *
- * Send --
+ * Ns_DriverSockSend --
  *
  *      Send data from given buffers.
  *
@@ -234,8 +245,8 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  *----------------------------------------------------------------------
  */
 
-static ssize_t
-Send(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
+ssize_t
+Ns_DriverSockSend(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
      const Ns_Time *timeoutPtr, unsigned int flags)
 {
     ssize_t   n;
@@ -327,7 +338,7 @@ Keep(Ns_Sock *sock)
 /*
  *----------------------------------------------------------------------
  *
- * Close --
+ * Ns_DriverSockClose --
  *
  *      Close the connection socket.
  *
@@ -340,9 +351,11 @@ Keep(Ns_Sock *sock)
  *----------------------------------------------------------------------
  */
 
-static void
-Close(Ns_Sock *sock)
+void
+Ns_DriverSockClose(Ns_Sock *sock)
 {
+    NS_NONNULL_ASSERT(sock != NULL);
+    
     if (sock->sock != NS_INVALID_SOCKET) {
         ns_sockclose(sock->sock);
         sock->sock = NS_INVALID_SOCKET;
@@ -356,7 +369,7 @@ SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
 #ifdef TCP_NODELAY
     Config *cfg;
 
-    assert(driver != NULL);
+    NS_NONNULL_ASSERT(driver != NULL);
     
     cfg = driver->arg;
     if (cfg->nodelay != 0) {

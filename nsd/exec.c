@@ -71,7 +71,7 @@ pid_t
 Ns_ExecProcess(const char *exec, const char *dir, int fdin, int fdout, char *args,
 	       const Ns_Set *env)
 {
-    assert(exec != NULL);
+    NS_NONNULL_ASSERT(exec != NULL);
 
     return Ns_ExecArgblk(exec, dir, fdin, fdout, args, env);
 }
@@ -96,7 +96,7 @@ Ns_ExecProcess(const char *exec, const char *dir, int fdin, int fdout, char *arg
 pid_t
 Ns_ExecProc(const char *exec, char **argv)
 {
-    assert(exec != NULL);
+    NS_NONNULL_ASSERT(exec != NULL);
     
     return Ns_ExecArgv(exec, NULL, 0, 1, argv, NULL);
 }
@@ -145,7 +145,7 @@ Ns_WaitForProcess(pid_t pid, int *exitcodePtr)
 #ifdef _WIN32
     HANDLE process = (HANDLE) pid;
     int status = NS_OK;
-    DWORD exitcode = 0U;
+    DWORD exitcode = 0u;
 
     if ((WaitForSingleObject(process, INFINITE) == WAIT_FAILED) ||
         (GetExitCodeProcess(process, &exitcode) != TRUE)) {
@@ -162,7 +162,7 @@ Ns_WaitForProcess(pid_t pid, int *exitcodePtr)
         if (exitcodePtr != NULL) {
             *exitcodePtr = exitcode;
         }
-        if (nsconf.exec.checkexit == TRUE && exitcode != 0) {
+        if (nsconf.exec.checkexit == TRUE && exitcode != 0u) {
             Ns_Log(Error, "exec: process %d exited with non-zero status: %d",
                    pid, exitcode);
             status = NS_ERROR;
@@ -171,7 +171,7 @@ Ns_WaitForProcess(pid_t pid, int *exitcodePtr)
     return status;
     
 #else
-    int status;
+    int status = 0;
     pid_t p;
     
     do {
@@ -232,7 +232,7 @@ Ns_ExecArgblk(const char *exec, const char *dir, int fdin, int fdout,
     pid_t  pid;
     char **argv, *argList[256]; /* maximum 256 arguments */
 
-    assert(exec != NULL);
+    NS_NONNULL_ASSERT(exec != NULL);
     
     if (args == NULL) {
         argv = NULL;
@@ -411,7 +411,7 @@ Ns_ExecArgv(const char *exec, const char *dir, int fdin, int fdout,
     char *argvSh[4], **envp;
     pid_t pid;
 
-    assert(exec != NULL);
+    NS_NONNULL_ASSERT(exec != NULL);
 
     if (argv == NULL) {
         argv = argvSh;
@@ -427,7 +427,7 @@ Ns_ExecArgv(const char *exec, const char *dir, int fdin, int fdout,
     } else {
 	size_t i;
 
-	for (i = 0U; i < Ns_SetSize(env); ++i) {
+	for (i = 0u; i < Ns_SetSize(env); ++i) {
             Ns_DStringVarAppend(&eds,
 				Ns_SetKey(env, i), "=", Ns_SetValue(env, i), NULL);
             Ns_DStringNAppend(&eds, "", 1);
@@ -609,7 +609,7 @@ Set2Argv(Ns_DString *dsPtr, const Ns_Set *env)
 {
     size_t i;
 
-    for (i = 0U; i < Ns_SetSize(env); ++i) {
+    for (i = 0u; i < Ns_SetSize(env); ++i) {
         Ns_DStringVarAppend(dsPtr,
                             Ns_SetKey(env, i), "=", Ns_SetValue(env, i), NULL);
         Ns_DStringNAppend(dsPtr, "", 1);

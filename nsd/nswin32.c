@@ -36,6 +36,7 @@
  */
 
 #include "nsd.h"
+#include <share.h>
 
 static Ns_ThreadProc ServiceTicker;
 static void StopTicker(void);
@@ -45,6 +46,8 @@ static VOID WINAPI ServiceHandler(DWORD code);
 static BOOL WINAPI ConsoleHandler(DWORD code);
 static void ReportStatus(DWORD state, DWORD code, DWORD hint);
 static char *GetServiceName(Ns_DString *dsPtr, char *service);
+static bool SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2);
+
 
 /*
  * Static variables used in this file
@@ -741,9 +744,9 @@ ns_pipe(int *fds)
  *
  * ns_mkstemp --
  *
- *      Create a temporary file based on the provided template and
- *      return its fd.  This is a cheap replacement for mkstemp()
- *      under unix-like systems.
+ *      Create a temporary file based on the provided character template and
+ *      return its fd.  This is a cheap replacement for mkstemp() under
+ *      unix-like systems.
  *
  * Results:
  *      fd if ok, NS_INVALID_FD on error.
@@ -753,17 +756,16 @@ ns_pipe(int *fds)
  *
  *----------------------------------------------------------------------
  */
-#include <share.h>
 
 int
-ns_mkstemp(char *template) 
+ns_mkstemp(char *charTemplate) 
 {
     int err, fd = NS_INVALID_FD;
 
-    err = _mktemp_s(template, strlen(template));
+    err = _mktemp_s(charTemplate, strlen(charTemplate));
 
     if (err == 0) {
-	err = _sopen_s(&fd, template, 
+	err = _sopen_s(&fd, charTemplate, 
 		       O_RDWR | O_CREAT |_O_TEMPORARY | O_EXCL, 
 		       _SH_DENYRW,
 		       _S_IREAD | _S_IWRITE);
@@ -774,6 +776,59 @@ ns_mkstemp(char *template)
     }
 
     return fd;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * SockAddrEqual --
+ *
+ *      Compare two sockaddr structures. This is just a helper for ns_sockpair
+ *      (we have here a windows only version based um u.Word, see
+ *      https://msdn.microsoft.com/en-us/library/windows/desktop/ms738560%28v=vs.85%29.aspx )
+ *
+ * Results:
+ *      NS_TRUE if the two structures are equal
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static bool
+SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2)
+{
+#ifdef HAVE_IPV6
+    if (saPtr1->sa_family != saPtr2->sa_family) {
+        return NS_FALSE;
+    }
+    if (saPtr1->sa_family == AF_INET) {
+        if (((struct sockaddr_in *)saPtr1)->sin_addr.s_addr !=
+            ((struct sockaddr_in *)saPtr2)->sin_addr.s_addr) {
+            return NS_FALSE;
+        }
+    } else if (saPtr1->sa_family == AF_INET6) {
+        struct in6_addr *sa1Bits = &(((struct sockaddr_in6 *)saPtr1)->sin6_addr);
+        struct in6_addr *sa2Bits = &(((struct sockaddr_in6 *)saPtr2)->sin6_addr);
+        int i;
+        
+        for (i = 0; i < 8; i++) {
+            if (sa1Bits->u.Word[i] != sa2Bits->u.Word[i]) {
+                return NS_FALSE;
+            }
+        }
+    } else {
+        return NS_FALSE;
+    }
+#else
+    if (((struct sockaddr_in *)saPtr1)->sin_addr.s_addr !=
+        ((struct sockaddr_in *)saPtr2)->sin_addr.s_addr) {
+        return NS_FALSE;
+    }
+#endif
+    return NS_TRUE;
 }
 
 
@@ -798,31 +853,33 @@ int
 ns_sockpair(NS_SOCKET socks[2])
 {
     NS_SOCKET sock;
-    struct sockaddr_in ia[2];
+    struct NS_SOCKADDR_STORAGE ia[2];
     int size;
 
-    size = (int)sizeof(struct sockaddr_in);
-    sock = Ns_SockListen("127.0.0.1", 0);
+    size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
+    sock = Ns_SockListen(NS_IP_LOOPBACK, 0);
     if (sock == NS_INVALID_SOCKET ||
         getsockname(sock, (struct sockaddr *) &ia[0], &size) != 0) {
         return -1;
     }
-    size = (int)sizeof(struct sockaddr_in);
-    socks[1] = Ns_SockConnect("127.0.0.1", (int) ntohs(ia[0].sin_port));
+    size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
+    socks[1] = Ns_SockConnect(NS_IP_LOOPBACK, (int) Ns_SockaddrGetPort((struct sockaddr *)&ia[0]));
     if (socks[1] == NS_INVALID_SOCKET ||
         getsockname(socks[1], (struct sockaddr *) &ia[1], &size) != 0) {
         ns_sockclose(sock);
         return -1;
     }
-    size = (int)sizeof(struct sockaddr_in);
+    size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
     socks[0] = accept(sock, (struct sockaddr *) &ia[0], &size);
     ns_sockclose(sock);
     if (socks[0] == NS_INVALID_SOCKET) {
         ns_sockclose(socks[1]);
         return -1;
     }
-    if (ia[0].sin_addr.s_addr != ia[1].sin_addr.s_addr ||
-        ia[0].sin_port != ia[1].sin_port) {
+    if ((!(SockAddrEqual((struct sockaddr *)&ia[0],
+                         (struct sockaddr *)&ia[1]))) ||
+        (Ns_SockaddrGetPort((struct sockaddr *)&ia[0]) != Ns_SockaddrGetPort((struct sockaddr *)&ia[1]))
+        ) {
         ns_sockclose(socks[0]);
         ns_sockclose(socks[1]);
         return -1;
@@ -853,12 +910,13 @@ NS_SOCKET
 Ns_SockListenEx(const char *address, int port, int backlog)
 {
     NS_SOCKET sock;
-    struct sockaddr_in sa;
+    struct NS_SOCKADDR_STORAGE sa;
+    struct sockaddr *saPtr = (struct sockaddr *)&sa;
 
-    if (Ns_GetSockAddr(&sa, address, port) != NS_OK) {
+    if (Ns_GetSockAddr(saPtr, address, port) != NS_OK) {
         return NS_INVALID_SOCKET;
     }
-    sock = Ns_SockBind(&sa);
+    sock = Ns_SockBind(saPtr);
     if (sock != NS_INVALID_SOCKET && listen(sock, backlog) != 0) {
         ns_sockclose(sock);
         sock = NS_INVALID_SOCKET;

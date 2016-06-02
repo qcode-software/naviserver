@@ -43,7 +43,7 @@
  */
 
 typedef struct Tls {
-    char        nabuf[16];
+    char        nabuf[NS_IPADDR_SIZE];
     char        asbuf[27];
     char       *stbuf;
     char        ctbuf[27];
@@ -103,7 +103,7 @@ GetTls(void)
 
     tlsPtr = Ns_TlsGet(&tls);
     if (tlsPtr == NULL) {
-        tlsPtr = ns_calloc(1U, sizeof(Tls));
+        tlsPtr = ns_calloc(1u, sizeof(Tls));
         Ns_TlsSet(&tls, tlsPtr);
     }
     return tlsPtr;
@@ -118,42 +118,56 @@ GetTls(void)
  *
  *----------------------------------------------------------------------
  */
+#ifdef HAVE_IPV6
+# if defined(__APPLE__) || defined(__darwin__)
+/* OSX seems not to define these. */
+#  ifndef s6_addr16
+#   define s6_addr16 __u6_addr.__u6_addr16
+#  endif
+#  ifndef s6_addr32
+#   define s6_addr32 __u6_addr.__u6_addr32
+#  endif
+# endif
+#endif
 
-#ifdef _MSC_VER
 char *
-ns_inet_ntoa(struct in_addr addr)
+ns_inet_ntoa(struct sockaddr *saPtr)
 {
     Tls *tlsPtr = GetTls();
-
-    /*
-     * InetNtop supports AF_INET and AF_INET6.
-     */
-    InetNtop(AF_INET, &addr, tlsPtr->nabuf, sizeof(tlsPtr->nabuf)); 
-
-    return tlsPtr->nabuf;
-}
-#else 
-char *
-ns_inet_ntoa(struct in_addr addr)
-{
-    Tls *tlsPtr = GetTls();
-
-#if defined(HAVE_INET_NTOP)
-    inet_ntop(AF_INET, &addr, tlsPtr->nabuf, sizeof(tlsPtr->nabuf)); 
-#else
     union {
-        unsigned long l;
-        unsigned char b[4];
-    } u;
-    
-    u.l = (unsigned long) addr.s_addr;
-    snprintf(tlsPtr->nabuf, sizeof(tlsPtr->nabuf), "%u.%u.%u.%u",
-             u.b[0], u.b[1], u.b[2], u.b[3]);
-#endif
-    return tlsPtr->nabuf;
-}
+        unsigned int i;
+    	unsigned char b[4];
+    } addr4;
+
+    NS_NONNULL_ASSERT(saPtr != NULL);
+
+#ifdef HAVE_IPV6
+    if (saPtr->sa_family == AF_INET6) {
+        struct in6_addr addr = (((struct sockaddr_in6 *)saPtr)->sin6_addr);
+# ifndef _WIN32        
+        sprintf(tlsPtr->nabuf, "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
+                ntohs(addr.s6_addr16[0]), ntohs(addr.s6_addr16[1]),
+                ntohs(addr.s6_addr16[2]), ntohs(addr.s6_addr16[3]),
+                ntohs(addr.s6_addr16[4]), ntohs(addr.s6_addr16[5]),
+                ntohs(addr.s6_addr16[6]), ntohs(addr.s6_addr16[7]));
+# else
+        sprintf(tlsPtr->nabuf, "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
+                ntohs(addr.u.Word[0]), ntohs(addr.u.Word[1]),
+                ntohs(addr.u.Word[2]), ntohs(addr.u.Word[3]),
+                ntohs(addr.u.Word[4]), ntohs(addr.u.Word[5]),
+                ntohs(addr.u.Word[6]), ntohs(addr.u.Word[7]));
+# endif
+    } else {
+        addr4.i = (unsigned int) (((struct sockaddr_in *)saPtr)->sin_addr.s_addr);
+        sprintf(tlsPtr->nabuf, "%u.%u.%u.%u", addr4.b[0], addr4.b[1], addr4.b[2], addr4.b[3]);
+    }
+#else    
+    addr4.i = (unsigned int) (((struct sockaddr_in *)saPtr)->sin_addr.s_addr);
+    sprintf(tlsPtr->nabuf, "%u.%u.%u.%u", addr4.b[0], addr4.b[1], addr4.b[2], addr4.b[3]);
 #endif
 
+    return tlsPtr->nabuf;
+}
 
 /*
  *----------------------------------------------------------------------
@@ -166,7 +180,7 @@ ns_inet_ntoa(struct in_addr addr)
 struct dirent *
 ns_readdir(DIR *dir)
 {
-    assert(dir != NULL);
+    NS_NONNULL_ASSERT(dir != NULL);
     return readdir(dir);
 }
 #else
@@ -176,7 +190,7 @@ ns_readdir(DIR * dir)
     struct dirent *ent;
     Tls *tlsPtr = GetTls();
     
-    assert(dir != NULL);
+    NS_NONNULL_ASSERT(dir != NULL);
     
     ent = &tlsPtr->ent; 
     if (readdir_r(dir, ent, &ent) != 0) {
@@ -202,7 +216,7 @@ ns_localtime(const time_t *clock)
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     
     errNum = localtime_s(&tlsPtr->ltbuf, clock);
     if (errNum != 0) {
@@ -212,12 +226,12 @@ ns_localtime(const time_t *clock)
     return &tlsPtr->ltbuf;
 
 #elif defined(_WIN32)
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     return localtime(clock);
 #else
     Tls *tlsPtr = GetTls();
     
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     return localtime_r(clock, &tlsPtr->ltbuf);
 
 #endif
@@ -239,7 +253,7 @@ ns_gmtime(const time_t *clock)
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     errNum = gmtime_s(&tlsPtr->gtbuf, clock);
     if (errNum != 0) {
         NsThreadFatal("ns_gmtime","gmtime_s", errNum);
@@ -249,13 +263,13 @@ ns_gmtime(const time_t *clock)
 
 #elif defined(_WIN32)
 
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     return gmtime(clock);
 
 #else
 
     Tls *tlsPtr = GetTls();
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     return gmtime_r(clock, &tlsPtr->gtbuf);
 
 #endif
@@ -277,7 +291,7 @@ ns_ctime(const time_t *clock)
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     errNum = ctime_s(tlsPtr->ctbuf, sizeof(tlsPtr->ctbuf), clock);
     if (errNum != 0) {
         NsThreadFatal("ns_ctime","ctime_s", errNum);
@@ -287,12 +301,12 @@ ns_ctime(const time_t *clock)
 
 #elif defined(_WIN32)
 
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     return ctime(clock);
 
 #else
     Tls *tlsPtr = GetTls();
-    assert(clock != NULL);
+    NS_NONNULL_ASSERT(clock != NULL);
     return ctime_r(clock, tlsPtr->ctbuf);
 #endif
 }
@@ -314,7 +328,8 @@ ns_asctime(const struct tm *tmPtr)
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    assert(tmPtr != NULL);
+    NS_NONNULL_ASSERT(tmPtr != NULL);
+
     errNum = asctime_s(tlsPtr->asbuf, sizeof(tlsPtr->asbuf), tmPtr);
     if (errNum != 0) {
         NsThreadFatal("ns_asctime","asctime_s", errNum);
@@ -323,14 +338,18 @@ ns_asctime(const struct tm *tmPtr)
     return tlsPtr->asbuf;
 
 #elif defined(_WIN32)
+    Tls *tlsPtr = GetTls();
     
-    assert(tmPtr != NULL);
-    return asctime(tmPtr);
+    NS_NONNULL_ASSERT(tmPtr != NULL);
+    
+    (void)strftime(tlsPtr->asbuf, sizeof(tlsPtr->asbuf), "%a %b %e %T %Y", tmPtr);
+    return tlsPtr->asbuf;
 
 #else
-
     Tls *tlsPtr = GetTls();
-    assert(tmPtr != NULL);
+
+    NS_NONNULL_ASSERT(tmPtr != NULL);
+
     return asctime_r(tmPtr, tlsPtr->asbuf);
 
 #endif
@@ -351,23 +370,23 @@ ns_strtok(char *str, const char *sep)
 
     Tls *tlsPtr = GetTls();
 
-    assert(str != NULL);
-    assert(sep != NULL);
+    NS_NONNULL_ASSERT(str != NULL);
+    NS_NONNULL_ASSERT(sep != NULL);
 
     return strtok_s(str, sep, &tlsPtr->stbuf);
 
 #elif defined(_WIN32)
     
-    assert(str != NULL);
-    assert(sep != NULL);
+    NS_NONNULL_ASSERT(str != NULL);
+    NS_NONNULL_ASSERT(sep != NULL);
     return strtok(str, sep);
 
 #else
 
     Tls *tlsPtr = GetTls();
     
-    assert(str != NULL);
-    assert(sep != NULL);
+    NS_NONNULL_ASSERT(str != NULL);
+    NS_NONNULL_ASSERT(sep != NULL);
     return strtok_r(str, sep, &tlsPtr->stbuf);
 
 #endif

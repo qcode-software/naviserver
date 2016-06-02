@@ -42,9 +42,9 @@ Ns_Encrypt(const char *pw, const char *salt, char iobuf[])
     char *enc;
     struct crypt_data data;
 
-    assert(pw != NULL);
-    assert(salt != NULL);
-    assert(iobuf != NULL);
+    NS_NONNULL_ASSERT(pw != NULL);
+    NS_NONNULL_ASSERT(salt != NULL);
+    NS_NONNULL_ASSERT(iobuf != NULL);
     
     data.initialized = 0;
     enc = crypt_r(pw, salt, &data);
@@ -69,9 +69,9 @@ Ns_Encrypt(const char *pw, const char *salt, char iobuf[])
 {
     char *enc;
 
-    assert(pw != NULL);
-    assert(salt != NULL);
-    assert(iobuf != NULL);
+    NS_NONNULL_ASSERT(pw != NULL);
+    NS_NONNULL_ASSERT(salt != NULL);
+    NS_NONNULL_ASSERT(iobuf != NULL);
     
     Ns_MutexLock(&lock);
     enc = crypt(pw, salt);
@@ -215,8 +215,8 @@ setkey_private(struct sched *sp, const unsigned char *key)
 {
     register int    i;
 
-    assert(sp != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(sp != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     /*
      * First, generate C and D by permuting the key.  The low order bit of
@@ -347,8 +347,8 @@ encrypt_private(const struct sched *sp, unsigned char *block, int edflag)
     int             i, ii;
     register int    j;
 
-    assert(sp != NULL);
-    assert(block != NULL);
+    NS_NONNULL_ASSERT(sp != NULL);
+    NS_NONNULL_ASSERT(block != NULL);
 
     /*
      * First, permute the bits in the input
@@ -457,14 +457,14 @@ Ns_Encrypt(const char *pw, const char *salt, char iobuf[])
     unsigned char   block[66];
     struct sched    s;
 
-    assert(pw != NULL);
-    assert(salt != NULL);
-    assert(iobuf != NULL);
+    NS_NONNULL_ASSERT(pw != NULL);
+    NS_NONNULL_ASSERT(salt != NULL);
+    NS_NONNULL_ASSERT(iobuf != NULL);
 
     for (i = 0u; i < 66u; i++) {
         block[i] = UCHAR('\0');
     }
-    for (i = 0, c = UCHAR(*pw); c != UCHAR('\0') && i < 64; pw++, c = UCHAR(*pw)) {
+    for (i = 0u, c = UCHAR(*pw); c != UCHAR('\0') && i < 64u; pw++, c = UCHAR(*pw)) {
 	for (j = 0; j < 7; j++, i++) {
             assert(i < sizeof(block));
             block[i] = (c >> (6 - j)) & 1u;
@@ -490,9 +490,9 @@ Ns_Encrypt(const char *pw, const char *salt, char iobuf[])
         c -= UCHAR('.');
         for (j = 0; j < 6; j++) {
             if ((c >> j) & 1u) {
-                unsigned char temp = s.E[6 * i + j];
-                s.E[6 * i + j] = s.E[6 * i + j + 24];
-                s.E[6 * i + j + 24] = temp;
+                unsigned char temp = s.E[6u * i + j];
+                s.E[6u * i + j] = s.E[6u * i + j + 24];
+                s.E[6u * i + j + 24] = temp;
             }
         }
     }
@@ -505,7 +505,7 @@ Ns_Encrypt(const char *pw, const char *salt, char iobuf[])
         c = UCHAR('\0');
         for (j = 0; j < 6; j++) {
             c <<= 1;
-            c |= block[6 * i + j];
+            c |= block[6u * i + j];
         }
         c += UCHAR('.');
         if (c > UCHAR('9')) {
@@ -514,9 +514,9 @@ Ns_Encrypt(const char *pw, const char *salt, char iobuf[])
         if (c > UCHAR('Z')) {
             c += 6u;
 	}
-        iobuf[i + 2] = (char)c;
+        iobuf[i + 2u] = (char)c;
     }
-    iobuf[i + 2] = '\0';
+    iobuf[i + 2u] = '\0';
     if (iobuf[1] == '\0') {
         iobuf[1] = iobuf[0];
     }

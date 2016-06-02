@@ -119,7 +119,7 @@ NsTclCacheCreateObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     Ns_MutexLock(&servPtr->tcl.cachelock);
     hPtr = Tcl_CreateHashEntry(&servPtr->tcl.caches, name, &isNew);
     if (isNew != 0) {
-        TclCache *cPtr = ns_calloc(1U, sizeof(TclCache));
+        TclCache *cPtr = ns_calloc(1u, sizeof(TclCache));
 
         cPtr->cache = Ns_CacheCreateSz(name, TCL_STRING_KEYS, (size_t)iMaxSize, ns_free);
         cPtr->maxEntry = (size_t)iMaxEntry;
@@ -303,7 +303,7 @@ NsTclCacheIncrObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
         Ns_CacheUnlock(cPtr->cache);
         return TCL_ERROR;
     }
-    valObj = Tcl_NewIntObj(cur += incr);
+    valObj = Tcl_NewIntObj(cur + incr);
     SetEntry(cPtr, entry, valObj, expPtr, 0);
     Tcl_SetObjResult(interp, valObj);
     Ns_CacheUnlock(cPtr->cache);
@@ -453,7 +453,7 @@ noGlobChars(const char *pattern)
     register char c;
     const char *p = pattern;
 
-    assert(pattern != NULL);
+    NS_NONNULL_ASSERT(pattern != NULL);
 
     for (c = *p; likely(c != '\0'); c = *++p) {
 	if (unlikely(c == '*') || unlikely(c == '?') || unlikely(c == '[')) {
@@ -635,6 +635,7 @@ NsTclCacheGetObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST
     Ns_Entry       *entry;
     const char     *key;
     Tcl_Obj        *varNameObj = NULL, *resultObj;
+    int             result = TCL_OK;
 
     Ns_ObjvSpec args[] = {
         {"cache",    ObjvCache,     &cPtr,        NULL},
@@ -654,21 +655,23 @@ NsTclCacheGetObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST
     resultObj = (entry != NULL) ? Tcl_NewStringObj(Ns_CacheGetValue(entry), -1) : NULL;
     Ns_CacheUnlock(cPtr->cache);
 
-    if (varNameObj != NULL) {
+    if (unlikely(varNameObj != NULL)) {
 	Tcl_SetObjResult(interp, Tcl_NewBooleanObj(resultObj != NULL));
-	if (resultObj != NULL) {
-	    Tcl_ObjSetVar2(interp, varNameObj, NULL, resultObj, 0);
+	if (likely(resultObj != NULL)) {
+	    if (unlikely(Tcl_ObjSetVar2(interp, varNameObj, NULL, resultObj, TCL_LEAVE_ERR_MSG) == NULL)) {
+                result = TCL_ERROR;
+            }
 	}
     } else {
-	if (resultObj != NULL) {
+	if (likely(resultObj != NULL)) {
 	    Tcl_SetObjResult(interp, resultObj);
 	} else {
 	    Tcl_AppendResult(interp, "no such key: ",
 			     Tcl_GetString(objv[2]), NULL);
-	    return TCL_ERROR;
+	    result = TCL_ERROR;
 	}
     }
-    return TCL_OK;
+    return result;
 }
 
 
@@ -779,10 +782,10 @@ CreateEntry(const NsInterp *itPtr, TclCache *cPtr, const char *key, int *newPtr,
     Ns_Entry *entry;
     Ns_Time   t;
 
-    assert(itPtr != NULL);
-    assert(cPtr != NULL);
-    assert(key != NULL);
-    assert(newPtr != NULL);
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(cPtr != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(newPtr != NULL);
 
     cache = cPtr->cache;
 
@@ -828,9 +831,9 @@ SetEntry(TclCache *cPtr, Ns_Entry *entry, Tcl_Obj *valObj, Ns_Time *expPtr, int 
     size_t      length;
     Ns_Time     t;
 
-    assert(cPtr != NULL);
-    assert(entry != NULL);
-    assert(valObj != NULL);
+    NS_NONNULL_ASSERT(cPtr != NULL);
+    NS_NONNULL_ASSERT(entry != NULL);
+    NS_NONNULL_ASSERT(valObj != NULL);
 
     bytes = Tcl_GetStringFromObj(valObj, &len);
     assert(len >= 0);

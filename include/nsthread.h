@@ -38,11 +38,11 @@
 #define NSTHREAD_H
 
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE
+# define _GNU_SOURCE
 #endif
 
 #ifdef HAVE_CONFIG_H
-#include "nsconfig.h"
+# include "nsconfig.h"
 #endif
 
 #include <nscheck.h>
@@ -54,15 +54,15 @@
  */
 #define NSTHREAD_EXPORTS
 
-#if defined(__GNUC__) && __GNUC__ > 2
+#if defined(__GNUC__) && (__GNUC__ > 2)
 /* Use gcc branch prediction hint to minimize cost of e.g. DTrace
  * ENABLED checks. 
  */
-#  define unlikely(x) (__builtin_expect((x), 0))
-#  define likely(x) (__builtin_expect((x), 1))
+# define unlikely(x) (__builtin_expect((x), 0))
+# define likely(x) (__builtin_expect((x), 1))
 #else
-#  define unlikely(x) (x)
-#  define likely(x) (x)
+# define unlikely(x) (x)
+# define likely(x) (x)
 #endif
 
 /***************************************************************
@@ -151,7 +151,6 @@ typedef int32_t ssize_t;
 #  define chsize                      _chsize
 #  define close                       _close
 #  define fileno                      _fileno
-#  define getpid                      GetCurrentProcessId
 #  define mktemp                      _mktemp
 #  define open                        _open
 #  define putenv                      _putenv
@@ -159,6 +158,7 @@ typedef int32_t ssize_t;
 #  define unlink                      _unlink
 #  define vsnprintf                   _vsnprintf
 
+#  define getpid()                    (pid_t)GetCurrentProcessId()
 #  define ftruncate(f,s)              _chsize((f),(s))
 
 # else
@@ -233,6 +233,9 @@ typedef int32_t ssize_t;
 #  define PACKAGE_VERSION             (NS_VERSION)
 #  define PACKAGE_BUGREPORT           "naviserver-devel@lists.sourceforge.net"
 #  define TIME_T_MAX                  (LONG_MAX)
+#  define HAVE_IPV6                   1
+#  define HAVE_INET_NTOP              1
+#  define HAVE_INET_PTON              1
 # endif
 
 /*
@@ -358,11 +361,11 @@ typedef struct DIR_ *DIR;
 #  include <sys/filio.h>
 # endif
 
-# if defined(__sgi) && !defined(_SGI_MP_SOURCE)
+# if defined(__sgi) && (!defined(_SGI_MP_SOURCE))
 #  define _SGI_MP_SOURCE
 # endif
 
-# if defined(__sun) && !defined(_POSIX_PTHREAD_SEMANTICS)
+# if defined(__sun) && (!defined(_POSIX_PTHREAD_SEMANTICS))
 #  define _POSIX_PTHREAD_SEMANTICS
 # endif
 
@@ -453,15 +456,43 @@ typedef struct DIR_ *DIR;
 #endif
 
 #ifdef HAVE_INTTYPES_H
-#include <inttypes.h>
+# include <inttypes.h>
 #endif
 
 #ifdef HAVE_STDINT_H
-#include <stdint.h>
+# include <stdint.h>
 #endif
 
 #ifdef HAVE_SYS_PARAM_H
-#include <sys/param.h>
+# include <sys/param.h>
+#endif
+
+
+#ifdef HAVE_IPV6
+# ifndef AF_INET6
+#  warning "Strange System: have no AF_INET6. Deactivating IPv6 support."
+#  undef HAVE_IPV6
+# endif
+#endif
+
+#ifdef HAVE_IPV6
+# ifndef HAVE_INET_PTON
+#  warning "Strange System: have AF_INET6 but no HAVE_INET_PTON. Deactivating IPv6 support."
+#  undef HAVE_IPV6
+# endif
+#endif
+
+
+#ifdef HAVE_IPV6
+# define NS_IP_LOOPBACK      "::1"
+# define NS_IP_UNSPECIFIED   "::"
+# define NS_SOCKADDR_STORAGE sockaddr_storage
+# define NS_IPADDR_SIZE      INET6_ADDRSTRLEN
+#else
+# define NS_IP_LOOPBACK      "127.0.0.1"
+# define NS_IP_UNSPECIFIED   "0.0.0.0"
+# define NS_SOCKADDR_STORAGE sockaddr_in
+# define NS_IPADDR_SIZE      INET_ADDRSTRLEN
 #endif
 
 #ifdef _WIN32
@@ -477,15 +508,15 @@ typedef struct DIR_ *DIR;
 #endif
 
 #ifndef S_ISREG
-#define S_ISREG(m)                  ((m) & _S_IFREG)
+# define S_ISREG(m)                 ((m) & _S_IFREG)
 #endif
 
 #ifndef S_ISDIR
-#define S_ISDIR(m)                  ((m) & _S_IFDIR)
+# define S_ISDIR(m)                 ((m) & _S_IFDIR)
 #endif
 
 #ifndef F_CLOEXEC
-#define F_CLOEXEC                   1
+# define F_CLOEXEC                  1
 #endif
 
 #ifndef __linux
@@ -563,6 +594,16 @@ typedef struct DIR_ *DIR;
 # define PRIu64      "I64u"
 #endif
 
+#if !defined(SCNd64)
+# if !defined __PRI64_PREFIX
+#  if defined(HAVE_64BIT)
+#   define __PRI64_PREFIX  "l"
+#  else
+#   define __PRI64_PREFIX  "ll"
+#  endif
+# endif
+# define SCNd64      __PRI64_PREFIX "d"
+#endif
 /*
  * There is apparently no platform independent print format for items
  * of size_t. Therefore, we invent here our own variant, trying to
@@ -583,10 +624,10 @@ typedef struct DIR_ *DIR;
  * of ssize_t. Therefore, we invent here our own variant, trying to
  * stick to the naming conventions.
  */
-#if !defined(PRIdz) && defined(_WIN64)
+#if (!defined(PRIdz)) && defined(_WIN64)
 # define PRIdz PRId64
 #endif
-#if !defined(PRIdz) && defined(_WIN32)
+#if (!defined(PRIdz)) && defined(_WIN32)
 # define PRIdz PRId32
 #endif
 #if !defined(PRIdz)
@@ -612,48 +653,36 @@ typedef struct DIR_ *DIR;
  * Older Solaris version (2.8-) have older definitions
  * of pointer formatting macros.
  */
+#if !defined(__PRIPTR_PREFIX)
+# if defined(_LP64) || defined(_I32LPx) || defined(HAVE_64BIT)
+#  define __PRIPTR_PREFIX "l"
+# else
+#  define __PRIPTR_PREFIX
+# endif
+#endif
+
 
 #ifndef PRIdPTR
-# if defined(_LP64) || defined(_I32LPx)
-#  define PRIdPTR                     "ld"
-# else
-#  define PRIdPTR                     "d"
-# endif
+# define PRIdPTR    __PRIPTR_PREFIX "d"
 #endif
 
 #ifndef PRIoPTR
-# if defined(_LP64) || defined(_I32LPx)
-#  define PRIoPTR                     "lo"
-# else
-#  define PRIoPTR                     "o"
-# endif
+# define PRIoPTR    __PRIPTR_PREFIX "o"
 #endif
 
 #ifndef PRIiPTR
-# if defined(_LP64) || defined(_I32LPx)
-#  define PRIiPTR                     "li"
-# else
-#  define PRIiPTR                     "i"
-# endif
+# define PRIiPTR    __PRIPTR_PREFIX "i"
 #endif
 
 #ifndef PRIuPTR
-# if defined(_LP64) || defined(_I32LPx)
-#  define PRIuPTR                     "lu"
-# else
-#  define PRIuPTR                     "u"
-# endif
+# define PRIuPTR    __PRIPTR_PREFIX "u"
 #endif
 
 #ifndef PRIxPTR
-# if defined(_LP64) || defined(_I32LPx)
-#  define PRIxPTR                     "lx"
-# else
-#  define PRIxPTR                     "x"
-# endif
+# define PRIxPTR    __PRIPTR_PREFIX "x"
 #endif
 
-#if !defined(INT2PTR) && !defined(PTR2INT)
+#if (!defined(INT2PTR)) && (!defined(PTR2INT))
 #   if defined(HAVE_INTPTR_T) || defined(intptr_t)
 #       define INT2PTR(p)  ((void *)(intptr_t)(p))
 #       define PTR2INT(p)  ((int)(intptr_t)(p))
@@ -833,7 +862,7 @@ NS_EXTERN struct tm *ns_gmtime(const time_t *clock)      NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_ctime(const time_t *clock)            NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_asctime(const struct tm *tmPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_strtok(char *s1, const char *s2)      NS_GNUC_NONNULL(1);
-NS_EXTERN char *ns_inet_ntoa(struct in_addr addr);
+NS_EXTERN char *ns_inet_ntoa(struct sockaddr *saPtr)     NS_GNUC_NONNULL(1);
 
 /*
  * sema.c:
@@ -928,7 +957,7 @@ NS_EXTERN ssize_t ns_send(NS_SOCKET socket, const void *buffer, size_t length, i
  * Tcl 8.6 and TIP 330/336 compatability
  */
 
-#if (TCL_MAJOR_VERSION < 8) || (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION < 6)
+#if (TCL_MAJOR_VERSION < 8) || ((TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION < 6))
 #define Tcl_GetErrorLine(interp) ((interp)->errorLine)
 #endif
 

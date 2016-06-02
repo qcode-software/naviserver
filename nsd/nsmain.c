@@ -458,7 +458,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
      */
 
     servers = Ns_ConfigCreateSection("ns/servers");
-    if (Ns_SetSize(servers) == 0U) {
+    if (Ns_SetSize(servers) == 0u) {
         Ns_SetPut(servers, "default", "Default NaviServer");
     }
 
@@ -636,7 +636,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
     } else {
 	size_t i;
 
-        for (i = 0U; i < Ns_SetSize(servers); ++i) {
+        for (i = 0u; i < Ns_SetSize(servers); ++i) {
             server = Ns_SetKey(servers, i);
             NsInitServer(server, initProc);
         }
@@ -1005,7 +1005,7 @@ UsageError(const char *msg, ...)
         "  -u  run as <user>\n"
         "  -g  run as <group>\n"
         "  -r  chroot to <path>\n"
-        "  -b  bind <address:port>\n"
+        "  -b  bind <address:port>  (Example: 192.168.0.1:80,[::1]:80)\n"
         "  -B  bind address:port list from <file>\n"
 #endif
         "  -s  use server named <server> in config file\n"

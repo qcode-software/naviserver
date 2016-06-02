@@ -74,9 +74,9 @@ SearchFirstCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName, con
     int      index = -1;
     size_t   nameLen, i;
 
-    assert(hdrs != NULL);
-    assert(setName != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(hdrs != NULL);
+    NS_NONNULL_ASSERT(setName != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
 
     nameLen = strlen(name);
 
@@ -133,9 +133,9 @@ DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
 {
     int success = 0;
 
-    assert(hdrs != NULL);
-    assert(setName != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(hdrs != NULL);
+    NS_NONNULL_ASSERT(setName != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
 
     while (1) {
 	int idx = SearchFirstCookie(NULL, hdrs, setName, name);
@@ -173,10 +173,10 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value, tim
 {
     Ns_DString  cookie;
 
-    assert(conn != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
     
-    if ((flags & NS_COOKIE_REPLACE) != 0U) {
+    if ((flags & NS_COOKIE_REPLACE) != 0u) {
 	(void)DeleteNamedCookies(Ns_ConnOutputHeaders(conn), "set-cookie", name);
     }
 
@@ -186,7 +186,7 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value, tim
         Ns_UrlQueryEncode(&cookie, value, NULL);
     }
     Ns_DStringAppend(&cookie, "\"");
-    if ((flags & NS_COOKIE_EXPIRENOW) != 0U) {
+    if ((flags & NS_COOKIE_EXPIRENOW) != 0u) {
         Ns_DStringAppend(&cookie, "; Expires=Fri, 01-Jan-1980 01:00:00 GMT");
     } else if (maxage == TIME_T_MAX) {
         Ns_DStringAppend(&cookie, "; Expires=Fri, 01-Jan-2035 01:00:00 GMT");
@@ -204,13 +204,13 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value, tim
     if (path != NULL) {
         Ns_DStringVarAppend(&cookie, "; Path=", path, NULL);
     }
-    if ((flags & NS_COOKIE_SECURE) != 0U) {
+    if ((flags & NS_COOKIE_SECURE) != 0u) {
         Ns_DStringAppend(&cookie, "; Secure");
     }
-    if ((flags & NS_COOKIE_DISCARD) != 0U) {
+    if ((flags & NS_COOKIE_DISCARD) != 0u) {
         Ns_DStringAppend(&cookie, "; Discard");
     }
-    if ((flags & NS_COOKIE_SCRIPTABLE) == 0U) {
+    if ((flags & NS_COOKIE_SCRIPTABLE) == 0u) {
         Ns_DStringAppend(&cookie, "; HttpOnly");
     }
 
@@ -221,17 +221,17 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value, tim
 void
 Ns_ConnSetCookie(const Ns_Conn *conn, const char *name, const char *value, time_t maxage)
 {
-    assert(conn != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
     
-    Ns_ConnSetCookieEx(conn, name, value, maxage, NULL, NULL, 0U);
+    Ns_ConnSetCookieEx(conn, name, value, maxage, NULL, NULL, 0u);
 }
 
 void
 Ns_ConnSetSecureCookie(const Ns_Conn *conn, const char *name, const char *value, time_t maxage)
 {
-    assert(conn != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
 
     Ns_ConnSetCookieEx(conn, name, value, maxage, NULL, NULL, NS_COOKIE_SECURE);
 }
@@ -256,8 +256,8 @@ Ns_ConnSetSecureCookie(const Ns_Conn *conn, const char *name, const char *value,
 void
 Ns_ConnDeleteCookie(const Ns_Conn *conn, const char *name, const char *domain, const char *path)
 {
-    assert(conn != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
     
     Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW);
 }
@@ -265,8 +265,8 @@ Ns_ConnDeleteCookie(const Ns_Conn *conn, const char *name, const char *domain, c
 void
 Ns_ConnDeleteSecureCookie(const Ns_Conn *conn, const char *name, const char *domain, const char *path)
 {
-    assert(conn != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
     
     Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW|NS_COOKIE_SECURE);
 }
@@ -294,9 +294,9 @@ Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
 {
     int idx;
 
-    assert(dest != NULL);
-    assert(conn != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(dest != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
       
     idx = SearchFirstCookie(dest, Ns_ConnHeaders(conn), "cookie", name);
     
@@ -533,7 +533,7 @@ GetConn(Tcl_Interp *interp)
 {
     Ns_Conn *conn;
 
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
     
     conn = Ns_TclGetConn(interp);
     if (conn == NULL) {

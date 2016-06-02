@@ -126,9 +126,9 @@ GetOptIndex(Tcl_Obj *obj, Ns_ObjvSpec *tablePtr, int *idxPtr)
     const char  *key;
     int          idx;
 
-    assert(obj != NULL);
-    assert(tablePtr != NULL);    
-    assert(idxPtr != NULL);
+    NS_NONNULL_ASSERT(obj != NULL);
+    NS_NONNULL_ASSERT(tablePtr != NULL);    
+    NS_NONNULL_ASSERT(idxPtr != NULL);
 
     key = Tcl_GetString(obj);
     if (*key != '-') {
@@ -181,7 +181,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
     Ns_ObjvSpec *specPtr = NULL;
     int          optIndex, status, remain = (objc - offset);
 
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
 
     if (likely(optSpec != NULL) && likely(optSpec->key != NULL)) {
 
@@ -946,7 +946,7 @@ FreeSpecs(Ns_ObjvSpec *specPtr)
     Ns_ObjvSpec  *saveSpec = specPtr;
     int           doneOpts = 0;
 
-    assert(specPtr != NULL);
+    NS_NONNULL_ASSERT(specPtr != NULL);
 
     while(1) {
         if (specPtr->key == NULL) {
@@ -1199,9 +1199,9 @@ SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
     size_t      len;
     const char *value;
 
-    assert(interp != NULL);
-    assert(key != NULL);
-    assert(valueObj != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(valueObj != NULL);
 
     value = Tcl_GetString(valueObj);
 
@@ -1212,7 +1212,7 @@ SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
     len = strlen(value);
     if (value[0] == '[' && value[len - 1u] == ']') {
         value++;
-        len -= 2U;
+        len -= 2u;
 
         if (Tcl_EvalEx(interp, value, (int)len, 0) == TCL_ERROR) {
             return TCL_ERROR;

@@ -187,7 +187,7 @@ NsDbReleaseHandles(Tcl_Interp *interp, const void *arg)
 /*
  *----------------------------------------------------------------------
  *
- * DbCmd --
+ * DbObjCmd --
  *
  *      Implement the Naviserver ns_db Tcl command.
  *
@@ -216,14 +216,16 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 	PASSWORD, USER, DATASOURCE, DISCONNECT, DBTYPE, DRIVER, CANCEL, ROWCOUNT,
 	BINDROW, FLUSH, RELEASEHANDLE, RESETHANDLE, CONNECTED, SP_EXEC,
 	SP_GETPARAMS, SP_RETURNCODE, GETROW, DML, ONE_ROW, ZERO_OR_ONE_ROW, EXEC,
-	SELECT, SP_START, INTERPRETSQLFILE, VERBOSE, SETEXCEPTION, SP_SETPARAM
+	SELECT, SP_START, INTERPRETSQLFILE, VERBOSE, SETEXCEPTION, SP_SETPARAM,
+        STATS, LOGMINDURATION
     };
-    static const char *subcmd[] = {
+    static const char *const subcmd[] = {
         "pools", "bouncepool", "gethandle", "exception", "poolname",
 	"password", "user", "datasource", "disconnect", "dbtype", "driver", "cancel", "rowcount",
 	"bindrow", "flush", "releasehandle", "resethandle", "connected", "sp_exec",
 	"sp_getparams", "sp_returncode", "getrow", "dml", "1row", "0or1row", "exec",
 	"select", "sp_start", "interpretsqlfile", "verbose", "setexception", "sp_setparam",
+        "stats", "logminduration",
         NULL
     };
 
@@ -344,6 +346,52 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 	break;
     }
 
+    case LOGMINDURATION: {
+        Ns_Time     *minDurationPtr = NULL;
+        
+        Ns_ObjvSpec args[] = {
+            {"?pool", 	     Ns_ObjvString, &pool, NULL},
+            {"?minduration", Ns_ObjvTime,   &minDurationPtr,  NULL},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+            return TCL_ERROR;
+        }
+        if (pool == NULL) {
+            /*
+             * No argument, list min duration for every pool.
+             */
+            Tcl_SetObjResult(interp, Ns_DbListMinDurations(interp, idataPtr->server));
+            return TCL_OK;
+	}
+
+        /*
+         * In this case, minduration was not given, return the actual
+         * minduration of this pool.
+         */
+        if (minDurationPtr == NULL) {
+
+            if (Ns_DbGetMinDuration(interp, pool, &minDurationPtr) != TCL_OK) {
+                return TCL_ERROR;
+            }
+            Tcl_SetObjResult(interp, Ns_TclNewTimeObj(minDurationPtr));
+
+            return TCL_OK;
+        }
+        
+        /*
+         * Set the minduration the the specified value.
+         */
+        if (Ns_DbSetMinDuration(interp, pool, minDurationPtr) != TCL_OK) {
+            return TCL_ERROR;
+        } else {
+            Tcl_SetObjResult(interp, Ns_TclNewTimeObj(minDurationPtr));
+        }
+        
+        break;
+    }
+
     case EXCEPTION:
         if (objc != 3) {
             Tcl_WrongNumArgs(interp, 2, objv, "dbId");
@@ -355,6 +403,17 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
         Tcl_AppendElement(interp, handlePtr->cExceptionCode);
         Tcl_AppendElement(interp, handlePtr->dsExceptionMsg.string);
         break;
+
+    case STATS: {
+        if (objc != 2) {
+            Tcl_WrongNumArgs(interp, 2, objv, NULL);
+            return TCL_ERROR;
+        }
+	if  (Ns_DbPoolStats(interp) != TCL_OK) {
+            return TCL_ERROR;
+        }
+        break;
+    }
 
     case POOLNAME:
     case PASSWORD:
@@ -401,7 +460,7 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
             break;
 
         case DATASOURCE:
-      	    Tcl_SetResult(interp, handlePtr->datasource, TCL_STATIC);
+      	    Tcl_SetResult(interp, (char *)handlePtr->datasource, TCL_STATIC);
             break;
 
         case DISCONNECT:
@@ -611,8 +670,10 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
             Tcl_WrongNumArgs(interp, 2, objv, "dbId ?on|off?");
         }
 	assert(handlePtr != NULL);
+        Ns_LogDeprecated(objv, 2, "ns_logctl debug(sql) ...", NULL);
         if (objc == 4) {
             int verbose;
+            
             if (Tcl_GetBoolean(interp, Tcl_GetString(objv[3]), &verbose) != TCL_OK) {
                 return TCL_ERROR;
             }
@@ -857,7 +918,7 @@ QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *
  * GetCsvCmd --
  *
- *	Implement the ns_getcvs command to read a line from a CSV file
+ *	Implement the ns_getcsv command to read a single line from a CSV file
  *	and parse the results into a Tcl list variable.
  *
  * Results:
@@ -935,12 +996,19 @@ loopstart:
             }
         } else {
             if ((c == '\n') || (c == '\r')) {
+#if 0
+                /*
+                 * Not sure, what the intention of the following block was,
+                 * since the final break after this block jumps out of the
+                 * loop.
+                 */
                 while ((c = *p++) != '\0') {
                     if ((c != '\n') && (c != '\r')) {
-			--p;
+                        *--p;
                         break;
                     }
                 }
+#endif                
                 break;
             }
             if (c == '"') {
@@ -1070,7 +1138,7 @@ EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle)
 static int
 DbFail(Tcl_Interp *interp, Ns_DbHandle *handle, const char *cmd)
 {
-    assert(handle != NULL);
+    NS_NONNULL_ASSERT(handle != NULL);
 
     Tcl_AppendResult(interp, "Database operation \"", cmd, "\" failed", NULL);
     if (handle->cExceptionCode[0] != '\0') {

@@ -198,12 +198,12 @@ NsUpdateProgress(Ns_Sock *sock)
         Progress *pPtr = Ns_SlsGet(&slot, sock);
 
         if (pPtr == NULL) {
-            pPtr = ns_calloc(1U, sizeof(Progress));
+            pPtr = ns_calloc(1u, sizeof(Progress));
             Ns_SlsSet(&slot, sock, pPtr);
         }
 
         if (pPtr->hPtr == NULL) {
-	    CONST char *key = NULL;
+	    const char *key = NULL;
 	    Ns_Set *set = NULL;
 	    Ns_DString *dsPtr = NULL;
 

@@ -74,16 +74,16 @@ static void ConnChanFree(NsConnChan *connChanPtr)
 static NsConnChan *ConnChanGet(Tcl_Interp *interp, NsServer *servPtr, const char *name)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static int NsTclConnChanProc(NS_SOCKET sock, void *arg, unsigned int why);
-
-static int SockCallbackRegister(NsConnChan *connChanPtr, const char *script, unsigned int when, Ns_Time *timeoutPtr)
+static int SockCallbackRegister(NsConnChan *connChanPtr, const char *script, unsigned int when, const Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static ssize_t DriverRecv(Sock *sockPtr, struct iovec *bufs, int nbufs, Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
-static ssize_t DriverSend(Sock *sockPtr, const struct iovec *bufs, int nbufs, unsigned int flags, Ns_Time *timeoutPtr)
+static ssize_t DriverSend(Sock *sockPtr, const struct iovec *bufs, int nbufs, unsigned int flags, const Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(1);
+
+static Ns_SockProc NsTclConnChanProc;
 
 
 /*
@@ -104,8 +104,8 @@ static ssize_t DriverSend(Sock *sockPtr, const struct iovec *bufs, int nbufs, un
 static void
 CallbackFree(Callback *cbPtr)
 {
-    assert(cbPtr != NULL);
-    assert(cbPtr->connChanPtr != NULL);
+    NS_NONNULL_ASSERT(cbPtr != NULL);
+    NS_NONNULL_ASSERT(cbPtr->connChanPtr != NULL);
     
     Ns_SockCancelCallbackEx(cbPtr->connChanPtr->sockPtr->sock, NULL, NULL, NULL);
     cbPtr->connChanPtr->cbPtr = NULL;
@@ -133,8 +133,8 @@ static NsConnChan *
 ConnChanCreate(const char *name, Conn *connPtr) {
     NsConnChan  *connChanPtr = NULL;
     
-    assert(name != NULL);
-    assert(connPtr != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
     assert(connPtr->sockPtr != NULL);
     assert(connPtr->reqPtr != NULL);
 
@@ -179,7 +179,7 @@ ConnChanFree(NsConnChan *connChanPtr) {
     NsServer *servPtr;
     Tcl_HashEntry  *hPtr;
     
-    assert(connChanPtr != NULL);
+    NS_NONNULL_ASSERT(connChanPtr != NULL);
     assert(connChanPtr->sockPtr != NULL);
     assert(connChanPtr->sockPtr->servPtr != NULL);
 
@@ -235,8 +235,8 @@ ConnChanGet(Tcl_Interp *interp, NsServer *servPtr, const char *name) {
     Tcl_HashEntry  *hPtr;
     NsConnChan     *connChanPtr = NULL;
 
-    assert(servPtr != NULL);
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
     
     Ns_MutexLock(&servPtr->connchans.lock);
     hPtr = Tcl_FindHashEntry(&servPtr->connchans.table, name);
@@ -271,16 +271,19 @@ ConnChanGet(Tcl_Interp *interp, NsServer *servPtr, const char *name) {
  *----------------------------------------------------------------------
  */
 
-static int
+static bool
 NsTclConnChanProc(NS_SOCKET sock, void *arg, unsigned int why)
 {
     Tcl_DString  script;
-    Callback    *cbPtr = arg;
+    Callback    *cbPtr;
     Tcl_Interp  *interp;
     const char  *w;
     int          result;
 
-    assert(arg != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
+
+    cbPtr = arg;
+    
     assert(cbPtr->connChanPtr != NULL);
     assert(cbPtr->connChanPtr->sockPtr != NULL);
     assert(cbPtr->connChanPtr->sockPtr->servPtr != NULL);
@@ -351,14 +354,14 @@ NsTclConnChanProc(NS_SOCKET sock, void *arg, unsigned int why)
  */
 
 static int
-SockCallbackRegister(NsConnChan *connChanPtr, const char *script, unsigned int when, Ns_Time *timeoutPtr)
+SockCallbackRegister(NsConnChan *connChanPtr, const char *script, unsigned int when, const Ns_Time *timeoutPtr)
 {
     Callback *cbPtr;
     size_t    scriptLength;
     int       result;
 
-    assert(connChanPtr != NULL);
-    assert(script != NULL);
+    NS_NONNULL_ASSERT(connChanPtr != NULL);
+    NS_NONNULL_ASSERT(script != NULL);
 
     /*
      * If there is already a callback registered, free and cancel it. This
@@ -373,12 +376,10 @@ SockCallbackRegister(NsConnChan *connChanPtr, const char *script, unsigned int w
     scriptLength = strlen(script);
 
     cbPtr = ns_malloc(sizeof(Callback) + (size_t)scriptLength);
-    cbPtr->connChanPtr = connChanPtr;
+    memcpy(cbPtr->script, script, scriptLength + 1u);
     cbPtr->scriptLength = scriptLength;
     cbPtr->when = when;
     cbPtr->threadName = NULL;
-    memcpy(cbPtr->script, script, scriptLength + 1u);
-
     cbPtr->connChanPtr = connChanPtr;
     
     result = Ns_SockCallbackEx(connChanPtr->sockPtr->sock, NsTclConnChanProc, cbPtr,
@@ -414,9 +415,9 @@ DriverRecv(Sock *sockPtr, struct iovec *bufs, int nbufs, Ns_Time *timeoutPtr)
 {
     Ns_Time timeout;
 
-    assert(sockPtr != NULL);
-    assert(bufs != NULL);
-    assert(timeoutPtr != NULL);
+    NS_NONNULL_ASSERT(sockPtr != NULL);
+    NS_NONNULL_ASSERT(bufs != NULL);
+    NS_NONNULL_ASSERT(timeoutPtr != NULL);
 
     if (timeoutPtr->sec == 0 && timeoutPtr->usec == 0) {
         /*
@@ -446,11 +447,11 @@ DriverRecv(Sock *sockPtr, struct iovec *bufs, int nbufs, Ns_Time *timeoutPtr)
  */
 
 static ssize_t
-DriverSend(Sock *sockPtr, const struct iovec *bufs, int nbufs, unsigned int flags, Ns_Time *timeoutPtr)
+DriverSend(Sock *sockPtr, const struct iovec *bufs, int nbufs, unsigned int flags, const Ns_Time *timeoutPtr)
 {
     Ns_Time timeout;
 
-    assert(sockPtr != NULL);
+    NS_NONNULL_ASSERT(sockPtr != NULL);
     assert(sockPtr->drvPtr != NULL);
 
     if (timeoutPtr->sec == 0 && timeoutPtr->usec == 0) {
@@ -492,7 +493,7 @@ NsTclConnChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
     Tcl_HashEntry  *hPtr;
     NsConnChan     *connChanPtr;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "detach", "close", "list", 
         "callback",
         "write", "read", NULL

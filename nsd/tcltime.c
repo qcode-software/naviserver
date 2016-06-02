@@ -53,8 +53,8 @@ static void UpdateStringOfTime(Tcl_Obj *objPtr)
 static int TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
     NS_GNUC_NONNULL(2);
 
-static int GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, long multiplier, Ns_Time *tPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(5);
+static int GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *tPtr)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
 /*
  * Local variables defined in this file.
@@ -126,7 +126,7 @@ Ns_TclNewTimeObj(const Ns_Time *timePtr)
 {
     Tcl_Obj *objPtr = Tcl_NewObj();
 
-    assert(timePtr != NULL);
+    NS_NONNULL_ASSERT(timePtr != NULL);
     
     Tcl_InvalidateStringRep(objPtr);
     SetTimeInternalRep(objPtr, timePtr);
@@ -155,8 +155,8 @@ void
 Ns_TclSetTimeObj(Tcl_Obj *objPtr, const Ns_Time *timePtr)
 {
 
-    assert(timePtr != NULL);
-    assert(objPtr != NULL);
+    NS_NONNULL_ASSERT(timePtr != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
 
     if (Tcl_IsShared(objPtr)) {
         Tcl_Panic("Ns_TclSetTimeObj called with shared object");
@@ -188,9 +188,9 @@ Ns_TclGetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time *timePtr)
 {
     long sec;
 
-    assert(interp != NULL);
-    assert(objPtr != NULL);
-    assert(timePtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+    NS_NONNULL_ASSERT(timePtr != NULL);
 
     if (objPtr->typePtr == intTypePtr) {
         if (Tcl_GetLongFromObj(interp, objPtr, &sec) != TCL_OK) {
@@ -230,9 +230,9 @@ int
 Ns_TclGetTimePtrFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time **timePtrPtr)
 {
 
-    assert(interp != NULL);
-    assert(objPtr != NULL);
-    assert(timePtrPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+    NS_NONNULL_ASSERT(timePtrPtr != NULL);
     
     if (objPtr->typePtr != &timeType) {
         if (Tcl_ConvertToType(interp, objPtr, &timeType) != TCL_OK) {
@@ -268,7 +268,7 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     long sec;
     int opt;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
 	"adjust", "diff", "format", "get", "incr", "make",
 	"seconds", "microseconds", NULL
     };
@@ -416,7 +416,7 @@ TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
     struct tm *ptm;
     Tcl_Obj   *objPtr[9];
 
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
     
     if (objc != 1) {
         Tcl_WrongNumArgs(interp, 1, objv, "");
@@ -573,7 +573,7 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
     int      len;
     char     buf[(TCL_INTEGER_SPACE * 2) + 1];
 
-    assert(objPtr != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
 
     timePtr = (Ns_Time *) (void *) &objPtr->internalRep;
     Ns_AdjTime(timePtr);
@@ -593,7 +593,9 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
  * GetTimeFromString --
  *
  *      Try to fill ns_Time struct from a string based on a specified
- *      separator and a multiplier for usec.
+ *      separator (':' or '.'). The colon separater is for the classical
+ *      NaviServer time format "sec:usec", whereas the dot is used for the
+ *      floating point format.
  *
  * Results:
  *      TCL_OK, TCL_ERROR or TCL_CONTINUE
@@ -605,20 +607,19 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
  */
 
 static int
-GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, long multiplier, Ns_Time *tPtr)
+GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *tPtr)
 {
     /*
      * Look for the separator
      */
     char *sep;
 
-    assert(interp != NULL);
-    assert(str != NULL);
-    assert(tPtr != NULL);
+    NS_NONNULL_ASSERT(str != NULL);
+    NS_NONNULL_ASSERT(tPtr != NULL);
 
     sep = strchr(str, (int)UCHAR(separator));
     if (sep != NULL) {
-        int value;
+        int intValue;
         
         /*
          * First get sec from the string.
@@ -636,21 +637,31 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, long mult
              * first part null-terminated.
              */
             *sep = '\0';
-            result = Tcl_GetInt(interp, str, &value);
+            result = Tcl_GetInt(interp, str, &intValue);
             *sep = separator;
             if (result != TCL_OK) {
                 return TCL_ERROR;
             }
-            tPtr->sec = (long)value;
+            tPtr->sec = (long)intValue;
         }
 
         /*
          * Get usec
          */
-        if (Tcl_GetInt(interp, sep+1, &value) != TCL_OK) {
-            return TCL_ERROR;
+        if (separator == '.') {
+            double dblValue;
+            
+            if (Tcl_GetDouble(interp, sep, &dblValue) != TCL_OK) {
+                return TCL_ERROR;
+            }
+            tPtr->usec = (long)(dblValue * 1000000.0);
+            
+        } else {
+            if (Tcl_GetInt(interp, sep+1, &intValue) != TCL_OK) {
+                return TCL_ERROR;
+            }
+            tPtr->usec = (long)intValue;
         }
-        tPtr->usec = (long)value * multiplier;
         return TCL_OK;
     }
     return TCL_CONTINUE;
@@ -684,8 +695,8 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     long     sec;
     int      result = TCL_OK;
 
-    assert(interp != NULL);
-    assert(objPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
     
     if (objPtr->typePtr == intTypePtr) {
         /*
@@ -697,32 +708,78 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
         t.sec = sec;
         t.usec = 0;
     } else {
-        const char *str = Tcl_GetString(objPtr);
-        
-        /*
-         * Check, if the string contains the classical NaviServer separator
-         * for sec:usec.  If not, check if this has a "." as separator.
-         */
-        result = GetTimeFromString(interp, str, ':', 1, &t);
-        if (result == TCL_CONTINUE) {
-            result = GetTimeFromString(interp, str, '.', 100000, &t);
-        }
-        if (result == TCL_CONTINUE) {
-            /*
-             * No separator found, so interpret the value as integer
-             */
-            result = Tcl_GetLongFromObj(interp, objPtr, &sec);
-            if (result == TCL_OK) {
-                t.sec = sec;
-                t.usec = 0;
-            }
-        }
+        result = Ns_GetTimeFromString(interp, Tcl_GetString(objPtr), &t);
     }
+    
     if (result == TCL_OK) {
         Ns_AdjTime(&t);
         SetTimeInternalRep(objPtr, &t);
     }
 
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_GetTimeFromString --
+ *
+ *      Convert string to time structure.  Check, if the string contains the
+ *      classical NaviServer separator for sec:usec and interprete the string
+ *      in this format.  If not, check if this has a "." as separator, and use
+ *      a floating point notation. 
+ *
+ * Results: 
+ *      Tcl result code.
+ *
+ * Side effects:
+ *      If an error occurs and interp is given, leave error message in the
+ *      interp.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_GetTimeFromString(Tcl_Interp *interp, const char *str, Ns_Time *tPtr)
+{
+    int result;
+
+    NS_NONNULL_ASSERT(str != NULL);
+    NS_NONNULL_ASSERT(tPtr != NULL);
+
+    result = GetTimeFromString(interp, str, ':', tPtr);
+    
+    if (result == TCL_CONTINUE) {
+        result = GetTimeFromString(interp, str, '.', tPtr);
+    }
+    if (result == TCL_CONTINUE) {
+        char *ptr = NULL;
+        long sec;
+        
+        /*
+         * No separator found, so try to interprete the string as integer
+         */
+        sec = strtol(str, &ptr, 10);
+        
+        if (likely(str != ptr)) {
+            /*
+             * We could parse at least a part of the string as integer.
+             */
+            tPtr->sec = sec;
+            tPtr->usec = 0;
+            result = TCL_OK;
+
+        } else {
+            /*
+             * Still no success. If we have an interp, leave error message.
+             */ 
+            if (interp != NULL) {
+                Ns_TclPrintfResult(interp, "Invalid time value '%s'", str);
+            }
+            result = TCL_ERROR;
+        }
+    }
     return result;
 }
 
@@ -747,12 +804,13 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
 static void
 SetTimeInternalRep(Tcl_Obj *objPtr, const Ns_Time *timePtr)
 {
-    assert(objPtr != NULL);
-    assert(timePtr != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+    NS_NONNULL_ASSERT(timePtr != NULL);
     
     Ns_TclSetTwoPtrValue(objPtr, &timeType,
                          INT2PTR(timePtr->sec), INT2PTR(timePtr->usec));
 }
+
 
 /*
  * Local Variables:

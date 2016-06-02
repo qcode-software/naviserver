@@ -35,7 +35,6 @@
  */
 
 #include "nsd.h"
-#include <math.h>
 
 /*
  * Local functions defined in this file
@@ -54,9 +53,12 @@ static void AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *stat
 static void AppendConnList(Tcl_DString *dsPtr, const Conn *firstPtr, const char *state)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
-static int 
-neededAdditionalConnectionThreads(const ConnPool *poolPtr) 
-     NS_GNUC_NONNULL(1);
+static int neededAdditionalConnectionThreads(const ConnPool *poolPtr) 
+    NS_GNUC_NONNULL(1);
+
+static void WakeupConnThreads(ConnPool *poolPtr) 
+    NS_GNUC_NONNULL(1);
+
 
 /*
  * Static variables defined in this file.
@@ -68,7 +70,7 @@ static int    poolid = 0;
 /*
  * Debugging stuff
  */
-#define ThreadNr(poolPtr, argPtr) ((int)(((argPtr) != NULL) ? ((argPtr) - (poolPtr)->tqueue.args) : -1))
+#define ThreadNr(poolPtr, argPtr) (((argPtr) - (poolPtr)->tqueue.args))
 
 #if 0
 static void ConnThreadQueuePrint(ConnPool *poolPtr, char *key) {
@@ -158,8 +160,8 @@ NsMapPool(ConnPool *poolPtr, const char *map)
     const char *server;
     int  mc;
 
-    assert(poolPtr != NULL);
-    assert(map != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
+    NS_NONNULL_ASSERT(map != NULL);
 
     server = poolPtr->servPtr->server;
 
@@ -195,7 +197,7 @@ static int
 neededAdditionalConnectionThreads(const ConnPool *poolPtr) {
     int wantCreate;
 
-    assert(poolPtr != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
 
     /* 
      * Create new connection threads, if
@@ -273,7 +275,7 @@ void
 NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     int create;
 
-    assert(servPtr != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
 
     if (poolPtr == NULL) {
         /* 
@@ -331,20 +333,21 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     Conn     *connPtr = NULL;
     int       create = 0;
 
-    assert(sockPtr != NULL);
-    assert(nowPtr != NULL);
+    NS_NONNULL_ASSERT(sockPtr != NULL);
+    NS_NONNULL_ASSERT(nowPtr != NULL);
 
     servPtr = sockPtr->servPtr;
 
     /*
-     * Select server connection pool.
+     * Select server connection pool. For non-HTTP drivers, the request.method
+     * won't be provided.
      */
 
-    if (sockPtr->reqPtr != NULL) {
+    if ((sockPtr->reqPtr != NULL) && (sockPtr->reqPtr->request.method != NULL)) {
         poolPtr = NsUrlSpecificGet(servPtr,
                                    sockPtr->reqPtr->request.method,
                                    sockPtr->reqPtr->request.url,
-                                   poolid, 0);
+                                   poolid, 0u, NS_URLSPACE_DEFAULT);
     }
     if (poolPtr == NULL) {
         poolPtr = servPtr->pools.defaultPtr;
@@ -465,7 +468,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 	    idle = poolPtr->threads.idle;
 	    Ns_MutexUnlock(&poolPtr->threads.lock);
 
-	    Ns_Log(Debug, "[%d] dequeue thread connPtr %p idle %d state %d create %d", 
+	    Ns_Log(Debug, "[%ld] dequeue thread connPtr %p idle %d state %d create %d", 
 		   ThreadNr(poolPtr, argPtr), (void *)connPtr, idle, argPtr->state, create);
 	}
 
@@ -478,8 +481,8 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 
     } else {
 	if (Ns_LogSeverityEnabled(Debug)) {
-	    Ns_Log(Debug, "[%d] add waiting connPtr %p => waiting %d create %d", 
-		   ThreadNr(poolPtr, argPtr), (void *)connPtr, poolPtr->wqueue.wait.num, create);
+	    Ns_Log(Debug, "add waiting connPtr %p => waiting %d create %d", 
+		   (void *)connPtr, poolPtr->wqueue.wait.num, create);
 	}
     }
 
@@ -579,7 +582,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         {NULL, NULL, NULL, NULL}
     };
 
-    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+    if (unlikely(Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK)) {
         return TCL_ERROR;
     }
     
@@ -614,7 +617,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         while (poolPtr != NULL && !STREQ(poolPtr->pool, pool)) {
             poolPtr = poolPtr->nextPtr;
         }
-        if (poolPtr == NULL) {
+        if (unlikely(poolPtr == NULL)) {
             Tcl_AppendResult(interp, "no such pool ", pool, " for server ", servPtr->server, NULL);
             return TCL_ERROR;
         }
@@ -819,7 +822,7 @@ NsStartServer(const NsServer *servPtr)
     ConnPool *poolPtr;
     int       n;
 
-    assert(servPtr != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
 
     poolPtr = servPtr->pools.firstPtr;
     while (poolPtr != NULL) {
@@ -838,7 +841,7 @@ NsStartServer(const NsServer *servPtr)
 /*
  *----------------------------------------------------------------------
  *
- * NsWakeupConnThreads --
+ * WakeupConnThreads --
  *
  *      Wake up every idle connection thread of the specified pool.
  *
@@ -852,14 +855,10 @@ NsStartServer(const NsServer *servPtr)
  */
 
 static void
-NsWakeupConnThreads(ConnPool *poolPtr) 
-    NS_GNUC_NONNULL(1);
-
-static void
-NsWakeupConnThreads(ConnPool *poolPtr) {
+WakeupConnThreads(ConnPool *poolPtr) {
     int i;
 
-    assert(poolPtr != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
 
     Ns_MutexLock(&poolPtr->tqueue.lock);
     for (i = 0; i < poolPtr->threads.max; i++) {
@@ -897,13 +896,13 @@ NsStopServer(NsServer *servPtr)
 {
     ConnPool *poolPtr;
 
-    assert(servPtr != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
 
     Ns_Log(Notice, "server [%s]: stopping", servPtr->server);
     servPtr->pools.shutdown = NS_TRUE;
     poolPtr = servPtr->pools.firstPtr;
     while (poolPtr != NULL) {
-	NsWakeupConnThreads(poolPtr);
+	WakeupConnThreads(poolPtr);
         poolPtr = poolPtr->nextPtr;
     }
 }
@@ -915,8 +914,8 @@ NsWaitServer(NsServer *servPtr, const Ns_Time *toPtr)
     Ns_Thread  joinThread;
     int        status;
 
-    assert(servPtr != NULL);
-    assert(toPtr != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(toPtr != NULL);
 
     status = NS_OK;
     poolPtr = servPtr->pools.firstPtr;
@@ -965,7 +964,7 @@ NsConnArgProc(Tcl_DString *dsPtr, const void *arg)
 {
     const ConnThreadArg *argPtr = arg;
 
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
 
     if (arg != NULL) {
         ConnPool     *poolPtr = argPtr->poolPtr;
@@ -1007,11 +1006,13 @@ NsConnThread(void *arg)
     bool           shutdown;
     int            status = NS_OK, cpt, ncons, current, fromQueue;
     long           timeout;
-    const char    *path, *exitMsg;
+    const char    *exitMsg;
     Ns_Mutex      *threadsLockPtr = &poolPtr->threads.lock;
     Ns_Mutex      *tqueueLockPtr  = &poolPtr->tqueue.lock;
     Ns_Mutex      *wqueueLockPtr  = &poolPtr->wqueue.lock;
     Ns_Thread      joinThread;
+
+    NS_NONNULL_ASSERT(arg != NULL);
 
     /*
      * Set the ConnThreadArg into thread local storage and get the id
@@ -1044,16 +1045,7 @@ NsConnThread(void *arg)
     Ns_ThreadSelf(&joinThread);
     /*fprintf(stderr, "### starting conn thread %p <%s>\n", (void *)joinThread, Ns_ThreadGetName());*/
     
-    /*
-     * See how many connections this thread should run.  Setting
-     * connsperthread to > 0 will cause the thread to graceously exit,
-     * after processing that many requests, thus initiating kind-of
-     * Tcl-level garbage collection. 
-     */
-
-    path   = Ns_ConfigGetPath(servPtr->server, NULL, NULL);
-    cpt    = Ns_ConfigIntRange(path, "connsperthread", 10000, 0, INT_MAX);
-    
+    cpt     = poolPtr->threads.connsperthread;
     ncons   = cpt;
     timeout = poolPtr->threads.timeout;
 
@@ -1293,7 +1285,7 @@ NsConnThread(void *arg)
 		Ns_DiffTime(&now, &connPtr->filterDoneTime,     &netRunTime);
 		Ns_DiffTime(&now, &connPtr->requestQueueTime,   &fullTime);
 
-		Ns_Log(Debug, "[%d] end of job, waiting %d current %d idle %d ncons %d fromQueue %d"
+		Ns_Log(Debug, "[%ld] end of job, waiting %d current %d idle %d ncons %d fromQueue %d"
 		       " start %" PRIu64 ".%06ld"
 		       " %" PRIu64 ".%06ld"
 		       " accept %" PRIu64 ".%06ld"
@@ -1363,7 +1355,7 @@ NsConnThread(void *arg)
 	 */
 	if (wakeup == NS_TRUE && connPtr != NULL && shutdown == NS_FALSE) {
             assert(connPtr->drvPtr != NULL);
-	    NsWakeupDriver(connPtr->drvPtr); 
+	    NsWakeupDriver(connPtr->drvPtr);
 	} 
     }
     
@@ -1416,41 +1408,52 @@ NsConnThread(void *arg)
 static void
 ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
 {
-    Ns_Conn  *conn = (Ns_Conn *) connPtr;
-    NsServer *servPtr = connPtr->poolPtr->servPtr;
+    Ns_Conn  *conn;
+    NsServer *servPtr;
     int       status = NS_OK;
-    Sock     *sockPtr = connPtr->sockPtr;
+    Sock     *sockPtr;
     char     *auth;
 
-    assert(argPtr != NULL);
-    assert(connPtr != NULL);
+    NS_NONNULL_ASSERT(argPtr != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
 
+    conn = (Ns_Conn *) connPtr;
+    servPtr = connPtr->poolPtr->servPtr;
+    sockPtr = connPtr->sockPtr;
+    
     /*
      * Re-initialize and run the connection. 
      */
     if (sockPtr != NULL) {
-	connPtr->reqPtr = NsGetRequest(sockPtr, &connPtr->requestDequeueTime);
+        connPtr->reqPtr = NsGetRequest(sockPtr, &connPtr->requestDequeueTime);
     } else {
-	connPtr->reqPtr = NULL;
+        connPtr->reqPtr = NULL;
     }
 
     if (connPtr->reqPtr == NULL) {
-	Ns_Log(Warning, "connPtr %p has no reqPtr, close this connection", (void *)connPtr);
+        Ns_Log(Warning, "connPtr %p has no reqPtr, close this connection", (void *)connPtr);
         (void) Ns_ConnClose(conn);
         return;
     }
     assert(sockPtr != NULL);
+    assert(sockPtr->reqPtr != NULL);
 
     /*
      * Make sure we update peer address with actual remote IP address
      */
-    (void) Ns_ConnSetPeer(conn, &sockPtr->sa);
+    (void) Ns_ConnSetPeer(conn, (struct sockaddr *)&(sockPtr->sa));
 
-    connPtr->request = &connPtr->reqPtr->request;
+    /*
+     * Get the request data from the reqPtr to ease life-time management in
+     * connection threads. It would be probably sufficient to clear just the
+     * request line, but we want to play it safe and clear everything.
+     */
+    connPtr->request = connPtr->reqPtr->request;
+    memset(&(connPtr->reqPtr->request), 0, sizeof(struct Ns_Request));
 
     /*{ConnPool *poolPtr = argPtr->poolPtr;
-    Ns_Log(Notice,"ConnRun [%d] connPtr %p req %p %s", ThreadNr(poolPtr, argPtr), connPtr, connPtr->request, connPtr->request->line);
-    } */   
+      Ns_Log(Notice,"ConnRun [%d] connPtr %p req %p %s", ThreadNr(poolPtr, argPtr), connPtr, connPtr->request, connPtr->request.line);
+      } */   
     connPtr->headers = connPtr->reqPtr->headers;
     connPtr->contentLength = connPtr->reqPtr->length;
 
@@ -1471,13 +1474,13 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
     Tcl_InitHashTable(&connPtr->files, TCL_STRING_KEYS);
     snprintf(connPtr->idstr, sizeof(connPtr->idstr), "cns%" PRIuPTR, connPtr->id);
     connPtr->outputheaders = Ns_SetCreate(NULL);
-    if (connPtr->request->version < 1.0) {
+    if (connPtr->request.version < 1.0) {
         conn->flags |= NS_CONN_SKIPHDRS;
     }
     if (servPtr->opts.hdrcase != Preserve) {
-	size_t i;
+        size_t i;
 
-        for (i = 0U; i < Ns_SetSize(connPtr->headers); ++i) {
+        for (i = 0u; i < Ns_SetSize(connPtr->headers); ++i) {
             if (servPtr->opts.hdrcase == ToLower) {
                 Ns_StrToLower(Ns_SetKey(connPtr->headers, i));
             } else {
@@ -1489,45 +1492,42 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
     if (auth != NULL) {
         NsParseAuth(connPtr, auth);
     }
-    if (conn->request->method != NULL && STREQ(conn->request->method, "HEAD")) {
+    if ((conn->request.method != NULL) && STREQ(conn->request.method, "HEAD")) {
         conn->flags |= NS_CONN_SKIPBODY;
     }
-
-    /*
-     * Run the driver's private handler
-     */
-
-    if (connPtr->sockPtr->drvPtr->requestProc != NULL) {
+ 
+    if (sockPtr->drvPtr->requestProc != NULL) {
+        /*
+         * Run the driver's private handler
+         */
+        Ns_GetTime(&connPtr->filterDoneTime);
         status = (*sockPtr->drvPtr->requestProc)(sockPtr->drvPtr->arg, conn);
-    }
-
-    /*
-     * provide a default filterDoneTime
-     */
-    Ns_GetTime(&connPtr->filterDoneTime);
-
-    /*
-     * Run the rest of the request.
-     */
-
-    if (connPtr->request->protocol != NULL && connPtr->request->host != NULL) {
+    } else if ((connPtr->request.protocol != NULL) && (connPtr->request.host != NULL)) {
+        /*
+         * Run proxy request
+         */
+        Ns_GetTime(&connPtr->filterDoneTime);
         status = NsConnRunProxyRequest((Ns_Conn *) connPtr);
     } else {
+        /*
+         * Run classical HTTP requests
+         */
+            
         if (status == NS_OK) {
             status = NsRunFilters(conn, NS_FILTER_PRE_AUTH);
-	    Ns_GetTime(&connPtr->filterDoneTime);
+            Ns_GetTime(&connPtr->filterDoneTime);
         }
         if (status == NS_OK) {
             status = Ns_AuthorizeRequest(servPtr->server,
-                                         connPtr->request->method,
-                                         connPtr->request->url,
+                                         connPtr->request.method,
+                                         connPtr->request.url,
                                          Ns_ConnAuthUser(conn),
                                          Ns_ConnAuthPasswd(conn),
                                          Ns_ConnPeer(conn));
             switch (status) {
             case NS_OK:
                 status = NsRunFilters(conn, NS_FILTER_POST_AUTH);
-		Ns_GetTime(&connPtr->filterDoneTime);
+                Ns_GetTime(&connPtr->filterDoneTime);
                 if (status == NS_OK) {
                     status = Ns_ConnRunRequest(conn);
                 }
@@ -1558,10 +1558,7 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
         }
     }
 
-    (void) Ns_ConnClose(conn);
-    Ns_ConnTimeStats(conn);
-
-    if (status == NS_OK || status == NS_FILTER_RETURN) {
+    if ((status == NS_OK) || (status == NS_FILTER_RETURN)) {
         status = NsRunFilters(conn, NS_FILTER_TRACE);
         if (status == NS_OK) {
             (void) NsRunFilters(conn, NS_FILTER_VOID_TRACE);
@@ -1581,21 +1578,41 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
     NsFreeConnInterp(connPtr);
 
     /*
+     * In case some leftover is in the buffer, signal the driver to
+     * process the remaining bytes.
+     * 
+     */
+    if ((sockPtr->keep == NS_TRUE) && (connPtr->reqPtr->leftover > 0u)) {
+        NsWakeupDriver(sockPtr->drvPtr);
+    }
+
+    /*
+     * Close the connection. This might free as well the content of
+     * connPtr->reqPtr, so set it to NULL to avoid surprises, if someone might
+     * want to access these structures.
+     */
+
+    (void) Ns_ConnClose(conn);
+
+    Ns_ConnTimeStats(conn);
+    connPtr->reqPtr = NULL;
+
+    /*
      * Deactivate stream writer, if defined
      */
     if (connPtr->fd != 0) {
-	connPtr->fd = 0;
+        connPtr->fd = 0;
     }
     if (connPtr->strWriter != NULL) {
-	WriterSock *wrPtr;
+        WriterSock *wrPtr;
 
-	NsWriterLock();
-	wrPtr = connPtr->strWriter;
-	if (wrPtr != NULL) {
-	    NsWriterFinish(wrPtr);
-	    connPtr->strWriter = NULL;
-	}
-	NsWriterUnlock();
+        NsWriterLock();
+        wrPtr = connPtr->strWriter;
+        if (wrPtr != NULL) {
+            NsWriterFinish(wrPtr);
+            connPtr->strWriter = NULL;
+        }
+        NsWriterUnlock();
     }
 
     /*
@@ -1606,12 +1623,20 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
     connPtr->auth = NULL;
     Ns_SetFree(connPtr->outputheaders);
     connPtr->outputheaders = NULL;
-    NsFreeRequest(connPtr->reqPtr);
-    connPtr->reqPtr = NULL;
+    
+    if (connPtr->request.line != NULL) {
+        /*
+         * reqPtr is freed by FreeRequest() in the driver.
+         */
+        Ns_ResetRequest(&connPtr->request);
+        assert(connPtr->request.line == NULL);
+    }
+
     if (connPtr->clientData != NULL) {
         ns_free(connPtr->clientData);
         connPtr->clientData = NULL;
     }
+
 }
 
 
@@ -1640,15 +1665,15 @@ CreateConnThread(ConnPool *poolPtr)
 
 #if !defined(NDEBUG)
     { const char *threadName = Ns_ThreadGetName();
-      assert(strncmp("-driver:", threadName, 8U) == 0 
-	     || strncmp("-main-", threadName, 6U) == 0
-	     || strncmp("-spooler", threadName, 8U) == 0
-	     || strncmp("-service-", threadName, 9U) == 0
+      assert(strncmp("-driver:", threadName, 8u) == 0 
+	     || strncmp("-main-", threadName, 6u) == 0
+	     || strncmp("-spooler", threadName, 8u) == 0
+	     || strncmp("-service-", threadName, 9u) == 0
 	     );
     }
 #endif
 
-    assert(poolPtr != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
 
     /*
      * Get first free connection thread slot; selecting a slot and
@@ -1660,24 +1685,29 @@ CreateConnThread(ConnPool *poolPtr)
      * is usually short...
      */
     Ns_MutexLock(&poolPtr->tqueue.lock);
-    for (i = 0; i < poolPtr->threads.max; i++) {
+    for (i = 0; likely(i < poolPtr->threads.max); i++) {
       if (poolPtr->tqueue.args[i].state == connThread_free) {
 	argPtr = &(poolPtr->tqueue.args[i]);
 	break;
       }
     }
-    assert(argPtr != NULL);
-    argPtr->state = connThread_initial;
-    poolPtr->stats.connthreads++;
-    Ns_MutexUnlock(&poolPtr->tqueue.lock);
+    if (likely(argPtr != NULL)) {
+        argPtr->state = connThread_initial;
+        poolPtr->stats.connthreads++;
+        Ns_MutexUnlock(&poolPtr->tqueue.lock);
 
-    /* Ns_Log(Notice, "CreateConnThread use thread slot [%d]", i);*/
+        /* Ns_Log(Notice, "CreateConnThread use thread slot [%d]", i);*/
 
-    argPtr->poolPtr = poolPtr;
-    argPtr->connPtr = NULL;
-    argPtr->nextPtr = NULL;
-    argPtr->cond = NULL;
-    Ns_ThreadCreate(NsConnThread, argPtr, 0, &thread);
+        argPtr->poolPtr = poolPtr;
+        argPtr->connPtr = NULL;
+        argPtr->nextPtr = NULL;
+        argPtr->cond = NULL;
+        
+        Ns_ThreadCreate(NsConnThread, argPtr, 0, &thread);
+    } else {
+        Ns_MutexUnlock(&poolPtr->tqueue.lock);
+        Ns_Log(Notice, "Cannot create connection thread, all available slots (%d) are used\n", i);
+    }
 }
 
 
@@ -1700,7 +1730,7 @@ CreateConnThread(ConnPool *poolPtr)
 static void
 JoinConnThread(Ns_Thread *threadPtr)
 {
-    assert(threadPtr != NULL);
+    NS_NONNULL_ASSERT(threadPtr != NULL);
 
     Ns_ThreadJoin(threadPtr, NULL);
     /*
@@ -1731,8 +1761,8 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state)
 {
     Ns_Time now, diff;
 
-    assert(dsPtr != NULL);
-    assert(state != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(state != NULL);
 
     Tcl_DStringStartSublist(dsPtr);
 
@@ -1755,9 +1785,9 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state)
 	}
         Tcl_DStringAppendElement(dsPtr, state);
 
-        if (connPtr->request != NULL) {
-            Tcl_DStringAppendElement(dsPtr, (connPtr->request->method != NULL) ? connPtr->request->method : "?");
-            Tcl_DStringAppendElement(dsPtr, (connPtr->request->url    != NULL) ? connPtr->request->url : "?");
+        if (connPtr->request.line != NULL) {
+            Tcl_DStringAppendElement(dsPtr, (connPtr->request.method != NULL) ? connPtr->request.method : "?");
+            Tcl_DStringAppendElement(dsPtr, (connPtr->request.url    != NULL) ? connPtr->request.url : "?");
 	} else {
 	    Ns_Log(Notice, "AppendConn: no request in state %s; ignore conn in output", state);
 	    Tcl_DStringAppendElement(dsPtr, "unknown");
@@ -1765,9 +1795,9 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state)
 	}
 	Ns_GetTime(&now);
         Ns_DiffTime(&now, &connPtr->requestQueueTime, &diff);
-        snprintf(buf, sizeof(buf), "%" PRIu64 ".%06ld", (int64_t) diff.sec, diff.usec);
+        snprintf(buf, sizeof(buf), "%" PRId64 ".%06ld", (int64_t) diff.sec, diff.usec);
         Tcl_DStringAppendElement(dsPtr, buf);
-        snprintf(buf, sizeof(buf), "%" PRIdz, connPtr->nContentSent);
+        snprintf(buf, sizeof(buf), "%" PRIuz, connPtr->nContentSent);
         Tcl_DStringAppendElement(dsPtr, buf);
     }
     Tcl_DStringEndSublist(dsPtr);
@@ -1793,8 +1823,8 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state)
 static void
 AppendConnList(Tcl_DString *dsPtr, const Conn *firstPtr, const char *state)
 {
-    assert(dsPtr != NULL);
-    assert(state != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(state != NULL);
 
     while (firstPtr != NULL) {
         AppendConn(dsPtr, firstPtr, state);

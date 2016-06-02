@@ -191,6 +191,11 @@ int
 Ns_CloseOnExec(int fd)
 {
 #ifdef _WIN32
+    intptr_t hh = _get_osfhandle(fd);
+
+    if (hh != (intptr_t)INVALID_HANDLE_VALUE) {
+        SetHandleInformation((HANDLE)hh, HANDLE_FLAG_INHERIT, (DWORD)0u);
+    }
     return NS_OK;
 #else
     int i, status = NS_ERROR;
@@ -226,6 +231,11 @@ int
 Ns_NoCloseOnExec(int fd)
 {
 #ifdef _WIN32
+    intptr_t hh = _get_osfhandle(fd);
+
+    if (hh != (intptr_t)INVALID_HANDLE_VALUE) {
+        SetHandleInformation((HANDLE)hh, HANDLE_FLAG_INHERIT, (DWORD)1u);
+    }
     return NS_OK;
 #else
     int i, status = NS_ERROR;
@@ -335,7 +345,7 @@ Ns_GetTemp(void)
 
     do {
         Ns_GetTime(&now);
-        snprintf(buf, sizeof(buf), "nstmp.%" PRIu64 ".%06ld", (int64_t)now.sec, now.usec);
+        snprintf(buf, sizeof(buf), "nstmp.%" PRId64 ".%06ld", (int64_t)now.sec, now.usec);
         path = Ns_MakePath(&ds, P_tmpdir, buf, NULL);
 #ifdef _WIN32
         fd = _sopen(path, flags, _SH_DENYRW, _S_IREAD|_S_IWRITE);

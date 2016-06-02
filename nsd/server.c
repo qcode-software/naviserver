@@ -172,7 +172,7 @@ NsStopServers(const Ns_Time *toPtr)
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
 
-    assert(toPtr != NULL);
+    NS_NONNULL_ASSERT(toPtr != NULL);
 
     hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
     while (hPtr != NULL) {
@@ -217,7 +217,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     size_t             i;
     int                n;
 
-    assert(server != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
 
     hPtr = Tcl_CreateHashEntry(&nsconf.servertable, server, &n);
     if (n == 0) {
@@ -229,7 +229,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      * Create a new NsServer.
      */
 
-    servPtr = ns_calloc(1U, sizeof(NsServer));
+    servPtr = ns_calloc(1u, sizeof(NsServer));
     servPtr->server = server;
 
     Tcl_SetHashValue(hPtr, servPtr);
@@ -237,7 +237,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     initServPtr = servPtr;
 
     /*
-     * Run the library init procs in the order they were registerd.
+     * Run the library init procs in the order they were registered.
      */
 
     initPtr = firstInitPtr;
@@ -296,7 +296,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     CreatePool(servPtr, "");
     path = Ns_ConfigGetPath(server, NULL, "pools", NULL);
     set = Ns_ConfigGetSection(path);
-    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
+    for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
     }
     NsTclInitServer(server);
@@ -327,7 +327,7 @@ NsRegisterServerInit(Ns_ServerInitProc *proc)
 {
     ServerInit *initPtr;
 
-    assert(proc != NULL);
+    NS_NONNULL_ASSERT(proc != NULL);
 
     initPtr = ns_malloc(sizeof(ServerInit));
     initPtr->proc = proc;
@@ -366,10 +366,10 @@ CreatePool(NsServer *servPtr, const char *pool)
     int         n, maxconns, lowwatermark, highwatermark, queueLength;
     const char *path;
 
-    assert(servPtr != NULL);
-    assert(pool != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(pool != NULL);
 
-    poolPtr = ns_calloc(1U, sizeof(ConnPool));
+    poolPtr = ns_calloc(1u, sizeof(ConnPool));
     poolPtr->pool = pool;
     poolPtr->servPtr = servPtr;
     if (*pool == '\0') {
@@ -385,7 +385,7 @@ CreatePool(NsServer *servPtr, const char *pool)
 
         path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, NULL);
         set = Ns_ConfigGetSection(path);
-        for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
+        for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
             if (strcasecmp(Ns_SetKey(set, i), "map") == 0) {
                 NsMapPool(poolPtr, Ns_SetValue(set, i));
             }
@@ -422,6 +422,14 @@ CreatePool(NsServer *servPtr, const char *pool)
     }
     connBufPtr[n].nextPtr = NULL;
     poolPtr->wqueue.freePtr = &connBufPtr[0];
+
+    /*
+     * Setting connsperthread to > 0 will cause the thread to graceously exit,
+     * after processing that many requests, thus initiating kind-of Tcl-level
+     * garbage collection.
+     */
+    poolPtr->threads.connsperthread =
+        Ns_ConfigIntRange(path, "connsperthread", 10000, 0, INT_MAX);
 
     poolPtr->threads.max =
         Ns_ConfigIntRange(path, "maxthreads", 10, 0, maxconns);
@@ -460,10 +468,11 @@ CreatePool(NsServer *servPtr, const char *pool)
 	if (*pool == '\0') {
 	    pool = "default";
 	}
-	strncat(name, pool, 120U);
+	strncat(name + 4, pool, 120u);
 	
 	for (j = 0; j < maxconns; j++) {
 	    char buffer[64];
+	    
 	    sprintf(buffer, "connthread:%d", j);
 	    Ns_MutexInit(&poolPtr->tqueue.args[j].lock);
 	    Ns_MutexSetName2(&poolPtr->tqueue.args[j].lock, name, buffer);
@@ -478,3 +487,12 @@ CreatePool(NsServer *servPtr, const char *pool)
 	Ns_MutexSetName2(&poolPtr->threads.lock, name, "threads");
     }
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

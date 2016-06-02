@@ -159,6 +159,8 @@ NsTclStartContentObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *C
         return TCL_ERROR;
     }
 
+    Ns_LogDeprecated(objv, 1, "ns_headers ...", NULL);
+
     itPtr->nsconn.flags |= CONN_TCLHTTP;
 
     if (charset != NULL && type != NULL) {
@@ -281,7 +283,7 @@ NsTclWriteObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
      * as chunking would alter this.
      */
 
-    flags = 0U;
+    flags = 0u;
     if (Ns_ConnResponseLength(conn) < 0) {
         flags |= NS_CONN_STREAM;
     }
@@ -665,8 +667,8 @@ ReturnObjCmd(ClientData arg, Tcl_Interp *interp,
 {
     Ns_Conn *conn = NULL;
 
-    assert(arg != NULL);
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
 
     if (GetConn(arg, interp, &conn) != TCL_OK) {
         return TCL_ERROR;
@@ -899,7 +901,8 @@ NsTclInternalRedirectObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Ob
 static int
 Result(Tcl_Interp *interp, int result)
 {
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    
     Tcl_SetObjResult(interp, Tcl_NewBooleanObj(result == NS_OK ? 1 : 0));
     return TCL_OK;
 }
@@ -910,9 +913,9 @@ GetConn(ClientData arg, Tcl_Interp *interp, Ns_Conn **connPtr)
 {
     NsInterp *itPtr = arg;
 
-    assert(arg != NULL);
-    assert(interp != NULL);
-    assert(connPtr != NULL);
+    NS_NONNULL_ASSERT(arg != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
 
     if (itPtr->conn == NULL) {
         Tcl_SetResult(interp, "no connection", TCL_STATIC);

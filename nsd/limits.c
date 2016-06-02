@@ -108,12 +108,12 @@ NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
 {
     NsLimits *limitsPtr;
 
-    assert(servPtr != NULL);
-    assert(method != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
     
     Ns_MutexLock(&lock);
-    limitsPtr = NsUrlSpecificGet(servPtr, method, url, limid, 0);
+    limitsPtr = NsUrlSpecificGet(servPtr, method, url, limid, 0u, NS_URLSPACE_DEFAULT);
     Ns_MutexUnlock(&lock);
 
     return ((limitsPtr != NULL) ? limitsPtr : defLimitsPtr);
@@ -277,7 +277,7 @@ NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, T
     NsLimits    *limitsPtr;
     const char  *method, *url, *server = itPtr->servPtr->server;
     int          noinherit = 0;
-    unsigned int flags = 0U;
+    unsigned int flags = 0u;
 
     Ns_ObjvSpec opts[] = {
         {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(1)},
@@ -327,7 +327,7 @@ FindLimits(const char *limits, int create)
     Tcl_HashEntry *hPtr;
     int            isNew;
 
-    assert(limits != NULL);
+    NS_NONNULL_ASSERT(limits != NULL);
     
     Ns_MutexLock(&lock);
     if (create == 0) {
@@ -335,12 +335,12 @@ FindLimits(const char *limits, int create)
     } else {
         hPtr = Tcl_CreateHashEntry(&limtable, limits, &isNew);
         if (isNew != 0) {
-            limitsPtr = ns_calloc(1U, sizeof(NsLimits));
+            limitsPtr = ns_calloc(1u, sizeof(NsLimits));
             limitsPtr->name = Tcl_GetHashKey(&limtable, hPtr);
             Ns_MutexInit(&limitsPtr->lock);
             Ns_MutexSetName2(&limitsPtr->lock, "ns:limits", limits);
-            limitsPtr->maxrun = limitsPtr->maxwait = 100U;
-            limitsPtr->maxupload = 10U * 1024U * 1000U; /* NB: 10meg limit. */
+            limitsPtr->maxrun = limitsPtr->maxwait = 100u;
+            limitsPtr->maxupload = 10u * 1024u * 1000u; /* NB: 10meg limit. */
             limitsPtr->timeout = 60;
             Tcl_SetHashValue(hPtr, limitsPtr);
         }
@@ -416,8 +416,8 @@ LimitsResult(Tcl_Interp *interp, const NsLimits *limitsPtr)
 {
     Ns_DString ds;
 
-    assert(interp != NULL);
-    assert(limitsPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(limitsPtr != NULL);
     
     Ns_DStringInit(&ds);
     Ns_DStringPrintf(&ds, "nrunning %u nwaiting %u"

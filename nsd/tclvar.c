@@ -114,7 +114,7 @@ NsTclCreateBuckets(const char *server, int nbuckets)
     char    buf[NS_THREAD_NAMESIZE];
     Bucket *buckets;
 
-    assert(server != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
 
     buckets = ns_malloc(sizeof(Bucket) * (size_t)nbuckets);
     while (--nbuckets >= 0) {
@@ -151,6 +151,7 @@ NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     Array         *arrayPtr;
     Tcl_HashEntry *hPtr;
     Tcl_Obj       *resultObj;
+    int            result = TCL_OK;
 
     if (unlikely(objc < 3 || objc > 4)) {
         Tcl_WrongNumArgs(interp, 1, objv, "array key ?varName?");
@@ -166,21 +167,23 @@ NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     UnlockArray(arrayPtr);
 
     if (objc == 3) {
-	if (resultObj != NULL) {
+	if (likely(resultObj != NULL)) {
 	    Tcl_SetObjResult(interp, resultObj);
 	} else {
 	    Tcl_AppendResult(interp, "no such key: ",
 			     Tcl_GetString(objv[2]), NULL);
-	    return TCL_ERROR;
+	    result = TCL_ERROR;
 	}
     } else {
 	Tcl_SetObjResult(interp, Tcl_NewBooleanObj(resultObj != NULL));
-	if (resultObj != NULL) {
-	    Tcl_ObjSetVar2(interp, objv[3], NULL, resultObj, 0);
+	if (likely(resultObj != NULL)) {
+	    if (unlikely(Tcl_ObjSetVar2(interp, objv[3], NULL, resultObj, TCL_LEAVE_ERR_MSG) == NULL)) {
+                result = TCL_ERROR;
+            }
 	}
     }
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -539,11 +542,11 @@ NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
     char           *pattern, *key;
     int             i;
 
-    if (objc != 1 && objc !=2) {
+    if (unlikely(objc != 1 && objc !=2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "?pattern?");
         return TCL_ERROR;
     }
-    pattern = objc < 2 ? NULL : Tcl_GetString(objv[1]);
+    pattern = (objc < 2) ? NULL : Tcl_GetString(objv[1]);
 
     /*
      * Walk the bucket list for each array.
@@ -596,7 +599,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     int             i, opt, lobjc, size;
     Tcl_Obj       **lobjv;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "set", "reset", "get", "names", "size", "exists", NULL
     };
     enum ISubCmdIdx {
@@ -732,9 +735,9 @@ Ns_VarGet(const char *server, const char *array, const char *key, Ns_DString *ds
     NsServer      *servPtr;
     int            status = NS_ERROR;
 
-    assert(array != NULL);
-    assert(key != NULL);
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
@@ -774,8 +777,8 @@ Ns_VarExists(const char *server, const char *array, const char *key)
     NsServer *servPtr;
     int       exists = 0;
 
-    assert(array != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
@@ -814,9 +817,9 @@ Ns_VarSet(const char *server, const char *array, const char *key,
     NsServer      *servPtr;
     int            status = NS_ERROR;
 
-    assert(array != NULL);
-    assert(key != NULL);
-    assert(value != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
@@ -853,8 +856,8 @@ Ns_VarIncr(const char *server, const char *array, const char *key, int incr)
     NsServer      *servPtr;
     Tcl_WideInt    counter = -1;
 
-    assert(array != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
@@ -891,9 +894,9 @@ Ns_VarAppend(const char *server, const char *array, const char *key,
     NsServer      *servPtr;
     int            isNew, status = NS_ERROR;
 
-    assert(array != NULL);
-    assert(key != NULL);
-    assert(value != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
@@ -945,8 +948,8 @@ Ns_VarUnset(const char *server, const char *array, const char *key)
     NsServer      *servPtr;
     int            status = NS_ERROR;
 
-    assert(array != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
@@ -986,7 +989,7 @@ BucketIndex(const char *arrayName) {
 	if (unlikely(i == 0u)) {
             break;
         }
-        index += (index << 3U) + i;
+        index += (index << 3u) + i;
     }
     return index;
 }
@@ -1014,8 +1017,8 @@ GetArray(Bucket *bucketPtr, const char *arrayName, bool create) {
     Tcl_HashEntry *hPtr;
     Array         *arrayPtr;
 
-    assert(bucketPtr != NULL);
-    assert(arrayName != NULL);
+    NS_NONNULL_ASSERT(bucketPtr != NULL);
+    NS_NONNULL_ASSERT(arrayName != NULL);
         
     if (unlikely(create == NS_TRUE)) {
         int isNew;
@@ -1067,8 +1070,8 @@ LockArray(const NsServer *servPtr, const char *arrayName, bool create)
     Bucket        *bucketPtr;
     unsigned int   index;
 
-    assert(servPtr != NULL);
-    assert(arrayName != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(arrayName != NULL);
 
     index = BucketIndex(arrayName);
     bucketPtr = &servPtr->nsv.buckets[index % (unsigned int)servPtr->nsv.nbuckets];
@@ -1080,7 +1083,7 @@ LockArray(const NsServer *servPtr, const char *arrayName, bool create)
 static void
 UnlockArray(const Array *arrayPtr)
 {
-    assert(arrayPtr != NULL);
+    NS_NONNULL_ASSERT(arrayPtr != NULL);
     Ns_MutexUnlock(&((arrayPtr)->bucketPtr->lock));
 }
 
@@ -1106,8 +1109,8 @@ UpdateVar(Tcl_HashEntry *hPtr, const char *value, size_t len)
 {
     char *oldString, *newString;
 
-    assert(hPtr != NULL);
-    assert(value != NULL);
+    NS_NONNULL_ASSERT(hPtr != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
 
     oldString = Tcl_GetHashValue(hPtr);
     newString = ns_realloc(oldString, len + 1u);
@@ -1138,9 +1141,9 @@ SetVar(Array *arrayPtr, const char *key, const char *value, size_t len)
     Tcl_HashEntry *hPtr;
     int            isNew;
 
-    assert(arrayPtr != NULL);
-    assert(key != NULL);
-    assert(value != NULL);
+    NS_NONNULL_ASSERT(arrayPtr != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
 
     hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, &isNew);
     UpdateVar(hPtr, value, len);
@@ -1172,9 +1175,9 @@ IncrVar(Array *arrayPtr, const char *key, int incr, Tcl_WideInt *valuePtr)
     int            isNew, status;
     Tcl_WideInt    counter = -1;
 
-    assert(arrayPtr != NULL);
-    assert(key != NULL);
-    assert(valuePtr != NULL);
+    NS_NONNULL_ASSERT(arrayPtr != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(valuePtr != NULL);
 
     hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, &isNew);
     oldString = Tcl_GetHashValue(hPtr);
@@ -1221,7 +1224,7 @@ Unset(Array *arrayPtr, const char *key)
 {
     int status = NS_ERROR;
 
-    assert(arrayPtr != NULL);
+    NS_NONNULL_ASSERT(arrayPtr != NULL);
 
     if (key != NULL) {
         Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&arrayPtr->vars, key);
@@ -1262,7 +1265,7 @@ Flush(Array *arrayPtr)
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
 
-    assert(arrayPtr != NULL);
+    NS_NONNULL_ASSERT(arrayPtr != NULL);
 
     hPtr = Tcl_FirstHashEntry(&arrayPtr->vars, &search);
     while (hPtr != NULL) {
@@ -1298,8 +1301,8 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
     static const char  *arrayType = "nsv:array";
     const char         *arrayName;
 
-    assert(interp != NULL);
-    assert(arrayObj != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(arrayObj != NULL);
 
     arrayName = Tcl_GetString(arrayObj);
 
