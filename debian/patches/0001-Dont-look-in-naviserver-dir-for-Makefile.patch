@@ -1,0 +1,28 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Wed, 22 Jun 2016 17:07:31 +0100
+Subject: Dont look in naviserver dir for Makefile
+
+---
+ nsssl/Makefile |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/nsssl/Makefile b/nsssl/Makefile
+index a83e973..bb2666e 100644
+--- a/nsssl/Makefile
++++ b/nsssl/Makefile
+@@ -1,5 +1,5 @@
+ ifndef NAVISERVER
+-    NAVISERVER  = /usr/local/ns
++    NAVISERVER  = /usr/lib/naviserver
+ endif
+ 
+ # ability to pass path to openssl include library
+@@ -19,7 +19,7 @@ MOD      =  nsssl.so
+ MODOBJS   = nsssl.o
+ CLEAN	 += clean-cert
+ 
+-include  $(NAVISERVER)/include/Makefile.module
++include  ../include/Makefile.module
+ 
+ dhparams.h:
+ 	openssl dhparam -C -2 -noout 512 >> dhparams.h
