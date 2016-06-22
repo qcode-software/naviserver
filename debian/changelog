@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160622-1) wheezy; urgency=low
+
+  * Import from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 22 Jun 2016 16:42:31 +0100
+
 naviserver (4.99.9~20150805-2) wheezy; urgency=low
 
   * Patch - fix return code checking in Ns_SockTimedConnect2
