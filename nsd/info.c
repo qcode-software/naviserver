@@ -81,7 +81,7 @@ Ns_InfoHomePath(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoServerName(void)
 {
     return nsconf.name;
@@ -104,7 +104,7 @@ Ns_InfoServerName(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoServerVersion(void)
 {
     return nsconf.version;
@@ -173,7 +173,7 @@ Ns_InfoPid(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoNameOfExecutable(void)
 {
     return nsconf.nsd;
@@ -196,7 +196,7 @@ Ns_InfoNameOfExecutable(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoPlatform(void)
 {
 
@@ -343,7 +343,7 @@ Ns_InfoAddress(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoBuildDate(void)
 {
     return nsconf.build;
@@ -366,10 +366,10 @@ Ns_InfoBuildDate(void)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_InfoShutdownPending(void)
 {
-    int stopping;
+    bool stopping;
 
     Ns_MutexLock(&nsconf.state.lock);
     stopping = nsconf.state.stopping;
@@ -395,10 +395,10 @@ Ns_InfoShutdownPending(void)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_InfoStarted(void)
 {
-    int             started;
+    bool started;
 
     Ns_MutexLock(&nsconf.state.lock);
     started = nsconf.state.started;
@@ -424,7 +424,7 @@ Ns_InfoStarted(void)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_InfoServersStarted(void)
 {
     return Ns_InfoStarted();
@@ -447,10 +447,64 @@ Ns_InfoServersStarted(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoTag(void)
 {
     return PACKAGE_TAG;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_InfoIPv6 --
+ *
+ *      Returns information if the binary was compiled with IPv6 support
+ *
+ * Results:
+ *      Boolean result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+bool
+Ns_InfoIPv6(void)
+{
+#ifdef HAVE_IPV6
+    return NS_TRUE;
+#else
+    return NS_FALSE;
+#endif
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_InfoSSL --
+ *
+ *      Returns information if the binary was compiled with OpenSSL support
+ *
+ * Results:
+ *      Boolean result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+bool
+Ns_InfoSSL(void)
+{
+#ifdef HAVE_OPENSSL_EVP_H
+    return NS_TRUE;
+#else
+    return NS_FALSE;
+#endif
 }
 
 
@@ -476,29 +530,28 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
     int         opt, result = TCL_OK;
     bool        done = NS_TRUE; 
     NsInterp   *itPtr = arg;
-    const char *server;
-    const char *elog;
+    const char *server, *elog;
     Tcl_DString ds;
 
-    static const char *opts[] = {
+    static const char *const opts[] = {
         "address", "argv0", "boottime", "builddate", "callbacks",
-        "config", "home", "hostname", "locks", "log",
+        "config", "home", "hostname", "ipv6", "locks", "log",
         "major", "minor", "mimetypes", "name", "nsd", "pagedir", 
 	"pageroot", "patchlevel", "pid", "platform", "pools", 
 	"scheduled", "server", "servers",
-        "sockcallbacks", "tag", "tcllib", "threads", "uptime",
+        "sockcallbacks", "ssl", "tag", "tcllib", "threads", "uptime",
         "version", "winnt", "filters", "traces", "requestprocs",
         "url2file", "shutdownpending", "started", NULL
     };
 
     enum {
         IAddressIdx, IArgv0Idx, IBoottimeIdx, IBuilddateIdx, ICallbacksIdx,
-        IConfigIdx, IHomeIdx, IHostNameIdx, ILocksIdx, ILogIdx,
+        IConfigIdx, IHomeIdx, IHostNameIdx, IIpv6Idx, ILocksIdx, ILogIdx,
         IMajorIdx, IMinorIdx, IMimeIdx, INameIdx, INsdIdx, 
 	IPageDirIdx, IPageRootIdx, IPatchLevelIdx,
         IPidIdx, IPlatformIdx, IPoolsIdx, 
 	IScheduledIdx, IServerIdx, IServersIdx,
-        ISockCallbacksIdx, ITagIdx, ITclLibIdx, IThreadsIdx, IUptimeIdx,
+        ISockCallbacksIdx, ISSLIdx, ITagIdx, ITclLibIdx, IThreadsIdx, IUptimeIdx,
         IVersionIdx, IWinntIdx, IFiltersIdx, ITracesIdx, IRequestProcsIdx,
         IUrl2FileIdx, IShutdownPendingIdx, IStartedIdx
     };
@@ -516,23 +569,23 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 
     switch (opt) {
     case IArgv0Idx:
-        Tcl_SetResult(interp, nsconf.argv0, TCL_STATIC);
+        Tcl_SetResult(interp, (char *)nsconf.argv0, TCL_STATIC);
         break;
 
     case IStartedIdx:
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoStarted()));
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoStarted() ? 1 : 0));
         break;
         
     case IShutdownPendingIdx:
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoShutdownPending()));
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoShutdownPending() ? 1 : 0));
         break;
 
     case INsdIdx:
-        Tcl_SetResult(interp, nsconf.nsd, TCL_STATIC);
+        Tcl_SetResult(interp, (char *)nsconf.nsd, TCL_STATIC);
         break;
 
     case INameIdx:
-        Tcl_SetResult(interp, Ns_InfoServerName(), TCL_STATIC);
+        Tcl_SetResult(interp, (char *)Ns_InfoServerName(), TCL_STATIC);
         break;
 
     case IConfigIdx:
@@ -578,15 +631,19 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 
     case IPlatformIdx:
 	Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
-        Tcl_SetResult(interp, Ns_InfoPlatform(), TCL_STATIC);
+        Tcl_SetResult(interp, (char *)Ns_InfoPlatform(), TCL_STATIC);
         break;
 
     case IHostNameIdx:
-        Tcl_SetResult(interp, Ns_InfoHostname(), TCL_STATIC);
+        Tcl_SetResult(interp, (char *)Ns_InfoHostname(), TCL_STATIC);
         break;
 
+    case IIpv6Idx:
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(Ns_InfoIPv6()));
+        break;
+        
     case IAddressIdx:
-        Tcl_SetResult(interp, Ns_InfoAddress(), TCL_STATIC);
+        Tcl_SetResult(interp, (char *)Ns_InfoAddress(), TCL_STATIC);
         break;
 
     case IUptimeIdx:
@@ -636,11 +693,11 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
         break;
 
     case IBuilddateIdx:
-        Tcl_SetResult(interp, Ns_InfoBuildDate(), TCL_STATIC);
+        Tcl_SetResult(interp, (char *)Ns_InfoBuildDate(), TCL_STATIC);
         break;
 
     case ITagIdx:
-        Tcl_SetResult(interp, Ns_InfoTag(), TCL_STATIC);
+        Tcl_SetResult(interp, (char *)Ns_InfoTag(), TCL_STATIC);
         break;
 
     case IServersIdx:
@@ -650,13 +707,17 @@ NsTclInfoObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             break;
         }
 
+    case ISSLIdx:
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(Ns_InfoSSL()));
+        break;
+
     default:
         /* cases handled below */
         done = NS_FALSE;
         break;
     }
 
-    if (done == NS_TRUE) {
+    if (done) {
         return result;
         
     }

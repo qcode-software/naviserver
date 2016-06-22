@@ -154,7 +154,7 @@ void
 NsStartSockShutdown(void)
 {
     Ns_MutexLock(&lock);
-    if (running == NS_TRUE) {
+    if (running) {
 	shutdownPending = NS_TRUE;
 	CallbackTrigger();
     }
@@ -168,7 +168,7 @@ NsWaitSockShutdown(const Ns_Time *toPtr)
 
     status = NS_OK;
     Ns_MutexLock(&lock);
-    while (status == NS_OK && running == NS_TRUE) {
+    while (status == NS_OK && running) {
 	status = Ns_CondTimedWait(&cond, &lock, toPtr);
     }
     Ns_MutexUnlock(&lock);
@@ -248,11 +248,11 @@ Queue(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when,
     }
     
     Ns_MutexLock(&lock);
-    if (shutdownPending == NS_TRUE) {
+    if (shutdownPending) {
 	ns_free(cbPtr);
     	status = NS_ERROR;
     } else {
-	if (running == NS_FALSE) {
+	if (!running) {
     	    Tcl_InitHashTable(&table, TCL_ONE_WORD_KEYS);
 	    Ns_MutexSetName(&lock, "ns:sockcallbacks");
 	    create = NS_TRUE;
@@ -280,9 +280,9 @@ Queue(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when,
         *threadNamePtr = "-socks-";
     }
     
-    if (trigger == NS_TRUE) {
+    if (trigger) {
 	CallbackTrigger();
-    } else if (create == NS_TRUE) {
+    } else if (create) {
     	if (ns_sockpair(trigPipe) != 0) {
 	    Ns_Fatal("ns_sockpair() failed: %s", ns_sockstrerror(ns_sockerrno));
     	}
@@ -336,7 +336,7 @@ SockCallbackThread(void *UNUSED(arg))
     pfds[0].fd = trigPipe[0];
     pfds[0].events = POLLIN;
 
-    while (1) {
+    for (;;) {
 	int nfds, pollto;
         bool stop;
 	Ns_Time now, diff = {0, 0};
@@ -444,7 +444,7 @@ SockCallbackThread(void *UNUSED(arg))
 	 * necessary.
 	 */
 
-	if (stop == NS_TRUE) {
+	if (stop) {
 	    break;
 	}
 	pfds[0].revents = 0;
@@ -547,10 +547,10 @@ NsGetSockCallbacks(Tcl_DString *dsPtr)
 {
     Tcl_HashSearch  search;
 
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
     
     Ns_MutexLock(&lock);
-    if (running == NS_TRUE) {
+    if (running) {
         Tcl_HashEntry *hPtr; 
 
         for (hPtr = Tcl_FirstHashEntry(&table, &search); hPtr != NULL; hPtr = Tcl_NextHashEntry(&search)) {

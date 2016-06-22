@@ -37,8 +37,8 @@
 
 #ifdef HAVE_ZLIB_H
 
-# define COMPRESS_SENT_HEADER 0x01U
-# define COMPRESS_FLUSHED     0x02U
+# define COMPRESS_SENT_HEADER 0x01u
+# define COMPRESS_FLUSHED     0x02u
 
 
 /*
@@ -72,7 +72,7 @@ Ns_CompressInit(Ns_CompressStream *cStream)
     z_stream *z = &cStream->z;
     int       status;
 
-    cStream->flags = 0U;
+    cStream->flags = 0u;
     z->zalloc = ZAlloc;
     z->zfree = ZFree;
     z->opaque = Z_NULL;
@@ -233,25 +233,22 @@ Ns_InflateEnd(Ns_CompressStream *cStream)
 
 int
 Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
-                    Ns_DString *dsPtr, int level, int flush)
+                    Ns_DString *dsPtr, int level, bool flush)
 {
     z_stream   *z = &cStream->z;
     size_t      toCompress, nCompressed, compressLen;
     ptrdiff_t   offset;
     int         flushFlags;
 
-    assert(cStream != NULL);
-    assert(bufs != NULL);
-    assert(dsPtr != NULL);
-    assert(nbufs > 0);
+    NS_NONNULL_ASSERT(cStream != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
 
     if (z->zalloc == NULL) {
 	Ns_CompressInit(cStream);
     }
 
     offset = (ptrdiff_t) Ns_DStringLength(dsPtr);
-    toCompress = Ns_SumVec(bufs, nbufs);
-
+    toCompress = (nbufs > 0) ? Ns_SumVec(bufs, nbufs) : 0u;
     compressLen = compressBound(toCompress) + 12;
 
     if (!(cStream->flags & COMPRESS_SENT_HEADER)) {
@@ -261,7 +258,7 @@ Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
                              MIN(MAX(level, 1), 9),
                              Z_DEFAULT_STRATEGY);
     }
-    if (flush != 0) {
+    if (flush) {
         compressLen += 4; /* Gzip footer. */
     }
     Ns_DStringSetLength(dsPtr, compressLen);
@@ -276,7 +273,7 @@ Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
     nCompressed = 0;
 
     if (nbufs == 0) {
-	flushFlags = (flush != 0) ? Z_FINISH : Z_SYNC_FLUSH;
+	flushFlags = flush ? Z_FINISH : Z_SYNC_FLUSH;
         DeflateOrAbort(z, flushFlags);
     } else {
 	int i;
@@ -290,7 +287,7 @@ Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
 		continue;
 	    }
 	    if (nCompressed == toCompress) {
-		flushFlags = (flush != 0) ? Z_FINISH : Z_SYNC_FLUSH;
+		flushFlags = flush ? Z_FINISH : Z_SYNC_FLUSH;
 	    } else {
 		flushFlags = Z_NO_FLUSH;
 	    }
@@ -300,9 +297,9 @@ Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
     }
     Ns_DStringSetLength(dsPtr, dsPtr->length - z->avail_out);
 
-    if (flush != 0) {
+    if (flush) {
         (void) deflateReset(z);
-        cStream->flags = 0U;
+        cStream->flags = 0u;
     }
 
     return NS_OK;
@@ -332,13 +329,13 @@ Ns_CompressGzip(const char *buf, int len, Ns_DString *dsPtr, int level)
     struct iovec       iov;
     int                status;
 
-    assert(buf != NULL);
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
     
     status = Ns_CompressInit(&cStream);
     if (status == NS_OK) {
       Ns_SetVec(&iov, 0, buf, len);
-      status = Ns_CompressBufsGzip(&cStream, &iov, 1, dsPtr, level, 1);
+      status = Ns_CompressBufsGzip(&cStream, &iov, 1, dsPtr, level, NS_TRUE);
       Ns_CompressFree(&cStream);
     }
 
@@ -426,7 +423,7 @@ Ns_CompressFree(Ns_CompressStream *UNUSED(cStream))
 
 int
 Ns_CompressBufsGzip(Ns_CompressStream *UNUSED(cStream), struct iovec *UNUSED(bufs), int UNUSED(nbufs),
-                    Ns_DString *UNUSED(dsPtr), int UNUSED(level), int UNUSED(flush))
+                    Ns_DString *UNUSED(dsPtr), int UNUSED(level), bool UNUSED(flush))
 {
     return NS_ERROR;
 }
@@ -462,3 +459,12 @@ Ns_InflateEnd(Ns_CompressStream *UNUSED(cStream))
 }
 
 #endif
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

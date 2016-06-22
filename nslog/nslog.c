@@ -77,6 +77,8 @@ static Ns_ArgProc      LogArg;
 static Ns_TclTraceProc AddCmds;
 static Tcl_ObjCmdProc  LogObjCmd;
 
+NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
+
 static int LogFlush(Log *logPtr, Ns_DString *dsPtr);
 static int LogOpen (Log *logPtr);
 static int LogRoll (Log *logPtr);
@@ -115,6 +117,8 @@ Ns_ModuleInit(const char *server, const char *module)
     static int  first = 1;
     int         result;
 
+    NS_NONNULL_ASSERT(module != NULL);
+
     /*
      * Register the info callbacks just once. This assumes we are
      * called w/o locking from within the server startup.
@@ -130,14 +134,14 @@ Ns_ModuleInit(const char *server, const char *module)
 
     Ns_DStringInit(&ds);
 
-    logPtr = ns_calloc(1U, sizeof(Log));
+    logPtr = ns_calloc(1u, sizeof(Log));
     logPtr->module = module;
     logPtr->fd = NS_INVALID_FD;
     Ns_MutexInit(&logPtr->lock);
     Ns_MutexSetName2(&logPtr->lock, "nslog", server);
     Ns_DStringInit(&logPtr->buffer);
 
-    path = Ns_ConfigGetPath(server, module, NULL);
+    path = Ns_ConfigGetPath(server, module, (char *)0);
 
     /*
      * Determine the name of the log file
@@ -153,7 +157,7 @@ Ns_ModuleInit(const char *server, const char *module)
          * specific directory, which is created if necessary.
          */
 
-        if (Ns_HomePathExists("logs", NULL)) {
+        if (Ns_HomePathExists("logs", (char *)0)) {
             (void) Ns_HomePath(&ds, "logs", "/", file, NULL);
         } else {
             Tcl_Obj *dirpath;
@@ -282,7 +286,7 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
         ROLLFMT, MAXBACKUP, MAXBUFFER, EXTHDRS,
         FLAGS, FILE, ROLL
     };
-    static const char *subcmd[] = {
+    static const char *const subcmd[] = {
         "rollfmt", "maxbackup", "maxbuffer", "extendedheaders",
         "flags", "file", "roll", NULL
     };
@@ -501,8 +505,8 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 static void
 AppendEscaped(Ns_DString *dsPtr, const char *chars)
 {
-    assert(dsPtr != NULL);
-    assert(chars != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(chars != NULL);
     
     while (likely(*chars != '\0')) {
         switch (*chars) {
@@ -559,9 +563,9 @@ LogTrace(void *arg, Ns_Conn *conn)
     char         buffer[PIPE_BUF], *bufferPtr = NULL;
     int          n, status, i;
     size_t	 bufferSize = 0u;
-    Ns_DString   ds;
+    Ns_DString   ds, *dsPtr = &ds;
 
-    Ns_DStringInit(&ds);
+    Ns_DStringInit(dsPtr);
     Ns_MutexLock(&logPtr->lock);
 
     /*
@@ -576,7 +580,9 @@ LogTrace(void *arg, Ns_Conn *conn)
             p = NULL;
         }
     }
-    Ns_DStringAppend(&ds, p && *p ? p : Ns_ConnPeer(conn));
+    Ns_DStringAppend(dsPtr,
+                     ((p != NULL) && (*p != '\0')) ?
+                     p : Ns_ConnPeer(conn));
 
     /*
      * Append the authorized user, if any. Watch usernames
@@ -585,16 +591,16 @@ LogTrace(void *arg, Ns_Conn *conn)
 
     user = Ns_ConnAuthUser(conn);
     if (user == NULL) {
-        Ns_DStringNAppend(&ds, " - - ", 5);
+        Ns_DStringNAppend(dsPtr, " - - ", 5);
     } else {
         int quote = 0;
         for (p = user; *p && !quote; p++) {
 	    quote = (CHARTYPE(space, *p) != 0);
         }
         if (quote != 0) {
-            Ns_DStringVarAppend(&ds, " - \"", user, "\" ", NULL);
+            Ns_DStringVarAppend(dsPtr, " - \"", user, "\" ", NULL);
         } else {
-            Ns_DStringVarAppend(&ds, " - ", user, " ", NULL);
+            Ns_DStringVarAppend(dsPtr, " - ", user, " ", NULL);
         }
     }
 
@@ -603,30 +609,30 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
 
     if (!(logPtr->flags & LOG_FMTTIME)) {
-        Ns_DStringPrintf(&ds, "[%" PRIu64 "]", (int64_t) time(NULL));
+        Ns_DStringPrintf(dsPtr, "[%" PRIu64 "]", (int64_t) time(NULL));
     } else {
         char buf[41]; /* Big enough for Ns_LogTime(). */
         Ns_LogTime(buf);
-        Ns_DStringAppend(&ds, buf);
+        Ns_DStringAppend(dsPtr, buf);
     }
 
     /*
      * Append the request line plus query data (if configured)
      */
 
-    if (likely(conn->request != NULL)) {
+    if (likely(conn->request.line != NULL)) {
 	const char *string = (logPtr->flags & LOG_SUPPRESSQUERY) ? 
-	    conn->request->url : 
-	    conn->request->line;
+	    conn->request.url : 
+	    conn->request.line;
 
-	Ns_DStringNAppend(&ds, " \"", 2);
+	Ns_DStringNAppend(dsPtr, " \"", 2);
         if (likely(string != NULL)) {
-            AppendEscaped(&ds, string);
+            AppendEscaped(dsPtr, string);
         }
-        Ns_DStringNAppend(&ds, "\" ", 2);
+        Ns_DStringNAppend(dsPtr, "\" ", 2);
 
     } else {
-        Ns_DStringNAppend(&ds, " \"\" ", 4);
+        Ns_DStringNAppend(dsPtr, " \"\" ", 4);
     }
 
     /*
@@ -634,7 +640,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
 
     n = Ns_ConnResponseStatus(conn);
-    Ns_DStringPrintf(&ds, "%d %" PRIdz, (n != 0) ? n : 200, Ns_ConnContentSent(conn));
+    Ns_DStringPrintf(dsPtr, "%d %" PRIdz, (n != 0) ? n : 200, Ns_ConnContentSent(conn));
 
     /*
      * Append the referer and user-agent headers (if any)
@@ -642,43 +648,43 @@ LogTrace(void *arg, Ns_Conn *conn)
 
     if ((logPtr->flags & LOG_COMBINED)) {
         
-        Ns_DStringNAppend(&ds, " \"", 2);
+        Ns_DStringNAppend(dsPtr, " \"", 2);
         p = Ns_SetIGet(conn->headers, "referer");
         if (p != NULL) {
-            AppendEscaped(&ds, p);
+            AppendEscaped(dsPtr, p);
         }
-        Ns_DStringNAppend(&ds, "\" \"", 3);
+        Ns_DStringNAppend(dsPtr, "\" \"", 3);
         p = Ns_SetIGet(conn->headers, "user-agent");
         if (p != NULL) {
-            AppendEscaped(&ds, p);
+            AppendEscaped(dsPtr, p);
         }
-        Ns_DStringNAppend(&ds, "\"", 1);
+        Ns_DStringNAppend(dsPtr, "\"", 1);
     }
 
     /*
      * Append the request's elapsed time and queue time (if enabled)
      */
 
-    if ((logPtr->flags & LOG_REQTIME)) {
+    if ((logPtr->flags & LOG_REQTIME) != 0u) {
 	Ns_Time reqTime, now;
 	Ns_GetTime(&now);
         Ns_DiffTime(&now, Ns_ConnStartTime(conn), &reqTime);
-        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)reqTime.sec, reqTime.usec);
+        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)reqTime.sec, reqTime.usec);
     }
 
-    if ((logPtr->flags & LOG_PARTIALTIMES)) {
+    if ((logPtr->flags & LOG_PARTIALTIMES) != 0u) {
 	Ns_Time  acceptTime, queueTime, filterTime, runTime;
         Ns_Time *startTimePtr =  Ns_ConnStartTime(conn);
 
 	Ns_ConnTimeSpans(conn, &acceptTime, &queueTime, &filterTime, &runTime);
 
-        Ns_DStringNAppend(&ds, " \"", 2);
-        Ns_DStringPrintf(&ds, "%" PRIu64 ".%06ld",  (int64_t)startTimePtr->sec, startTimePtr->usec);
-        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)acceptTime.sec,    acceptTime.usec);
-        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)queueTime.sec,     queueTime.usec);
-        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)filterTime.sec,    filterTime.usec);
-        Ns_DStringPrintf(&ds, " %" PRIu64 ".%06ld", (int64_t)runTime.sec,       runTime.usec);
-        Ns_DStringNAppend(&ds, "\"", 1);
+        Ns_DStringNAppend(dsPtr, " \"", 2);
+        Ns_DStringPrintf(dsPtr, "%" PRIu64 ".%06ld",  (int64_t)startTimePtr->sec, startTimePtr->usec);
+        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)acceptTime.sec,    acceptTime.usec);
+        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)queueTime.sec,     queueTime.usec);
+        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)filterTime.sec,    filterTime.usec);
+        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)runTime.sec,       runTime.usec);
+        Ns_DStringNAppend(dsPtr, "\"", 1);
     }
 
     /*
@@ -686,22 +692,22 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
 
     for (h = logPtr->extheaders; *h != NULL; h++) {
-        Ns_DStringNAppend(&ds, " \"", 2);
+        Ns_DStringNAppend(dsPtr, " \"", 2);
         p = Ns_SetIGet(conn->headers, *h);
         if (p != NULL) {
-            AppendEscaped(&ds, p);
+            AppendEscaped(dsPtr, p);
         }
-        Ns_DStringNAppend(&ds, "\"", 1);
+        Ns_DStringNAppend(dsPtr, "\"", 1);
     }
-
+    
     for (i = 0; i < ds.length; i++) {
-      /* 
-       * Quick fix to disallow terminal escape characters in the log
-       * file. See e.g. http://www.securityfocus.com/bid/37712/info
-       */
-      if (ds.string[i] == 0x1b) {
-	ds.string[i] = 7; /* bell */
-      }
+        /* 
+         * Quick fix to disallow terminal escape characters in the log
+         * file. See e.g. http://www.securityfocus.com/bid/37712/info
+         */
+        if (unlikely(ds.string[i] == 0x1b)) {
+            ds.string[i] = 7; /* bell */
+        }
     }
 
     /*
@@ -709,24 +715,28 @@ LogTrace(void *arg, Ns_Conn *conn)
      * flush the buffer
      */
 
-    Ns_DStringNAppend(&ds, "\n", 1);
+    Ns_DStringNAppend(dsPtr, "\n", 1);
 
     if (logPtr->maxlines == 0) {
         bufferSize = ds.length;
 	if (bufferSize < PIPE_BUF) {
-	  /* only those ns_write() operations are guaranteed to be atomic */
+	  /* 
+           * Only ns_write() operations < PIPE_BUF are guaranteed to be atomic
+           */
 	    bufferPtr = ds.string;
            status = NS_OK;
 	} else {
-	    status = LogFlush(logPtr, &ds);
+	    status = LogFlush(logPtr, dsPtr);
 	}
     } else {
         Ns_DStringNAppend(&logPtr->buffer, ds.string, ds.length);
         if (++logPtr->curlines > logPtr->maxlines) {
 	    bufferSize = logPtr->buffer.length;
             if (bufferSize < PIPE_BUF) {
-              /* only those ns_write() are guaranteed to be atomic */
-              /* in most cases, we will fall into the other branch */
+                /* 
+                 * Only ns_write() operations < PIPE_BUF are guaranteed to be
+                 * atomic.  In most cases, the other branch is used.
+                 */
 	      memcpy(buffer, logPtr->buffer.string, bufferSize);  
 	      bufferPtr = buffer;
 	      Ns_DStringTrunc(&logPtr->buffer, 0);
@@ -747,7 +757,7 @@ LogTrace(void *arg, Ns_Conn *conn)
         NsAsyncWrite(logPtr->fd, bufferPtr, bufferSize);
     }
 
-    Ns_DStringFree(&ds);
+    Ns_DStringFree(dsPtr);
 }
 
 
@@ -903,7 +913,7 @@ LogRoll(Log *logPtr)
         if (logPtr->rollfmt == NULL) {
             status = Ns_RollFile(logPtr->file, logPtr->maxbackup);
         } else {
-            time_t      now = time(0);
+            time_t      now = time(NULL);
             char        timeBuf[512];
             Ns_DString  ds;
 	    Tcl_Obj    *newpath;

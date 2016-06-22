@@ -92,7 +92,7 @@ NsConfigProgress(void)
         Ns_SlsAlloc(&slot, ResetProgress);
         Tcl_InitHashTable(&urlTable, TCL_STRING_KEYS);
         Ns_MutexSetName(&lock, "ns:progress");
-        Ns_Log(Notice, "nsmain: enable progess statistics for uploads >= %" PRIdz " bytes",
+        Ns_Log(Notice, "nsmain: enable progress statistics for uploads >= %" PRIdz " bytes",
                progressMinSize);
     }
 }
@@ -198,12 +198,12 @@ NsUpdateProgress(Ns_Sock *sock)
         Progress *pPtr = Ns_SlsGet(&slot, sock);
 
         if (pPtr == NULL) {
-            pPtr = ns_calloc(1U, sizeof(Progress));
+            pPtr = ns_calloc(1u, sizeof(Progress));
             Ns_SlsSet(&slot, sock, pPtr);
         }
 
         if (pPtr->hPtr == NULL) {
-	    CONST char *key = NULL;
+	    const char *key = NULL;
 	    Ns_Set *set = NULL;
 	    Ns_DString *dsPtr = NULL;
 

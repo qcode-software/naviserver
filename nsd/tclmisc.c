@@ -70,8 +70,8 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
     va_list     ap;
     Tcl_DString ds;
 
-    assert(interp != NULL);
-    assert(fmt != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(fmt != NULL);
 
     Tcl_DStringInit(&ds);
     va_start(ap, fmt);
@@ -170,11 +170,11 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
     if (itPtr != NULL && itPtr->conn != NULL) {
         Ns_Conn *conn = itPtr->conn;
         Ns_DStringInit(&ds);
-        if (conn->request->method != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request->method, " ", NULL);
+        if (conn->request.method != NULL) {
+            Ns_DStringVarAppend(&ds, conn->request.method, " ", NULL);
         }
-        if (conn->request->url != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request->url, ", ", NULL);
+        if (conn->request.url != NULL) {
+            Ns_DStringVarAppend(&ds, conn->request.url, ", ", NULL);
         }
         Ns_DStringVarAppend(&ds, "PeerAddress: ", Ns_ConnPeer(conn), NULL);
 
@@ -472,7 +472,7 @@ NsTclHrefsCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int argc, CONST
         }
         if ((*s == 'a' || *s == 'A') && CHARTYPE(space, s[1]) != 0) {
             ++s;
-            while (*s) {
+            while (*s != '\0') {
                 if (strncasecmp(s, "href", 4u) == 0) {
                     s += 4;
                     while (*s != '\0' && CHARTYPE(space, *s) != 0) {
@@ -649,7 +649,7 @@ NsTclCrashCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
 static int
 WordEndsInSemi(const char *ip)
 {
-    assert(ip != NULL);
+    NS_NONNULL_ASSERT(ip != NULL);
     
     /* advance past the first '&' so we can check for a second
        (i.e. to handle "ben&jerry&nbsp;")
@@ -691,8 +691,6 @@ WordEndsInSemi(const char *ip)
  *
  */
 
-static const char hexChars[] = "0123456789ABCDEF";
-
 /*
  * Define to 1 for FIPS 180.1 version (with extra rotate in prescheduling),
  * 0 for FIPS 180 version (with the mysterious "weakness" that the NSA
@@ -716,7 +714,7 @@ SHAByteSwap(uint32_t *dest, uint8_t const *src, unsigned int words)
        *dest++ = (uint32_t) ((unsigned) src[0] << 8 | src[1]) << 16 |
 	         ((unsigned) src[2] << 8 | src[3]);
        src += 4;
-    } while (--words);
+    } while (--words > 0u);
 }
 
 /* Initialize the SHA values */
@@ -824,7 +822,7 @@ SHATransform(Ns_CtxSHA1 *sha)
     register uint32_t t;
 #endif
 
-    assert(sha != NULL);
+    NS_NONNULL_ASSERT(sha != NULL);
 
     /* Set up first buffer */
     A = sha->iv[0];
@@ -931,8 +929,8 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
 {
     unsigned i;
 
-    assert(ctx != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(ctx != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     /* Update bitcount */
 
@@ -996,7 +994,7 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
     *p++ = (uint8_t)0x80u;
 
     /* Bytes of padding needed to make 64 bytes (0..63) */
-    i = SHA_BLOCKBYTES - 1u - i;
+    i = (SHA_BLOCKBYTES - 1u) - i;
 
     if (i < 8u) {				/* Padding forces an extra block */
         memset(p, 0, i);
@@ -1036,15 +1034,42 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
     memset(ctx, 0, sizeof(Ns_CtxSHA1)); 			/* In case it's sensitive */
 }
 
-void Ns_CtxString(const unsigned char *digest, char *buf, int size)
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_HexString --
+ *
+ *      Transform binary data to hex. The provided buffer must be
+ *      at least size*2 + 1 bytes long.
+ *
+ * Results:
+ *      buffer
+ *
+ * Side effects:
+ *      Updates passed-in buffer (2nd argument).
+ *
+ *----------------------------------------------------------------------
+ */
+char *Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUpper)
 {
     int i;
-
-    for (i = 0; i < size; ++i) {
-        buf[i * 2] = hexChars[digest[i] >> 4];
-        buf[i * 2 + 1] = hexChars[digest[i] & 0xFu];
+    static const char hexCharsUpper[] = "0123456789ABCDEF";
+    static const char hexCharsLower[] = "0123456789abcdef";
+    
+    if (isUpper) {
+        for (i = 0; i < size; ++i) {
+            buf[i * 2] = hexCharsUpper[digest[i] >> 4];
+            buf[i * 2 + 1] = hexCharsUpper[digest[i] & 0xFu];
+        }
+    } else {
+        for (i = 0; i < size; ++i) {
+            buf[i * 2] = hexCharsLower[digest[i] >> 4];
+            buf[i * 2 + 1] = hexCharsLower[digest[i] & 0xFu];
+        }
     }
     buf[size * 2] = '\0';
+
+    return buf;
 }
 
 
@@ -1081,8 +1106,8 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     }
 
     binary = NsTclObjIsByteArray(objv[1]);
-    if (binary == NS_TRUE) {
-        str = (char*)Tcl_GetByteArrayFromObj(objv[1], &length);
+    if (binary) {
+        str = (char *)Tcl_GetByteArrayFromObj(objv[1], &length);
     } else {
         str = Tcl_GetStringFromObj(objv[1], &length);
     }    
@@ -1091,11 +1116,12 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     Ns_CtxSHAUpdate(&ctx, (const unsigned char *) str, (size_t) length);
     Ns_CtxSHAFinal(&ctx, digest);
 
-    Ns_CtxString(digest, digestChars, 20);
+    Ns_HexString(digest, digestChars, 20, NS_TRUE);
     Tcl_AppendResult(interp, digestChars, NULL);
 
     return NS_OK;
 }
+
 
 /*
  *----------------------------------------------------------------------
@@ -1131,17 +1157,18 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     }
     if (objc > 2) {
         char *name = Tcl_GetString(objv[2]);
-        Tcl_SetVar2Ex(interp, name, "dev",   Tcl_NewIntObj(st.st_ino), 0);
-        Tcl_SetVar2Ex(interp, name, "ino",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_ino), 0);
-        Tcl_SetVar2Ex(interp, name, "nlink", Tcl_NewLongObj(st.st_nlink), 0);
-        Tcl_SetVar2Ex(interp, name, "uid",   Tcl_NewIntObj(st.st_uid), 0);
-        Tcl_SetVar2Ex(interp, name, "gid",   Tcl_NewIntObj(st.st_gid), 0);
-        Tcl_SetVar2Ex(interp, name, "size",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_size), 0);
-        Tcl_SetVar2Ex(interp, name, "atime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_atime), 0);
-        Tcl_SetVar2Ex(interp, name, "ctime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_ctime), 0);
-        Tcl_SetVar2Ex(interp, name, "mtime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_mtime), 0);
-        Tcl_SetVar2Ex(interp, name, "mode",  Tcl_NewIntObj(st.st_mode), 0);
-        Tcl_SetVar2Ex(interp, name, "type",  Tcl_NewStringObj(
+        
+        (void)Tcl_SetVar2Ex(interp, name, "dev",   Tcl_NewIntObj(st.st_ino), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "ino",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_ino), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "nlink", Tcl_NewLongObj(st.st_nlink), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "uid",   Tcl_NewIntObj(st.st_uid), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "gid",   Tcl_NewIntObj(st.st_gid), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "size",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_size), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "atime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_atime), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "ctime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_ctime), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "mtime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_mtime), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "mode",  Tcl_NewIntObj(st.st_mode), 0);
+        (void)Tcl_SetVar2Ex(interp, name, "type",  Tcl_NewStringObj(
                   (S_ISREG(st.st_mode) ? "file" :
                         S_ISDIR(st.st_mode) ? "directory" :
 #ifdef S_ISCHR
@@ -1178,7 +1205,7 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  * with every copy.
  *
  * To compute the message digest of a chunk of bytes, declare an
- * MD5Context structure, pass it to MD5Init, call MD5update as
+ * MD5Context structure, pass it to MD5Init, call MD5Update as
  * needed on buffers full of bytes, and then call MD5Final, which
  * will fill a supplied 16-byte array with the digest.
  */
@@ -1230,8 +1257,8 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, unsigned const char *buf, size_t len)
 {
     uint32_t t;
 
-    assert(ctx != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(ctx != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     /* Update bitcount */
 
@@ -1283,11 +1310,13 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
 {
     unsigned count;
     uint8_t  *p;
-    uint32_t *words = (uint32_t *)ctx->in;
+    uint32_t *words;
 
-    assert(ctx != NULL);
-    assert(digest != NULL);
+    NS_NONNULL_ASSERT(ctx != NULL);
+    NS_NONNULL_ASSERT(digest != NULL);
 
+    words = (uint32_t *)ctx->in;
+    
     /* Compute number of bytes mod 64 */
     count = (ctx->bits[0] >> 3) & 0x3Fu;
 
@@ -1299,7 +1328,7 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
     *p++ = (uint8_t)0x80u;
     
     /* Bytes of padding needed to make 64 bytes */
-    count = 64u - 1u - count;
+    count = (64u - 1u) - count;
 
     /* Pad out to 56 mod 64 */
     if (count < 8u) {
@@ -1369,8 +1398,8 @@ static void MD5Transform(uint32_t buf[4], uint8_t const block[64])
     }
 #endif
 
-    assert(buf != NULL);
-    assert(block != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
+    NS_NONNULL_ASSERT(block != NULL);
     
     a = buf[0];
     b = buf[1];
@@ -1484,8 +1513,8 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
     }
     
     binary = NsTclObjIsByteArray(objv[1]);
-    if (binary == NS_TRUE) {
-        str = (char*)Tcl_GetByteArrayFromObj(objv[1], &length);
+    if (binary) {
+        str = (char *)Tcl_GetByteArrayFromObj(objv[1], &length);
     } else {
         str = Tcl_GetStringFromObj(objv[1], &length);
     }
@@ -1494,7 +1523,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
     Ns_CtxMD5Update(&ctx, (const unsigned char *) str, (size_t)length);
     Ns_CtxMD5Final(&ctx, digest);
 
-    Ns_CtxString(digest, digestChars, 16);
+    Ns_HexString(digest, digestChars, 16, NS_TRUE);
     Tcl_AppendResult(interp, digestChars, NULL);
 
     return NS_OK;
@@ -1539,6 +1568,142 @@ NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_SetGroup(Tcl_GetString(objv[1]))));
     return TCL_OK;
 }
+
+#ifndef _WIN32
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * GetLimitObj --
+ *
+ *      Get single resource limit in form of a Tcl_Obj
+ *
+ * Results:
+ *	Tcl_Obj
+ *
+ * Side effects:
+ *	None.
+ *
+ *----------------------------------------------------------------------
+ */
+static Tcl_Obj *
+GetLimitObj(Tcl_WideInt value)
+{
+    Tcl_Obj *obj;
+    
+    if (value == RLIM_INFINITY) {
+        obj = Tcl_NewStringObj("unlimited", -1);
+    } else {
+        obj = Tcl_NewWideIntObj(value);
+    }
+    return obj;
+}
+#endif
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclRlimitObjCmd --
+ *
+ *      Get or Set resource limit in the operating system.
+ *
+ * Results:
+ *	pair of actual value and maximum value
+ *
+ * Side effects:
+ *	Change resource limiat with called with a value.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+#ifndef _WIN32
+    int            opt, result = TCL_OK, rc;
+    struct rlimit  rlimit;
+
+    static const char *const opts[] = {
+        "coresize",
+        "datasize",
+        "files",
+        "filesize",        
+        "vmsize",
+        NULL
+    };
+    static int resource[] = {
+        RLIMIT_CORE,
+        RLIMIT_DATA,
+        RLIMIT_NOFILE,
+        RLIMIT_FSIZE,
+        RLIMIT_AS
+    };
+    enum {
+        CCoresizeIdx,
+        CDatasizeIdx,
+        CFIlesizeIdx,        
+        CFilesIdx,
+        CVmsizeIdx,
+        
+    };
+
+    if (objc < 2) {
+        Tcl_WrongNumArgs(interp, 1, objv, "command ?args?");
+        return TCL_ERROR;
+    }
+    if (Tcl_GetIndexFromObj(interp, objv[1], opts, 
+                            "option", 0, &opt) != TCL_OK) {
+        return TCL_ERROR;
+    }
+
+    if (objc == 2) {
+        rc = getrlimit(resource[opt], &rlimit);
+        if (rc == -1) {
+            Ns_TclPrintfResult(interp, "getrlimit returned error");
+            result = TCL_ERROR;
+        }
+    } else if (objc == 3) {
+        Tcl_WideInt value;
+
+        result = Tcl_GetWideIntFromObj(interp, objv[2], &value);
+        if (result != TCL_OK) {
+            char *valueString = Tcl_GetString(objv[2]);
+            if (strcmp(valueString, "unlimited") == 0) {
+                value = RLIM_INFINITY;
+                result = TCL_OK;
+            }
+        }
+        if (result == TCL_OK) {
+            rc = getrlimit(resource[opt], &rlimit);
+            if (rc > -1) {
+                rlimit.rlim_cur = value;
+                rc = setrlimit(resource[opt], &rlimit);
+            }
+            if (rc == -1) {
+                Ns_TclPrintfResult(interp, "could not set limit");
+                result = TCL_ERROR;                
+            }
+        }
+    } else {
+        Ns_TclPrintfResult(interp, "wrong # of arguments");
+        result = TCL_ERROR;                
+    }
+
+    if (result == TCL_OK) {
+        Tcl_Obj *listPtr = Tcl_NewListObj(2, NULL);
+        
+        Tcl_ListObjAppendElement(interp, listPtr, GetLimitObj(rlimit.rlim_cur));
+        Tcl_ListObjAppendElement(interp, listPtr, GetLimitObj(rlimit.rlim_max));
+        Tcl_SetObjResult(interp, listPtr);
+        result = TCL_OK;
+    }
+    
+    return result;
+#else
+    return TCL_OK;
+#endif
+}
+
 
 
 /*

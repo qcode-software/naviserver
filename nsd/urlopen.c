@@ -81,9 +81,9 @@ Ns_FetchPage(Ns_DString *dsPtr, const char *url, const char *server)
     Tcl_Channel chan;
     int result = NS_OK;
 
-    assert(dsPtr != NULL);
-    assert(url != NULL);
-    assert(server != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
 
     Ns_DStringInit(&ds);
     (void) Ns_UrlToFile(&ds, server, url);
@@ -134,8 +134,8 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
     int             status;
     size_t          toSend;
 
-    assert(dsPtr != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
 
     sock = NS_INVALID_SOCKET;
     Ns_DStringInit(&ds);
@@ -153,8 +153,8 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
         Ns_Log(Notice, "urlopen: invalid url '%s'", url);
         goto done;
     }
-    if (request.port == 0U) {
-        request.port = 80U;
+    if (request.port == 0u) {
+        request.port = 80u;
     }
     sock = Ns_SockConnect(request.host, (int)request.port);
     if (sock == NS_INVALID_SOCKET) {
@@ -302,7 +302,9 @@ NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         goto done;
     }
     if (objc == 3) {
-        Ns_TclEnterSet(interp, headers, NS_TCL_SET_DYNAMIC);
+        if (Ns_TclEnterSet(interp, headers, NS_TCL_SET_DYNAMIC) != TCL_OK) {
+            goto done;
+        }
         if (Tcl_ObjSetVar2(interp, objv[2], NULL, Tcl_GetObjResult(interp),
                            TCL_LEAVE_ERR_MSG) == NULL) {
             goto done;
@@ -310,6 +312,7 @@ NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
     }
     Tcl_DStringResult(interp, &ds);
     code = TCL_OK;
+    
 done:
     Ns_DStringFree(&ds);
 
@@ -338,7 +341,7 @@ FillBuf(Stream *sPtr)
 {
     ssize_t n;
     
-    assert(sPtr != NULL);
+    NS_NONNULL_ASSERT(sPtr != NULL);
 
     n = ns_recv(sPtr->sock, sPtr->buf, BUFSIZE, 0);
     if (n <= 0) {
@@ -387,8 +390,8 @@ GetLine(Stream *sPtr, Ns_DString *dsPtr)
     char   *eol;
     size_t  n;
 
-    assert(sPtr != NULL);
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(sPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
 
     Ns_DStringSetLength(dsPtr, 0);
     do {

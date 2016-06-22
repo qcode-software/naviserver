@@ -189,17 +189,21 @@ NsTclConfigObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
 int
 NsTclConfigSectionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Set *set;
+    int     result;
 
-    if (objc != 2) {
+    if (unlikely((objc != 2))) {
+        result = TCL_ERROR;
         Tcl_WrongNumArgs(interp, 1, objv, "section");
-        return TCL_ERROR;
+    } else {
+        Ns_Set *set;
+
+        result = TCL_OK;
+        set = Ns_ConfigGetSection(Tcl_GetString(objv[1]));
+        if (set != NULL) {
+            result = Ns_TclEnterSet(interp, set, NS_TCL_SET_STATIC);
+        }
     }
-    set = Ns_ConfigGetSection(Tcl_GetString(objv[1]));
-    if (set != NULL) {
-        Ns_TclEnterSet(interp, set, NS_TCL_SET_STATIC);
-    }
-    return TCL_OK;
+    return result;
 }
 
 
@@ -222,20 +226,27 @@ NsTclConfigSectionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int 
 int
 NsTclConfigSectionsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Set **sets;
-    int      i;
+    int      result;
 
     if (objc != 1) {
         Tcl_WrongNumArgs(interp, 1, objv, NULL);
-        return TCL_ERROR;
-    }
-    sets = Ns_ConfigGetSections();
-    for (i = 0; sets[i] != NULL; i++) {
-        Ns_TclEnterSet(interp, sets[i], NS_TCL_SET_STATIC);
-    }
-    ns_free(sets);
+        result = TCL_ERROR;
+    } else {
+        Ns_Set **sets;
+        int i;
 
-    return TCL_OK;
+        result = TCL_OK;
+        sets = Ns_ConfigGetSections();
+        for (i = 0; sets[i] != NULL; i++) {
+            result = Ns_TclEnterSet(interp, sets[i], NS_TCL_SET_STATIC);
+            if (unlikely(result != TCL_OK)) {
+                break;
+            }
+        }
+        ns_free(sets);
+    }
+
+    return result;
 }
 
 /*

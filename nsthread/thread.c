@@ -131,7 +131,7 @@ Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stack,
     size_t nameLength;
     const char *name;
 
-    assert(proc != NULL);
+    NS_NONNULL_ASSERT(proc != NULL);
 
     Ns_MasterLock();
 
@@ -275,7 +275,7 @@ Ns_ThreadSetName(const char *name,...)
     Thread *thisPtr = GetThread();
     va_list ap;
 
-    assert(name != NULL);
+    NS_NONNULL_ASSERT(name != NULL);
     
     Ns_MasterLock();
     va_start(ap, name);
@@ -332,11 +332,10 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
     Thread *thrPtr;
     char buf[100];
 
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
 
     Ns_MasterLock();
-    thrPtr = firstThreadPtr;
-    while (thrPtr != NULL) {
+    for (thrPtr = firstThreadPtr; (thrPtr != NULL); thrPtr = thrPtr->nextPtr) {
 
         if ((thrPtr->flags & NS_THREAD_EXITED) == 0u) {
             int written;
@@ -344,22 +343,22 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
             Tcl_DStringStartSublist(dsPtr);
             Tcl_DStringAppendElement(dsPtr, thrPtr->name);
             Tcl_DStringAppendElement(dsPtr, thrPtr->parent);
-            snprintf(buf, sizeof(buf), " %" PRIxPTR " %d %" PRIu64,
-                     thrPtr->tid, thrPtr->flags, (int64_t) thrPtr->ctime);
-            Tcl_DStringAppend(dsPtr, buf, -1);
+            written = snprintf(buf, sizeof(buf), " %" PRIxPTR " %d %" PRIu64,
+                               thrPtr->tid, thrPtr->flags, (int64_t) thrPtr->ctime);
+            Tcl_DStringAppend(dsPtr, buf, written);
             if (proc != NULL) {
                 (*proc)(dsPtr, thrPtr->proc, thrPtr->arg);
             } else {
-                /* 
-                 * The only legal way to print a function pointer is by
-                 * printing the bytes via casting to a character array.
-                 */
-                unsigned char *p = (unsigned char *)thrPtr->proc;
+                unsigned char addrBuffer[sizeof(thrPtr->proc)];
                 int i;
-                
+
+                /*
+                 * Obtain the hex value of the function pointer;
+                 */
+                memcpy(addrBuffer, &thrPtr->proc, sizeof(thrPtr->proc));
                 Tcl_DStringAppend(dsPtr, " 0x", 3);
-                for (i = 0; i < sizeof(thrPtr->proc); i++) {
-                    written = snprintf(buf, sizeof(buf), "%02x", p != NULL ? p[i] : 0);
+                for (i = sizeof(thrPtr->proc) - 1; i >= 0 ; i--) {
+                    written = snprintf(buf, sizeof(buf), "%02x", addrBuffer[i]);
                     Tcl_DStringAppend(dsPtr, buf, written);
                 }
                 written = snprintf(buf, sizeof(buf), " %p", thrPtr->arg);
@@ -370,7 +369,6 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
 
             Tcl_DStringEndSublist(dsPtr);
         }
-        thrPtr = thrPtr->nextPtr;
     }
     Ns_MasterUnlock();
 }
@@ -400,7 +398,7 @@ NewThread(void)
 {
     Thread *thrPtr;
 
-    thrPtr = ns_calloc(1U, sizeof(Thread));
+    thrPtr = ns_calloc(1u, sizeof(Thread));
     thrPtr->ctime = time(NULL);
     Ns_MasterLock();
     thrPtr->nextPtr = firstThreadPtr;
@@ -531,7 +529,7 @@ static void
 SetBottomOfStack(void *ptr) {
     Thread *thisPtr = GetThread();
 
-    assert(ptr != NULL);
+    NS_NONNULL_ASSERT(ptr != NULL);
     
     thisPtr->bottomOfStack = ptr;
 }
@@ -556,8 +554,8 @@ void
 Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize) {
   Thread *thisPtr = GetThread();
 
-  assert(maxStackSize != NULL);
-  assert(estimatedSize != NULL);
+  NS_NONNULL_ASSERT(maxStackSize != NULL);
+  NS_NONNULL_ASSERT(estimatedSize != NULL);
   
   Ns_MasterLock();
   *maxStackSize = defstacksize;

@@ -43,23 +43,23 @@
  * Various ADP option bits.
  */
 
-#define ADP_SAFE                       0x01U    /* Use Tcl_SafeEval for ADP */
-#define ADP_SINGLE                     0x02U    /* Combine blocks into a single script */
-#define ADP_DEBUG                      0x04U    /* Enable debugging */
-#define ADP_EXPIRE                     0x08U    /* Send Expires: now header on output */
-#define ADP_CACHE                      0x10U    /* Enable output caching */
-#define ADP_TRACE                      0x20U    /* Trace execution */
-#define ADP_DETAIL                     0x80U    /* Log connection details on error */
-#define ADP_STRICT                     0x100U   /* Strict error handling */
-#define ADP_DISPLAY                    0x200U   /* Display error messages in output stream */
-#define ADP_TRIM                       0x400U   /* Display error messages in output stream */
-#define ADP_FLUSHED                    0x800U   /* Some output has been sent */
-#define ADP_ERRLOGGED                  0x1000U  /* Error message has already been logged */
-#define ADP_AUTOABORT                  0x2000U  /* Raise abort on flush error */
-#define ADP_ADPFILE                    0x4000U  /* Object to evaluate is a file */
-#define ADP_STREAM                     0x8000U  /* Enable ADP streaming */
-#define ADP_TCLFILE                    0x10000U /* Object to evaluate is a Tcl file */
-#define ADP_OPTIONMAX                  0x1000000U /* watermark for flag values */
+#define ADP_SAFE                       0x01u    /* Use Tcl_SafeEval for ADP */
+#define ADP_SINGLE                     0x02u    /* Combine blocks into a single script */
+#define ADP_DEBUG                      0x04u    /* Enable debugging */
+#define ADP_EXPIRE                     0x08u    /* Send Expires: now header on output */
+#define ADP_CACHE                      0x10u    /* Enable output caching */
+#define ADP_TRACE                      0x20u    /* Trace execution */
+#define ADP_DETAIL                     0x80u    /* Log connection details on error */
+#define ADP_STRICT                     0x100u   /* Strict error handling */
+#define ADP_DISPLAY                    0x200u   /* Display error messages in output stream */
+#define ADP_TRIM                       0x400u   /* Display error messages in output stream */
+#define ADP_FLUSHED                    0x800u   /* Some output has been sent */
+#define ADP_ERRLOGGED                  0x1000u  /* Error message has already been logged */
+#define ADP_AUTOABORT                  0x2000u  /* Raise abort on flush error */
+#define ADP_ADPFILE                    0x4000u  /* Object to evaluate is a file */
+#define ADP_STREAM                     0x8000u  /* Enable ADP streaming */
+#define ADP_TCLFILE                    0x10000u /* Object to evaluate is a Tcl file */
+#define ADP_OPTIONMAX                  0x1000000u /* watermark for flag values */
 
 typedef enum {
     ADP_OK =                     0,
@@ -69,15 +69,20 @@ typedef enum {
     ADP_TIMEOUT =                4
 } AdpResult;
 
-#define MAX_URLSPACES                  16
-#define NS_SET_SIZE                    ((unsigned)TCL_INTEGER_SPACE + 2U)
-#define NS_IPADDR_SIZE                 16u
+typedef enum {
+    NS_URLSPACE_DEFAULT =        0,
+    NS_URLSPACE_FAST =           1,
+    NS_URLSPACE_EXACT =          2
+} NsUrlSpaceOp;
 
-#define CONN_TCLFORM                   0x01U  /* Query form set is registered for interp */
-#define CONN_TCLHDRS                   0x02U  /* Input headers set is registered for interp */
-#define CONN_TCLOUTHDRS                0x04U  /* Output headers set is registered for interp */
-#define CONN_TCLAUTH                   0x08U  /* 'auth' headers set is registered for interp */
-#define CONN_TCLHTTP                   0x10U  /* HTTP headers requested by ns_headers */
+#define MAX_URLSPACES                  16
+#define NS_SET_SIZE                    ((unsigned)TCL_INTEGER_SPACE + 2u)
+
+#define CONN_TCLFORM                   0x01u  /* Query form set is registered for interp */
+#define CONN_TCLHDRS                   0x02u  /* Input headers set is registered for interp */
+#define CONN_TCLOUTHDRS                0x04u  /* Output headers set is registered for interp */
+#define CONN_TCLAUTH                   0x08u  /* 'auth' headers set is registered for interp */
+#define CONN_TCLHTTP                   0x10u  /* HTTP headers requested by ns_headers */
 
 /*
  * The following is the default text/html content type
@@ -86,7 +91,7 @@ typedef enum {
 
 #define NSD_TEXTHTML                   "text/html"
 /*
- * constants for SockState return and reason codes.
+ * Constants for SockState return and reason codes.
  */
 
 typedef enum {
@@ -98,18 +103,17 @@ typedef enum {
     SOCK_CLOSETIMEOUT =       -3,
     SOCK_READTIMEOUT =        -4,
     SOCK_WRITETIMEOUT =       -5,
-    SOCK_SERVERREJECT =       -6,
-    SOCK_READERROR =          -7,
-    SOCK_WRITEERROR =         -8,
-    SOCK_SHUTERROR =          -9,
-    SOCK_BADREQUEST =         -11,
-    SOCK_ENTITYTOOLARGE =     -12,
-    SOCK_BADHEADER =          -13,
-    SOCK_TOOMANYHEADERS =     -14
+    SOCK_READERROR =          -6,
+    SOCK_WRITEERROR =         -7,
+    SOCK_SHUTERROR =          -8,
+    SOCK_BADREQUEST =         -9,
+    SOCK_ENTITYTOOLARGE =     -10,
+    SOCK_BADHEADER =          -11,
+    SOCK_TOOMANYHEADERS =     -12
 } SockState;
 
 /*
- * subset for spooler states
+ * Subset for spooler states
  */
 typedef enum {
     SPOOLER_CLOSE =             SOCK_CLOSE,
@@ -132,26 +136,26 @@ struct Sock;
 struct NsServer;
 
 struct nsconf {
-    char *argv0;
-    char *nsd;
-    char *name;
-    char *version;
+    const char *argv0;
+    const char *nsd;
+    const char *name;
+    const char *version;
     const char *home;
     const char *tmpDir;
     const char *config;
-    char *build;
-    pid_t pid;
-    time_t boot_t;
-    char hostname[255];
-    char address[NS_IPADDR_SIZE];
-    long shutdowntimeout;  /* same type as seconds in Ns_Time */
-    int backlog;
+    const char *build;
+    pid_t       pid;
+    time_t      boot_t;
+    char        hostname[255];
+    char        address[NS_IPADDR_SIZE];
+    long        shutdowntimeout;  /* same type as seconds in Ns_Time */
+    int         backlog;
 
     /*
      * Slot IDs for socket local storage.
      */
 
-    uintptr_t nextSlsId;
+    uintptr_t   nextSlsId;
 
     /*
      * The following table holds the configured virtual servers.
@@ -159,8 +163,8 @@ struct nsconf {
      */
 
     Tcl_HashTable servertable;
-    Tcl_DString servers;
-    const char *defaultServer;
+    Tcl_DString   servers;
+    const char   *defaultServer;
 
     /*
      * The following table holds config section sets from
@@ -176,8 +180,8 @@ struct nsconf {
     struct {
         Ns_Mutex lock;
         Ns_Cond cond;
-        int started;
-        int stopping;
+        bool started;
+        bool stopping;
     } state;
 
     struct {
@@ -193,8 +197,8 @@ struct nsconf {
 
     struct {
         const char *sharedlibrary;
-        char *version;
-        bool lockoninit;
+        const char *version;
+        bool        lockoninit;
     } tcl;
 
     struct {
@@ -211,7 +215,7 @@ NS_EXTERN struct nsconf nsconf;
  */
 
 typedef struct FileMap {
-    char *addr;                 /* Mapped to this virtual address */
+    void  *addr;           /* Mapped to this virtual address */
     size_t size;                /* Size of the mapped region */
 #ifndef _WIN32
     int handle;                 /* OS handle of the opened/mapped file */
@@ -238,7 +242,7 @@ typedef struct WriterSock {
     unsigned int         flags;
     int                  doStream;
     int                  fd;
-    char                 *headerString;
+    char                *headerString;
 
     union {
         struct {
@@ -319,18 +323,18 @@ typedef struct AdpFrame {
  */
 
 typedef struct AdpCode {
-    int        nblocks;
-    int        nscripts;
-    int           *len;
-    int           *line;
+    int         nblocks;
+    int         nscripts;
+    int        *len;
+    int        *line;
     Tcl_DString text;
 } AdpCode;
 
 #define AdpCodeLen(cp,i)    ((cp)->len[(i)])
-#define AdpCodeLine(cp,i)    ((cp)->line[(i)])
-#define AdpCodeText(cp)        ((cp)->text.string)
-#define AdpCodeBlocks(cp)    ((cp)->nblocks)
-#define AdpCodeScripts(cp)    ((cp)->nscripts)
+#define AdpCodeLine(cp,i)   ((cp)->line[(i)])
+#define AdpCodeText(cp)     ((cp)->text.string)
+#define AdpCodeBlocks(cp)   ((cp)->nblocks)
+#define AdpCodeScripts(cp)  ((cp)->nscripts)
 
 
 /*
@@ -339,12 +343,12 @@ typedef struct AdpCode {
  */
 
 typedef struct Request {
-    struct Request *nextPtr;    /* Next on free list */
-    Ns_Request request;         /* Parsed request line */
-    Ns_Set *headers;            /* Input headers */
-    Ns_Set *auth;               /* Auth user/password and parameters */
-    char peer[NS_IPADDR_SIZE];  /* Client peer address */
-    int port;                   /* Client peer port */
+    struct Request *nextPtr;     /* Next on free list */
+    Ns_Request request;          /* Parsed request line */
+    Ns_Set *headers;             /* Input headers */
+    Ns_Set *auth;                /* Auth user/password and parameters */
+    char peer[NS_IPADDR_SIZE];   /* Client peer address */
+    int port;                    /* Client peer port */
 
     /*
      * The following pointers are used to access the
@@ -356,7 +360,6 @@ typedef struct Request {
     size_t length;              /* Length of content */
     size_t contentLength;       /* Provided content length */
     size_t avail;               /* Bytes avail in buffer */
-    int leadblanks;             /* Number of leading blank lines read */
 
     /*
      * The following block is for chunked encodings
@@ -373,7 +376,9 @@ typedef struct Request {
     size_t woff;                  /* Next write buffer offset */
     size_t roff;                  /* Next read buffer offset */
     size_t coff;                  /* Content buffer offset */
+    size_t leftover;              /* Leftover bytes from earlier requests */
     Tcl_DString buffer;           /* Request and content buffer */
+    char   savedChar;             /* Character potentially clobbered by null character */
 
 } Request;
 
@@ -421,16 +426,18 @@ typedef struct Driver {
      * Private to Driver.
      */
 
-    struct Driver         *nextPtr;     /* Next in list of drivers */
-    struct NsServer       *servPtr;     /* Driver virtual server */
-    Ns_DriverListenProc   *listenProc;
-    Ns_DriverAcceptProc   *acceptProc;
-    Ns_DriverRecvProc     *recvProc;
-    Ns_DriverSendProc     *sendProc;
-    Ns_DriverSendFileProc *sendFileProc; /* Optional - optimize direct file send. */
-    Ns_DriverKeepProc     *keepProc;
-    Ns_DriverRequestProc  *requestProc;
-    Ns_DriverCloseProc    *closeProc;
+    struct Driver           *nextPtr;     /* Next in list of drivers */
+    struct NsServer         *servPtr;     /* Driver virtual server */
+    Ns_DriverListenProc     *listenProc;
+    Ns_DriverAcceptProc     *acceptProc;
+    Ns_DriverRecvProc       *recvProc;
+    Ns_DriverSendProc       *sendProc;
+    Ns_DriverSendFileProc   *sendFileProc; /* Optional - optimize direct file send. */
+    Ns_DriverKeepProc       *keepProc;
+    Ns_DriverRequestProc    *requestProc;
+    Ns_DriverCloseProc      *closeProc;
+    Ns_DriverClientInitProc *clientInitProc; /* Optional - initialization of client connections */
+
     unsigned int opts;                  /* NS_DRIVER_* options */
     long closewait;                     /* Graceful close timeout */
     long keepwait;                      /* Keepalive timeout */
@@ -443,7 +450,7 @@ typedef struct Driver {
     int backlog;                        /* listen() backlog */
     Tcl_WideInt maxinput;               /* Maximum request bytes to read */
     Tcl_WideInt maxupload;              /* Uploads that exceed will go into temp file without parsing */
-    char *uploadpath;                   /* Path where uploaded files will be spooled */
+    const char *uploadpath;             /* Path where uploaded files will be spooled */
     int maxline;                        /* Maximum request line size */
     int maxheaders;                     /* Maximum number of request headers */
     Tcl_WideInt readahead;              /* Maximum request size in memory */
@@ -480,10 +487,10 @@ typedef struct Sock {
      * Visible in Ns_Sock.
      */
 
-    struct Driver      *drvPtr;
-    NS_SOCKET           sock;
-    struct sockaddr_in  sa;              /* Actual peer address */
-    void               *arg;             /* Driver context. */
+    struct Driver         *drvPtr;
+    NS_SOCKET              sock;
+    struct NS_SOCKADDR_STORAGE  sa;         /* Actual peer address */
+    void                  *arg;             /* Driver context. */
 
     /*
      * Private to Sock.
@@ -516,9 +523,9 @@ typedef struct Sock {
  */
 
 typedef struct FormFile {
-    Ns_Set *hdrs;
-    off_t   off;
-    size_t  len;
+    Tcl_Obj *hdrObj;
+    Tcl_Obj *offObj;
+    Tcl_Obj *sizeObj;
 } FormFile;
 
 /*
@@ -558,7 +565,7 @@ typedef struct Conn {
      * Visible in an Ns_Conn:
      */
 
-    Ns_Request *request;
+    Ns_Request request;
 
     Ns_Set *headers;
     Ns_Set *outputheaders;
@@ -702,6 +709,7 @@ typedef struct ConnPool {
         int max;
         int current;
         int idle;
+        int connsperthread;
         long timeout;
         int creating;
         Ns_Mutex lock;
@@ -763,12 +771,12 @@ typedef struct NsServer {
      */
 
     struct {
-        bool flushcontent;
-        bool modsince;
-        bool noticedetail;
         int  errorminsize;
         const char *realm;
         Ns_HeaderCaseDisposition hdrcase;
+        bool flushcontent;
+        bool modsince;
+        bool noticedetail;
     } opts;
 
     /*
@@ -840,7 +848,10 @@ typedef struct NsServer {
      * The following array maintains url-specific data.
      */
 
-    struct Junction *urlspace[MAX_URLSPACES];
+    struct {
+        struct Junction *junction[MAX_URLSPACES];
+        Ns_Mutex lock;
+    } urlspace;
 
     /*
      * The following struct maintains the core Tcl config.
@@ -990,18 +1001,18 @@ typedef struct NsInterp {
      */
 
     struct adp {
-        unsigned int       flags;
-        AdpResult       exception;
-        int           refresh;
-        size_t           bufsize;
-        int                errorLevel;
-        int                debugLevel;
-        int                debugInit;
-        char              *debugFile;
-        Ns_Cache      *cache;
-        int                depth;
-        const char      *cwd;
-        struct AdpFrame      *framePtr;
+        unsigned int      flags;
+        AdpResult         exception;
+        int               refresh;
+        size_t            bufsize;
+        int               errorLevel;
+        int               debugLevel;
+        int               debugInit;
+        const char       *debugFile;
+        Ns_Cache         *cache;
+        int               depth;
+        const char       *cwd;
+        struct AdpFrame  *framePtr;
         Ns_Conn          *conn;
         Tcl_Channel       chan;
         Tcl_DString       output;
@@ -1086,11 +1097,13 @@ NsTclAdpAbortObjCmd,
     NsTclConfigObjCmd,
     NsTclConfigSectionObjCmd,
     NsTclConfigSectionsObjCmd,
-    NsTclConnObjCmd,
     NsTclConnChanObjCmd,
+    NsTclConnObjCmd,
     NsTclConnSendFpObjCmd,
     NsTclCritSecObjCmd,
     NsTclCryptObjCmd,
+    NsTclCryptoHmacObjCmd,
+    NsTclCryptoMdObjCmd,
     NsTclDeleteCookieObjCmd,
     NsTclEncodingForCharsetObjCmd,
     NsTclEnvObjCmd,
@@ -1176,6 +1189,7 @@ NsTclAdpAbortObjCmd,
     NsTclReturnRedirectObjCmd,
     NsTclReturnUnauthorizedObjCmd,
     NsTclReturnUnavailableObjCmd,
+    NsTclRlimitObjCmd,
     NsTclRollFileObjCmd,
     NsTclRunOnceObjCmd,
     NsTclSHA1ObjCmd,
@@ -1219,6 +1233,7 @@ NsTclAdpAbortObjCmd,
     NsTclUrl2FileObjCmd,
     NsTclUrlDecodeObjCmd,
     NsTclUrlEncodeObjCmd,
+    NsTclUrlSpaceObjCmd,
     NsTclWriteContentObjCmd,
     NsTclWriteFpObjCmd,
     NsTclWriteObjCmd,
@@ -1229,7 +1244,7 @@ NsTclAdpAbortObjCmd,
     TclX_KeylsetObjCmd;
 
 NS_EXTERN Tcl_CmdProc
-NsTclAdpStatsCmd,
+    NsTclAdpStatsCmd,
     NsTclHrefsCmd,
     NsTclLibraryCmd,
     NsTclMkTempCmd,
@@ -1237,26 +1252,30 @@ NsTclAdpStatsCmd,
     NsTclQuoteHtmlCmd,
     NsTclStripHtmlCmd;
 
+NS_EXTERN Ns_LogSeverity Ns_LogRequestDebug;    /* Severity at which to log verbose. */
+NS_EXTERN Ns_LogSeverity Ns_LogConnchanDebug;   /* Severity at which to log verbose. */
+
 /*
  * Libnsd initialization routines.
  */
 
 NS_EXTERN void NsInitBinder(void);
 NS_EXTERN void NsInitConf(void);
+NS_EXTERN void NsInitDrivers(void);
 NS_EXTERN void NsInitFd(void);
+NS_EXTERN void NsInitInfo(void);
+NS_EXTERN void NsInitLimits(void);
 NS_EXTERN void NsInitListen(void);
 NS_EXTERN void NsInitLog(void);
-NS_EXTERN void NsInitInfo(void);
 NS_EXTERN void NsInitModLoad(void);
+NS_EXTERN void NsInitOpenSSL(void);
 NS_EXTERN void NsInitProcInfo(void);
 NS_EXTERN void NsInitQueue(void);
-NS_EXTERN void NsInitLimits(void);
-NS_EXTERN void NsInitDrivers(void);
-NS_EXTERN void NsInitServers(void);
+NS_EXTERN void NsInitRequests(void);
 NS_EXTERN void NsInitSched(void);
+NS_EXTERN void NsInitServers(void);
 NS_EXTERN void NsInitSls(void);
 NS_EXTERN void NsInitTcl(void);
-NS_EXTERN void NsInitRequests(void);
 NS_EXTERN void NsInitUrl2File(void);
 
 NS_EXTERN void NsConfigAdp(void);
@@ -1290,7 +1309,7 @@ NS_EXTERN void NsWakeupDriver(const Driver *drvPtr) NS_GNUC_NONNULL(1);
  */
 
 NS_EXTERN void *NsUrlSpecificGet(NsServer *servPtr, const char *method,
-                                 const char *url, int id, int fast)
+                                 const char *url, int id, unsigned int flags, NsUrlSpaceOp op)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 /*
@@ -1301,11 +1320,13 @@ NS_EXTERN ssize_t NsDriverSend(Sock *sockPtr, const struct iovec *bufs, int nbuf
     NS_GNUC_NONNULL(1);
 NS_EXTERN ssize_t NsDriverSendFile(Sock *sockPtr, Ns_FileVec *bufs, int nbufs, unsigned int flags)
     NS_GNUC_NONNULL(1);
+NS_EXTERN int NSDriverClientOpen(Tcl_Interp *interp, const char *url, const char *method, const Ns_Time *timeoutPtr, Sock **sockPtrPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
-NS_EXTERN ssize_t
-NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
-                           const Ns_Time *timeoutPtr, unsigned int flags,
-                           Ns_DriverSendProc *sendProc)
+
+NS_EXTERN ssize_t NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
+                                             const Ns_Time *timeoutPtr, unsigned int flags,
+                                             Ns_DriverSendProc *sendProc)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(6);
 
 NS_EXTERN int  NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
@@ -1324,8 +1345,6 @@ NS_EXTERN int NsPoll(struct pollfd *pfds, int nfds, const Ns_Time *timeoutPtr);
 
 NS_EXTERN Request *NsGetRequest(Sock *sockPtr, const Ns_Time *nowPtr)
     NS_GNUC_NONNULL(1);
-
-NS_EXTERN void NsFreeRequest(Request *reqPtr);
 
 NS_EXTERN void NsWriterLock(void);
 NS_EXTERN void NsWriterUnlock(void);

@@ -109,7 +109,7 @@ ConfigServerUrl2File(const char *server)
     NsServer *servPtr;
 
     servPtr = NsGetServer(server);
-    Ns_RegisterUrl2FileProc(server, "/", Ns_FastUrl2FileProc, NULL, servPtr, 0U);
+    Ns_RegisterUrl2FileProc(server, "/", Ns_FastUrl2FileProc, NULL, servPtr, 0u);
     Ns_SetUrlToFileProc(server, NsUrlToFileProc);
 
     return NS_OK;
@@ -231,9 +231,9 @@ Ns_UrlToFile(Ns_DString *dsPtr, const char *server, const char *url)
 {
     NsServer *servPtr;
 
-    assert(dsPtr != NULL);
-    assert(server != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
     
     servPtr = NsGetServer(server);
     return NsUrlToFile(dsPtr, servPtr, url);
@@ -244,9 +244,9 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
 {
     int       status = NS_ERROR;
 
-    assert(dsPtr != NULL);
-    assert(servPtr != NULL);
-    assert(url != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
 
     if (servPtr->fastpath.url2file != NULL) {
         status = (*servPtr->fastpath.url2file)(dsPtr, servPtr->server, url);
@@ -254,7 +254,7 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
         Url2File *u2fPtr;
 
         Ns_MutexLock(&ulock);
-        u2fPtr = NsUrlSpecificGet(servPtr, "x", url, uid, 0);
+        u2fPtr = NsUrlSpecificGet(servPtr, "x", url, uid, 0u, NS_URLSPACE_DEFAULT);
         if (u2fPtr == NULL) {
             Ns_MutexUnlock(&ulock);
             Ns_Log(Error, "url2file: no proc found for url: %s", url);
@@ -391,7 +391,7 @@ NsTclRegisterUrl2FileObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Ob
     char           *url;
     Tcl_Obj        *scriptObj;
     int             remain = 0, noinherit = 0;
-    unsigned int    flags = 0U;
+    unsigned int    flags = 0u;
     
     Ns_ObjvSpec opts[] = {
         {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(1)},
@@ -440,7 +440,7 @@ NsTclUnRegisterUrl2FileObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_
     NsInterp     *itPtr = arg;
     const char   *url = NULL;
     int           noinherit = 0, recurse = 0;
-    unsigned int  flags = 0U;
+    unsigned int  flags = 0u;
 
     Ns_ObjvSpec opts[] = {
         {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(1)},
@@ -487,7 +487,7 @@ NsTclRegisterFastUrl2FileObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tc
     NsInterp     *itPtr = arg;
     const char   *url = NULL, *basepath = NULL;
     int           noinherit = 0;
-    unsigned int  flags = 0U;
+    unsigned int  flags = 0u;
 
     Ns_ObjvSpec opts[] = {
 	{"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(1)},
@@ -636,8 +636,8 @@ NsMountUrl2FileArgProc(Tcl_DString *dsPtr, const void *arg)
 void
 NsGetUrl2FileProcs(Ns_DString *dsPtr, const char *server)
 {
-    assert(dsPtr != NULL);
-    assert(server != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
     
     Ns_MutexLock(&ulock);
     Ns_UrlSpecificWalk(uid, server, WalkCallback, dsPtr);

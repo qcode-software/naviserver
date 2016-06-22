@@ -45,10 +45,10 @@ static void ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
 static void ParseMultiInput(Conn *connPtr, const char *start, char *end)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static char *Ext2Utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding, char unescape)
+static char *Ext2utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding, char unescape)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int GetBoundary(Tcl_DString *dsPtr, const Ns_Conn *conn)
+static int GetBoundary(Tcl_DString *dsPtr, const char *contentType)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static char *NextBoundry(const Tcl_DString *dsPtr, char *s, const char *e)
@@ -64,8 +64,11 @@ static bool GetValue(const char *hdr, const char *att, const char **vsPtr, const
  *
  * Ns_ConnGetQuery --
  *
- *      Get the connection query data, either by reading the content 
- *      of a POST request or get it from the query string 
+ *      Return the connection query data in form of a Ns_Set. This function
+ *      parses the either the query (of the URL) or the form content (in POST
+ *      requests with content type "www-form-urlencoded" or
+ *      "multipart/form-data"). In case the Ns_Set for the query is already
+ *      set, it is treated as cached result and is returned untouched.
  *
  * Results:
  *      Query data or NULL if error 
@@ -80,15 +83,18 @@ Ns_Set  *
 Ns_ConnGetQuery(Ns_Conn *conn)
 {
     Conn           *connPtr = (Conn *) conn;
-    Tcl_DString     bound;
-    char           *form, *s, *e;
+    char           *form;
 
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
     
     if (connPtr->query == NULL) {
         connPtr->query = Ns_SetCreate(NULL);
-        if (connPtr->request->method != NULL && !STREQ(connPtr->request->method, "POST")) {
-            form = connPtr->request->query;
+        if (connPtr->request.method != NULL && !STREQ(connPtr->request.method, "POST")) {
+            /*
+             * If it is no POST resquest, parse the "form" content from the
+             * query parameters.
+             */
+            form = connPtr->request.query;
             if (form != NULL) {
                 ParseQuery(form, connPtr->query, connPtr->urlEncoding);
             }
@@ -97,32 +103,49 @@ Ns_ConnGetQuery(Ns_Conn *conn)
 		    * connection is already closed due to potentially
 		    * unmmapped memory.
 		    */
-		   (connPtr->flags & NS_CONN_CLOSED ) == 0U
+		   (connPtr->flags & NS_CONN_CLOSED ) == 0u
 		   && (form = connPtr->reqPtr->content) != NULL
 		   ) {
-  	    Tcl_DStringInit(&bound);
-            if (GetBoundary(&bound, conn) == 0) {
-                ParseQuery(form, connPtr->query, connPtr->urlEncoding);
-            } else {
-		const char *formend = form + connPtr->reqPtr->length;
+            Tcl_DString   bound;
+            const char   *contentType = Ns_SetIGet(conn->headers, "content-type");
 
-                s = NextBoundry(&bound, form, formend);
-                while (s != NULL) {
-                    s += bound.length;
-                    if (*s == '\r') {
-                        ++s;
+            if (contentType != NULL) {
+                Tcl_DStringInit(&bound);
+
+                /*
+                 * GetBoundary cares for "multipart/form-data"
+                 */
+                if (GetBoundary(&bound, contentType) == 0) {
+                    if (Ns_StrCaseFind(contentType, "www-form-urlencoded") != NULL) {
+                        ParseQuery(form, connPtr->query, connPtr->urlEncoding);
                     }
-                    if (*s == '\n') {
-                        ++s;
+                    /*
+                     * Don't do anything for other content-types.
+                     */
+                } else {
+                    const char *formend = form + connPtr->reqPtr->length;
+                    char       *s;
+                    
+                    s = NextBoundry(&bound, form, formend);
+                    while (s != NULL) {
+                        char  *e;
+                        
+                        s += bound.length;
+                        if (*s == '\r') {
+                            ++s;
+                        }
+                        if (*s == '\n') {
+                            ++s;
+                        }
+                        e = NextBoundry(&bound, s, formend);
+                        if (e != NULL) {
+                            ParseMultiInput(connPtr, s, e);
+                        }
+                        s = e;
                     }
-                    e = NextBoundry(&bound, s, formend);
-                    if (e != NULL) {
-                        ParseMultiInput(connPtr, s, e);
-                    }
-                    s = e;
                 }
+                Tcl_DStringFree(&bound);
             }
-            Tcl_DStringFree(&bound);
         }
     }
     return connPtr->query;
@@ -155,7 +178,7 @@ Ns_ConnClearQuery(Ns_Conn *conn)
     Tcl_HashEntry  *hPtr;
     Tcl_HashSearch  search;
 
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
     
     if (connPtr->query == NULL) {
         return;
@@ -168,8 +191,17 @@ Ns_ConnClearQuery(Ns_Conn *conn)
     while (hPtr != NULL) {
 	FormFile *filePtr = Tcl_GetHashValue(hPtr);
 
-        Ns_SetFree(filePtr->hdrs);
+        if (filePtr->hdrObj != NULL) {
+            Tcl_DecrRefCount(filePtr->hdrObj);
+        }
+        if (filePtr->offObj != NULL) {
+            Tcl_DecrRefCount(filePtr->offObj);
+        }
+        if (filePtr->sizeObj != NULL) {
+            Tcl_DecrRefCount(filePtr->sizeObj);
+        }
         ns_free(filePtr);
+        
         hPtr = Tcl_NextHashEntry(&search);
     }
     Tcl_DeleteHashTable(&connPtr->files);
@@ -196,8 +228,8 @@ Ns_ConnClearQuery(Ns_Conn *conn)
 int
 Ns_QueryToSet(char *query, Ns_Set *set)
 {
-    assert(query != NULL);
-    assert(set != NULL);
+    NS_NONNULL_ASSERT(query != NULL);
+    NS_NONNULL_ASSERT(set != NULL);
     
     ParseQuery(query, set, NULL);
     return NS_OK;
@@ -264,8 +296,8 @@ ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
     Tcl_DString  kds, vds;
     char  *p;
 
-    assert(form != NULL);
-    assert(set != NULL);
+    NS_NONNULL_ASSERT(form != NULL);
+    NS_NONNULL_ASSERT(set != NULL);
 
     Tcl_DStringInit(&kds);
     Tcl_DStringInit(&vds);
@@ -328,9 +360,9 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
     Ns_Set      *set;
     int          isNew;
 
-    assert(connPtr != NULL);
-    assert(start != NULL);
-    assert(end != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
+    NS_NONNULL_ASSERT(start != NULL);
+    NS_NONNULL_ASSERT(end != NULL);
 
     encoding = connPtr->urlEncoding;
     
@@ -375,25 +407,45 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
 
     disp = Ns_SetGet(set, "content-disposition");
     if (disp != NULL && GetValue(disp, "name=", &ks, &ke, &unescape) == NS_TRUE) {
-	const char *key = Ext2Utf(&kds, ks, (size_t)(ke - ks), encoding, unescape);
+	const char *key = Ext2utf(&kds, ks, (size_t)(ke - ks), encoding, unescape);
 	const char *value, *fs = NULL, *fe = NULL;
 
         if (GetValue(disp, "filename=", &fs, &fe, &unescape) == NS_FALSE) {
-	    value = Ext2Utf(&vds, start, (size_t)(end - start), encoding, unescape);
+	    value = Ext2utf(&vds, start, (size_t)(end - start), encoding, unescape);
         } else {
 	    Tcl_HashEntry *hPtr;
+            FormFile      *filePtr;
+            Tcl_Interp    *interp = connPtr->itPtr->interp;
 
-            value = Ext2Utf(&vds, fs, (size_t)(fe - fs), encoding, unescape);
+            value = Ext2utf(&vds, fs, (size_t)(fe - fs), encoding, unescape);
             hPtr = Tcl_CreateHashEntry(&connPtr->files, key, &isNew);
             if (isNew != 0) {
-	        FormFile *filePtr = ns_malloc(sizeof(FormFile));
-
-                filePtr->hdrs = set;
-                filePtr->off = (off_t)(start - connPtr->reqPtr->content);
-                filePtr->len = (size_t)(end - start);
+                
+                filePtr = ns_malloc(sizeof(FormFile));
                 Tcl_SetHashValue(hPtr, filePtr);
-                set = NULL;
+                
+                filePtr->hdrObj = Tcl_NewListObj(1, NULL);
+                filePtr->offObj = Tcl_NewListObj(1, NULL);
+                filePtr->sizeObj = Tcl_NewListObj(1, NULL);
+                
+                Tcl_IncrRefCount(filePtr->hdrObj);
+                Tcl_IncrRefCount(filePtr->offObj);
+                Tcl_IncrRefCount(filePtr->sizeObj);
+            } else {
+                filePtr = Tcl_GetHashValue(hPtr);
             }
+
+            (void) Ns_TclEnterSet(interp, set, NS_TCL_SET_DYNAMIC);
+            (void) Tcl_ListObjAppendElement(interp, filePtr->hdrObj,
+                                            Tcl_GetObjResult(interp));
+            Tcl_ResetResult(connPtr->itPtr->interp);
+                
+            (void) Tcl_ListObjAppendElement(interp, filePtr->offObj,
+                                            Tcl_NewIntObj((int)(start - connPtr->reqPtr->content)));
+            
+            (void) Tcl_ListObjAppendElement(interp, filePtr->sizeObj,
+                                            Tcl_NewWideIntObj((Tcl_WideInt)(end - start)));
+            set = NULL;
         }
         (void) Ns_SetPut(connPtr->query, key, value);
     }
@@ -428,22 +480,20 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
  */
 
 static int
-GetBoundary(Tcl_DString *dsPtr, const Ns_Conn *conn)
+GetBoundary(Tcl_DString *dsPtr, const char *contentType)
 {
-    const char *type, *bs;
+    const char *bs;
 
-    assert(dsPtr != NULL);
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(contentType != NULL);
 
-    type = Ns_SetIGet(conn->headers, "content-type");
-    if (type != NULL
-        && Ns_StrCaseFind(type, "multipart/form-data") != NULL
-        && (bs = Ns_StrCaseFind(type, "boundary=")) != NULL) {
+    if ((Ns_StrCaseFind(contentType, "multipart/form-data") != NULL)
+        && ((bs = Ns_StrCaseFind(contentType, "boundary=")) != NULL)) {
         const char *be;
 
         bs += 9;
         be = bs;
-        while (*be != '\0' && CHARTYPE(space, *be) == 0) {
+        while ((*be != '\0') && (CHARTYPE(space, *be) == 0)) {
             ++be;
         }
         Tcl_DStringAppend(dsPtr, "--", 2);
@@ -477,9 +527,9 @@ NextBoundry(const Tcl_DString *dsPtr, char *s, const char *e)
     const char *find;
     size_t len;
 
-    assert(dsPtr != NULL);
-    assert(s != NULL);
-    assert(e != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(s != NULL);
+    NS_NONNULL_ASSERT(e != NULL);
 
     find = dsPtr->string;
     c = *find++;
@@ -521,11 +571,11 @@ GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePt
 {
     const char *s, *e;
 
-    assert(hdr != NULL);
-    assert(att != NULL);
-    assert(vsPtr != NULL);
-    assert(vePtr != NULL);
-    assert(uPtr != NULL);
+    NS_NONNULL_ASSERT(hdr != NULL);
+    NS_NONNULL_ASSERT(att != NULL);
+    NS_NONNULL_ASSERT(vsPtr != NULL);
+    NS_NONNULL_ASSERT(vePtr != NULL);
+    NS_NONNULL_ASSERT(uPtr != NULL);
 
     s = Ns_StrCaseFind(hdr, att);
     if (s == NULL) {
@@ -534,7 +584,9 @@ GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePt
     s += strlen(att);
     e = s;
     if (*s != '"' && *s != '\'') {
-        /* NB: End of unquoted att=value is next space. */
+        /* 
+         * End of unquoted att=value is next space. 
+         */
         while (*e != '\0' && CHARTYPE(space, *e) == 0) {
             ++e;
         }
@@ -550,8 +602,8 @@ GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePt
 	 * character as result.
 	 */
         ++e;
-        while (*e != '\0' && (escaped == NS_TRUE || *e != *s)) {
-	    if (escaped == NS_TRUE) {
+        while (*e != '\0' && (escaped || *e != *s)) {
+	    if (escaped) {
 	        escaped = NS_FALSE;
 	    } else if (*e == '\\') {
 	        *uPtr = *s;
@@ -571,7 +623,7 @@ GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePt
 /*
  *----------------------------------------------------------------------
  *
- * Ext2Utf --
+ * Ext2utf --
  *
  *      Convert input string to UTF.
  *
@@ -586,16 +638,18 @@ GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePt
  */
 
 static char *
-Ext2Utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding, char unescape)
+Ext2utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding, char unescape)
 {
-    assert(dsPtr != NULL);
-    assert(start != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(start != NULL);
 
     if (encoding == NULL) {
         Tcl_DStringSetLength(dsPtr, 0);
         Tcl_DStringAppend(dsPtr, start, (int)len);
     } else {
-        /* NB: ExternalToUtfDString will re-init dstring. */
+        /* 
+         * ExternalToUtfDString will re-init dstring. 
+         */
         Tcl_DStringFree(dsPtr);
         (void) Tcl_ExternalToUtfDString(encoding, start, (int)len, dsPtr);
     }

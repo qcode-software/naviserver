@@ -195,7 +195,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
             || (fd >= 0
                 && nsbufs > 0)) {
 
-	    sent = NsDriverSend((Sock *)sock, sbufs, nsbufs, 0U);
+	    sent = NsDriverSend((Sock *)sock, sbufs, nsbufs, 0u);
 
             nsbufs = 0;
             if (sent > 0) {
@@ -354,7 +354,7 @@ ssize_t pread(int fd, char *buf, size_t count, off_t offset)
     }
 
     overlapped.Offset = (DWORD)offset;
-    overlapped.OffsetHigh = (DWORD)((uint64_t)offset >> 32);
+    overlapped.OffsetHigh = (DWORD)(((uint64_t)offset) >> 32);
 
     if (ReadFile(fh, buf, c, &ret, &overlapped) == FALSE) {
         return -1;
@@ -376,7 +376,7 @@ ssize_t pread(int fd, char *buf, size_t count, off_t offset)
  *      able to handle nesting calls.
  *
  * Results:
- *      success (0 or 1)
+ *      success (NS_TRUE or NS_FALSE)
  *
  * Side effects:
  *      Switch TCP send state, potentially update sockPtr->flags
@@ -384,21 +384,22 @@ ssize_t pread(int fd, char *buf, size_t count, off_t offset)
  *----------------------------------------------------------------------
  */
 bool
-Ns_SockCork(Ns_Sock *sock, bool cork)
+Ns_SockCork(const Ns_Sock *sock, bool cork)
 {
     bool success = NS_FALSE;
 #if defined(TCP_CORK) || defined(UDP_CORK)
     Sock *sockPtr = (Sock *)sock;
+    int corkInt = (int)cork;
 
     assert(sock != NULL);
     
     /* fprintf(stderr, "### Ns_SockCork sock %d %d\n", sockPtr->sock, cork); */
 
-    if (cork == NS_TRUE && (sockPtr->flags & NS_CONN_SOCK_CORKED)) {
+    if (cork && (sockPtr->flags & NS_CONN_SOCK_CORKED)) {
 	/*
 	 * Don't cork an already corked connection.
 	 */
-    } else if (cork == NS_FALSE && (sockPtr->flags & NS_CONN_SOCK_CORKED) == 0) {
+    } else if (!cork && (sockPtr->flags & NS_CONN_SOCK_CORKED) == 0) {
 	/*
 	 * Don't uncork an already uncorked connection.
 	 */
@@ -410,9 +411,9 @@ Ns_SockCork(Ns_Sock *sock, bool cork)
 	 */
 #if defined(TCP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) == 0) {
-            if (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork)) == -1) {
-                Ns_Log(Error, "socket: setsockopt(TCP_CORK): %s",
-                       ns_sockstrerror(ns_sockerrno));
+            if (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &corkInt, sizeof(corkInt)) == -1) {
+                Ns_Log(Error, "socket(%d): setsockopt(TCP_CORK) %d: %s",
+                       sockPtr->sock, corkInt, ns_sockstrerror(ns_sockerrno));
             } else {
                 success = NS_TRUE;
             }
@@ -420,19 +421,19 @@ Ns_SockCork(Ns_Sock *sock, bool cork)
 #endif
 #if defined(UDP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) != 0) {
-            if (setsockopt(sockPtr->sock, IPPROTO_UDP, UDP_CORK, &cork, sizeof(cork)) == -1) {
-                Ns_Log(Error, "socket: setsockopt(UDP_CORK): %s",
-                       ns_sockstrerror(ns_sockerrno));
+            if (setsockopt(sockPtr->sock, IPPROTO_UDP, UDP_CORK, &corkInt, sizeof(corkInt)) == -1) {
+                Ns_Log(Error, "socket(%d): setsockopt(UDP_CORK) %d: %s",
+                       sockPtr->sock, corkInt, ns_sockstrerror(ns_sockerrno));
             } else {
                 success = NS_TRUE;
             }
         }
 #endif
-        if (success == NS_TRUE) {
+        if (success) {
             /*
              * On success, update the corked flag.
              */
-	    if (cork == NS_TRUE) {
+	    if (cork) {
 		sockPtr->flags |= NS_CONN_SOCK_CORKED;
 	    } else {
 		sockPtr->flags &= ~NS_CONN_SOCK_CORKED;

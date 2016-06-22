@@ -48,6 +48,7 @@ typedef struct {
  */
 
 static Ns_TclTraceProc InitInterp;
+NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
 
 
@@ -92,11 +93,13 @@ Nsproxy_Init(Tcl_Interp *interp)
  */
 
 NS_EXPORT int
-Ns_ModuleInit(CONST char *server, CONST char *module)
+Ns_ModuleInit(const char *server, const char *module)
 {
     SrvMod *smPtr;
     static  int once = 0;
     int     result;
+
+    NS_NONNULL_ASSERT(module != NULL);
 
     if (once == 0) {
         once = 1;

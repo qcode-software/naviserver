@@ -65,7 +65,7 @@ static int GetSet(Tcl_Interp *interp, const char *flist, int write,
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) 
     NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6);
 
-static void AppendReadyFiles(Tcl_Interp *interp, fd_set *setPtr, 
+static void AppendReadyFiles(Tcl_Interp *interp, const fd_set *setPtr, 
                              int write, const char *flist, Tcl_DString *dsPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
@@ -111,8 +111,9 @@ NsTclSockArgProc(Tcl_DString *dsPtr, const void *arg)
  *
  * NsTclGetHostObjCmd --
  *
- *      Performs a reverse DNS lookup. This is the implementation of
- *      ns_hostbyaddr.
+ *      Performs a reverse DNS lookup. This is the 
+ * 
+ *      Implementation of "ns_hostbyaddr"
  *
  * Results:
  *      Tcl result. 
@@ -127,7 +128,8 @@ NsTclGetHostObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 {
     Ns_DString  ds;
     const char *addr;
-    int         status, result = TCL_OK;
+    int         result = TCL_OK;
+    bool        success;
 
     Ns_ObjvSpec args[] = {
         {"address",  Ns_ObjvString, &addr,    NULL},
@@ -138,9 +140,9 @@ NsTclGetHostObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
     }
 
     Ns_DStringInit(&ds);
-    status = Ns_GetHostByAddr(&ds, addr);
+    success = Ns_GetHostByAddr(&ds, addr);
 
-    if (status == NS_TRUE) {
+    if (success) {
     	Tcl_DStringResult(interp, &ds);
     } else {
         Tcl_AppendResult(interp, "could not lookup ", addr, NULL);
@@ -157,14 +159,15 @@ NsTclGetHostObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *
  * NsTclGetHostObjCmd --
  *
- *      Performs a DNS lookup. This is the implementation of
- *      ns_addrbyhost.
+ *      Performs a DNS lookup.
+ *      
+ *      Implementation of "ns_addrbyhost".
  *
  * Results:
  *      Tcl result. 
  *
  * Side effects:
- *      Puts a sing or multiple IP addresses the Tcl result. 
+ *      Puts a single or multiple IP addresses the Tcl result. 
  *
  *----------------------------------------------------------------------
  */
@@ -173,7 +176,8 @@ NsTclGetAddrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 {
     Ns_DString  ds;
     const char *host;
-    int         all = 0, status, result = TCL_OK;
+    int         all = 0, result = TCL_OK;
+    bool        success;
     Ns_ObjvSpec opts[] = {
         {"-all",      Ns_ObjvBool,  &all, INT2PTR(1)},
         {"--",        Ns_ObjvBreak, NULL, NULL},
@@ -189,11 +193,11 @@ NsTclGetAddrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 
     Ns_DStringInit(&ds);
     if (all != 0) {
-	status = Ns_GetAllAddrByHost(&ds, host);
+	success = Ns_GetAllAddrByHost(&ds, host);
     } else {
-	status = Ns_GetAddrByHost(&ds, host);
+	success = Ns_GetAddrByHost(&ds, host);
     }
-    if (status == NS_TRUE) {
+    if (success) {
     	Tcl_DStringResult(interp, &ds);
     } else {
         Tcl_AppendResult(interp, "could not lookup ", host, NULL);
@@ -305,6 +309,8 @@ NsTclSockNReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  *      Listen on a TCP port. 
  *
+ *      Implementation of "ns_socklisten".
+ *
  * Results:
  *      Tcl result. 
  *
@@ -335,8 +341,8 @@ NsTclSockListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
     sock = Ns_SockListen(addr, port);
     if (sock == NS_INVALID_SOCKET) {
         Tcl_AppendStringsToObj(Tcl_GetObjResult(interp), 
-                               "could not listen on \"",
-                               Tcl_GetString(objv[1]), ":", 
+                               "could not listen on [\"",
+                               Tcl_GetString(objv[1]), "]:", 
                                Tcl_GetString(objv[2]), "\"", NULL);
         return TCL_ERROR;
     }
@@ -414,7 +420,7 @@ NsTclSockCheckObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
     if (Ns_TclGetOpenFd(interp, Tcl_GetString(objv[1]), 1, (int *) &sock) != TCL_OK) {
         return TCL_ERROR;
     }
-    if (send(sock, NULL, 0, 0) != 0) {
+    if (ns_send(sock, NULL, 0, 0) != 0) {
         objPtr = Tcl_NewBooleanObj(0);
     } else {
         objPtr = Tcl_NewBooleanObj(1);
@@ -433,6 +439,8 @@ NsTclSockCheckObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  *      Open a tcp connection to a host/port. 
  *
+ *      Implementation of "ns_sockopen".
+ *
  * Results:
  *      Tcl result. 
  *
@@ -448,13 +456,12 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     const char *host, *lhost = NULL;
     int         lport = 0, port, nonblock = 0, async = 0, msec = -1;
     NS_SOCKET   sock;
-    Ns_Time     timeout = {0,0};
-    Tcl_Obj    *timeoutObj = NULL;
+    Ns_Time     timeout = {0,0}, *timeoutPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
 	{"-nonblock",  Ns_ObjvBool,   &nonblock,   INT2PTR(1)},
 	{"-async",     Ns_ObjvBool,   &async,      INT2PTR(1)},
-	{"-timeout",   Ns_ObjvObj,    &timeoutObj, NULL},
+        {"-timeout",   Ns_ObjvTime,   &timeoutPtr, NULL},                
 	{"-localhost", Ns_ObjvString, &lhost,      NULL},
 	{"-localport", Ns_ObjvInt,    &lport,      NULL},
         {"--",         Ns_ObjvBreak,  NULL,        NULL},
@@ -478,7 +485,7 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
      */
 
     if (nonblock != 0 || async != 0) {
-	if (timeoutObj != NULL) {
+	if (timeoutPtr != NULL) {
 	    Ns_TclPrintfResult(interp, "-timeout can't be specified when -async or -nonblock are used");
 	    return TCL_ERROR;
 	}
@@ -490,11 +497,7 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 	    return TCL_ERROR;
 	}
     }
-    if (timeoutObj != NULL) {
-	if (Ns_TclGetTimeFromObj(interp, timeoutObj, &timeout) != TCL_OK) {
-	    Ns_TclPrintfResult(interp, "invalid timeout");
-	    return TCL_ERROR;
-	}
+    if (timeoutPtr != NULL) {
 	msec = (int)(timeout.sec * 1000 + timeout.usec / 1000);
     }
     if (lport < 0) {
@@ -519,7 +522,7 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     } else if (msec < 0) {
         sock = Ns_SockConnect2(host, port, lhost, lport);
     } else {
-        sock = Ns_SockTimedConnect2(host, port, lhost, lport, &timeout);
+        sock = Ns_SockTimedConnect2(host, port, lhost, lport, timeoutPtr);
     }
 
     if (sock == NS_INVALID_SOCKET) {
@@ -840,6 +843,8 @@ NsTclSockCallbackObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
  *      Listen on a socket and register a callback to run when 
  *      connections arrive. 
  *
+ *      Implementation of "ns_socklistencallback".
+ *
  * Results:
  *      Tcl result. 
  *
@@ -904,8 +909,8 @@ SockSetBlocking(const char *value, Tcl_Interp *interp, int objc, Tcl_Obj *CONST*
 {
     Tcl_Channel chan;
 
-    assert(value != NULL);
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "sockId");
@@ -941,7 +946,7 @@ SockSetBlocking(const char *value, Tcl_Interp *interp, int objc, Tcl_Obj *CONST*
  */
 
 static void
-AppendReadyFiles(Tcl_Interp *interp, fd_set *setPtr, int write, const char *flist,
+AppendReadyFiles(Tcl_Interp *interp, const fd_set *setPtr, int write, const char *flist,
 		 Tcl_DString *dsPtr)
 {
     int           fargc = 0;
@@ -949,15 +954,15 @@ AppendReadyFiles(Tcl_Interp *interp, fd_set *setPtr, int write, const char *flis
     NS_SOCKET     sock;
     Tcl_DString   ds;
 
-    assert(interp != NULL);
-    assert(flist != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(flist != NULL);
 
     Tcl_DStringInit(&ds);
     if (dsPtr == NULL) {
         dsPtr = &ds;
     }
     if (Tcl_SplitList(interp, flist, &fargc, &fargv) == TCL_OK) {
-	while (fargc--) {
+	while (fargc-- > 0) {
 	    (void) Ns_TclGetOpenFd(interp, fargv[fargc], write, (int *) &sock);
 	    if (FD_ISSET(sock, setPtr)) {
 		Tcl_DStringAppendElement(dsPtr, fargv[fargc]);
@@ -1003,11 +1008,11 @@ GetSet(Tcl_Interp *interp, const char *flist, int write, fd_set **setPtrPtr,
     NS_SOCKET    sock;
     const char **fargv = NULL;
 
-    assert(interp != NULL);
-    assert(flist != NULL);
-    assert(setPtrPtr != NULL);
-    assert(setPtr != NULL);
-    assert(maxPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(flist != NULL);
+    NS_NONNULL_ASSERT(setPtrPtr != NULL);
+    NS_NONNULL_ASSERT(setPtr != NULL);
+    NS_NONNULL_ASSERT(maxPtr != NULL);
     
     if (Tcl_SplitList(interp, flist, &fargc, &fargv) != TCL_OK) {
         return TCL_ERROR;
@@ -1028,7 +1033,7 @@ GetSet(Tcl_Interp *interp, const char *flist, int write, fd_set **setPtrPtr,
      * the fd_set.
      */
     
-    while (fargc--) {
+    while (fargc-- > 0) {
         if (Ns_TclGetOpenFd(interp, fargv[fargc],
                             write, (int *) &sock) != TCL_OK) {
             status = TCL_ERROR;
@@ -1071,7 +1076,7 @@ EnterSock(Tcl_Interp *interp, NS_SOCKET sock)
     Tcl_Channel chan;
     int result;
 
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
 
     chan = Tcl_MakeTcpClientChannel(INT2PTR(sock));
     if (chan == NULL) {
@@ -1091,7 +1096,7 @@ EnterSock(Tcl_Interp *interp, NS_SOCKET sock)
 static int
 EnterDup(Tcl_Interp *interp, NS_SOCKET sock)
 {
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
 
     sock = ns_sockdup(sock);
     if (sock == NS_INVALID_SOCKET) {
@@ -1106,7 +1111,7 @@ EnterDup(Tcl_Interp *interp, NS_SOCKET sock)
 static int
 EnterDupedSocks(Tcl_Interp *interp, NS_SOCKET sock)
 {
-    assert(interp != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
 
     if (EnterSock(interp, sock) != TCL_OK ||
         EnterDup(interp, sock) != TCL_OK) {
@@ -1134,7 +1139,7 @@ EnterDupedSocks(Tcl_Interp *interp, NS_SOCKET sock)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 NsTclSockProc(NS_SOCKET sock, void *arg, unsigned int why)
 {
     Tcl_DString  script;

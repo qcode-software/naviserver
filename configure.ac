@@ -35,7 +35,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.9],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[4.99.12d4],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -50,11 +50,12 @@ AC_CONFIG_HEADERS([include/nsconfig.h])
 
 AC_SUBST([NS_MAJOR_VERSION],  [4])
 AC_SUBST([NS_MINOR_VERSION],  [99])
-AC_SUBST([NS_RELEASE_SERIAL], [6])
-AC_SUBST([NS_RELEASE_LEVEL],  [NS_FINAL_RELEASE]) # ALPHA/BETA/FINAL
+AC_SUBST([NS_RELEASE_SERIAL], [12])
+AC_SUBST([NS_RELEASE_LEVEL],  [NS_ALPHA_RELEASE]) # ALPHA/BETA/FINAL
 
 AC_SUBST([NS_VERSION],     [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}\"])
 AC_SUBST([NS_PATCH_LEVEL], [\"$PACKAGE_VERSION\"])
+#AC_SUBST([NS_PATCH_LEVEL], [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}.${NS_RELEASE_SERIAL}\"])
 
 AC_SUBST([ISO_BUILD_DATE], [`date +%Y-%m-%d`])
 
@@ -191,6 +192,7 @@ AX_HAVE_MTSAFE_DNS
 AX_HAVE_GETTID
 AX_HAVE_TCP_FASTOPEN
 AX_CHECK_ZLIB
+AX_CHECK_OPENSSL
 AX_HAVE_GETPWNAM_R
 AX_HAVE_GETPWUID_R
 AX_HAVE_GETGRNAM_R
@@ -247,6 +249,15 @@ else
   AC_MSG_ERROR([can not figure type of time_t]) 
 fi 
 
+
+AC_ARG_ENABLE([ipv6],
+	AS_HELP_STRING([--disable-ipv6],
+		[NaviServer with IPv6 support (default: enabled)]),
+        [enable_ipv6=$enableval], [enable_ipv6=yes])
+	
+if test "$enable_ipv6" = yes; then
+   AC_DEFINE([HAVE_IPV6], [1], [Are we building NaviServer with IPv6 support?])
+fi
 #
 # Determine detailed revision info (package tag) either
 # - from mercurial (when there is a .hg directory), or
