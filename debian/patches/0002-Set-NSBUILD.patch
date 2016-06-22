@@ -1,0 +1,20 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Wed, 22 Jun 2016 17:17:02 +0100
+Subject: Set NSBUILD
+
+---
+ nsssl/Makefile |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/nsssl/Makefile b/nsssl/Makefile
+index bb2666e..6e18b14 100644
+--- a/nsssl/Makefile
++++ b/nsssl/Makefile
+@@ -19,6 +19,7 @@ MOD      =  nsssl.so
+ MODOBJS   = nsssl.o
+ CLEAN	 += clean-cert
+ 
++NSBUILD=1
+ include  ../include/Makefile.module
+ 
+ dhparams.h:
