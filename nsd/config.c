@@ -44,13 +44,13 @@
 static Tcl_CmdProc SectionCmd;
 static Tcl_CmdProc ParamCmd;
 
-static Ns_Set* GetSection(const char *section, int create)
+static Ns_Set* GetSection(const char *section, bool create)
     NS_GNUC_NONNULL(1);
 
 static const char* ConfigGet(const char *section, const char *key, int exact, const char *defstr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int ToBool(const char *value, int *valuePtr)
+static bool ToBool(const char *value, bool *valuePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -77,8 +77,8 @@ Ns_ConfigString(const char *section, const char *key, const char *def)
 {
     const char *value;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     
     value = ConfigGet(section, key, 0, def);
     Ns_Log(Dev, "config: %s:%s value=\"%s\" default=\"%s\" (string)", 
@@ -107,25 +107,25 @@ Ns_ConfigString(const char *section, const char *key, const char *def)
  *----------------------------------------------------------------------
  */
 
-int
-Ns_ConfigBool(const char *section, const char *key, int def)
+bool
+Ns_ConfigBool(const char *section, const char *key, bool def)
 {
     const char *s;
-    int value = NS_FALSE, found = NS_FALSE;
+    bool value = NS_FALSE, found = NS_FALSE;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
-    s = ConfigGet(section, key, 0, (def != NS_FALSE) ? "true" : "false");
-    if (s != NULL && ToBool(s, &value) == NS_TRUE) {
+    s = ConfigGet(section, key, 0, def ? "true" : "false");
+    if (s != NULL && ToBool(s, &value)) {
         found = NS_TRUE;
     }
     Ns_Log(Dev, "config: %s:%s value=%s default=%s (bool)",
            section, key,
-           (found != NS_FALSE) ? (value != NS_FALSE ? "true" : "false") : "(null)",
-	   (def != 0)          ? "true" : "false");
+           found ? (value ? "true" : "false") : "(null)",
+	   def   ? "true" : "false");
 
-    return (found != NS_FALSE) ? value : def;
+    return found ? value : def;
 }
 
 
@@ -146,27 +146,27 @@ Ns_ConfigBool(const char *section, const char *key, int def)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_ConfigFlag(const char *section, const char *key, unsigned int flag, int def,
               unsigned int *flagsPtr)
 {
     const char *s;
-    int value = 0, found = NS_FALSE;
+    bool value = NS_FALSE, found = NS_FALSE;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     s = ConfigGet(section, key, 0, (def != 0) ? "true" : "false");
-    if (s != NULL && ToBool(s, &value) == NS_TRUE) {
+    if (s != NULL && ToBool(s, &value)) {
         found = NS_TRUE;
     }
 
     Ns_Log(Dev, "config: %s:%s value=%u default=%u (flag)", 
 	   section, key, 
-	   (value != 0) ? flag : 0u, 
+	   value ? flag : 0u, 
 	   (def != 0) ? flag : 0u);
 
-    if (value != 0) {
+    if (value) {
         *flagsPtr |= flag;
     }
     return found;
@@ -204,8 +204,8 @@ Ns_ConfigIntRange(const char *section, const char *key, int def,
     char defstr[TCL_INTEGER_SPACE];
     int value;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     snprintf(defstr, sizeof(defstr), "%d", def);
     s = ConfigGet(section, key, 0, defstr);
@@ -268,8 +268,8 @@ Ns_ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt def,
     char defstr[TCL_INTEGER_SPACE];
     Tcl_WideInt value;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     snprintf(defstr, sizeof(defstr), "%" TCL_LL_MODIFIER "d", def);
     s = ConfigGet(section, key, 0, defstr);
@@ -305,7 +305,7 @@ Ns_ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt def,
  *      Return a config file value for a given key
  *
  * Results:
- *      ASCIIZ ptr to a value
+ *      char ptr to a value
  *
  * Side effects:
  *      None.
@@ -318,8 +318,8 @@ Ns_ConfigGetValue(const char *section, const char *key)
 {
     const char *value;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     
     value = ConfigGet(section, key, 0, NULL);
     Ns_Log(Dev, "config: %s:%s value=%s (string)", 
@@ -350,8 +350,8 @@ Ns_ConfigGetValueExact(const char *section, const char *key)
 {
     const char *value;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     
     value = ConfigGet(section, key, 1, NULL);
     Ns_Log(Dev, "config: %s:%s value=%s (string, exact match)", 
@@ -385,8 +385,8 @@ Ns_ConfigGetInt(const char *section, const char *key, int *valuePtr)
     const char *s;
     int found;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     s = ConfigGet(section, key, 0, NULL);
     if (s != NULL && Ns_StrToInt(s, valuePtr) == NS_OK) {
@@ -426,7 +426,7 @@ Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
     const char *s;
 
     s = Ns_ConfigGetValue(section, key);
-    if (s == NULL || sscanf(s, "%24" PRId64, valuePtr) != 1) {
+    if (s == NULL || sscanf(s, "%24" SCNd64, valuePtr) != 1) {
         return NS_FALSE;
     }
     return NS_TRUE;
@@ -450,22 +450,22 @@ Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
  *----------------------------------------------------------------------
  */
 
-int
-Ns_ConfigGetBool(const char *section, const char *key, int *valuePtr)
+bool
+Ns_ConfigGetBool(const char *section, const char *key, bool *valuePtr)
 {
     const char *s;
-    int found = NS_FALSE;
+    bool found = NS_FALSE;
 
-    assert(section != NULL);
-    assert(key != NULL);
-    assert(valuePtr != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(valuePtr != NULL);
 
     s = ConfigGet(section, key, 0, NULL);
-    if (s != NULL && ToBool(s, valuePtr) == NS_TRUE) {
+    if (s != NULL && ToBool(s, valuePtr)) {
         found = NS_TRUE;
     }
     Ns_Log(Dev, "config: %s:%s value=%s (bool)", 
-	   section, key, (found != NS_FALSE) ? (*valuePtr != 0 ? "true" : "false") : "(null)");
+	   section, key, found ? (*valuePtr ? "true" : "false") : "(null)");
 
     return found;
 }
@@ -583,7 +583,7 @@ Ns_ConfigGetSections(void)
 Ns_Set *
 Ns_ConfigGetSection(const char *section)
 {
-    return GetSection(section, 0);
+    return GetSection(section, NS_FALSE);
 }
 
 /*
@@ -605,7 +605,7 @@ Ns_ConfigGetSection(const char *section)
 Ns_Set *
 Ns_ConfigCreateSection(const char *section)
 {
-    int create = (Ns_InfoStarted() != 0) ? 0 : 1;
+    bool create = (Ns_InfoStarted() != 0) ? NS_FALSE : NS_TRUE;
     return GetSection(section, create);
 }
 
@@ -670,7 +670,7 @@ NsConfigRead(const char *file)
     const char  *call = "open", *data, *conf;
     int          length;
 
-    assert(file != NULL);
+    NS_NONNULL_ASSERT(file != NULL);
     /*
      * Open the channel for reading the config file
      */
@@ -739,7 +739,7 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optind)
     Ns_Set     *set;
     int i;
 
-    assert(config != NULL);
+    NS_NONNULL_ASSERT(config != NULL);
 
     /*
      * Create an interp with a few config-related commands.
@@ -747,8 +747,8 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optind)
 
     set = NULL;
     interp = Ns_TclCreateInterp();
-    Tcl_CreateCommand(interp, "ns_section", SectionCmd, &set, NULL);
-    Tcl_CreateCommand(interp, "ns_param", ParamCmd, &set, NULL);
+    (void)Tcl_CreateCommand(interp, "ns_section", SectionCmd, &set, NULL);
+    (void)Tcl_CreateCommand(interp, "ns_param", ParamCmd, &set, NULL);
     for (i = 0; argv[i] != NULL; ++i) {
         (void) Tcl_SetVar(interp, "argv", argv[i], TCL_APPEND_VALUE|TCL_LIST_ELEMENT|TCL_GLOBAL_ONLY);
     }
@@ -795,7 +795,7 @@ ParamCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv
                          " not preceded by an ns_section command.", NULL);
         return TCL_ERROR;
     }
-    Ns_SetPut(set, argv[1], argv[2]);
+    (void)Ns_SetPut(set, argv[1], argv[2]);
 
     return TCL_OK;
 }
@@ -830,7 +830,7 @@ SectionCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *ar
         return TCL_ERROR;
     }
     set = (Ns_Set **) clientData;
-    *set = GetSection(argv[1], 1);
+    *set = GetSection(argv[1], NS_TRUE);
 
     return TCL_OK;
 }
@@ -858,11 +858,11 @@ ConfigGet(const char *section, const char *key, int exact, const char *defstr)
     char    *s;
     Ns_Set  *set;
 
-    assert(section != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
 
     s = NULL;
-    set = GetSection(section, 0);
+    set = GetSection(section, NS_FALSE);
 
     if (set != NULL) {
 	int  i;
@@ -901,7 +901,7 @@ ConfigGet(const char *section, const char *key, int exact, const char *defstr)
  */
 
 static Ns_Set *
-GetSection(const char *section, int create)
+GetSection(const char *section, bool create)
 {
     Ns_Set        *set;
     Tcl_HashEntry *hPtr;
@@ -910,7 +910,7 @@ GetSection(const char *section, int create)
     const char    *p;
     char          *s;
 
-    assert(section != NULL);
+    NS_NONNULL_ASSERT(section != NULL);
 
     /*
      * Clean up section name to all lowercase, trimming space
@@ -942,7 +942,7 @@ GetSection(const char *section, int create)
      */
 
     set = NULL;
-    if (likely(create != 1)) {
+    if (likely(!create)) {
         hPtr = Tcl_FindHashEntry(&nsconf.sections, section);
     } else {
         hPtr = Tcl_CreateHashEntry(&nsconf.sections, section, &isNew);
@@ -977,13 +977,13 @@ GetSection(const char *section, int create)
  *----------------------------------------------------------------------
  */
 
-static int
-ToBool(const char *value, int *valuePtr)
+static bool
+ToBool(const char *value, bool *valuePtr)
 {
     int boolValue;
 
-    assert(value != NULL);
-    assert(valuePtr != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
+    NS_NONNULL_ASSERT(valuePtr != NULL);
 
     if (STREQ(value, "1")
         || STRIEQ(value, "y")

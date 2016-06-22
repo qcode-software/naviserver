@@ -60,7 +60,7 @@ extern int h_errno;
 #endif
 
 
-typedef int (GetProc)(Ns_DString *dsPtr, const char *key);
+typedef bool (GetProc)(Ns_DString *dsPtr, const char *key);
 
 
 /*
@@ -69,8 +69,8 @@ typedef int (GetProc)(Ns_DString *dsPtr, const char *key);
 
 static GetProc GetAddr;
 static GetProc GetHost;
-static int DnsGet(GetProc *getProc, Ns_DString *dsPtr,
-                  Ns_Cache *cache, const char *key, int all)
+static bool DnsGet(GetProc *getProc, Ns_DString *dsPtr,
+                   Ns_Cache *cache, const char *key, int all)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
 
@@ -145,43 +145,45 @@ NsConfigDNS(void)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_GetHostByAddr(Ns_DString *dsPtr, const char *addr)
 {
-    assert(dsPtr != NULL);
-    assert(addr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(addr != NULL);
     
     return DnsGet(GetHost, dsPtr, hostCache, addr, 0);
 }
 
-int
+bool
 Ns_GetAddrByHost(Ns_DString *dsPtr, const char *host)
 {
-    assert(dsPtr != NULL);
-    assert(host != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
 
     return DnsGet(GetAddr, dsPtr, addrCache, host, 0);
 }
 
-int
+
+bool
 Ns_GetAllAddrByHost(Ns_DString *dsPtr, const char *host)
 {
-    assert(dsPtr != NULL);
-    assert(host != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
     
     return DnsGet(GetAddr, dsPtr, addrCache, host, 1);
 }
 
-static int
+static bool
 DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, int all)
 {
     Ns_DString  ds;
     Ns_Time     t;
-    int         isNew, status;
+    int         isNew;
+    bool        success;
 
-    assert(getProc != NULL);
-    assert(dsPtr != NULL);
-    assert(key != NULL);
+    NS_NONNULL_ASSERT(getProc != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
         
     /*
      * Call getProc directly or through cache.
@@ -189,7 +191,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
 
     Ns_DStringInit(&ds);
     if (cache == NULL) {
-        status = (*getProc)(&ds, key);
+        success = (*getProc)(&ds, key);
     } else {
         Ns_Entry   *entry;
 
@@ -205,15 +207,15 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
         }
         if (isNew != 0) {
             Ns_CacheUnlock(cache);
-            status = (*getProc)(&ds, key);
+            success = (*getProc)(&ds, key);
             Ns_CacheLock(cache);
-            if (status != NS_TRUE) {
+            if (!success) {
                 Ns_CacheDeleteEntry(entry);
             } else {
 	        Ns_Time endTime, diffTime;
 
                 Ns_GetTime(&endTime);
-		Ns_DiffTime(&endTime, &t, &diffTime);
+		(void)Ns_DiffTime(&endTime, &t, &diffTime);
                 Ns_IncrTime(&endTime, ttl, 0);
                 Ns_CacheSetValueExpires(entry, ns_strdup(ds.string), 
 					(size_t)ds.length, &endTime, 
@@ -223,12 +225,12 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
         } else {
             Ns_DStringNAppend(&ds, Ns_CacheGetValue(entry),
                               (int)Ns_CacheGetSize(entry));
-            status = NS_TRUE;
+            success = NS_TRUE;
         }
         Ns_CacheUnlock(cache);
     }
 
-    if (status == NS_TRUE) {
+    if (success) {
         if (getProc == GetAddr && all == 0) {
             const char *p = ds.string;
             while (*p != '\0' && CHARTYPE(space, *p) == 0) {
@@ -240,9 +242,112 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
     }
     Ns_DStringFree(&ds);
 
-    return status;
+    return success;
 }
 
+
+/**********************************************************************
+ * Begin IPv6
+ **********************************************************************/
+#ifdef HAVE_IPV6
+
+/*
+ *----------------------------------------------------------------------
+ * GetHost, GetAddr --
+ *
+ *      Perform the actual lookup by host or address.
+ *
+ * Results:
+ *      If a name can be found, the function returns NS_TRUE; otherwise,
+ *      it returns NS_FALSE.
+ *
+ * Side effects:
+ *      Result is appended to dsPtr.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static bool
+GetHost(Ns_DString *dsPtr, const char *addr)
+{
+    int    r;
+    struct sockaddr_storage sa;
+    struct sockaddr        *saPtr = (struct sockaddr *)&sa;
+    bool   result = NS_FALSE;
+
+    r = ns_inet_pton(saPtr, addr);
+    if (r > 0) {
+        char buf[NI_MAXHOST];
+        int  err;
+
+        err = getnameinfo(saPtr,
+                          (sa.ss_family == AF_INET6) ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in),
+                          buf, sizeof(buf),
+                          NULL, 0, NI_NAMEREQD);
+        if (err != 0) {
+            Ns_Log(Notice, "dns: getnameinfo failed for addr <%s>: %s", addr, gai_strerror(err));
+        } else {
+            Ns_DStringAppend(dsPtr, buf);
+            result = NS_TRUE;
+        }
+    }
+
+    return result;
+}
+
+static bool
+GetAddr(Ns_DString *dsPtr, const char *host)
+{
+    struct addrinfo hints;
+    struct addrinfo *res, *ptr;
+    int result;
+    bool status = NS_FALSE;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_flags = AI_ADDRCONFIG;
+    hints.ai_socktype = SOCK_STREAM;
+
+    result = getaddrinfo(host, NULL, &hints, &res);
+    if (result == 0) {
+        ptr = res;
+        while (ptr != NULL) {
+            char ipString[NS_IPADDR_SIZE];
+
+            /*
+             * Getaddrinfo with flag AF_UNSPEC returns both AF_INET and
+             * AF_INET6 addresses.
+             */
+            /*fprintf(stderr, "##### getaddrinfo <%s> -> %d family %s\n",
+                    host,
+                    ptr->ai_family,
+                    (ptr->ai_family == AF_INET6) ? "AF_INET6" : "AF_INET");*/
+            if ((ptr->ai_family != AF_INET) && (ptr->ai_family != AF_INET6)) {
+                Ns_Log(Error, "dns: getaddrinfo failed for %s: unknown address family %d",
+                       host, ptr->ai_family);
+                freeaddrinfo(res);
+                return NS_FALSE;
+            }
+            Tcl_DStringAppendElement(dsPtr,
+                                     ns_inet_ntop(ptr->ai_addr, ipString, sizeof(ipString)));
+                
+            status = NS_TRUE;
+            ptr = ptr->ai_next;
+        }
+        freeaddrinfo(res);
+
+    } else if (result != EAI_NONAME) {
+        Ns_Log(Error, "dns: getaddrinfo failed for %s: %s", host,
+               gai_strerror(result));
+    }
+    
+    return status;
+}
+    
+#else
+/**********************************************************************
+ * Begin no IPv6
+ **********************************************************************/
 
 /*
  *----------------------------------------------------------------------
@@ -265,13 +370,13 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
 
 #if defined(HAVE_GETNAMEINFO)
 
-static int
+static bool
 GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct sockaddr_in sa;
     char buf[NI_MAXHOST];
     int result;
-    int status = NS_FALSE;
+    bool status = NS_FALSE;
 #ifndef HAVE_MTSAFE_DNS
     static Ns_Cs cs;
     Ns_CsEnter(&cs);
@@ -292,7 +397,7 @@ GetHost(Ns_DString *dsPtr, const char *addr)
         Ns_DStringAppend(dsPtr, buf);
         status = NS_TRUE;
     } else if (result != EAI_NONAME) {
-        Ns_Log(Error, "dns: getnameinfo failed: %s (%s)", gai_strerror(result), addr);
+        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)", gai_strerror(result), addr);
     }
 #ifndef HAVE_MTSAFE_DNS
     Ns_CsLeave(&cs);
@@ -303,14 +408,14 @@ GetHost(Ns_DString *dsPtr, const char *addr)
 
 #elif defined(HAVE_GETHOSTBYADDR_R)
 
-static int
+static bool
 GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct hostent he, *hePtr;
     struct sockaddr_in sa;
     char buf[2048];
     int h_errnop;
-    int status = NS_FALSE;
+    bool status = NS_FALSE;
 
     sa.sin_addr.s_addr = inet_addr(addr);
     hePtr = gethostbyaddr_r((char *) &sa.sin_addr, sizeof(struct in_addr),
@@ -334,12 +439,12 @@ GetHost(Ns_DString *dsPtr, const char *addr)
  * the same time.
  */
 
-static int
+static bool
 GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct sockaddr_in sa;
     static Ns_Cs cs;
-    int status = NS_FALSE;
+    bool status = NS_FALSE;
 
     sa.sin_addr.s_addr = inet_addr(addr);
     if (sa.sin_addr.s_addr != INADDR_NONE) {
@@ -358,17 +463,17 @@ GetHost(Ns_DString *dsPtr, const char *addr)
     }
     return status;
 }
-
 #endif
 
-#if defined(HAVE_GETADDRINFO)
 
-static int
+#if defined(HAVE_GETADDRINFO)
+static bool
 GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct addrinfo hints;
     struct addrinfo *res, *ptr;
-    int result, status = NS_FALSE;
+    int result;
+    bool status = NS_FALSE;
 #ifndef HAVE_MTSAFE_DNS
     static Ns_Cs cs;
     Ns_CsEnter(&cs);
@@ -382,8 +487,10 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     if (result == 0) {
         ptr = res;
         while (ptr != NULL) {
-            Tcl_DStringAppendElement(dsPtr,
-                ns_inet_ntoa(((struct sockaddr_in *) ptr->ai_addr)->sin_addr));
+            char ipString[NS_IPADDR_SIZE];
+            
+            ns_inet_ntop(ptr->ai_addr, ipString, sizeof(ipString));
+            Tcl_DStringAppendElement(dsPtr, ipString);
             status = NS_TRUE;
             ptr = ptr->ai_next;
         }
@@ -400,14 +507,14 @@ GetAddr(Ns_DString *dsPtr, const char *host)
 
 #elif defined(HAVE_GETHOSTBYNAME_R)
 
-static int
+static bool
 GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct in_addr ia, *ptr;
     char buf[2048];
     int result = 0;
     int h_errnop = 0;
-    int status = NS_FALSE;
+    bool status = NS_FALSE;
 #if defined(HAVE_GETHOSTBYNAME_R_6) || defined(HAVE_GETHOSTBYNAME_R_5)
     struct hostent he;
 #endif
@@ -439,8 +546,12 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     } else {
         int i = 0;
         while ((ptr = (struct in_addr *) he.h_addr_list[i++]) != NULL) {
+            /*
+             * This is legacy code and works probably just under IPv4, IPv6 requires
+             * HAVE_GETADDRINFO.
+             */
             ia.s_addr = ptr->s_addr;
-            Tcl_DStringAppendElement(dsPtr, ns_inet_ntoa(ia));
+            Tcl_DStringAppendElement(dsPtr, ns_inet_ntoa((struct sockaddr *)(ptr->ai_addr)));
             status = NS_TRUE;
         }
     }
@@ -457,13 +568,13 @@ GetAddr(Ns_DString *dsPtr, const char *host)
  * the same time.
  */
 
-static int
+static bool
 GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct hostent *he;
     struct in_addr ia, *ptr;
     static Ns_Cs cs;
-    int status = NS_FALSE;
+    bool status = NS_FALSE;
 
     Ns_CsEnter(&cs);
     he = gethostbyname(host);
@@ -472,8 +583,12 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     } else {
         int i = 0;
         while ((ptr = (struct in_addr *) he->h_addr_list[i++]) != NULL) {
+            /*
+             * This is legacy code and works probably just under IPv4, IPv6 requires
+             * HAVE_GETADDRINFO.
+             */
             ia.s_addr = ptr->s_addr;
-            Tcl_DStringAppendElement(dsPtr, ns_inet_ntoa(ia));
+            Tcl_DStringAppendElement(dsPtr, ns_inet_ntoa((struct sockaddr *)(ptr->ai_addr)));
             status = NS_TRUE;
         }
     }
@@ -483,6 +598,17 @@ GetAddr(Ns_DString *dsPtr, const char *host)
 }
 
 #endif
+
+/* 
+ * End no IPv6
+ */
+
+#endif /* HAVE_IPV6 */
+
+
+
+
+
 
 
 /*

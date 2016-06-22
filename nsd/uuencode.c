@@ -104,8 +104,8 @@ Ns_HtuuEncode(const unsigned char *input, size_t inputSize, char *buf)
     register int line = 0;
     register size_t n;
 
-    assert(input != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(input != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     /*
      * Convert every three input bytes into four output
@@ -125,9 +125,9 @@ Ns_HtuuEncode(const unsigned char *input, size_t inputSize, char *buf)
             line = 0;
         }
         *q++ = Encode(p[0] >> 2);
-        *q++ = Encode((UCHAR(p[0] << 4) & 0x30U) | ((p[1] >> 4) & 0x0FU));
-        *q++ = Encode((UCHAR(p[1] << 2) & 0x3CU) | ((p[2] >> 6) & 0x03U));
-        *q++ = Encode(p[2] & 0x3FU);
+        *q++ = Encode((UCHAR(p[0] << 4) & 0x30u) | ((p[1] >> 4) & 0x0Fu));
+        *q++ = Encode((UCHAR(p[1] << 2) & 0x3CU) | ((p[2] >> 6) & 0x03u));
+        *q++ = Encode(p[2] & 0x3Fu);
         p += 3;
         line += 4;
     }
@@ -140,10 +140,10 @@ Ns_HtuuEncode(const unsigned char *input, size_t inputSize, char *buf)
     if (n > 0u) {
         *q++ = Encode(p[0] >> 2);
         if (n == 1u) {
-            *q++ = Encode(UCHAR(p[0] << 4) & 0x30U);
+            *q++ = Encode(UCHAR(p[0] << 4) & 0x30u);
             *q++ = UCHAR('=');
         } else {
-            *q++ = Encode((UCHAR(p[0] << 4) & 0x30U) | ((p[1] >> 4) & 0x0FU));
+            *q++ = Encode((UCHAR(p[0] << 4) & 0x30u) | ((p[1] >> 4) & 0x0Fu));
             *q++ = Encode(UCHAR( p[1] << 2) & 0x3CU);
         }
         *q++ = UCHAR('=');
@@ -179,8 +179,8 @@ Ns_HtuuDecode(const char *input, unsigned char *buf, size_t bufSize)
     register const unsigned char *p;
     register unsigned char *q;
 
-    assert(input != NULL);
-    assert(buf != NULL);
+    NS_NONNULL_ASSERT(input != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
 
     /*
      * Skip leading space, if any.
@@ -197,7 +197,7 @@ Ns_HtuuDecode(const char *input, unsigned char *buf, size_t bufSize)
     n = 0;
     p = (const unsigned char *) input;
     q = buf;
-    while (*p) {
+    while (*p != 0u) {
         if (pr2six[(int)(*p)] >= 0) {
             chars[n++] = *p;
             if (n == 4) {

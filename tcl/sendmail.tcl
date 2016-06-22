@@ -47,7 +47,22 @@
 #   None.
 #
 
-proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
+proc ns_sendmail args {
+    
+    lassign $args to from subject body headers bcc cc
+    if {![string match -* $to]} {
+        ns_log warning "Deprecated syntax. Use: [list ns_sendmail -to $to -from $from -subject $subject -body $body -headers $headers -bcc $bcc -cc $cc]"
+    } else {
+        ns_parseargs {
+            {-to ""}
+            {-from ""}
+            {-subject ""}
+            {-body ""}
+            {-headers ""}
+            {-bcc ""}
+            {-cc ""}
+        } $args
+    }
 
     #
     # Flag: need to cleanup after ourselves
@@ -66,12 +81,12 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
     # them from there, as we are handling them separately.
     #
 
-    if {$headers ne {}} {
+    if {$headers ne ""} {
         foreach key [list cc bcc] {
             set addr [ns_set iget $headers $key]
-            if {$addr ne {}} {
+            if {$addr ne ""} {
                 ns_set idelkey $headers $key
-                if {[set $key] ne {}} {
+                if {[set $key] ne ""} {
                     append $key ","
                 }
                 append $key $addr
@@ -85,7 +100,7 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
 
     set tolist [list]
     foreach addr [string trim [split [string map {\n "" \r ""} $to] ","]] {
-        if {$addr ne {}} {
+        if {$addr ne ""} {
             lappend tolist $addr
         }
     }
@@ -96,7 +111,7 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
 
     set cclist [list]
     foreach addr [string trim [split [string map {\n "" \r ""} $cc] ","]] {
-        if {$addr ne {}} {
+        if {$addr ne ""} {
             lappend cclist $addr
         }
     }
@@ -107,7 +122,7 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
 
     set bcclist [list]
     foreach addr [string trim [split [string map {\n "" \r ""} $bcc] ","]] {
-        if {$addr ne {}} {
+        if {$addr ne ""} {
             lappend bcclist $addr
         }
     }
@@ -132,20 +147,20 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
             set body [_ns_sendmail_breaklines [_ns_sendmail_qp $cbody]]
         }
         if {$quotemsg} {
-            if {$headers eq {}} {
+            if {$headers eq ""} {
                 set cleanup 1
                 set headers [ns_set create headers]
             }
             set key "MIME-version"
-            if {[ns_set iget $headers $key] eq {}} {
+            if {[ns_set iget $headers $key] eq ""} {
                 ns_set put $headers $key "1.0"
             }
             set key "Content-Type"
-            if {[ns_set iget $headers $key] eq {}} {
+            if {[ns_set iget $headers $key] eq ""} {
                 ns_set put $headers $key "text/plain; charset=\"${encoding}\""
             }
             set key "Content-Transfer-Encoding"
-            if {[ns_set iget $headers $key] eq {}} {
+            if {[ns_set iget $headers $key] eq ""} {
                 ns_set put $headers $key "quoted-printable"
             }
         }
@@ -155,7 +170,7 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
     # Put custom headers
     #
 
-    if {$headers ne {}} {
+    if {$headers ne ""} {
         for {set i 0} {$i < [ns_set size $headers]} {incr i} {
             set key [ns_set key   $headers $i]
             set val [ns_set value $headers $i]
@@ -195,12 +210,12 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
     #
 
     set host [ns_config ns/parameters smtpmsgidhostname]
-    if {$host eq {}} {
+    if {$host eq ""} {
         set host [ns_info hostname]
     }
 
     if {[ns_config -set ns/parameters smtpmsgid false] &&
-        ($headers eq {} || ([ns_set iget $headers "Message-ID"] eq {}))} {
+        ($headers eq "" || [ns_set iget $headers "Message-ID"] eq "")} {
         set threads [ns_info threads]
         set nowsecs [clock seconds]
         set shabang [ns_sha1 "$from$tolist$subject$nowsecs$threads"]
@@ -242,6 +257,11 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
     set user [ns_config ns/parameters smtpauthuser]
     set pass [ns_config ns/parameters smtpauthpassword]
 
+    set usestarttls [ns_config ns/parameters smtpusestarttls 0]
+    set certfile [ns_config ns/parameters smtpcertfile]
+    set cafile [ns_config ns/parameters smtpcafile]
+    set cadir [ns_config ns/parameters smtpcadir]
+
     #
     # Open the connection to SMTP server
     #
@@ -250,15 +270,11 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
     set smtpport [ns_config -set ns/parameters smtpport 25]
     set timeout  [ns_config -set ns/parameters smtptimeout 60]
 
-    if {$smtphost eq {}} {
+    if {$smtphost eq ""} {
         set smtphost [ns_config -set ns/parameters mailhost "localhost"]
     }
 
-    set fds [ns_sockopen -timeout $timeout $smtphost $smtpport]
-    set rfd [lindex $fds 0]
-    set wfd [lindex $fds 1]
-
-    fconfigure $rfd -translation auto -blocking 0
+    lassign [ns_sockopen -timeout $timeout $smtphost $smtpport] rfd wfd
     fconfigure $wfd -translation crlf
 
     #
@@ -267,15 +283,76 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
 
     set err [catch {
 
-        _ns_smtp_recv "Start" $rfd 220
+        _ns_smtp_recv "Start" $wfd 220
+        _ns_smtp_send "EHLO" $wfd "EHLO $host"
+
+        set lines [_ns_smtp_recv "EHLO" $wfd 250]
+
+        if {$usestarttls} {
+
+            #
+            # STARTTLS as implemented by sendmail.tcl needs the Tcl
+            # package tls, which has to be available on the load
+            # path. Since the streams used here are Tcl streams these
+            # can be upgraded to TLS using the stacked streams of the
+            # tls module. This implementation uses select(). An
+            # alternative implementation for STARTTLS exists in the
+            # module nssmtpd, which provides a client and server side
+            # implementation based on the NaviServer I/O
+            # infrastructure.
+            #
+            package req tls
+
+            if {$certfile eq ""} {
+                ns_log error "ns_sendmail: param smtpcertfile must not be empty"
+            } else {
+
+                #
+                # If STARTTLS is configured, first check if the server supports
+                # it.
+                #
+
+                set hasStarttls 0
+                foreach line $lines {
+                    set command [string range $line 4 11]
+                    if {$command eq "STARTTLS"} {
+                        set hasStarttls 1
+                    }
+                }
+                if {$hasStarttls == 0} {
+                    ns_log warning "ns_sendmail: SMTP server does not support STARTTLS"
+                } else {
+
+                    #
+                    # Request STARTTLS
+                    #
+
+                    _ns_smtp_send "STARTTLS" $wfd "STARTTLS"
+                    _ns_smtp_recv "STARTTLS" $wfd 220
+
+                    #
+                    # Do the TLS handshake
+                    #
+
+                    tls::import $wfd -certfile $certfile -cadir $cadir      \
+                        -cafile $cafile
+                    tls::handshake $wfd
+
+                    #
+                    # Note: Translation MUST be reconfigured after the tls handshake
+                    # because it is reset to some default!
+                    #
+
+                    fconfigure $wfd -translation crlf
+                }
+            }
+        }
 
         #
         # Optionaly authorize (PLAIN or LOGIN)
         #
 
-        if {$user ne {} && $pass ne {}} {
-            _ns_smtp_send "EHLO" $wfd "EHLO $host"
-            _ns_smtp_recv "EHLO" $rfd 250
+        if {$user ne "" && $pass ne ""} {
             if {[llength [split $user "\0"]] == 1} {
                 # Default case: user and realm are same
                 set token [ns_base64encode "${user}\0${user}\0${pass}"]
@@ -287,31 +364,25 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
             #
             # Use AUTH PLAIN if no or no other mode is defined
             #
-            if {$authmode eq {} || $authmode eq "PLAIN"} {
+            if {$authmode in {"" PLAIN}} {
 
                 _ns_smtp_send "AUTH PLAIN" $wfd "AUTH PLAIN $token"
-                _ns_smtp_recv "AUTH PLAIN" $rfd 235
+                _ns_smtp_recv "AUTH PLAIN" $wfd 235
 
             } elseif {$authmode eq "LOGIN"} {
 
                 _ns_smtp_send "AUTH LOGIN" $wfd "AUTH LOGIN"
-                _ns_smtp_recv "AUTH LOGIN" $rfd 334
-                # send username if AUTH LOGIN is supported
+                _ns_smtp_recv "AUTH LOGIN" $wfd 334
                 _ns_smtp_send "AUTH LOGIN" $wfd [ns_base64encode $user]
-                _ns_smtp_recv "AUTH LOGIN" $rfd 334
+                _ns_smtp_recv "AUTH LOGIN" $wfd 334
                 # then send password
                 _ns_smtp_send "AUTH LOGIN" $wfd [ns_base64encode $pass]
-                _ns_smtp_recv "AUTH LOGIN" $rfd 235
-
+                _ns_smtp_recv "AUTH LOGIN" $wfd 235
             }
-
-        } else {
-            _ns_smtp_send "Helo" $wfd "HELO $host"
-            _ns_smtp_recv "Helo" $rfd 250
         }
 
         _ns_smtp_send "Mail $from" $wfd "MAIL FROM:<$from>"
-        _ns_smtp_recv "Mail $from" $rfd 250
+        _ns_smtp_recv "Mail $from" $wfd 250
 
         #
         # Tell remote server about recipients. Count all
@@ -321,10 +392,10 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
         set countok 0
 
         foreach to [concat $tolist $cclist $bcclist] {
-            regexp {.*<(.*)>} $to null to
-            if {$to ne {}} {
+            regexp {<(.+)>} $to . to
+            if {$to ne ""} {
                 _ns_smtp_send "Rcpt $to" $wfd "RCPT TO:<$to>"
-                if {![catch {_ns_smtp_recv "Rcpt $to" $rfd 250}]} {
+                if {![catch {_ns_smtp_recv "Rcpt $to" $wfd 250}]} {
                     incr countok
                 }
             }
@@ -337,13 +408,13 @@ proc ns_sendmail {to from subject body {headers {}} {bcc {}} {cc {}}} {
 
         if {$countok > 0} {
             _ns_smtp_send Data $wfd DATA
-            _ns_smtp_recv Data $rfd 354
+            _ns_smtp_recv Data $wfd 354
             _ns_smtp_send Data $wfd $data
-            _ns_smtp_recv Data $rfd 250
+            _ns_smtp_recv Data $wfd 250
         }
 
         _ns_smtp_send Quit $wfd QUIT
-        _ns_smtp_recv Quit $rfd 221 0
+        _ns_smtp_recv Quit $wfd 221 0
 
     } errmsg]
 
@@ -386,7 +457,11 @@ proc ns_sendmail_config {{mode ""}} {
              smtpencoding      [ns_config ns/parameters smtpencoding]      \
              smtpauthmode      [ns_config ns/parameters smtpauthmode]      \
              smtpauthuser      [ns_config ns/parameters smtpauthuser]      \
-             smtpauthpassword  [ns_config ns/parameters smtpauthpassword]]
+             smtpauthpassword  [ns_config ns/parameters smtpauthpassword]  \
+             smtpusestarttls   [ns_config ns/parameters smtpusestarttls]   \
+             smtpcertfile      [ns_config ns/parameters smtpcertfile]      \
+             smtpcafile        [ns_config ns/parameters smtpcafile]        \
+             smtpcadir         [ns_config ns/parameters smtpcadir]]
 
     if {$mode eq {log}} {
         ns_log notice [ns_set print $myset]
@@ -503,10 +578,11 @@ proc _ns_smtp_send {mode sock string} {
     set tout [ns_config -set ns/parameters smtptimeout 60]
 
     foreach line [split $string "\n"] {
-      if {[lindex [ns_sockselect -timeout $tout {} $sock {}] 1] eq {}} {
-          return -code error "$mode: Timeout writing to SMTP host"
-      }
-      puts $sock $line
+        set fds [ns_sockselect -timeout $tout {} $sock {}]
+        if {[lindex $fds 1] eq ""} {
+            return -code error "$mode: Timeout writing to SMTP host"
+        }
+        puts $sock $line
     }
     flush $sock
 }
@@ -515,11 +591,11 @@ proc _ns_smtp_send {mode sock string} {
 #
 # _ns_smtp_recv --
 #
-#   Receive line from SMTP server and check against the
+#   Receive line(s) from SMTP server and check against the
 #   constraints.
 #
 # Result:
-#   None.
+#   The list of lines if any.
 #
 # Side effects:
 #   Depeding on the "error" flag, may or may not throw
@@ -535,9 +611,11 @@ proc _ns_smtp_recv {mode sock check {error 1}} {
     }
 
     set tout [ns_config -set ns/parameters smtptimeout 60]
+    set lines [list]
 
     while (1) {
-        if {[lindex [ns_sockselect -timeout $tout $sock {} {}] 0] eq {}} {
+        set fds [ns_sockselect -timeout $tout $sock {} {}]
+        if {[lindex $fds 0] eq ""} {
             return -code error "$mode: timeout reading from SMTP host"
         }
         if {[gets $sock line] == -1} {
@@ -545,7 +623,7 @@ proc _ns_smtp_recv {mode sock check {error 1}} {
                 return -code error "$mode: remote peer closed connection"
             }
         } else {
-
+            #puts stderr "#### _ns_smtp_recv reveived <$line>"
             #
             # Examine line of code returned by the server.
             # Normally the line has this form:
@@ -566,6 +644,8 @@ proc _ns_smtp_recv {mode sock check {error 1}} {
             # the status code.
             #
 
+            lappend lines $line
+
             set code [string range $line 0 2]
             if {![string match $check $code]} {
                 set errmsg "$mode: expected $check status line; got: $line"
@@ -580,6 +660,12 @@ proc _ns_smtp_recv {mode sock check {error 1}} {
             }
         }
     }
+
+    return $lines
 }
 
-# EOF
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

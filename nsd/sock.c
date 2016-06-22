@@ -46,7 +46,7 @@
  * can't include here (testing with FC18)
  */
 #ifdef HAVE_TCP_FASTOPEN
-# ifndef TCP_FASTOPEN 
+# ifndef TCP_FASTOPEN
 #  define TCP_FASTOPEN           23      /* Enable FastOpen on listeners */
 # endif
 #endif
@@ -112,14 +112,14 @@ Ns_ResetVec(struct iovec *bufs, int nbufs, size_t sent)
 {
     int     i;
 
-    for (i = 0; i < nbufs && sent > 0U; i++) {
+    for (i = 0; i < nbufs && sent > 0u; i++) {
         char   *data = bufs[i].iov_base;
 	size_t  len  = bufs[i].iov_len;
 
-        if (len > 0U) {
+        if (len > 0u) {
             if (sent >= len) {
                 sent -= len;
-                (void) Ns_SetVec(bufs, i, NULL, 0U);
+                (void) Ns_SetVec(bufs, i, NULL, 0u);
             } else {
                 (void) Ns_SetVec(bufs, i, data + sent, len - sent);
                 break;
@@ -152,10 +152,10 @@ Ns_SumVec(const struct iovec *bufs, int nbufs)
     int     i;
     size_t  sum = 0u;
 
-    assert(bufs != NULL);
-    
+    NS_NONNULL_ASSERT(bufs != NULL);
+
     for (i = 0; i < nbufs; i++) {
-        if (bufs[i].iov_len > 0U) {
+        if (bufs[i].iov_len > 0u) {
             sum += bufs[i].iov_len;
         }
     }
@@ -187,7 +187,7 @@ Ns_SockRecvBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
 
     n = SockRecv(sock, bufs, nbufs, flags);
     if (n < 0
-        && ns_sockerrno == EWOULDBLOCK
+        && (ns_sockerrno == EWOULDBLOCK)
         && Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_READ, timeoutPtr) == NS_OK) {
         n = SockRecv(sock, bufs, nbufs, flags);
     }
@@ -223,13 +223,13 @@ Ns_SockSendBufs(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
     Sock         *sock = (Sock *)sockPtr;
     void         *data;
 
-    assert(sockPtr != NULL);
+    NS_NONNULL_ASSERT(sockPtr != NULL);
     assert(nbufs < 1 || bufs != NULL);
 
     sbufPtr = sbufs;
     sbufLen = UIO_MAXIOV;
 
-    while (bufIdx < nbufs || toWrite > 0U) {
+    while (bufIdx < nbufs || toWrite > 0u) {
 
         /*
          * Send up to UIO_MAXIOV buffers of data at a time and strip out
@@ -241,7 +241,7 @@ Ns_SockSendBufs(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
             data = bufs[bufIdx].iov_base;
             len  = bufs[bufIdx].iov_len;
 
-            if (len > 0U && data != NULL) {
+            if (len > 0u && data != NULL) {
                 toWrite += Ns_SetVec(sbufPtr, sbufIdx++, data, len);
                 nsbufs++;
             }
@@ -265,7 +265,7 @@ Ns_SockSendBufs(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
         toWrite -= (size_t)sent;
         nWrote  += (size_t)sent;
 
-        if (toWrite > 0U) {
+        if (toWrite > 0u) {
 
             sbufIdx = Ns_ResetVec(sbufPtr, nsbufs, (size_t)sent);
             nsbufs -= sbufIdx;
@@ -298,7 +298,7 @@ Ns_SockSendBufs(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
  *
  * NsSockRecv --
  *
- *      Timed recv() from a non-blocking socket.
+ *      Timed recv operation from a non-blocking socket.
  *
  * Results:
  *      Number of bytes read
@@ -314,8 +314,8 @@ Ns_SockRecv(NS_SOCKET sock, void *buffer, size_t length, const Ns_Time *timeoutP
 {
     ssize_t nread;
 
-    assert(buffer != NULL);
-    
+    NS_NONNULL_ASSERT(buffer != NULL);
+
     nread = ns_recv(sock, buffer, length, 0);
     if (nread == -1
         && ns_sockerrno == EWOULDBLOCK
@@ -332,7 +332,7 @@ Ns_SockRecv(NS_SOCKET sock, void *buffer, size_t length, const Ns_Time *timeoutP
  *
  * Ns_SockSend --
  *
- *      Timed send() to a non-blocking socket.
+ *      Timed send operation to a non-blocking socket.
  *      NOTE: This may not write all of the data you send it!
  *
  * Results:
@@ -349,7 +349,7 @@ Ns_SockSend(NS_SOCKET sock, const void *buffer, size_t length, const Ns_Time *ti
 {
     ssize_t nwrote;
 
-    assert(buffer != NULL);
+    NS_NONNULL_ASSERT(buffer != NULL);
 
     nwrote = ns_send(sock, buffer, length, 0);
     if (nwrote == -1
@@ -370,7 +370,7 @@ Ns_SockSend(NS_SOCKET sock, const void *buffer, size_t length, const Ns_Time *ti
  *      Wait for I/O.
  *
  * Results:
- *      NS_OK, NS_TIMEOUT, or NS_ERROR.
+ *      NS_OK, NS_TIMEOUT.
  *
  * Side effects:
  *      None.
@@ -383,6 +383,7 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
 {
     int           n, msec = -1;
     struct pollfd pfd;
+    int           result;
 
     if (timeoutPtr != NULL) {
         msec = (int)(timeoutPtr->sec * 1000 + timeoutPtr->usec / 1000);
@@ -390,13 +391,13 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
     pfd.fd = sock;
     pfd.events = 0;
 
-    if (what & (unsigned int)NS_SOCK_READ) {
+    if ((what & (unsigned int)NS_SOCK_READ) != 0u) {
 	pfd.events |= POLLIN;
     }
-    if (what & (unsigned int)NS_SOCK_WRITE) {
+    if ((what & (unsigned int)NS_SOCK_WRITE) != 0u) {
 	pfd.events |= POLLOUT;
     }
-    if (what & (unsigned int)NS_SOCK_EXCEPTION) {
+    if ((what & (unsigned int)NS_SOCK_EXCEPTION) != 0u) {
 	pfd.events |= POLLPRI;
     }
 
@@ -406,10 +407,12 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
     } while (n < 0 && errno == EINTR);
 
     if (n > 0) {
-        return NS_OK;
+        result =  NS_OK;
+    } else {
+        result = NS_TIMEOUT;
     }
 
-    return NS_TIMEOUT;
+    return result;
 }
 
 /*
@@ -483,7 +486,7 @@ Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
 {
     sock = accept(sock, saPtr, lenPtr);
 
-    if (sock != NS_INVALID_SOCKET) {
+    if (likely(sock != NS_INVALID_SOCKET)) {
         sock = SockSetup(sock);
     } else if (errno != 0 && errno != EAGAIN) {
         Ns_Log(Notice, "accept() fails, reason: %s", strerror(errno));
@@ -510,31 +513,45 @@ Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
  */
 
 NS_SOCKET
-Ns_BindSock(const struct sockaddr_in *saPtr)
+Ns_BindSock(const struct sockaddr *saPtr)
 {
     return Ns_SockBind(saPtr);
 }
 
 NS_SOCKET
-Ns_SockBind(const struct sockaddr_in *saPtr)
+Ns_SockBind(const struct sockaddr *saPtr)
 {
     NS_SOCKET sock;
-    int       n;
 
-    assert(saPtr != NULL);
+    NS_NONNULL_ASSERT(saPtr != NULL);
 
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+    sock = socket(saPtr->sa_family, SOCK_STREAM, 0);
 
     if (sock != NS_INVALID_SOCKET) {
         sock = SockSetup(sock);
     }
     if (sock != NS_INVALID_SOCKET) {
-        n = 1;
-        if (saPtr->sin_port != 0U) {
+
+        if (Ns_SockaddrGetPort((const struct sockaddr *)saPtr) != 0u) {
+            int n = 1;
+
             setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *) &n, sizeof(n));
+#ifdef HAVE_IPV6
+            /*
+             * IPv4 connectivity through AF_INET6 can be disabled by default, for
+             * example by /proc/sys/net/ipv6/bindv6only to 1 on Linux. We
+             * explicitely enable IPv4 so we don't need to bind separate sockets
+             * for v4 and v6.
+             */
+            n = 0;
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *) &n, sizeof(n));
+#endif
         }
-        if (bind(sock, (const struct sockaddr *) saPtr,
-                 (socklen_t)sizeof(struct sockaddr_in)) != 0) {
+
+        if (bind(sock, (const struct sockaddr *)saPtr,
+                 Ns_SockaddrGetSockLen((const struct sockaddr *)saPtr)) != 0) {
+            Ns_Log(Notice, "bind operation on sock %d lead to error: %s", sock, ns_sockstrerror(ns_sockerrno));
+            Ns_LogSockaddr(Warning, "bind on", (const struct sockaddr *) saPtr);
             ns_sockclose(sock);
             sock = NS_INVALID_SOCKET;
         }
@@ -563,14 +580,16 @@ Ns_SockBind(const struct sockaddr_in *saPtr)
 NS_SOCKET
 Ns_SockConnect(const char *host, int port)
 {
-    assert(host != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+
     return SockConnect(host, port, NULL, 0, NS_FALSE);
 }
 
 NS_SOCKET
 Ns_SockConnect2(const char *host, int port, const char *lhost, int lport)
 {
-    assert(host != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+
     return SockConnect(host, port, lhost, lport, NS_FALSE);
 }
 
@@ -594,14 +613,16 @@ Ns_SockConnect2(const char *host, int port, const char *lhost, int lport)
 NS_SOCKET
 Ns_SockAsyncConnect(const char *host, int port)
 {
-    assert(host != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+
     return SockConnect(host, port, NULL, 0, NS_TRUE);
 }
 
 NS_SOCKET
 Ns_SockAsyncConnect2(const char *host, int port, const char *lhost, int lport)
 {
-    assert(host != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+
     return SockConnect(host, port, lhost, lport, NS_TRUE);
 }
 
@@ -625,8 +646,8 @@ Ns_SockAsyncConnect2(const char *host, int port, const char *lhost, int lport)
 NS_SOCKET
 Ns_SockTimedConnect(const char *host, int port, const Ns_Time *timeoutPtr)
 {
-    assert(host != NULL);
-    assert(timeoutPtr != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+    NS_NONNULL_ASSERT(timeoutPtr != NULL);
 
     return Ns_SockTimedConnect2(host, port, NULL, 0, timeoutPtr);
 }
@@ -639,21 +660,21 @@ Ns_SockTimedConnect2(const char *host, int port, const char *lhost, int lport,
     int       err;
     socklen_t len;
 
-    assert(host != NULL);
-    assert(timeoutPtr != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+    NS_NONNULL_ASSERT(timeoutPtr != NULL);
 
     /*
      * Connect to the host asynchronously and wait for
      * it to connect.
      */
-    
+
     sock = SockConnect(host, port, lhost, lport, NS_TRUE);
     if (sock != NS_INVALID_SOCKET) {
         err = Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_WRITE, timeoutPtr);
         switch (err) {
         case NS_OK:
             len = (socklen_t)sizeof(err);
-            if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&err, &len) == -1) {
+            if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&err, &len) != -1) {
                 return sock;
             }
             break;
@@ -748,8 +769,12 @@ void
 Ns_SockSetDeferAccept(NS_SOCKET sock, int secs)
 {
 #ifdef TCP_FASTOPEN
+# if defined(__APPLE__) && defined(__MACH__)
+    int qlen = 1;
+# else
     int qlen = 5;
-  
+# endif
+
     if (setsockopt(sock, IPPROTO_TCP, TCP_FASTOPEN,
 		   &qlen, sizeof(qlen)) == -1) {
 	Ns_Log(Error, "deferaccept setsockopt(TCP_FASTOPEN): %s",
@@ -770,7 +795,7 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, int secs)
 #  ifdef SO_ACCEPTFILTER
     struct accept_filter_arg afa;
     int n;
-    
+
     memset(&afa, 0, sizeof(afa));
     strcpy(afa.af_name, "httpready");
     n = setsockopt(sock, SOL_SOCKET, SO_ACCEPTFILTER, &afa, sizeof(afa));
@@ -786,56 +811,6 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, int secs)
 #endif
 }
 
-
-
-/*
- *----------------------------------------------------------------------
- *
- * Ns_GetSockAddr --
- *
- *      Take a host/port and fill in a sockaddr_in structure
- *      appropriately. Host may be an IP address or a DNS name.
- *
- * Results:
- *      NS_OK/NS_ERROR
- *
- * Side effects:
- *      May perform DNS query.
- *
- *----------------------------------------------------------------------
- */
-
-int
-Ns_GetSockAddr(struct sockaddr_in *saPtr, const char *host, int port)
-{
-    struct in_addr ia;
-    Ns_DString     ds;
-
-    assert(saPtr != NULL);
-           
-    if (host == NULL) {
-        ia.s_addr = htonl(INADDR_ANY);
-    } else {
-        ia.s_addr = inet_addr(host);
-        if (ia.s_addr == INADDR_NONE) {
-            Ns_DStringInit(&ds);
-            if (Ns_GetAddrByHost(&ds, host) == NS_TRUE) {
-                ia.s_addr = inet_addr(ds.string);
-            }
-            Ns_DStringFree(&ds);
-            if (ia.s_addr == INADDR_NONE) {
-                return NS_ERROR;
-            }
-        }
-    }
-
-    memset(saPtr, 0, sizeof(struct sockaddr_in));
-    saPtr->sin_family = AF_INET;
-    saPtr->sin_addr = ia;
-    saPtr->sin_port = htons((unsigned short) port);
-
-    return NS_OK;
-}
 
 
 /*
@@ -857,8 +832,8 @@ Ns_GetSockAddr(struct sockaddr_in *saPtr, const char *host, int port)
 int
 Ns_SockPipe(NS_SOCKET socks[2])
 {
-    assert(socks != NULL);
-    
+    NS_NONNULL_ASSERT(socks != NULL);
+
     if (ns_sockpair(socks) != 0) {
         return NS_ERROR;
     }
@@ -918,7 +893,7 @@ void
 Ns_ClearSockErrno(void)
 {
 #ifdef _WIN32
-    SetLastError(0U);
+    SetLastError(0u);
 #else
     errno = 0;
 #endif
@@ -1024,7 +999,8 @@ NsPoll(struct pollfd *pfds, int nfds, const Ns_Time *timeoutPtr)
  *
  * SockConnect --
  *
- *      Open a TCP connection to a host/port sync or async.
+ *      Open a TCP connection to a host/port sync or async.  host/port refers
+ *      to the remote, lhost/lport to the local communication endpoint.
  *
  * Results:
  *      A socket or NS_INVALID_SOCKET on error.
@@ -1039,29 +1015,55 @@ NsPoll(struct pollfd *pfds, int nfds, const Ns_Time *timeoutPtr)
 static NS_SOCKET
 SockConnect(const char *host, int port, const char *lhost, int lport, bool async)
 {
-    NS_SOCKET          sock;
-    struct sockaddr_in lsa;
-    struct sockaddr_in sa;
+    NS_SOCKET             sock;
+    struct NS_SOCKADDR_STORAGE sa, lsa;
+    struct sockaddr      *saPtr = (struct sockaddr *)&sa, *lsaPtr = (struct sockaddr *)&lsa;
+    int                   result;
 
-    if (Ns_GetSockAddr(&sa, host, port) != NS_OK ||
-        Ns_GetSockAddr(&lsa, lhost, lport) != NS_OK) {
+    result = Ns_GetSockAddr(saPtr, host, port);
+
+    if (result == NS_OK) {
+        /*
+         * The conversion of host to sockaddr was ok. We have to make sure
+         * that the local address (where the local bind happens) is of the
+         * same address family, which is especially important for (lhost ==
+         * NULL), where the caller has no chance to influence the behavior,
+         * and we assume per default AF_INET6.
+         */
+        result = Ns_GetSockAddr(lsaPtr,
+#ifdef HAVE_IPV6
+                                ((saPtr->sa_family == AF_INET) && (lhost == NULL)) ? "0.0.0.0" : lhost,
+#else
+                                lhost,
+#endif
+                                lport);
+    }
+    if (result != NS_OK) {
+        Ns_Log(Debug, "SockConnect %s %d (local %s %d) fails", host, port, lhost, lport);
         return NS_INVALID_SOCKET;
     }
-    sock = Ns_SockBind(&lsa);
+    sock = Ns_SockBind(lsaPtr);
+    /*
+      Ns_LogSockaddr(Notice, "SockConnect  sa", saPtr);
+      Ns_LogSockaddr(Notice, "SockConnect lsa", lsaPtr);
+    */
     if (sock != NS_INVALID_SOCKET) {
-        if (async == NS_TRUE) {
+        if (async) {
             if (Ns_SockSetNonBlocking(sock) != TCL_OK) {
                 Ns_Log(Warning, "attempt to set socket nonblocking failed");
             }
         }
-        if (connect(sock, (struct sockaddr *) &sa, (socklen_t)sizeof(sa)) != 0) {
+
+        if (connect(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) != 0) {
             unsigned int err = ns_sockerrno;
-            if (async == NS_FALSE || (err != EINPROGRESS && err != EWOULDBLOCK)) {
+
+            if (!async || (err != EINPROGRESS && err != EWOULDBLOCK)) {
                 ns_sockclose(sock);
+                Ns_LogSockaddr(Warning, "SockConnect fails", saPtr);
                 sock = NS_INVALID_SOCKET;
             }
         }
-        if (async == NS_TRUE && sock != NS_INVALID_SOCKET) {
+        if (async && (sock != NS_INVALID_SOCKET)) {
             if (Ns_SockSetBlocking(sock) != TCL_OK) {
                 Ns_Log(Warning, "attempt to set socket blocking failed");
             }
@@ -1083,7 +1085,8 @@ SockConnect(const char *host, int port, const char *lhost, int lport, bool async
  *      Current or duped socket.
  *
  * Side effects:
- *      Original socket is closed if duped.
+ *      When USE_DUPHIGH is activated the original socket is closed.
+ *
  *
  *----------------------------------------------------------------------
  */
@@ -1100,8 +1103,8 @@ SockSetup(NS_SOCKET sock)
       sock = nsock;
     }
 #endif
-#ifndef _WIN32
-    (void) fcntl(sock, F_SETFD, 1);
+#if !defined(_WIN32)
+    (void) fcntl(sock, F_SETFD, FD_CLOEXEC);
 #endif
     return sock;
 }

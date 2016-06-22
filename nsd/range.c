@@ -84,7 +84,7 @@ NsMatchRange(const Ns_Conn *conn, time_t mtime)
 {
     int result = NS_TRUE;
 
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
 
     /*
      * From RFC 2068
@@ -135,10 +135,10 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
     off_t   start, end, dsbase;
     size_t  len, responseLength;
 
-    assert(conn != NULL);
-    assert(type != NULL);
-    assert(nbufsPtr != NULL);
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(type != NULL);
+    NS_NONNULL_ASSERT(nbufsPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
     
     Ns_ConnCondSetHeaders(conn, "Accept-Ranges", "bytes");
 
@@ -183,7 +183,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
      */
 
     dsbase = 0;
-    len = 0U;
+    len = 0u;
 
     for (i = 0, v = 0; i < rangeCount; i++, v += 2) {
 
@@ -195,7 +195,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
 
         /* Combine the footer with the next header. */
         Ns_DStringAppend(dsPtr, "\r\n");
-        len = 2U;
+        len = 2u;
     }
     len += (size_t)AppendMultipartRangeTrailer(dsPtr);
     (void) Ns_SetFileVec(bufs, v, -1, NULL, dsbase, len);
@@ -205,7 +205,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
      * the rebased trailer.
      */
 
-    responseLength = 0U;
+    responseLength = 0u;
 
     for (i = 0, v = 0; i < rangeCount; i++, v += 2) {
 
@@ -252,13 +252,13 @@ static int
 ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
                   Range *ranges, int maxRanges)
 {
-    const char *rangestr;
+    char   *rangestr;
     off_t   start, end;
     Range  *thisPtr = NULL, *prevPtr = NULL;
     int     rangeCount = 0;
 
-    assert(conn != NULL);
-    assert(ranges != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(ranges != NULL);
     
     /*
      * Check for valid "Range:" header
@@ -289,21 +289,14 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
              * Parse: first-byte-pos "-" last-byte-pos
              */
 
-	    start = (off_t)atoll(rangestr);
-            while (CHARTYPE(digit, *rangestr) != 0) {
-                rangestr++;
-            }
-
+	    start = (off_t)strtoll(rangestr, &rangestr, 10);
             if (*rangestr != '-') {
                 return 0; /* Invalid syntax? */
             }
             rangestr++; /* Skip '-' */
 
             if (CHARTYPE(digit, *rangestr) != 0) {
-	        end = (off_t)atoll(rangestr);
-                while (CHARTYPE(digit, *rangestr) != 0) {
-                    rangestr++;
-                }
+	        end = (off_t)strtoll(rangestr, &rangestr, 10);
                 if (end >= (off_t)objLength) {
 		  end = (off_t)objLength - 1;
                 }
@@ -322,11 +315,7 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
                 return 0; /* Invalid syntax? */
             }
 
-            end = (off_t)atoll(rangestr);
-            while (CHARTYPE(digit, *rangestr) != 0) {
-                rangestr++;
-            }
-
+            end = (off_t)strtoll(rangestr, &rangestr, 10);
             if (end >= (off_t)objLength) {
 	      end = (off_t)objLength;
             }
@@ -446,7 +435,7 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
 static void
 SetRangeHeader(const Ns_Conn *conn, off_t start, off_t end, size_t objLength)
 {
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
     
     Ns_ConnPrintfHeaders(conn, "Content-range",
         "bytes %" PRIuMAX "-%" PRIuMAX "/%" PRIuMAX,
@@ -456,7 +445,7 @@ SetRangeHeader(const Ns_Conn *conn, off_t start, off_t end, size_t objLength)
 static void
 SetMultipartRangeHeader(const Ns_Conn *conn)
 {
-    assert(conn != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
         
     Ns_ConnSetTypeHeader(conn,
         "multipart/byteranges; boundary=NaviServerNaviServerNaviServer");
@@ -485,8 +474,8 @@ AppendMultipartRangeHeader(Ns_DString *dsPtr, const char *type,
 {
     int origlen;
 
-    assert(dsPtr != NULL);
-    assert(type != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(type != NULL);
 
     origlen = dsPtr->length;
     
@@ -504,7 +493,7 @@ AppendMultipartRangeTrailer(Ns_DString *dsPtr)
 {
     int origlen;
 
-    assert(dsPtr != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
     
     origlen = dsPtr->length;
     Ns_DStringAppend(dsPtr, "--NaviServerNaviServerNaviServer--\r\n");

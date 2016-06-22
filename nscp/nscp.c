@@ -62,7 +62,7 @@ typedef struct Sess {
     const char *user;
     int id;
     NS_SOCKET sock;
-    struct sockaddr_in sa;
+    struct NS_SOCKADDR_STORAGE sa;
 } Sess;
 
 /*
@@ -75,19 +75,20 @@ static int Login(const Sess *sessPtr, Tcl_DString *unameDSPtr);
 static int GetLine(NS_SOCKET sock, const char *prompt, Tcl_DString *dsPtr, int echo);
 static Ns_ArgProc ArgProc;
 
+NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 /*
  * The following values are sent to the telnet client to enable
  * and disable password prompt echo.
  */
 
-#define TN_IAC  255U
-#define TN_WILL 251U
-#define TN_WONT 252U
-#define TN_DO   253U
-#define TN_DONT 254U
-#define TN_EOF  236U
-#define TN_IP   244U
-#define TN_ECHO   1U
+#define TN_IAC  255u
+#define TN_WILL 251u
+#define TN_WONT 252u
+#define TN_DO   253u
+#define TN_DONT 254u
+#define TN_EOF  236u
+#define TN_IP   244u
+#define TN_ECHO   1u
 
 static const unsigned char do_echo[]    = {TN_IAC, TN_DO,   TN_ECHO};
 static const unsigned char dont_echo[]  = {TN_IAC, TN_DONT, TN_ECHO};
@@ -131,12 +132,14 @@ Ns_ModuleInit(const char *server, const char *module)
     Tcl_HashEntry *hPtr;
     Ns_Set        *set;
 
+    NS_NONNULL_ASSERT(module != NULL);
+
     /*
      * Create the listening socket and callback.
      */
 
     path = Ns_ConfigGetPath(server, module, (char *)0);
-    addr = Ns_ConfigString(path, "address", "127.0.0.1");
+    addr = Ns_ConfigString(path, "address", NS_IP_LOOPBACK);
     port = Ns_ConfigInt(path, "port", 2080);
 
     if ((addr == NULL) || (port <= 0 ))  {
@@ -145,10 +148,10 @@ Ns_ModuleInit(const char *server, const char *module)
     }
     lsock = Ns_SockListen(addr, port);
     if (lsock == NS_INVALID_SOCKET) {
-	Ns_Log(Error, "nscp: could not listen on %s:%d", addr, port);
+	Ns_Log(Error, "nscp: could not listen on [%s]:%d", addr, port);
 	return NS_ERROR;
     }
-    Ns_Log(Notice, "nscp: listening on %s:%d", addr, port);
+    Ns_Log(Notice, "nscp: listening on [%s]:%d", addr, port);
 
     /*
      * Create a new Mod structure for this instance.
@@ -178,7 +181,7 @@ Ns_ModuleInit(const char *server, const char *module)
      * In default local mode just create empty user without password
      */
 
-    if (set == NULL && STREQ(addr, "127.0.0.1")) {
+    if (set == NULL && STREQ(addr, NS_IP_LOOPBACK)) {
         Ns_DString ds;
 
         Ns_DStringInit(&ds);
@@ -191,7 +194,7 @@ Ns_ModuleInit(const char *server, const char *module)
     /*
      * Process the setup ns_set
      */
-    for (i = 0U; set != NULL && i < Ns_SetSize(set); ++i) {
+    for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
 	const char *key  = Ns_SetKey(set, i);
 	const char *user = Ns_SetValue(set, i);
         const char *passPart;
@@ -359,10 +362,10 @@ EvalThread(void *arg)
     Tcl_Interp *interp;
     Tcl_DString ds;
     Tcl_DString unameDS;
-    char buf[64];
-    int ncmd, stop;
-    size_t len;
-    Sess *sessPtr = arg;
+    char        buf[64], ipString[NS_IPADDR_SIZE];
+    int         ncmd, stop;
+    size_t      len;
+    Sess       *sessPtr = arg;
     const char *res, *server = sessPtr->modPtr->server;
 
     /*
@@ -374,7 +377,9 @@ EvalThread(void *arg)
     Tcl_DStringInit(&unameDS);
     snprintf(buf, sizeof(buf), "-nscp:%d-", sessPtr->id);
     Ns_ThreadSetName(buf);
-    Ns_Log(Notice, "nscp: %s connected", ns_inet_ntoa(sessPtr->sa.sin_addr));
+    Ns_Log(Notice, "nscp: %s connected",
+           ns_inet_ntop((struct sockaddr *)&(sessPtr->sa), ipString, sizeof(ipString)));
+
     if (Login(sessPtr, &unameDS) == 0) {
 	goto done;
     }
@@ -393,7 +398,7 @@ EvalThread(void *arg)
      */
 
     stop = 0;
-    Tcl_CreateCommand(interp, "exit", ExitCmd, (ClientData) &stop, NULL);
+    (void)Tcl_CreateCommand(interp, "exit", ExitCmd, (ClientData) &stop, NULL);
 
     ncmd = 0;
     while (stop == 0) {
@@ -401,11 +406,11 @@ EvalThread(void *arg)
 	++ncmd;
 retry:
 	snprintf(buf, sizeof(buf), "%s:nscp %d> ", server, ncmd);
-	while (1) {
+	for (;;) {
 	    if (GetLine(sessPtr->sock, buf, &ds, 1) == 0) {
 		goto done;
 	    }
-	    if (Tcl_CommandComplete(ds.string)) {
+	    if (Tcl_CommandComplete(ds.string) != 0) {
 		break;
 	    }
 	    snprintf(buf, sizeof(buf), "%s:nscp %d>>> ", server, ncmd);
@@ -446,7 +451,8 @@ done:
     if (interp != NULL) {
     	Ns_TclDeAllocateInterp(interp);
     }
-    Ns_Log(Notice, "nscp: %s disconnected", ns_inet_ntoa(sessPtr->sa.sin_addr));
+    Ns_Log(Notice, "nscp: %s disconnected",
+           ns_inet_ntop((struct sockaddr *)&(sessPtr->sa), ipString, sizeof(ipString)));
     ns_sockclose(sessPtr->sock);
     ns_free(sessPtr);
 }
@@ -583,8 +589,8 @@ Login(const Sess *sessPtr, Tcl_DString *unameDSPtr)
     Tcl_DStringInit(&pds);
     if (GetLine(sessPtr->sock, "login: ", &uds, 1) != 0 &&
 	GetLine(sessPtr->sock, "Password: ", &pds, sessPtr->modPtr->echo) != 0) {
-        Tcl_HashEntry  *hPtr;
-	const char     *pass;
+        const Tcl_HashEntry *hPtr;
+	const char          *pass;
 
 	user = Ns_StrTrim(uds.string);
 	pass = Ns_StrTrim(pds.string);

@@ -67,13 +67,17 @@ static const struct {
     {205, "Reset Content"},
     {206, "Partial Content"},
     {207, "Multi-Status"},
+    {208, "Already Reported"},
+    {226, "IM Used"},
     {300, "Multiple Choices"},
-    {301, "Moved"},
+    {301, "Moved Permanently"},
     {302, "Found"},
     {303, "See Other"},
     {304, "Not Modified"},
     {305, "Use Proxy"},
+    {306, "SwitchProxy"},    
     {307, "Temporary Redirect"},
+    {308, "Permanent Redirect"},
     {400, "Bad Request"},
     {401, "Unauthorized"},
     {402, "Payment Required"},
@@ -87,22 +91,34 @@ static const struct {
     {410, "Gone"},
     {411, "Length Required"},
     {412, "Precondition Failed"},
-    {413, "Request Entity Too Large"},
-    {414, "Request-URI Too Long"},
+    {413, "Payload Too Large"},
+    {414, "URI Too Long"},
     {415, "Unsupported Media Type"},
-    {416, "Requested Range Not Satisfiable"},
+    {416, "Range Not Satisfiable"},
     {417, "Expectation Failed"},
+    {418, "I'm a teapot"},
+    {419, "Authentication Timeout"},
+    {421, "Misdirected Request"},
     {422, "Unprocessable Entity"},
     {423, "Locked"},
-    {424, "Method Failure"},
+    {424, "Failed Dependency"},
     {425, "Insufficient Space On Resource"},
+    {426, "Ugrade Required"},
+    {426, "Precondition Required"},
+    {429, "Too Many Requests"},
+    {431, "Request Header Fields Too Large"},
+    {451, "Unavailable For Legal Reasons"},
     {500, "Internal Server Error"},
     {501, "Not Implemented"},
     {502, "Bad Gateway"},
     {503, "Service Unavailable"},
     {504, "Gateway Timeout"},
     {505, "HTTP Version Not Supported"},
-    {507, "Insufficient Storage"}
+    {506, "Variant Also Negotiates"},
+    {507, "Insufficient Storage"},
+    {508, "Loop Detected"},
+    {510, "Not Extended"},
+    {511, "Network Authentication Required"}
 };
 
 /*
@@ -365,8 +381,8 @@ Ns_ConnSetLastModifiedHeader(const Ns_Conn *conn, const time_t *mtime)
 {
     Ns_DString ds;
 
-    assert(conn != NULL);
-    assert(mtime != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(mtime != NULL);
 
     Ns_DStringInit(&ds);
     Ns_ConnCondSetHeaders(conn, "Last-Modified", Ns_HttpTime(&ds, mtime));
@@ -435,7 +451,7 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
     }
 
     Ns_DStringPrintf(dsPtr, "HTTP/%.1f %d %s\r\n",
-                     MIN(connPtr->request->version, 1.1),
+                     MIN(connPtr->request.version, 1.1),
                      connPtr->responseStatus,
                      reason);
 
@@ -526,6 +542,7 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
     /*
      * End of headers.
      */
+    Ns_Log(Ns_LogRequestDebug, "headers:\n%s", dsPtr->string);
 
     Ns_DStringNAppend(dsPtr, "\r\n", 2);
 }
@@ -656,9 +673,9 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
     Ns_DString  ds;
     int         result;
 
-    assert(conn != NULL);
-    assert(title != NULL);
-    assert(notice != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(title != NULL);
+    NS_NONNULL_ASSERT(notice != NULL);
 
     servPtr = connPtr->poolPtr->servPtr;
     Ns_DStringInit(&ds);
@@ -683,7 +700,7 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
                             Ns_InfoServerName(), "/",
                             Ns_InfoServerVersion(), " on ",
                             NULL);
-        Ns_ConnLocationAppend(conn, &ds);
+        (void) Ns_ConnLocationAppend(conn, &ds);
         Ns_DStringAppend(&ds, "</i></small></p>\n");
     }
 
@@ -730,9 +747,9 @@ Ns_ConnReturnData(Ns_Conn *conn, int status, const char *data,
     int result;
     size_t length;
 
-    assert(conn != NULL);
-    assert(data != NULL);
-    assert(mimeType != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(data != NULL);
+    NS_NONNULL_ASSERT(mimeType != NULL);
 
     Ns_ConnSetTypeHeader(conn, mimeType);
     length = (len < 0) ? strlen(data) : (size_t)len;
@@ -769,8 +786,8 @@ Ns_ConnReturnCharData(Ns_Conn *conn, int status, const char *data,
     struct iovec sbuf;
     int result;
 
-    assert(conn != NULL);
-    assert(data != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(data != NULL);
     
     if (mimeType != NULL) {
         Ns_ConnSetEncodedTypeHeader(conn, mimeType);
@@ -838,8 +855,9 @@ int
 Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, const char *mimeType,
                          Tcl_Channel chan, size_t len)
 {
-    assert(conn != NULL);
-    assert(mimeType != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(mimeType != NULL);
+    
     return ReturnOpen(conn, status, mimeType, chan, NULL, -1, len);
 }
 
@@ -847,8 +865,9 @@ int
 Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, const char *mimeType,
                       FILE *fp, size_t len)
 {
-    assert(conn != NULL);
-    assert(mimeType != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(mimeType != NULL);
+    
     return ReturnOpen(conn, status, mimeType, NULL, fp, -1, len);
 }
 
@@ -856,8 +875,9 @@ int
 Ns_ConnReturnOpenFd(Ns_Conn *conn, int status, const char *mimeType,
                     int fd, size_t len)
 {
-    assert(conn != NULL);
-    assert(mimeType != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(mimeType != NULL);
+    
     return ReturnOpen(conn, status, mimeType, NULL, NULL, fd, len);
 }
 
@@ -867,12 +887,12 @@ ReturnOpen(Ns_Conn *conn, int status, const char *mimeType, Tcl_Channel chan,
 {
     int result;
 
-    assert(conn != NULL);
-    assert(mimeType != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(mimeType != NULL);
 
     Ns_ConnSetTypeHeader(conn, mimeType);
     Ns_ConnSetResponseStatus(conn, status);
-    
+
     if ((chan != NULL || fp != NULL) 
 	&& (NsWriterQueue(conn, len, chan, fp, fd, NULL, 0, 0) == NS_OK)) {
 	return NS_OK;
@@ -922,8 +942,8 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
     int         nbufs = (int)(sizeof(bufs) / sizeof(bufs[0]));
     int         rangeCount, result = NS_ERROR;
 
-    assert(conn != NULL);
-    assert(mimeType != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(mimeType != NULL);
 
     Ns_DStringInit(&ds);
     rangeCount = NsConnParseRange(conn, mimeType, fd, data, len,

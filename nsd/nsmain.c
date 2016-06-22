@@ -132,7 +132,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
      */
 
     Ns_MutexLock(&nsconf.state.lock);
-    nsconf.state.started = 0;
+    nsconf.state.started = NS_FALSE;
     Ns_MutexUnlock(&nsconf.state.lock);
 
     /*
@@ -265,7 +265,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
 
     if (mode == 'c') {
 	int i;
-        cmd.argv = ns_calloc((size_t)argc - (size_t)optind + 2u, sizeof(char *));
+        cmd.argv = ns_calloc(((size_t)argc - (size_t)optind) + 2u, sizeof(char *));
         cmd.argc = 0;
         cmd.argv[cmd.argc++] = argv[0];
         for (i = optind; i < argc; i++) {
@@ -458,8 +458,8 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
      */
 
     servers = Ns_ConfigCreateSection("ns/servers");
-    if (Ns_SetSize(servers) == 0U) {
-        Ns_SetPut(servers, "default", "Default NaviServer");
+    if (Ns_SetSize(servers) == 0u) {
+        (void)Ns_SetPut(servers, "default", "Default NaviServer");
     }
 
     /*
@@ -636,7 +636,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
     } else {
 	size_t i;
 
-        for (i = 0U; i < Ns_SetSize(servers); ++i) {
+        for (i = 0u; i < Ns_SetSize(servers); ++i) {
             server = Ns_SetKey(servers, i);
             NsInitServer(server, initProc);
         }
@@ -664,7 +664,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
     StatusMsg(running);
 
     Ns_MutexLock(&nsconf.state.lock);
-    nsconf.state.started = 1;
+    nsconf.state.started = NS_TRUE;
     Ns_CondBroadcast(&nsconf.state.cond);
     Ns_MutexUnlock(&nsconf.state.lock);
 
@@ -704,7 +704,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
     StatusMsg(stopping);
 
     Ns_MutexLock(&nsconf.state.lock);
-    nsconf.state.stopping = 1;
+    nsconf.state.stopping = NS_TRUE;
     if (sig == NS_SIGQUIT || nsconf.shutdowntimeout < 0) {
         nsconf.shutdowntimeout = 0;
     }
@@ -787,12 +787,12 @@ Ns_WaitForStartup(void)
     /*
      * This dirty-read is worth the effort.
      */
-    if (nsconf.state.started != 0) {
+    if (nsconf.state.started) {
         return NS_OK;
     }
 
     Ns_MutexLock(&nsconf.state.lock);
-    while (nsconf.state.started == 0) {
+    while (nsconf.state.started == NS_FALSE) {
         Ns_CondWait(&nsconf.state.cond, &nsconf.state.lock);
     }
     Ns_MutexUnlock(&nsconf.state.lock);
@@ -896,7 +896,7 @@ NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 static void
 StatusMsg(runState state)
 {
-    char *what;
+    const char *what;
 
     switch (state) {
     case starting:
@@ -1005,7 +1005,7 @@ UsageError(const char *msg, ...)
         "  -u  run as <user>\n"
         "  -g  run as <group>\n"
         "  -r  chroot to <path>\n"
-        "  -b  bind <address:port>\n"
+        "  -b  bind <address:port>  (Example: 192.168.0.1:80,[::1]:80)\n"
         "  -B  bind address:port list from <file>\n"
 #endif
         "  -s  use server named <server> in config file\n"
@@ -1054,7 +1054,7 @@ MakePath(char *file)
         Tcl_AppendStringsToObj(obj, "/", file, NULL);
 
         Tcl_IncrRefCount(obj);
-        if (Tcl_FSGetNormalizedPath(NULL, obj)) {
+        if (Tcl_FSGetNormalizedPath(NULL, obj) != NULL) {
 	  path = Tcl_FSGetTranslatedStringPath(NULL, obj);
         }
         Tcl_DecrRefCount(obj);

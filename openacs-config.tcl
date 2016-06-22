@@ -16,7 +16,10 @@ set httpsport		8443
 # The hostname and address should be set to actual values.
 # setting the address to 0.0.0.0 means aolserver listens on all interfaces
 set hostname		localhost
-set address		127.0.0.1
+set address_v4		127.0.0.1
+#set address_v6		::1
+
+
 
 # Note: If port is privileged (usually < 1024), OpenACS must be
 # started by root, and the run script must contain the flag 
@@ -38,7 +41,6 @@ set proxy_mode		false
 #---------------------------------------------------------------------
 # Which database do you want? postgres or oracle
 set database              postgres 
-
 set db_name               $server
 
 if { $database eq "oracle" } {
@@ -53,12 +55,16 @@ if { $database eq "oracle" } {
 # if debug is false, all debugging will be turned off
 set debug false
 set dev   false
+set verboseSQL false
 
 set max_file_upload_mb        20
 set max_file_upload_min        5
 
 #---------------------------------------------------------------------
-# set environment variables HOME and LANG
+# Set environment variables HOME and LANG. HOME is needed since
+# otherwise some programms called via exec might try to write into the
+# root home directory.
+#
 set env(HOME) $homedir
 set env(LANG) en_US.UTF-8
 
@@ -69,7 +75,13 @@ set env(LANG) en_US.UTF-8
 # Nothing below this point need be changed in a default install.
 #
 ###################################################################### 
+#
+ns_logctl severity "Debug(ns:driver)" $debug
 
+set addresses {}
+set suffixes {}
+if {[info exists address_v4]} {lappend addresses $address_v4; lappend suffixes v4}
+if {[info exists address_v6]} {lappend addresses $address_v6; lappend suffixes v6}
 
 #---------------------------------------------------------------------
 #
@@ -92,7 +104,10 @@ ns_section ns/parameters
 	# ns_param	logroll		on
         ns_param	logmaxbackup	100  ;# 10 is default
 	ns_param	logdebug	$debug
-	ns_param	logdev		$dev
+        ns_param	logdev		$dev
+        ns_param	logcolorize	true
+        ns_param	logprefixcolor 	   green
+        ns_param	logprefixintensity normal
 
 	# ns_param	mailhost	localhost 
 	# ns_param	jobsperthread	0
@@ -153,6 +168,8 @@ ns_section      "ns/fastpath"
     #ns_param        gzip_static         true       ;# check for static gzip; default: false
     #ns_param        gzip_refresh        true       ;# refresh stale .gz files on the fly using ::ns_gzipfile
     #ns_param        gzip_cmd            "/usr/bin/gzip -9"  ;# use for re-compressing
+    #ns_param        minify_css_cmd      "/usr/bin/yui-compressor --type css"
+    #ns_param        minify_js_cmd       "/usr/bin/yui-compressor --type js"
 
 #---------------------------------------------------------------------
 # 
@@ -296,7 +313,8 @@ ns_section ns/server/${server}/tdav/share/share1
 # Socket driver module (HTTP)  -- nssock 
 # 
 #---------------------------------------------------------------------
-ns_section ns/server/${server}/module/nssock
+foreach address $addresses suffix $suffixes {
+    ns_section ns/server/${server}/module/nssock_$suffix
 	ns_param	address		$address
 	ns_param	hostname	$hostname
 	ns_param	port		$httpport	;# 80 or 443
@@ -317,15 +335,13 @@ ns_section ns/server/${server}/module/nssock
 	# ns_param	nodelay		true	;# false; activate TCP_NODELAY if not activated per default on your OS
 	# ns_param	keepalivemaxuploadsize	  500000  ;# 0, don't allow keep-alive for upload content larger than this
 	# ns_param	keepalivemaxdownloadsize  1000000 ;# 0, don't allow keep-alive for download content larger than this
-	#
-	# Spooling Threads
-	#
 	# ns_param	spoolerthreads	1	;# 0, number of upload spooler threads
-	# ns_param	maxupload	0	;# 0, when specified, spool uploads larger than this value to a temp file
+	ns_param	maxupload	100000	;# 0, when specified, spool uploads larger than this value to a temp file
 	ns_param	writerthreads	2	;# 0, number of writer threads
-	ns_param	writersize	4096	;# 1024*1024, use writer threads for files larger than this value
+	ns_param	writersize	1024	;# 1024*1024, use writer threads for files larger than this value
 	# ns_param	writerbufsize	8192	;# 8192, buffer size for writer threads
 	# ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
+}
 
 
 #---------------------------------------------------------------------
@@ -390,8 +406,8 @@ ns_section ns/server/${server}/module/nspam
 # SSL
 # 
 #---------------------------------------------------------------------
-
-ns_section    "ns/server/${server}/module/nsssl"
+foreach address $addresses suffix $suffixes {
+    ns_section    "ns/server/${server}/module/nsssl_$suffix"
        ns_param		address    	$address
        ns_param		port       	$httpsport
        ns_param		hostname       	$hostname
@@ -400,12 +416,12 @@ ns_section    "ns/server/${server}/module/nsssl"
        ns_param		certificate	$serverroot/etc/certfile.pem
        ns_param		verify     	0
        ns_param		writerthreads	2
-       ns_param		writersize	4096
+       ns_param		writersize	1024
        ns_param		writerbufsize	16384	;# 8192, buffer size for writer threads
        #ns_param	writerstreaming	true	;# false
        #ns_param	deferaccept	true    ;# false, Performance optimization
        ns_param		maxinput	[expr {$max_file_upload_mb * 1024*1024}] ;# Maximum File Size for uploads in bytes
-
+}
 
 #---------------------------------------------------------------------
 # 
@@ -419,6 +435,8 @@ ns_section "ns/db/drivers"
 	ns_param	ora8           ${bindir}/ora8.so
     } else {
 	ns_param	postgres       ${bindir}/nsdbpg.so
+	#
+	ns_logctl severity "Debug(sql)" -color blue $verboseSQL
     }
 
     if { $database eq "oracle" } {
@@ -428,7 +446,7 @@ ns_section "ns/db/drivers"
     } else {
       ns_section "ns/db/driver/postgres"
 	# Set this parameter, when "psql" is not on your path (OpenACS specific)
-	# ns_param	pgbin	"/usr/local/pg920/bin/"
+	# ns_param	pgbin	"/usr/local/pg950/bin/"
     }
 
  
@@ -439,9 +457,13 @@ ns_section "ns/db/drivers"
 #
 # NaviServer can have different pools connecting to different databases 
 # and even different different database servers.  See
-# http://openacs.org/doc/tutorial-second-database.html
+# http://openacs.org/doc/tutorial-second-database
 # An example 'other db' configuration is included (and commented out) using other1_db_name
 # set other1_db_name "yourDBname"
+
+ns_section ns/server/${server}/db
+	ns_param	pools              pool1,pool2,pool3
+	ns_param	defaultpool        pool1
 
 ns_section ns/db/pools 
 	ns_param	pool1              "Pool 1"
@@ -451,8 +473,8 @@ ns_section ns/db/pools
 ns_section ns/db/pool/pool1
 	# ns_param	maxidle            0
 	# ns_param	maxopen            0
-	ns_param	connections        15
-	ns_param	verbose            $debug
+        ns_param	connections        15
+        ns_param        LogMinDuration     0.01   ;# when sql logging is on, log only statements above this duration
 	ns_param	logsqlerrors       $debug
     if { $database eq "oracle" } {
 	ns_param	driver             ora8
@@ -470,8 +492,8 @@ ns_section ns/db/pool/pool2
 	# ns_param	maxidle            0
 	# ns_param	maxopen            0
 	ns_param	connections        5
-	ns_param	verbose            $debug
-	ns_param	logsqlerrors       $debug
+        ns_param        LogMinDuration     0.01   ;# when sql logging is on, log only statements above this duration
+        ns_param	logsqlerrors       $debug
     if { $database eq "oracle" } {
 	ns_param	driver             ora8
 	ns_param	datasource         {}
@@ -488,8 +510,8 @@ ns_section ns/db/pool/pool3
 	# ns_param	maxidle            0
 	# ns_param	maxopen            0
 	ns_param	connections        5
-	ns_param	verbose            $debug
-	ns_param	logsqlerrors       $debug
+        #ns_param        LogMinDuration     0.00   ;# when sql logging is on, log only statements above this duration
+        ns_param	logsqlerrors       $debug
     if { $database eq "oracle" } {
 	ns_param	driver             ora8
 	ns_param	datasource         {}
@@ -503,9 +525,6 @@ ns_section ns/db/pool/pool3
     } 
 
 
-ns_section ns/server/${server}/db
-	ns_param	pools              pool1,pool2,pool3
-	ns_param	defaultpool        pool1
 
 
 #---------------------------------------------------------------------
@@ -513,11 +532,13 @@ ns_section ns/server/${server}/db
 # don't uncomment modules unless they have been installed.
 
 ns_section ns/server/${server}/modules 
-	ns_param	nssock		${bindir}/nssock.so 
 	ns_param	nslog		${bindir}/nslog.so 
 	ns_param	nsdb		${bindir}/nsdb.so
 	ns_param	nsproxy		${bindir}/nsproxy.so
-	# ns_param	nsssl		${bindir}/nsssl.so 
+        if {[info exists address_v4]} { ns_param nssock_v4 ${bindir}/nssock.so }
+        if {[info exists address_v6]} { ns_param nssock_v6 ${bindir}/nssock.so }
+        #if {[info exists address_v4]} { ns_param nsssl_v4 ${bindir}/nsssl.so }
+        #if {[info exists address_v6]} { ns_param nsssl_v6 ${bindir}/nsssl.so }
 
 	#
 	# Determine, if libthread is installed

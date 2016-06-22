@@ -68,7 +68,7 @@ Ns_ClsAlloc(Ns_Cls *clsPtr, Ns_Callback *cleanupProc)
 
     Ns_MasterLock();
     if (nextId == NS_CONN_MAXCLS) {
-	Ns_Fatal("Ns_ClsAlloc: exceded max cls: %d", NS_CONN_MAXCLS);
+	Ns_Fatal("Ns_ClsAlloc: exceeded max cls: %d", NS_CONN_MAXCLS);
     }
     id = nextId++;
     cleanupProcs[id] = cleanupProc;
@@ -152,7 +152,7 @@ NsClsCleanup(Conn *connPtr)
     int trys, retry;
     void *arg;
 
-    assert(connPtr != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
     
     trys = 0;
     do {
