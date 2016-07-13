@@ -74,12 +74,12 @@ static bool FillBuf(Stream *sPtr)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_FetchPage(Ns_DString *dsPtr, const char *url, const char *server)
 {
-    Ns_DString  ds;
-    Tcl_Channel chan;
-    int result = NS_OK;
+    Ns_DString    ds;
+    Tcl_Channel   chan;
+    Ns_ReturnCode result = NS_OK;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(url != NULL);
@@ -96,7 +96,7 @@ Ns_FetchPage(Ns_DString *dsPtr, const char *url, const char *server)
         while ((nread = Tcl_Read(chan, buf, (int)sizeof(buf))) > 0) {
             Ns_DStringNAppend(dsPtr, buf, nread);
         }
-        result = Tcl_Close(NULL, chan);
+        result = (Tcl_Close(NULL, chan) == TCL_OK ? NS_OK : NS_ERROR);
     } else {
         result = NS_ERROR;
     }
@@ -123,7 +123,7 @@ Ns_FetchPage(Ns_DString *dsPtr, const char *url, const char *server)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
 {
     NS_SOCKET       sock;
@@ -131,7 +131,7 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
     Ns_DString      ds;
     Stream          s;
     Ns_Request      request;
-    int             status;
+    Ns_ReturnCode   status;
     size_t          toSend;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
@@ -267,11 +267,12 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
 int
 NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp   *itPtr = arg;
-    Ns_DString  ds;
-    Ns_Set     *headers;
-    int         status, code;
-    const char *url;
+    NsInterp      *itPtr = arg;
+    Ns_DString     ds;
+    Ns_Set        *headers;
+    int            code;
+    Ns_ReturnCode  status;
+    const char    *url;
 
     if ((objc != 3) && (objc != 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "url ?headersSetIdVar?");

@@ -101,7 +101,7 @@ static void RunTraces(const NsInterp *itPtr, Ns_TclTraceType why)
 static void LogTrace(const NsInterp *itPtr, const TclTrace *tracePtr, Ns_TclTraceType why)
     NS_GNUC_NONNULL(1);
 
-static int RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
+static Ns_ReturnCode RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
     NS_GNUC_NONNULL(1);
 
 static Tcl_InterpDeleteProc FreeInterpData;
@@ -113,6 +113,7 @@ static Ns_ServerInitProc ConfigServerTcl;
  */
 
 static Ns_Tls tls;  /* Slot for per-thread Tcl interp cache. */
+static Ns_Mutex interpLock = NULL; 
 
 
 
@@ -161,6 +162,8 @@ Nsd_Init(Tcl_Interp *interp)
 void
 NsInitTcl(void)
 {
+    Ns_MutexInit(&interpLock);
+    Ns_MutexSetName(&interpLock, "interp");
     /*
      * Allocate the thread storage slot for the table of interps
      * per-thread. At thread exit, DeleteInterps will be called
@@ -172,7 +175,7 @@ NsInitTcl(void)
     NsRegisterServerInit(ConfigServerTcl);
 }
 
-static int
+static Ns_ReturnCode
 ConfigServerTcl(const char *server)
 {
     NsServer   *servPtr;
@@ -309,8 +312,8 @@ Ns_TclInit(Tcl_Interp *interp)
  *      Execute a tcl script in the context of the given server.
  *
  * Results:
- *      Tcl result code. String result or error placed in dsPtr if
- *      not NULL.
+ *      NaviServer result code. String result or error placed in dsPtr if
+ *      dsPtr is not NULL.
  *
  * Side effects:
  *      Tcl interp may be allocated, initialized and cached if none
@@ -319,11 +322,11 @@ Ns_TclInit(Tcl_Interp *interp)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TclEval(Ns_DString *dsPtr, const char *server, const char *script)
 {
-    Tcl_Interp *interp;
-    int         retcode = NS_ERROR;
+    Tcl_Interp   *interp;
+    Ns_ReturnCode status = NS_ERROR;
 
     NS_NONNULL_ASSERT(script != NULL);
 
@@ -335,14 +338,14 @@ Ns_TclEval(Ns_DString *dsPtr, const char *server, const char *script)
             result = Ns_TclLogErrorInfo(interp, NULL);
         } else {
             result = Tcl_GetStringResult(interp);
-            retcode = NS_OK;
+            status = NS_OK;
         }
         if (dsPtr != NULL) {
             Ns_DStringAppend(dsPtr, result);
         }
         Ns_TclDeAllocateInterp(interp);
     }
-    return retcode;
+    return status;
 }
 
 
@@ -640,7 +643,7 @@ Ns_TclMarkForDelete(Tcl_Interp *interp)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TclRegisterTrace(const char *server, Ns_TclTraceProc *proc,
                     const void *arg, Ns_TclTraceType when)
 {
@@ -716,25 +719,25 @@ Ns_TclRegisterTrace(const char *server, Ns_TclTraceProc *proc,
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TclRegisterAtCreate(Ns_TclTraceProc *proc, const void *arg)
 {
     return RegisterAt(proc, arg, NS_TCL_TRACE_CREATE);
 }
 
-int
+Ns_ReturnCode
 Ns_TclRegisterAtCleanup(Ns_TclTraceProc *proc, const void *arg)
 {
     return RegisterAt(proc, arg, NS_TCL_TRACE_DEALLOCATE);
 }
 
-int
+Ns_ReturnCode
 Ns_TclRegisterAtDelete(Ns_TclTraceProc *proc, const void *arg)
 {
     return RegisterAt(proc, arg, NS_TCL_TRACE_DELETE);
 }
 
-static int
+static Ns_ReturnCode
 RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
 {
     NsServer *servPtr;
@@ -771,7 +774,7 @@ RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TclInitInterps(const char *server, Ns_TclInterpInitProc *proc, const void *arg)
 {
     return Ns_TclRegisterTrace(server, proc, arg, NS_TCL_TRACE_CREATE);
@@ -892,21 +895,24 @@ Ns_TclInterpServer(Tcl_Interp *interp)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TclInitModule(const char *server, const char *module)
 {
-    NsServer *servPtr;
+    NsServer     *servPtr;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(module != NULL);
 
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
-        return NS_ERROR;
+        status = NS_ERROR;
+    } else {
+        (void) Tcl_ListObjAppendElement(NULL, servPtr->tcl.modules,
+                                        Tcl_NewStringObj(module, -1));
+        status = NS_OK;
     }
-    (void) Tcl_ListObjAppendElement(NULL, servPtr->tcl.modules,
-                                    Tcl_NewStringObj(module, -1));
-    return NS_OK;
+    return status;
 }
 
 
@@ -1154,11 +1160,14 @@ NsTclICtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
         if (servPtr != NsGetInitServer()) {
             Tcl_SetResult(interp, "cannot register trace after server startup",
                           TCL_STATIC);
-            return TCL_ERROR;
+            result = TCL_ERROR;
+        } else {
+            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclTraceProc, 
+                                      scriptObj, remain, objv + (objc - remain));
+            if (Ns_TclRegisterTrace(servPtr->server, NsTclTraceProc, cbPtr, when) != NS_OK) {
+                result = TCL_ERROR;
+            }
         }
-        cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclTraceProc, 
-				  scriptObj, remain, objv + (objc - remain));
-        result = Ns_TclRegisterTrace(servPtr->server, NsTclTraceProc, cbPtr, when);
         break;
 
     case IGetTracesIdx:
@@ -1413,7 +1422,7 @@ NsFreeConnInterp(Conn *connPtr)
  *      Eval a registered Tcl interp trace callback.
  *
  * Results:
- *      Status from script eval.
+ *      Tcl result code from script eval.
  *
  * Side effects:
  *      Depends on script.
@@ -1425,14 +1434,14 @@ int
 NsTclTraceProc(Tcl_Interp *interp, const void *arg)
 {
     const Ns_TclCallback *cbPtr = arg;
-    int   status;
+    int                   tclResult;
 
-    status = Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0);
-    if (status != TCL_OK) {
+    tclResult = Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0);
+    if (tclResult != TCL_OK) {
         (void) Ns_TclLogErrorInfo(interp, "\n(context: trace proc)");
     }
 
-    return status;
+    return tclResult;
 }
 
 
@@ -1604,12 +1613,11 @@ GetCacheEntry(const NsServer *servPtr)
 
 Tcl_Interp *
 NsTclCreateInterp() {
-    static Ns_Mutex initLock = NULL; 
     Tcl_Interp *interp;
 
-    Ns_MutexLock(&initLock);
+    Ns_MutexLock(&interpLock);
     interp = Tcl_CreateInterp();
-    Ns_MutexUnlock(&initLock);
+    Ns_MutexUnlock(&interpLock);
 
     return interp;
 }

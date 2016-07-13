@@ -64,7 +64,7 @@ static Ns_ObjvTable filters[] = {
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TclRequest(Ns_Conn *conn, const char *name)
 {
     Ns_TclCallback cb;
@@ -429,13 +429,13 @@ NsTclRegisterTraceObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsTclRequestProc(void *arg, Ns_Conn *conn)
 {
     Ns_TclCallback *cbPtr = arg;
     Tcl_Interp     *interp;
     Ns_DString      ds;
-    int             status = NS_OK;
+    Ns_ReturnCode   status = NS_OK;
 
     NS_NONNULL_ASSERT(conn != NULL);
     
@@ -473,14 +473,15 @@ NsTclRequestProc(void *arg, Ns_Conn *conn)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsTclFilterProc(void *arg, Ns_Conn *conn, Ns_FilterType why)
 {
     Ns_TclCallback      *cbPtr = arg;
     Tcl_DString          ds;
     Tcl_Interp          *interp;
-    int                  ii, status;
+    int                  ii, rc;
     const char          *result;
+    Ns_ReturnCode        status;
 
     interp = Ns_GetConnInterp(conn);
     Tcl_DStringInit(&ds);
@@ -527,11 +528,11 @@ NsTclFilterProc(void *arg, Ns_Conn *conn, Ns_FilterType why)
      */
 
     Tcl_AllowExceptions(interp);
-    status = Tcl_EvalEx(interp, ds.string, ds.length, 0);
+    rc = Tcl_EvalEx(interp, ds.string, ds.length, 0);
     result = Tcl_GetStringResult(interp);
     Ns_DStringSetLength(&ds, 0);
 
-    if (status != TCL_OK) {
+    if (rc != TCL_OK) {
 
         /*
          * Handle Tcl errors and timeouts.
@@ -588,7 +589,7 @@ NsTclFilterProc(void *arg, Ns_Conn *conn, Ns_FilterType why)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsShortcutFilterProc(void *UNUSED(arg), Ns_Conn *UNUSED(conn), Ns_FilterType UNUSED(why))
 {
     return NS_FILTER_BREAK;

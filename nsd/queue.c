@@ -316,7 +316,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
  *      Append a connection to the run queue.
  *
  * Results:
- *      1 if queued, 0 otherwise.
+ *      NS_TRUE if queued, NS_FALSE otherwise.
  *
  * Side effects:
  *      Conneciton will run shortly.
@@ -324,7 +324,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
  *----------------------------------------------------------------------
  */
 
-int
+bool
 NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 {
     ConnThreadArg *argPtr = NULL;
@@ -452,7 +452,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 	       poolPtr->wqueue.wait.num,
 	       poolPtr->threads.idle, 
 	       poolPtr->threads.current);
-	return 0;
+	return NS_FALSE;
     }
 
     if (argPtr != NULL) {
@@ -505,7 +505,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 	CreateConnThread(poolPtr);
     } 
 
-    return 1;
+    return NS_TRUE;
 }
 
 
@@ -910,9 +910,9 @@ NsStopServer(NsServer *servPtr)
 void
 NsWaitServer(NsServer *servPtr, const Ns_Time *toPtr)
 {
-    ConnPool  *poolPtr;
-    Ns_Thread  joinThread;
-    int        status;
+    ConnPool     *poolPtr;
+    Ns_Thread     joinThread;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(servPtr != NULL);
     NS_NONNULL_ASSERT(toPtr != NULL);
@@ -1004,7 +1004,8 @@ NsConnThread(void *arg)
     Ns_Time        wait, *timePtr = &wait;
     uintptr_t      id;
     bool           shutdown;
-    int            status = NS_OK, cpt, ncons, current, fromQueue;
+    int            cpt, ncons, current, fromQueue;
+    Ns_ReturnCode  status = NS_OK;
     long           timeout;
     const char    *exitMsg;
     Ns_Mutex      *threadsLockPtr = &poolPtr->threads.lock;
@@ -1409,15 +1410,15 @@ NsConnThread(void *arg)
  *----------------------------------------------------------------------
  */
 static void
-ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
+ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
 {
-    Ns_Conn  *conn;
-    NsServer *servPtr;
-    int       status = NS_OK;
-    Sock     *sockPtr;
-    char     *auth;
+    Ns_Conn      *conn;
+    NsServer     *servPtr;
+    Ns_ReturnCode status = NS_OK;
+    Sock         *sockPtr;
+    char         *auth;
 
-    NS_NONNULL_ASSERT(argPtr != NULL);
+    /*NS_NONNULL_ASSERT(argPtr != NULL);*/
     NS_NONNULL_ASSERT(connPtr != NULL);
 
     conn = (Ns_Conn *) connPtr;
@@ -1468,7 +1469,7 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
 
     connPtr->keep = -1;            /* Undecided, default keep-alive rules apply */
 
-    Ns_ConnSetCompression(conn, (servPtr->compress.enable != 0) ? servPtr->compress.level : 0);
+    Ns_ConnSetCompression(conn, servPtr->compress.enable ? servPtr->compress.level : 0);
     connPtr->compress = -1;
 
     connPtr->outputEncoding = servPtr->encoding.outputEncoding;
@@ -1542,7 +1543,10 @@ ConnRun(const ConnThreadArg *argPtr, Conn *connPtr)
                 (void) Ns_ConnReturnUnauthorized(conn);
                 break;
 
-            case NS_ERROR:
+            case NS_ERROR:          /* fall through */
+            case NS_FILTER_BREAK:   /* fall through */
+            case NS_FILTER_RETURN:  /* fall through */
+            case NS_TIMEOUT:        /* fall through */
             default:
                 (void) Ns_ConnReturnInternalError(conn);
                 break;

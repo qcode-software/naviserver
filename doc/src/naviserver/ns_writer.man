@@ -29,7 +29,8 @@ are returned.
 [call [cmd ns_writer] [arg submit] [arg data]]
 
 [para]
-Submit arbitrary data to be returned via writer thread, data can be binary.
+Submit arbitrary data to be returned via writer thread, data can be
+binary. On success the function returns 1, otherwise 0.
 
 
 [call [cmd ns_writer] \
@@ -41,7 +42,8 @@ Submit arbitrary data to be returned via writer thread, data can be binary.
 
 [para]
 Submits file to be returned via writer thread. For parital requests,
-ns_writer does NOT change status code or sets content-range.
+ns_writer does NOT change status code or sets content-range. On
+success the function returns 1, otherwise 0.
 Optionally the following arguments can be used:
 
 [para]

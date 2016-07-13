@@ -103,7 +103,7 @@ NsInitUrl2File(void)
     NsRegisterServerInit(ConfigServerUrl2File);
 }
 
-static int
+static Ns_ReturnCode
 ConfigServerUrl2File(const char *server)
 {
     NsServer *servPtr;
@@ -196,17 +196,19 @@ Ns_UnRegisterUrl2FileProc(const char *server, const char *url, unsigned int flag
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_FastUrl2FileProc(Ns_DString *dsPtr, const char *url, void *arg)
 {
-    NsServer *servPtr = arg;
+    Ns_ReturnCode status = NS_OK;
+    NsServer     *servPtr = arg;
 
     if (NsPageRoot(dsPtr, servPtr, NULL) == NULL) {
-        return NS_ERROR;
+        status = NS_ERROR;
+    } else {
+        (void) Ns_MakePath(dsPtr, url, NULL);
     }
-    (void) Ns_MakePath(dsPtr, url, NULL);
 
-    return NS_OK;
+    return status;
 }
 
 
@@ -226,7 +228,7 @@ Ns_FastUrl2FileProc(Ns_DString *dsPtr, const char *url, void *arg)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_UrlToFile(Ns_DString *dsPtr, const char *server, const char *url)
 {
     NsServer *servPtr;
@@ -239,10 +241,10 @@ Ns_UrlToFile(Ns_DString *dsPtr, const char *server, const char *url)
     return NsUrlToFile(dsPtr, servPtr, url);
 }
 
-int
+Ns_ReturnCode
 NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
 {
-    int       status = NS_ERROR;
+    Ns_ReturnCode status = NS_ERROR;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(servPtr != NULL);
@@ -319,7 +321,7 @@ Ns_SetUrlToFileProc(const char *server, Ns_UrlToFileProc *procPtr)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsUrlToFileProc(Ns_DString *dsPtr, const char *server, const char *url)
 {
     NsServer *servPtr = NsGetServer(server);
@@ -539,15 +541,16 @@ NsTclRegisterFastUrl2FileObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tc
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsTclUrl2FileProc(Ns_DString *dsPtr, const char *url, void *arg)
 {
+    Ns_ReturnCode   status = NS_OK;
     Ns_TclCallback *cbPtr = arg;
 
-    if (Ns_TclEvalCallback(NULL, cbPtr, dsPtr, url, NULL) != TCL_OK) {
-        return NS_ERROR;
+    if (unlikely(Ns_TclEvalCallback(NULL, cbPtr, dsPtr, url, NULL) != TCL_OK)) {
+        status = NS_ERROR;
     }
-    return NS_OK;
+    return status;
 }
 
 
@@ -567,27 +570,24 @@ NsTclUrl2FileProc(Ns_DString *dsPtr, const char *url, void *arg)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsMountUrl2FileProc(Ns_DString *dsPtr, const char *url, void *arg)
 {
-    Mount *mPtr = arg;
-    const char  *u;
+    Ns_ReturnCode status = NS_OK;
+    Mount        *mPtr = arg;
+    const char   *u;
 
     u = mPtr->url;
     while (*u != '\0' && *url != '\0' && *u == *url) {
         ++u; ++url;
     }
-    if (Ns_PathIsAbsolute(mPtr->basepath) == NS_TRUE) {
+    if (Ns_PathIsAbsolute(mPtr->basepath)) {
         Ns_MakePath(dsPtr, mPtr->basepath, url, NULL);
-        return NS_OK;
+    } else if (Ns_PagePath(dsPtr, mPtr->server, mPtr->basepath, url, NULL) == NULL) {
+        status = NS_ERROR;
     }
 
-    if (Ns_PagePath(dsPtr, mPtr->server, mPtr->basepath, url, NULL) == NULL) {
-
-        return NS_ERROR;
-    }
-
-    return NS_OK;
+    return status;
 }
 
 

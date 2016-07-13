@@ -1329,7 +1329,7 @@ NS_EXTERN ssize_t NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bu
                                              Ns_DriverSendProc *sendProc)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(6);
 
-NS_EXTERN int  NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
+NS_EXTERN bool NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN void NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr)
@@ -1352,9 +1352,9 @@ NS_EXTERN void NsWriterUnlock(void);
 NS_EXTERN void NsWriterFinish(WriterSock *wrSockPtr)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int  NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan,
-                             FILE *fp, int fd, struct iovec *bufs, int nbufs,
-                             int everysize)
+NS_EXTERN Ns_ReturnCode NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan,
+                                      FILE *fp, int fd, struct iovec *bufs, int nbufs,
+                                      int everysize)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -1391,9 +1391,9 @@ NS_EXTERN void NsGetRequestProcs(Tcl_DString *dsPtr, const char *server) NS_GNUC
 NS_EXTERN void NsGetUrl2FileProcs(Ns_DString *dsPtr, const char *server) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 #ifdef _WIN32
-NS_EXTERN int NsConnectService(void);
-NS_EXTERN int NsInstallService(char *service) NS_GNUC_NONNULL(1);
-NS_EXTERN int NsRemoveService(char *service) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode NsConnectService(void);
+NS_EXTERN Ns_ReturnCode NsInstallService(char *service) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode NsRemoveService(char *service) NS_GNUC_NONNULL(1);
 #endif
 
 NS_EXTERN void NsCreatePidFile(void);
@@ -1455,7 +1455,7 @@ NS_EXTERN NsLimits *NsGetRequestLimits(NsServer *servPtr, const char *method, co
 /*
  * url2file.c
  */
-NS_EXTERN int NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
+NS_EXTERN Ns_ReturnCode NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 /*
@@ -1554,7 +1554,7 @@ NS_EXTERN void NsTclInitSpecType(void);
  * Callback routines.
  */
 
-NS_EXTERN int  NsRunFilters(Ns_Conn *conn, Ns_FilterType why) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode NsRunFilters(Ns_Conn *conn, Ns_FilterType why) NS_GNUC_NONNULL(1);
 NS_EXTERN void NsRunCleanups(Ns_Conn *conn)                   NS_GNUC_NONNULL(1);
 NS_EXTERN void NsRunTraces(Ns_Conn *conn)                     NS_GNUC_NONNULL(1);
 NS_EXTERN void NsRunPreStartupProcs(void);
@@ -1581,7 +1581,7 @@ NS_EXTERN int NsForkWatchedProcess(void);
  * Utility functions.
  */
 
-NS_EXTERN int NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
+NS_EXTERN Ns_ReturnCode NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
 NS_EXTERN void NsMemUmap(const FileMap *mapPtr)
@@ -1601,7 +1601,7 @@ NS_EXTERN bool NsTclTimeoutException(Tcl_Interp *interp)
  * (HTTP) Proxy support
  */
 
-NS_EXTERN int NsConnRunProxyRequest(Ns_Conn *conn)
+NS_EXTERN Ns_ReturnCode NsConnRunProxyRequest(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 #endif /* NSD_H */

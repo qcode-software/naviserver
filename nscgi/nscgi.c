@@ -117,19 +117,19 @@ NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 static Ns_OpProc CgiRequest;
 static Ns_Callback CgiFreeMap;
 
-static int	CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
+static Ns_ReturnCode CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static void     CgiRegister(Mod *modPtr, const char *map)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Ns_DString *CgiDs(Cgi *cgiPtr)                      NS_GNUC_NONNULL(1);
-static void	CgiFree(Cgi *cgiPtr)                       NS_GNUC_NONNULL(1);
-static int  	CgiExec(Cgi *cgiPtr, Ns_Conn *conn)        NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static int	CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static int	CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)        NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static ssize_t	CgiRead(Cgi *cgiPtr)                       NS_GNUC_NONNULL(1);
-static ssize_t	CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static char    *NextWord(char *s)                          NS_GNUC_NONNULL(1);
-static void	SetAppend(const Ns_Set *set, int index, const char *sep, char *value)
+static void          CgiRegister(Mod *modPtr, const char *map)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Ns_DString   *CgiDs(Cgi *cgiPtr)                      NS_GNUC_NONNULL(1);
+static void	     CgiFree(Cgi *cgiPtr)                       NS_GNUC_NONNULL(1);
+static Ns_ReturnCode CgiExec(Cgi *cgiPtr, Ns_Conn *conn)        NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Ns_ReturnCode CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Ns_ReturnCode CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static ssize_t	     CgiRead(Cgi *cgiPtr)                       NS_GNUC_NONNULL(1);
+static ssize_t	     CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static char         *NextWord(char *s)                          NS_GNUC_NONNULL(1);
+static void	     SetAppend(const Ns_Set *set, int index, const char *sep, char *value)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 
@@ -150,7 +150,7 @@ static void	SetAppend(const Ns_Set *set, int index, const char *sep, char *value
  *----------------------------------------------------------------------
  */
 
-NS_EXPORT int
+NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
     const char     *path, *section;
@@ -158,7 +158,7 @@ Ns_ModuleInit(const char *server, const char *module)
     const Ns_Set   *set;
     Ns_DString      ds;
     Mod		   *modPtr;
-    static int	    initialized = 0;
+    static bool	    initialized = NS_FALSE;
 
     NS_NONNULL_ASSERT(module != NULL);
 
@@ -168,7 +168,7 @@ Ns_ModuleInit(const char *server, const char *module)
      * for requests without content data.
      */
 
-    if (initialized == 0) {
+    if (!initialized) {
 	devNull = ns_open(DEVNULL, O_RDONLY, 0);
 	if (devNull < 0) {
 	    Ns_Log(Error, "nscgi: ns_open(%s) failed: %s",
@@ -180,7 +180,7 @@ Ns_ModuleInit(const char *server, const char *module)
 
         Ns_LogCGIDebug = Ns_CreateLogSeverity("Debug(cgi)");
 
-	initialized = 1;
+	initialized = NS_TRUE;
     }
 
     /*
@@ -263,13 +263,13 @@ Ns_ModuleInit(const char *server, const char *module)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 CgiRequest(void *arg, Ns_Conn *conn)
 {
     const Map	   *mapPtr;
     Mod		   *modPtr;
     Cgi		    cgi;
-    int             status;
+    Ns_ReturnCode   status;
 
     mapPtr = arg;
     modPtr = mapPtr->modPtr;
@@ -319,7 +319,7 @@ CgiRequest(void *arg, Ns_Conn *conn)
 
     if (modPtr->maxCgi > 0) {
 	Ns_Time timeout;
-	int wait = NS_OK;
+	Ns_ReturnCode wait = NS_OK;
 
 	Ns_GetTime(&timeout);
 	Ns_IncrTime(&timeout, modPtr->maxWait, 0);
@@ -383,7 +383,7 @@ done:
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
 {
     Mod		   *modPtr;
@@ -581,11 +581,12 @@ err:
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
 {
-    int     fd;
-    size_t  len;
+    int           fd;
+    Ns_ReturnCode status;
+    size_t        len;
     const char   *content, *err;
 
     NS_NONNULL_ASSERT(cgiPtr != NULL);
@@ -607,11 +608,14 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
 	(void) ns_close(fd);
 	fd = NS_INVALID_FD;
     }
+
     if (fd == NS_INVALID_FD) {
-	return NS_ERROR;
+	status = NS_ERROR;
+    } else {
+        cgiPtr->ifd = fd;
+        status = NS_OK;
     }
-    cgiPtr->ifd = fd;
-    return NS_OK;
+    return status;
 }
 
 
@@ -726,14 +730,15 @@ CgiFree(Cgi *cgiPtr)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
 {
-    int         i, opipe[2];
-    char       *s, *e, *p;
-    Ns_DString *dsPtr;
-    const Mod  *modPtr;
-    const char *value;
+    int           i, opipe[2];
+    Ns_ReturnCode status;
+    char         *s, *e, *p;
+    Ns_DString   *dsPtr;
+    const Mod    *modPtr;
+    const char   *value;
 
     NS_NONNULL_ASSERT(cgiPtr != NULL);
     NS_NONNULL_ASSERT(conn != NULL);
@@ -761,6 +766,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     }
     if ((modPtr->flags & CGI_SYSENV) != 0u) {
 	char *const*envp = Ns_CopyEnviron(dsPtr);
+        
 	while (*envp != NULL) {
 	    s = *envp;
 	    e = strchr(s, '=');
@@ -961,30 +967,33 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
      * Create the output pipe.
      */
 
-    if (ns_pipe(opipe) != 0) {
+    if (unlikely(ns_pipe(opipe) != 0)) {
 	Ns_Log(Error, "nscgi: pipe() failed: %s", strerror(errno));
-	return NS_ERROR;
+	status = NS_ERROR;
+    } else {
+
+        /*
+         * Execute the CGI.
+         */
+        cgiPtr->pid = Ns_ExecProcess(cgiPtr->exec, cgiPtr->dir,
+                                     cgiPtr->ifd < 0 ? devNull : cgiPtr->ifd,
+                                     opipe[1], dsPtr->string, cgiPtr->env);
+
+        Ns_Log(Ns_LogCGIDebug,
+               "nscgi: execute cgi script in directory '%s' returned pid %ld",
+               cgiPtr->dir, (long)cgiPtr->pid);
+
+        (void) ns_close(opipe[1]);
+        if (unlikely(cgiPtr->pid == NS_INVALID_PID)) {
+            (void) ns_close(opipe[0]);
+            status = NS_ERROR;
+        } else {
+            cgiPtr->ofd = opipe[0];
+            status = NS_OK;
+        }
     }
 
-    /*
-     * Execute the CGI.
-     */
-    cgiPtr->pid = Ns_ExecProcess(cgiPtr->exec, cgiPtr->dir,
-	cgiPtr->ifd < 0 ? devNull : cgiPtr->ifd,
-	opipe[1], dsPtr->string, cgiPtr->env);
-
-    Ns_Log(Ns_LogCGIDebug,
-           "nscgi: execute cgi script in directory '%s' returned pid %ld",
-           cgiPtr->dir, (long)cgiPtr->pid);
-
-    (void) ns_close(opipe[1]);
-    if (cgiPtr->pid == NS_INVALID_PID) {
-    	(void) ns_close(opipe[0]);
-	return NS_ERROR;
-    }
-
-    cgiPtr->ofd = opipe[0];
-    return NS_OK;
+    return status;
 }
 
 
@@ -1085,11 +1094,12 @@ CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
 {
     Ns_DString      ds, redir;
-    int             status, last, httpstatus;
+    int             last, httpstatus;
+    Ns_ReturnCode   status;
     char           *value;
     Ns_Set         *hdrs;
     ssize_t         n;

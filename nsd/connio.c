@@ -50,12 +50,12 @@
  * Local functions defined in this file
  */
 
-static int ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan,
-                    FILE *fp, int fd)
+static Ns_ReturnCode ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan,
+                              FILE *fp, int fd)
     NS_GNUC_NONNULL(1);
 
-static int ConnCopy(Ns_Conn *conn, size_t toCopy, Tcl_Channel chan,
-                    FILE *fp, int fd)
+static Ns_ReturnCode ConnCopy(Ns_Conn *conn, size_t toCopy, Tcl_Channel chan,
+                              FILE *fp, int fd)
     NS_GNUC_NONNULL(1);
 
 static bool CheckKeep(const Conn *connPtr)
@@ -87,7 +87,7 @@ static bool HdrEq(const Ns_Set *set, const char *name, const char *value)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnWriteChars(Ns_Conn *conn, const char *buf, size_t toWrite, unsigned int flags)
 {
     struct iovec sbuf;
@@ -97,13 +97,13 @@ Ns_ConnWriteChars(Ns_Conn *conn, const char *buf, size_t toWrite, unsigned int f
     return Ns_ConnWriteVChars(conn, &sbuf, 1, flags);
 }
 
-int
+Ns_ReturnCode
 Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int flags)
 {
     Conn              *connPtr   = (Conn *) conn;
     Ns_DString         encDs, gzDs;
     struct iovec       iov;
-    int                status;
+    Ns_ReturnCode      status;
 
     Ns_DStringInit(&encDs);
     Ns_DStringInit(&gzDs);
@@ -241,7 +241,7 @@ CheckCompress(Conn *connPtr, const struct iovec *bufs, int nbufs, unsigned int i
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnWriteData(Ns_Conn *conn, const void *buf, size_t toWrite, unsigned int flags)
 {
     struct iovec vbuf;
@@ -252,7 +252,7 @@ Ns_ConnWriteData(Ns_Conn *conn, const void *buf, size_t toWrite, unsigned int fl
     return Ns_ConnWriteVData(conn, &vbuf, 1, flags);
 }
 
-int
+Ns_ReturnCode
 Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int flags)
 {
     Conn         *connPtr = (Conn *) conn;
@@ -397,19 +397,19 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fla
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnSendChannel(Ns_Conn *conn, Tcl_Channel chan, size_t nsend)
 {
     return ConnSend(conn, nsend, chan, NULL, -1);
 }
 
-int
+Ns_ReturnCode
 Ns_ConnSendFp(Ns_Conn *conn, FILE *fp, size_t nsend)
 {
     return ConnSend(conn, nsend, NULL, fp, -1);
 }
 
-int
+Ns_ReturnCode
 Ns_ConnSendFd(Ns_Conn *conn, int fd, size_t nsend)
 {
     return ConnSend(conn, nsend, NULL, NULL, fd);
@@ -434,12 +434,12 @@ Ns_ConnSendFd(Ns_Conn *conn, int fd, size_t nsend)
  *
  *----------------------------------------------------------------------
  */
-static int
+static Ns_ReturnCode
 ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd)
 {
-    int          status;
-    int          nread;
-    char         buf[IOBUFSZ];
+    Ns_ReturnCode status;
+    int           nread;
+    char          buf[IOBUFSZ];
 
     NS_NONNULL_ASSERT(conn != NULL);
 
@@ -508,13 +508,16 @@ ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnSendFileVec(Ns_Conn *conn, Ns_FileVec *bufs, int nbufs)
 {
     Conn        *connPtr = (Conn *) conn;
     int          i;
     size_t       toWrite, nwrote;
 
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(bufs != NULL);
+    
     nwrote = 0u;
     toWrite = 0u;
 
@@ -560,12 +563,17 @@ Ns_ConnSendFileVec(Ns_Conn *conn, Ns_FileVec *bufs, int nbufs)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnPuts(Ns_Conn *conn, const char *s)
 {
     struct iovec vbuf;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(s != NULL);
+
     vbuf.iov_base = (void *) s;
     vbuf.iov_len  = strlen(s);
+    
     return Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
 }
 
@@ -586,13 +594,17 @@ Ns_ConnPuts(Ns_Conn *conn, const char *s)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnSendDString(Ns_Conn *conn, const Ns_DString *dsPtr)
 {
     struct iovec vbuf;
 
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+
     vbuf.iov_base = dsPtr->string;
     vbuf.iov_len  = (size_t)dsPtr->length;
+    
     return Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
 }
 
@@ -686,14 +698,14 @@ Ns_ConnSend(Ns_Conn *conn, struct iovec *bufs, int nbufs)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnFlushContent(Ns_Conn *conn)
 {
     Conn    *connPtr = (Conn *) conn;
     Request *reqPtr = connPtr->reqPtr;
 
     if (connPtr->sockPtr == NULL) {
-        return -1;
+        return NS_ERROR;
     }
     reqPtr->next  += reqPtr->avail;
     reqPtr->avail  = 0u;
@@ -720,7 +732,7 @@ Ns_ConnFlushContent(Ns_Conn *conn)
  *-----------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnClose(Ns_Conn *conn)
 {
     Conn *connPtr;
@@ -790,10 +802,10 @@ Ns_ConnClose(Ns_Conn *conn)
 int
 Ns_ConnWrite(Ns_Conn *conn, const void *buf, size_t toWrite)
 {
-    Conn  *connPtr = (Conn *) conn;
-    size_t n;
-    int    status;
-    struct iovec vbuf;
+    Conn         *connPtr = (Conn *) conn;
+    size_t        n;
+    Ns_ReturnCode status;
+    struct iovec  vbuf;
 
     vbuf.iov_base = (void *) buf;
     vbuf.iov_len  = toWrite;
@@ -806,22 +818,29 @@ Ns_ConnWrite(Ns_Conn *conn, const void *buf, size_t toWrite)
     return -1;
 }
 
-int
+Ns_ReturnCode
 Ns_WriteConn(Ns_Conn *conn, const char *buf, size_t toWrite)
 {
     struct iovec vbuf;
+
+    /* Deprecated for Ns_ConnWriteVData */
+    
+    NS_NONNULL_ASSERT(conn != NULL);
+    
     vbuf.iov_base = (void *) buf;
     vbuf.iov_len  = toWrite;
+    
     return Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
 }
 
-int
+Ns_ReturnCode
 Ns_WriteCharConn(Ns_Conn *conn, const char *buf, size_t toWrite)
 {
     struct iovec sbuf;
 
     sbuf.iov_base = (void *)buf;
     sbuf.iov_len = toWrite;
+    
     return Ns_ConnWriteVChars(conn, &sbuf, 1, NS_CONN_STREAM);
 }
 
@@ -917,7 +936,7 @@ Ns_ConnRead(Ns_Conn *conn, void *vbuf, size_t toRead)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnReadLine(Ns_Conn *conn, Ns_DString *dsPtr, size_t *nreadPtr)
 {
     Conn       *connPtr = (Conn *) conn;
@@ -963,13 +982,13 @@ Ns_ConnReadLine(Ns_Conn *conn, Ns_DString *dsPtr, size_t *nreadPtr)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnReadHeaders(Ns_Conn *conn, Ns_Set *set, size_t *nreadPtr)
 {
     Ns_DString      ds;
     Conn           *connPtr = (Conn *) conn;
     size_t          nread, nline, maxhdr;
-    int             status;
+    Ns_ReturnCode   status;
 
     Ns_DStringInit(&ds);
     nread = 0u;
@@ -1015,7 +1034,7 @@ Ns_ConnReadHeaders(Ns_Conn *conn, Ns_Set *set, size_t *nreadPtr)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnCopyToDString(Ns_Conn *conn, size_t toCopy, Ns_DString *dsPtr)
 {
     Conn    *connPtr = (Conn *) conn;
@@ -1048,25 +1067,25 @@ Ns_ConnCopyToDString(Ns_Conn *conn, size_t toCopy, Ns_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnCopyToChannel(Ns_Conn *conn, size_t ncopy, Tcl_Channel chan)
 {
     return ConnCopy(conn, ncopy, chan, NULL, -1);
 }
 
-int
+Ns_ReturnCode
 Ns_ConnCopyToFile(Ns_Conn *conn, size_t ncopy, FILE *fp)
 {
     return ConnCopy(conn, ncopy, NULL, fp, -1);
 }
 
-int
+Ns_ReturnCode
 Ns_ConnCopyToFd(Ns_Conn *conn, size_t ncopy, int fd)
 {
     return ConnCopy(conn, ncopy, NULL, NULL, fd);
 }
 
-static int
+static Ns_ReturnCode
 ConnCopy(Ns_Conn *conn, size_t toCopy, Tcl_Channel chan, FILE *fp, int fd)
 {
     Conn    *connPtr;

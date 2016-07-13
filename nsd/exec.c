@@ -117,7 +117,7 @@ Ns_ExecProc(const char *exec, char **argv)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_WaitProcess(pid_t pid)
 {
     return Ns_WaitForProcess(pid, NULL);
@@ -131,7 +131,7 @@ Ns_WaitProcess(pid_t pid)
  *      Wait for child process.
  *
  * Results:
- *      Ruturn NS_OK for success and NS_ERROR for failure.
+ *      Return NS_OK for success and NS_ERROR for failure.
  *
  * Side effects:
  *      Sets exit code in exitcodePtr if given.
@@ -139,13 +139,13 @@ Ns_WaitProcess(pid_t pid)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_WaitForProcess(pid_t pid, int *exitcodePtr)
 {
 #ifdef _WIN32
-    HANDLE process = (HANDLE) pid;
-    int status = NS_OK;
-    DWORD exitcode = 0u;
+    HANDLE        process = (HANDLE) pid;
+    Ns_ReturnCode status = NS_OK;
+    DWORD         exitcode = 0u;
 
     if ((WaitForSingleObject(process, INFINITE) == WAIT_FAILED) ||
         (GetExitCodeProcess(process, &exitcode) != TRUE)) {
@@ -520,9 +520,9 @@ ExecProc(const char *exec, const char *dir, int fdin, int fdout, char **argv,
             	ns_close(fdout);
 	    }
             NsRestoreSignals();
-	    Ns_NoCloseOnExec(0);
-	    Ns_NoCloseOnExec(1);
-	    Ns_NoCloseOnExec(2);
+	    (void)Ns_NoCloseOnExec(0);
+	    (void)Ns_NoCloseOnExec(1);
+	    (void)Ns_NoCloseOnExec(2);
             execve(exec, argv, envp);
 	    /* NB: Not reached on successful execve(). */
 	    result = ERR_EXEC;

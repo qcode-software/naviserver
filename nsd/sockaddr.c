@@ -35,16 +35,6 @@
  *      Generic Interface for IPv4 and IPv6
  */
 
-
-#if defined(__APPLE__) || defined(__darwin__)
-/* OSX seems not to define these. */
-# ifndef s6_addr16
-#  define s6_addr16 __u6_addr.__u6_addr16
-# endif
-# ifndef s6_addr32
-#  define s6_addr32 __u6_addr.__u6_addr32
-# endif
-#endif
 
 
 /*
@@ -198,21 +188,21 @@ Ns_SockaddrMaskBits(struct sockaddr *mask, unsigned int nrBits)
         struct in6_addr *addr = &(((struct sockaddr_in6 *)mask)->sin6_addr);
         int i;
 
-        if (nrBits > 128) {
+        if (nrBits > 128u) {
             Ns_Log(Warning, "Invalid bitmask /%d: can be most 128 bits", nrBits);
-            nrBits = 128;
+            nrBits = 128u;
         }
 #ifndef _WIN32        
         /*
          * Set the mask bits in the leading 32 bit ints to 1.
          */
-        for (i = 0; i < 4 && nrBits >= 32; i++, nrBits -= 32) {
+        for (i = 0; i < 4 && nrBits >= 32u; i++, nrBits -= 32) {
             addr->s6_addr32[i] = (~0u);
         }
         /*
          * Set the partial mask.
          */
-        if (i < 4 && nrBits > 0) {
+        if (i < 4 && nrBits > 0u) {
             addr->s6_addr32[i] = htonl((~0u) << (32 - nrBits));
             i++;
         }
@@ -227,13 +217,13 @@ Ns_SockaddrMaskBits(struct sockaddr *mask, unsigned int nrBits)
          * Windows does not have 32bit members, so process in 16bit
          * chunks: Set the mask bits in the leading 16 bit Words to 1.
          */
-        for (i = 0; i < 8 && nrBits >= 16; i++, nrBits -= 16) {
+        for (i = 0; i < 8 && nrBits >= 16u; i++, nrBits -= 16) {
             addr->u.Word[i] = (unsigned short)(~0u);
         }
         /*
          * Set the partial mask.
          */
-        if (i < 8 && nrBits > 0) {
+        if (i < 8 && nrBits > 0u) {
             addr->u.Word[i] = htons((~0u) << (16 - nrBits));
             i++;
         }
@@ -246,9 +236,9 @@ Ns_SockaddrMaskBits(struct sockaddr *mask, unsigned int nrBits)
 #endif        
         /*fprintf(stderr, "#### FINAL mask %s\n",ns_inet_ntoa(mask));*/
     } else if (mask->sa_family == AF_INET) {
-        if (nrBits > 32) {
+        if (nrBits > 32u) {
             Ns_Log(Warning, "Invalid bitmask /%d: can be most 32 bits", nrBits);
-            nrBits = 32;
+            nrBits = 32u;
         }
         ((struct sockaddr_in *)mask)->sin_addr.s_addr = htonl((~0u) << (32 - nrBits));
     } else {
@@ -354,7 +344,7 @@ ns_inet_pton(struct sockaddr *saPtr, const char *addr) {
  *
  *----------------------------------------------------------------------
  */
-int
+Ns_ReturnCode
 Ns_GetSockAddr(struct sockaddr *saPtr, const char *host, int port)
 {
     NS_NONNULL_ASSERT(saPtr != NULL);
