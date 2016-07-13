@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160713-1) jessie; urgency=medium
+
+  * Import from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 13 Jul 2016 16:35:56 +0100
+
 naviserver (4.99.12~20160622-1) wheezy; urgency=low
 
   * Import from upstream
