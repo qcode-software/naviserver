@@ -117,7 +117,7 @@ static void  LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count,
                       bool trunc, bool locked)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int   LogOpen(void);
+static Ns_ReturnCode LogOpen(void);
 
 static char* LogTime(LogCache *cachePtr, const Ns_Time *timePtr, int gmt)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -1341,10 +1341,10 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_LogRoll(void)
 {
-    int rc = NS_OK;
+    Ns_ReturnCode rc = NS_OK;
 
     if (file != NULL) {
 	NsAsyncWriterQueueDisable(0);
@@ -1415,11 +1415,12 @@ NsLogOpen(void)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogOpen(void)
 {
-    int          fd, status = NS_OK;
-    unsigned int oflags;
+    int           fd;
+    Ns_ReturnCode status = NS_OK;
+    unsigned int  oflags;
 
     oflags = O_WRONLY | O_APPEND | O_CREAT;
 
@@ -1481,9 +1482,9 @@ LogOpen(void)
 static void
 LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool locked)
 {
-    int        status, nentry = 0;
-    LogFilter *cPtr;
-    LogEntry  *ePtr;
+    int            nentry = 0;
+    LogFilter     *cPtr;
+    LogEntry      *ePtr;
 
     NS_NONNULL_ASSERT(cachePtr != NULL);
     NS_NONNULL_ASSERT(listPtr != NULL);
@@ -1503,6 +1504,8 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
         cPtr = listPtr;
         do {
             if (cPtr->proc != NULL) {
+                Ns_ReturnCode  status;
+
                 if (locked) {
                     cPtr->refcnt++;
                     Ns_MutexUnlock(&lock);
@@ -1583,7 +1586,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
             const char *msg, size_t len)
 {
@@ -1663,7 +1666,7 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogToFile(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
           const char *msg, size_t len)
 {
@@ -1709,7 +1712,7 @@ LogToFile(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
          const char *msg, size_t len)
 {

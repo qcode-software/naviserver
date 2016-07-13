@@ -120,13 +120,14 @@ NS_EXPORT const int Ns_ModuleVersion = 1;
  *----------------------------------------------------------------------
  */
 
-NS_EXPORT int
+NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
     Mod           *modPtr;
     char          *end;
     const char    *addr, *path;
-    int            isNew, port, result;
+    int            isNew, port;
+    Ns_ReturnCode  result;
     size_t         i;
     NS_SOCKET      lsock;
     Tcl_HashEntry *hPtr;
@@ -255,11 +256,11 @@ Ns_ModuleInit(const char *server, const char *module)
                              ((unsigned int)NS_SOCK_READ | (unsigned int)NS_SOCK_EXIT));
 
 #ifndef PCLINT_BUG
-    if (result == TCL_OK) {
+    if (result == NS_OK) {
         Ns_RegisterProcInfo((Ns_Callback *)AcceptProc, "nscp", ArgProc);
     }
 #else
-    if (result == TCL_OK) Ns_RegisterProcInfo((Ns_Callback *)AcceptProc, "nscp", ArgProc);
+    if (result == NS_OK) Ns_RegisterProcInfo((Ns_Callback *)AcceptProc, "nscp", ArgProc);
 #endif
     
     return result;

@@ -137,6 +137,7 @@ Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_Callback *freePr
     cachePtr->stats.nflushed = 0u;
     cachePtr->stats.npruned  = 0u;
 
+    Ns_MutexInit(&cachePtr->lock);
     Ns_MutexSetName2(&cachePtr->lock, "ns:cache", name);
     Tcl_InitHashTable(&cachePtr->entriesTable, keys);
 
@@ -313,7 +314,8 @@ Ns_CacheWaitCreateEntry(Ns_Cache *cache, const char *key, int *newPtr,
                         const Ns_Time *timeoutPtr)
 {
     Ns_Entry      *entry;
-    int            isNew, status = NS_OK;
+    int            isNew;
+    Ns_ReturnCode  status = NS_OK;
 
     NS_NONNULL_ASSERT(cache != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -790,14 +792,14 @@ Ns_CacheUnlock(Ns_Cache *cache)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_CacheWait(Ns_Cache *cache)
 {
     NS_NONNULL_ASSERT(cache != NULL);
     return Ns_CacheTimedWait(cache, NULL);
 }
 
-int
+Ns_ReturnCode
 Ns_CacheTimedWait(Ns_Cache *cache, const Ns_Time *timePtr)
 {
     Cache *cachePtr = (Cache *) cache;

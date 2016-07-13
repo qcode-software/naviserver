@@ -949,16 +949,14 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url,
      * free urls before leaving this function.
      */
     url2 = ns_strdup(url);
-    result = Ns_ParseUrl(url2, &protocol, &host, &portString, &path, &tail);
+    if (Ns_ParseUrl(url2, &protocol, &host, &portString, &path, &tail) != NS_OK) {
+        goto fail;
+    }
 
     assert(protocol != NULL);
     assert(host != NULL);
     assert(path != NULL);
     assert(tail != NULL);
-    
-    if (unlikely(result != TCL_OK)) {
-        goto fail;
-    }
     
     /*
      * Check used protocol and protocol-specific parameters
@@ -1224,7 +1222,7 @@ HttpAppendRawBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t outSize)
 int
 Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize) 
 {
-    int status = TCL_OK;
+    int tclStatus = TCL_OK;
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
     NS_NONNULL_ASSERT(buffer != NULL);
@@ -1235,7 +1233,7 @@ Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
 	/*
 	 * Output raw content
 	 */
-	status = HttpAppendRawBuffer(httpPtr, buffer, inSize);
+	tclStatus = HttpAppendRawBuffer(httpPtr, buffer, inSize);
 
     } else {
 	char out[16384];
@@ -1249,16 +1247,16 @@ Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
 	do {
 	    size_t uncompressedLen = 0u;
 
-	    status = Ns_InflateBuffer(httpPtr->compress, out, sizeof(out), &uncompressedLen);
-	    Ns_Log(Ns_LogTaskDebug, "InflateBuffer status %d uncompressed %" PRIdz " bytes", status, uncompressedLen);
+	    tclStatus = Ns_InflateBuffer(httpPtr->compress, out, sizeof(out), &uncompressedLen);
+	    Ns_Log(Ns_LogTaskDebug, "InflateBuffer status %d uncompressed %" PRIdz " bytes", tclStatus, uncompressedLen);
 	    
 	    if (HttpAppendRawBuffer(httpPtr, out, uncompressedLen) != TCL_OK) {
-                status = TCL_ERROR;
+                tclStatus = TCL_ERROR;
             }
 
-	} while(status == TCL_CONTINUE);
+	} while(tclStatus == TCL_CONTINUE);
     }
-    return status;
+    return tclStatus;
 }
 
 /*

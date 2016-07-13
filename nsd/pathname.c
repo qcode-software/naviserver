@@ -53,7 +53,7 @@ static int PathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
     NS_GNUC_NONNULL(2);
 static char *MakePath(Ns_DString *dest, va_list *pap)
     NS_GNUC_NONNULL(1);
-static char *ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
+static const char *ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -80,7 +80,7 @@ NsConfigVhost(void)
     NsRegisterServerInit(ConfigServerVhost);
 }
 
-static int
+static Ns_ReturnCode
 ConfigServerVhost(const char *server)
 {
     NsServer   *servPtr = NsGetServer(server);
@@ -622,19 +622,21 @@ Ns_ModulePath(Ns_DString *dsPtr, const char *server, const char *module, ...)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_SetServerRootProc(Ns_ServerRootProc *proc, void *arg)
 {
-    NsServer *servPtr = NsGetInitServer();
+    NsServer      *servPtr = NsGetInitServer();
+    Ns_ReturnCode  status = NS_OK;
 
-    if (servPtr == NULL) {
+    if (unlikely(servPtr == NULL)) {
         Ns_Log(Error, "Ns_SetServerRootProc: no initializing server");
-        return NS_ERROR;
+        status = NS_ERROR;
+    } else {
+        servPtr->vhost.serverRootProc = proc;
+        servPtr->vhost.serverRootArg = arg;
     }
-    servPtr->vhost.serverRootProc = proc;
-    servPtr->vhost.serverRootArg = arg;
 
-    return NS_OK;
+    return status;
 }
 
 
@@ -858,19 +860,21 @@ NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
 {
     const NsServer *servPtr = NsGetInitServer();
     Ns_TclCallback *cbPtr;
-    int             result;
+    int             result = TCL_OK;
 
-    if (objc < 2) {
+    if (unlikely(objc < 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
         return TCL_ERROR;
     }
-    if (servPtr == NULL) {
+    if (unlikely(servPtr == NULL)) {
         Tcl_AppendResult(interp, "no initializing server", TCL_STATIC);
         return TCL_ERROR;
     }
     cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclServerRoot, objv[1],
                               objc - 2, objv + 2);
-    result = Ns_SetServerRootProc(NsTclServerRoot, cbPtr);
+    if (unlikely(Ns_SetServerRootProc(NsTclServerRoot, cbPtr) != NS_OK)) {
+        result = TCL_ERROR;
+    } 
 
     return result;
 }
@@ -892,15 +896,16 @@ NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 NsTclServerRoot(Ns_DString *dest, const char *host, const void *arg)
 {
     const Ns_TclCallback *cbPtr = arg;
+    const char           *result = NULL;
 
-    if (Ns_TclEvalCallback(NULL, cbPtr, dest, host, NULL) != NS_OK) {
-        return NULL;
+    if (Ns_TclEvalCallback(NULL, cbPtr, dest, host, NULL) == TCL_OK) {
+        result = Ns_DStringValue(dest);
     }
-    return Ns_DStringValue(dest);
+    return result;
 }
 
 
@@ -974,10 +979,11 @@ MakePath(Ns_DString *dest, va_list *pap)
  *
  *----------------------------------------------------------------------
  */
-static char *
+static const char *
 ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
 {
-    char           *safehost, *path;
+    char           *safehost;
+    const char     *path;
     const Ns_Conn  *conn;
     const Ns_Set   *headers;
     Ns_DString      ds;
@@ -1007,7 +1013,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
          * Bail out if there are suspicious characters in the unprocessed Host.
          */
 
-        if (Ns_StrIsHost(rawHost) == 0) {
+        if (!Ns_StrIsHost(rawHost)) {
             goto defpath;
         }
 
