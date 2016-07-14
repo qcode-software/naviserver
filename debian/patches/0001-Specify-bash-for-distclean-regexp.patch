@@ -1,0 +1,21 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Thu, 14 Jul 2016 12:32:29 +0100
+Subject: Specify bash for distclean regexp
+
+---
+ Makefile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index a2ed4de..104ad5b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -29,6 +29,8 @@
+ #
+ #
+ 
++SHELL=/bin/bash
++
+ NSBUILD=1
+ include include/Makefile.global
+ 
