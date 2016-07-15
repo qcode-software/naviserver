@@ -4,8 +4,9 @@ bin/naviserver-nsd usr/sbin
 bin/naviserver-nsproxy usr/bin
 bin/nsthreadtest usr/lib/naviserver/bin
 conf/*.tcl usr/share/doc/naviserver/examples
-index.adp usr/share/doc/naviserver
+pages/index.adp usr/share/doc/naviserver
 modules usr/lib/naviserver
 tcl/* usr/lib/naviserver/tcl
 pages/doc/* usr/share/doc/naviserver/doc
-bitbucket-install.tcl usr/share/doc/naviserver
+pages/bitbucket-install.tcl usr/share/doc/naviserver
+pages/examples/* usr/share/doc/naviserver/examples

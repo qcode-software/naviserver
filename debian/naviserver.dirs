@@ -1,12 +1,2 @@
 etc/naviserver
 etc/naviserver/conf.d
-usr/sbin
-usr/bin
-usr/lib/naviserver
-usr/lib/naviserver/bin
-usr/lib/naviserver/lib
-usr/lib/naviserver/tcl
-usr/share/doc/naviserver
-usr/share/doc/naviserver/examples
-usr/share/doc/naviserver/doc
-usr/share/man/man8
