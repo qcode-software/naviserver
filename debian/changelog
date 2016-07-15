@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160713-2) jessie; urgency=medium
+
+  * Install file reorg
+
+ --  Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 15 Jul 2016 12:42:54 +0100
+
 naviserver (4.99.12~20160713-1) jessie; urgency=medium
 
   * Import from upstream
