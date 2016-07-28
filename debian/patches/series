@@ -1,2 +1,3 @@
 0001-Specify-bash-in-Makefile-so-distclean-will-work.patch
 0002-Add-files-to-distclean.patch
+0003-Missing-closing-brace-in-commandlist.man.patch
