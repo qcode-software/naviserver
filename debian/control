@@ -10,7 +10,7 @@ Build-Depends:  debhelper (>= 9),
 		mime-support, 
 		autoconf, 
 		tcllib
-Standards-Version: 3.9.6
+Standards-Version: 3.9.4
 Homepage: http://wiki.tcl.tk/2090
 
 Package: naviserver
