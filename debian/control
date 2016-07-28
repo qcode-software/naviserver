@@ -2,7 +2,14 @@ Source: naviserver
 Section: web
 Priority: extra
 Maintainer: Qcode Software Ltd <hackers@qcode.co.uk> 
-Build-Depends: debhelper (>= 9), autotools-dev, tcl8.5-dev, zlib1g-dev, mawk, mime-support, autoconf, tcllib
+Build-Depends:  debhelper (>= 9), 
+		autotools-dev, 
+		tcl8.5-dev, 
+		zlib1g-dev, 
+		mawk, 
+		mime-support, 
+		autoconf, 
+		tcllib
 Standards-Version: 3.9.6
 Homepage: http://wiki.tcl.tk/2090
 
