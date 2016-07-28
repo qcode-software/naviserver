@@ -141,10 +141,7 @@ ns_section	"ns/server/\${servername}/modules"
    ns_param	nsperm 			\${homedir}/bin/nsperm.so
    #ns_param 	nscp 			\${homedir}/bin/nscp.so
    ns_param	nsproxy			\${homedir}/bin/nsproxy.so
-   # Load nsssl if naviserver-nsssl package is installed and certificate present.
-   if { [file exists \${homedir}/bin/nsssl.so] && [file exists \$ssl_cert] } {
-      ns_param  nsssl                   \${homedir}/bin/nsssl.so
-   }
+   ns_param  	nsssl                   \${homedir}/bin/nsssl.so
 
    # Tcl modules are loaded here as well, they should be put
    # under tcl/ in separate directory each
