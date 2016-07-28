@@ -25,7 +25,7 @@ override_dh_auto_install:
 	( cd $(CURDIR) ; $(MAKE) NAVISERVER=$(TARGETDIR) install )
 	mv $(TARGETDIR)/bin/nsd $(TARGETDIR)/bin/$(PACKAGE)-nsd
 	mv $(TARGETDIR)/bin/nsproxy $(TARGETDIR)/bin/$(PACKAGE)-nsproxy
-	dh_install
+	dh_install --sourcedir $(TARGETDIR) --list-missing
 
 override_dh_shlibdeps:
 	dh_shlibdeps -a -l$(CURDIR)/debian/$(COREPACKAGE)$(PREFIX)/lib
