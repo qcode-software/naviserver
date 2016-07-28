@@ -63,11 +63,12 @@ static Ns_UserAuthorizeProc    *userProcPtr = NULL;
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_AuthorizeRequest(const char *server, const char *method, const char *url,
 	            const char *user, const char *passwd, const char *peer)
 {
-    NsServer *servPtr;
+    Ns_ReturnCode   status;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -75,9 +76,11 @@ Ns_AuthorizeRequest(const char *server, const char *method, const char *url,
     
     servPtr = NsGetServer(server);
     if (unlikely(servPtr == NULL) || servPtr->request.authProc == NULL) {
-    	return NS_OK;
+    	status = NS_OK;
+    } else {
+        status = (*servPtr->request.authProc)(server, method, url, user, passwd, peer);
     }
-    return (*servPtr->request.authProc)(server, method, url, user, passwd, peer);
+    return status;
 }
 
 
@@ -131,8 +134,9 @@ Ns_SetRequestAuthorizeProc(const char *server, Ns_RequestAuthorizeProc *procPtr)
 int
 NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp   *itPtr = arg;
-    int         status;
+    const NsInterp *itPtr = arg;
+    Ns_ReturnCode   status;
+    int             result = TCL_OK;
 
     if ((objc != 5) && (objc != 6)) {
         Tcl_WrongNumArgs(interp, 1, objv,
@@ -147,30 +151,32 @@ NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Ob
 	    objc < 6 ? NULL : Tcl_GetString(objv[5]));
 
     switch (status) {
-	case NS_OK:
-	    Tcl_SetResult(interp, "OK", TCL_STATIC);
-	    break;
+    case NS_OK:
+        Tcl_SetResult(interp, "OK", TCL_STATIC);
+        break;
 
-	case NS_ERROR:
-	    Tcl_SetResult(interp, "ERROR", TCL_STATIC);
-	    break;
-
-	case NS_FORBIDDEN:
-	    Tcl_SetResult(interp, "FORBIDDEN", TCL_STATIC);
-	    break;
-
-	case NS_UNAUTHORIZED:
-	    Tcl_SetResult(interp, "UNAUTHORIZED", TCL_STATIC);
-	    break;
-
-	default:
-	    Tcl_AppendResult(interp, "could not authorize \"",
-			Tcl_GetString(objv[1]), " ",
-			Tcl_GetString(objv[2]), "\"", NULL);
-	    return TCL_ERROR;
+    case NS_ERROR:
+        Tcl_SetResult(interp, "ERROR", TCL_STATIC);
+        break;
+        
+    case NS_FORBIDDEN:
+        Tcl_SetResult(interp, "FORBIDDEN", TCL_STATIC);
+        break;
+        
+    case NS_UNAUTHORIZED:
+        Tcl_SetResult(interp, "UNAUTHORIZED", TCL_STATIC);
+        break;
+        
+    case NS_FILTER_BREAK:  /* fall through */
+    case NS_FILTER_RETURN: /* fall through */
+    case NS_TIMEOUT:
+        Tcl_AppendResult(interp, "could not authorize \"",
+                         Tcl_GetString(objv[1]), " ",
+                         Tcl_GetString(objv[2]), "\"", NULL);
+        result = TCL_ERROR;
     }
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -191,16 +197,20 @@ NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_AuthorizeUser(const char *user, const char *passwd)
 {
+    Ns_ReturnCode status;
+    
     NS_NONNULL_ASSERT(user != NULL);
     NS_NONNULL_ASSERT(passwd != NULL);
     
     if (userProcPtr == NULL) {
-	return NS_ERROR;
+	status = NS_ERROR;
+    } else {
+        status = (*userProcPtr)(user, passwd);
     }
-    return (*userProcPtr)(user, passwd);
+    return status;
 }
 
 
@@ -282,7 +292,7 @@ NsParseAuth(Conn *connPtr, char *auth)
             v = ns_malloc(size);
             size = Ns_HtuuDecode(q, (unsigned char *) v, size);
             v[size] = '\0';
-            q = strchr(v, ':');
+            q = strchr(v, INTCHAR(':'));
             if (q != NULL) {
                 *q++ = '\0';
                 (void)Ns_SetPut(connPtr->auth, "Password", q);
@@ -304,7 +314,7 @@ NsParseAuth(Conn *connPtr, char *auth)
 		size_t idx;
 		char   save2;
 
-                p = strchr(q, '=');
+                p = strchr(q, INTCHAR('='));
                 if (p == NULL) {
                     break;
                 }

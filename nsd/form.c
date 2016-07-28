@@ -174,9 +174,9 @@ Ns_ConnGetQuery(Ns_Conn *conn)
 void
 Ns_ConnClearQuery(Ns_Conn *conn)
 {
-    Conn           *connPtr = (Conn *) conn;
-    Tcl_HashEntry  *hPtr;
-    Tcl_HashSearch  search;
+    Conn                *connPtr = (Conn *) conn;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
 
     NS_NONNULL_ASSERT(conn != NULL);
     
@@ -225,7 +225,7 @@ Ns_ConnClearQuery(Ns_Conn *conn)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_QueryToSet(char *query, Ns_Set *set)
 {
     NS_NONNULL_ASSERT(query != NULL);
@@ -308,11 +308,11 @@ ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding)
 	const char *k;
 
         k = p;
-        p = strchr(p, '&');
+        p = strchr(p, INTCHAR('&'));
         if (p != NULL) {
             *p = '\0';
         }
-        v = strchr(k, '=');
+        v = strchr(k, INTCHAR('='));
         if (v != NULL) {
             *v = '\0';
         }
@@ -355,8 +355,8 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
 {
     Tcl_Encoding encoding;
     Tcl_DString  kds, vds;
-    char        *e, saveend, *disp, unescape;
-    const char  *ks, *ke;
+    char        *e, saveend, unescape;
+    const char  *ks, *ke, *disp;
     Ns_Set      *set;
     int          isNew;
 
@@ -384,7 +384,7 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
      */
 
     ks = NULL;
-    while ((e = strchr(start, '\n')) != NULL) {
+    while ((e = strchr(start, INTCHAR('\n'))) != NULL) {
 	const char *s = start;
 	char save;
 

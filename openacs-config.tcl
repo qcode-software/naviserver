@@ -17,9 +17,9 @@ set httpsport		8443
 # setting the address to 0.0.0.0 means aolserver listens on all interfaces
 set hostname		localhost
 set address_v4		127.0.0.1
+#set address_v4		0.0.0.0  ;# listen on all IPv4-Adresses
 #set address_v6		::1
-
-
+#set address_v6		::0      ;#  listen on all IPv6-Adresses
 
 # Note: If port is privileged (usually < 1024), OpenACS must be
 # started by root, and the run script must contain the flag 
@@ -577,6 +577,11 @@ ns_section ns/server/${server}/module/nsproxy
 	# ns_param	recvtimeout        5000
 	# ns_param	waittimeout        1000
 	# ns_param	idletimeout        300000
+
+#
+# If you want to activate core dumps, one can use the following command
+#
+#ns_log notice "nsd.tcl: ns_rlimit coresize [ns_rlimit coresize unlimited]"
 
 ns_log notice "nsd.tcl: using threadsafe tcl: [info exists tcl_platform(threaded)]"
 ns_log notice "nsd.tcl: finished reading config file."

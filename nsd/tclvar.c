@@ -71,7 +71,7 @@ static void UpdateVar(Tcl_HashEntry *hPtr, const char *value, size_t len)
 static int IncrVar(Array *arrayPtr, const char *key, int incr, Tcl_WideInt *valuePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
-static int Unset(Array *arrayPtr, const char *key)
+static Ns_ReturnCode Unset(Array *arrayPtr, const char *key)
     NS_GNUC_NONNULL(1);
 
 static void Flush(Array *arrayPtr)
@@ -120,6 +120,7 @@ NsTclCreateBuckets(const char *server, int nbuckets)
     while (--nbuckets >= 0) {
         snprintf(buf, sizeof(buf), "nsv:%d", nbuckets);
         Tcl_InitHashTable(&buckets[nbuckets].arrays, TCL_STRING_KEYS);
+        buckets[nbuckets].lock = NULL;
         Ns_MutexInit(&buckets[nbuckets].lock);
         Ns_MutexSetName2(&buckets[nbuckets].lock, buf, server);
     }
@@ -268,20 +269,22 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
         Tcl_SetObjResult(interp, objv[3]);
     } else {
-        const Tcl_HashEntry *hPtr;
 
         arrayPtr = LockArrayObj(interp, objv[1], NS_FALSE);
         if (unlikely(arrayPtr == NULL)) {
-            return TCL_ERROR;
-        }
-        hPtr = Tcl_FindHashEntry(&arrayPtr->vars, key);
-        if (likely(hPtr != NULL)) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
-        } else {
-            Tcl_AppendResult(interp, "no such key: ", key, NULL);
             result = TCL_ERROR;
+        } else {
+            const Tcl_HashEntry *hPtr;
+
+            hPtr = Tcl_FindHashEntry(&arrayPtr->vars, key);
+            if (likely(hPtr != NULL)) {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+            } else {
+                Tcl_AppendResult(interp, "no such key: ", key, NULL);
+                result = TCL_ERROR;
+            }
+            UnlockArray(arrayPtr);
         }
-        UnlockArray(arrayPtr);
     }
 
     return result;
@@ -476,41 +479,43 @@ NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     if (unlikely(arrayPtr == NULL)) {
         if (nocomplain != 0) {
             Tcl_ResetResult(interp);
-            return TCL_OK;
+        } else {
+            result = TCL_ERROR;
         }
-        return TCL_ERROR;
-       
-    }
-    assert(arrayPtr != NULL);
+        
+    } else {
+    
+        assert(arrayPtr != NULL);
 
-    if (Unset(arrayPtr, key) != NS_OK && key != NULL) {
-        Tcl_AppendResult(interp, "no such key: ", key, NULL);
-        result = TCL_ERROR;
-    }
+        if (Unset(arrayPtr, key) != NS_OK && key != NULL) {
+            Tcl_AppendResult(interp, "no such key: ", key, NULL);
+            result = TCL_ERROR;
+        }
 
-    /*
-     * If everything went well and we have no key specified, delete
-     * the array entry.
-     */
-    if (result == TCL_OK && key == NULL) {
-	/*
-	 * Delete the hash-table of this array and the entry in the
-	 * table of array names.
-	 */
-	Tcl_DeleteHashTable(&arrayPtr->vars);
-	Tcl_DeleteHashEntry(arrayPtr->entryPtr);
+        /*
+         * If everything went well and we have no key specified, delete
+         * the array entry.
+         */
+        if (result == TCL_OK && key == NULL) {
+            /*
+             * Delete the hash-table of this array and the entry in the
+             * table of array names.
+             */
+            Tcl_DeleteHashTable(&arrayPtr->vars);
+            Tcl_DeleteHashEntry(arrayPtr->entryPtr);
+        }
+        UnlockArray(arrayPtr);
+        
+        if (result == TCL_OK && key == NULL) {
+            /*
+             * Free the actual array data strucure and invalidate the
+             * Tcl_Obj.
+             */
+            ns_free(arrayPtr);
+            Ns_TclSetTwoPtrValue(arrayObj, NULL, NULL, NULL);
+        }
     }
-    UnlockArray(arrayPtr);
-
-    if (result == TCL_OK && key == NULL) {
-	/*
-	 * Free the actual array data strucure and invalidate the
-	 * Tcl_Obj.
-	 */
-	ns_free(arrayPtr);
-	Ns_TclSetTwoPtrValue(arrayObj, NULL, NULL, NULL);
-    }
-
+    
     return result;
 }
 
@@ -554,7 +559,7 @@ NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 
     resultObj = Tcl_GetObjResult(interp);
     for (i = 0; i < servPtr->nsv.nbuckets; i++) {
-        Tcl_HashEntry  *hPtr;
+        const Tcl_HashEntry *hPtr;
 
         bucketPtr = &servPtr->nsv.buckets[i];
         Ns_MutexLock(&bucketPtr->lock);
@@ -621,7 +626,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         return TCL_ERROR;
     }
     switch (opt) {
-    case CSetIdx:
+    case CSetIdx:   /* fall through */
     case CResetIdx:
         if (objc != 4) {
             Tcl_WrongNumArgs(interp, 2, objv, "array valueList");
@@ -681,7 +686,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 	Tcl_SetObjResult(interp, Tcl_NewBooleanObj(size));
         break;
 
-    case CGetIdx:
+    case CGetIdx:   /* fall through */
     case CNamesIdx:
         if (objc != 3 && objc != 4) {
             Tcl_WrongNumArgs(interp, 2, objv, "array ?pattern?");
@@ -735,11 +740,11 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *-----------------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_VarGet(const char *server, const char *array, const char *key, Ns_DString *dsPtr)
 {
     const NsServer *servPtr;
-    int             status = NS_ERROR;
+    Ns_ReturnCode   status = NS_ERROR;
 
     NS_NONNULL_ASSERT(array != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -769,7 +774,7 @@ Ns_VarGet(const char *server, const char *array, const char *key, Ns_DString *ds
  *      Return 1 if the key exists int the given array.
  *
  * Results:
- *      1 or 0.
+ *      NS_TRUE or NS_FALSE.
  *
  * Side effects:
  *      None.
@@ -777,11 +782,11 @@ Ns_VarGet(const char *server, const char *array, const char *key, Ns_DString *ds
  *-----------------------------------------------------------------------------
  */
 
-int
+bool
 Ns_VarExists(const char *server, const char *array, const char *key)
 {
     const NsServer *servPtr;
-    int             exists = 0;
+    bool            exists = NS_FALSE;
 
     NS_NONNULL_ASSERT(array != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -789,9 +794,10 @@ Ns_VarExists(const char *server, const char *array, const char *key)
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
 	Array *arrayPtr = LockArray(servPtr, array, NS_FALSE);
+        
         if (likely(arrayPtr != NULL)) {
 	    if (Tcl_FindHashEntry(&arrayPtr->vars, key) != NULL) {
-		exists = 1;
+		exists = NS_TRUE;
 	    }
 	    UnlockArray(arrayPtr);
 	}
@@ -816,12 +822,12 @@ Ns_VarExists(const char *server, const char *array, const char *key)
  *-----------------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_VarSet(const char *server, const char *array, const char *key,
           const char *value, ssize_t len)
 {
     const NsServer *servPtr;
-    int             status = NS_ERROR;
+    Ns_ReturnCode   status = NS_ERROR;
 
     NS_NONNULL_ASSERT(array != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -895,12 +901,13 @@ Ns_VarIncr(const char *server, const char *array, const char *key, int incr)
  *-----------------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_VarAppend(const char *server, const char *array, const char *key,
              const char *value, ssize_t len)
 {
     const NsServer *servPtr;
-    int             isNew, status = NS_ERROR;
+    int             isNew;
+    Ns_ReturnCode   status = NS_ERROR;
 
     NS_NONNULL_ASSERT(array != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -950,11 +957,11 @@ Ns_VarAppend(const char *server, const char *array, const char *key,
  *-----------------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_VarUnset(const char *server, const char *array, const char *key)
 {
     const NsServer *servPtr;
-    int             status = NS_ERROR;
+    Ns_ReturnCode   status = NS_ERROR;
 
     NS_NONNULL_ASSERT(array != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -1227,10 +1234,10 @@ IncrVar(Array *arrayPtr, const char *key, int incr, Tcl_WideInt *valuePtr)
  *-----------------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 Unset(Array *arrayPtr, const char *key)
 {
-    int status = NS_ERROR;
+    Ns_ReturnCode status = NS_ERROR;
 
     NS_NONNULL_ASSERT(arrayPtr != NULL);
 

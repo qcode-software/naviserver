@@ -56,7 +56,8 @@ typedef struct Callback {
  */
 
 static Ns_ThreadProc SockCallbackThread;
-static int Queue(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when, const Ns_Time *timeout, char const**threadNamePtr);
+static Ns_ReturnCode Queue(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when,
+                           const Ns_Time *timeout, char const**threadNamePtr);
 static void CallbackTrigger(void);
 
 /*
@@ -90,13 +91,13 @@ static Tcl_HashTable table;
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_SockCallback(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when)
 {
     return Queue(sock, proc, arg, when, NULL, NULL);
 }
 
-int
+Ns_ReturnCode
 Ns_SockCallbackEx(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when,
                   const Ns_Time *timeout, char const**threadNamePtr)
 {
@@ -127,7 +128,7 @@ Ns_SockCancelCallback(NS_SOCKET sock)
     (void) Ns_SockCancelCallbackEx(sock, NULL, NULL, NULL);
 }
 
-int
+Ns_ReturnCode
 Ns_SockCancelCallbackEx(NS_SOCKET sock, Ns_SockProc *proc, void *arg, char const**threadNamePtr)
 {
     return Queue(sock, proc, arg, (unsigned int)NS_SOCK_CANCEL, NULL, threadNamePtr);
@@ -164,9 +165,8 @@ NsStartSockShutdown(void)
 void
 NsWaitSockShutdown(const Ns_Time *toPtr)
 {
-    int status;
+    Ns_ReturnCode status = NS_OK;
 
-    status = NS_OK;
     Ns_MutexLock(&lock);
     while (status == NS_OK && running) {
 	status = Ns_CondTimedWait(&cond, &lock, toPtr);
@@ -223,13 +223,13 @@ CallbackTrigger(void)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 Queue(NS_SOCKET sock, Ns_SockProc *proc, void *arg, unsigned int when,
       const Ns_Time *timeout, char const**threadNamePtr)
 {
-    Callback   *cbPtr;
-    int         status;
-    bool        trigger, create;
+    Callback     *cbPtr;
+    Ns_ReturnCode status;
+    bool          trigger, create;
 
     cbPtr = ns_calloc(1u, sizeof(Callback));
     cbPtr->sock = sock;
@@ -337,9 +337,10 @@ SockCallbackThread(void *UNUSED(arg))
     pfds[0].events = POLLIN;
 
     for (;;) {
-	int nfds, pollto;
-        bool stop;
-	Ns_Time now, diff = {0, 0};
+	int               pollto;
+        NS_POLL_NFDS_TYPE nfds;
+        bool              stop;
+	Ns_Time           now, diff = {0, 0};
 
 	/*
 	 * Grab the list of any queue updates and the shutdown
@@ -551,11 +552,11 @@ NsGetSockCallbacks(Tcl_DString *dsPtr)
     
     Ns_MutexLock(&lock);
     if (running) {
-        Tcl_HashEntry *hPtr; 
+        const Tcl_HashEntry *hPtr; 
 
         for (hPtr = Tcl_FirstHashEntry(&table, &search); hPtr != NULL; hPtr = Tcl_NextHashEntry(&search)) {
-	    Callback *cbPtr = Tcl_GetHashValue(hPtr);
-	    char      buf[TCL_INTEGER_SPACE];
+	    const Callback *cbPtr = Tcl_GetHashValue(hPtr);
+	    char            buf[TCL_INTEGER_SPACE];
 
             Tcl_DStringStartSublist(dsPtr);
             snprintf(buf, sizeof(buf), "%d", (int) cbPtr->sock);

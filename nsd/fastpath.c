@@ -60,10 +60,10 @@ static void DecrEntry(File *filePtr)
 static bool UrlIs(const char *server, const char *url, bool isDir)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int  FastGetRestart(Ns_Conn *conn, const char *page)
+static Ns_ReturnCode FastGetRestart(Ns_Conn *conn, const char *page)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int  FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
+static Ns_ReturnCode FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
 static int  GzipFile(Tcl_Interp *interp, const char *fileName, const char *gzFileName)
@@ -120,7 +120,7 @@ NsConfigFastpath()
     NsRegisterServerInit(ConfigServerFastpath);
 }
 
-static int
+static Ns_ReturnCode
 ConfigServerFastpath(const char *server)
 {
     NsServer   *servPtr = NsGetServer(server);
@@ -178,21 +178,22 @@ ConfigServerFastpath(const char *server)
  *----------------------------------------------------------------------
  */
 
-int
-Ns_ConnReturnFile(Ns_Conn *conn, int status, const char *mimeType, const char *file)
+Ns_ReturnCode
+Ns_ConnReturnFile(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file)
 {
-    Conn        *connPtr = (Conn *) conn;
-    int          rc;
+    Conn         *connPtr = (Conn *) conn;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(file != NULL);
 
     if (Ns_Stat(file, &connPtr->fileInfo) == NS_FALSE) {
-        return Ns_ConnReturnNotFound(conn);
+        status = Ns_ConnReturnNotFound(conn);
+    } else {
+        status = FastReturn(conn, statusCode, mimeType, file);
     }
 
-    rc = FastReturn(conn, status, mimeType, file);
-    return rc;
+    return status;
 }
 
 
@@ -212,14 +213,14 @@ Ns_ConnReturnFile(Ns_Conn *conn, int status, const char *mimeType, const char *f
  *----------------------------------------------------------------------
  */
 
-int
-Ns_FastPathProc(void *UNUSED(arg), Ns_Conn *conn)
+Ns_ReturnCode
+Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
 {
-    Conn        *connPtr;
-    NsServer    *servPtr;
-    const char  *url;
-    Ns_DString   ds;
-    int          result;
+    Conn         *connPtr;
+    NsServer     *servPtr;
+    const char   *url;
+    Ns_DString    ds;
+    Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
@@ -377,16 +378,17 @@ UrlIs(const char *server, const char *url, bool isDir)
 const char *
 Ns_PageRoot(const char *server)
 {
-    NsServer *servPtr;
+    const NsServer *servPtr;
+    const char     *pageRoot = NULL;
 
     NS_NONNULL_ASSERT(server != NULL);
 
     servPtr = NsGetServer(server);
-    if (servPtr != NULL) {
-        return servPtr->fastpath.pageroot;
+    if (likely(servPtr != NULL)) {
+        pageRoot = servPtr->fastpath.pageroot;
     }
 
-    return NULL;
+    return pageRoot;
 }
 
 
@@ -448,12 +450,13 @@ GzipFile(Tcl_Interp *interp, const char *fileName, const char *gzFileName)
  *----------------------------------------------------------------------
  */
 
-static int
-FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
+static Ns_ReturnCode
+FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
 {
-    Conn        *connPtr = (Conn *) conn;
-    int         isNew, fd, result = NS_ERROR;
-    Tcl_DString ds, *dsPtr = &ds;
+    Conn          *connPtr = (Conn *) conn;
+    int            isNew, fd;
+    Ns_ReturnCode  result = NS_ERROR;
+    Tcl_DString    ds, *dsPtr = &ds;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(file != NULL);
@@ -493,7 +496,7 @@ FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
 	Tcl_DStringAppend(dsPtr, ".gz", 3);
 	gzFileName = Tcl_DStringValue(dsPtr);
 
-	if (Ns_Stat(gzFileName, &gzStat) == NS_TRUE) {
+	if (Ns_Stat(gzFileName, &gzStat)) {
 	    Ns_ConnCondSetHeaders(conn, "Vary", "Accept-Encoding");
 
 	    /*
@@ -507,8 +510,7 @@ FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
 		 * file indicates the we have to try to refresh the
 		 * gzip file (rezip the source).
 		 */
-		result = GzipFile(Ns_GetConnInterp(conn), file, gzFileName);
-		if (result == NS_OK) {
+		if (GzipFile(Ns_GetConnInterp(conn), file, gzFileName) == TCL_OK) {
 		    (void)Ns_Stat(gzFileName, &gzStat);
 		}
 	    }
@@ -534,7 +536,7 @@ FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
 
     if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
 	Ns_DStringFree(dsPtr);
-        return Ns_ConnReturnData(conn, status, "",
+        return Ns_ConnReturnData(conn, statusCode, "",
                                  (ssize_t)connPtr->fileInfo.st_size, type);
     }
 
@@ -558,7 +560,7 @@ FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
         if (useMmap
 	    && NsMemMap(file, (size_t)connPtr->fileInfo.st_size,
                         NS_MMAP_READ, &connPtr->fmap) == NS_OK) {
-            result = Ns_ConnReturnData(conn, status, connPtr->fmap.addr,
+            result = Ns_ConnReturnData(conn, statusCode, connPtr->fmap.addr,
                                        (ssize_t)connPtr->fmap.size, type);
 	    if ((connPtr->flags & NS_CONN_SENT_VIA_WRITER) == 0u) {
 		NsMemUmap(&connPtr->fmap);
@@ -572,7 +574,8 @@ FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
                        file, strerror(errno));
                 goto notfound;
             }
-            result = Ns_ConnReturnOpenFd(conn, status, type, fd, connPtr->fileInfo.st_size);
+            result = Ns_ConnReturnOpenFd(conn, statusCode, type, fd,
+                                         connPtr->fileInfo.st_size);
             (void) ns_close(fd);
         }
 
@@ -648,7 +651,7 @@ FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
         if (filePtr != NULL) {
             ++filePtr->refcnt;
             Ns_CacheUnlock(cache);
-            result = Ns_ConnReturnData(conn, status, filePtr->bytes,
+            result = Ns_ConnReturnData(conn, statusCode, filePtr->bytes,
                                        (ssize_t)filePtr->size, type);
             Ns_CacheLock(cache);
             DecrEntry(filePtr);
@@ -718,11 +721,11 @@ Ns_Stat(const char *path, struct stat *stPtr)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 FastGetRestart(Ns_Conn *conn, const char *page)
 {
-    int        status;
-    Ns_DString ds;
+    Ns_ReturnCode status;
+    Ns_DString    ds;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(page != NULL);
@@ -831,7 +834,7 @@ NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     Ns_CacheLock(cache);
 
     if (contents != 0) {
-        Ns_Entry       *entry;
+        const Ns_Entry *entry;
 
         Tcl_DStringStartSublist(&ds);
         entry = Ns_CacheFirstEntry(cache, &search);

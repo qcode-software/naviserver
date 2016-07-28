@@ -129,11 +129,11 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
                  int fd, const void *data, size_t objLength,
                  Ns_FileVec *bufs, int *nbufsPtr, Ns_DString *dsPtr)
 {
-    Conn   *connPtr = (Conn *) conn;
-    Range  *ranges;
-    int     maxranges, rangeCount, i, v;
-    off_t   start, end, dsbase;
-    size_t  len, responseLength;
+    const Conn *connPtr = (const Conn *) conn;
+    Range      *ranges;
+    int         maxranges, rangeCount, i, v;
+    off_t       start, end, dsbase;
+    size_t      len, responseLength;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(type != NULL);
@@ -172,7 +172,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
         *nbufsPtr = 1;
 
         SetRangeHeader(conn, start, end, objLength);
-        Ns_ConnSetLengthHeader(conn, responseLength, 0);
+        Ns_ConnSetLengthHeader(conn, responseLength, NS_FALSE);
 
         return rangeCount;
     }
@@ -225,7 +225,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
     *nbufsPtr = (rangeCount * 2) + 1;
 
     SetMultipartRangeHeader(conn);
-    Ns_ConnSetLengthHeader(conn, responseLength, 0);
+    Ns_ConnSetLengthHeader(conn, responseLength, NS_FALSE);
 
     return rangeCount;
 }

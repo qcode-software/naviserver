@@ -17,7 +17,7 @@ limit. The specified value might be an integer or the constant
 
 [para] A typical use case for this command is to query or set e.g. the
 coresize via the NaviServer config file or at runtime in a syntax
-independent from the namings and conventions in the various startup
+independent from the naming and conventions in the various startup
 scripts (e.g. upstart, systemd, ...).
 
 [section {COMMANDS}]
@@ -47,9 +47,14 @@ dumps are truncated to this size.
 
 [section EXAMPLES]
 
+When the server is for some reason in an unknown state, the command
+ns_rlimit can be used to force a core dump via ns_crash also for
+running processes, which were started with a core dump limit of 0.
+
 [example_begin]
  % ns_rlimit coresize unlimited
  unlimited unlimited
+ % ns_crash
 [example_end]
 
 [keywords system limits]

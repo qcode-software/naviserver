@@ -46,7 +46,7 @@ typedef struct TaskQueue {
     Ns_Mutex           lock;              /* Queue list and signal lock. */
     Ns_Cond            cond;              /* Task and queue signal condition. */
     bool               shutdown;          /* Shutdown flag. */
-    int                stopped;           /* Stop flag. */
+    bool               stopped;           /* Stop flag. */
     NS_SOCKET          trigger[2];        /* Trigger pipe. */
     char               name[1];           /* String name. */
 } TaskQueue;
@@ -253,20 +253,23 @@ Ns_TaskCreate(NS_SOCKET sock, Ns_TaskProc *proc, void *arg)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TaskEnqueue(Ns_Task *task, Ns_TaskQueue *queue)
 {
-    Task      *taskPtr = (Task *) task;
-    TaskQueue *queuePtr = (TaskQueue *) queue;
+    Ns_ReturnCode status;
+    Task         *taskPtr = (Task *) task;
+    TaskQueue    *queuePtr = (TaskQueue *) queue;
 
     NS_NONNULL_ASSERT(task != NULL);
     NS_NONNULL_ASSERT(queue != NULL);
     
     taskPtr->queuePtr = queuePtr;
-    if (SignalQueue(taskPtr, TASK_INIT) == NS_FALSE) {
-        return NS_ERROR;
+    if (unlikely(SignalQueue(taskPtr, TASK_INIT) == NS_FALSE)) {
+        status = NS_ERROR;
+    } else {
+        status = NS_OK;
     }
-    return NS_OK;
+    return status;
 }
 
 
@@ -290,7 +293,8 @@ void
 Ns_TaskRun(Ns_Task *task)
 {
     Task          *taskPtr = (Task *) task;
-    Ns_Time        now, *timeoutPtr;
+    const Ns_Time *timeoutPtr;
+    Ns_Time        now;
     struct pollfd  pfd;
 
     NS_NONNULL_ASSERT(task != NULL);
@@ -333,19 +337,20 @@ Ns_TaskRun(Ns_Task *task)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TaskCancel(Ns_Task *task)
 {
-    Task *taskPtr = (Task *) task;
+    Ns_ReturnCode status = NS_OK;
+    Task         *taskPtr = (Task *) task;
 
     NS_NONNULL_ASSERT(task != NULL);
 
     if (taskPtr->queuePtr == NULL) {
         taskPtr->signalFlags |= TASK_CANCEL;
     } else if (SignalQueue(taskPtr, TASK_CANCEL) == NS_FALSE) {
-        return NS_ERROR;
+        status = NS_ERROR;
     }
-    return NS_OK;
+    return status;
 }
 
 
@@ -367,13 +372,13 @@ Ns_TaskCancel(Ns_Task *task)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_TaskWait(Ns_Task *task, Ns_Time *timeoutPtr)
 {
-    Task      *taskPtr = (Task *) task;
-    TaskQueue *queuePtr = taskPtr->queuePtr;
-    int        status = NS_OK;
-    Ns_Time    atime;
+    Task          *taskPtr = (Task *) task;
+    TaskQueue     *queuePtr = taskPtr->queuePtr;
+    Ns_ReturnCode  status = NS_OK;
+    Ns_Time        atime;
 
     NS_NONNULL_ASSERT(task != NULL);
     
@@ -416,11 +421,11 @@ Ns_TaskWait(Ns_Task *task, Ns_Time *timeoutPtr)
  */
 
 bool
-Ns_TaskCompleted(Ns_Task *task)
+Ns_TaskCompleted(const Ns_Task *task)
 {
-    Task      *taskPtr = (Task *) task;
-    TaskQueue *queuePtr;
-    bool       status;
+    const Task *taskPtr = (const Task *) task;
+    TaskQueue  *queuePtr;
+    bool        status;
 
     NS_NONNULL_ASSERT(task != NULL);
 
@@ -613,8 +618,8 @@ NsStartTaskQueueShutdown(void)
 void
 NsWaitTaskQueueShutdown(const Ns_Time *toPtr)
 {
-    TaskQueue *queuePtr, *nextPtr;
-    int        status;
+    TaskQueue     *queuePtr, *nextPtr;
+    Ns_ReturnCode  status;
 
     /*
      * Clear out list of any remaining task queues.
@@ -867,9 +872,10 @@ TaskThread(void *arg)
     firstWaitPtr = NULL;
 
     for (;;) {
-        int n, broadcast, nfds;
-        bool shutdown;
-	Ns_Time  *timeoutPtr, now;
+        int            n, broadcast, nfds;
+        bool           shutdown;
+	Ns_Time        now;
+        const Ns_Time *timeoutPtr;
 
         /*
          * Get the shutdown flag and process any incoming signals.

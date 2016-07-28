@@ -154,13 +154,14 @@ static Tcl_HashTable serversTable;
  *----------------------------------------------------------------------
  */
 
-NS_EXPORT int
+NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
-    Server *servPtr;
-    /*char *path;*/
+    Server        *servPtr;
     Tcl_HashEntry *hPtr;
-    int isNew, result;
+    int            isNew;
+    Ns_ReturnCode  result;
+    /*char *path;*/
 
     NS_NONNULL_ASSERT(module != NULL);
 
@@ -192,9 +193,11 @@ Ns_ModuleInit(const char *server, const char *module)
     Tcl_InitHashTable(&servPtr->groups, TCL_STRING_KEYS);
     Ns_RWLockInit(&servPtr->lock);
     Ns_SetRequestAuthorizeProc(server, AuthProc);
+    
     result = Ns_TclRegisterTrace(server, AddCmds, servPtr, NS_TCL_TRACE_CREATE);
     hPtr = Tcl_CreateHashEntry(&serversTable, server, &isNew);
     Tcl_SetHashValue(hPtr, servPtr);
+    
     return result;
 }
 
@@ -670,7 +673,7 @@ ValidateUserAddr(User *userPtr, const char *peer)
                     }
                     break;
                 }
-                start = strchr(start + 1, '.');
+                start = strchr(start + 1, INTCHAR('.'));
                 if (start == NULL) {
                     break;
                 }
@@ -828,7 +831,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
         memset(ipPtr, 0, sizeof(struct NS_SOCKADDR_STORAGE));
         memset(maskPtr, 0, sizeof(struct NS_SOCKADDR_STORAGE));
 
-        slash = strchr(net, '/');
+        slash = strchr(net, INTCHAR('/'));
         if (slash == NULL) {
             /*
              * No mask is given
@@ -849,7 +852,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
             slash++;
 
             validIp = ns_inet_pton(ipPtr, net);
-            if (strchr(slash, '.') == NULL && strchr(slash, ':') == NULL) {
+            if (strchr(slash, INTCHAR('.')) == NULL && strchr(slash, INTCHAR(':')) == NULL) {
                 maskPtr->sa_family = ipPtr->sa_family;
                 Ns_SockaddrMaskBits(maskPtr, strtol(slash, NULL, 10));
                 validMask = 1;

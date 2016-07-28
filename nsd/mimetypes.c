@@ -1219,9 +1219,9 @@ static const struct exttype {
 void
 NsConfigMimeTypes(void)
 {
-    Ns_Set     *set;
-    size_t      i;
-    static int  once = 0;
+    const Ns_Set *set;
+    size_t        i;
+    static int    once = 0;
 
     if (once == 0) {
         once = 1;
@@ -1282,17 +1282,17 @@ NsConfigMimeTypes(void)
 const char *
 Ns_GetMimeType(const char *file)
 {
-    const char    *start, *ext;
-    Ns_DString     ds;
-    Tcl_HashEntry *hPtr;
+    const char          *start, *ext;
+    Ns_DString           ds;
+    const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(file != NULL);
     
-    start = strrchr(file, '/');
+    start = strrchr(file, INTCHAR('/'));
     if (start == NULL) {
         start = file;
     }
-    ext = strrchr(start, '.');
+    ext = strrchr(start, INTCHAR('.'));
     if (ext == NULL) {
         return noextType;
     }
@@ -1383,8 +1383,8 @@ Ns_IsBinaryMimeType(const char *contentType) {
 void
 NsGetMimeTypes(Ns_DString *dsPtr)
 {
-    Tcl_HashSearch  search;
-    Tcl_HashEntry  *hPtr;
+    Tcl_HashSearch       search;
+    const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     

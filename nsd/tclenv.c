@@ -52,7 +52,7 @@ static int PutEnv(Tcl_Interp *interp, const char *name, const char *value);
  * Loca variables defined in this file.
  */
 
-static Ns_Mutex lock;
+static Ns_Mutex lock = NULL;
 
 
 /*
@@ -144,7 +144,7 @@ int
 NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     const char  *name, *value;
-    char       **envp;
+    char        *const*envp;
     int          status, i, opt;
     Tcl_Obj     *result;
 
@@ -183,7 +183,7 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
             Tcl_Obj *obj;
             
             name = envp[i];
-            value = strchr(name, '=');
+            value = strchr(name, INTCHAR('='));
             obj = Tcl_NewStringObj(name, (value != NULL) ? (int)(value - name) : -1);
             if (Tcl_ListObjAppendElement(interp, result, obj) != TCL_OK) {
                 goto done;
@@ -197,7 +197,7 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
             goto done;
         }
         if (PutEnv(interp, Tcl_GetString(objv[2]), Tcl_GetString(objv[3]))
-            != NS_OK) {
+            != TCL_OK) {
             goto done;
         }
         break;
@@ -222,7 +222,7 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
             Tcl_SetResult(interp, "no such environment variable", TCL_STATIC);
             goto done;
         }
-        if (opt == IUnsetIdx && PutEnv(interp, name, NULL) != NS_OK) {
+        if ((opt == IUnsetIdx) && (PutEnv(interp, name, NULL) != TCL_OK)) {
             goto done;
         } else {
             Tcl_SetObjResult(interp, Tcl_NewStringObj(value, -1));

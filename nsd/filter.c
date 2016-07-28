@@ -83,7 +83,7 @@ static void *RegisterCleanup(NsServer *servPtr, Ns_TraceProc *proc, void *arg)
 
 void *
 Ns_RegisterFilter(const char *server, const char *method, const char *url,
-                  Ns_FilterProc *proc, Ns_FilterType when, void *arg, int first)
+                  Ns_FilterProc *proc, Ns_FilterType when, void *arg, bool first)
 {
     NsServer *servPtr;
     Filter *fPtr;
@@ -103,7 +103,7 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
     fPtr->url = ns_strdup(url);
     fPtr->when = when;
     fPtr->arg = arg;
-    if (first != 0) {
+    if (first) {
         fPtr->nextPtr = servPtr->filter.firstFilterPtr;
         servPtr->filter.firstFilterPtr = fPtr;
     } else {
@@ -136,36 +136,40 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsRunFilters(Ns_Conn *conn, Ns_FilterType why)
 {
-    Conn *connPtr = (Conn *) conn;
-    NsServer *servPtr;
-    Filter *fPtr;
-    int status;
+    const Conn    *connPtr = (const Conn *) conn;
+    NsServer      *servPtr;
+    const Filter  *fPtr;
+    Ns_ReturnCode  status;
 
     NS_NONNULL_ASSERT(conn != NULL);
     servPtr = connPtr->poolPtr->servPtr;
 
     status = NS_OK;
     if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
+        Ns_ReturnCode filter_status = NS_OK;
+        
         Ns_MutexLock(&servPtr->filter.lock);
 	fPtr = servPtr->filter.firstFilterPtr;
-	while (fPtr != NULL && status == NS_OK) {
+	while (fPtr != NULL && filter_status == NS_OK) {
 	    if (unlikely(fPtr->when == why)
 		&& (Tcl_StringMatch(conn->request.method, fPtr->method) != 0)
 		&& (Tcl_StringMatch(conn->request.url, fPtr->url) != 0)) {
 	        Ns_MutexUnlock(&servPtr->filter.lock);
-		status = (*fPtr->proc)(fPtr->arg, conn, why);
+		filter_status = (*fPtr->proc)(fPtr->arg, conn, why);
 		Ns_MutexLock(&servPtr->filter.lock);
 	    }
 	    fPtr = fPtr->nextPtr;
 	}
 	Ns_MutexUnlock(&servPtr->filter.lock);
-	if (status == NS_FILTER_BREAK ||
-	    (why == NS_FILTER_TRACE && status == NS_FILTER_RETURN)) {
+	if (filter_status == NS_FILTER_BREAK ||
+	    (why == NS_FILTER_TRACE && filter_status == NS_FILTER_RETURN)) {
 	    status = NS_OK;
-	}
+	} else {
+            status = filter_status;
+        }
     }
 
     /*
@@ -302,7 +306,7 @@ RegisterCleanup(NsServer *servPtr, Ns_TraceProc *proc, void *arg)
 void
 NsRunTraces(Ns_Conn *conn)
 {
-    Conn *connPtr = (Conn *) conn;
+    const Conn *connPtr = (const Conn *) conn;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
@@ -312,7 +316,7 @@ NsRunTraces(Ns_Conn *conn)
 void
 NsRunCleanups(Ns_Conn *conn)
 {
-    Conn *connPtr = (Conn *) conn;
+    const Conn *connPtr = (const Conn *) conn;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
@@ -379,8 +383,8 @@ NewTrace(Ns_TraceProc *proc, void *arg)
 void
 NsGetFilters(Tcl_DString *dsPtr, const char *server)
 {
-    Filter *fPtr;
-    NsServer *servPtr;
+    const Filter   *fPtr;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);
@@ -414,8 +418,8 @@ NsGetFilters(Tcl_DString *dsPtr, const char *server)
 void
 NsGetTraces(Tcl_DString *dsPtr, const char *server)
 {
-    Trace  *tracePtr;
-    NsServer *servPtr;
+    const Trace    *tracePtr;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);

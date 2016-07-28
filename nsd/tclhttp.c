@@ -214,11 +214,12 @@ HttpQueueCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, int run)
     int            verify = 0, isNew, i;
     Tcl_HashEntry *hPtr;
     Ns_HttpTask   *httpPtr;
-    char           buf[TCL_INTEGER_SPACE + 4], *cert = NULL, *caFile = NULL, *caPath = NULL;
+    char           buf[TCL_INTEGER_SPACE + 4];
+    const char    *cert = NULL, *caFile = NULL, *caPath = NULL;
     const char    *method = "GET", *url = NULL, *bodyFileName = NULL;
     Ns_Set        *hdrPtr = NULL;
     Tcl_Obj       *bodyPtr = NULL;
-    Ns_Time       *timeoutPtr = NULL;
+    const Ns_Time *timeoutPtr = NULL;
     bool           keep_host_header = NS_FALSE;
 
     Ns_ObjvSpec opts[] = {
@@ -327,7 +328,7 @@ HttpParseHeaders(char *response, Ns_Set *hdrPtr, int *statusPtr)
 
     sscanf(response, "HTTP/%2d.%2d %3d", &major, &minor, statusPtr);
     p = response;
-    while ((eol = strchr(p, '\n')) != NULL) {
+    while ((eol = strchr(p, INTCHAR('\n'))) != NULL) {
 	size_t len;
 	
 	*eol++ = '\0';
@@ -769,7 +770,8 @@ HttpGet(NsInterp *itPtr, const char *id, Ns_HttpTask **httpPtrPtr, bool removeRe
  *----------------------------------------------------------------------
  */
 char *
-Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *hostString, int port, int defPort)
+Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *hostString,
+                      unsigned short port, unsigned short defPort)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(hostString != NULL);
@@ -777,7 +779,7 @@ Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *h
     if (protoString != NULL) {
         Ns_DStringVarAppend(dsPtr, protoString, "://", NULL);
     }
-    if (strchr(hostString, ':') != NULL) {
+    if (strchr(hostString, INTCHAR(':')) != NULL) {
         Ns_DStringVarAppend(dsPtr, "[", hostString, "]", NULL);
     } else {
         Ns_DStringVarAppend(dsPtr, hostString, NULL);
@@ -829,7 +831,7 @@ Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
         /*
          * Maybe this is an IPv6 address in square braces
          */
-        p = strchr(hostString + 1, ']');
+        p = strchr(hostString + 1, INTCHAR(']'));
         if (p != NULL) {
             ipv6 = NS_TRUE;
             
@@ -849,7 +851,7 @@ Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
         }
     }
     if (!ipv6) {
-        *portStart = strchr(hostString, ':');
+        *portStart = strchr(hostString, INTCHAR(':'));
         if (hostStart != NULL) {
             *hostStart = hostString;
         }
@@ -949,16 +951,14 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url,
      * free urls before leaving this function.
      */
     url2 = ns_strdup(url);
-    result = Ns_ParseUrl(url2, &protocol, &host, &portString, &path, &tail);
+    if (Ns_ParseUrl(url2, &protocol, &host, &portString, &path, &tail) != NS_OK) {
+        goto fail;
+    }
 
     assert(protocol != NULL);
     assert(host != NULL);
     assert(path != NULL);
     assert(tail != NULL);
-    
-    if (unlikely(result != TCL_OK)) {
-        goto fail;
-    }
     
     /*
      * Check used protocol and protocol-specific parameters
@@ -1126,7 +1126,7 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url,
     
     if (!keep_host_header) {
         Ns_DStringNAppend(dsPtr, "Host: ", 6);
-        Ns_HttpLocationString(dsPtr, NULL, host, portNr, 80);
+        Ns_HttpLocationString(dsPtr, NULL, host, portNr, 80u);
         Ns_DStringNAppend(dsPtr, "\r\n", 2);
     }
 
@@ -1224,7 +1224,7 @@ HttpAppendRawBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t outSize)
 int
 Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize) 
 {
-    int status = TCL_OK;
+    int tclStatus = TCL_OK;
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
     NS_NONNULL_ASSERT(buffer != NULL);
@@ -1235,7 +1235,7 @@ Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
 	/*
 	 * Output raw content
 	 */
-	status = HttpAppendRawBuffer(httpPtr, buffer, inSize);
+	tclStatus = HttpAppendRawBuffer(httpPtr, buffer, inSize);
 
     } else {
 	char out[16384];
@@ -1249,16 +1249,16 @@ Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
 	do {
 	    size_t uncompressedLen = 0u;
 
-	    status = Ns_InflateBuffer(httpPtr->compress, out, sizeof(out), &uncompressedLen);
-	    Ns_Log(Ns_LogTaskDebug, "InflateBuffer status %d uncompressed %" PRIdz " bytes", status, uncompressedLen);
+	    tclStatus = Ns_InflateBuffer(httpPtr->compress, out, sizeof(out), &uncompressedLen);
+	    Ns_Log(Ns_LogTaskDebug, "InflateBuffer status %d uncompressed %" PRIdz " bytes", tclStatus, uncompressedLen);
 	    
 	    if (HttpAppendRawBuffer(httpPtr, out, uncompressedLen) != TCL_OK) {
-                status = TCL_ERROR;
+                tclStatus = TCL_ERROR;
             }
 
-	} while(status == TCL_CONTINUE);
+	} while(tclStatus == TCL_CONTINUE);
     }
-    return status;
+    return tclStatus;
 }
 
 /*

@@ -87,8 +87,8 @@ static Ns_Mutex lock;
 char *
 Ns_HttpTime(Ns_DString *dsPtr, const time_t *when)
 {
-    time_t     now;
-    struct tm *tmPtr;
+    time_t           now;
+    const struct tm *tmPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     
@@ -155,7 +155,7 @@ Ns_ParseHttpTime(char *chars)
      *    +-- s
      */
 
-    s = strchr(chars, ',');
+    s = strchr(chars, INTCHAR(','));
     if (s != NULL) {
 
         /*
@@ -173,7 +173,7 @@ Ns_ParseHttpTime(char *chars)
          * it must be the first format.
          */
 
-        if (strchr(s, '-') != NULL) {
+        if (strchr(s, INTCHAR('-')) != NULL) {
             if (strlen(s) < 18u) {
                 return 0;
             }

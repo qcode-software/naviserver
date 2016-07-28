@@ -264,11 +264,11 @@ static Tcl_HashTable pools;     /* Tracks proxy pools */
 
 ReaperState reaperState = Stopped;
 
-static Ns_Cond  pcond;          /* Those are used to control access to */
-static Ns_Mutex plock;          /* the list of Slave structures of slave */
-static Slave    *firstClosePtr;  /* processes which are being closed. */
+static Ns_Cond  pcond = NULL;          /* Those are used to control access to */
+static Ns_Mutex plock = NULL;          /* the list of Slave structures of slave */
+static Slave    *firstClosePtr = NULL; /* processes which are being closed. */
 
-static Ns_DString defexec;      /* Stores full path of the proxy executable */
+static Ns_DString defexec;             /* Stores full path of the proxy executable */
 
 
 /*
@@ -290,10 +290,13 @@ static Ns_DString defexec;      /* Stores full path of the proxy executable */
 void
 Nsproxy_LibInit(void)
 {
-    static int once = 0;
+    static bool initialized = NS_FALSE;
 
-    if (once == 0) {
-        once = 1;
+    if (!initialized) {
+        initialized = NS_TRUE;
+
+        Ns_MutexInit(&plock);
+        Ns_MutexSetName(&plock, "ns:proxy");
 
         Nsd_LibInit();
 
@@ -370,7 +373,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     Nsproxy_LibInit();
 
     if (argc > 4 || argc < 3) {
-        char *pgm = strrchr(argv[0], '/');
+        char *pgm = strrchr(argv[0], INTCHAR('/'));
         Ns_Fatal("usage: %s pool id ?command?", (pgm != NULL) ? ++pgm : argv[0]);
     }
     if (argc < 4) {
@@ -418,7 +421,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
      * This will of course block the caller, possibly forever.
      */
 
-    Ns_CloseOnExec(proc.wfd);
+    (void)Ns_CloseOnExec(proc.wfd);
 
     /*
      * Create the interp, initialize with user init proc, if any.
@@ -449,11 +452,11 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
      * etc...
      */
 
-    user = strchr(argv[1], ':');
+    user = strchr(argv[1], INTCHAR(':'));
     if (user != NULL) {
         uarg = ns_strdup(++user);
         user = uarg;
-        group = strchr(user, ':');
+        group = strchr(user, INTCHAR(':'));
         if (group != NULL) {
             *group = 0;
             group++;
@@ -575,7 +578,8 @@ Shutdown(const Ns_Time *toutPtr, void *arg)
     Pool           *poolPtr;
     Proxy          *proxyPtr, *tmpPtr;
     Tcl_HashSearch  search;
-    int             reap, status;
+    int             reap;
+    Ns_ReturnCode   status;
 
     /*
      * Cleanup all known pools. This will put all idle
@@ -2132,10 +2136,10 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 static Err
 PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
 {
-    Proxy   *proxyPtr;
-    Err      err;
-    int      status = NS_OK;
-    Ns_Time  tout;
+    Proxy        *proxyPtr;
+    Err           err;
+    Ns_ReturnCode status = NS_OK;
+    Ns_Time       tout;
 
     NS_NONNULL_ASSERT(poolPtr != NULL);
     NS_NONNULL_ASSERT(proxyPtrPtr != NULL);
@@ -2782,7 +2786,7 @@ ReaperThread(void *ignored)
                  */
 
                 if (slavePtr->signal >= 0) {
-                    Ns_WaitProcess(slavePtr->pid); /* Should not really wait */
+                    (void) Ns_WaitProcess(slavePtr->pid); /* Should not really wait */
                 } else {
                     Ns_Log(Warning, "nsproxy: zombie: %ld", (long)slavePtr->pid);
                 }
@@ -2835,7 +2839,7 @@ ReaperThread(void *ignored)
             if (tout.sec == TIME_T_MAX && tout.usec == LONG_MAX) {
                 Ns_CondWait(&pcond, &plock);
             } else {
-                Ns_CondTimedWait(&pcond, &plock, &tout);
+                (void) Ns_CondTimedWait(&pcond, &plock, &tout);
             }
             if (reaperState == Stopping) {
                 break;

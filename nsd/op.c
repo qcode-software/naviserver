@@ -91,7 +91,7 @@ NsInitRequests(void)
     NsRegisterServerInit(ConfigServerProxy);
 }
 
-static int
+static Ns_ReturnCode
 ConfigServerProxy(const char *server)
 {
     NsServer *servPtr = NsGetServer(server);
@@ -168,7 +168,7 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
               Ns_OpProc **procPtr, Ns_Callback **deletePtr, void **argPtr, 
 	      unsigned int *flagsPtr)
 {
-    Req *reqPtr;
+    const Req *reqPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -214,13 +214,13 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
 
 void
 Ns_UnRegisterRequest(const char *server, const char *method, const char *url,
-                     int inherit)
+                     bool inherit)
 {
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
-    Ns_UnRegisterRequestEx(server, method, url, (inherit != 0) ? 0u : NS_OP_NOINHERIT);
+    Ns_UnRegisterRequestEx(server, method, url, (inherit ? 0u : NS_OP_NOINHERIT));
 }
 
 
@@ -272,11 +272,11 @@ Ns_UnRegisterRequestEx(const char *server, const char *method, const char *url,
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnRunRequest(Ns_Conn *conn)
 {
-    int         status = NS_OK;
-    Conn       *connPtr;
+    Ns_ReturnCode  status = NS_OK;
+    Conn          *connPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
@@ -348,10 +348,10 @@ Ns_ConnRunRequest(Ns_Conn *conn)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ConnRedirect(Ns_Conn *conn, const char *url)
 {
-    int status;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(url != NULL);
@@ -382,7 +382,10 @@ Ns_ConnRedirect(Ns_Conn *conn, const char *url)
     case NS_UNAUTHORIZED:
         status = Ns_ConnReturnUnauthorized(conn);
         break;
-    case NS_ERROR:
+    case NS_ERROR:          /* fall through */
+    case NS_FILTER_BREAK:   /* fall through */
+    case NS_FILTER_RETURN:  /* fall through */
+    case NS_TIMEOUT:        /* fall through */
     default:
         status = Ns_ConnReturnInternalError(conn);
         break;
@@ -511,15 +514,15 @@ Ns_UnRegisterProxyRequest(const char *server, const char *method,
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsConnRunProxyRequest(Ns_Conn *conn)
 {
-    Conn          *connPtr = (Conn *) conn;
-    NsServer      *servPtr;
-    Req           *reqPtr = NULL;
-    int            status;
-    Ns_DString     ds;
-    Tcl_HashEntry *hPtr;
+    const Conn          *connPtr = (const Conn *) conn;
+    NsServer            *servPtr;
+    Req                 *reqPtr = NULL;
+    Ns_ReturnCode        status;
+    Ns_DString           ds;
+    const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
     
@@ -567,7 +570,7 @@ NsConnRunProxyRequest(Ns_Conn *conn)
 void
 NsGetRequestProcs(Tcl_DString *dsPtr, const char *server)
 {
-    NsServer *servPtr;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);
