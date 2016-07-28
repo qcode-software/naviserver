@@ -27,6 +27,7 @@ NEW_SUFFIX="new"
 OLD_SUFFIX="old"
 CONF="$ETCDIR/$INSTANCE.tcl"
 CONF_NEW="$CONF.$NEW_SUFFIX"
+SSL_CERT="$ETCDIR/$INSTANCE.pem"
 
 replace_file () {
     file=$1
@@ -118,7 +119,7 @@ set	controlport		9999
 
 # nsssl options (if applicable)
 set     ssl_port                443     
-set     ssl_cert                /etc/naviserver/default.pem
+set     ssl_cert                /etc/naviserver/\${instance}.pem
 
 # html/adp files
 set 	pageroot 		/usr/share/doc/naviserver
@@ -795,6 +796,37 @@ fi
 # remove tmp files still around if any...
 
 rm -f "$CONF.$NEW_SUFFIX" "$CONF.$OLD_SUFFIX"
+
+# Create default certificate
+if [ ! -f $SSL_CERT ]; then
+	TMPOUT=`mktemp` || exit 1
+	TMPFILE=`mktemp` || exit 1
+	if ! HOSTNAME="$(hostname -f)" ; then
+		HOSTNAME="$(hostname)"
+	fi
+	cat <<EOF >$TMPFILE
+#
+# Naviserver SSL default cert configuration file.
+#
+RANDFILE                = /dev/urandom
+[ req ]
+default_bits            = 2048
+default_keyfile         = privkey.pem
+distinguished_name      = req_distinguished_name
+prompt                  = no
+policy			= policy_anything
+[ req_distinguished_name ]
+commonName                      = $HOSTNAME
+EOF
+
+	if ! openssl req -config $TMPFILE -new -x509 -days 3650 -nodes -out $SSL_CERT -keyout $SSL_CERT > $TMPOUT 2>&1 ; then
+		echo "Could not create certificate. Openssl output was:" >&2
+		cat $TMPOUT >&2
+		# Cleanup, since key may have been written to $SSL_CERT before failure. Don't care if it fails.
+		rm -f $SSL_CERT || true
+		exit 1
+    	fi
+fi
 
 #DEBHELPER#
 
