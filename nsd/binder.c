@@ -49,7 +49,7 @@
  * Local variables defined in this file
  */
 
-static Ns_Mutex      lock;
+static Ns_Mutex      lock = NULL;
 static Tcl_HashTable preboundTcp;
 static Tcl_HashTable preboundUdp;
 static Tcl_HashTable preboundRaw;
@@ -87,7 +87,7 @@ static void Binder(void);
 
 #ifndef _WIN32
 NS_SOCKET
-Ns_SockListenEx(const char *address, int port, int backlog)
+Ns_SockListenEx(const char *address, unsigned short port, int backlog)
 {
     NS_SOCKET           sock = NS_INVALID_SOCKET;
     struct NS_SOCKADDR_STORAGE sa;
@@ -163,7 +163,7 @@ Ns_SockListenEx(const char *address, int port, int backlog)
  */
 
 NS_SOCKET
-Ns_SockListenUdp(const char *address, int port)
+Ns_SockListenUdp(const char *address, unsigned short port)
 {
     NS_SOCKET        sock = NS_INVALID_SOCKET;
     struct NS_SOCKADDR_STORAGE sa;
@@ -482,6 +482,9 @@ Ns_SockBindRaw(int proto)
 void
 NsInitBinder(void)
 {
+    Ns_MutexInit(&lock);
+    Ns_MutexSetName(&lock, "binder");
+    
     Tcl_InitHashTable(&preboundTcp, (int)(sizeof(struct NS_SOCKADDR_STORAGE) / sizeof(int)));
     Tcl_InitHashTable(&preboundUdp, (int)(sizeof(struct NS_SOCKADDR_STORAGE) / sizeof(int)));
     Tcl_InitHashTable(&preboundRaw, TCL_ONE_WORD_KEYS);
@@ -682,7 +685,7 @@ PreBind(const char *spec)
         const char *proto;
         char       *addr;
 
-        next = strchr(line, ',');
+        next = strchr(line, INTCHAR(','));
         if (next != NULL) {
             *next++ = '\0';
         }
@@ -709,7 +712,7 @@ PreBind(const char *spec)
         /* 
 	 * Parse protocol 
 	 */
-        if (*line != '/' && (str = strchr(line,'/'))) {
+        if (*line != '/' && (str = strchr(line, INTCHAR('/')))) {
             *str++ = '\0';
             proto = str;
         }
@@ -777,7 +780,7 @@ PreBind(const char *spec)
             int count = 1;
             /* Parse count */
             
-            str = strchr(str,'/');
+            str = strchr(str, INTCHAR('/'));
             if (str != NULL) {
                 *(str++) = '\0';
                 count = strtol(str, NULL, 10);
@@ -805,7 +808,7 @@ PreBind(const char *spec)
         if (Ns_PathIsAbsolute(line) == NS_TRUE) {
             /* Parse mode */
             mode = 0;
-            str = strchr(str,'|');
+            str = strchr(str, INTCHAR('|'));
             if (str != NULL) {
                 *(str++) = '\0';
                 mode = strtol(str, NULL, 10);
@@ -854,7 +857,7 @@ PreBind(const char *spec)
  */
 
 NS_SOCKET
-Ns_SockBinderListen(int type, const char *address, int port, int options)
+Ns_SockBinderListen(int type, const char *address, unsigned short port, int options)
 {
     NS_SOCKET     sock = NS_INVALID_SOCKET;
 #ifndef _WIN32

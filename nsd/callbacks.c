@@ -311,7 +311,7 @@ NsStartShutdownProcs()
 static void
 ShutdownThread(void *arg)
 {
-    Callback         *cbPtr;
+    const Callback *cbPtr;
 
     Ns_ThreadSetName("-shutdown-");
 
@@ -362,8 +362,8 @@ ShutdownThread(void *arg)
 void
 NsWaitShutdownProcs(const Ns_Time *toPtr)
 {
-    Callback         *cbPtr;
-    int               status = NS_OK;
+    const Callback   *cbPtr;
+    Ns_ReturnCode     status = NS_OK;
 
     if (shutdownThread == NULL) {
         return; /* No shutdown callbacks. */

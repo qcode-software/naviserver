@@ -150,7 +150,7 @@ Ns_FreeRequest(Ns_Request *request)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ParseRequest(Ns_Request *request, const char *line)
 {
     char       *url, *l, *p;
@@ -166,7 +166,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     /*
      * The passed-in line must not contain a newline
      */
-    assert(strrchr(line, '\n') == NULL);
+    assert(strrchr(line, INTCHAR('\n')) == NULL);
 #endif
     
     memset(request, 0, sizeof(Ns_Request));
@@ -185,7 +185,6 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     /*
      * Save the trimmed line for logging purposes.
      */
-    
     request->line = ns_strdup(l);
     
     Ns_Log(Ns_LogRequestDebug, "begin %s", request->line);
@@ -231,7 +230,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     /*
      * Search from the end for the last space.
      */
-    p = strrchr(url, ' ');
+    p = strrchr(url, INTCHAR(' '));
     if (likely(p != NULL)) {
         /*
          * We have a final token. Let see, if this a HTTP-version string.
@@ -315,11 +314,11 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     }
 
     SetUrl(request, url);
-
     Ns_DStringFree(&ds);
     return NS_OK;
 
 done:
+
     Ns_Log(Warning, "Ns_ParseRequest <%s> -> ERROR", line);
     Ns_DStringFree(&ds);
     return NS_ERROR;
@@ -457,7 +456,7 @@ SetUrl(Ns_Request *request, char *url)
      * Look for a query string at the end of the URL.
      */
     
-    p = strchr(url, '?');
+    p = strchr(url, INTCHAR('?'));
     if (p != NULL) {
         *p++ = '\0';
         if (request->query != NULL) {
@@ -542,7 +541,7 @@ SetUrl(Ns_Request *request, char *url)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
 {
     char           *sep;
@@ -577,7 +576,7 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
     } else {
         char *key;
 
-        sep = strchr(line, ':');
+        sep = strchr(line, INTCHAR(':'));
         if (sep == NULL) {
 	    return NS_ERROR;	/* Malformed header. */
 	}
@@ -746,11 +745,11 @@ GetEncodingFormat(const char *encodingString, const char *encodingFormat, double
  *
  *----------------------------------------------------------------------
  */
-int
+bool
 NsParseAcceptEncoding(double version, const char *hdr) 
 {
     double gzipQvalue = -1.0, starQvalue = -1.0, identityQvalue = -1.0;
-    int gzip = 0;
+    bool   gzip;
 
     NS_NONNULL_ASSERT(hdr != NULL);
 
@@ -758,10 +757,10 @@ NsParseAcceptEncoding(double version, const char *hdr)
 	/* we have gzip specified in accept-encoding */
 	if (gzipQvalue > 0.999) {
 	    /* gzip qvalue 1, use it, nothing else can be higher */
-	    gzip = 1;
+	    gzip = NS_TRUE;
 	} else if (gzipQvalue < 0.0009) {
 	    /* gzip qvalue 0, forbid gzip */
-	    gzip = 0;
+	    gzip = NS_FALSE;
 	} else {
 	    /* a middle gzip qvalue, compare it with identity and default */
 	    if (GetEncodingFormat(hdr, "identity", &identityQvalue) != NULL) {
@@ -772,14 +771,14 @@ NsParseAcceptEncoding(double version, const char *hdr)
 		gzip = (gzipQvalue >= starQvalue);
 	    } else {
 		/* just the low qvalue was specified */
-		gzip = 1;
+		gzip = NS_TRUE;
 	    }
 	}
     } else if (GetEncodingFormat(hdr, "*", &starQvalue) != NULL) {
 	/* star matches everything, so as well gzip */
 	if (starQvalue < 0.0009) {
 	    /* star qvalue forbids gzip */
-	    gzip = 0;
+	    gzip = NS_FALSE;
 	} else if (GetEncodingFormat(hdr, "identity", &identityQvalue) != NULL) {
 	    /* star qvalue allows gzip in HTTP/1.1 */
 	    gzip = (starQvalue >= identityQvalue) && (version >= 1.1);
@@ -787,6 +786,8 @@ NsParseAcceptEncoding(double version, const char *hdr)
 	    /* no identity specified, assume gzip is matched with * in HTTP/1.1 */
 	    gzip = (version >= 1.1);
 	}
+    } else {
+        gzip = NS_FALSE;
     }
 
     return gzip;

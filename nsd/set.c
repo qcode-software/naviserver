@@ -221,27 +221,27 @@ Ns_SetPut(Ns_Set *set, const char *key, const char *value)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_SetUniqueCmp(const Ns_Set *set, const char *key,
                 int (*cmp) (CONST char *s1, CONST char *s2))
 {
     size_t i;
-    int    found;
+    bool   found;
 
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(cmp != NULL);
 
-    found = 0;
+    found = NS_FALSE;
     for (i = 0u; i < set->size; ++i) {
-        char *name = set->fields[i].name;
+        const char *name = set->fields[i].name;
 
         if ((name == NULL) || (((*cmp) (key, name)) == 0)) {
 
-            if (found != 0) {
+            if (found) {
                 return NS_FALSE;
             }
-            found = 1;
+            found = NS_TRUE;
         }
     }
 
@@ -346,7 +346,7 @@ Ns_SetGetCmp(const Ns_Set *set, const char *key,
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_SetUnique(const Ns_Set *set, const char *key)
 {
     NS_NONNULL_ASSERT(set != NULL);
@@ -373,7 +373,7 @@ Ns_SetUnique(const Ns_Set *set, const char *key)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_SetIUnique(const Ns_Set *set, const char *key)
 {
     NS_NONNULL_ASSERT(set != NULL);
@@ -772,9 +772,9 @@ Ns_SetListFind(Ns_Set *const*sets, const char *name)
 Ns_Set **
 Ns_SetSplit(const Ns_Set *set, char sep)
 {
-    size_t      i;
-    Ns_DString  ds;
-    Ns_Set     *end = NULL;
+    size_t        i;
+    Ns_DString    ds;
+    const Ns_Set *end = NULL;
 
     NS_NONNULL_ASSERT(set != NULL);
 
@@ -786,7 +786,7 @@ Ns_SetSplit(const Ns_Set *set, char sep)
         const char *name;
         char       *key;
 
-        key = strchr(set->fields[i].name, sep);
+        key = strchr(set->fields[i].name, (int)sep);
         if (key != NULL) {
             *key++ = '\0';
             name = set->fields[i].name;
@@ -831,7 +831,7 @@ Ns_SetSplit(const Ns_Set *set, char sep)
 void
 Ns_SetListFree(Ns_Set **sets)
 {
-    Ns_Set        **s;
+   Ns_Set *const*s;
 
     NS_NONNULL_ASSERT(sets != NULL);
 

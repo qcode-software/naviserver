@@ -165,7 +165,8 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, const char *chanId, int write, int *fdPtr)
 static int
 FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, const char *cmd)
 {
-    int max, status;
+    int           max, result;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(cmd != NULL);
@@ -191,10 +192,12 @@ FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, const char *cmd)
         Tcl_AppendResult(interp, "could not ", cmd, " \"",
                          Tcl_GetString(objv[1]), "\": ",
                          Tcl_PosixError(interp), NULL);
-        return TCL_ERROR;
+        result = TCL_ERROR;
+    } else {
+        result = TCL_OK;
     }
-
-    return TCL_OK;
+    
+    return result;
 }
 
 int
@@ -308,7 +311,7 @@ NsTclTmpNamObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int UNUSED(
 int
 NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int pid, sig, nocomplain = NS_FALSE, result;
+    int pid, sig, nocomplain = (int)NS_FALSE, result;
 
     Ns_ObjvSpec opts[] = {
         {"-nocomplain", Ns_ObjvBool,  &nocomplain, INT2PTR(NS_TRUE)},
@@ -353,7 +356,7 @@ int
 NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     const char *file1, *file2;
-    int nocomplain = NS_FALSE, result;
+    int nocomplain = (int)NS_FALSE, result;
 
     Ns_ObjvSpec opts[] = {
         {"-nocomplain", Ns_ObjvBool,  &nocomplain, INT2PTR(NS_TRUE)},
@@ -399,10 +402,10 @@ NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 int
 NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp   *itPtr = clientData;
-    Tcl_Channel chan;
-    int         nbytes = INT_MAX;
-    int         result;
+    const NsInterp *itPtr = clientData;
+    Tcl_Channel     chan;
+    int             nbytes = INT_MAX;
+    Ns_ReturnCode   result;
 
     if (objc != 2 && objc != 3) {
         Tcl_WrongNumArgs(interp, 1, objv, "fileid ?nbytes?");
@@ -575,7 +578,8 @@ NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     NsRegChan      *regChan = NULL;
 
     const char     *name = NULL, *chanName = NULL;
-    int             isNew, shared, opt;
+    int             isNew, opt;
+    bool            shared;
     Tcl_Channel     chan = NULL;
 
     Tcl_HashTable  *tabPtr;
@@ -690,7 +694,7 @@ NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
             return TCL_ERROR;
         }
         shared = (objc == 3);
-        if (shared != 0) {
+        if (shared) {
             Ns_MutexLock(&servPtr->chans.lock);
             tabPtr = &servPtr->chans.table; 
         } else {
@@ -701,7 +705,7 @@ NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
             Tcl_AppendElement(interp, Tcl_GetHashKey(tabPtr, hPtr));
             hPtr = Tcl_NextHashEntry(&search);
         }
-        if (shared != 0) {
+        if (shared) {
             Ns_MutexUnlock(&servPtr->chans.lock);
         }
         break;
@@ -712,7 +716,7 @@ NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
             return TCL_ERROR;
         }
         shared = (objc == 3);
-        if (shared != 0) {
+        if (shared) {
             Ns_MutexLock(&servPtr->chans.lock);
             tabPtr = &servPtr->chans.table;
         } else {
@@ -722,7 +726,7 @@ NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         while (hPtr != NULL) {
 	    regChan = (NsRegChan*)Tcl_GetHashValue(hPtr);
 	    assert(regChan != NULL);
-            if (shared != 0) {
+            if (shared) {
                 Tcl_SpliceChannel(regChan->chan);
                 (void) Tcl_UnregisterChannel((Tcl_Interp*)NULL, regChan->chan);
             } else {
@@ -733,7 +737,7 @@ NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
             Tcl_DeleteHashEntry(hPtr);
             hPtr = Tcl_NextHashEntry(&search);
         }
-        if (shared != 0) {
+        if (shared) {
             Ns_MutexUnlock(&servPtr->chans.lock);
         }
         break;
@@ -794,8 +798,8 @@ SpliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
 static void 
 UnspliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
 {
-    Tcl_ChannelType *chanTypePtr;
-    Tcl_DriverWatchProc *watchProc;
+    const Tcl_ChannelType *chanTypePtr;
+    Tcl_DriverWatchProc   *watchProc;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(chan != NULL);

@@ -42,7 +42,10 @@
 
 static Ns_SchedProc FreeSched;
 static int SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd);
-static int ReturnValidId(Tcl_Interp *interp, int id, Ns_TclCallback *cbPtr);
+static int ReturnValidId(Tcl_Interp *interp, int id, Ns_TclCallback *cbPtr)
+    NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(3);
+
+
 
 
 
@@ -104,8 +107,9 @@ NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 static int
 SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
 {
-    int id, ok;
-
+    int  id, rc;
+    bool ok;
+    
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "id");
         return TCL_ERROR;
@@ -113,6 +117,8 @@ SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
     if (Tcl_GetIntFromObj(interp, objv[1], &id) != TCL_OK) {
         return TCL_ERROR;
     }
+    rc = TCL_OK;
+    
     switch (cmd) {
     case 'u':
     case 'c':
@@ -125,12 +131,16 @@ SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
         ok = Ns_Resume(id);
         break;
     default:
-        ok = -1;
+        rc = TCL_ERROR;
+        ok = NS_FALSE;
+        Ns_Log(Error, "unexpected code '%c' passed to SchedObjCmd", cmd);
+        break;
     }
-    if (cmd != 'u') {
+    
+    if ((rc == TCL_OK) && (cmd != 'u')) {
         Tcl_SetObjResult(interp, Tcl_NewIntObj(ok));
     }
-    return TCL_OK;
+    return rc;
 }
 
 int
@@ -374,7 +384,7 @@ NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 void
 NsTclSchedProc(void *arg, int UNUSED(id))
 {
-    Ns_TclCallback *cbPtr = arg;
+    const Ns_TclCallback *cbPtr = arg;
 
     (void) Ns_TclEvalCallback(NULL, cbPtr, NULL, (char *)0);
 }
@@ -400,7 +410,10 @@ NsTclSchedProc(void *arg, int UNUSED(id))
 static int
 ReturnValidId(Tcl_Interp *interp, int id, Ns_TclCallback *cbPtr)
 {
-    if (id == NS_ERROR) {
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(cbPtr != NULL);
+
+    if (id == (int)NS_ERROR) {
         Tcl_SetResult(interp, "could not schedule procedure", TCL_STATIC);
         Ns_TclFreeCallback(cbPtr);
         return TCL_ERROR;
@@ -432,3 +445,12 @@ FreeSched(void *arg, int UNUSED(id))
 {
     Ns_TclFreeCallback(arg);
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

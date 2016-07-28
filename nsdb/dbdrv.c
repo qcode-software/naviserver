@@ -41,25 +41,25 @@
  * loadable drivers.
  */
 
-typedef int (InitProc) (const char *server, const char *module, const char *driver);
-typedef char *(NameProc) (Ns_DbHandle *handle);
-typedef char *(TypeProc) (Ns_DbHandle *handle);
-typedef int (OpenProc) (Ns_DbHandle *handle);
-typedef void (CloseProc) (Ns_DbHandle *handle);
-typedef int (DMLProc) (Ns_DbHandle *handle, const char *sql);
-typedef Ns_Set *(SelectProc) (Ns_DbHandle *handle, const char *sql);
-typedef int (ExecProc) (Ns_DbHandle *handle, const char *sql);
-typedef Ns_Set *(BindProc) (Ns_DbHandle *handle);
-typedef int (GetProc) (Ns_DbHandle *handle, Ns_Set *row);
-typedef int (FlushProc) (Ns_DbHandle *handle);
-typedef int (CancelProc) (Ns_DbHandle *handle);
-typedef int (CountProc) (Ns_DbHandle *handle);
-typedef int (ResetProc) (Ns_DbHandle *handle);
-typedef int (SpStartProc) (Ns_DbHandle *handle, const char *procname);
-typedef int (SpSetParamProc) (Ns_DbHandle *handle, char *args);
-typedef int (SpExecProc) (Ns_DbHandle *handle);
-typedef int (SpReturnCodeProc) (Ns_DbHandle *dbhandle, const char *returnCode, int bufsize);
-typedef Ns_Set *(SpGetParamsProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (InitProc) (const char *server, const char *module, const char *driver);
+typedef char *         (NameProc) (Ns_DbHandle *handle);
+typedef char *         (TypeProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (OpenProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (CloseProc) (Ns_DbHandle *handle);
+typedef int            (DMLProc) (Ns_DbHandle *handle, const char *sql);
+typedef Ns_Set *       (SelectProc) (Ns_DbHandle *handle, const char *sql);
+typedef int            (ExecProc) (Ns_DbHandle *handle, const char *sql);
+typedef Ns_Set *       (BindProc) (Ns_DbHandle *handle);
+typedef int            (GetProc) (Ns_DbHandle *handle, Ns_Set *row);
+typedef Ns_ReturnCode  (FlushProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (CancelProc) (Ns_DbHandle *handle);
+typedef int            (CountProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (ResetProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (SpStartProc) (Ns_DbHandle *handle, const char *procname);
+typedef Ns_ReturnCode  (SpSetParamProc) (Ns_DbHandle *handle, char *args);
+typedef Ns_ReturnCode  (SpExecProc) (Ns_DbHandle *handle);
+typedef Ns_ReturnCode  (SpReturnCodeProc) (Ns_DbHandle *dbhandle, const char *returnCode, int bufsize);
+typedef Ns_Set *       (SpGetParamsProc) (Ns_DbHandle *handle);
 
 
 /*
@@ -125,11 +125,11 @@ UnsupProcId(const char *name)
     Ns_Log(Warning, "dbdrv: unsupported function id '%s'", name);
 }
 
-int
+Ns_ReturnCode
 Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs)
 {
-    Tcl_HashEntry *hPtr;
-    DbDriver *driverPtr;
+    const Tcl_HashEntry *hPtr;
+    DbDriver            *driverPtr;
 
     hPtr = Tcl_FindHashEntry(&driversTable, driver);
     if (hPtr == NULL) {
@@ -145,106 +145,106 @@ Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs)
     driverPtr->registered = 1;
     
     while (procs->func != NULL) {
-	switch (procs->id) {
-	    case DbFn_ServerInit:
-		driverPtr->initProc = (InitProc *) procs->func;
-		break;
+        switch (procs->id) {
+	case DbFn_ServerInit:
+            driverPtr->initProc = (InitProc *) procs->func;
+            break;
+            
+        case DbFn_Name:
+            driverPtr->nameProc = (NameProc *) procs->func;
+            break;
 
-	    case DbFn_Name:
-		driverPtr->nameProc = (NameProc *) procs->func;
-		break;
+        case DbFn_DbType:
+            driverPtr->typeProc = (TypeProc *) procs->func;
+            break;
 
-	    case DbFn_DbType:
-		driverPtr->typeProc = (TypeProc *) procs->func;
-		break;
+        case DbFn_OpenDb:
+            driverPtr->openProc = (OpenProc *) procs->func;
+            break;
 
-	    case DbFn_OpenDb:
-		driverPtr->openProc = (OpenProc *) procs->func;
-		break;
+        case DbFn_CloseDb:
+            driverPtr->closeProc = (CloseProc *) procs->func;
+            break;
 
-	    case DbFn_CloseDb:
-		driverPtr->closeProc = (CloseProc *) procs->func;
-		break;
+        case DbFn_DML:
+            driverPtr->dmlProc = (DMLProc *) procs->func;
+            break;
 
-	    case DbFn_DML:
-		driverPtr->dmlProc = (DMLProc *) procs->func;
-		break;
+        case DbFn_Select:
+            driverPtr->selectProc = (SelectProc *) procs->func;
+            break;
 
-	    case DbFn_Select:
-		driverPtr->selectProc = (SelectProc *) procs->func;
-		break;
+        case DbFn_GetRow:
+            driverPtr->getProc = (GetProc *) procs->func;
+            break;
 
-	    case DbFn_GetRow:
-		driverPtr->getProc = (GetProc *) procs->func;
-		break;
+        case DbFn_GetRowCount:
+            driverPtr->countProc = (CountProc *) procs->func;
+            break;
 
-	    case DbFn_GetRowCount:
-		driverPtr->countProc = (CountProc *) procs->func;
-		break;
+        case DbFn_Flush:
+            driverPtr->flushProc = (FlushProc *) procs->func;
+            break;
 
-	    case DbFn_Flush:
-		driverPtr->flushProc = (FlushProc *) procs->func;
-		break;
+        case DbFn_Cancel:
+            driverPtr->cancelProc = (CancelProc *) procs->func;
+            break;
 
-	    case DbFn_Cancel:
-		driverPtr->cancelProc = (CancelProc *) procs->func;
-		break;
+        case DbFn_Exec:
+            driverPtr->execProc = (ExecProc *) procs->func;
+            break;
 
-	    case DbFn_Exec:
-		driverPtr->execProc = (ExecProc *) procs->func;
-		break;
+        case DbFn_BindRow:
+            driverPtr->bindProc = (BindProc *) procs->func;
+            break;
 
-	    case DbFn_BindRow:
-		driverPtr->bindProc = (BindProc *) procs->func;
-		break;
+        case DbFn_ResetHandle:
+            driverPtr->resetProc = (ResetProc *) procs->func;
+            break;
 
-	    case DbFn_ResetHandle:
-		driverPtr->resetProc = (ResetProc *) procs->func;
-		break;
-
-	    case DbFn_SpStart:
-		driverPtr->spstartProc = (SpStartProc *) procs->func;
-		break;
+        case DbFn_SpStart:
+            driverPtr->spstartProc = (SpStartProc *) procs->func;
+            break;
 		
-	    case DbFn_SpSetParam:
-		driverPtr->spsetparamProc = (SpSetParamProc *) procs->func;
-		break;
+        case DbFn_SpSetParam:
+            driverPtr->spsetparamProc = (SpSetParamProc *) procs->func;
+            break;
 
-	    case DbFn_SpExec:
-		driverPtr->spexecProc = (SpExecProc *) procs->func;
-		break;
+        case DbFn_SpExec:
+            driverPtr->spexecProc = (SpExecProc *) procs->func;
+            break;
 
-	    case DbFn_SpReturnCode:
-		driverPtr->spreturncodeProc = (SpReturnCodeProc *) procs->func;
-		break;
+        case DbFn_SpReturnCode:
+            driverPtr->spreturncodeProc = (SpReturnCodeProc *) procs->func;
+            break;
 
-	    case DbFn_SpGetParams:
-		driverPtr->spgetparamsProc = (SpGetParamsProc *) procs->func;
-		break;
+        case DbFn_SpGetParams:
+            driverPtr->spgetparamsProc = (SpGetParamsProc *) procs->func;
+            break;
 
 	    /*
 	     * The following functions are no longer supported.
 	     */
 
-	    case DbFn_End:
-		UnsupProcId("End");
-		break;
+        case DbFn_End:
+            UnsupProcId("End");
+            break;
 		
-	    case DbFn_GetTableInfo:
-		UnsupProcId("GetTableInfo");
-		break;
+        case DbFn_GetTableInfo:
+            UnsupProcId("GetTableInfo");
+            break;
 		
-	    case DbFn_TableList:
-		UnsupProcId("TableList");
-		break;
+        case DbFn_TableList:
+            UnsupProcId("TableList");
+            break;
 		
-	    case DbFn_BestRowId:
-		UnsupProcId("BestRowId");
-		break;
+        case DbFn_BestRowId:
+            UnsupProcId("BestRowId");
+            break;
 		
-	    default:
-		Ns_Log(Error, "dbdrv: unknown driver id '%d'", procs->id);
-		return NS_ERROR;
+        default:
+            Ns_Log(Error, "dbdrv: unknown driver id '%d'", procs->id);
+            return NS_ERROR;
 	}
 	++procs;
     }
@@ -272,8 +272,8 @@ Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs)
 char *
 Ns_DbDriverName(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    char *name = NULL;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    char           *name = NULL;
 
     if (driverPtr != NULL && driverPtr->nameProc != NULL) {
 
@@ -303,7 +303,7 @@ Ns_DbDriverName(Ns_DbHandle *handle)
 char *
 Ns_DbDriverDbType(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
     
     if (driverPtr == NULL ||
 	driverPtr->typeProc == NULL ||
@@ -335,19 +335,19 @@ Ns_DbDriverDbType(Ns_DbHandle *handle)
 int
 Ns_DbDML(Ns_DbHandle *handle, const char *sql)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    int             status = NS_ERROR;
 
     if (driverPtr != NULL && handle->connected) {
 
 	if (driverPtr->execProc != NULL) {
-	  status = Ns_DbExec(handle, sql);
+            status = Ns_DbExec(handle, sql);
 	    if (status == NS_DML) {
 		status = NS_OK;
 	    } else {
 		if (status == NS_ROWS) {
         	    Ns_DbSetException(handle, "NSDB",
-		    	    "Query was not a DML or DDL command.");
+                                      "Query was not a DML or DDL command.");
         	    (void) Ns_DbFlush(handle);
 		}
 		status = NS_ERROR;
@@ -384,8 +384,8 @@ Ns_DbDML(Ns_DbHandle *handle, const char *sql)
 Ns_Set *
 Ns_DbSelect(Ns_DbHandle *handle, const char *sql)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    Ns_Set *setPtr = NULL;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_Set         *setPtr = NULL;
 
     if (driverPtr != NULL && handle->connected) {
 
@@ -431,8 +431,8 @@ Ns_DbSelect(Ns_DbHandle *handle, const char *sql)
 int
 Ns_DbExec(Ns_DbHandle *handle, const char *sql)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    int             status = NS_ERROR;
     
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -469,8 +469,8 @@ Ns_DbExec(Ns_DbHandle *handle, const char *sql)
 Ns_Set *
 Ns_DbBindRow(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    Ns_Set *setPtr = NULL;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_Set         *setPtr = NULL;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -506,8 +506,8 @@ Ns_DbBindRow(Ns_DbHandle *handle)
 int
 Ns_DbGetRow(Ns_DbHandle *handle, Ns_Set *row)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    int             status = NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -538,8 +538,8 @@ Ns_DbGetRow(Ns_DbHandle *handle, Ns_Set *row)
 int
 Ns_DbGetRowCount(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    int             status = (int)NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -569,11 +569,11 @@ Ns_DbGetRowCount(Ns_DbHandle *handle)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_DbFlush(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode   status = NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -603,11 +603,11 @@ Ns_DbFlush(Ns_DbHandle *handle)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_DbCancel(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode   status = NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -636,11 +636,11 @@ Ns_DbCancel(Ns_DbHandle *handle)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_DbResetHandle (Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode   status = NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -675,7 +675,7 @@ NsDbLoadDriver(const char *driver)
     Tcl_HashEntry  *hPtr;
     int             isNew;
     DbDriver	   *driverPtr;
-    static int 	    initialized = NS_FALSE;
+    static bool	    initialized = NS_FALSE;
 
     NS_NONNULL_ASSERT(driver != NULL);
     
@@ -710,7 +710,7 @@ NsDbLoadDriver(const char *driver)
 	     * and the 3rd argument is "path" (like e.g. "ns/db/driver/postgres")
 	     */
             if (Ns_ModuleLoad(NULL, driver, path, module, "Ns_DbDriverInit")
-		    != NS_OK) {
+                != NS_OK) {
 		Ns_Log(Error, "dbdrv: failed to load driver '%s'",
 		       driver);
             }
@@ -744,6 +744,8 @@ NsDbLoadDriver(const char *driver)
 void
 NsDbDriverInit(const char *server, const DbDriver *driverPtr)
 {
+    NS_NONNULL_ASSERT(driverPtr != NULL);
+
     if (driverPtr->initProc != NULL &&
 	((*driverPtr->initProc) (server, "db", driverPtr->name)) != NS_OK) {
 
@@ -770,10 +772,10 @@ NsDbDriverInit(const char *server, const DbDriver *driverPtr)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsDbOpen(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
 
     Ns_Log(Notice, "dbdrv: opening database '%s:%s'", handle->driver,
 	   handle->datasource);
@@ -808,17 +810,19 @@ NsDbOpen(Ns_DbHandle *handle)
  *----------------------------------------------------------------------
  */
 
-void
+Ns_ReturnCode
 NsDbClose(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode   status = NS_OK;
     
     if (handle->connected &&
 	driverPtr != NULL &&
 	driverPtr->closeProc != NULL) {
 
-    	(*driverPtr->closeProc)(handle);
+    	status = (*driverPtr->closeProc)(handle);
     }
+    return status;
 }
 
 
@@ -838,11 +842,11 @@ NsDbClose(Ns_DbHandle *handle)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_DbSpStart(Ns_DbHandle *handle, const char *procname)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode   status = NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -874,13 +878,13 @@ Ns_DbSpStart(Ns_DbHandle *handle, const char *procname)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtype,
                 const char *inout, const char *value)
 {
-    DbDriver   *driverPtr = NsDbGetDriver(handle);
-    int         status = NS_ERROR;
-    Ns_DString  args;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode    status = NS_ERROR;
+    Ns_DString       args;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -905,7 +909,7 @@ Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtyp
  *	Run an Sp begun with Ns_DbSpStart 
  *
  * Results:
- *	NS_OK/NS_ERROR 
+ *	NS_OK/NS_ERROR/NS_DML/NS_ROWS
  *
  * Side effects:
  *	None. 
@@ -916,8 +920,8 @@ Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtyp
 int
 Ns_DbSpExec(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int       status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    int             status = (int)NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -947,11 +951,11 @@ Ns_DbSpExec(Ns_DbHandle *handle)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_DbSpReturnCode(Ns_DbHandle *handle, const char *returnCode, int bufsize)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    int       status = NS_ERROR;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_ReturnCode   status = NS_ERROR;
 
     if (handle->connected &&
 	driverPtr != NULL &&
@@ -983,8 +987,8 @@ Ns_DbSpReturnCode(Ns_DbHandle *handle, const char *returnCode, int bufsize)
 Ns_Set *
 Ns_DbSpGetParams(Ns_DbHandle *handle)
 {
-    DbDriver *driverPtr = NsDbGetDriver(handle);
-    Ns_Set   *aset = NULL;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    Ns_Set         *aset = NULL;
 
     Ns_SetTrunc(handle->row, 0u);
     if (handle->connected &&
@@ -996,3 +1000,12 @@ Ns_DbSpGetParams(Ns_DbHandle *handle)
 
     return aset;
 }
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

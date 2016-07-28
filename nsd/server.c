@@ -60,8 +60,8 @@ static void CreatePool(NsServer *servPtr, const char *pool)
 
 static NsServer   *initServPtr;  /* Currently initializing server. */
 
-static ServerInit *firstInitPtr; /* First in list of server config callbacks. */
-static ServerInit *lastInitPtr;  /* Last in list of server config callbacks. */
+static const ServerInit *firstInitPtr; /* First in list of server config callbacks. */
+static ServerInit       *lastInitPtr;  /* Last in list of server config callbacks. */
 
 
 /*
@@ -84,7 +84,8 @@ NsServer *
 NsGetServer(const char *server)
 {
     if (server != NULL) {
-        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
+        const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
+        
         if (hPtr != NULL) {
             return Tcl_GetHashValue(hPtr);
         }
@@ -136,12 +137,12 @@ NsGetInitServer(void)
 void
 NsStartServers(void)
 {
-    Tcl_HashEntry *hPtr;
-    Tcl_HashSearch search;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
 
     hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
     while (hPtr != NULL) {
-        NsServer *servPtr = Tcl_GetHashValue(hPtr);
+        const NsServer *servPtr = Tcl_GetHashValue(hPtr);
 
         NsStartServer(servPtr);
         hPtr = Tcl_NextHashEntry(&search);
@@ -168,9 +169,9 @@ NsStartServers(void)
 void
 NsStopServers(const Ns_Time *toPtr)
 {
-    NsServer      *servPtr;
-    Tcl_HashEntry *hPtr;
-    Tcl_HashSearch search;
+    NsServer            *servPtr;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
 
     NS_NONNULL_ASSERT(toPtr != NULL);
 
@@ -211,9 +212,9 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     Tcl_HashEntry     *hPtr;
     Ns_DString         ds;
     NsServer          *servPtr;
-    ServerInit        *initPtr;
+    const ServerInit  *initPtr;
     const char        *path, *p;
-    Ns_Set            *set;
+    const Ns_Set      *set;
     size_t             i;
     int                n;
 
@@ -230,6 +231,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      */
 
     servPtr = ns_calloc(1u, sizeof(NsServer));
+
     servPtr->server = server;
 
     Tcl_SetHashValue(hPtr, servPtr);
@@ -285,13 +287,21 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     }
 
     /*
-     * Load modules and initialize Tcl.  The order is significant.
+     * Initialize and name the mutexes.
      */
 
     Ns_MutexInit(&servPtr->pools.lock);
     Ns_MutexSetName2(&servPtr->pools.lock, "nsd:pools", server);
+    
     Ns_MutexInit(&servPtr->filter.lock);
     Ns_MutexSetName2(&servPtr->filter.lock, "nsd:filter", server);
+
+    Ns_MutexInit(&servPtr->tcl.synch.lock);
+    Ns_MutexSetName2(&servPtr->tcl.synch.lock, "nsd:tcl:synch", server);
+    
+    /*
+     * Load modules and initialize Tcl.  The order is significant.
+     */
 
     CreatePool(servPtr, "");
     path = Ns_ConfigGetPath(server, NULL, "pools", NULL);
@@ -377,8 +387,8 @@ CreatePool(NsServer *servPtr, const char *pool)
 	path = Ns_ConfigGetPath(servPtr->server, NULL, (char *)0);
         servPtr->pools.defaultPtr = poolPtr;
     } else {
-	Ns_Set *set;
-	size_t  i;
+	const Ns_Set *set;
+	size_t        i;
         /*
          * Map requested method/URL's to this pool.
          */

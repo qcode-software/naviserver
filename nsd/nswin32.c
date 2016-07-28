@@ -46,7 +46,7 @@ static VOID WINAPI ServiceHandler(DWORD code);
 static BOOL WINAPI ConsoleHandler(DWORD code);
 static void ReportStatus(DWORD state, DWORD code, DWORD hint);
 static char *GetServiceName(Ns_DString *dsPtr, char *service);
-static bool SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2);
+static bool SockAddrEqual(const struct sockaddr *saPtr1, const struct sockaddr *saPtr2);
 
 
 /*
@@ -56,7 +56,7 @@ static bool SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2);
 static Ns_Mutex lock;
 static Ns_Cond cond;
 static Ns_Thread tickThread;
-static SERVICE_STATUS_HANDLE hStatus = 0;
+static SERVICE_STATUS_HANDLE hStatus = NULL;
 static SERVICE_STATUS curStatus;
 static Ns_Tls tls;
 static int serviceRunning = 0;
@@ -209,7 +209,7 @@ NsWin32ErrMsg(DWORD err)
  *      Attach to the service control manager at startup.
  *
  * Results:
- *      None.
+ *      NaviServer status code
  *
  * Side effects:
  *      Service control manager will create a new thread running
@@ -218,7 +218,7 @@ NsWin32ErrMsg(DWORD err)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsConnectService(void)
 {
     SERVICE_TABLE_ENTRY table[2];
@@ -289,7 +289,7 @@ NsConnectService(void)
  *      Remove a previously installed service.
  *
  * Results:
- *      None.
+ *      NaviServer status code.
  *
  * Side effects:
  *      Service should stop and then disappear from the list in the
@@ -298,13 +298,13 @@ NsConnectService(void)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsRemoveService(char *service)
 {
-    SC_HANDLE hmgr;
+    SC_HANDLE      hmgr;
     SERVICE_STATUS status;
-    Ns_DString name;
-    BOOL ok;
+    Ns_DString     name;
+    BOOL           ok;
 
     Ns_DStringInit(&name);
     (void) GetServiceName(&name, service);
@@ -327,7 +327,7 @@ NsRemoveService(char *service)
     }
     Ns_DStringFree(&name);
 
-    return ((ok != 0) ? NS_OK : NS_ERROR);
+    return (ok ? NS_OK : NS_ERROR);
 }
 
 
@@ -339,7 +339,7 @@ NsRemoveService(char *service)
  *      Install as an NT service.
  *
  * Results:
- *      None.
+ *      NaviSever status code.
  *
  * Side effects:
  *      Service should appear in the list in the services control panel.
@@ -347,12 +347,12 @@ NsRemoveService(char *service)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsInstallService(char *service)
 {
-    SC_HANDLE hmgr, hsrv;
-    bool ok = FALSE;
-    char nsd[PATH_MAX], config[PATH_MAX];
+    SC_HANDLE  hmgr, hsrv;
+    bool       ok = FALSE;
+    char       nsd[PATH_MAX], config[PATH_MAX];
     Ns_DString name, cmd;
 
     if (_fullpath(config, nsconf.config, sizeof(config)) == NULL) {
@@ -527,7 +527,7 @@ NsSendSignal(int sig)
  *      Maps a file to memory.
  *
  * Results:
- *      None.
+ *      NaviServer status code.
  *
  * Side effects:
  *      None.
@@ -535,7 +535,7 @@ NsSendSignal(int sig)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
 {
     HANDLE hndl, mobj;
@@ -798,7 +798,7 @@ ns_mkstemp(char *charTemplate)
  */
 
 static bool
-SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2)
+SockAddrEqual(const struct sockaddr *saPtr1, const struct sockaddr *saPtr2)
 {
 #ifdef HAVE_IPV6
     if (saPtr1->sa_family != saPtr2->sa_family) {
@@ -810,8 +810,8 @@ SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2)
             return NS_FALSE;
         }
     } else if (saPtr1->sa_family == AF_INET6) {
-        struct in6_addr *sa1Bits = &(((struct sockaddr_in6 *)saPtr1)->sin6_addr);
-        struct in6_addr *sa2Bits = &(((struct sockaddr_in6 *)saPtr2)->sin6_addr);
+        const struct in6_addr *sa1Bits = &(((struct sockaddr_in6 *)saPtr1)->sin6_addr);
+        const struct in6_addr *sa2Bits = &(((struct sockaddr_in6 *)saPtr2)->sin6_addr);
         int i;
         
         for (i = 0; i < 8; i++) {
@@ -1183,11 +1183,12 @@ ReportStatus(DWORD state, DWORD code, DWORD hint)
 int
 ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
 {
-    struct timeval timeout, *toPtr;
-    fd_set ifds, ofds, efds;
-    unsigned long int i;
-    NS_SOCKET n = NS_INVALID_SOCKET;
-    int rc;
+    struct timeval        timeout;
+    const struct timeval *toPtr;
+    fd_set                ifds, ofds, efds;
+    unsigned long int     i;
+    NS_SOCKET             n = NS_INVALID_SOCKET;
+    int                   rc;
 
     FD_ZERO(&ifds);
     FD_ZERO(&ofds);

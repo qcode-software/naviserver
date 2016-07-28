@@ -117,9 +117,9 @@ static void  LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count,
                       bool trunc, bool locked)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int   LogOpen(void);
+static Ns_ReturnCode LogOpen(void);
 
-static char* LogTime(LogCache *cachePtr, const Ns_Time *timePtr, int gmt)
+static char* LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static Tcl_Obj *LogStats(void);
@@ -258,7 +258,7 @@ NsInitLog(void)
         hPtr = Tcl_CreateHashEntry(&severityTable, buf, &isNew);
         Tcl_SetHashValue(hPtr, INT2PTR(i));
         severityConfig[i].label = Tcl_GetHashKey(&severityTable, hPtr);
-        severityConfig[i].enabled = 0;
+        severityConfig[i].enabled = NS_FALSE;
     }
 
     /*
@@ -922,7 +922,7 @@ Ns_LogTime(char *timeBuf)
 }
 
 char *
-Ns_LogTime2(char *timeBuf, int gmt)
+Ns_LogTime2(char *timeBuf, bool gmt)
 {
     Ns_Time now;
     LogCache   *cachePtr = GetCache();
@@ -936,7 +936,7 @@ Ns_LogTime2(char *timeBuf, int gmt)
      */
     Ns_GetTime(&now);
     timeString = LogTime(cachePtr, &now, gmt);
-    timeStringLength = (gmt == 0) ? cachePtr->lbufSize : cachePtr->gbufSize;
+    timeStringLength = gmt ? cachePtr->gbufSize : cachePtr->lbufSize;
 
     assert(timeStringLength < 41);
     assert(timeStringLength == strlen(timeString));
@@ -962,7 +962,7 @@ Ns_LogTime2(char *timeBuf, int gmt)
  */
 
 static char *
-LogTime(LogCache *cachePtr, const Ns_Time *timePtr, int gmt)
+LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
 {
     time_t    *tp;
     char      *bp;
@@ -971,7 +971,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, int gmt)
     NS_NONNULL_ASSERT(cachePtr != NULL);
     NS_NONNULL_ASSERT(timePtr != NULL);
 
-    if (gmt != 0) {
+    if (gmt) {
         tp = &cachePtr->gtime;
         bp = cachePtr->gbuf;
         sizePtr = &cachePtr->gbufSize;
@@ -988,9 +988,9 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, int gmt)
      * store it in the cache.
      */
     if (*tp != timePtr->sec) {
-        size_t n;
-	time_t secs;
-	struct tm *ptm;
+        size_t           n;
+	time_t           secs;
+	const struct tm *ptm;
 
         *tp = timePtr->sec;
 
@@ -998,11 +998,12 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, int gmt)
         ptm = ns_localtime(&secs);
 
         n = strftime(bp, 32u, "[%d/%b/%Y:%H:%M:%S", ptm);
-        if (gmt == 0) {
+        if (!gmt) {
             bp[n++] = ']';
             bp[n] = '\0';
         } else {
- 	    int gmtoff, sign;
+ 	    int gmtoff;
+            char sign;
 #ifdef HAVE_TM_GMTOFF
             gmtoff = ptm->tm_gmtoff / 60;
 #else
@@ -1242,7 +1243,7 @@ NsTclLogCtlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
                */
               if (givenEnabled != -1 && severity != Fatal) {
                   enabled = severityConfig[severity].enabled;
-                  severityConfig[severity].enabled = givenEnabled;
+                  severityConfig[severity].enabled = (givenEnabled == 1 ? NS_TRUE : NS_FALSE);
               } else {
                   enabled = Ns_LogSeverityEnabled(severity);
               }
@@ -1341,13 +1342,13 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_LogRoll(void)
 {
-    int rc = NS_OK;
+    Ns_ReturnCode rc = NS_OK;
 
     if (file != NULL) {
-	NsAsyncWriterQueueDisable(0);
+	NsAsyncWriterQueueDisable(NS_FALSE);
 
         if (access(file, F_OK) == 0) {
             (void) Ns_RollFile(file, maxback);
@@ -1415,11 +1416,12 @@ NsLogOpen(void)
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogOpen(void)
 {
-    int          fd, status = NS_OK;
-    unsigned int oflags;
+    int           fd;
+    Ns_ReturnCode status = NS_OK;
+    unsigned int  oflags;
 
     oflags = O_WRONLY | O_APPEND | O_CREAT;
 
@@ -1481,9 +1483,9 @@ LogOpen(void)
 static void
 LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool locked)
 {
-    int        status, nentry = 0;
-    LogFilter *cPtr;
-    LogEntry  *ePtr;
+    int            nentry = 0;
+    LogFilter     *cPtr;
+    LogEntry      *ePtr;
 
     NS_NONNULL_ASSERT(cachePtr != NULL);
     NS_NONNULL_ASSERT(listPtr != NULL);
@@ -1503,6 +1505,8 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
         cPtr = listPtr;
         do {
             if (cPtr->proc != NULL) {
+                Ns_ReturnCode  status;
+
                 if (locked) {
                     cPtr->refcnt++;
                     Ns_MutexUnlock(&lock);
@@ -1583,7 +1587,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
             const char *msg, size_t len)
 {
@@ -1663,7 +1667,7 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogToFile(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
           const char *msg, size_t len)
 {
@@ -1709,16 +1713,16 @@ LogToFile(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  *----------------------------------------------------------------------
  */
 
-static int
+static Ns_ReturnCode
 LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
          const char *msg, size_t len)
 {
-    int             ii, ret;
-    void           *logfile = INT2PTR(STDERR_FILENO);
-    Tcl_Obj        *stampObj;
-    Ns_DString      ds, ds2;
-    Tcl_Interp     *interp;
-    Ns_TclCallback *cbPtr = (Ns_TclCallback *)arg;
+    int                   ii, ret;
+    void                 *logfile = INT2PTR(STDERR_FILENO);
+    Tcl_Obj              *stampObj;
+    Ns_DString            ds, ds2;
+    Tcl_Interp           *interp;
+    const Ns_TclCallback *cbPtr = (Ns_TclCallback *)arg;
 
     NS_NONNULL_ASSERT(arg != NULL);
     NS_NONNULL_ASSERT(stamp != NULL);
@@ -1879,7 +1883,7 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
     NS_NONNULL_ASSERT(addrPtrPtr != NULL);
 
     if (Ns_TclGetOpaqueFromObj(objPtr, severityType, addrPtrPtr) != TCL_OK) {
-	Tcl_HashEntry *hPtr;
+	const Tcl_HashEntry *hPtr;
 
         Ns_MutexLock(&lock);
         hPtr = Tcl_FindHashEntry(&severityTable, Tcl_GetString(objPtr));

@@ -379,11 +379,11 @@ Ns_ConfigGetValueExact(const char *section, const char *key)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_ConfigGetInt(const char *section, const char *key, int *valuePtr)
 {
     const char *s;
-    int found;
+    bool found;
 
     NS_NONNULL_ASSERT(section != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -420,16 +420,17 @@ Ns_ConfigGetInt(const char *section, const char *key, int *valuePtr)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
 {
     const char *s;
+    bool        success = NS_TRUE;
 
     s = Ns_ConfigGetValue(section, key);
     if (s == NULL || sscanf(s, "%24" SCNd64, valuePtr) != 1) {
-        return NS_FALSE;
+        success = NS_FALSE;
     }
-    return NS_TRUE;
+    return success;
 }
 
 
@@ -492,9 +493,9 @@ const char *
 Ns_ConfigGetPath(const char *server, const char *module, ...)
 {
     va_list         ap;
-    char           *s;
+    const char     *s;
     Ns_DString      ds;
-    Ns_Set         *set;
+    const Ns_Set   *set;
 
     Ns_DStringInit(&ds);
     Ns_DStringAppend(&ds, "ns");
@@ -545,10 +546,10 @@ Ns_ConfigGetPath(const char *server, const char *module, ...)
 Ns_Set **
 Ns_ConfigGetSections(void)
 {
-    Ns_Set        **sets;
-    Tcl_HashEntry  *hPtr;
-    Tcl_HashSearch  search;
-    int             n;
+    Ns_Set             **sets;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
+    int                  n;
 
     n = nsconf.sections.numEntries + 1;
     sets = ns_malloc(sizeof(Ns_Set *) * (size_t)n);
@@ -605,7 +606,7 @@ Ns_ConfigGetSection(const char *section)
 Ns_Set *
 Ns_ConfigCreateSection(const char *section)
 {
-    bool create = (Ns_InfoStarted() != 0) ? NS_FALSE : NS_TRUE;
+    bool create = Ns_InfoStarted() ? NS_FALSE : NS_TRUE;
     return GetSection(section, create);
 }
 
@@ -735,8 +736,8 @@ NsConfigRead(const char *file)
 void
 NsConfigEval(const char *config, int argc, char *const *argv, int optind)
 {
-    Tcl_Interp *interp;
-    Ns_Set     *set;
+    Tcl_Interp   *interp;
+    const Ns_Set *set;
     int i;
 
     NS_NONNULL_ASSERT(config != NULL);
@@ -783,21 +784,25 @@ static int
 ParamCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv[])
 {
     Ns_Set *set;
+    int     result = TCL_OK;
 
     if (argc != 3) {
         Tcl_AppendResult(interp, "wrong # args: should be \"",
                          argv[0], " key value", NULL);
         return TCL_ERROR;
     }
+    
     set = *((Ns_Set **) clientData);
-    if (set == NULL) {
+
+    if (likely(set != NULL)) {
+        (void)Ns_SetPut(set, argv[1], argv[2]);
+    } else {
         Tcl_AppendResult(interp, argv[0],
                          " not preceded by an ns_section command.", NULL);
-        return TCL_ERROR;
+        result = TCL_ERROR;
     }
-    (void)Ns_SetPut(set, argv[1], argv[2]);
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -823,16 +828,18 @@ static int
 SectionCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv[])
 {
     Ns_Set  **set;
+    int       result = TCL_OK;
 
-    if (argc != 2) {
+    if (unlikely(argc != 2)) {
         Tcl_AppendResult(interp, "wrong # args: should be \"",
                          argv[0], " sectionname", NULL);
-        return TCL_ERROR;
+        result = TCL_ERROR;
+    } else {
+        set = (Ns_Set **) clientData;
+        *set = GetSection(argv[1], NS_TRUE);
     }
-    set = (Ns_Set **) clientData;
-    *set = GetSection(argv[1], NS_TRUE);
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -855,8 +862,8 @@ SectionCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *ar
 static const char *
 ConfigGet(const char *section, const char *key, int exact, const char *defstr)
 {
-    char    *s;
-    Ns_Set  *set;
+    const char *s;
+    Ns_Set     *set;
 
     NS_NONNULL_ASSERT(section != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -992,7 +999,7 @@ ToBool(const char *value, bool *valuePtr)
         || STRIEQ(value, "t")
         || STRIEQ(value, "true")) {
 
-        boolValue = NS_TRUE;
+        boolValue = (int)NS_TRUE;
     } else if (STREQ(value, "0")
                || STRIEQ(value, "n")
                || STRIEQ(value, "no")
@@ -1000,11 +1007,11 @@ ToBool(const char *value, bool *valuePtr)
                || STRIEQ(value, "f")
                || STRIEQ(value, "false")) {
 
-        boolValue = NS_FALSE;
+        boolValue = (int)NS_FALSE;
     } else if (Ns_StrToInt(value, &boolValue) != NS_OK) {
         return NS_FALSE;
     }
-    *valuePtr = (boolValue != NS_FALSE) ? NS_TRUE : NS_FALSE;
+    *valuePtr = (boolValue != (int)NS_FALSE) ? NS_TRUE : NS_FALSE;
 
     return NS_TRUE;
 }

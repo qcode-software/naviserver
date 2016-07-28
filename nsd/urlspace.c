@@ -1078,6 +1078,7 @@ static int
 TrieTruncBranch(Trie *triePtr, char *seq)
 {
     Branch *branchPtr;
+    int     result;
 
     NS_NONNULL_ASSERT(triePtr != NULL);
     NS_NONNULL_ASSERT(seq != NULL);
@@ -1091,9 +1092,9 @@ TrieTruncBranch(Trie *triePtr, char *seq)
          */
 
         if (branchPtr != NULL) {
-            return TrieTruncBranch(&branchPtr->trie, seq + NS_strlen(seq) + 1u);
+            result = TrieTruncBranch(&branchPtr->trie, seq + NS_strlen(seq) + 1u);
         } else {
-            return -1;
+            result = -1;
         }
     } else {
 
@@ -1103,8 +1104,9 @@ TrieTruncBranch(Trie *triePtr, char *seq)
          */
 
         TrieTrunc(triePtr);
-        return 0;
+        result = 0;
     }
+    return result;
 }
 
 
@@ -1386,7 +1388,7 @@ TrieDelete(const Trie *triePtr, char *seq, unsigned int flags)
 static int
 CmpChannels(const Channel *const*leftPtrPtr, const Channel *const*rightPtrPtr)
 {
-    int lcontainsr, rcontainsl;
+    int lcontainsr, rcontainsl, result;
 
 #ifdef DEBUG
     fprintf(stderr, "======= CmpChannels\n");
@@ -1401,14 +1403,16 @@ CmpChannels(const Channel *const*leftPtrPtr, const Channel *const*rightPtrPtr)
                                  (*rightPtrPtr)->filter);
 
     if (lcontainsr != 0 && rcontainsl != 0) {
-        return 0;
+        result = 0;
     } else if (lcontainsr != 0) {
-        return 1;
+        result = 1;
     } else if (rcontainsl != 0) {
-        return -1;
+        result = -1;
     } else {
-	return 0;
+	result = 0;
     }
+    
+    return result;
 }
 
 
@@ -1433,7 +1437,7 @@ CmpChannels(const Channel *const*leftPtrPtr, const Channel *const*rightPtrPtr)
 static int
 CmpKeyWithChannel(const char *key, const Channel *const*channelPtrPtr)
 {
-    int lcontainsr, rcontainsl;
+    int lcontainsr, rcontainsl, result;
 
 #ifdef DEBUG
     fprintf(stderr, "======= CmpKeyWithChannel %s\n", key);
@@ -1444,14 +1448,15 @@ CmpKeyWithChannel(const char *key, const Channel *const*channelPtrPtr)
     lcontainsr = NS_Tcl_StringMatch((*channelPtrPtr)->filter, key);
     rcontainsl = NS_Tcl_StringMatch(key, (*channelPtrPtr)->filter);
     if (lcontainsr != 0 && rcontainsl != 0) {
-        return 0;
+        result = 0;
     } else if (lcontainsr != 0) {
-        return 1;
+        result = 1;
     } else if (rcontainsl != 0) {
-        return -1;
+        result = -1;
     } else {
-	return 0;
+	result = 0;
     }
+    return result;
 }
 #endif
 
@@ -1668,7 +1673,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
      * dsWord will eventually be used to set or find&reuse a channel filter.
      */
     assert(p != NULL);
-    if ((depth > 0) && (strchr(p, '*') != NULL || strchr(p, '?') != NULL )) {
+    if ((depth > 0) && (strchr(p, INTCHAR('*')) != NULL || strchr(p, INTCHAR('?')) != NULL )) {
         Ns_DStringAppend(&dsFilter, p);
         *p = '\0';
     } else {
@@ -1779,12 +1784,12 @@ JunctionFind(const Junction *juncPtr, char *seq)
 
 #ifndef __URLSPACE_OPTIMIZE__
     for (i = 0u; i < l; i++) {
-        int doit;
+        bool doit;
         
         channelPtr = Ns_IndexEl(&juncPtr->byuse, i);
 #else
     for (i = l; i > 0u; i--) {
-        int doit;
+        bool doit;
         
         channelPtr = Ns_IndexEl(&juncPtr->byname, i - 1u);
 #endif
@@ -1798,7 +1803,7 @@ JunctionFind(const Junction *juncPtr, char *seq)
         fprintf(stderr, "JunctionFind: compare filter '%s' with channel filter '%s' => %d\n",
                 p, channelPtr->filter, doit);
 #endif
-        if (doit != 0) {
+        if (doit) {
             /*
              * We got here because this url matches the filter
              * (for example, it's *.adp).
@@ -2065,7 +2070,7 @@ MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
     done = 0;
     while (done == 0 && *url != '\0') {
         if (*url != '/') {
-            p = strchr(url, '/');
+            p = strchr(url, INTCHAR('/'));
             if (p != NULL) {
 		l = (size_t)(p - url);
             } else {

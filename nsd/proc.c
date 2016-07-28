@@ -60,18 +60,18 @@ static void AppendAddr(Tcl_DString *dsPtr, const char *prefix, const void *addr)
 
 static Tcl_HashTable infoHashTable;
 
-static struct proc {
+static const struct proc {
     Ns_Callback *procAddr;
     const char  *desc;
     Ns_ArgProc  *argProc;
 } procs[] = {
-    {                NsTclThread,          "ns:tclthread",        NsTclThreadArgProc},
+    { (Ns_Callback *)NsTclThread,          "ns:tclthread",        NsTclThreadArgProc},
     {                Ns_TclCallbackProc,   "ns:tclcallback",      Ns_TclCallbackArgProc},
     { (Ns_Callback *)NsTclConnLocation,    "ns:tclconnlocation",  Ns_TclCallbackArgProc},
     { (Ns_Callback *)NsTclSchedProc,       "ns:tclschedproc",     Ns_TclCallbackArgProc},
     { (Ns_Callback *)NsTclServerRoot,      "ns:tclserverroot",    Ns_TclCallbackArgProc},
     { (Ns_Callback *)NsTclSockProc,        "ns:tclsockcallback",  NsTclSockArgProc},
-    {                NsConnThread,         "ns:connthread",       NsConnArgProc},
+    { (Ns_Callback *)NsConnThread,         "ns:connthread",       NsConnArgProc},
     { (Ns_Callback *)NsTclFilterProc,      "ns:tclfilter",        Ns_TclCallbackArgProc},
     { (Ns_Callback *)NsShortcutFilterProc, "ns:shortcutfilter",   NULL},
     { (Ns_Callback *)NsTclRequestProc,     "ns:tclrequest",       Ns_TclCallbackArgProc},
@@ -104,7 +104,7 @@ static struct proc {
 void
 NsInitProcInfo(void)
 {
-    struct proc *procPtr;
+    const struct proc *procPtr;
 
     Tcl_InitHashTable(&infoHashTable, TCL_ONE_WORD_KEYS);
     procPtr = procs;
@@ -176,9 +176,9 @@ Ns_RegisterProcInfo(Ns_Callback procAddr, const char *desc, Ns_ArgProc *argProc)
 void
 Ns_GetProcInfo(Tcl_DString *dsPtr, Ns_Callback procAddr, const void *arg)
 {
-    Tcl_HashEntry          *hPtr;
-    Info                   *infoPtr;
-    static Info nullInfo =  {NULL, NULL};
+    const Tcl_HashEntry  *hPtr;
+    const Info           *infoPtr;
+    static const Info     nullInfo = {NULL, NULL};
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     
