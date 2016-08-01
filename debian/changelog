@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160713-5) jessie; urgency=medium
+
+  * Use dh-systemd
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 01 Aug 2016 15:15:37 +0100
+
 naviserver (4.99.12~20160713-4) jessie; urgency=medium
 
   * Conflict naviserver-nsssl
