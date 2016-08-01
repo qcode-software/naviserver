@@ -3,7 +3,7 @@ Section: web
 Priority: extra
 Maintainer: Qcode Software Ltd <hackers@qcode.co.uk> 
 Build-Depends: debhelper (>= 9),
-               dh-systemd (>- 1.5),
+               dh-systemd,
                autotools-dev,
                tcl8.5-dev,
                zlib1g-dev,
