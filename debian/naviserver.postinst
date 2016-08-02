@@ -813,6 +813,12 @@ fi
 
 rm -f "$CONF.$NEW_SUFFIX" "$CONF.$OLD_SUFFIX"
 
+# Cleanup old init script if still present
+if [ -f /etc/init.d/naviserver ]; then
+	update-rc.d naviserver remove
+	rm -f /etc/init.d/naviserver
+fi
+
 # Create default certificate
 if [ ! -f $SSL_CERT ]; then
 	TMPOUT=`mktemp` || exit 1
