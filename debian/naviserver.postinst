@@ -27,6 +27,7 @@ NEW_SUFFIX="new"
 OLD_SUFFIX="old"
 CONF="$ETCDIR/$INSTANCE.tcl"
 ENVFILE="$ETCDIR/$PACKAGE.env"
+INSTANCE_ENVFILE="$ETCDIR/$INSTANCE.env"
 CONF_NEW="$CONF.$NEW_SUFFIX"
 SSL_CERT="$ETCDIR/$INSTANCE.pem"
 
@@ -59,13 +60,20 @@ fi
 # use current configuration or generate a new one from scratch
 
 cat <<EOF >$ENVFILE
-# Default environemtn variables for systemd for all naviserver instances.
+# Default environment variables for systemd for all naviserver instances.
 # These 3 vars are required.
 # The contents of $OPTS will be passed as a runtime arguement.
 # Any instance specific options can be set in /etc/naviserver/$instance.env
 USER=www-data
 GROUP=www-data
 OPTS=""
+
+EOF
+
+cat <<EOF >$INSTANCE_ENVFILE
+# Environment specify to default naviserver instance
+OPTS="-b 0.0.0.0:80,0.0.0.0:443"
+
 EOF
 
 cat <<EOF >$CONF_NEW
@@ -123,8 +131,8 @@ set	servername		"\$instance"
 set	serverdesc		"Naviserver \$instance"
 
 # The hostname, address and port for nssock should be set to actual values.
-set	hostname		localhost
-set	address			127.0.0.1
+set	hostname		"\$instance"
+set	address			0.0.0.0
 set	port			80
 set	controlport		9999
 
