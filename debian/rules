@@ -39,7 +39,13 @@ override_dh_auto_clean:
 	 ./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-symbols --enable-threads --mandir=/usr/share/man
 	dh_auto_clean
 
-override_dh_install_init:
+override_dh_installinit:
+	dh_systemd_enable -pnaviserver --name=naviserver@ naviserver@.service
+	dh_installinit -pnaviserver --no-start --noscripts
+	dh_systemd_start -pnaviserver --no-restart-on-upgrade
+
+override_dh_systemd_start:
+	echo "Not running dh_systemd_start"
 
 %:
 	dh $@ --with systemd
