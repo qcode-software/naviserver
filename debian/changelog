@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160713-7) jessie; urgency=medium
+
+  * Add conffiles
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 02 Aug 2016 16:29:26 +0100
+
 naviserver (4.99.12~20160713-6) jessie; urgency=medium
 
   * Add systemd service file. Remove init script.
