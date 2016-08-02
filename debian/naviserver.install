@@ -10,4 +10,3 @@ tcl/* usr/lib/naviserver/tcl
 pages/doc/* usr/share/doc/naviserver/doc
 pages/bitbucket-install.tcl usr/share/doc/naviserver
 pages/examples/* usr/share/doc/naviserver/examples
-conffiles/* etc/naviserver
