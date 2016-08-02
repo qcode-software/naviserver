@@ -26,6 +26,9 @@ override_dh_auto_install:
 	mv $(TARGETDIR)/bin/nsd $(TARGETDIR)/bin/$(PACKAGE)-nsd
 	mv $(TARGETDIR)/bin/nsproxy $(TARGETDIR)/bin/$(PACKAGE)-nsproxy
 	dh_install --sourcedir $(TARGETDIR) --list-missing
+	install -m 755 debian/naviserver.env $(TARGETDIR)/conffiles
+	install -m 755 debian/default.env $(TARGETDIR)/conffiles
+	install -m 755 debian/default.tcl $(TARGETDIR)/conffiles
 
 override_dh_shlibdeps:
 	dh_shlibdeps -a -l$(CURDIR)/debian/$(COREPACKAGE)$(PREFIX)/lib
