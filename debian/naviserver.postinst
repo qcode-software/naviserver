@@ -26,6 +26,7 @@ ETCDIR="/etc/$PACKAGE"
 NEW_SUFFIX="new"
 OLD_SUFFIX="old"
 CONF="$ETCDIR/$INSTANCE.tcl"
+ENVFILE="$ETCDIR/$PACKAGE.env"
 CONF_NEW="$CONF.$NEW_SUFFIX"
 SSL_CERT="$ETCDIR/$INSTANCE.pem"
 
@@ -56,6 +57,16 @@ then
 fi
 
 # use current configuration or generate a new one from scratch
+
+cat <<EOF >$ENVFILE
+# Default environemtn variables for systemd for all naviserver instances.
+# These 3 vars are required.
+# The contents of $OPTS will be passed as a runtime arguement.
+# Any instance specific options can be set in /etc/naviserver/$instance.env
+USER=www-data
+GROUP=www-data
+OPTS=""
+EOF
 
 cat <<EOF >$CONF_NEW
 #
