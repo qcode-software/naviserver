@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 PIDFile=/var/run/naviserver/%i.pid
 # Default environment vars for all naviserver instances
-EnvironmentFile=/etc/naviserver/naviserver.env
+EnvironmentFile=/etc/default/naviserver
 # Environment variables for this %i instance of naviserver
 EnvironmentFile=-/etc/naviserver/%i.env
 ExecStart=/usr/lib/naviserver/bin/nsd -u $USER -g $GROUP $OPTS -i -t /etc/naviserver/%i.tcl

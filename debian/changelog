@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160713-8) jessie; urgency=medium
+
+  * Move systemd environment file to /etc/default/naviserver
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 03 Aug 2016 15:48:01 +0100
+
 naviserver (4.99.12~20160713-7) jessie; urgency=medium
 
   * Add conffiles

@@ -28,7 +28,7 @@ override_dh_auto_install:
 	mkdir -p  $(TARGETDIR)/etc/naviserver
 	install -m 644 debian/default.tcl $(TARGETDIR)/etc/naviserver
 	install -m 644 debian/default.env $(TARGETDIR)/etc/naviserver
-	install -m 644 debian/naviserver.env $(TARGETDIR)/etc/naviserver
+	install -m 644 debian/naviserver.env $(TARGETDIR)/etc/default/naviserver
 	dh_install --sourcedir $(TARGETDIR) --list-missing
 
 override_dh_shlibdeps:
