@@ -1,3 +1,9 @@
+naviserver (4.99.12~20160713-9) jessie; urgency=medium
+
+  * Use debhelper for default env file install
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 03 Aug 2016 16:32:59 +0100
+
 naviserver (4.99.12~20160713-8) jessie; urgency=medium
 
   * Move systemd environment file to /etc/default/naviserver

@@ -11,4 +11,3 @@ pages/doc/* usr/share/doc/naviserver/doc
 pages/bitbucket-install.tcl usr/share/doc/naviserver
 pages/examples/* usr/share/doc/naviserver/examples
 etc/naviserver/* etc/naviserver
-etc/default/naviserver etc/default
