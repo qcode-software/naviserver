@@ -26,7 +26,9 @@ override_dh_auto_install:
 	mv $(TARGETDIR)/bin/nsd $(TARGETDIR)/bin/$(PACKAGE)-nsd
 	mv $(TARGETDIR)/bin/nsproxy $(TARGETDIR)/bin/$(PACKAGE)-nsproxy
 	mkdir -p  $(TARGETDIR)/etc/naviserver
-	install -v debian/default.tcl $(TARGETDIR)/etc/naviserver
+	install -m 755 debian/default.tcl $(TARGETDIR)/etc/naviserver
+	install -m 755 debian/default.env $(TARGETDIR)/etc/naviserver
+	install -m 755 debian/naviserver.env $(TARGETDIR)/etc/naviserver
 	dh_install --sourcedir $(TARGETDIR) --list-missing
 
 override_dh_shlibdeps:
@@ -42,9 +44,9 @@ override_dh_auto_clean:
 	dh_auto_clean
 
 override_dh_installinit:
-	dh_systemd_enable -pnaviserver --name=naviserver@ naviserver@.service
+	# dh_systemd_enable -pnaviserver --name=naviserver@ naviserver@.service
 	dh_installinit -pnaviserver --no-start --noscripts
-	dh_systemd_start -pnaviserver --no-restart-on-upgrade
+	# dh_systemd_start -pnaviserver --no-restart-on-upgrade
 
 override_dh_systemd_start:
 	echo "Not running dh_systemd_start"
