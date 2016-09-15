@@ -56,7 +56,7 @@ static void LimitsResult(Tcl_Interp *interp, const NsLimits *limitsPtr)
 static int            limid = 0;
 static NsLimits      *defLimitsPtr;     /* Default limits if none registered. */
 static Tcl_HashTable  limtable;         /* Process-wide hash of limits. */
-static Ns_Mutex       lock = 0;         /* Lock for limtable and urlspecific data. */
+static Ns_Mutex       lock = NULL;      /* Lock for limtable and urlspecific data. */
 
 
 
@@ -139,18 +139,20 @@ NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
 int
 NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsLimits *limitsPtr;
-
-    Ns_ObjvSpec args[] = {
+    int             result = TCL_OK;
+    const NsLimits *limitsPtr;
+    Ns_ObjvSpec     args[] = {
         {"limits", ObjvLimits, &limitsPtr, INT2PTR(NS_FALSE)},
         {NULL, NULL, NULL, NULL}
     };
+    
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
+        result = TCL_ERROR;
+    } else {
+        LimitsResult(interp, limitsPtr);
     }
-    LimitsResult(interp, limitsPtr);
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -173,28 +175,33 @@ NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 int
 NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Tcl_HashEntry  *hPtr;
-    Tcl_HashSearch  search;
-    const char     *pattern;
+    int result = TCL_OK;
 
     if (objc > 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "?pattern?");
-        return TCL_ERROR;
-    }
-    pattern = (objc == 2 ? Tcl_GetString(objv[1]) : NULL);
-    Ns_MutexLock(&lock);
-    hPtr = Tcl_FirstHashEntry(&limtable, &search);
-    while (hPtr != NULL) {
-        const char *limits = Tcl_GetHashKey(&limtable, hPtr);
-
-        if (pattern == NULL || Tcl_StringMatch(limits, pattern) != 0) {
-            Tcl_AppendElement(interp, limits);
+        result = TCL_ERROR;
+    } else {
+        const Tcl_HashEntry *hPtr;
+        Tcl_HashSearch       search;
+        const char          *pattern = (objc == 2 ? Tcl_GetString(objv[1]) : NULL);
+        Tcl_Obj             *listObj = Tcl_NewListObj(0, NULL);
+        
+        Ns_MutexLock(&lock);
+        hPtr = Tcl_FirstHashEntry(&limtable, &search);
+        while (hPtr != NULL) {
+            const char *limits = Tcl_GetHashKey(&limtable, hPtr);
+            
+            if (pattern == NULL || Tcl_StringMatch(limits, pattern) != 0) {
+                Tcl_ListObjAppendElement(interp, listObj,
+                                         Tcl_NewStringObj(limits, -1));
+            }
+            hPtr = Tcl_NextHashEntry(&search);
         }
-        hPtr = Tcl_NextHashEntry(&search);
+        Ns_MutexUnlock(&lock);
+        Tcl_SetObjResult(interp, listObj);
     }
-    Ns_MutexUnlock(&lock);
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -273,14 +280,14 @@ NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 int
 NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp    *itPtr = clientData;
-    NsLimits    *limitsPtr;
-    const char  *method, *url, *server = itPtr->servPtr->server;
-    int          noinherit = 0;
-    unsigned int flags = 0u;
+    const NsInterp *itPtr = clientData;
+    NsLimits       *limitsPtr;
+    const char     *method, *url, *server = itPtr->servPtr->server;
+    int             noinherit = 0;
+    unsigned int    flags = 0u;
 
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(1)},
+        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
         {"-server",    Ns_ObjvString, &server,    NULL},
         {"--",         Ns_ObjvBreak,  NULL,       NULL},
         {NULL, NULL, NULL, NULL}
@@ -384,7 +391,7 @@ ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *CONST* 
         const char *limits = Tcl_GetString(objv[0]);
         *limitsPtrPtr = FindLimits(limits, create);
         if (*limitsPtrPtr == NULL) {
-            Tcl_AppendResult(interp, "no such limits: ", limits, NULL);
+            Ns_TclPrintfResult(interp, "no such limits: %s", limits);
             return TCL_ERROR;
         }
         Ns_TclSetOpaqueObj(objv[0], limitsType, *limitsPtrPtr);

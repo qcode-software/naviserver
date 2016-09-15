@@ -177,8 +177,8 @@ static const struct {
 void
 NsConfigEncodings(void)
 {
-    Ns_Set *set;
-    size_t  i;
+    const Ns_Set *set;
+    size_t        i;
 
     Ns_MutexSetName(&lock, "ns:encodings");
     Tcl_InitHashTable(&extensions, TCL_STRING_KEYS);
@@ -289,9 +289,9 @@ Ns_GetFileEncoding(const char *file)
 
     NS_NONNULL_ASSERT(file != NULL);
 
-    ext = strrchr(file, '.');
+    ext = strrchr(file, INTCHAR('.'));
     if (ext != NULL) {
-        Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&extensions, ext);
+        const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&extensions, ext);
 
         if (hPtr != NULL) {
 	    const char *name = Tcl_GetHashValue(hPtr);
@@ -368,9 +368,9 @@ Ns_GetCharsetEncoding(const char *charset)
 Tcl_Encoding
 Ns_GetCharsetEncodingEx(const char *charset, int len)
 {
-    Tcl_HashEntry *hPtr;
-    Tcl_Encoding   encoding;
-    Ns_DString     ds;
+    const Tcl_HashEntry *hPtr;
+    Tcl_Encoding         encoding;
+    Ns_DString           ds;
 
     NS_NONNULL_ASSERT(charset != NULL);
 
@@ -421,8 +421,8 @@ Ns_GetEncoding(const char *name)
 const char *
 Ns_GetEncodingCharset(Tcl_Encoding encoding)
 {
-    const char    *encname, *charset = NULL;
-    Tcl_HashEntry *hPtr;
+    const char          *encname, *charset = NULL;
+    const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(encoding != NULL);
 
@@ -454,7 +454,7 @@ Ns_GetEncodingCharset(Tcl_Encoding encoding)
 const char *
 NsFindCharset(const char *mimetype, size_t *lenPtr)
 {
-    const char *start;
+    const char *start, *charset = NULL;
 
     NS_NONNULL_ASSERT(mimetype != NULL);
     NS_NONNULL_ASSERT(lenPtr != NULL);
@@ -472,10 +472,10 @@ NsFindCharset(const char *mimetype, size_t *lenPtr)
                 ++end;
             }
             *lenPtr = (size_t)(end - start);
-            return start;
+            charset = start;
         }
     }
-    return NULL;
+    return charset;
 }
 
 
@@ -499,14 +499,19 @@ int
 NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, 
 		    int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
-    Tcl_HashEntry  *hPtr;
-    Tcl_HashSearch  search;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
+    Tcl_Obj             *listObj = Tcl_NewListObj(0, NULL);
 
-    hPtr = Tcl_FirstHashEntry(&charsets, &search);
-    while (hPtr != NULL) {
-        Tcl_AppendElement(interp, Tcl_GetHashKey(&charsets, hPtr));
-        hPtr = Tcl_NextHashEntry(&search);
+    for (hPtr = Tcl_FirstHashEntry(&charsets, &search);
+         hPtr != NULL;
+         hPtr = Tcl_NextHashEntry(&search)
+         ) {
+        const char *key = Tcl_GetHashKey(&charsets, hPtr);
+        Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, -1));
     }
+    Tcl_SetObjResult(interp, listObj);
+
     return TCL_OK;
 }
 
@@ -531,22 +536,22 @@ NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 int
 NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Tcl_Encoding encoding;
-    const char *encodingName;
-    int encodingNameLen;
+    int result = TCL_OK;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "charset");
-        return TCL_ERROR;
-    }
-    encodingName = Tcl_GetStringFromObj(objv[1], &encodingNameLen);
-    encoding = Ns_GetCharsetEncodingEx(encodingName, encodingNameLen);
-    if (encoding == NULL) {
-        return TCL_OK;
-    }
-    Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetEncodingName(encoding), -1));
+        result =  TCL_ERROR;
+    } else {
+        int          encodingNameLen;
+        const char  *encodingName = Tcl_GetStringFromObj(objv[1], &encodingNameLen);
+        Tcl_Encoding encoding = Ns_GetCharsetEncodingEx(encodingName, encodingNameLen);
 
-    return TCL_OK;
+        if (encoding != NULL) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetEncodingName(encoding), -1));
+        }
+    }
+    
+    return result;
 }
 
 
@@ -566,7 +571,7 @@ NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *----------------------------------------------------------------------
  */
 
-int
+bool
 NsEncodingIsUtf8(const Tcl_Encoding encoding)
 {
     return (encoding == utf8Encoding);

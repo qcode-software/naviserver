@@ -226,7 +226,7 @@ Ns_NormalizePath(Ns_DString *dsPtr, const char *path)
              * There's a "..", so wipe out one path backwards.
              */
 
-            slash = strrchr(dsPtr->string, '/');
+            slash = strrchr(dsPtr->string, INTCHAR('/'));
             if (slash != NULL) {
 	      Ns_DStringSetLength(dsPtr, (int)(slash - dsPtr->string));
             }
@@ -414,7 +414,7 @@ Ns_BinPath(Ns_DString *dsPtr, ...)
  *
  * Ns_HomePath --
  *
- *  Build a path relative to Naviserver's home dir.
+ *  Build a path relative to NaviServer's home dir.
  *
  * Results:
  *  dest->string
@@ -446,7 +446,7 @@ Ns_HomePath(Ns_DString *dsPtr, ...)
  *
  * Ns_HomePathExists --
  *
- *  Check that a path exists relative to Naviserver's home dir.
+ *  Check that a path exists relative to NaviServer's home dir.
  *
  * Results:
  *  1 if exists
@@ -757,7 +757,7 @@ NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
         Ns_MakePath(&ds, Tcl_GetString(objv[i]), NULL);
     }
     Tcl_DStringResult(interp, &ds);
-    Ns_DStringFree(&ds);
+
     return TCL_OK;
 }
 
@@ -867,7 +867,7 @@ NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
         return TCL_ERROR;
     }
     if (unlikely(servPtr == NULL)) {
-        Tcl_AppendResult(interp, "no initializing server", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "no initializing server");
         return TCL_ERROR;
     }
     cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclServerRoot, objv[1],
@@ -1030,7 +1030,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
             safehost = &safehost[4];
         }
         if ((servPtr->vhost.opts & NSD_STRIP_PORT) != 0u) {
-            char *p = strrchr(safehost, ':');
+            char *p = strrchr(safehost, INTCHAR(':'));
             if (p != NULL) {
                 *p = '\0';
             }

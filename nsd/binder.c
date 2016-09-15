@@ -87,7 +87,7 @@ static void Binder(void);
 
 #ifndef _WIN32
 NS_SOCKET
-Ns_SockListenEx(const char *address, int port, int backlog)
+Ns_SockListenEx(const char *address, unsigned short port, int backlog)
 {
     NS_SOCKET           sock = NS_INVALID_SOCKET;
     struct NS_SOCKADDR_STORAGE sa;
@@ -163,7 +163,7 @@ Ns_SockListenEx(const char *address, int port, int backlog)
  */
 
 NS_SOCKET
-Ns_SockListenUdp(const char *address, int port)
+Ns_SockListenUdp(const char *address, unsigned short port)
 {
     NS_SOCKET        sock = NS_INVALID_SOCKET;
     struct NS_SOCKADDR_STORAGE sa;
@@ -248,7 +248,7 @@ Ns_SockListenRaw(int proto)
      */
 
     if (sock == NS_INVALID_SOCKET && binderRunning) {
-        sock = Ns_SockBinderListen('R', NULL, proto, proto);
+        sock = Ns_SockBinderListen('R', NULL, 0u, proto);
     }
 
     return sock;
@@ -685,7 +685,7 @@ PreBind(const char *spec)
         const char *proto;
         char       *addr;
 
-        next = strchr(line, ',');
+        next = strchr(line, INTCHAR(','));
         if (next != NULL) {
             *next++ = '\0';
         }
@@ -712,7 +712,7 @@ PreBind(const char *spec)
         /* 
 	 * Parse protocol 
 	 */
-        if (*line != '/' && (str = strchr(line,'/'))) {
+        if (*line != '/' && (str = strchr(line, INTCHAR('/')))) {
             *str++ = '\0';
             proto = str;
         }
@@ -780,7 +780,7 @@ PreBind(const char *spec)
             int count = 1;
             /* Parse count */
             
-            str = strchr(str,'/');
+            str = strchr(str, INTCHAR('/'));
             if (str != NULL) {
                 *(str++) = '\0';
                 count = strtol(str, NULL, 10);
@@ -808,7 +808,7 @@ PreBind(const char *spec)
         if (Ns_PathIsAbsolute(line) == NS_TRUE) {
             /* Parse mode */
             mode = 0;
-            str = strchr(str,'|');
+            str = strchr(str, INTCHAR('|'));
             if (str != NULL) {
                 *(str++) = '\0';
                 mode = strtol(str, NULL, 10);
@@ -857,7 +857,7 @@ PreBind(const char *spec)
  */
 
 NS_SOCKET
-Ns_SockBinderListen(int type, const char *address, int port, int options)
+Ns_SockBinderListen(int type, const char *address, unsigned short port, int options)
 {
     NS_SOCKET     sock = NS_INVALID_SOCKET;
 #ifndef _WIN32
@@ -929,12 +929,12 @@ Ns_SockBinderListen(int type, const char *address, int port, int options)
         sock = NS_INVALID_SOCKET;
     }
     if (err == 0) {
-        Ns_Log(Notice, "Ns_SockBinderListen: listen(%s,%d) = %d",
+        Ns_Log(Notice, "Ns_SockBinderListen: listen(%s,%hu) = %d",
                address, port, sock);
     } else {
         Ns_SetSockErrno(err);
         sock = NS_INVALID_SOCKET;
-        Ns_Log(Error, "Ns_SockBinderListen: listen(%s,%d) failed: '%s'",
+        Ns_Log(Error, "Ns_SockBinderListen: listen(%s,%hu) failed: '%s'",
                address, port, ns_sockstrerror(ns_sockerrno));
     }
 #endif /* _WIN32 */

@@ -51,7 +51,8 @@ typedef struct InterpData {
 
 static int DbFail(Tcl_Interp *interp, Ns_DbHandle *handle, const char *cmd)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
-static void EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle);
+static void EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle, Tcl_Obj *listObj)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 static int DbGetHandle(InterpData *idataPtr, Tcl_Interp *interp, const char *handleId,
 		       Ns_DbHandle **handle, Tcl_HashEntry **hPtrPtr);
 static Tcl_InterpDeleteProc FreeData;
@@ -63,7 +64,7 @@ static Tcl_ObjCmdProc
     GetCsvObjCmd, 
     PoolDescriptionObjCmd,
     QuoteListToListObjCmd;
-static int ErrorObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd);
+static int ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd);
 
 
 /*
@@ -80,7 +81,7 @@ static const char *const datakey = "nsdb:data";
  *      Get database handle from its handle id.
  *
  * Results:
- *      See DbGetHandle().
+ *      Tcl result code.
  *
  * Side effects:
  *      None.
@@ -91,13 +92,16 @@ static const char *const datakey = "nsdb:data";
 int
 Ns_TclDbGetHandle(Tcl_Interp *interp, const char *handleId, Ns_DbHandle **handlePtr)
 {
+    int         result;
     InterpData *idataPtr;
 
     idataPtr = Tcl_GetAssocData(interp, datakey, NULL);
     if (idataPtr == NULL) {
-	return TCL_ERROR;
+	result = TCL_ERROR;
+    } else {
+        result = DbGetHandle(idataPtr, interp, handleId, handlePtr, NULL);
     }
-    return DbGetHandle(idataPtr, interp, handleId, handlePtr, NULL);
+    return result;
 }
 
 
@@ -167,8 +171,8 @@ NsDbReleaseHandles(Tcl_Interp *interp, const void *arg)
 
     idataPtr = Tcl_GetAssocData(interp, datakey, NULL);
     if (idataPtr != NULL) {
-        Tcl_HashSearch  search;
-        Tcl_HashEntry *hPtr = Tcl_FirstHashEntry(&idataPtr->dbs, &search);
+        Tcl_HashSearch       search;
+        const Tcl_HashEntry *hPtr = Tcl_FirstHashEntry(&idataPtr->dbs, &search);
 
         while (hPtr != NULL) {
 	    Ns_DbHandle *handlePtr = Tcl_GetHashValue(hPtr);
@@ -189,7 +193,7 @@ NsDbReleaseHandles(Tcl_Interp *interp, const void *arg)
  *
  * DbObjCmd --
  *
- *      Implement the Naviserver ns_db Tcl command.
+ *      Implement the NaviServer ns_db Tcl command.
  *
  * Results:
  *      Return TCL_OK upon success and TCL_ERROR otherwise.
@@ -201,15 +205,16 @@ NsDbReleaseHandles(Tcl_Interp *interp, const void *arg)
  */
 
 static int
-DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    InterpData	   *idataPtr = data;
+    InterpData	   *idataPtr = clientData;
     char            tmpbuf[32] = "";
     const char     *pool = NULL;
     int             cmd, nrows;
     Ns_DbHandle    *handlePtr = NULL;
     Ns_Set         *rowPtr;
     Tcl_HashEntry  *hPtr;
+    int             result = TCL_OK;
 
     enum {
         POOLS, BOUNCEPOOL, GETHANDLE, EXCEPTION, POOLNAME,
@@ -241,32 +246,37 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
     case POOLS:
         if (objc != 2) {
             Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
+            result = TCL_ERROR;
+        } else {
+            pool = Ns_DbPoolList(idataPtr->server);
+            if (pool != NULL) {
+                Tcl_Obj  *listObj = Tcl_NewListObj(0, NULL);
+
+                while (*pool != '\0') {
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(pool, -1));
+                    pool = pool + strlen(pool) + 1;
+                }
+                Tcl_SetObjResult(interp, listObj);
+            }
         }
-	pool = Ns_DbPoolList(idataPtr->server);
-	if (pool != NULL) {
-	    while (*pool != '\0') {
-		Tcl_AppendElement(interp, pool);
-		pool = pool + strlen(pool) + 1;
-	    }
-	}
         break;
 
     case BOUNCEPOOL:
 	if (objc != 3) {
 	    Tcl_WrongNumArgs(interp, 2, objv, "pool");
-            return TCL_ERROR;
-	}
-	if (Ns_DbBouncePool(Tcl_GetString(objv[2])) == NS_ERROR) {
-	    Tcl_AppendResult(interp, "could not bounce: ", Tcl_GetString(objv[2]), NULL);
-	    return TCL_ERROR;
+            result = TCL_ERROR;
+
+	} else if (Ns_DbBouncePool(Tcl_GetString(objv[2])) == NS_ERROR) {
+	    Ns_TclPrintfResult(interp, "could not bounce: %s", Tcl_GetString(objv[2]));
+	    result = TCL_ERROR;
 	}
         break;
 
     case GETHANDLE: {
-	int nhandles = 1, result;
-        Ns_Time *timeoutPtr = NULL;
-	Ns_DbHandle **handlesPtrPtr;
+	int            nhandles = 1;
+        const Ns_Time *timeoutPtr = NULL;
+	Ns_DbHandle  **handlesPtrPtr;
+        Ns_ReturnCode  status;
 
         Ns_ObjvSpec opts[] = {
             {"-timeout", Ns_ObjvTime,  &timeoutPtr, NULL},
@@ -296,13 +306,11 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
             }
         }
         if (Ns_DbPoolAllowable(idataPtr->server, pool) == NS_FALSE) {
-            Tcl_AppendResult(interp, "no access to pool: \"", pool, "\"",
-			     NULL);
+            Ns_TclPrintfResult(interp, "no access to pool: \"%s\"", pool);
             return TCL_ERROR;
         }
 	if (nhandles <= 0) {
-            Tcl_AppendResult(interp, "invalid nhandles \"", nhandles,
-                    "\": should be greater than 0.", NULL);
+            Ns_TclPrintfResult(interp, "invalid nhandles %d: should be greater than 0.", nhandles);
             return TCL_ERROR;
 	}
         
@@ -323,25 +331,27 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 	} else {
 	    handlesPtrPtr = ns_malloc((size_t)nhandles * sizeof(Ns_DbHandle *));
 	}
-	result = Ns_DbPoolTimedGetMultipleHandles(handlesPtrPtr, pool,
+	status = Ns_DbPoolTimedGetMultipleHandles(handlesPtrPtr, pool,
     	    	                                  nhandles, timeoutPtr);
-    	if (result == NS_OK) {
-  	    int i;
+    	if (status == NS_OK) {
+  	    int      i;
+            Tcl_Obj *listObj = Tcl_NewListObj(0, NULL);
 
 	    for (i = 0; i < nhandles; ++i) {
-	        EnterDbHandle(idataPtr, interp, *(handlesPtrPtr + i));
+	        EnterDbHandle(idataPtr, interp, *(handlesPtrPtr + i), listObj);
             }
+            Tcl_SetObjResult(interp, listObj);
 	}
 	if (handlesPtrPtr != &handlePtr) {
 	    ns_free(handlesPtrPtr);
 	}
-	if (result != NS_TIMEOUT && result != NS_OK) {
+	if (status != NS_TIMEOUT && status != NS_OK) {
 	  Ns_TclPrintfResult(interp,
 			     "could not allocate %d handle%s from pool \"%s\"",
 			     nhandles,
 			     nhandles > 1 ? "s" : "",
 			     pool);
-	  return TCL_ERROR;
+	  result = TCL_ERROR;
 	}
 	break;
     }
@@ -356,37 +366,35 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
         };
 
         if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
-            return TCL_ERROR;
-        }
-        if (pool == NULL) {
+            result = TCL_ERROR;
+
+        } else if (pool == NULL) {
             /*
              * No argument, list min duration for every pool.
              */
             Tcl_SetObjResult(interp, Ns_DbListMinDurations(interp, idataPtr->server));
-            return TCL_OK;
-	}
 
-        /*
-         * In this case, minduration was not given, return the actual
-         * minduration of this pool.
-         */
-        if (minDurationPtr == NULL) {
+	} else if (minDurationPtr == NULL) {
+            /*
+             * In this case, minduration was not given, return the
+             * actual minduration of this pool.
+             */
 
             if (Ns_DbGetMinDuration(interp, pool, &minDurationPtr) != TCL_OK) {
-                return TCL_ERROR;
+                result = TCL_ERROR;
+            } else {
+                Tcl_SetObjResult(interp, Ns_TclNewTimeObj(minDurationPtr));
             }
-            Tcl_SetObjResult(interp, Ns_TclNewTimeObj(minDurationPtr));
 
-            return TCL_OK;
-        }
-        
-        /*
-         * Set the minduration the the specified value.
-         */
-        if (Ns_DbSetMinDuration(interp, pool, minDurationPtr) != TCL_OK) {
-            return TCL_ERROR;
         } else {
-            Tcl_SetObjResult(interp, Ns_TclNewTimeObj(minDurationPtr));
+            /*
+             * Set the minduration the the specified value.
+             */
+            if (Ns_DbSetMinDuration(interp, pool, minDurationPtr) != TCL_OK) {
+                result = TCL_ERROR;
+            } else {
+                Tcl_SetObjResult(interp, Ns_TclNewTimeObj(minDurationPtr));
+            }
         }
         
         break;
@@ -395,22 +403,26 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
     case EXCEPTION:
         if (objc != 3) {
             Tcl_WrongNumArgs(interp, 2, objv, "dbId");
-            return TCL_ERROR;
+            result = TCL_ERROR;
+
+        } else if (DbGetHandle(idataPtr, interp, Tcl_GetString(objv[2]), &handlePtr, NULL) != TCL_OK) {
+            result = TCL_ERROR;
+
+        } else {
+            Tcl_Obj *listObj = Tcl_NewListObj(2, NULL);
+            
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(handlePtr->cExceptionCode, -1));
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(handlePtr->dsExceptionMsg.string, -1));
+            Tcl_SetObjResult(interp, listObj);
         }
-        if (DbGetHandle(idataPtr, interp, Tcl_GetString(objv[2]), &handlePtr, NULL) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        Tcl_AppendElement(interp, handlePtr->cExceptionCode);
-        Tcl_AppendElement(interp, handlePtr->dsExceptionMsg.string);
         break;
 
     case STATS: {
         if (objc != 2) {
             Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
-        }
-	if  (Ns_DbPoolStats(interp) != TCL_OK) {
-            return TCL_ERROR;
+            result = TCL_ERROR;
+        } else if  (Ns_DbPoolStats(interp) != TCL_OK) {
+            result = TCL_ERROR;
         }
         break;
     }
@@ -477,17 +489,17 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 
         case CANCEL:
             if (Ns_DbCancel(handlePtr) != NS_OK) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
             }
             break;
 
         case BINDROW:
             rowPtr = Ns_DbBindRow(handlePtr);
             if (rowPtr == NULL) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-            }
-            if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_STATIC) != TCL_OK)) {
-                return TCL_ERROR;
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+
+            } else if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_STATIC) != TCL_OK)) {
+                result = TCL_ERROR;
             }
             break;
 
@@ -497,7 +509,7 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 
         case FLUSH:
             if (Ns_DbFlush(handlePtr) != NS_OK) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
             }
             break;
 
@@ -508,13 +520,14 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 
         case RESETHANDLE:
 	    if (Ns_DbResetHandle(handlePtr) != NS_OK) {
-	      return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-	    }
-	    Tcl_SetObjResult(interp, Tcl_NewIntObj(NS_OK));
+	      result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+	    } else {
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(NS_OK));
+            }
             break;
 
         case CONNECTED:
-      	    Tcl_SetObjResult(interp, Tcl_NewIntObj(handlePtr->connected));
+      	    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(handlePtr->connected));
             break;
 
         case SP_EXEC:
@@ -526,25 +539,26 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 	        Tcl_SetResult(interp, "NS_ROWS", TCL_STATIC);
 	        break;
 	    default:
-	        return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+	        result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
 	    }
             break;
 
         case SP_GETPARAMS:
 	    rowPtr = Ns_DbSpGetParams(handlePtr);
 	    if (rowPtr == NULL) {
-	        return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-	    }
-	    if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_DYNAMIC) != TCL_OK)) {
-                return TCL_ERROR;
+	        result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+
+	    } else if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_DYNAMIC) != TCL_OK)) {
+                result = TCL_ERROR;
             }
             break;
 
         case SP_RETURNCODE:
 	    if (Ns_DbSpReturnCode(handlePtr, tmpbuf, 32) != NS_OK) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-      	    }
-	    Tcl_SetObjResult(interp, Tcl_NewStringObj(tmpbuf, -1));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+      	    } else {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(tmpbuf, -1));
+            }
             break;
 
         default:
@@ -588,29 +602,30 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
         switch (cmd) {
         case DML:
             if (Ns_DbDML(handlePtr, Tcl_GetString(objv[3])) != NS_OK) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
             }
             break;
 
         case ONE_ROW:
             rowPtr = Ns_Db1Row(handlePtr, Tcl_GetString(objv[3]));
             if (rowPtr == NULL) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-            }
-            if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_DYNAMIC) != TCL_OK)) {
-                return TCL_ERROR;
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+
+            } else if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_DYNAMIC) != TCL_OK)) {
+                result = TCL_ERROR;
             }
             break;
 
         case ZERO_OR_ONE_ROW:
             rowPtr = Ns_Db0or1Row(handlePtr, Tcl_GetString(objv[3]), &nrows);
             if (rowPtr == NULL) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-            }
-            if (nrows == 0) {
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+
+            } else if (nrows == 0) {
                 Ns_SetFree(rowPtr);
+
             } else if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_DYNAMIC) != TCL_OK)) {
-                return TCL_ERROR;
+                result = TCL_ERROR;
             }
             break;
 
@@ -623,30 +638,31 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
                 Tcl_SetResult(interp, "NS_ROWS", TCL_STATIC);
                 break;
             default:
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
             }
             break;
 
         case SELECT:
             rowPtr = Ns_DbSelect(handlePtr, Tcl_GetString(objv[3]));
             if (rowPtr == NULL) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-            }
-            if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_STATIC) != TCL_OK)) {
-                return TCL_ERROR;
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+
+            } else if (unlikely(Ns_TclEnterSet(interp, rowPtr, NS_TCL_SET_STATIC) != TCL_OK)) {
+                result = TCL_ERROR;
             }
             break;
 
         case SP_START:
 	    if (Ns_DbSpStart(handlePtr, Tcl_GetString(objv[3])) != NS_OK) {
-	        return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-	    }
-	    Tcl_SetResult(interp, "0", TCL_STATIC);
+	        result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+	    } else {
+                Tcl_SetResult(interp, "0", TCL_STATIC);
+            }
             break;
 
         case INTERPRETSQLFILE:
             if (Ns_DbInterpretSqlFile(handlePtr, Tcl_GetString(objv[3])) != NS_OK) {
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
             }
             break;
 
@@ -663,7 +679,7 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
                 Tcl_SetResult(interp, "0", TCL_STATIC);
                 break;
             default:
-                return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
             }
             break;
 
@@ -674,75 +690,85 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
         break;
 
     case VERBOSE:
-        if (objc != 3 && objc != 4) {
-            Tcl_WrongNumArgs(interp, 2, objv, "dbId ?on|off?");
-        }
-	assert(handlePtr != NULL);
-        Ns_LogDeprecated(objv, 2, "ns_logctl debug(sql) ...", NULL);
-        if (objc == 4) {
-            int verbose;
-            
-            if (Tcl_GetBoolean(interp, Tcl_GetString(objv[3]), &verbose) != TCL_OK) {
-                return TCL_ERROR;
+        {
+            int         verbose;
+            const char *idString;
+            Ns_ObjvSpec args[] = {
+                {"dbID",     Ns_ObjvString, &idString, NULL},
+                {"?verbose", Ns_ObjvBool,   &verbose, NULL},
+                {NULL, NULL, NULL, NULL}
+            };
+
+            if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+                result = TCL_ERROR;
+
+            } else {
+                assert(handlePtr != NULL);
+                Ns_LogDeprecated(objv, 2, "ns_logctl debug(sql) ...", NULL);
+
+                if (objc == 4) {
+                    handlePtr->verbose = verbose;
+                    (void) Ns_LogSeveritySetEnabled(Ns_LogSqlDebug, (bool)verbose);
+                }
+
+                Tcl_SetObjResult(interp, Tcl_NewBooleanObj(handlePtr->verbose));
             }
-            handlePtr->verbose = verbose;
-            (void) Ns_LogSeveritySetEnabled(Ns_LogSqlDebug, (bool)verbose);
         }
-	Tcl_SetObjResult(interp, Tcl_NewIntObj(handlePtr->verbose));
         break;
 
     case SETEXCEPTION:
-	{
-	    const char *code;
-	    int codeLen;
-
-	    if (objc != 5) {
-		Tcl_WrongNumArgs(interp, 2, objv, "dbId code message");
-	    }
-            assert(handlePtr != NULL);
-
-	    code = Tcl_GetStringFromObj(objv[3], &codeLen);
-	    if (codeLen > 5) {
-		Tcl_AppendResult(interp, "code \"", code,
-				 "\" more than 5 characters", NULL);
-		return TCL_ERROR;
-	    }
-            assert(handlePtr != NULL);
-
-	    Ns_DbSetException(handlePtr, code, Tcl_GetString(objv[4]));
-	    break;
-	}
-    case SP_SETPARAM:
-	{
-	    const char *arg5;
-
-	    if (objc != 7) {
-		Tcl_WrongNumArgs(interp, 2, objv, "dbId paramname type in|out value");
-	    }
-	    arg5 = Tcl_GetString(objv[5]);
-
-	    if (!STREQ(arg5, "in") && !STREQ(arg5, "out")) {
-		Tcl_SetResult(interp, "inout parameter of setparam must "
-			      "be \"in\" or \"out\"", TCL_STATIC);
-		return TCL_ERROR;
-	    }
+        if (objc != 5) {
+            Tcl_WrongNumArgs(interp, 2, objv, "dbId code message");
+            result = TCL_ERROR;
+        } else {
+            const char *code;
+            int codeLen;
+            
             assert(handlePtr != NULL);
             
-	    if (Ns_DbSpSetParam(handlePtr, Tcl_GetString(objv[3]), Tcl_GetString(objv[4]),
-				arg5, Tcl_GetString(objv[6])) != NS_OK) {
-		return DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
-	    } else {
-		Tcl_SetResult(interp, "1", TCL_STATIC);
-	    }
-	    break;
-	}
+            code = Tcl_GetStringFromObj(objv[3], &codeLen);
+            if (codeLen > 5) {
+                Ns_TclPrintfResult(interp, "code \"%s"" more than 5 characters", code);
+                result = TCL_ERROR;
+            } else {
+                Ns_DbSetException(handlePtr, code, Tcl_GetString(objv[4]));
+            }
+        }
+        break;
+
+    case SP_SETPARAM:
+        if (objc != 7) {
+            Tcl_WrongNumArgs(interp, 2, objv, "dbId paramname type in|out value");
+            result = TCL_ERROR;
+        } else {
+            const char *arg5 = Tcl_GetString(objv[5]);
+            
+            if (!STREQ(arg5, "in") && !STREQ(arg5, "out")) {
+                Tcl_SetResult(interp, "inout parameter of setparam must "
+                              "be \"in\" or \"out\"", TCL_STATIC);
+                result = TCL_ERROR;
+            } else {
+                assert(handlePtr != NULL);
+                
+                if (Ns_DbSpSetParam(handlePtr,
+                                    Tcl_GetString(objv[3]),
+                                    Tcl_GetString(objv[4]),
+                                    arg5,
+                                    Tcl_GetString(objv[6])) != NS_OK) {
+                    result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
+                } else {
+                    Tcl_SetResult(interp, "1", TCL_STATIC);
+                }
+            }
+        }
+        break;
 
     default:
         /* should not happen */
         assert(cmd && 0);
     }
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -763,36 +789,39 @@ DbObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
  */
 
 static int
-ErrorObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
+ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
 {
-    InterpData *idataPtr = data;
+    InterpData  *idataPtr = clientData;
     Ns_DbHandle *handle;
+    int          result = TCL_OK;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "dbId");
-        return TCL_ERROR;
-    }
-    if (DbGetHandle(idataPtr, interp, Tcl_GetString(objv[1]), &handle, NULL) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    if (cmd == 'c') {
-    	Tcl_SetObjResult(interp, Tcl_NewStringObj(handle->cExceptionCode, -1));
+        result = TCL_ERROR;
+
+    } else if (DbGetHandle(idataPtr, interp, Tcl_GetString(objv[1]), &handle, NULL) != TCL_OK) {
+        result = TCL_ERROR;
+
     } else {
-    	Tcl_DStringResult(interp, &handle->dsExceptionMsg);
+        if (cmd == 'c') {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(handle->cExceptionCode, -1));
+        } else {
+            Tcl_DStringResult(interp, &handle->dsExceptionMsg);
+        }
     }
-    return TCL_OK;
+    return result;
 }
 
 static int
-DbErrorCodeObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbErrorCodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    return ErrorObjCmd(data, interp, objc, objv, 'c');
+    return ErrorObjCmd(clientData, interp, objc, objv, 'c');
 }
 
 static int
-DbErrorMsgObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbErrorMsgObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    return ErrorObjCmd(data, interp, objc, objv, 'm');
+    return ErrorObjCmd(clientData, interp, objc, objv, 'm');
 }
 
 
@@ -813,17 +842,20 @@ DbErrorMsgObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
  */
 
 static int
-DbConfigPathObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    InterpData *idataPtr = data;
-    const char *section;
+    int               result = TCL_OK;
 
     if (objc != 1) {
         Tcl_WrongNumArgs(interp, 0, objv, NULL);
+        result = TCL_ERROR;
+    } else {
+        const InterpData *idataPtr = clientData;
+        const char *section = Ns_ConfigGetPath(idataPtr->server, NULL, "db", NULL);
+        
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(section, -1));
     }
-    section = Ns_ConfigGetPath(idataPtr->server, NULL, "db", NULL);
-    Tcl_SetObjResult(interp, Tcl_NewStringObj(section, -1));
-    return TCL_OK;
+    return result;
 }
 
 
@@ -846,12 +878,16 @@ DbConfigPathObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST
 static int
 PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
+    int result = TCL_OK;
+    
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "poolname");
-        return TCL_ERROR;
+        result = TCL_ERROR;
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_DbPoolDescription(Tcl_GetString(objv[1])), -1));
     }
-    Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_DbPoolDescription(Tcl_GetString(objv[1])), -1));
-    return TCL_OK;
+
+    return result;
 }
 
 
@@ -874,50 +910,56 @@ PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 static int
 QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char *quotelist;
-    int         inquotes;
-    Ns_DString  ds;
+    int         result = TCL_OK;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "quotelist");
-        return TCL_ERROR;
-    }
-    quotelist = Tcl_GetString(objv[1]);
-    inquotes = NS_FALSE;
-    Ns_DStringInit(&ds);
-    while (*quotelist != '\0') {
-        if (CHARTYPE(space, *quotelist) != 0 && !inquotes) {
-            if (ds.length != 0) {
-                Tcl_AppendElement(interp, ds.string);
-                Ns_DStringTrunc(&ds, 0);
-            }
-            while (CHARTYPE(space, *quotelist) != 0) {
+        result = TCL_ERROR;
+    } else {
+        const char *quotelist;
+        bool        inquotes;
+        Ns_DString  ds;
+        Tcl_Obj    *listObj = Tcl_NewListObj(0, NULL);
+
+        Ns_DStringInit(&ds);
+        quotelist = Tcl_GetString(objv[1]);
+        inquotes = NS_FALSE;
+        
+        while (*quotelist != '\0') {
+            if (CHARTYPE(space, *quotelist) != 0 && !inquotes) {
+                if (ds.length != 0) {
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(ds.string, ds.length));
+                    Ns_DStringTrunc(&ds, 0);
+                }
+                while (CHARTYPE(space, *quotelist) != 0) {
+                    quotelist++;
+                }
+            } else if (*quotelist == '\\' && (*(quotelist + 1) != '\0')) {
+                Ns_DStringNAppend(&ds, quotelist + 1, 1);
+                quotelist += 2;
+            } else if (*quotelist == '\'') {
+                if (inquotes) {
+                    /* Finish element */
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(ds.string, ds.length));
+                    Ns_DStringTrunc(&ds, 0);
+                    inquotes = NS_FALSE;
+                } else {
+                    /* Start element */
+                    inquotes = NS_TRUE;
+                }
+                quotelist++;
+            } else {
+                Ns_DStringNAppend(&ds, quotelist, 1);
                 quotelist++;
             }
-        } else if (*quotelist == '\\' && (*(quotelist + 1) != '\0')) {
-            Ns_DStringNAppend(&ds, quotelist + 1, 1);
-            quotelist += 2;
-        } else if (*quotelist == '\'') {
-            if (inquotes != 0) {
-                /* Finish element */
-                Tcl_AppendElement(interp, ds.string);
-                Ns_DStringTrunc(&ds, 0);
-                inquotes = NS_FALSE;
-            } else {
-                /* Start element */
-                inquotes = NS_TRUE;
-            }
-            quotelist++;
-        } else {
-            Ns_DStringNAppend(&ds, quotelist, 1);
-            quotelist++;
         }
+        if (ds.length != 0) {
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(ds.string, ds.length));
+        }
+        Ns_DStringFree(&ds);
+        Tcl_SetObjResult(interp, listObj);
     }
-    if (ds.length != 0) {
-        Tcl_AppendElement(interp, ds.string);
-    }
-    Ns_DStringFree(&ds);
-    return TCL_OK;
+    return result;
 }
 
 
@@ -941,123 +983,129 @@ QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 static int
 GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int             ncols, inquote, quoted, blank;
-    char            c;
-    const char     *p, *delimiter = ",", *fileId, *varName, *result;
-    Tcl_DString     line, cols, elem;
+    int             result = TCL_OK;
+    const char     *delimiter = ",", *fileId, *varName;
     Tcl_Channel	    chan;
-
-    Ns_ObjvSpec opts[] = {
+    Ns_ObjvSpec     opts[] = {
         {"-delimiter", Ns_ObjvString,   &delimiter, NULL},
         {"--",         Ns_ObjvBreak,    NULL,       NULL},
         {NULL, NULL, NULL, NULL}
     };
-    Ns_ObjvSpec args[] = {
+    Ns_ObjvSpec     args[] = {
         {"fileId",     Ns_ObjvString, &fileId,   NULL},
         {"varName",    Ns_ObjvString, &varName,  NULL},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
-    }
+        result = TCL_ERROR;
 
-    if (Ns_TclGetOpenChannel(interp, fileId, 0, 0, &chan) == TCL_ERROR) {
-        return TCL_ERROR;
-    }
+    } else if (Ns_TclGetOpenChannel(interp, fileId, 0, NS_FALSE, &chan) == TCL_ERROR) {
+        result = TCL_ERROR;
 
-    Tcl_DStringInit(&line);
-    if (Tcl_Gets(chan, &line) < 0) {
-	Tcl_DStringFree(&line);
-    	if (Tcl_Eof(chan) == 0) {
-	    Tcl_AppendResult(interp, "could not read from ", fileId, ": ", Tcl_PosixError(interp), NULL);
-	    return TCL_ERROR;
-	}
-	Tcl_SetResult(interp, "-1", TCL_STATIC);
-	return TCL_OK;
-    }
+    } else {
+        int             ncols;
+        bool            inquote, quoted, blank;
+        const char     *p, *value;
+        Tcl_DString     line, cols, elem;
+        char            c;
 
-    Tcl_DStringInit(&cols);
-    Tcl_DStringInit(&elem);
-    ncols = 0;
-    inquote = 0;
-    quoted = 0;
-    blank = 1;
-    p = line.string;
-    while (*p != '\0') {
-        c = *p++;
-loopstart:
-        if (inquote != 0) {
-            if (c == '"') {
-		c = *p++;
-		if (c == '\0') {
-		    break;
-		}
-                if (c == '"') {
-                    Tcl_DStringAppend(&elem, &c, 1);
-                } else {
-                    inquote = 0;
-                    goto loopstart;
-                }
-            } else {
-                Tcl_DStringAppend(&elem, &c, 1);
+        Tcl_DStringInit(&line);
+        if (Tcl_Gets(chan, &line) < 0) {
+            Tcl_DStringFree(&line);
+            if (Tcl_Eof(chan) == 0) {
+                Ns_TclPrintfResult(interp, "could not read from %s: %s",
+                                   fileId, Tcl_PosixError(interp));
+                return TCL_ERROR;
             }
-        } else {
-            if ((c == '\n') || (c == '\r')) {
-#if 0
-                /*
-                 * Not sure, what the intention of the following block was,
-                 * since the final break after this block jumps out of the
-                 * loop.
-                 */
-                while ((c = *p++) != '\0') {
-                    if ((c != '\n') && (c != '\r')) {
-                        *--p;
+            Tcl_SetResult(interp, "-1", TCL_STATIC);
+            return TCL_OK;
+        }
+
+        Tcl_DStringInit(&cols);
+        Tcl_DStringInit(&elem);
+        ncols = 0;
+        inquote = NS_FALSE;
+        quoted = NS_FALSE;
+        blank = NS_TRUE;
+        
+        p = line.string;
+        while (*p != '\0') {
+            c = *p++;
+        loopstart:
+            if (inquote) {
+                if (c == '"') {
+                    c = *p++;
+                    if (c == '\0') {
                         break;
                     }
+                    if (c == '"') {
+                        Tcl_DStringAppend(&elem, &c, 1);
+                    } else {
+                        inquote = NS_FALSE;
+                        goto loopstart;
+                    }
+                } else {
+                    Tcl_DStringAppend(&elem, &c, 1);
                 }
-#endif                
-                break;
-            }
-            if (c == '"') {
-                inquote = 1;
-                quoted = 1;
-                blank = 0;
-            } else if ((c == '\r') 
-		       || ((elem.length == 0) && (CHARTYPE(space, c) != 0))
-		       ) {
-                continue;
-            } else if (strchr(delimiter,c) != NULL) {
-                if (quoted == 0) {
-                    (void) Ns_StrTrimRight(elem.string);
-                }
-		Tcl_DStringAppendElement(&cols, elem.string);
-                Tcl_DStringTrunc(&elem, 0);
-                ncols++;
-                quoted = 0;
             } else {
-                blank = 0;
-                Tcl_DStringAppend(&elem, &c, 1);
+                if ((c == '\n') || (c == '\r')) {
+#if 0
+                    /*
+                     * Not sure, what the intention of the following block was,
+                     * since the final break after this block jumps out of the
+                     * loop.
+                     */
+                    while ((c = *p++) != '\0') {
+                        if ((c != '\n') && (c != '\r')) {
+                            *--p;
+                            break;
+                        }
+                    }
+#endif                
+                    break;
+                }
+                if (c == '"') {
+                    inquote = NS_TRUE;
+                    quoted = NS_TRUE;
+                    blank = NS_FALSE;
+                } else if ((c == '\r') 
+                           || ((elem.length == 0) && (CHARTYPE(space, c) != 0))
+                           ) {
+                    continue;
+                } else if (strchr(delimiter, INTCHAR(c)) != NULL) {
+                    if (!quoted) {
+                        (void) Ns_StrTrimRight(elem.string);
+                    }
+                    Tcl_DStringAppendElement(&cols, elem.string);
+                    Tcl_DStringTrunc(&elem, 0);
+                    ncols++;
+                    quoted = NS_FALSE;
+                } else {
+                    blank = NS_FALSE;
+                    Tcl_DStringAppend(&elem, &c, 1);
+                }
             }
         }
+        if (!quoted) {
+            (void) Ns_StrTrimRight(elem.string);
+        }
+        if (!blank) {
+            Tcl_DStringAppendElement(&cols, elem.string);
+            ncols++;
+        }
+        value = Tcl_SetVar(interp, varName, cols.string, TCL_LEAVE_ERR_MSG);
+        Tcl_DStringFree(&line);
+        Tcl_DStringFree(&cols);
+        Tcl_DStringFree(&elem);
+        
+        if (value == NULL) {
+            result = TCL_ERROR;
+        } else {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(ncols));
+        }
     }
-    if (quoted == 0) {
-        (void) Ns_StrTrimRight(elem.string);
-    }
-    if (blank == 0) {
-	Tcl_DStringAppendElement(&cols, elem.string);
-        ncols++;
-    }
-    result = Tcl_SetVar(interp, varName, cols.string, TCL_LEAVE_ERR_MSG);
-    Tcl_DStringFree(&line);
-    Tcl_DStringFree(&cols);
-    Tcl_DStringFree(&elem);
-    if (result == NULL) {
-	return TCL_ERROR;
-    }
-    Tcl_SetObjResult(interp, Tcl_NewIntObj(ncols));
-
-    return TCL_OK;
+    return result;
 }
 
 
@@ -1081,18 +1129,20 @@ DbGetHandle(InterpData *idataPtr, Tcl_Interp *interp, const char *handleId, Ns_D
 	    Tcl_HashEntry **hPtrPtr)
 {
     Tcl_HashEntry  *hPtr;
+    int             result = TCL_OK;
 
     hPtr = Tcl_FindHashEntry(&idataPtr->dbs, handleId);
     if (hPtr == NULL) {
-	Tcl_AppendResult(interp, "invalid database id:  \"", handleId, "\"",
-	    NULL);
-	return TCL_ERROR;
+	Ns_TclPrintfResult(interp, "invalid database id: \"%s\"", handleId);
+	result = TCL_ERROR;
+
+    } else {
+        *handle = (Ns_DbHandle *) Tcl_GetHashValue(hPtr);
+        if (hPtrPtr != NULL) {
+            *hPtrPtr = hPtr;
+        }
     }
-    *handle = (Ns_DbHandle *) Tcl_GetHashValue(hPtr);
-    if (hPtrPtr != NULL) {
-	*hPtrPtr = hPtr;
-    }
-    return TCL_OK;
+    return result;
 }
 
 
@@ -1112,18 +1162,24 @@ DbGetHandle(InterpData *idataPtr, Tcl_Interp *interp, const char *handleId, Ns_D
  */
 
 static void
-EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle)
+EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle, Tcl_Obj *listObj)
 {
     Tcl_HashEntry *hPtr;
-    int            isNew, next;
+    int            isNew, next, len;
     char	   buf[100];
+
+    NS_NONNULL_ASSERT(idataPtr != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(handle != NULL);
+    NS_NONNULL_ASSERT(listObj != NULL);
 
     next = idataPtr->dbs.numEntries;
     do {
-        snprintf(buf, sizeof(buf), "nsdb%x", next++);
+        len = snprintf(buf, sizeof(buf), "nsdb%x", next++);
         hPtr = Tcl_CreateHashEntry(&idataPtr->dbs, buf, &isNew);
     } while (isNew == 0);
-    Tcl_AppendElement(interp, buf);
+    
+    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(buf, len));
     Tcl_SetHashValue(hPtr, handle);
 }
 
@@ -1146,17 +1202,19 @@ EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle *handle)
 static int
 DbFail(Tcl_Interp *interp, Ns_DbHandle *handle, const char *cmd)
 {
+    Tcl_DString ds;
     NS_NONNULL_ASSERT(handle != NULL);
 
-    Tcl_AppendResult(interp, "Database operation \"", cmd, "\" failed", NULL);
+    Tcl_DStringInit(&ds);
+    Ns_DStringPrintf(&ds, "Database operation \"%s\" failed", cmd);
     if (handle->cExceptionCode[0] != '\0') {
-        Tcl_AppendResult(interp, " (exception ", handle->cExceptionCode, NULL);
+        Ns_DStringPrintf(&ds, " (exception %s", handle->cExceptionCode);
         if (handle->dsExceptionMsg.length > 0) {
-            Tcl_AppendResult(interp, ", \"", handle->dsExceptionMsg.string,
-			     "\"", NULL);
+            Ns_DStringPrintf(&ds, ", \"%s\"", handle->dsExceptionMsg.string);
         }
-        Tcl_AppendResult(interp, ")", NULL);
+        Ns_DStringPrintf(&ds, ")");
     }
+    Tcl_DStringResult(interp, &ds);
     return TCL_ERROR;
 }
 
@@ -1189,7 +1247,7 @@ FreeData(ClientData clientData, Tcl_Interp *UNUSED(interp))
  * Local Variables:
  * mode: c
  * c-basic-offset: 4
- * fill-column: 78
+ * fill-column: 70
  * indent-tabs-mode: nil
  * End:
  */

@@ -129,44 +129,44 @@ NS_EXTERN Ns_LogSeverity Ns_LogSqlDebug;
  */
 
 NS_EXTERN Ns_ReturnCode Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs);
-NS_EXTERN char *Ns_DbDriverName(Ns_DbHandle *handle);
-NS_EXTERN char *Ns_DbDriverDbType(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbDML(Ns_DbHandle *handle, const char *sql);
-NS_EXTERN Ns_Set *Ns_DbSelect(Ns_DbHandle *handle, const char *sql);
-NS_EXTERN int Ns_DbExec(Ns_DbHandle *handle, const char *sql);
-NS_EXTERN Ns_Set *Ns_DbBindRow(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbGetRow(Ns_DbHandle *handle, Ns_Set *row);
-NS_EXTERN int Ns_DbGetRowCount(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbFlush(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbCancel(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbResetHandle(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbSpStart(Ns_DbHandle *handle, const char *procname);
-NS_EXTERN int Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname,
-			      const char *paramtype, const char *inout, const char *value);
-NS_EXTERN int Ns_DbSpExec(Ns_DbHandle *handle);
-NS_EXTERN int Ns_DbSpReturnCode(Ns_DbHandle *handle, const char *returnCode, int bufsize);
-NS_EXTERN Ns_Set *Ns_DbSpGetParams(Ns_DbHandle *handle);
+NS_EXTERN char         *Ns_DbDriverName(Ns_DbHandle *handle);
+NS_EXTERN char         *Ns_DbDriverDbType(Ns_DbHandle *handle);
+NS_EXTERN int           Ns_DbDML(Ns_DbHandle *handle, const char *sql);
+NS_EXTERN Ns_Set       *Ns_DbSelect(Ns_DbHandle *handle, const char *sql);
+NS_EXTERN int           Ns_DbExec(Ns_DbHandle *handle, const char *sql);
+NS_EXTERN Ns_Set       *Ns_DbBindRow(Ns_DbHandle *handle);
+NS_EXTERN int           Ns_DbGetRow(Ns_DbHandle *handle, Ns_Set *row);
+NS_EXTERN int           Ns_DbGetRowCount(Ns_DbHandle *handle);
+NS_EXTERN Ns_ReturnCode Ns_DbFlush(Ns_DbHandle *handle);
+NS_EXTERN Ns_ReturnCode Ns_DbCancel(Ns_DbHandle *handle);
+NS_EXTERN Ns_ReturnCode Ns_DbResetHandle(Ns_DbHandle *handle);
+NS_EXTERN Ns_ReturnCode Ns_DbSpStart(Ns_DbHandle *handle, const char *procname);
+NS_EXTERN Ns_ReturnCode Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname,
+					const char *paramtype, const char *inout, const char *value);
+NS_EXTERN int           Ns_DbSpExec(Ns_DbHandle *handle);
+NS_EXTERN Ns_ReturnCode Ns_DbSpReturnCode(Ns_DbHandle *handle, const char *returnCode, int bufsize);
+NS_EXTERN Ns_Set       *Ns_DbSpGetParams(Ns_DbHandle *handle);
 
 /*
  * dbinit.c:
  */
 
-NS_EXTERN const char *Ns_DbPoolDescription(const char *pool) NS_GNUC_NONNULL(1);
-NS_EXTERN const char *Ns_DbPoolDefault(const char *server) NS_GNUC_NONNULL(1);
-NS_EXTERN const char *Ns_DbPoolList(const char *server) NS_GNUC_NONNULL(1);
-NS_EXTERN int Ns_DbPoolAllowable(const char *server, const char *pool) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-NS_EXTERN void Ns_DbPoolPutHandle(Ns_DbHandle *handle) NS_GNUC_NONNULL(1);
-NS_EXTERN Ns_DbHandle *Ns_DbPoolTimedGetHandle(const char *pool, const Ns_Time *wait)  NS_GNUC_NONNULL(1);
-NS_EXTERN Ns_DbHandle *Ns_DbPoolGetHandle(const char *pool) NS_GNUC_NONNULL(1);
-NS_EXTERN int Ns_DbPoolGetMultipleHandles(Ns_DbHandle **handles, 
-					  const char *pool,
-					  int nwant)
+NS_EXTERN const char   *Ns_DbPoolDescription(const char *pool) NS_GNUC_NONNULL(1);
+NS_EXTERN const char   *Ns_DbPoolDefault(const char *server) NS_GNUC_NONNULL(1);
+NS_EXTERN const char   *Ns_DbPoolList(const char *server) NS_GNUC_NONNULL(1);
+NS_EXTERN bool          Ns_DbPoolAllowable(const char *server, const char *pool) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+NS_EXTERN void          Ns_DbPoolPutHandle(Ns_DbHandle *handle) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_DbHandle  *Ns_DbPoolTimedGetHandle(const char *pool, const Ns_Time *wait)  NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_DbHandle  *Ns_DbPoolGetHandle(const char *pool) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode Ns_DbPoolGetMultipleHandles(Ns_DbHandle **handles, 
+						    const char *pool,
+						    int nwant)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-NS_EXTERN int Ns_DbPoolTimedGetMultipleHandles(Ns_DbHandle **handles, 
-					       const char *pool,
-					       int nwant, const Ns_Time *wait)
+NS_EXTERN Ns_ReturnCode Ns_DbPoolTimedGetMultipleHandles(Ns_DbHandle **handles, 
+							 const char *pool,
+							 int nwant, const Ns_Time *wait)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-NS_EXTERN int Ns_DbBouncePool(const char *pool) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode Ns_DbBouncePool(const char *pool) NS_GNUC_NONNULL(1);
 NS_EXTERN int Ns_DbPoolStats(Tcl_Interp *interp) NS_GNUC_NONNULL(1);
 
 NS_EXTERN Tcl_Obj *Ns_DbListMinDurations(Tcl_Interp *interp, const char *server)

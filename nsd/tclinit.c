@@ -73,11 +73,23 @@ typedef struct AtClose {
     Tcl_Obj        *objPtr;
 } AtClose;
 
+static Ns_ObjvTable traceWhen[] = {
+    {"allocate",   (unsigned int)NS_TCL_TRACE_ALLOCATE},
+    {"create",     (unsigned int)NS_TCL_TRACE_CREATE},
+    {"deallocate", (unsigned int)NS_TCL_TRACE_DEALLOCATE},
+    {"delete",     (unsigned int)NS_TCL_TRACE_DELETE},
+    {"freeconn",   (unsigned int)NS_TCL_TRACE_FREECONN},
+    {"getconn",    (unsigned int)NS_TCL_TRACE_GETCONN},
+    {NULL,         (unsigned int)0}
+};
+
+
 /*
  * Static functions defined in this file.
  */
 
-static NsInterp *PopInterp(NsServer *servPtr, Tcl_Interp *interp);
+static NsInterp *PopInterp(NsServer *servPtr, Tcl_Interp *interp)
+    NS_GNUC_RETURNS_NONNULL;
 
 static void PushInterp(NsInterp *itPtr)
     NS_GNUC_NONNULL(1);
@@ -107,6 +119,23 @@ static Ns_ReturnCode RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTr
 static Tcl_InterpDeleteProc FreeInterpData;
 static Ns_TlsCleanup DeleteInterps;
 static Ns_ServerInitProc ConfigServerTcl;
+
+static int ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,  Ns_TclTraceType when);
+
+static Tcl_ObjCmdProc ICtlAddModuleObjCmd;
+static Tcl_ObjCmdProc ICtlCleanupObjCmd;
+static Tcl_ObjCmdProc ICtlEpochObjCmd;
+static Tcl_ObjCmdProc ICtlGetModulesObjCmd;
+static Tcl_ObjCmdProc ICtlGetObjCmd;
+static Tcl_ObjCmdProc ICtlGetTracesObjCmd;
+static Tcl_ObjCmdProc ICtlMarkForDeleteObjCmd;
+static Tcl_ObjCmdProc ICtlOnCleanupObjCmd;
+static Tcl_ObjCmdProc ICtlOnCreateObjCmd;
+static Tcl_ObjCmdProc ICtlOnDeleteObjCmd;
+static Tcl_ObjCmdProc ICtlRunTracesObjCmd;
+static Tcl_ObjCmdProc ICtlSaveObjCmd;
+static Tcl_ObjCmdProc ICtlTraceObjCmd;
+static Tcl_ObjCmdProc ICtlUpdateObjCmd;
 
 /*
  * Static variables defined in this file.
@@ -369,31 +398,29 @@ Ns_TclEval(Ns_DString *dsPtr, const char *server, const char *script)
 Tcl_Interp *
 Ns_TclAllocateInterp(const char *server)
 {
-    NsServer *servPtr;
-    NsInterp *itPtr;
+    Tcl_Interp     *result = NULL;
 
     /*
      * Verify the server.  NULL (i.e., no server) is valid but
      * a non-null, unknown server is an error.
      */
-
     if (server == NULL) {
-        servPtr = NULL;
+        result = PopInterp(NULL, NULL)->interp;
+
     } else {
-        servPtr = NsGetServer(server);
-        if (servPtr == NULL) {
-            return NULL;
+        NsServer  *servPtr = NsGetServer(server);
+        if (likely( servPtr != NULL) ) {
+            result = PopInterp(servPtr, NULL)->interp;
         }
     }
-    itPtr = PopInterp(servPtr, NULL);
 
-    return itPtr->interp;
+    return result;
 }
 
 Tcl_Interp *
 NsTclAllocateInterp(NsServer *servPtr)
 {
-    NsInterp *itPtr = PopInterp(servPtr, NULL);
+    const NsInterp *itPtr = PopInterp(servPtr, NULL);
 
     return itPtr->interp;
 }
@@ -516,7 +543,7 @@ Ns_FreeConnInterp(Ns_Conn *UNUSED(conn))
 Ns_Conn *
 Ns_TclGetConn(Tcl_Interp *interp)
 {
-    NsInterp *itPtr;
+    const NsInterp *itPtr;
 
     NS_NONNULL_ASSERT(interp != NULL);
 
@@ -544,7 +571,7 @@ Ns_TclGetConn(Tcl_Interp *interp)
 void
 Ns_TclDestroyInterp(Tcl_Interp *interp)
 {
-    NsInterp      *itPtr;
+    const NsInterp *itPtr;
 
     NS_NONNULL_ASSERT(interp != NULL);
 
@@ -618,7 +645,7 @@ Ns_TclMarkForDelete(Tcl_Interp *interp)
 
     itPtr = NsGetInterpData(interp);
     if (itPtr != NULL) {
-        itPtr->deleteInterp = 1;
+        itPtr->deleteInterp = NS_TRUE;
     }
 }
 
@@ -647,8 +674,9 @@ Ns_ReturnCode
 Ns_TclRegisterTrace(const char *server, Ns_TclTraceProc *proc,
                     const void *arg, Ns_TclTraceType when)
 {
-    TclTrace   *tracePtr;
-    NsServer   *servPtr;
+
+    NsServer      *servPtr;
+    Ns_ReturnCode  status = NS_OK;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(proc != NULL);
@@ -656,43 +684,44 @@ Ns_TclRegisterTrace(const char *server, Ns_TclTraceProc *proc,
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
         Ns_Log(Error, "Ns_TclRegisterTrace: Invalid server: %s", server);
-        return NS_ERROR;
-    }
-    if (Ns_InfoStarted()) {
+        status = NS_ERROR;
+        
+    } else if (Ns_InfoStarted()) {
         Ns_Log(Error, "Can not register Tcl trace, server already started.");
-        return NS_ERROR;
-    }
+        status = NS_ERROR;
 
-    tracePtr = ns_malloc(sizeof(TclTrace));
-    tracePtr->proc = proc;
-    tracePtr->arg = arg;
-    tracePtr->when = when;
-    tracePtr->nextPtr = NULL;
-
-    tracePtr->prevPtr = servPtr->tcl.lastTracePtr;
-    servPtr->tcl.lastTracePtr = tracePtr;
-    if (tracePtr->prevPtr != NULL) {
-        tracePtr->prevPtr->nextPtr = tracePtr;
     } else {
-        servPtr->tcl.firstTracePtr = tracePtr;
-    }
+        TclTrace  *tracePtr = ns_malloc(sizeof(TclTrace));
+        
+        tracePtr->proc = proc;
+        tracePtr->arg = arg;
+        tracePtr->when = when;
+        tracePtr->nextPtr = NULL;
 
-    /*
-     * Run CREATE and ALLOCATE traces immediately so that commands registered
-     * by binary modules can be called by Tcl init scripts sourced by the
-     * already initialised interp which loads the modules.
-     */
-
-    if ((when == NS_TCL_TRACE_CREATE) || (when == NS_TCL_TRACE_ALLOCATE)) {
-	Tcl_Interp *interp = NsTclAllocateInterp(servPtr);
-
-        if ((*proc)(interp, arg) != TCL_OK) {
-            (void) Ns_TclLogErrorInfo(interp, "\n(context: register trace)");
+        tracePtr->prevPtr = servPtr->tcl.lastTracePtr;
+        servPtr->tcl.lastTracePtr = tracePtr;
+        if (tracePtr->prevPtr != NULL) {
+            tracePtr->prevPtr->nextPtr = tracePtr;
+        } else {
+            servPtr->tcl.firstTracePtr = tracePtr;
         }
-        Ns_TclDeAllocateInterp(interp);
-    }
 
-    return NS_OK;
+        /*
+         * Run CREATE and ALLOCATE traces immediately so that commands registered
+         * by binary modules can be called by Tcl init scripts sourced by the
+         * already initialised interp which loads the modules.
+         */
+
+        if ((when == NS_TCL_TRACE_CREATE) || (when == NS_TCL_TRACE_ALLOCATE)) {
+            Tcl_Interp *interp = NsTclAllocateInterp(servPtr);
+
+            if ((*proc)(interp, arg) != TCL_OK) {
+                (void) Ns_TclLogErrorInfo(interp, "\n(context: register trace)");
+            }
+            Ns_TclDeAllocateInterp(interp);
+        }
+    }
+    return status;
 }
 
 
@@ -740,15 +769,18 @@ Ns_TclRegisterAtDelete(Ns_TclTraceProc *proc, const void *arg)
 static Ns_ReturnCode
 RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
 {
-    NsServer *servPtr;
+    const NsServer *servPtr;
+    Ns_ReturnCode   status;
 
     NS_NONNULL_ASSERT(proc != NULL);
 
     servPtr = NsGetInitServer();
     if (servPtr == NULL) {
-        return NS_ERROR;
+        status = NS_ERROR;
+    } else {
+        status = Ns_TclRegisterTrace(servPtr->server, proc, arg, when);
     }
-    return Ns_TclRegisterTrace(servPtr->server, proc, arg, when);
+    return status;
 }
 
 
@@ -805,20 +837,20 @@ void
 Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
 {
     NsInterp   *itPtr = NsGetInterpData(interp);
-    Defer      *deferPtr, **nextPtrPtr;
 
-    if (itPtr == NULL) {
-        return;
+    if (itPtr != NULL) {
+        Defer *deferPtr, **nextPtrPtr;
+
+        deferPtr = ns_malloc(sizeof(Defer));
+        deferPtr->proc = proc;
+        deferPtr->arg = arg;
+        deferPtr->nextPtr = NULL;
+        nextPtrPtr = &itPtr->firstDeferPtr;
+        while (*nextPtrPtr != NULL) {
+            nextPtrPtr = &((*nextPtrPtr)->nextPtr);
+        }
+        *nextPtrPtr = deferPtr;
     }
-    deferPtr = ns_malloc(sizeof(Defer));
-    deferPtr->proc = proc;
-    deferPtr->arg = arg;
-    deferPtr->nextPtr = NULL;
-    nextPtrPtr = &itPtr->firstDeferPtr;
-    while (*nextPtrPtr != NULL) {
-        nextPtrPtr = &((*nextPtrPtr)->nextPtr);
-    }
-    *nextPtrPtr = deferPtr;
 }
 
 
@@ -842,7 +874,7 @@ Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
 const char *
 Ns_TclLibrary(const char *server)
 {
-    NsServer *servPtr = NsGetServer(server);
+    const NsServer *servPtr = NsGetServer(server);
 
     return ((servPtr != NULL) ? servPtr->tcl.library : nsconf.tcl.sharedlibrary);
 }
@@ -867,15 +899,16 @@ Ns_TclLibrary(const char *server)
 const char *
 Ns_TclInterpServer(Tcl_Interp *interp)
 {
-    NsInterp *itPtr;
+    const NsInterp *itPtr;
+    const char     *result = NULL;
 
     NS_NONNULL_ASSERT(interp != NULL);
 
     itPtr = NsGetInterpData(interp);
     if (itPtr != NULL && itPtr->servPtr != NULL) {
-        return itPtr->servPtr->server;
+        result = itPtr->servPtr->server;
     }
-    return NULL;
+    return result;
 }
 
 
@@ -898,8 +931,8 @@ Ns_TclInterpServer(Tcl_Interp *interp)
 Ns_ReturnCode
 Ns_TclInitModule(const char *server, const char *module)
 {
-    NsServer     *servPtr;
-    Ns_ReturnCode status;
+    const NsServer *servPtr;
+    Ns_ReturnCode   status;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(module != NULL);
@@ -915,6 +948,524 @@ Ns_TclInitModule(const char *server, const char *module)
     return status;
 }
 
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlAddTrace 
+ *
+ *      Helper functin for various trace commands
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Adding a trace on success.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,  Ns_TclTraceType when)
+{
+    unsigned int    flags = 0u;
+    Tcl_Obj        *scriptObj;
+    int             remain = 0, result = TCL_OK;
+    Ns_ReturnCode   status;
+    Ns_ObjvSpec     addTraceArgs[] = {
+        {"when",       Ns_ObjvFlags,  &flags,     traceWhen},
+        {"script",     Ns_ObjvObj,    &scriptObj, NULL},
+        {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec     legacyAddTraceArgs[] = {
+        {"script",     Ns_ObjvObj,    &scriptObj, NULL},
+        {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+    };
+
+    if (when == NS_TCL_TRACE_NONE) {
+        status = Ns_ParseObjv(NULL, addTraceArgs, interp, 2, objc, objv);
+    } else {
+        status = Ns_ParseObjv(NULL, legacyAddTraceArgs, interp, 2, objc, objv);        
+    }
+    if (status != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        const NsInterp  *itPtr = clientData;
+        const NsServer  *servPtr = itPtr->servPtr;
+
+        if (servPtr != NsGetInitServer()) {
+            Ns_TclPrintfResult(interp, "cannot add module after server startup");
+            result = TCL_ERROR;
+            
+        } else {
+            const Ns_TclCallback *cbPtr;
+
+            /*
+             * When NS_TCL_TRACE_NONE was provide, get the value from the
+             * parsed flags.
+             */
+            if (when == NS_TCL_TRACE_NONE) {
+                when  = (Ns_TclTraceType)flags;
+            }
+            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclTraceProc, 
+                                      scriptObj, remain, objv + (objc - remain));
+            if (Ns_TclRegisterTrace(servPtr->server, NsTclTraceProc, cbPtr, when) != NS_OK) {
+                result = TCL_ERROR;
+            }
+        }
+    }
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlAddModuleObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl addmodule" command.
+ *      Add a Tcl module to the list for later initialization.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Add module.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ICtlAddModuleObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    const NsInterp *itPtr = clientData;
+    const NsServer *servPtr = itPtr->servPtr;
+    Tcl_Obj        *moduleObj;
+    int             result = TCL_OK;
+    Ns_ObjvSpec     args[] = {
+        {"module",     Ns_ObjvObj,  &moduleObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else if (servPtr != NsGetInitServer()) {
+        Ns_TclPrintfResult(interp, "cannot add module after server startup");
+        result = TCL_ERROR;
+        
+    } else {
+        result = Tcl_ListObjAppendElement(interp, servPtr->tcl.modules, moduleObj);
+        if (result == TCL_OK) {
+            Tcl_SetObjResult(interp, servPtr->tcl.modules);
+        }
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlGetObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl get" command.
+ *      Get the current init script to evaluate in new interps.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    const NsInterp *itPtr = clientData;
+    NsServer       *servPtr = itPtr->servPtr;
+    int             result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else {
+        Ns_RWLockRdLock(&servPtr->tcl.lock);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(servPtr->tcl.script, -1));
+        Ns_RWLockUnlock(&servPtr->tcl.lock);
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlGetModulesObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl getmodules" command.
+ *      Return the list of registered modules.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlGetModulesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    const NsInterp *itPtr = clientData;
+    const NsServer *servPtr = itPtr->servPtr;
+    int             result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else {
+        Tcl_SetObjResult(interp, servPtr->tcl.modules);
+    }
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlEpochObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl epoch" command.
+ *      Check the version of this interp against current init script.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ICtlEpochObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    const NsInterp *itPtr = clientData;
+    NsServer       *servPtr = itPtr->servPtr;
+    int             result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else {
+        Ns_RWLockRdLock(&servPtr->tcl.lock);
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(servPtr->tcl.epoch));
+        Ns_RWLockUnlock(&servPtr->tcl.lock);
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlMarkForDeleteObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl markfordelete" command.
+ *      The interp will be deleted on next deallocation.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Adding flag to itPtr.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlMarkForDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    NsInterp  *itPtr = clientData;
+    int        result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        itPtr->deleteInterp = NS_TRUE;
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlSaveObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl save" command.
+ *      Save the init script.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Save bluprint.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ICtlSaveObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    int          result = TCL_OK;
+    Tcl_Obj     *scriptObj;
+    Ns_ObjvSpec  args[] = {
+        {"script",     Ns_ObjvObj,  &scriptObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else {
+        const NsInterp *itPtr = clientData;
+        NsServer       *servPtr = itPtr->servPtr;
+        int             length;
+        const char     *script = ns_strdup(Tcl_GetStringFromObj(scriptObj, &length));
+        
+        Ns_RWLockWrLock(&servPtr->tcl.lock);
+        ns_free((char *)servPtr->tcl.script);
+        servPtr->tcl.script = script;
+        servPtr->tcl.length = length;
+        if (++servPtr->tcl.epoch == 0) {
+            /* NB: Epoch zero reserved for new interps. */
+            ++itPtr->servPtr->tcl.epoch;
+        }
+        Ns_RWLockUnlock(&servPtr->tcl.lock);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlUpdateObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl update" command.
+ *      Check for and process possible change in the init script.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Update blueprint.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlUpdateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    NsInterp    *itPtr = clientData;
+    int          result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else {
+        result = UpdateInterp(itPtr);
+    }
+    return result;
+}    
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlCleanupObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl cleanup" command.
+ *      Invoke the legacy defer callbacks.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Free memory.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    NsInterp    *itPtr = clientData;
+    int          result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+        
+    } else {
+        Defer                *deferPtr;
+
+        for (deferPtr = itPtr->firstDeferPtr; deferPtr != NULL; deferPtr = deferPtr->nextPtr) {
+            (*deferPtr->proc)(interp, deferPtr->arg);
+            ns_free(deferPtr);
+        }
+	itPtr->firstDeferPtr = NULL;
+        
+        result = UpdateInterp(itPtr);
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlOnInitObjCmd 
+ * ICtlOnCreateObjCmd 
+ * ICtlOnCleanupObjCmd 
+ * ICtlOnDeleteObjCmd 
+ * ICtlTraceObjCmd 
+ *        - subcommands of NsTclICtlObjCmd --
+ *
+ *      Implements various trace commands
+ *
+ *          ns_ictl trace|oninit|oncreate|oncleanup|ondelete
+ *
+ *      Register script-level interp traces. "ns_ictl trace" is the new
+ *      version, the other ones are deprecated 3-argument variants.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Adding a trace on success.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+ICtlOnCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    Ns_LogDeprecated(objv, 2, "ns_ictl trace create ...", NULL);
+    return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_CREATE);
+}
+static int
+ICtlOnCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    Ns_LogDeprecated(objv, 2, "ns_ictl trace deallocate ...", NULL);
+    return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_DEALLOCATE);
+}
+static int
+ICtlOnDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    Ns_LogDeprecated(objv, 2, "ns_ictl trace delete ...", NULL);
+    return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_DELETE);
+}
+static int
+ICtlTraceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    /* 
+     * Passing NS_TCL_TRACE_NONE as last argument means to get the trace type
+     * from the passed-in value 
+     */
+    return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_NONE);
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlGetTracesObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl gettraces" command.
+ *      Return the script of the specified trace.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ICtlGetTracesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    int             result = TCL_OK;
+    unsigned int    flags = 0u;
+    Ns_ObjvSpec     args[] = {
+        {"when", Ns_ObjvFlags,  &flags, traceWhen},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        const NsInterp  *itPtr = clientData;
+        const NsServer  *servPtr = itPtr->servPtr;
+        Ns_DString       ds;
+        const TclTrace  *tracePtr;
+        Ns_TclTraceType  when = (Ns_TclTraceType)flags;
+        
+        Ns_DStringInit(&ds);
+        for (tracePtr = servPtr->tcl.firstTracePtr;
+             (tracePtr != NULL);
+             tracePtr = tracePtr->nextPtr) {
+            if (tracePtr->when == when) {
+                Ns_GetProcInfo(&ds, (Ns_Callback *)tracePtr->proc, tracePtr->arg);
+            }
+        }
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlRunTracesObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl runtraces" command.
+ *      Run the specified trace.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ICtlRunTracesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    int             result = TCL_OK;
+    unsigned int    flags = 0u;
+    Ns_ObjvSpec     args[] = {
+        {"when", Ns_ObjvFlags,  &flags, traceWhen},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        const NsInterp *itPtr = clientData;
+        
+        RunTraces(itPtr, (Ns_TclTraceType)flags);
+    }
+    return result;
+}
 
 /*
  *----------------------------------------------------------------------
@@ -934,270 +1485,37 @@ Ns_TclInitModule(const char *server, const char *module)
  *      See init.tcl for details.
  *
  * Results:
- *      Standar Tcl result.
+ *      Standard Tcl result.
  *
  * Side effects:
- *      May update current saved server Tcl state.
+ *      Depends on the subcommand.
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclICtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp       *itPtr = arg;
-    NsServer       *servPtr = itPtr->servPtr;
-    TclTrace       *tracePtr;
-    Defer          *deferPtr;
-    Ns_TclCallback *cbPtr;
-    Tcl_Obj        *scriptObj;
-    Ns_DString      ds;
-    char           *script;
-    int             remain = 0, opt, length, result = TCL_OK;
-    Ns_TclTraceType when = NS_TCL_TRACE_NONE;
-    unsigned int    flags = 0u;
-
-    static const char *const opts[] = {
-        "addmodule", "cleanup", "epoch", "get", "getmodules",
-        "gettraces", "markfordelete", "oncreate", "oncleanup", "ondelete",
-        "oninit", "runtraces", "save", "trace", "update",
-        NULL
+    const Ns_SubCmdSpec subcmds[] = {
+        {"addmodule",     ICtlAddModuleObjCmd},
+        {"cleanup",       ICtlCleanupObjCmd},
+        {"epoch",         ICtlEpochObjCmd},
+        {"get",           ICtlGetObjCmd},
+        {"getmodules",    ICtlGetModulesObjCmd},
+        {"gettraces",     ICtlGetTracesObjCmd},
+        {"markfordelete", ICtlMarkForDeleteObjCmd},
+        {"oncleanup",     ICtlOnCleanupObjCmd},
+        {"oncreate",      ICtlOnCreateObjCmd},
+        {"ondelete",      ICtlOnDeleteObjCmd},
+        {"oninit",        ICtlOnCreateObjCmd},
+        {"runtraces",     ICtlRunTracesObjCmd},
+        {"save",          ICtlSaveObjCmd},
+        {"trace",         ICtlTraceObjCmd},
+        {"update",        ICtlUpdateObjCmd},
+        {NULL, NULL}
     };
-    enum {
-        IAddModuleIdx, ICleanupIdx, IEpochIdx, IGetIdx, IGetModulesIdx,
-        IGetTracesIdx, IMarkForDeleteIdx, IOnCreateIdx, IOnCleanupIdx, IOnDeleteIdx,
-        IOnInitIdx, IRunTracesIdx, ISaveIdx, ITraceIdx, IUpdateIdx
-    };
-    static Ns_ObjvTable traceWhen[] = {
-        {"create",     (unsigned int)NS_TCL_TRACE_CREATE},
-        {"delete",     (unsigned int)NS_TCL_TRACE_DELETE},
-        {"allocate",   (unsigned int)NS_TCL_TRACE_ALLOCATE},
-        {"deallocate", (unsigned int)NS_TCL_TRACE_DEALLOCATE},
-        {"getconn",    (unsigned int)NS_TCL_TRACE_GETCONN},
-        {"freeconn",   (unsigned int)NS_TCL_TRACE_FREECONN},
-        {NULL,         (unsigned int)0}
-    };
-    Ns_ObjvSpec addTraceArgs[] = {
-        {"when",       Ns_ObjvFlags,  &flags,      traceWhen},
-        {"script",     Ns_ObjvObj,    &scriptObj, NULL},
-        {"?args",      Ns_ObjvArgs,   &remain,    NULL},
-        {NULL, NULL, NULL, NULL}
-    };
-    Ns_ObjvSpec runTraceArgs[] = {
-        {"when",       Ns_ObjvFlags,  &flags,      traceWhen},
-        {NULL, NULL, NULL, NULL}
-    };
-
-    if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option ?arg?");
-        return TCL_ERROR;
-    }
-    if (Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
-                            &opt) != TCL_OK) {
-        return TCL_ERROR;
-    }
-
-    switch (opt) {
-    case IAddModuleIdx:
-        /*
-         * Add a Tcl module to the list for later initialization.
-         */
-
-        if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "module");
-            return TCL_ERROR;
-        }
-        if (servPtr != NsGetInitServer()) {
-            Tcl_SetResult(interp, "cannot add module after server startup",
-                          TCL_STATIC);
-            return TCL_ERROR;
-        }
-        if (Tcl_ListObjAppendElement(interp, servPtr->tcl.modules,
-                                     objv[2]) != TCL_OK) {
-            return TCL_ERROR;
-        }
-        Tcl_SetObjResult(interp, servPtr->tcl.modules);
-        break;
-
-    case IGetModulesIdx:
-        /*
-         * Get the list of modules for initialization.  See inti.tcl
-         * for expected use.
-         */
-
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
-        }
-        Tcl_SetObjResult(interp, servPtr->tcl.modules);
-        break;
-
-    case IGetIdx:
-        /*
-         * Get the current init script to evaluate in new interps.
-         */
-
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
-        }
-        Ns_RWLockRdLock(&servPtr->tcl.lock);
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(servPtr->tcl.script, -1));
-        Ns_RWLockUnlock(&servPtr->tcl.lock);
-        break;
-
-    case IEpochIdx:
-        /*
-         * Check the version of this interp against current init script.
-         */
-
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
-        }
-        Ns_RWLockRdLock(&servPtr->tcl.lock);
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(servPtr->tcl.epoch));
-        Ns_RWLockUnlock(&servPtr->tcl.lock);
-        break;
-
-    case IMarkForDeleteIdx:
-        /*
-         * The interp will be deleted on next deallocation.
-         */
-
-        itPtr->deleteInterp = 1;
-        break;
-
-    case ISaveIdx:
-        /*
-         * Save the init script.
-         */
-
-        if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "script");
-            return TCL_ERROR;
-        }
-        script = ns_strdup(Tcl_GetStringFromObj(objv[2], &length));
-        Ns_RWLockWrLock(&servPtr->tcl.lock);
-        ns_free((char *)servPtr->tcl.script);
-        servPtr->tcl.script = script;
-        servPtr->tcl.length = length;
-        if (++servPtr->tcl.epoch == 0) {
-            /* NB: Epoch zero reserved for new interps. */
-            ++itPtr->servPtr->tcl.epoch;
-        }
-        Ns_RWLockUnlock(&servPtr->tcl.lock);
-        break;
-
-    case IUpdateIdx:
-        /*
-         * Check for and process possible change in the init script.
-         */
-
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
-        }
-        result = UpdateInterp(itPtr);
-        break;
-
-    case ICleanupIdx:
-        /*
-         * Invoke the legacy defer callbacks.
-         */
-
-        if (objc != 2) {
-            Tcl_WrongNumArgs(interp, 2, objv, NULL);
-            return TCL_ERROR;
-        }
-	for (deferPtr = itPtr->firstDeferPtr; deferPtr != NULL; deferPtr = deferPtr->nextPtr) {
-            (*deferPtr->proc)(interp, deferPtr->arg);
-            ns_free(deferPtr);
-        }
-	itPtr->firstDeferPtr = NULL;
-        break;
-
-    case IOnInitIdx:
-    case IOnCreateIdx:
-    case IOnCleanupIdx:
-    case IOnDeleteIdx:
-        /*
-         * Register script-level interp traces (deprecated 3-arg form).
-         */
-
-        if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "script");
-            return TCL_ERROR;
-        }
-        scriptObj = objv[objc-1];
-
-        switch (opt) {
-        case IOnInitIdx:
-        case IOnCreateIdx:
-            when = NS_TCL_TRACE_CREATE;
-            break;
-        case IOnCleanupIdx:
-            when = NS_TCL_TRACE_DEALLOCATE;
-            break;
-        case IOnDeleteIdx:
-            when = NS_TCL_TRACE_DELETE;
-            break;
-        default:
-            /* NB: Silence compiler. */
-            break;
-        }
-        goto trace;
-
-    case ITraceIdx:
-        /*
-         * Register script-level interp traces.
-         */
-        if (Ns_ParseObjv(NULL, addTraceArgs, interp, 2, objc, objv) != NS_OK) {
-            return TCL_ERROR;
-        }
-        when = (Ns_TclTraceType)flags;
-    trace:
-        if (servPtr != NsGetInitServer()) {
-            Tcl_SetResult(interp, "cannot register trace after server startup",
-                          TCL_STATIC);
-            result = TCL_ERROR;
-        } else {
-            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclTraceProc, 
-                                      scriptObj, remain, objv + (objc - remain));
-            if (Ns_TclRegisterTrace(servPtr->server, NsTclTraceProc, cbPtr, when) != NS_OK) {
-                result = TCL_ERROR;
-            }
-        }
-        break;
-
-    case IGetTracesIdx:
-    case IRunTracesIdx:
-        if (Ns_ParseObjv(NULL, runTraceArgs, interp, 2, objc, objv) != NS_OK) {
-            return TCL_ERROR;
-        }
-        when = (Ns_TclTraceType)flags;
-        if (opt == IRunTracesIdx) {
-            RunTraces(itPtr, when);
-        } else {
-            Ns_DStringInit(&ds);
-            tracePtr = servPtr->tcl.firstTracePtr;
-            while (tracePtr != NULL) {
-		if (tracePtr->when == when) {
-		    Ns_GetProcInfo(&ds, (Ns_Callback *)tracePtr->proc, tracePtr->arg);
-                }
-		tracePtr = tracePtr->nextPtr;
-            }
-            Tcl_DStringResult(interp, &ds);
-        }
-        break;
-
-    default:
-        /* unexpected value */
-        assert(opt && 0);
-        break;
-    }
-
-    return result;
+    
+    return Ns_SubcmdObjv(subcmds, clientData, interp, objc, objv);
 }
 
 
@@ -1220,26 +1538,29 @@ NsTclICtlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
  */
 
 int
-NsTclAtCloseObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclAtCloseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp  *itPtr = arg;
+    NsInterp  *itPtr = clientData;
     AtClose   *atPtr;
+    int        result = TCL_OK;
 
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
-        return TCL_ERROR;
-    }
-    if (itPtr->conn == NULL) {
-        Tcl_SetResult(interp, "no connection", TCL_STATIC);
-        return TCL_ERROR;
-    }
-    atPtr = ns_malloc(sizeof(AtClose));
-    atPtr->nextPtr = itPtr->firstAtClosePtr;
-    itPtr->firstAtClosePtr = atPtr;
-    atPtr->objPtr = Tcl_ConcatObj(objc-1, objv+1);
-    Tcl_IncrRefCount(atPtr->objPtr);
+        result = TCL_ERROR;
 
-    return TCL_OK;
+    } else if (itPtr->conn == NULL) {
+        Tcl_SetResult(interp, "no connection", TCL_STATIC);
+
+    } else {
+    
+        atPtr = ns_malloc(sizeof(AtClose));
+        atPtr->nextPtr = itPtr->firstAtClosePtr;
+        itPtr->firstAtClosePtr = atPtr;
+        atPtr->objPtr = Tcl_ConcatObj(objc-1, objv+1);
+        Tcl_IncrRefCount(atPtr->objPtr);
+    }
+
+    return result;
 }
 
 
@@ -1337,22 +1658,25 @@ NsTclInitServer(const char *server)
 int
 NsTclAppInit(Tcl_Interp *interp)
 {
-    NsServer      *servPtr;
+    NsServer  *servPtr;
+    int        result = TCL_OK;
 
     servPtr = NsGetServer(nsconf.defaultServer);
     if (servPtr == NULL) {
         Ns_Log(Bug, "NsTclAppInit: invalid default server: %s",
                nsconf.defaultServer);
-        return TCL_ERROR;
-    }
-    if (Tcl_Init(interp) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    (void) Tcl_SetVar(interp, "tcl_rcFileName", "~/.nsdrc", TCL_GLOBAL_ONLY);
-    (void) Tcl_Eval(interp, "proc exit {} ns_shutdown");
-    (void) PopInterp(servPtr, interp);
+        result = TCL_ERROR;
 
-    return TCL_OK;
+    } else if (Tcl_Init(interp) != TCL_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        (void) Tcl_SetVar(interp, "tcl_rcFileName", "~/.nsdrc", TCL_GLOBAL_ONLY);
+        (void) Tcl_Eval(interp, "proc exit {} ns_shutdown");
+        (void) PopInterp(servPtr, interp);
+    }
+
+    return result;
 }
 
 
@@ -1434,14 +1758,14 @@ int
 NsTclTraceProc(Tcl_Interp *interp, const void *arg)
 {
     const Ns_TclCallback *cbPtr = arg;
-    int                   tclResult;
+    int                   result;
 
-    tclResult = Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0);
-    if (tclResult != TCL_OK) {
+    result = Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0);
+    if (unlikely(result != TCL_OK)) {
         (void) Ns_TclLogErrorInfo(interp, "\n(context: trace proc)");
     }
 
-    return tclResult;
+    return result;
 }
 
 
@@ -1479,7 +1803,7 @@ PopInterp(NsServer *servPtr, Tcl_Interp *interp)
     hPtr = GetCacheEntry(servPtr);
     itPtr = Tcl_GetHashValue(hPtr);
     if (itPtr == NULL) {
-        if (nsconf.tcl.lockoninit != 0) {
+        if (nsconf.tcl.lockoninit) {
             Ns_CsEnter(&lock);
         }
         if (interp != NULL) {
@@ -1497,7 +1821,7 @@ PopInterp(NsServer *servPtr, Tcl_Interp *interp)
         } else {
             RunTraces(itPtr, NS_TCL_TRACE_CREATE);
         }
-        if (nsconf.tcl.lockoninit != 0) {
+        if (nsconf.tcl.lockoninit) {
             Ns_CsLeave(&lock);
         }
         Tcl_SetHashValue(hPtr, itPtr);
@@ -1548,8 +1872,8 @@ PushInterp(NsInterp *itPtr)
      */
     if (itPtr->refcnt == 1) {
         RunTraces(itPtr, NS_TCL_TRACE_DEALLOCATE);
-        if (itPtr->deleteInterp != 0) {
-            Ns_Log(Debug, "ns:markfordelete: true");
+        if (itPtr->deleteInterp) {
+            Ns_Log(Debug, "ns_markfordelete: true");
             Ns_TclDestroyInterp(interp);
             return;
         }
@@ -1821,8 +2145,8 @@ UpdateInterp(NsInterp *itPtr)
 static void
 RunTraces(const NsInterp *itPtr, Ns_TclTraceType why)
 {
-    TclTrace *tracePtr;
-    NsServer *servPtr;
+    const TclTrace *tracePtr;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
 
@@ -1930,9 +2254,9 @@ LogTrace(const NsInterp *itPtr, const TclTrace *tracePtr, Ns_TclTraceType why)
  */
 
 static void
-FreeInterpData(ClientData arg, Tcl_Interp *UNUSED(interp))
+FreeInterpData(ClientData clientData, Tcl_Interp *UNUSED(interp))
 {
-    NsInterp *itPtr = arg;
+    NsInterp *itPtr = clientData;
 
     NsAdpFree(itPtr);
     Tcl_DeleteHashTable(&itPtr->sets);
@@ -1963,13 +2287,13 @@ FreeInterpData(ClientData arg, Tcl_Interp *UNUSED(interp))
 static void
 DeleteInterps(void *arg)
 {
-    Tcl_HashTable  *tablePtr = arg;
-    Tcl_HashEntry  *hPtr;
-    Tcl_HashSearch  search;
+    Tcl_HashTable       *tablePtr = arg;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
  
     hPtr = Tcl_FirstHashEntry(tablePtr, &search);
     while (hPtr != NULL) {
-        NsInterp  *itPtr;
+        const NsInterp *itPtr;
 
         itPtr = Tcl_GetHashValue(hPtr);
         if ((itPtr != NULL) && (itPtr->interp != NULL)) {

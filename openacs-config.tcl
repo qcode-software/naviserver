@@ -127,7 +127,7 @@ ns_section ns/parameters
 	#
 	# ns_param	HackContentType	1
 
-	# Naviserver's defaults charsets are all utf-8.  Allthough the
+	# NaviServer's defaults charsets are all utf-8.  Allthough the
 	# default charset is utf-8, set the parameter "OutputCharset"
 	# here, since otherwise OpenACS uses in the meta-tags the charset
 	# from [ad_conn charset], which is taken from the db and
@@ -577,6 +577,11 @@ ns_section ns/server/${server}/module/nsproxy
 	# ns_param	recvtimeout        5000
 	# ns_param	waittimeout        1000
 	# ns_param	idletimeout        300000
+
+#
+# If you want to activate core dumps, one can use the following command
+#
+#ns_log notice "nsd.tcl: ns_rlimit coresize [ns_rlimit coresize unlimited]"
 
 ns_log notice "nsd.tcl: using threadsafe tcl: [info exists tcl_platform(threaded)]"
 ns_log notice "nsd.tcl: finished reading config file."

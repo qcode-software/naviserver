@@ -54,7 +54,7 @@
  *----------------------------------------------------------------------
  */
 void
-Ns_SockaddrMask(struct sockaddr *addr, struct sockaddr *mask, struct sockaddr *maskedAddr)
+Ns_SockaddrMask(const struct sockaddr *addr, const struct sockaddr *mask, struct sockaddr *maskedAddr)
 {
     NS_NONNULL_ASSERT(addr != NULL);
     NS_NONNULL_ASSERT(mask != NULL);
@@ -68,9 +68,9 @@ Ns_SockaddrMask(struct sockaddr *addr, struct sockaddr *mask, struct sockaddr *m
     }
 
     if (addr->sa_family == AF_INET6 && mask->sa_family == AF_INET6) {
-        struct in6_addr *addrBits   = &(((struct sockaddr_in6 *)addr)->sin6_addr);
-        struct in6_addr *maskBits   = &(((struct sockaddr_in6 *)mask)->sin6_addr);
-        struct in6_addr *maskedBits = &(((struct sockaddr_in6 *)maskedAddr)->sin6_addr);
+        const struct in6_addr *addrBits   = &(((struct sockaddr_in6 *)addr)->sin6_addr);
+        const struct in6_addr *maskBits   = &(((struct sockaddr_in6 *)mask)->sin6_addr);
+        struct in6_addr       *maskedBits = &(((struct sockaddr_in6 *)maskedAddr)->sin6_addr);
         int i;
 
         /*
@@ -119,7 +119,7 @@ Ns_SockaddrMask(struct sockaddr *addr, struct sockaddr *mask, struct sockaddr *m
  *----------------------------------------------------------------------
  */
 bool
-Ns_SockaddrSameIP(struct sockaddr *addr1, struct sockaddr *addr2)
+Ns_SockaddrSameIP(const struct sockaddr *addr1, const struct sockaddr *addr2)
 {
     NS_NONNULL_ASSERT(addr1 != NULL);
     NS_NONNULL_ASSERT(addr2 != NULL);
@@ -129,8 +129,8 @@ Ns_SockaddrSameIP(struct sockaddr *addr1, struct sockaddr *addr2)
     }
     
     if (addr1->sa_family == AF_INET6 && addr2->sa_family == AF_INET6) {
-        struct in6_addr *addr1Bits  = &(((struct sockaddr_in6 *)addr1)->sin6_addr);
-        struct in6_addr *addr2Bits  = &(((struct sockaddr_in6 *)addr2)->sin6_addr);
+        const struct in6_addr *addr1Bits  = &(((struct sockaddr_in6 *)addr1)->sin6_addr);
+        const struct in6_addr *addr2Bits  = &(((struct sockaddr_in6 *)addr2)->sin6_addr);
         int i;
         
         /*
@@ -196,14 +196,14 @@ Ns_SockaddrMaskBits(struct sockaddr *mask, unsigned int nrBits)
         /*
          * Set the mask bits in the leading 32 bit ints to 1.
          */
-        for (i = 0; i < 4 && nrBits >= 32u; i++, nrBits -= 32) {
+        for (i = 0; i < 4 && nrBits >= 32u; i++, nrBits -= 32u) {
             addr->s6_addr32[i] = (~0u);
         }
         /*
          * Set the partial mask.
          */
         if (i < 4 && nrBits > 0u) {
-            addr->s6_addr32[i] = htonl((~0u) << (32 - nrBits));
+            addr->s6_addr32[i] = htonl((~0u) << (32u - nrBits));
             i++;
         }
         /*
@@ -217,14 +217,14 @@ Ns_SockaddrMaskBits(struct sockaddr *mask, unsigned int nrBits)
          * Windows does not have 32bit members, so process in 16bit
          * chunks: Set the mask bits in the leading 16 bit Words to 1.
          */
-        for (i = 0; i < 8 && nrBits >= 16u; i++, nrBits -= 16) {
+        for (i = 0; i < 8 && nrBits >= 16u; i++, nrBits -= 16u) {
             addr->u.Word[i] = (unsigned short)(~0u);
         }
         /*
          * Set the partial mask.
          */
         if (i < 8 && nrBits > 0u) {
-            addr->u.Word[i] = htons((~0u) << (16 - nrBits));
+            addr->u.Word[i] = htons((~0u) << (16u - nrBits));
             i++;
         }
         /*
@@ -240,7 +240,7 @@ Ns_SockaddrMaskBits(struct sockaddr *mask, unsigned int nrBits)
             Ns_Log(Warning, "Invalid bitmask /%d: can be most 32 bits", nrBits);
             nrBits = 32u;
         }
-        ((struct sockaddr_in *)mask)->sin_addr.s_addr = htonl((~0u) << (32 - nrBits));
+        ((struct sockaddr_in *)mask)->sin_addr.s_addr = htonl((~0u) << (32u - nrBits));
     } else {
         Ns_Log(Error, "invalid address family %d detected (Ns_SockaddrMaskBits)", mask->sa_family);
     }
@@ -345,7 +345,7 @@ ns_inet_pton(struct sockaddr *saPtr, const char *addr) {
  *----------------------------------------------------------------------
  */
 Ns_ReturnCode
-Ns_GetSockAddr(struct sockaddr *saPtr, const char *host, int port)
+Ns_GetSockAddr(struct sockaddr *saPtr, const char *host, unsigned short port)
 {
     NS_NONNULL_ASSERT(saPtr != NULL);
 

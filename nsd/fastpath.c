@@ -63,7 +63,7 @@ static bool UrlIs(const char *server, const char *url, bool isDir)
 static Ns_ReturnCode FastGetRestart(Ns_Conn *conn, const char *page)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static Ns_ReturnCode FastReturn(Ns_Conn *conn, int status, const char *type, const char *file)
+static Ns_ReturnCode FastReturn(Ns_Conn *conn, int status, const char *mimeType, const char *file)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
 static int  GzipFile(Tcl_Interp *interp, const char *fileName, const char *gzFileName)
@@ -117,6 +117,9 @@ NsConfigFastpath()
         cache = Ns_CacheCreateSz("ns:fastpath", TCL_STRING_KEYS, size, FreeEntry);
         maxentry = Ns_ConfigIntRange(path, "cachemaxentry", 8192, 8, INT_MAX);
     }
+    /*
+     * Register the fastpath initialization for every server.
+     */
     NsRegisterServerInit(ConfigServerFastpath);
 }
 
@@ -214,7 +217,7 @@ Ns_ConnReturnFile(Ns_Conn *conn, int statusCode, const char *mimeType, const cha
  */
 
 Ns_ReturnCode
-Ns_FastPathProc(void *UNUSED(arg), Ns_Conn *conn)
+Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
 {
     Conn         *connPtr;
     NsServer     *servPtr;
@@ -334,6 +337,23 @@ Ns_UrlIsDir(const char *server, const char *url)
     return UrlIs(server, url, NS_TRUE);
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * UrlIs --
+ *
+ *      Helper function for Ns_UrlIsFile and Ns_UrlIsDir.  Map the url
+ *      to a file and check whether the file exists or is a directory.
+ *
+ * Results:
+ *      Returns boolean value indicating success.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
 static bool
 UrlIs(const char *server, const char *url, bool isDir)
 {
@@ -378,16 +398,17 @@ UrlIs(const char *server, const char *url, bool isDir)
 const char *
 Ns_PageRoot(const char *server)
 {
-    NsServer *servPtr;
+    const NsServer *servPtr;
+    const char     *pageRoot = NULL;
 
     NS_NONNULL_ASSERT(server != NULL);
 
     servPtr = NsGetServer(server);
-    if (servPtr != NULL) {
-        return servPtr->fastpath.pageroot;
+    if (likely(servPtr != NULL)) {
+        pageRoot = servPtr->fastpath.pageroot;
     }
 
-    return NULL;
+    return pageRoot;
 }
 
 
@@ -450,36 +471,42 @@ GzipFile(Tcl_Interp *interp, const char *fileName, const char *gzFileName)
  */
 
 static Ns_ReturnCode
-FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
+FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file)
 {
     Conn          *connPtr = (Conn *) conn;
     int            isNew, fd;
-    Ns_ReturnCode  result = NS_ERROR;
+    Ns_ReturnCode  status = NS_OK;
     Tcl_DString    ds, *dsPtr = &ds;
+    bool           done = NS_FALSE;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(file != NULL);
+    
+    if (unlikely(Ns_ConnSockPtr(conn) == NULL)) {
+        Ns_Log(Warning,
+               "FastReturn: called without valid connection, maybe connection already closed: %s",
+               file);
+        status = NS_ERROR;
+        done = NS_TRUE;
+    } else {
+        /*
+         * Set the last modified header if not set yet.
+         * If not modified since last request, return now.
+         */
+        
+        Ns_ConnSetLastModifiedHeader(conn, &connPtr->fileInfo.st_mtime);
+        
+        if (Ns_ConnModifiedSince(conn, connPtr->fileInfo.st_mtime) == NS_FALSE) {
+            status = Ns_ConnReturnNotModified(conn);
+            done = NS_TRUE;
 
-    /*
-     * Determine the mime type if not given.
-     */
-
-    if (type == NULL) {
-        type = Ns_GetMimeType(file);
+        } else if (Ns_ConnUnmodifiedSince(conn, connPtr->fileInfo.st_mtime) == NS_FALSE) {
+            status = Ns_ConnReturnStatus(conn, 412); /* Precondition Failed. */
+            done = NS_TRUE;
+        }
     }
-
-    /*
-     * Set the last modified header if not set yet.
-     * If not modified since last request, return now.
-     */
-
-    Ns_ConnSetLastModifiedHeader(conn, &connPtr->fileInfo.st_mtime);
-
-    if (Ns_ConnModifiedSince(conn, connPtr->fileInfo.st_mtime) == NS_FALSE) {
-        return Ns_ConnReturnNotModified(conn);
-    }
-    if (Ns_ConnUnmodifiedSince(conn, connPtr->fileInfo.st_mtime) == NS_FALSE) {
-        return Ns_ConnReturnStatus(conn, 412); /* Precondition Failed. */
+    if (done) {
+        return status;
     }
 
     Tcl_DStringInit(dsPtr);
@@ -529,6 +556,14 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
     }
 
     /*
+     * Determine the mime type if not given.
+     */
+
+    if (mimeType == NULL) {
+        mimeType = Ns_GetMimeType(file);
+    }
+    
+    /*
      * For no output (i.e., HEAD request), just send required
      * headers.
      */
@@ -536,13 +571,13 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
     if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
 	Ns_DStringFree(dsPtr);
         return Ns_ConnReturnData(conn, statusCode, "",
-                                 (ssize_t)connPtr->fileInfo.st_size, type);
+                                 (ssize_t)connPtr->fileInfo.st_size, mimeType);
     }
 
     /*
-     * Depending on the size of the content and state of the fastpath cache,
-     * either return the data directly, or cache it first and return the
-     * cached copy.
+     * Depending on the size of the content and state of the fastpath
+     * cache, either return the data directly, or cache it first and
+     * return the cached copy.
      */
 
     if ((cache == NULL)
@@ -559,8 +594,8 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
         if (useMmap
 	    && NsMemMap(file, (size_t)connPtr->fileInfo.st_size,
                         NS_MMAP_READ, &connPtr->fmap) == NS_OK) {
-            result = Ns_ConnReturnData(conn, statusCode, connPtr->fmap.addr,
-                                       (ssize_t)connPtr->fmap.size, type);
+            status = Ns_ConnReturnData(conn, statusCode, connPtr->fmap.addr,
+                                       (ssize_t)connPtr->fmap.size, mimeType);
 	    if ((connPtr->flags & NS_CONN_SENT_VIA_WRITER) == 0u) {
 		NsMemUmap(&connPtr->fmap);
 	    }
@@ -573,7 +608,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
                        file, strerror(errno));
                 goto notfound;
             }
-            result = Ns_ConnReturnOpenFd(conn, statusCode, type, fd,
+            status = Ns_ConnReturnOpenFd(conn, statusCode, mimeType, fd,
                                          connPtr->fileInfo.st_size);
             (void) ns_close(fd);
         }
@@ -586,7 +621,6 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
          * Search for an existing cache entry for this file, validating
          * the contents against the current file mtime, size and inode.
          */
-
         Ns_CacheLock(cache);
         entry = Ns_CacheWaitCreateEntry(cache, file, &isNew, NULL);
 
@@ -620,6 +654,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
                 filePtr = NULL;
                 Ns_Log(Warning, "fastpath: ns_open(%s') failed '%s'",
                        file, strerror(errno));
+                status = NS_ERROR;
             } else {
  	        ssize_t nread;
 
@@ -636,6 +671,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
                            file, strerror(errno));
                     ns_free(filePtr);
                     filePtr = NULL;
+                    status = NS_ERROR;
                 }
             }
             Ns_CacheLock(cache);
@@ -650,8 +686,8 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
         if (filePtr != NULL) {
             ++filePtr->refcnt;
             Ns_CacheUnlock(cache);
-            result = Ns_ConnReturnData(conn, statusCode, filePtr->bytes,
-                                       (ssize_t)filePtr->size, type);
+            status = Ns_ConnReturnData(conn, statusCode, filePtr->bytes,
+                                       (ssize_t)filePtr->size, mimeType);
             Ns_CacheLock(cache);
             DecrEntry(filePtr);
         }
@@ -662,7 +698,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
     }
 
     Ns_DStringFree(dsPtr);
-    return result;
+    return status;
 
  notfound:
 
@@ -690,6 +726,8 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *type, const char *file)
 bool
 Ns_Stat(const char *path, struct stat *stPtr)
 {
+    bool success = NS_TRUE;
+    
     NS_NONNULL_ASSERT(path != NULL);
     NS_NONNULL_ASSERT(stPtr != NULL);
 
@@ -698,9 +736,9 @@ Ns_Stat(const char *path, struct stat *stPtr)
             Ns_Log(Error, "fastpath: stat(%s) failed: %s",
                    path, strerror(errno));
         }
-        return NS_FALSE;
+        success = NS_FALSE;
     }
-    return NS_TRUE;
+    return success;
 }
 
 
@@ -810,9 +848,7 @@ FreeEntry(void *arg)
 int
 NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_CacheSearch  search;
-    Ns_DString      ds;
-    int             contents = NS_FALSE, reset = NS_FALSE;
+    int         contents = (int)NS_FALSE, reset = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-contents", Ns_ObjvBool,  &contents, INT2PTR(NS_TRUE)},
         {"-reset",    Ns_ObjvBool,  &reset,    INT2PTR(NS_TRUE)},
@@ -821,54 +857,52 @@ NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     };
 
     if (Ns_ParseObjv(opts, NULL, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
-    }
+        result = TCL_ERROR;
 
-    /* if there is no cache defined, return empty */
-    if (cache == NULL) {
-	return TCL_OK;
-    }
+    } else if (cache != NULL) {
+        Ns_DString      ds;
+        Ns_CacheSearch  search;
 
-    Ns_DStringInit(&ds);
-    Ns_CacheLock(cache);
+        Ns_DStringInit(&ds);
+        Ns_CacheLock(cache);
 
-    if (contents != 0) {
-        Ns_Entry       *entry;
+        if (contents != 0) {
+            const Ns_Entry *entry;
 
-        Tcl_DStringStartSublist(&ds);
-        entry = Ns_CacheFirstEntry(cache, &search);
-        while (entry != NULL) {
-	    size_t         size    = Ns_CacheGetSize(entry);
-	    const Ns_Time *timePtr = Ns_CacheGetExpirey(entry);
+            Tcl_DStringStartSublist(&ds);
+            entry = Ns_CacheFirstEntry(cache, &search);
+            while (entry != NULL) {
+                size_t         size    = Ns_CacheGetSize(entry);
+                const Ns_Time *timePtr = Ns_CacheGetExpirey(entry);
 
-            if (timePtr->usec == 0) {
-                Ns_DStringPrintf(&ds, "%" PRIdz " %ld ",
-                                 size, timePtr->sec);
-            } else {
-                Ns_DStringPrintf(&ds, "%" PRIdz " %ld:%ld ",
-                                 size, timePtr->sec, timePtr->usec);
+                if (timePtr->usec == 0) {
+                    Ns_DStringPrintf(&ds, "%" PRIdz " %ld ",
+                                     size, timePtr->sec);
+                } else {
+                    Ns_DStringPrintf(&ds, "%" PRIdz " %ld:%ld ",
+                                     size, timePtr->sec, timePtr->usec);
+                }
+                entry = Ns_CacheNextEntry(&search);
             }
-            entry = Ns_CacheNextEntry(&search);
+            Tcl_DStringEndSublist(&ds);
+        } else {
+            (void)Ns_CacheStats(cache, &ds);
         }
-        Tcl_DStringEndSublist(&ds);
-    } else {
-        (void)Ns_CacheStats(cache, &ds);
-    }
-    if (reset != 0) {
-        Ns_CacheResetStats(cache);
-    }
-    Ns_CacheUnlock(cache);
+        if (reset != 0) {
+            Ns_CacheResetStats(cache);
+        }
+        Ns_CacheUnlock(cache);
 
-    Tcl_DStringResult(interp, &ds);
-
-    return TCL_OK;
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
 }
 
 /*
  * Local Variables:
  * mode: c
  * c-basic-offset: 4
- * fill-column: 78
+ * fill-column: 70
  * indent-tabs-mode: nil
  * End:
  */

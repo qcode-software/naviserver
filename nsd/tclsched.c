@@ -107,8 +107,9 @@ NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 static int
 SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
 {
-    int id, ok;
-
+    int  id, rc;
+    bool ok;
+    
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "id");
         return TCL_ERROR;
@@ -116,6 +117,8 @@ SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
     if (Tcl_GetIntFromObj(interp, objv[1], &id) != TCL_OK) {
         return TCL_ERROR;
     }
+    rc = TCL_OK;
+    
     switch (cmd) {
     case 'u':
     case 'c':
@@ -128,12 +131,16 @@ SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
         ok = Ns_Resume(id);
         break;
     default:
-        ok = -1;
+        rc = TCL_ERROR;
+        ok = NS_FALSE;
+        Ns_Log(Error, "unexpected code '%c' passed to SchedObjCmd", cmd);
+        break;
     }
-    if (cmd != 'u') {
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(ok));
+    
+    if ((rc == TCL_OK) && (cmd != 'u')) {
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(ok));
     }
-    return TCL_OK;
+    return rc;
 }
 
 int
@@ -187,8 +194,8 @@ NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
     unsigned int    flags = 0u;
 
     Ns_ObjvSpec opts[] = {
-        {"-once",   Ns_ObjvBool,  &once,   INT2PTR(1)},
-        {"-thread", Ns_ObjvBool,  &thread, INT2PTR(1)},
+        {"-once",   Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
+        {"-thread", Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
         {"--",      Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -253,8 +260,8 @@ NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     unsigned int    flags = 0u;
 
     Ns_ObjvSpec opts[] = {
-	{"-once",   Ns_ObjvBool,  &once,   INT2PTR(1)},
-        {"-thread", Ns_ObjvBool,  &thread, INT2PTR(1)},
+	{"-once",   Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
+        {"-thread", Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
         {"--",      Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -324,8 +331,8 @@ NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
     unsigned int    flags = 0u;
 
     Ns_ObjvSpec opts[] = {
-        {"-once",    Ns_ObjvBool,  &once,   INT2PTR(1)},
-        {"-thread",  Ns_ObjvBool,  &thread, INT2PTR(1)},
+        {"-once",    Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
+        {"-thread",  Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
         {"--",       Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -377,7 +384,7 @@ NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 void
 NsTclSchedProc(void *arg, int UNUSED(id))
 {
-    Ns_TclCallback *cbPtr = arg;
+    const Ns_TclCallback *cbPtr = arg;
 
     (void) Ns_TclEvalCallback(NULL, cbPtr, NULL, (char *)0);
 }

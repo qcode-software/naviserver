@@ -1219,9 +1219,9 @@ static const struct exttype {
 void
 NsConfigMimeTypes(void)
 {
-    Ns_Set     *set;
-    size_t      i;
-    static int  once = 0;
+    const Ns_Set *set;
+    size_t        i;
+    static int    once = 0;
 
     if (once == 0) {
         once = 1;
@@ -1242,22 +1242,21 @@ NsConfigMimeTypes(void)
     }
 
     set = Ns_ConfigGetSection("ns/mimetypes");
-    if (set == NULL) {
-        return;
-    }
+    if (likely(set != NULL)) {
 
-    defaultType = Ns_SetIGet(set, "default");
-    if (defaultType == NULL) {
-        defaultType = TYPE_DEFAULT;
-    }
+        defaultType = Ns_SetIGet(set, "default");
+        if (defaultType == NULL) {
+            defaultType = TYPE_DEFAULT;
+        }
 
-    noextType = Ns_SetIGet(set, "noextension");
-    if (noextType == NULL) {
-        noextType = defaultType;
-    }
+        noextType = Ns_SetIGet(set, "noextension");
+        if (noextType == NULL) {
+            noextType = defaultType;
+        }
 
-    for (i = 0u; i < Ns_SetSize(set); i++) {
-        AddType(Ns_SetKey(set, i), Ns_SetValue(set, i));
+        for (i = 0u; i < Ns_SetSize(set); i++) {
+            AddType(Ns_SetKey(set, i), Ns_SetValue(set, i));
+        }
     }
 }
 
@@ -1282,29 +1281,32 @@ NsConfigMimeTypes(void)
 const char *
 Ns_GetMimeType(const char *file)
 {
-    const char    *start, *ext;
-    Ns_DString     ds;
-    Tcl_HashEntry *hPtr;
+    const char          *start, *ext, *result = defaultType;
 
     NS_NONNULL_ASSERT(file != NULL);
     
-    start = strrchr(file, '/');
+    start = strrchr(file, INTCHAR('/'));
     if (start == NULL) {
         start = file;
     }
-    ext = strrchr(start, '.');
+    ext = strrchr(start, INTCHAR('.'));
     if (ext == NULL) {
-        return noextType;
-    }
-    Ns_DStringInit(&ds);
-    ext = LowerDString(&ds, ext);
-    hPtr = Tcl_FindHashEntry(&types, ext);
-    Ns_DStringFree(&ds);
-    if (hPtr != NULL) {
-        return Tcl_GetHashValue(hPtr);
+        result = noextType;
+
+    } else {
+        Ns_DString           ds;
+        const Tcl_HashEntry *hPtr;
+            
+        Ns_DStringInit(&ds);
+        ext = LowerDString(&ds, ext);
+        hPtr = Tcl_FindHashEntry(&types, ext);
+        Ns_DStringFree(&ds);
+        if (hPtr != NULL) {
+            result = Tcl_GetHashValue(hPtr);
+        }
     }
 
-    return defaultType;
+    return result;
 }
 
 
@@ -1327,16 +1329,18 @@ Ns_GetMimeType(const char *file)
 int
 NsTclGuessTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char *type;
+    int         result = TCL_OK;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "filename");
-        return TCL_ERROR;
+        result = TCL_ERROR;
+    } else {
+        const char *type = Ns_GetMimeType(Tcl_GetString(objv[1]));
+         
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(type, -1));
     }
-    type = Ns_GetMimeType(Tcl_GetString(objv[1]));
-    Tcl_SetObjResult(interp, Tcl_NewStringObj(type, -1));
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -1383,8 +1387,8 @@ Ns_IsBinaryMimeType(const char *contentType) {
 void
 NsGetMimeTypes(Ns_DString *dsPtr)
 {
-    Tcl_HashSearch  search;
-    Tcl_HashEntry  *hPtr;
+    Tcl_HashSearch       search;
+    const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     

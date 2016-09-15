@@ -62,11 +62,14 @@ static int AppendMultipartRangeHeader(Ns_DString *dsPtr, const char *type,
 static int AppendMultipartRangeTrailer(Ns_DString *dsPtr)
         NS_GNUC_NONNULL(1);
 
+static bool MatchRange(const Ns_Conn *conn, time_t mtime)
+        NS_GNUC_NONNULL(1);
+
 
 /*
  *----------------------------------------------------------------------
  *
- * NsMatchRange --
+ * MatchRange --
  *
  *      Check an If-Range header against the data's mtime.
  *
@@ -79,18 +82,19 @@ static int AppendMultipartRangeTrailer(Ns_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 
-int
-NsMatchRange(const Ns_Conn *conn, time_t mtime)
+static bool
+MatchRange(const Ns_Conn *conn, time_t mtime)
 {
-    int result = NS_TRUE;
+    bool result = NS_TRUE;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
     /*
-     * From RFC 2068
-     * If the client has no entity tag for an entity, but does have a Last-Modified date,
-     * it may use that date in a If-Range header. (The server can distinguish between a
-     * valid HTTP-date and any form of entity-tag by examining no more than two characters.)
+     * From RFC 2068: If the client has no entity tag for an entity,
+     * but does have a Last-Modified date, it may use that date in a
+     * If-Range header. (The server can distinguish between a valid
+     * HTTP-date and any form of entity-tag by examining no more than
+     * two characters.)
      */
 
     if (Ns_SetIGet(conn->headers, "Range") != NULL) {
@@ -129,11 +133,17 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
                  int fd, const void *data, size_t objLength,
                  Ns_FileVec *bufs, int *nbufsPtr, Ns_DString *dsPtr)
 {
-    Conn   *connPtr = (Conn *) conn;
-    Range  *ranges;
-    int     maxranges, rangeCount, i, v;
-    off_t   start, end, dsbase;
-    size_t  len, responseLength;
+    const Conn *connPtr = (const Conn *) conn;
+    int         maxranges = NS_MAX_RANGES, rangeCount;
+    off_t       start, end;
+    size_t      len, responseLength;
+#ifdef NS_HAVE_C99
+    Range       ranges[NS_MAX_RANGES];
+#else
+    Range      *ranges;
+    
+    ranges = alloca(sizeof(Range) * (size_t)NS_MAX_RANGES);
+#endif    
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(type != NULL);
@@ -142,28 +152,26 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
     
     Ns_ConnCondSetHeaders(conn, "Accept-Ranges", "bytes");
 
-    if (NsMatchRange(conn, connPtr->fileInfo.st_mtime) == 0) {
+    if (!MatchRange(conn, connPtr->fileInfo.st_mtime)) {
         *nbufsPtr = 0;
         return 0;
     }
 
-    maxranges = (*nbufsPtr / 2) - 1;
-    ranges = alloca(sizeof(Range) * (size_t)maxranges);
-
     rangeCount = ParseRangeOffsets(conn, objLength, ranges, maxranges);
     if (rangeCount < 1) {
+        
+        /*
+         * There are no ranges.
+         */
         *nbufsPtr = 0;
-        return rangeCount;
-    }
-
-    Ns_ConnSetResponseStatus(conn, 206);
-
-    /*
-     * Single Range.
-     */
-
-    if (rangeCount == 1) {
-
+        
+    } else if (rangeCount == 1) {
+        
+        /*
+         * There is a single range.
+         */
+        Ns_ConnSetResponseStatus(conn, 206);
+        
         start = ranges[0].start;
         end   = ranges[0].end;
         len   = (size_t)((end - start) + 1);
@@ -172,61 +180,64 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
         *nbufsPtr = 1;
 
         SetRangeHeader(conn, start, end, objLength);
-        Ns_ConnSetLengthHeader(conn, responseLength, 0);
+        Ns_ConnSetLengthHeader(conn, responseLength, NS_FALSE);
 
-        return rangeCount;
-    }
+    } else {
+        off_t    dsbase;
+        int      i, v;
+        
+        /*
+         * We have multiple ranges; Construct the MIME headers for a
+         * multipart range against a 0 base and rebase after we've
+         * finished resizing the string.
+         */
+        
+        Ns_ConnSetResponseStatus(conn, 206);
+        dsbase = 0;
+        len = 0u;
 
-    /*
-     * Construct the MIME headers for a multipart range against a 0 base
-     * and rebase after we've finished resizing the string.
-     */
+        for (i = 0, v = 0; i < rangeCount; i++, v += 2) {
 
-    dsbase = 0;
-    len = 0u;
+            start = ranges[i].start;
+            end   = ranges[i].end;
 
-    for (i = 0, v = 0; i < rangeCount; i++, v += 2) {
+            len += (size_t)AppendMultipartRangeHeader(dsPtr, type, start, end, objLength);
+            dsbase += (off_t)Ns_SetFileVec(bufs, v, -1, NULL, dsbase, len);
 
-        start = ranges[i].start;
-        end   = ranges[i].end;
+            /* Combine the footer with the next header. */
+            Ns_DStringAppend(dsPtr, "\r\n");
+            len = 2u;
+        }
+        len += (size_t)AppendMultipartRangeTrailer(dsPtr);
+        (void) Ns_SetFileVec(bufs, v, -1, NULL, dsbase, len);
 
-        len += (size_t)AppendMultipartRangeHeader(dsPtr, type, start, end, objLength);
-        dsbase += (off_t)Ns_SetFileVec(bufs, v, -1, NULL, dsbase, len);
+        /*
+         * Rebase the header, add the data range, and finish off with
+         * the rebased trailer.
+         */
 
-        /* Combine the footer with the next header. */
-        Ns_DStringAppend(dsPtr, "\r\n");
-        len = 2u;
-    }
-    len += (size_t)AppendMultipartRangeTrailer(dsPtr);
-    (void) Ns_SetFileVec(bufs, v, -1, NULL, dsbase, len);
+        responseLength = 0u;
 
-    /*
-     * Rebase the header, add the data range, and finish off with
-     * the rebased trailer.
-     */
+        for (i = 0, v = 0; i < rangeCount; i++, v += 2) {
 
-    responseLength = 0u;
+            /* Rebase the header. */
+            responseLength += Ns_SetFileVec(bufs, v, -1, dsPtr->string,
+                                            bufs[v].offset, bufs[v].length);
 
-    for (i = 0, v = 0; i < rangeCount; i++, v += 2) {
+            start = ranges[i].start;
+            len   = (size_t)((ranges[i].end - start) + 1);
 
-        /* Rebase the header. */
+            responseLength += Ns_SetFileVec(bufs, v + 1, fd, data, start, len);
+        }
+
+        /* Rebase the trailer. */
         responseLength += Ns_SetFileVec(bufs, v, -1, dsPtr->string,
                                         bufs[v].offset, bufs[v].length);
+        *nbufsPtr = (rangeCount * 2) + 1;
 
-        start = ranges[i].start;
-        len   = (size_t)((ranges[i].end - start) + 1);
-
-        responseLength += Ns_SetFileVec(bufs, v + 1, fd, data, start, len);
+        SetMultipartRangeHeader(conn);
+        Ns_ConnSetLengthHeader(conn, responseLength, NS_FALSE);
     }
-
-    /* Rebase the trailer. */
-    responseLength += Ns_SetFileVec(bufs, v, -1, dsPtr->string,
-                                    bufs[v].offset, bufs[v].length);
-    *nbufsPtr = (rangeCount * 2) + 1;
-
-    SetMultipartRangeHeader(conn);
-    Ns_ConnSetLengthHeader(conn, responseLength, 0);
-
     return rangeCount;
 }
 
@@ -361,8 +372,9 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
         /*
          * RFC 2616: 416 "Requested Range Not Satisfiable"
          *
-         * "if first-byte-pos of all of the byte-range-spec values were
-         *  greater than the current length of the selected resource"
+         * "if first-byte-pos of all of the byte-range-spec values
+         *  were greater than the current length of the selected
+         *  resource"
          *
          * This is not clear: "all of the..." means *each-and-every*
          * first-byte-pos MUST be greater than the resource length.
@@ -374,7 +386,8 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
             Ns_ConnPrintfHeaders(conn, "Content-Range",
                                  "bytes */%" PRIuMAX, (uintmax_t) objLength);
             (void)Ns_ConnReturnStatus(conn, 416);
-            return -1;
+            rangeCount = -1;
+            break;
         }
 
         /*
@@ -387,7 +400,8 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
          */
 
         if (end < start) {
-            return 0;
+            rangeCount = 0;
+            break;
         }
 
         /*
@@ -505,7 +519,7 @@ AppendMultipartRangeTrailer(Ns_DString *dsPtr)
  * Local Variables:
  * mode: c
  * c-basic-offset: 4
- * fill-column: 78
+ * fill-column: 70
  * indent-tabs-mode: nil
  * End:
  */

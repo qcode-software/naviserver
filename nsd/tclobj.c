@@ -264,7 +264,7 @@ Ns_TclGetAddrFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr,
         return TCL_ERROR;
     }
     if (objPtr->internalRep.twoPtrValue.ptr1 != (void *) type) {
-        Tcl_AppendResult(interp, "incorrect type: ", Tcl_GetString(objPtr), NULL);
+        Ns_TclPrintfResult(interp, "incorrect type: %s", Tcl_GetString(objPtr));
         return TCL_ERROR;
     }
     *addrPtrPtr = objPtr->internalRep.twoPtrValue.ptr2;
@@ -451,7 +451,7 @@ SetAddrFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     chars = Tcl_GetString(objPtr);
     if (sscanf(chars, "t%20p-a%20p", &type, &addr) != 2
         || type == NULL || addr == NULL) {
-        Tcl_AppendResult(interp, "invalid address \"", chars, "\"", NULL);
+        Ns_TclPrintfResult(interp, "invalid address \"%s\"", chars);
         return TCL_ERROR;
     }
     Ns_TclSetTwoPtrValue(objPtr, &addrType, type, addr);

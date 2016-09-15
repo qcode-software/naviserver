@@ -67,8 +67,8 @@ Ns_ReturnCode
 Ns_AuthorizeRequest(const char *server, const char *method, const char *url,
 	            const char *user, const char *passwd, const char *peer)
 {
-    Ns_ReturnCode status;
-    NsServer     *servPtr;
+    Ns_ReturnCode   status;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -132,10 +132,11 @@ Ns_SetRequestAuthorizeProc(const char *server, Ns_RequestAuthorizeProc *procPtr)
  */
 
 int
-NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclRequestAuthorizeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp      *itPtr = arg;
-    Ns_ReturnCode  status;
+    const NsInterp *itPtr = clientData;
+    Ns_ReturnCode   status;
+    int             result = TCL_OK;
 
     if ((objc != 5) && (objc != 6)) {
         Tcl_WrongNumArgs(interp, 1, objv,
@@ -169,13 +170,12 @@ NsTclRequestAuthorizeObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Ob
     case NS_FILTER_BREAK:  /* fall through */
     case NS_FILTER_RETURN: /* fall through */
     case NS_TIMEOUT:
-        Tcl_AppendResult(interp, "could not authorize \"",
-                         Tcl_GetString(objv[1]), " ",
-                         Tcl_GetString(objv[2]), "\"", NULL);
-        return TCL_ERROR;
+        Ns_TclPrintfResult(interp, "could not authorize \"%s %s\"",
+                         Tcl_GetString(objv[1]), Tcl_GetString(objv[2]));
+        result = TCL_ERROR;
     }
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -291,7 +291,7 @@ NsParseAuth(Conn *connPtr, char *auth)
             v = ns_malloc(size);
             size = Ns_HtuuDecode(q, (unsigned char *) v, size);
             v[size] = '\0';
-            q = strchr(v, ':');
+            q = strchr(v, INTCHAR(':'));
             if (q != NULL) {
                 *q++ = '\0';
                 (void)Ns_SetPut(connPtr->auth, "Password", q);
@@ -313,7 +313,7 @@ NsParseAuth(Conn *connPtr, char *auth)
 		size_t idx;
 		char   save2;
 
-                p = strchr(q, '=');
+                p = strchr(q, INTCHAR('='));
                 if (p == NULL) {
                     break;
                 }

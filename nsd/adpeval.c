@@ -471,7 +471,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
         ++itPtr->adp.debugLevel;
     } else if (((itPtr->adp.flags & ADP_DEBUG) != 0u)
                    && itPtr->adp.debugFile != NULL
-                   && (p = strrchr(file, '/')) != NULL
+                   && (p = strrchr(file, INTCHAR('/'))) != NULL
                    && Tcl_StringMatch(p+1, itPtr->adp.debugFile) != 0) {
         const Ns_Set *hdrs;
         const char   *host, *port, *procs;
@@ -500,10 +500,10 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
      */
 
     if (stat(file, &st) != 0) {
-        Tcl_AppendResult(interp, "could not stat \"",
-                         file, "\": ", Tcl_PosixError(interp), NULL);
+        Ns_TclPrintfResult(interp, "could not stat \"%s\": %s",
+                           file, Tcl_PosixError(interp));
     } else if (!S_ISREG(st.st_mode)) {
-        Tcl_AppendResult(interp, "not an ordinary file: ", file, NULL);
+        Ns_TclPrintfResult(interp, "not an ordinary file: %s", file);
     } else {
 	Ns_Entry *ePtr;
 
@@ -736,7 +736,7 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
 
     code = TCL_OK;
     if (itPtr->adp.debugInit == 0) {
-        itPtr->deleteInterp = 1;
+        itPtr->deleteInterp = NS_TRUE;
         Tcl_DStringInit(&ds);
         Tcl_DStringAppendElement(&ds, itPtr->servPtr->adp.debuginit);
         Tcl_DStringAppendElement(&ds, (procs != NULL) ? procs : "");
@@ -785,10 +785,10 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
  */
 
 int
-NsTclAdpStatsCmd(ClientData arg, Tcl_Interp *interp, 
+NsTclAdpStatsCmd(ClientData clientData, Tcl_Interp *interp, 
 		 int UNUSED(argc), CONST char* UNUSED(argv[]))
 {
-    const NsInterp *itPtr = arg;
+    const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     Ns_DString      ds;
     Tcl_HashSearch  search;
@@ -856,8 +856,8 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
 
     fd = ns_open(file, O_RDONLY | O_BINARY, 0);
     if (fd < 0) {
-        Tcl_AppendResult(interp, "could not open \"",
-                         file, "\": ", Tcl_PosixError(interp), NULL);
+        Ns_TclPrintfResult(interp, "could not open \"%s\": %s",
+                           file, Tcl_PosixError(interp));
         return NULL;
     }
 
@@ -871,8 +871,8 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
          */
 
         if (fstat(fd, stPtr) != 0) {
-            Tcl_AppendResult(interp, "could not fstat \"", file,
-                             "\": ", Tcl_PosixError(interp), NULL);
+            Ns_TclPrintfResult(interp, "could not fstat \"%s\": %s",
+                               file, Tcl_PosixError(interp));
             goto done;
         }
         size = (size_t)stPtr->st_size;
@@ -884,8 +884,8 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
 
         n = ns_read(fd, buf, size + 1u);
         if (n < 0) {
-            Tcl_AppendResult(interp, "could not read \"", file,
-                             "\": ", Tcl_PosixError(interp), NULL);
+            Ns_TclPrintfResult(interp, "could not read \"%s\": %s",
+                               file, Tcl_PosixError(interp));
             goto done;
         }
         if ((size_t)n != size) {
@@ -894,8 +894,8 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
              */
 
             if (ns_lseek(fd, (off_t) 0, SEEK_SET) != 0) {
-                Tcl_AppendResult(interp, "could not lseek \"", file,
-                                 "\": ", Tcl_PosixError(interp), NULL);
+                Ns_TclPrintfResult(interp, "could not lseek \"%s\": %s",
+                                   file, Tcl_PosixError(interp));
                 goto done;
             }
             Ns_ThreadYield();
@@ -903,7 +903,7 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
     } while ((size_t)n != size && ++trys < 10);
 
     if ((size_t)n != size) {
-        Tcl_AppendResult(interp, "inconsistent file: ", file, NULL);
+        Ns_TclPrintfResult(interp, "inconsistent file: %s", file);
     } else {
         char *page;
 
@@ -1096,7 +1096,7 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
     frame.ident = NULL;
     savecwd = itPtr->adp.cwd;
     if (file != NULL) {
-        const char *slash = strrchr(file, '/');
+        const char *slash = strrchr(file, INTCHAR('/'));
         if (slash != NULL) {
             Ns_DStringNAppend(&cwd, file, (int)(slash - file));
             itPtr->adp.cwd = cwd.string;
@@ -1231,7 +1231,7 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
     const char  *file;
     char        debugfile[255];
     Ns_DString  ds;
-    int         code, fd;
+    int         result, fd;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(ptr != NULL);
@@ -1240,9 +1240,7 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
     level  = itPtr->adp.debugLevel;
     file   = Tcl_GetString(itPtr->adp.framePtr->objv[0]);
 
-    code = TCL_ERROR;
     Ns_DStringInit(&ds);
-
     Ns_DStringPrintf(&ds, "#\n"
                      "# level: %d\n"
                      "# chunk: %d\n"
@@ -1256,21 +1254,23 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
     fd = ns_mkstemp(debugfile);
     if (fd < 0) {
         Tcl_SetResult(interp, "could not create adp debug file", TCL_STATIC);
+        result = TCL_ERROR;
     } else {
         if (ns_write(fd, ds.string, (size_t)ds.length) < 0) {
-	    Tcl_AppendResult(interp, "write to \"", debugfile,
-			     "\" failed: ", Tcl_PosixError(interp), NULL);
+            Ns_TclPrintfResult(interp, "write to \"%s\" failed: %s",
+                               debugfile, Tcl_PosixError(interp));
+            result = TCL_ERROR;
 	} else {
 	    Ns_DStringTrunc(&ds, 0);
 	    Ns_DStringVarAppend(&ds, "source ", debugfile, NULL);
-	    code = Tcl_EvalEx(interp, ds.string, ds.length, 0);
+	    result = Tcl_EvalEx(interp, ds.string, ds.length, 0);
 	}
 	(void) ns_close(fd);
 	unlink(debugfile);
     }
     Ns_DStringFree(&ds);
 
-    return code;
+    return result;
 }
 
 
