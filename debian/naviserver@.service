@@ -11,6 +11,7 @@ EnvironmentFile=/etc/default/naviserver
 EnvironmentFile=-/etc/naviserver/%i.env
 ExecStart=/usr/lib/naviserver/bin/nsd -u $USER -g $GROUP $OPTS -i -t /etc/naviserver/%i.tcl
 Restart=always
+RestartSec=7
 
 [Install]
 WantedBy=multi-user.target
