@@ -264,7 +264,7 @@ Ns_ModuleInit(const char *server, const char *module)
  */
 
 static Ns_ReturnCode
-CgiRequest(void *arg, Ns_Conn *conn)
+CgiRequest(const void *arg, Ns_Conn *conn)
 {
     const Map	   *mapPtr;
     Mod		   *modPtr;
@@ -458,7 +458,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
             }
 
             s = (char *)url + plen + 1;
-            e = strchr(s, '/');
+            e = strchr(s, INTCHAR('/'));
 	    if (e != NULL) {
 		*e = '\0';
 	    }
@@ -519,7 +519,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
      * Copy the script directory and see if the script is NPH.
      */
 
-    s = strrchr(cgiPtr->path, '/');
+    s = strrchr(cgiPtr->path, INTCHAR('/'));
     if (s == NULL || access(cgiPtr->path, R_OK) != 0) {
         Ns_Log(Ns_LogCGIDebug, "nscgi: no such file: '%s'", cgiPtr->path);
 	goto err;
@@ -536,13 +536,13 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
      */
 
     if (modPtr->interps != NULL
-    	&& (s = strrchr(cgiPtr->path, '.')) != NULL
+    	&& (s = strrchr(cgiPtr->path, INTCHAR('.'))) != NULL
         && (cgiPtr->interp = Ns_SetIGet(modPtr->interps, s)) != NULL) {
     	cgiPtr->interp = Ns_DStringAppend(CgiDs(cgiPtr), cgiPtr->interp);
-        s = strchr(cgiPtr->interp, '(');
+        s = strchr(cgiPtr->interp, INTCHAR('('));
         if (s != NULL) {
             *s++ = '\0';
-            e = strchr(s, ')');
+            e = strchr(s, INTCHAR(')'));
             if (e != NULL) {
                 *e = '\0';
             }
@@ -638,14 +638,18 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
 static Ns_DString *
 CgiDs(Cgi *cgiPtr)
 {
+    Ns_DString *result;
+    
     NS_NONNULL_ASSERT(cgiPtr != NULL);
 
     if (cgiPtr->nextds < NDSTRINGS) {
-        return &cgiPtr->ds[cgiPtr->nextds++];
+        result = &cgiPtr->ds[cgiPtr->nextds++];
     } else {
         Ns_Fatal("nscgi: running out of configured dstrings");
+        result = NULL;
     }
-
+    
+    return result;
 }
 
 
@@ -769,7 +773,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
         
 	while (*envp != NULL) {
 	    s = *envp;
-	    e = strchr(s, '=');
+	    e = strchr(s, INTCHAR('='));
 	    if (e != NULL) {
 		*e = '\0';
         	i = Ns_SetFind(cgiPtr->env, s);
@@ -834,7 +838,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
      */
 
     s = Ns_ConnLocationAppend(conn, dsPtr);
-    s = strchr(s, ':');
+    s = strchr(s, INTCHAR(':'));
     s += 3;                        /* Get past the protocol://  */
     Ns_HttpParseHost(s, NULL, &p); /* Get to the port number    */
 
@@ -946,9 +950,9 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     }
     s = conn->request.query;
     if (s != NULL) {
-	if (strchr(s, '=') == NULL) {
+	if (strchr(s, INTCHAR('=')) == NULL) {
     	    do {
-	    	e = strchr(s, '+');
+	    	e = strchr(s, INTCHAR('+'));
 		if (e != NULL) {
 		    *e = '\0';
 		}
@@ -1069,7 +1073,7 @@ CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr)
 		    && CHARTYPE(space, dsPtr->string[dsPtr->length - 1]) != 0) {
 		    Ns_DStringTrunc(dsPtr, dsPtr->length-1);
 		}
-		return dsPtr->length;
+		return (ssize_t)dsPtr->length;
 	    }
 	    Ns_DStringNAppend(dsPtr, &c, 1);
 	}
@@ -1131,7 +1135,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
             }
 	    SetAppend(hdrs, last, "\n", ds.string);
         } else {
-            value = strchr(ds.string, ':');
+            value = strchr(ds.string, INTCHAR(':'));
             if (value == NULL) {
 		continue;	/* NB: Silently ignore bad header. */
             }

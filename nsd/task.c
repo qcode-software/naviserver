@@ -46,7 +46,7 @@ typedef struct TaskQueue {
     Ns_Mutex           lock;              /* Queue list and signal lock. */
     Ns_Cond            cond;              /* Task and queue signal condition. */
     bool               shutdown;          /* Shutdown flag. */
-    int                stopped;           /* Stop flag. */
+    bool               stopped;           /* Stop flag. */
     NS_SOCKET          trigger[2];        /* Trigger pipe. */
     char               name[1];           /* String name. */
 } TaskQueue;
@@ -293,7 +293,8 @@ void
 Ns_TaskRun(Ns_Task *task)
 {
     Task          *taskPtr = (Task *) task;
-    Ns_Time        now, *timeoutPtr;
+    const Ns_Time *timeoutPtr;
+    Ns_Time        now;
     struct pollfd  pfd;
 
     NS_NONNULL_ASSERT(task != NULL);
@@ -420,11 +421,11 @@ Ns_TaskWait(Ns_Task *task, Ns_Time *timeoutPtr)
  */
 
 bool
-Ns_TaskCompleted(Ns_Task *task)
+Ns_TaskCompleted(const Ns_Task *task)
 {
-    Task      *taskPtr = (Task *) task;
-    TaskQueue *queuePtr;
-    bool       status;
+    const Task *taskPtr = (const Task *) task;
+    TaskQueue  *queuePtr;
+    bool        status;
 
     NS_NONNULL_ASSERT(task != NULL);
 
@@ -871,9 +872,10 @@ TaskThread(void *arg)
     firstWaitPtr = NULL;
 
     for (;;) {
-        int n, broadcast, nfds;
-        bool shutdown;
-	Ns_Time  *timeoutPtr, now;
+        int            n, broadcast, nfds;
+        bool           shutdown;
+	Ns_Time        now;
+        const Ns_Time *timeoutPtr;
 
         /*
          * Get the shutdown flag and process any incoming signals.

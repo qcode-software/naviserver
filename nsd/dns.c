@@ -113,7 +113,7 @@ NsConfigDNS(void)
 
     if (Ns_ConfigBool(path, "dnscache", NS_TRUE) == NS_TRUE) {
         int max = Ns_ConfigIntRange(path, "dnscachemaxsize", 1024*500, 0, INT_MAX);
-        
+
         if (max > 0) {
             timeout = Ns_ConfigIntRange(path, "dnswaittimeout",  5, 0, INT_MAX);
             ttl = Ns_ConfigIntRange(path, "dnscachetimeout", 60, 0, INT_MAX);
@@ -137,7 +137,8 @@ NsConfigDNS(void)
  *
  * Results:
  *      NS_TRUE and result is appended to dstring, NS_FALSE if name or
- *      address not found. An error message may be logged if not found.
+ *      address not found. An error message may be logged if not
+ *      found.
  *
  * Side effects:
  *      Result may be cached.
@@ -150,7 +151,7 @@ Ns_GetHostByAddr(Ns_DString *dsPtr, const char *addr)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(addr != NULL);
-    
+
     return DnsGet(GetHost, dsPtr, hostCache, addr, 0);
 }
 
@@ -169,7 +170,7 @@ Ns_GetAllAddrByHost(Ns_DString *dsPtr, const char *host)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(host != NULL);
-    
+
     return DnsGet(GetAddr, dsPtr, addrCache, host, 1);
 }
 
@@ -184,7 +185,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
     NS_NONNULL_ASSERT(getProc != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(key != NULL);
-        
+
     /*
      * Call getProc directly or through cache.
      */
@@ -217,8 +218,8 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
                 Ns_GetTime(&endTime);
 		(void)Ns_DiffTime(&endTime, &t, &diffTime);
                 Ns_IncrTime(&endTime, ttl, 0);
-                Ns_CacheSetValueExpires(entry, ns_strdup(ds.string), 
-					(size_t)ds.length, &endTime, 
+                Ns_CacheSetValueExpires(entry, ns_strdup(ds.string),
+					(size_t)ds.length, &endTime,
 					(int)(diffTime.sec * 1000000 + diffTime.usec));
             }
             Ns_CacheBroadcast(cache);
@@ -258,8 +259,8 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, in
  *      Perform the actual lookup by host or address.
  *
  * Results:
- *      If a name can be found, the function returns NS_TRUE; otherwise,
- *      it returns NS_FALSE.
+ *      If a name can be found, the function returns NS_TRUE;
+ *      otherwise, it returns NS_FALSE.
  *
  * Side effects:
  *      Result is appended to dsPtr.
@@ -273,7 +274,7 @@ GetHost(Ns_DString *dsPtr, const char *addr)
     int    r;
     struct sockaddr_storage sa;
     struct sockaddr        *saPtr = (struct sockaddr *)&sa;
-    bool   result = NS_FALSE;
+    bool   success = NS_FALSE;
 
     r = ns_inet_pton(saPtr, addr);
     if (r > 0) {
@@ -288,20 +289,20 @@ GetHost(Ns_DString *dsPtr, const char *addr)
             Ns_Log(Notice, "dns: getnameinfo failed for addr <%s>: %s", addr, gai_strerror(err));
         } else {
             Ns_DStringAppend(dsPtr, buf);
-            result = NS_TRUE;
+            success = NS_TRUE;
         }
     }
-
-    return result;
+    return success;
 }
 
 static bool
 GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct addrinfo hints;
-    struct addrinfo *res, *ptr;
+    const struct addrinfo *ptr;
+    struct addrinfo       *res;
     int result;
-    bool status = NS_FALSE;
+    bool success = NS_FALSE;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
@@ -312,7 +313,6 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     if (result == 0) {
         ptr = res;
         while (ptr != NULL) {
-            char ipString[NS_IPADDR_SIZE];
 
             /*
              * Getaddrinfo with flag AF_UNSPEC returns both AF_INET and
@@ -325,14 +325,18 @@ GetAddr(Ns_DString *dsPtr, const char *host)
             if ((ptr->ai_family != AF_INET) && (ptr->ai_family != AF_INET6)) {
                 Ns_Log(Error, "dns: getaddrinfo failed for %s: unknown address family %d",
                        host, ptr->ai_family);
-                freeaddrinfo(res);
-                return NS_FALSE;
+
+                success = NS_FALSE;
+                break;
+            } else {
+                char ipString[NS_IPADDR_SIZE];
+
+                Tcl_DStringAppendElement(dsPtr,
+                                         ns_inet_ntop(ptr->ai_addr, ipString, sizeof(ipString)));
+
+                success = NS_TRUE;
+                ptr = ptr->ai_next;
             }
-            Tcl_DStringAppendElement(dsPtr,
-                                     ns_inet_ntop(ptr->ai_addr, ipString, sizeof(ipString)));
-                
-            status = NS_TRUE;
-            ptr = ptr->ai_next;
         }
         freeaddrinfo(res);
 
@@ -340,10 +344,10 @@ GetAddr(Ns_DString *dsPtr, const char *host)
         Ns_Log(Error, "dns: getaddrinfo failed for %s: %s", host,
                gai_strerror(result));
     }
-    
-    return status;
+
+    return success;
 }
-    
+
 #else
 /**********************************************************************
  * Begin no IPv6
@@ -355,12 +359,12 @@ GetAddr(Ns_DString *dsPtr, const char *host)
  *
  *      Perform the actual lookup by host or address.
  *
- *      NOTE: A critical section is used instead of a mutex
- *      to ensure waiting on a condition and not mutex spin waiting.
+ *      NOTE: A critical section is used instead of a mutex to ensure
+ *      waiting on a condition and not mutex spin waiting.
  *
  * Results:
- *      If a name can be found, the function returns NS_TRUE; otherwise,
- *      it returns NS_FALSE.
+ *      If a name can be found, the function returns NS_TRUE;
+ *      otherwise, it returns NS_FALSE.
  *
  * Side effects:
  *      Result is appended to dsPtr.
@@ -488,7 +492,7 @@ GetAddr(Ns_DString *dsPtr, const char *host)
         ptr = res;
         while (ptr != NULL) {
             char ipString[NS_IPADDR_SIZE];
-            
+
             ns_inet_ntop(ptr->ai_addr, ipString, sizeof(ipString));
             Tcl_DStringAppendElement(dsPtr, ipString);
             status = NS_TRUE;
@@ -599,7 +603,7 @@ GetAddr(Ns_DString *dsPtr, const char *host)
 
 #endif
 
-/* 
+/*
  * End no IPv6
  */
 
@@ -675,7 +679,7 @@ LogError(char *func, int h_errnop)
  * Local Variables:
  * mode: c
  * c-basic-offset: 4
- * fill-column: 78
+ * fill-column: 70
  * indent-tabs-mode: nil
  * End:
  */

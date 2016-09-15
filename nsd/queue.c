@@ -53,7 +53,7 @@ static void AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *stat
 static void AppendConnList(Tcl_DString *dsPtr, const Conn *firstPtr, const char *state)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
-static int neededAdditionalConnectionThreads(const ConnPool *poolPtr) 
+static bool neededAdditionalConnectionThreads(const ConnPool *poolPtr) 
     NS_GNUC_NONNULL(1);
 
 static void WakeupConnThreads(ConnPool *poolPtr) 
@@ -130,7 +130,7 @@ NsInitQueue(void)
 Ns_Conn *
 Ns_GetConn(void)
 {
-    ConnThreadArg *argPtr;
+    const ConnThreadArg *argPtr;
 
     argPtr = Ns_TlsGet(&argtls);
     return ((argPtr != NULL) ? ((Ns_Conn *) argPtr->connPtr) : NULL);
@@ -193,9 +193,9 @@ NsMapPool(ConnPool *poolPtr, const char *map)
  *
  *----------------------------------------------------------------------
  */
-static int 
+static bool 
 neededAdditionalConnectionThreads(const ConnPool *poolPtr) {
-    int wantCreate;
+    bool wantCreate;
 
     NS_NONNULL_ASSERT(poolPtr != NULL);
 
@@ -234,7 +234,7 @@ neededAdditionalConnectionThreads(const ConnPool *poolPtr) {
 	     poolPtr->wqueue.wait.num
 	     );*/
     } else {
-        wantCreate = 0;
+        wantCreate = NS_FALSE;
 		
         /*Ns_Log(Notice, "[%s] do not wantCreate creating %d, idle %d < min %d, current %d < max %d, waiting %d)",
 	       poolPtr->servPtr->server, 
@@ -273,7 +273,7 @@ neededAdditionalConnectionThreads(const ConnPool *poolPtr) {
 
 void
 NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
-    int create;
+    bool create;
 
     NS_NONNULL_ASSERT(servPtr != NULL);
 
@@ -289,7 +289,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     Ns_MutexLock(&poolPtr->threads.lock);
     create = neededAdditionalConnectionThreads(poolPtr);
 
-    if (create != 0) {
+    if (create) {
 	poolPtr->threads.current ++;
 	poolPtr->threads.creating ++;
     }
@@ -297,9 +297,9 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     Ns_MutexUnlock(&poolPtr->threads.lock);
     Ns_MutexUnlock(&poolPtr->wqueue.lock);
 
-    if (create != 0) {
+    if (create) {
         Ns_Log(Notice, "NsEnsureRunningConnectionThreads wantCreate %d waiting %d idle %d current %d", 
-	       create,
+	       (int)create,
 	       poolPtr->wqueue.wait.num,
 	       poolPtr->threads.idle, 
 	       poolPtr->threads.current);
@@ -328,10 +328,10 @@ bool
 NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 {
     ConnThreadArg *argPtr = NULL;
-    NsServer *servPtr;
-    ConnPool *poolPtr = NULL;
-    Conn     *connPtr = NULL;
-    int       create = 0;
+    NsServer      *servPtr;
+    ConnPool      *poolPtr = NULL;
+    Conn          *connPtr = NULL;
+    bool           create = NS_FALSE, queued = NS_TRUE;
 
     NS_NONNULL_ASSERT(sockPtr != NULL);
     NS_NONNULL_ASSERT(nowPtr != NULL);
@@ -452,10 +452,10 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 	       poolPtr->wqueue.wait.num,
 	       poolPtr->threads.idle, 
 	       poolPtr->threads.current);
-	return NS_FALSE;
-    }
+	queued = NS_FALSE;
+        create = NS_FALSE;
 
-    if (argPtr != NULL) {
+    } else if (argPtr != NULL) {
 	/*
 	 * We have a connection thread ready.
 	 *
@@ -469,7 +469,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 	    Ns_MutexUnlock(&poolPtr->threads.lock);
 
 	    Ns_Log(Debug, "[%ld] dequeue thread connPtr %p idle %d state %d create %d", 
-		   ThreadNr(poolPtr, argPtr), (void *)connPtr, idle, argPtr->state, create);
+		   ThreadNr(poolPtr, argPtr), (void *)connPtr, idle, argPtr->state, (int)create);
 	}
 
 	/*
@@ -482,11 +482,11 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     } else {
 	if (Ns_LogSeverityEnabled(Debug)) {
 	    Ns_Log(Debug, "add waiting connPtr %p => waiting %d create %d", 
-		   (void *)connPtr, poolPtr->wqueue.wait.num, create);
+		   (void *)connPtr, poolPtr->wqueue.wait.num, (int)create);
 	}
     }
 
-    if (create != 0) {
+    if (create) {
 	int idle, current;
 
 	Ns_MutexLock(&poolPtr->threads.lock);
@@ -497,7 +497,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
         Ns_MutexUnlock(&poolPtr->threads.lock);
 
         Ns_Log(Notice, "NsQueueConn wantCreate %d waiting %d idle %d current %d", 
-	       create,
+	       (int)create,
 	       poolPtr->wqueue.wait.num,
 	       idle, 
 	       current);
@@ -505,7 +505,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 	CreateConnThread(poolPtr);
     } 
 
-    return NS_TRUE;
+    return queued;
 }
 
 
@@ -527,14 +527,14 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
  */
 
 int
-NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int          subcmd = 0, value = 0;
-    NsInterp    *itPtr = arg;
-    NsServer    *servPtr = NULL;
-    ConnPool    *poolPtr;
-    char        *pool = NULL, *optArg = NULL, buf[100];
-    Tcl_DString ds, *dsPtr = &ds;
+    const NsInterp *itPtr = clientData;
+    int             subcmd = 0, value = 0, result = TCL_OK;
+    const NsServer *servPtr = NULL;
+    ConnPool       *poolPtr;
+    char           *pool = NULL, *optArg = NULL, buf[100];
+    Tcl_DString     ds, *dsPtr = &ds;
 
     enum {
         SActiveIdx, SAllIdx, SConnectionsIdx, 
@@ -592,8 +592,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
 	 || subcmd == SRequestprocsIdx
 	 || subcmd == SUrl2fileIdx)
 	&& pool != NULL) {	
-	    Tcl_AppendResult(interp, 
-			     "option -pool is not allowed for this subcommand", NULL);
+	    Ns_TclPrintfResult(interp, "option -pool is not allowed for this subcommand");
 	    return TCL_ERROR;
     }
 
@@ -618,7 +617,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
             poolPtr = poolPtr->nextPtr;
         }
         if (unlikely(poolPtr == NULL)) {
-            Tcl_AppendResult(interp, "no such pool ", pool, " for server ", servPtr->server, NULL);
+            Ns_TclPrintfResult(interp, "no such pool %s for server %s", pool, servPtr->server);
             return TCL_ERROR;
         }
     } else {
@@ -630,10 +629,13 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
 	 * These subcommands are server specific (do not allow -pool option)
 	 */
     case SPoolsIdx:
-        poolPtr = servPtr->pools.firstPtr;
-        while (poolPtr != NULL) {
-            Tcl_AppendElement(interp, poolPtr->pool);
-            poolPtr = poolPtr->nextPtr;
+        {
+            Tcl_Obj *listObj = Tcl_NewListObj(0, NULL);
+
+            for (poolPtr = servPtr->pools.firstPtr; poolPtr != NULL; poolPtr = poolPtr->nextPtr) {
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(poolPtr->pool, -1));
+            }
+            Tcl_SetObjResult(interp, listObj);
         }
         break;
 
@@ -693,27 +695,33 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
     case SMaxthreadsIdx:
 	if (optArg != NULL) {
 	    if (Ns_StrToInt(optArg, &value) != NS_OK || value < poolPtr->threads.min || value > poolPtr->wqueue.maxconns) {
-		Tcl_AppendResult(interp, "argument is not an integer in valid range: ", optArg, NULL);
-		return TCL_ERROR;
-	    }
-	    Ns_MutexLock(&poolPtr->threads.lock);
-	    poolPtr->threads.max = value;
-	    Ns_MutexUnlock(&poolPtr->threads.lock);
+		Ns_TclPrintfResult(interp, "argument is not an integer in valid range: %s", optArg);
+		result = TCL_ERROR;
+	    } else {
+                Ns_MutexLock(&poolPtr->threads.lock);
+                poolPtr->threads.max = value;
+                Ns_MutexUnlock(&poolPtr->threads.lock);
+            }
 	}
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.max));
+        if (result == TCL_OK) {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.max));
+        }
 	break;
 
     case SMinthreadsIdx:
 	if (optArg != NULL) {
 	    if (Ns_StrToInt(optArg, &value) != NS_OK || value < 1 || value > poolPtr->threads.max) {
-		Tcl_AppendResult(interp, "argument is not a integer in the valid range: ", optArg, NULL);
-		return TCL_ERROR;
-	    }
-	    Ns_MutexLock(&poolPtr->threads.lock);
-	    poolPtr->threads.min = value;
-	    Ns_MutexUnlock(&poolPtr->threads.lock);
+		Ns_TclPrintfResult(interp, "argument is not a integer in the valid range: %s", optArg);
+		result = TCL_ERROR;
+	    } else {
+                Ns_MutexLock(&poolPtr->threads.lock);
+                poolPtr->threads.min = value;
+                Ns_MutexUnlock(&poolPtr->threads.lock);
+            }
 	}
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.min));
+        if (result == TCL_OK) {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.min));
+        }
 	break;
     
     case SConnectionsIdx:
@@ -739,25 +747,17 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         snprintf(buf, sizeof(buf), "%lu", poolPtr->stats.connthreads);
         Tcl_DStringAppendElement(dsPtr, buf);
 
-        Tcl_DStringAppendElement(dsPtr, "accepttime");
-	Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", 
-			 (int64_t)poolPtr->stats.acceptTime.sec, 
-			 poolPtr->stats.acceptTime.usec);
+        Ns_DStringAppend(dsPtr, " accepttime ");
+	Ns_DStringAppendTime(dsPtr, &poolPtr->stats.acceptTime);
 
-        Tcl_DStringAppendElement(dsPtr, "queuetime");
-	Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", 
-		 (int64_t)poolPtr->stats.queueTime.sec,
-		 poolPtr->stats.queueTime.usec);
+        Ns_DStringAppend(dsPtr, " queuetime ");
+	Ns_DStringAppendTime(dsPtr, &poolPtr->stats.queueTime);
 
-        Tcl_DStringAppendElement(dsPtr, "filtertime");
-	Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", 
-		 (int64_t)poolPtr->stats.filterTime.sec,
-		 poolPtr->stats.filterTime.usec);
-	
-	Tcl_DStringAppendElement(dsPtr, "runtime");
-	Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", 
-		 (int64_t)poolPtr->stats.runTime.sec, 
-		 poolPtr->stats.runTime.usec);
+        Ns_DStringAppend(dsPtr, " filtertime ");
+	Ns_DStringAppendTime(dsPtr, &poolPtr->stats.filterTime);
+
+        Ns_DStringAppend(dsPtr, " runtime ");
+	Ns_DStringAppendTime(dsPtr, &poolPtr->stats.runTime);
 
         Tcl_DStringResult(interp, dsPtr);
         break;
@@ -775,9 +775,11 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         Tcl_DStringInit(dsPtr);
         if (subcmd != SQueuedIdx) {
 	    int i;
+            
 	    Ns_MutexLock(&poolPtr->tqueue.lock);
 	    for (i=0; i < poolPtr->threads.max; i++) {
-	        ConnThreadArg *argPtr = &poolPtr->tqueue.args[i];
+	        const ConnThreadArg *argPtr = &poolPtr->tqueue.args[i];
+                
 		if (argPtr->connPtr != NULL) {
 		    AppendConnList(dsPtr, argPtr->connPtr, "running");
 		}
@@ -796,7 +798,7 @@ NsTclServerObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         assert(subcmd && 0);
     }
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -1412,11 +1414,11 @@ NsConnThread(void *arg)
 static void
 ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
 {
-    Ns_Conn      *conn;
-    NsServer     *servPtr;
-    Ns_ReturnCode status = NS_OK;
-    Sock         *sockPtr;
-    char         *auth;
+    Ns_Conn        *conn;
+    const NsServer *servPtr;
+    Ns_ReturnCode   status = NS_OK;
+    Sock           *sockPtr;
+    char           *auth;
 
     /*NS_NONNULL_ASSERT(argPtr != NULL);*/
     NS_NONNULL_ASSERT(connPtr != NULL);
@@ -1775,8 +1777,6 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state)
      * An annoying race condition can be lethal here.
      */
     if (connPtr != NULL) {
-	char  buf[100];
-
         Tcl_DStringAppendElement(dsPtr, connPtr->idstr);
 	if (connPtr->reqPtr != NULL) {
 	    Tcl_DStringAppendElement(dsPtr, Ns_ConnPeer((const Ns_Conn *) connPtr));
@@ -1800,10 +1800,9 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state)
 	}
 	Ns_GetTime(&now);
         Ns_DiffTime(&now, &connPtr->requestQueueTime, &diff);
-        snprintf(buf, sizeof(buf), "%" PRId64 ".%06ld", (int64_t) diff.sec, diff.usec);
-        Tcl_DStringAppendElement(dsPtr, buf);
-        snprintf(buf, sizeof(buf), "%" PRIuz, connPtr->nContentSent);
-        Tcl_DStringAppendElement(dsPtr, buf);
+        Ns_DStringNAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &diff);
+        Ns_DStringPrintf(dsPtr, " %" PRIuz, connPtr->nContentSent);
     }
     Tcl_DStringEndSublist(dsPtr);
 }

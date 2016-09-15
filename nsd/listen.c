@@ -103,7 +103,7 @@ NsInitListen(void)
  */
 
 Ns_ReturnCode
-Ns_SockListenCallback(const char *addr, int port, Ns_SockProc *proc, void *arg)
+Ns_SockListenCallback(const char *addr, unsigned short port, Ns_SockProc *proc, void *arg)
 {
     Tcl_HashTable        *tablePtr = NULL;
     Tcl_HashEntry        *hPtr;
@@ -205,9 +205,9 @@ Ns_SockListenCallback(const char *addr, int port, Ns_SockProc *proc, void *arg)
  */
 
 bool
-Ns_SockPortBound(int port)
+Ns_SockPortBound(unsigned short port)
 {
-    Tcl_HashEntry  *hPtr;
+    const Tcl_HashEntry *hPtr;
 
     Ns_MutexLock(&lock);
     hPtr = Tcl_FindHashEntry(&portsTable, INT2PTR(port));
@@ -252,10 +252,10 @@ ListenCallback(NS_SOCKET sock, void *arg, unsigned int why)
     newSock = Ns_SockAccept(sock, NULL, NULL);
     
     if (likely(newSock != NS_INVALID_SOCKET)) {
-        Tcl_HashEntry *hPtr;
-        ListenData    *ldPtr;
-        int            retVal;
-        char           ipString[NS_IPADDR_SIZE] = {'\0'};
+        const Tcl_HashEntry *hPtr;
+        const ListenData    *ldPtr;
+        int                  retVal;
+        char                 ipString[NS_IPADDR_SIZE] = {'\0'};
 
         (void) Ns_SockSetBlocking(newSock);
         len = (socklen_t)sizeof(sa);

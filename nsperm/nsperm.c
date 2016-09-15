@@ -673,7 +673,7 @@ ValidateUserAddr(User *userPtr, const char *peer)
                     }
                     break;
                 }
-                start = strchr(start + 1, '.');
+                start = strchr(start + 1, INTCHAR('.'));
                 if (start == NULL) {
                     break;
                 }
@@ -831,7 +831,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
         memset(ipPtr, 0, sizeof(struct NS_SOCKADDR_STORAGE));
         memset(maskPtr, 0, sizeof(struct NS_SOCKADDR_STORAGE));
 
-        slash = strchr(net, '/');
+        slash = strchr(net, INTCHAR('/'));
         if (slash == NULL) {
             /*
              * No mask is given
@@ -852,7 +852,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
             slash++;
 
             validIp = ns_inet_pton(ipPtr, net);
-            if (strchr(slash, '.') == NULL && strchr(slash, ':') == NULL) {
+            if (strchr(slash, INTCHAR('.')) == NULL && strchr(slash, INTCHAR(':')) == NULL) {
                 maskPtr->sa_family = ipPtr->sa_family;
                 Ns_SockaddrMaskBits(maskPtr, strtol(slash, NULL, 10));
                 validMask = 1;
@@ -861,8 +861,8 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
             }
 
 	    if (validIp <= 0 || validMask <= 0) {
-                Tcl_AppendResult(interp, "invalid address or hostname \"",
-                                 net, "\". " "should be ipaddr/netmask or hostname", NULL);
+                Ns_TclPrintfResult(interp, "invalid address or hostname \"%s\". "
+                                   "Should be ipaddr/netmask or hostname", net);
                 goto fail;
             }
 
@@ -896,7 +896,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
                                  (ClientData)ns_strdup(ns_inet_ntop(maskPtr, ipString, sizeof(ipString))));
             }
             if (isNew == 0) {
-                Tcl_AppendResult(interp, "duplicate entry: ", net, NULL);
+                Ns_TclPrintfResult(interp, "duplicate entry: %s", net);
                 goto fail;
             }
         }
@@ -909,7 +909,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     Ns_RWLockWrLock(&servPtr->lock);
     hPtr = Tcl_CreateHashEntry(&servPtr->users, name, &isNew);
     if (isNew == 0) {
-        Tcl_AppendResult(interp, "duplicate user: ", name, NULL);
+        Ns_TclPrintfResult(interp, "duplicate user: %s", name);
         goto fail0;
     }
     Tcl_SetHashValue(hPtr, userPtr);
@@ -991,7 +991,9 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
     Server         *servPtr = data;
     Tcl_HashSearch  search, msearch;
     Tcl_HashEntry  *hPtr;
+    Tcl_DString     ds;
 
+    Tcl_DStringInit(&ds);
     Ns_RWLockRdLock(&servPtr->lock);
     hPtr = Tcl_FirstHashEntry(&servPtr->users, &search);
 
@@ -1001,11 +1003,12 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         Tcl_HashEntry    *mPtr;
         struct sockaddr  *netPtr;
 
-        Tcl_AppendResult(interp, "{", Tcl_GetHashKey(&servPtr->users, hPtr), "} {", userPtr->pwd, "} {", NULL);
+        Ns_DStringPrintf(&ds, "{%s} {%s} {",
+                         (const char*)Tcl_GetHashKey(&servPtr->users, hPtr),
+                         userPtr->pwd);
 
         if (userPtr->hosts.numEntries > 0 || userPtr->masks.numEntries > 0 || userPtr->nets.numEntries > 0) {
-            Tcl_AppendResult(interp,
-                             ((userPtr->flags & USER_FILTER_ALLOW) != 0u) ? " -allow " : " -deny ", NULL);
+            Ns_DStringPrintf(&ds, " %s ", ((userPtr->flags & USER_FILTER_ALLOW) != 0u) ? "-allow" : "-deny");
         }
         /*
          * Append all values from networks
@@ -1013,7 +1016,7 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         mPtr = Tcl_FirstHashEntry(&userPtr->nets, &msearch);
         while (mPtr != NULL) {
             netPtr = (struct sockaddr *)Tcl_GetHashKey(&userPtr->nets, hPtr);
-            Tcl_AppendResult(interp, ns_inet_ntop(netPtr, ipString, sizeof(ipString)), " ", NULL);
+            Ns_DStringPrintf(&ds, "%s ", ns_inet_ntop(netPtr, ipString, sizeof(ipString)));
             mPtr = Tcl_NextHashEntry(&msearch);
         }
 
@@ -1023,7 +1026,7 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         mPtr = Tcl_FirstHashEntry(&userPtr->masks, &msearch);
         while (mPtr != NULL) {
             netPtr = (struct sockaddr *)Tcl_GetHashKey(&userPtr->nets, hPtr);
-            Tcl_AppendResult(interp, ns_inet_ntop(netPtr, ipString, sizeof(ipString)), " ", NULL);
+            Ns_DStringPrintf(&ds, "%s ", ns_inet_ntop(netPtr, ipString, sizeof(ipString)));
             mPtr = Tcl_NextHashEntry(&msearch);
         }
 
@@ -1032,14 +1035,16 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
          */
         mPtr = Tcl_FirstHashEntry(&userPtr->hosts, &msearch);
         while (mPtr != NULL) {
-            Tcl_AppendResult(interp, Tcl_GetHashKey(&userPtr->hosts, mPtr), " ", NULL);
+            Ns_DStringPrintf(&ds, "%s ", (const char*)Tcl_GetHashKey(&userPtr->hosts, mPtr));
             mPtr = Tcl_NextHashEntry(&msearch);
         }
-        Tcl_AppendResult(interp, "} ", NULL);
+        Ns_DStringNAppend(&ds, "} ", 2);
 
         hPtr = Tcl_NextHashEntry(&search);
     }
     Ns_RWLockUnlock(&servPtr->lock);
+    Tcl_DStringResult(interp, &ds);
+    
     return TCL_OK;
 }
 
@@ -1093,7 +1098,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
         user = Tcl_GetString(objv[param]);
         hPtr = Tcl_FindHashEntry(&servPtr->users, user);
         if (hPtr == NULL) {
-            Tcl_AppendResult(interp, "no such user: ", user, NULL);
+            Ns_TclPrintfResult(interp, "no such user: %s", user);
             goto fail;
         }
         userPtr = Tcl_GetHashValue(hPtr);
@@ -1105,7 +1110,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
         hPtr = Tcl_CreateHashEntry(&groupPtr->users, user, &isNew);
         if (isNew == 0) {
           dupuser:
-            Tcl_AppendResult(interp, "user \"", user, "\" already in group \"", name, "\"", NULL);
+            Ns_TclPrintfResult(interp, "user \"%s\" already in group \"%s\"", user, name);
             goto fail;
         }
         Tcl_SetHashValue(hPtr, userPtr);
@@ -1128,7 +1133,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
     Ns_RWLockWrLock(&servPtr->lock);
     hPtr = Tcl_CreateHashEntry(&servPtr->groups, name, &isNew);
     if (isNew == 0) {
-        Tcl_AppendResult(interp, "duplicate group: ", name, NULL);
+        Ns_TclPrintfResult(interp, "duplicate group: %s", name);
         goto fail0;
     }
     Tcl_SetHashValue(hPtr, groupPtr);
@@ -1228,10 +1233,12 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
 
 static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Server *servPtr = data;
-    Tcl_HashSearch search;
-    Tcl_HashEntry *hPtr;
-
+    Server         *servPtr = data;
+    Tcl_HashSearch  search;
+    Tcl_HashEntry  *hPtr;
+    Tcl_DString     ds;
+ 
+    Tcl_DStringInit(&ds);
     Ns_RWLockRdLock(&servPtr->lock);
     hPtr = Tcl_FirstHashEntry(&servPtr->groups, &search);
     while (hPtr != NULL) {
@@ -1239,7 +1246,8 @@ static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_
 	Tcl_HashEntry *uhPtr;
 	Group         *groupPtr = Tcl_GetHashValue(hPtr);
 
-        Tcl_AppendResult(interp, Tcl_GetHashKey(&servPtr->groups, hPtr), " { ", NULL);
+        Ns_DStringPrintf(&ds, "%s { ",
+                         (const char *)Tcl_GetHashKey(&servPtr->groups, hPtr));
 
         /*
          * All users for this group
@@ -1247,13 +1255,17 @@ static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_
 
         uhPtr = Tcl_FirstHashEntry(&groupPtr->users, &usearch);
         while (uhPtr != NULL) {
-            Tcl_AppendResult(interp, "\"", Tcl_GetHashKey(&groupPtr->users, uhPtr), "\" ", NULL);
+            Ns_DStringPrintf(&ds, "\"%s\" ",
+                             (const char *)Tcl_GetHashKey(&groupPtr->users, uhPtr));
             uhPtr = Tcl_NextHashEntry(&usearch);
         }
-        Tcl_AppendResult(interp, "} ", NULL);
+        Ns_DStringNAppend(&ds, "} ", 2);
+
         hPtr = Tcl_NextHashEntry(&search);
     }
     Ns_RWLockUnlock(&servPtr->lock);
+    Tcl_DStringResult(interp, &ds);
+
     return TCL_OK;
 }
 
@@ -1520,7 +1532,7 @@ static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
     Ns_RWLockRdLock(&servPtr->lock);
     hPtr = Tcl_FindHashEntry(&servPtr->users, user);
     if (hPtr == NULL) {
-        Tcl_AppendResult(interp, "user not found", NULL);
+        Ns_TclPrintfResult(interp, "user not found");
         goto done;
     }
     userPtr = Tcl_GetHashValue(hPtr);
@@ -1528,12 +1540,12 @@ static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
         char buf[NS_ENCRYPT_BUFSIZE];
 
         if (pwd[0] == 0) {
-            Tcl_AppendResult(interp, "empty password given", NULL);
+            Ns_TclPrintfResult(interp, "empty password given");
             goto done;
         }
         Ns_Encrypt(pwd, userPtr->pwd, buf);
         if (!STREQ(userPtr->pwd, buf)) {
-            Tcl_AppendResult(interp, "incorrect password", NULL);
+            Ns_TclPrintfResult(interp, "incorrect password");
             goto done;
         }
     }

@@ -340,11 +340,11 @@ Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, const char *mimeType)
  */
 
 void
-Ns_ConnSetLengthHeader(Ns_Conn *conn, size_t length, int doStream)
+Ns_ConnSetLengthHeader(Ns_Conn *conn, size_t length, bool doStream)
 {
     Conn *connPtr = (Conn *) conn;
 
-    if (doStream == 0) {
+    if (!doStream) {
 	char buffer[TCL_INTEGER_SPACE];
 
 	snprintf(buffer, sizeof(buffer), "%" PRIuz, length);
@@ -431,12 +431,12 @@ Ns_ConnSetExpiresHeader(const Ns_Conn *conn, const char *expires)
  */
 
 void
-Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
+Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
 {
-    Conn       *connPtr = (Conn *) conn;
-    Ns_Sock    *sockPtr;
-    size_t      i;
-    const char *reason, *value;
+    const Conn    *connPtr = (const Conn *) conn;
+    const Ns_Sock *sockPtr;
+    size_t         i;
+    const char    *reason, *value;
 
     /*
      * Construct the HTTP response status line.
@@ -501,7 +501,7 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
             key = Ns_SetKey(conn->outputheaders, i);
             value = Ns_SetValue(conn->outputheaders, i);
             if (key != NULL && value != NULL) {
-		char *lineBreak = strchr(value, (int)UCHAR('\n'));
+		const char *lineBreak = strchr(value, INTCHAR('\n'));
 
 		if (lineBreak == NULL) {
 		    Ns_DStringVarAppend(dsPtr, key, ": ", value, "\r\n", NULL);
@@ -526,7 +526,7 @@ Ns_ConnConstructHeaders(Ns_Conn *conn, Ns_DString *dsPtr)
 
 			offset ++;
 			value += offset;
-			lineBreak = strchr(value, (int)UCHAR('\n'));
+			lineBreak = strchr(value, INTCHAR('\n'));
 
 		    } while (lineBreak != NULL);
 
@@ -576,7 +576,7 @@ Ns_ConnQueueHeaders(Ns_Conn *conn, int status)
 size_t
 Ns_ConnFlushHeaders(Ns_Conn *conn, int status)
 {
-    Conn *connPtr = (Conn *) conn;
+    const Conn *connPtr = (const Conn *) conn;
     /* 
      * Deprecated
      */
@@ -593,7 +593,7 @@ Ns_ConnSetRequiredHeaders(Ns_Conn *conn, const char *mimeType, size_t length)
      * Deprecated
      */
     Ns_ConnSetTypeHeader(conn, mimeType);
-    Ns_ConnSetLengthHeader(conn, length, 0);
+    Ns_ConnSetLengthHeader(conn, length, NS_FALSE);
 }
 
 
@@ -668,10 +668,10 @@ Ns_ReturnCode
 Ns_ConnReturnNotice(Ns_Conn *conn, int status,
                     const char *title, const char *notice)
 {
-    Conn         *connPtr = (Conn *) conn;
-    NsServer     *servPtr;
-    Ns_DString    ds;
-    Ns_ReturnCode result;
+    const Conn      *connPtr = (const Conn *) conn;
+    const NsServer  *servPtr;
+    Ns_DString       ds;
+    Ns_ReturnCode    result;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(title != NULL);
@@ -858,7 +858,7 @@ Ns_ConnReturnOpenChannel(Ns_Conn *conn, int status, const char *mimeType,
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(mimeType != NULL);
     
-    return ReturnOpen(conn, status, mimeType, chan, NULL, -1, len);
+    return ReturnOpen(conn, status, mimeType, chan, NULL, NS_INVALID_FD, len);
 }
 
 Ns_ReturnCode
@@ -868,7 +868,7 @@ Ns_ConnReturnOpenFile(Ns_Conn *conn, int status, const char *mimeType,
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(mimeType != NULL);
     
-    return ReturnOpen(conn, status, mimeType, NULL, fp, -1, len);
+    return ReturnOpen(conn, status, mimeType, NULL, fp, NS_INVALID_FD, len);
 }
 
 Ns_ReturnCode
@@ -889,26 +889,27 @@ ReturnOpen(Ns_Conn *conn, int status, const char *mimeType, Tcl_Channel chan,
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(mimeType != NULL);
-
+        
     Ns_ConnSetTypeHeader(conn, mimeType);
     Ns_ConnSetResponseStatus(conn, status);
 
     if ((chan != NULL || fp != NULL) 
-	&& (NsWriterQueue(conn, len, chan, fp, fd, NULL, 0, 0) == NS_OK)) {
-	return NS_OK;
-    }
-
-    if (chan != NULL) {
-        Ns_ConnSetLengthHeader(conn, len, 0);
-        result = Ns_ConnSendChannel(conn, chan, len);
-    } else if (fp != NULL) {
-        Ns_ConnSetLengthHeader(conn, len, 0);
-        result = Ns_ConnSendFp(conn, fp, len);
+        && (NsWriterQueue(conn, len, chan, fp, fd, NULL, 0, 0) == NS_OK)) {
+        result = NS_OK;
     } else {
-        result = ReturnRange(conn, mimeType, fd, NULL, len);
-    }
 
-    (void) Ns_ConnClose(conn);
+        if (chan != NULL) {
+            Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
+            result = Ns_ConnSendChannel(conn, chan, len);
+        } else if (fp != NULL) {
+            Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
+            result = Ns_ConnSendFp(conn, fp, len);
+        } else {
+            result = ReturnRange(conn, mimeType, fd, NULL, len);
+        }
+
+        (void) Ns_ConnClose(conn);
+    }
 
     return result;
 }
@@ -938,9 +939,8 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
             int fd, const void *data, size_t len)
 {
     Ns_DString    ds;
-    Ns_FileVec    bufs[32];
-    int           nbufs = (int)(sizeof(bufs) / sizeof(bufs[0]));
-    int           rangeCount;
+    Ns_FileVec    bufs[NS_MAX_RANGES];
+    int           nbufs = NS_MAX_RANGES, rangeCount;
     Ns_ReturnCode result = NS_ERROR;
 
     NS_NONNULL_ASSERT(conn != NULL);
@@ -1001,7 +1001,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
     
     if (rangeCount >= 0) {
 	if (rangeCount == 0) {
-            Ns_ConnSetLengthHeader(conn, len, 0);
+            Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
 
 	    if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
 	      len = 0u;

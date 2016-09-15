@@ -46,7 +46,7 @@ static VOID WINAPI ServiceHandler(DWORD code);
 static BOOL WINAPI ConsoleHandler(DWORD code);
 static void ReportStatus(DWORD state, DWORD code, DWORD hint);
 static char *GetServiceName(Ns_DString *dsPtr, char *service);
-static bool SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2);
+static bool SockAddrEqual(const struct sockaddr *saPtr1, const struct sockaddr *saPtr2);
 
 
 /*
@@ -56,7 +56,7 @@ static bool SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2);
 static Ns_Mutex lock;
 static Ns_Cond cond;
 static Ns_Thread tickThread;
-static SERVICE_STATUS_HANDLE hStatus = 0;
+static SERVICE_STATUS_HANDLE hStatus = NULL;
 static SERVICE_STATUS curStatus;
 static Ns_Tls tls;
 static int serviceRunning = 0;
@@ -798,7 +798,7 @@ ns_mkstemp(char *charTemplate)
  */
 
 static bool
-SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2)
+SockAddrEqual(const struct sockaddr *saPtr1, const struct sockaddr *saPtr2)
 {
 #ifdef HAVE_IPV6
     if (saPtr1->sa_family != saPtr2->sa_family) {
@@ -810,8 +810,8 @@ SockAddrEqual(struct sockaddr *saPtr1, struct sockaddr *saPtr2)
             return NS_FALSE;
         }
     } else if (saPtr1->sa_family == AF_INET6) {
-        struct in6_addr *sa1Bits = &(((struct sockaddr_in6 *)saPtr1)->sin6_addr);
-        struct in6_addr *sa2Bits = &(((struct sockaddr_in6 *)saPtr2)->sin6_addr);
+        const struct in6_addr *sa1Bits = &(((struct sockaddr_in6 *)saPtr1)->sin6_addr);
+        const struct in6_addr *sa2Bits = &(((struct sockaddr_in6 *)saPtr2)->sin6_addr);
         int i;
         
         for (i = 0; i < 8; i++) {
@@ -854,38 +854,39 @@ ns_sockpair(NS_SOCKET socks[2])
 {
     NS_SOCKET sock;
     struct NS_SOCKADDR_STORAGE ia[2];
-    int size;
+    int size, result = 0;
 
     size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
     sock = Ns_SockListen(NS_IP_LOOPBACK, 0);
     if (sock == NS_INVALID_SOCKET ||
         getsockname(sock, (struct sockaddr *) &ia[0], &size) != 0) {
-        return -1;
+        result = -1;
+    } else {
+        size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
+        socks[1] = Ns_SockConnect(NS_IP_LOOPBACK, Ns_SockaddrGetPort((struct sockaddr *)&ia[0]));
+        if (socks[1] == NS_INVALID_SOCKET ||
+            getsockname(socks[1], (struct sockaddr *) &ia[1], &size) != 0) {
+            ns_sockclose(sock);
+            result = -1;
+        } else {
+            size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
+            socks[0] = accept(sock, (struct sockaddr *) &ia[0], &size);
+            ns_sockclose(sock);
+            if (socks[0] == NS_INVALID_SOCKET) {
+                ns_sockclose(socks[1]);
+                result = -1;
+            
+            } else if ((!(SockAddrEqual((struct sockaddr *)&ia[0],
+                                        (struct sockaddr *)&ia[1]))) ||
+                       (Ns_SockaddrGetPort((struct sockaddr *)&ia[0]) != Ns_SockaddrGetPort((struct sockaddr *)&ia[1]))
+                       ) {
+                ns_sockclose(socks[0]);
+                ns_sockclose(socks[1]);
+                result = -1;
+            }
+        }
     }
-    size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
-    socks[1] = Ns_SockConnect(NS_IP_LOOPBACK, (int) Ns_SockaddrGetPort((struct sockaddr *)&ia[0]));
-    if (socks[1] == NS_INVALID_SOCKET ||
-        getsockname(socks[1], (struct sockaddr *) &ia[1], &size) != 0) {
-        ns_sockclose(sock);
-        return -1;
-    }
-    size = (int)sizeof(struct NS_SOCKADDR_STORAGE);
-    socks[0] = accept(sock, (struct sockaddr *) &ia[0], &size);
-    ns_sockclose(sock);
-    if (socks[0] == NS_INVALID_SOCKET) {
-        ns_sockclose(socks[1]);
-        return -1;
-    }
-    if ((!(SockAddrEqual((struct sockaddr *)&ia[0],
-                         (struct sockaddr *)&ia[1]))) ||
-        (Ns_SockaddrGetPort((struct sockaddr *)&ia[0]) != Ns_SockaddrGetPort((struct sockaddr *)&ia[1]))
-        ) {
-        ns_sockclose(socks[0]);
-        ns_sockclose(socks[1]);
-        return -1;
-    }
-
-    return 0;
+    return result;
 }
 
 
@@ -907,21 +908,21 @@ ns_sockpair(NS_SOCKET socks[2])
  */
 
 NS_SOCKET
-Ns_SockListenEx(const char *address, int port, int backlog)
+Ns_SockListenEx(const char *address, unsigned short port, int backlog)
 {
     NS_SOCKET sock;
     struct NS_SOCKADDR_STORAGE sa;
     struct sockaddr *saPtr = (struct sockaddr *)&sa;
 
     if (Ns_GetSockAddr(saPtr, address, port) != NS_OK) {
-        return NS_INVALID_SOCKET;
-    }
-    sock = Ns_SockBind(saPtr);
-    if (sock != NS_INVALID_SOCKET && listen(sock, backlog) != 0) {
-        ns_sockclose(sock);
         sock = NS_INVALID_SOCKET;
+    } else {
+        sock = Ns_SockBind(saPtr);
+        if (sock != NS_INVALID_SOCKET && listen(sock, backlog) != 0) {
+            ns_sockclose(sock);
+            sock = NS_INVALID_SOCKET;
+        }
     }
-
     return sock;
 }
 
@@ -1183,11 +1184,12 @@ ReportStatus(DWORD state, DWORD code, DWORD hint)
 int
 ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
 {
-    struct timeval timeout, *toPtr;
-    fd_set ifds, ofds, efds;
-    unsigned long int i;
-    NS_SOCKET n = NS_INVALID_SOCKET;
-    int rc;
+    struct timeval        timeout;
+    const struct timeval *toPtr;
+    fd_set                ifds, ofds, efds;
+    unsigned long int     i;
+    NS_SOCKET             n = NS_INVALID_SOCKET;
+    int                   rc;
 
     FD_ZERO(&ifds);
     FD_ZERO(&ofds);
@@ -1221,22 +1223,21 @@ ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
         timeout.tv_usec = (timo - timeout.tv_sec * 1000) * 1000;
     }
     rc = select((int)++n, &ifds, &ofds, &efds, toPtr);
-    if (rc <= 0) {
-        return rc;
-    }
-    for (i = 0u; i < nfds; ++i) {
-        fds[i].revents = 0;
-        if (fds[i].fd == NS_INVALID_SOCKET) {
-            continue;
-        }
-        if (FD_ISSET(fds[i].fd, &ifds)) {
-            fds[i].revents |= POLLIN;
-        }
-        if (FD_ISSET(fds[i].fd, &ofds)) {
-            fds[i].revents |= POLLOUT;
-        }
-        if (FD_ISSET(fds[i].fd, &efds)) {
-            fds[i].revents |= POLLPRI;
+    if (rc > 0) {
+        for (i = 0u; i < nfds; ++i) {
+            fds[i].revents = 0;
+            if (fds[i].fd == NS_INVALID_SOCKET) {
+                continue;
+            }
+            if (FD_ISSET(fds[i].fd, &ifds)) {
+                fds[i].revents |= POLLIN;
+            }
+            if (FD_ISSET(fds[i].fd, &ofds)) {
+                fds[i].revents |= POLLOUT;
+            }
+            if (FD_ISSET(fds[i].fd, &efds)) {
+                fds[i].revents |= POLLPRI;
+            }
         }
     }
 

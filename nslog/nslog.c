@@ -275,12 +275,12 @@ AddCmds(Tcl_Interp *interp, const void *arg)
  */
 
 static int
-LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     const char    *strarg, **hdrs;
     int            rc, intarg, cmd;
     Ns_DString     ds;
-    Log           *logPtr = arg;
+    Log           *logPtr = clientData;
 
     enum {
         ROLLFMT, MAXBACKUP, MAXBUFFER, EXTHDRS,
@@ -483,8 +483,8 @@ LogObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
                 }
             }
             if (status != NS_OK) {
-                Tcl_AppendResult(interp, "could not roll \"", logPtr->file,
-                                 "\": ", Tcl_PosixError(interp), NULL);
+                Ns_TclPrintfResult(interp, "could not roll \"%s\": %s",
+                                   logPtr->file, Tcl_PosixError(interp));
             }
             Ns_MutexUnlock(&logPtr->lock);
             if (status != NS_OK) {
@@ -681,7 +681,9 @@ LogTrace(void *arg, Ns_Conn *conn)
 	Ns_Time reqTime, now;
 	Ns_GetTime(&now);
         Ns_DiffTime(&now, Ns_ConnStartTime(conn), &reqTime);
-        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)reqTime.sec, reqTime.usec);
+        Ns_DStringNAppend(dsPtr, " ", 1);
+	Ns_DStringAppendTime(dsPtr, &reqTime);
+
     }
 
     if ((logPtr->flags & LOG_PARTIALTIMES) != 0u) {
@@ -691,11 +693,15 @@ LogTrace(void *arg, Ns_Conn *conn)
 	Ns_ConnTimeSpans(conn, &acceptTime, &queueTime, &filterTime, &runTime);
 
         Ns_DStringNAppend(dsPtr, " \"", 2);
-        Ns_DStringPrintf(dsPtr, "%" PRIu64 ".%06ld",  (int64_t)startTimePtr->sec, startTimePtr->usec);
-        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)acceptTime.sec,    acceptTime.usec);
-        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)queueTime.sec,     queueTime.usec);
-        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)filterTime.sec,    filterTime.usec);
-        Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)runTime.sec,       runTime.usec);
+        Ns_DStringAppendTime(dsPtr, startTimePtr);
+        Ns_DStringNAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &acceptTime);
+        Ns_DStringNAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &queueTime);
+        Ns_DStringNAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &filterTime);
+        Ns_DStringNAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &runTime);
         Ns_DStringNAppend(dsPtr, "\"", 1);
     }
 
@@ -908,7 +914,7 @@ LogRoll(Log *logPtr)
     Ns_ReturnCode status;
     Tcl_Obj      *path;
 
-    NsAsyncWriterQueueDisable(0);
+    NsAsyncWriterQueueDisable(NS_FALSE);
 
     (void)LogClose(logPtr);
 

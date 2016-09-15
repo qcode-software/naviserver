@@ -168,7 +168,7 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
               Ns_OpProc **procPtr, Ns_Callback **deletePtr, void **argPtr, 
 	      unsigned int *flagsPtr)
 {
-    Req *reqPtr;
+    const Req *reqPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -214,13 +214,13 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
 
 void
 Ns_UnRegisterRequest(const char *server, const char *method, const char *url,
-                     int inherit)
+                     bool inherit)
 {
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
-    Ns_UnRegisterRequestEx(server, method, url, (inherit != 0) ? 0u : NS_OP_NOINHERIT);
+    Ns_UnRegisterRequestEx(server, method, url, (inherit ? 0u : NS_OP_NOINHERIT));
 }
 
 
@@ -517,12 +517,12 @@ Ns_UnRegisterProxyRequest(const char *server, const char *method,
 Ns_ReturnCode
 NsConnRunProxyRequest(Ns_Conn *conn)
 {
-    Conn          *connPtr = (Conn *) conn;
-    NsServer      *servPtr;
-    Req           *reqPtr = NULL;
-    Ns_ReturnCode  status;
-    Ns_DString     ds;
-    Tcl_HashEntry *hPtr;
+    const Conn          *connPtr = (const Conn *) conn;
+    NsServer            *servPtr;
+    Req                 *reqPtr = NULL;
+    Ns_ReturnCode        status;
+    Ns_DString           ds;
+    const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
     
@@ -570,7 +570,7 @@ NsConnRunProxyRequest(Ns_Conn *conn)
 void
 NsGetRequestProcs(Tcl_DString *dsPtr, const char *server)
 {
-    NsServer *servPtr;
+    const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);

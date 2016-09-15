@@ -156,7 +156,7 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
     if (request.port == 0u) {
         request.port = 80u;
     }
-    sock = Ns_SockConnect(request.host, (int)request.port);
+    sock = Ns_SockConnect(request.host, request.port);
     if (sock == NS_INVALID_SOCKET) {
         Ns_Log(Error, "urlopen: failed to connect to '%s': '%s'",
                url, ns_sockstrerror(ns_sockerrno));
@@ -265,14 +265,14 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
  */
 
 int
-NsTclGetUrlObjCmd(ClientData arg, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclGetUrlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp      *itPtr = arg;
-    Ns_DString     ds;
-    Ns_Set        *headers;
-    int            code;
-    Ns_ReturnCode  status;
-    const char    *url;
+    const NsInterp *itPtr = clientData;
+    Ns_DString      ds;
+    Ns_Set         *headers;
+    int             code;
+    Ns_ReturnCode   status;
+    const char     *url;
 
     if ((objc != 3) && (objc != 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "url ?headersSetIdVar?");
@@ -397,12 +397,12 @@ GetLine(Stream *sPtr, Ns_DString *dsPtr)
     Ns_DStringSetLength(dsPtr, 0);
     do {
         if (sPtr->cnt > 0u) {
-            eol = strchr(sPtr->ptr, '\n');
+            eol = strchr(sPtr->ptr, INTCHAR('\n'));
             if (eol == NULL) {
                 n = sPtr->cnt;
             } else {
                 *eol++ = '\0';
-                n = eol - sPtr->ptr;
+                n = (size_t)(eol - sPtr->ptr);
             }
             Ns_DStringNAppend(dsPtr, sPtr->ptr, (int)n - 1);
             sPtr->ptr += n;

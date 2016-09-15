@@ -75,8 +75,18 @@ typedef enum {
     NS_URLSPACE_EXACT =          2
 } NsUrlSpaceOp;
 
+/*
+ * Managing streaming output via writer
+ */
+typedef enum {
+    NS_WRITER_STREAM_NONE =        0,
+    NS_WRITER_STREAM_ACTIVE =      1,
+    NS_WRITER_STREAM_FINISH =      2
+} NsWriterStreamState;
+
 #define MAX_URLSPACES                  16
 #define NS_SET_SIZE                    ((unsigned)TCL_INTEGER_SPACE + 2u)
+#define NS_MAX_RANGES                  32
 
 #define CONN_TCLFORM                   0x01u  /* Query form set is registered for interp */
 #define CONN_TCLHDRS                   0x02u  /* Input headers set is registered for interp */
@@ -240,7 +250,7 @@ typedef struct WriterSock {
     Tcl_WideInt          nsent;
     size_t               size;
     unsigned int         flags;
-    int                  doStream;
+    NsWriterStreamState  doStream;
     int                  fd;
     char                *headerString;
 
@@ -348,7 +358,7 @@ typedef struct Request {
     Ns_Set *headers;             /* Input headers */
     Ns_Set *auth;                /* Auth user/password and parameters */
     char peer[NS_IPADDR_SIZE];   /* Client peer address */
-    int port;                    /* Client peer port */
+    unsigned short port;         /* Client peer port */
 
     /*
      * The following pointers are used to access the
@@ -388,20 +398,20 @@ typedef struct Request {
  */
 
 typedef struct {
-    int threads;                 /* Number of spooler threads to run */
-    Ns_Mutex lock;               /* Lock around spooler queue */
-    SpoolerQueue *firstPtr;      /* Spooler thread queue */
-    SpoolerQueue *curPtr;        /* Current spooler thread */
+    int threads;                        /* Number of spooler threads to run */
+    Ns_Mutex lock;                      /* Lock around spooler queue */
+    SpoolerQueue *firstPtr;             /* Spooler thread queue */
+    SpoolerQueue *curPtr;               /* Current spooler thread */
 } DrvSpooler;
 
 typedef struct {
-    int       threads;           /* Number of writer threads to run */
-    size_t    maxsize;           /* Max content size to use writer thread */
-    size_t    bufsize;           /* Size of the output buffer */
-    int       doStream;          /* Activate writer for HTML streaming */
-    Ns_Mutex lock;               /* Lock around writer queues */
-    SpoolerQueue *firstPtr;      /* List of writer threads */
-    SpoolerQueue *curPtr;        /* Current writer thread */
+    int       threads;                  /* Number of writer threads to run */
+    size_t    maxsize;                  /* Max content size to use writer thread */
+    size_t    bufsize;                  /* Size of the output buffer */
+    NsWriterStreamState doStream;       /* Activate writer for HTML streaming */
+    Ns_Mutex lock;                      /* Lock around writer queues */
+    SpoolerQueue *firstPtr;             /* List of writer threads */
+    SpoolerQueue *curPtr;               /* Current writer thread */
 } DrvWriter;
 
 typedef struct Driver {
@@ -446,7 +456,7 @@ typedef struct Driver {
     NS_SOCKET sock;                     /* Listening socket */
     NS_POLL_NFDS_TYPE pidx;             /* poll() index */
     const char *bindaddr;               /* Numerical listen address */
-    int port;                           /* Port in location */
+    unsigned short port;                /* Port in location */
     int backlog;                        /* listen() backlog */
     Tcl_WideInt maxinput;               /* Maximum request bytes to read */
     Tcl_WideInt maxupload;              /* Uploads that exceed will go into temp file without parsing */
@@ -959,7 +969,7 @@ typedef struct NsInterp {
 
     Tcl_Interp *interp;
     NsServer   *servPtr;
-    int         deleteInterp;  /* Interp should be deleted on next deallocation */
+    bool        deleteInterp;  /* Interp should be deleted on next deallocation */
     int         epoch;         /* Run the update script if != to server epoch */
     int         refcnt;        /* Counts recursive allocations of cached interp */
 
@@ -1003,7 +1013,7 @@ typedef struct NsInterp {
     struct adp {
         unsigned int      flags;
         AdpResult         exception;
-        int               refresh;
+        bool              refresh;
         size_t            bufsize;
         int               errorLevel;
         int               debugLevel;
@@ -1245,6 +1255,7 @@ NsTclAdpAbortObjCmd,
 
 NS_EXTERN Tcl_CmdProc
     NsTclAdpStatsCmd,
+    NsTclCrashCmd,
     NsTclHrefsCmd,
     NsTclLibraryCmd,
     NsTclMkTempCmd,
@@ -1467,9 +1478,6 @@ NS_EXTERN char *NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const cha
 /*
  * range.c
  */
-NS_EXTERN int NsMatchRange(const Ns_Conn *conn, time_t mtime)
-    NS_GNUC_NONNULL(1);
-
 NS_EXTERN int NsConnParseRange(Ns_Conn *conn, const char *type,
                                int fd, const void *data, size_t objLength,
                                Ns_FileVec *bufs, int *nbufsPtr, Ns_DString *dsPtr)
@@ -1485,7 +1493,7 @@ NS_EXTERN const char * NsConnIdStr(const Ns_Conn *conn)
 /*
  * request parsing
  */
-NS_EXTERN int NsParseAcceptEncoding(double version, const char *hdr)
+NS_EXTERN bool NsParseAcceptEncoding(double version, const char *hdr)
     NS_GNUC_NONNULL(2);
 
 /*
@@ -1495,7 +1503,7 @@ NS_EXTERN int NsParseAcceptEncoding(double version, const char *hdr)
 NS_EXTERN const char *NsFindCharset(const char *mimetype, size_t *lenPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN int NsEncodingIsUtf8(const Tcl_Encoding encoding);
+NS_EXTERN bool NsEncodingIsUtf8(const Tcl_Encoding encoding);
 
 
 /*
@@ -1505,7 +1513,7 @@ NS_EXTERN int NsEncodingIsUtf8(const Tcl_Encoding encoding);
 NS_EXTERN int NsAdpAppend(NsInterp *itPtr, const char *buf, int len)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN int NsAdpFlush(NsInterp *itPtr, int doStream)
+NS_EXTERN int NsAdpFlush(NsInterp *itPtr, bool doStream)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN int NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *procs)

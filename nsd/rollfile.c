@@ -112,7 +112,7 @@ Ns_RollFile(const char *file, int max)
          */
 
         do {
-            char *dot = strrchr(next, '.') + 1;
+            char *dot = strrchr(next, INTCHAR('.')) + 1;
             sprintf(dot, "%03d", num++);
         } while ((err = Exists(next)) == 1 && num < max);
 
@@ -127,9 +127,9 @@ Ns_RollFile(const char *file, int max)
          */
 
         while (err == 0 && num-- > 0) {
-            char *dot = strrchr(first, '.') + 1;
+            char *dot = strrchr(first, INTCHAR('.')) + 1;
             sprintf(dot, "%03d", num);
-            dot = strrchr(next, '.') + 1;
+            dot = strrchr(next, INTCHAR('.')) + 1;
             sprintf(dot, "%03d", num + 1);
             err = Rename(first, next);
         }
@@ -181,7 +181,8 @@ Ns_RollFileByDate(const char *file, int max)
 Ns_ReturnCode
 Ns_PurgeFiles(const char *file, int max)
 {
-    File         *fiPtr, *files = NULL;
+    const File   *fiPtr;
+    File         *files = NULL;
     int           nfiles;
     Ns_ReturnCode status = NS_ERROR;
 
