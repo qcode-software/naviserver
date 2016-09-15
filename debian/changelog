@@ -1,3 +1,9 @@
+naviserver (4.99.12-1) jessie; urgency=medium
+
+  * Import from upstream 4.99.12
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 15 Sep 2016 17:17:13 +0100
+
 naviserver (4.99.12~20160713-9) jessie; urgency=medium
 
   * Use debhelper for default env file install
