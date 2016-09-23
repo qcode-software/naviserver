@@ -20,7 +20,6 @@ set -e
 
 PACKAGE="naviserver"
 INSTANCE="default"
-RUNDIR="/var/run/$PACKAGE"
 LOGDIR="/var/log/$PACKAGE"
 ETCDIR="/etc/$PACKAGE"
 SSL_CERT="$ETCDIR/$INSTANCE.pem"
@@ -41,12 +40,6 @@ fi
 
 # assign ownership of run and log directories to www-data if they don't already exist.
 # If they do exist, leave the permissions be.
-
-if [ ! -d $RUNDIR ]; then
-        mkdir -p $RUNDIR
-	chown -R www-data:www-data $RUNDIR
-	chmod 755 $RUNDIR
-fi
 
 if [ ! -d $LOGDIR ]; then
         mkdir -p $LOGDIR
