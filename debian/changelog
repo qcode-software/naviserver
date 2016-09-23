@@ -1,3 +1,9 @@
+naviserver (4.99.12-1+deb8u1) jessie; urgency=medium
+
+  * Add /var/run/naviserver via tmpfiles.d. Version number change.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 23 Sep 2016 16:45:02 +0100
+
 naviserver (4.99.12-1) jessie; urgency=medium
 
   * Import from upstream 4.99.12
