@@ -1,0 +1,52 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Thu, 28 Jul 2016 10:01:03 +0100
+Subject: Add files to distclean
+
+---
+ Makefile                                           |    4 ++--
+ ...y-bash-in-Makefile-so-distclean-will-work.patch |   21 --------------------
+ 2 files changed, 2 insertions(+), 23 deletions(-)
+ delete mode 100644 debian/patches/0001-Specify-bash-in-Makefile-so-distclean-will-work.patch
+
+diff --git a/Makefile b/Makefile
+index 70e3818..1275f7c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -257,8 +257,8 @@ clean-bak: clean
+ 
+ distclean: clean
+ 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
+-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
++	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1,nsconfig.h,nsversion.h} \
++	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl naviserver.rdf version_include.man
+ 
+ dist: clean
+ 	$(RM) naviserver-$(NS_PATCH_LEVEL)
+diff --git a/debian/patches/0001-Specify-bash-in-Makefile-so-distclean-will-work.patch b/debian/patches/0001-Specify-bash-in-Makefile-so-distclean-will-work.patch
+deleted file mode 100644
+index 073afaf..0000000
+--- a/debian/patches/0001-Specify-bash-in-Makefile-so-distclean-will-work.patch
++++ /dev/null
+@@ -1,21 +0,0 @@
+-From: David Osborne <david@qcode.co.uk>
+-Date: Thu, 28 Jul 2016 09:57:35 +0100
+-Subject: Specify bash in Makefile so distclean will work
+-
+----
+- Makefile |    2 ++
+- 1 file changed, 2 insertions(+)
+-
+-diff --git a/Makefile b/Makefile
+-index a2ed4de..104ad5b 100644
+---- a/Makefile
+-+++ b/Makefile
+-@@ -29,6 +29,8 @@
+- #
+- #
+- 
+-+SHELL=/bin/bash
+-+
+- NSBUILD=1
+- include include/Makefile.global
+- 
