@@ -1,3 +1,9 @@
+naviserver (4.99.12-1+deb8u3) jessie; urgency=medium
+
+  * Use *.tmpfile suffex to install tmpfiles snippet
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 28 Sep 2016 12:34:26 +0100
+
 naviserver (4.99.12-1+deb8u2) jessie; urgency=medium
 
   * tmpfiles.d config default to www-data
