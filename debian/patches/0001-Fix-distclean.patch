@@ -1,0 +1,32 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Wed, 28 Sep 2016 16:15:39 +0100
+Subject: Fix distclean
+
+---
+ Makefile |    6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 70e3818..cba2191 100644
+--- a/Makefile
++++ b/Makefile
+@@ -29,6 +29,8 @@
+ #
+ #
+ 
++SHELL=/bin/bash
++
+ NSBUILD=1
+ include include/Makefile.global
+ 
+@@ -257,8 +259,8 @@ clean-bak: clean
+ 
+ distclean: clean
+ 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
+-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
++	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1,nsconfig.h,nsversion.h} \
++	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl naviserver.rdf version_include.man
+ 
+ dist: clean
+ 	$(RM) naviserver-$(NS_PATCH_LEVEL)
