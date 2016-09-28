@@ -1,3 +1,9 @@
+naviserver (4.99.12-1+deb8u4) jessie; urgency=medium
+
+  * Run tmpfiles snippet from postinst. Check for local version before running package version.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 28 Sep 2016 14:26:44 +0100
+
 naviserver (4.99.12-1+deb8u3) jessie; urgency=medium
 
   * Use *.tmpfile suffex to install tmpfiles snippet
