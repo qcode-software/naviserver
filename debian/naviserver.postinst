@@ -59,8 +59,15 @@ if [ -f /etc/init.d/naviserver ]; then
 	rm -f /etc/init.d/naviserver
 fi
 
-# Create tmpfiles
-
+# Create tmpfiles.
+# If a local version of tmpfiles snippet exists, use that. Otherwise use package version.
+if [ -d /run/systemd/system ] ; then
+        if [ -f /etc/tmpfiles.d/naviserver.conf ] ; then
+                systemd-tmpfiles --create /etc/tmpfiles.d/naviserver.conf >/dev/null || true
+        else
+                systemd-tmpfiles --create /usr/lib/tmpfiles.d/naviserver.conf >/dev/null || true
+        fi
+fi
 
 # Create default certificate
 if [ ! -f $SSL_CERT ]; then
