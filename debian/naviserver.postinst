@@ -38,8 +38,8 @@ if [ ! -d /var/www/html ]; then
         chmod 755 /var/www/html
 fi
 
-# assign ownership of run and log directories to www-data if they don't already exist.
-# If they do exist, leave the permissions be.
+# assign ownership of log directory to www-data if they don't already exist.
+# If it does exist, leave the permissions be.
 
 if [ ! -d $LOGDIR ]; then
         mkdir -p $LOGDIR
@@ -58,6 +58,9 @@ if [ -f /etc/init.d/naviserver ]; then
 	update-rc.d naviserver remove
 	rm -f /etc/init.d/naviserver
 fi
+
+# Create tmpfiles
+
 
 # Create default certificate
 if [ ! -f $SSL_CERT ]; then
