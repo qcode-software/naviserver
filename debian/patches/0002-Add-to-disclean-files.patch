@@ -7,7 +7,7 @@ Subject: Add to disclean files
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index 104ad5b..15ec7c1 100644
+index 5f6b75f..5a2dd12 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -259,8 +259,8 @@ clean-bak: clean
