@@ -871,7 +871,7 @@ typedef struct NsServer {
         const char *library;
         struct TclTrace *firstTracePtr;
         struct TclTrace *lastTracePtr;
-        Tcl_Obj *initfile;
+        const char *initfile;
         Ns_RWLock lock;
         const char *script;
         int length;
@@ -1168,7 +1168,6 @@ NsTclAdpAbortObjCmd,
     NsTclParseArgsObjCmd,
     NsTclParseHttpTimeObjCmd,
     NsTclParseQueryObjCmd,
-    NsTclParseUrlObjCmd,
     NsTclPauseObjCmd,
     NsTclPngSizeObjCmd,
     NsTclProgressObjCmd,

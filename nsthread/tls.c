@@ -181,13 +181,7 @@ NsCleanupTls(void **slots)
 {
     NS_NONNULL_ASSERT(slots != NULL);
 
-    if (
-#if defined(TCL_IS_FIXED)
-        1
-#else
-        NS_finalshutdown != 1
-#endif
-        ) {
+    if (NS_finalshutdown != 1) {
         int trys, retry;
         
         trys = 0;

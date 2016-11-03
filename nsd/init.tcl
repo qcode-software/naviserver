@@ -320,8 +320,7 @@ proc ns_module {key {val ""}} {
             unset -nocomplain _module
         }
         network {
-            set val [expr {$val in {nssock nsssl}}]
-
+            set val [regexp {nssock|nsssl} $val]
         }
         default {
             error "ns_module: invalid command: $key"

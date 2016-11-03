@@ -122,11 +122,10 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
      *     ^
      *     +--end
      */
+    
+    end = strchr(url, INTCHAR(':'));
+    if (end != NULL) {
 
-    for (end = url; CHARTYPE(alpha, *end) != 0; end++) {
-        ;
-    }
-    if (*end == ':') {
         /*
          * There is a protocol specified. Clear out the colon.
          * Set pprotocol to the start of the protocol, and url to
@@ -142,70 +141,84 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
         *end = '\0';
         *pprotocol = url;
         url = end + 1;
-    }
-    
-    if (url[0] == '/' && url[1] == '/') {
-        /*
-         * There are two slashes, which means a host is specified.
-         * Advance url past that and set *phost.
-         *
-         * http\0//www.foo.com:8000/baz/blah/spoo.html
-         * ^   ^   ^
-         * |   |   +-- url, *phost
-         * |   +-- end
-         * +-------- *pprotocol
-         */
-
-        url = url + 2;
-
-        *phost = url;
-
-        /*
-         * Look for a port number, which is optional.
-         */
-        Ns_HttpParseHost(url, phost, &end);
-                
-        if (end != NULL) {
+        if (url[0] == '/' && url[1] == '/') {
 
             /*
-             * A port was specified. Clear the colon and
-             * set *pport to the first digit.
+             * There are two slashes, which means a host is specified.
+             * Advance url past that and set *phost.
              *
-             * http\0//www.foo.com\08000/baz/blah/spoo.html
-             * ^       ^          ^ ^
-             * |       +-- *phost | +------ url, *pport
-             * +----- *pprotocol  +--- end
+             * http\0//www.foo.com:8000/baz/blah/spoo.html
+             * ^   ^   ^
+             * |   |   +-- url, *phost
+             * |   +-- end
+             * +-------- *pprotocol
              */
 
+            url = url + 2;
+
+            *phost = url;
+
+            /*
+             * Look for a port number, which is optional.
+             */
+            Ns_HttpParseHost(url, phost, &end);
+                
+            if (end != NULL) {
+
+                /*
+                 * A port was specified. Clear the colon and
+                 * set *pport to the first digit.
+                 *
+                 * http\0//www.foo.com\08000/baz/blah/spoo.html
+                 * ^       ^          ^ ^
+                 * |       +-- *phost | +------ url, *pport
+                 * +----- *pprotocol  +--- end
+                 */
+
+                *end = '\0';
+                url = end + 1;
+                *pport = url;
+            }
+
+            /*
+             * Move up to the slash which starts the path/tail.
+             * Clear out the dividing slash.
+             *
+             * http\0//www.foo.com\08000\0baz/blah/spoo.html
+             * ^       ^            ^   ^ ^
+             * |       |            |   | +-- url
+             * |       +-- *phost   |   +-- end
+             * +----- *pprotocol    +-- *pport
+             */
+
+            end = strchr(url, INTCHAR('/'));
+            if (end == NULL) {
+
+                /*
+                 * No path or tail specified. Return.
+                 */
+
+                *ppath = "";
+                *ptail = "";
+                return NS_OK;
+            }
             *end = '\0';
             url = end + 1;
-            *pport = url;
-        }
-
-        /*
-         * Move up to the slash which starts the path/tail.
-         * Clear out the dividing slash.
-         *
-         * http\0//www.foo.com\08000\0baz/blah/spoo.html
-         * ^       ^            ^   ^ ^
-         * |       |            |   | +-- url
-         * |       +-- *phost   |   +-- end
-         * +----- *pprotocol    +-- *pport
-         */
-
-        end = strchr(url, INTCHAR('/'));
-        if (end == NULL) {
+        } else {
 
             /*
-             * No path or tail specified. Return.
+             * The URL must have been an odd one without a hostname.
+             * Move the URL up past the dividing slash.
+             *
+             * http\0/baz/blah/spoo.html
+             * ^   ^  ^
+             * |   |  +-- url
+             * |   +-- end
+             * +-------- *pprotocol
              */
 
-            *ppath = "";
-            *ptail = "";
-            return NS_OK;
+            url++;
         }
-        *end = '\0';
-        url = end + 1;
 
         /*
          * Set the path to URL and advance to the last slash.
@@ -233,9 +246,8 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
     } else {
 
         /*
-         * This URL does not have a protocol or host. If it begins with a
-         * slash, then separate the tail from the path, otherwise it's all
-         * tail.
+         * This URL does not have a colon. If it begins with a slash, then
+         * separate the tail from the path, otherwise it's all tail.
          */
 
         if (*url == '/') {
@@ -257,6 +269,7 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
                 *ptail = end + 1;
             }
         } else {
+
             /*
              * Just set the tail, there are no slashes.
              */
@@ -334,76 +347,6 @@ done:
     Ns_DStringFree(&baseDs);
 
     return status;
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * NsTclParseUrlObjCmd --
- *
- *    Implement the "ns_parseurl" command. Offers the functionality of
- *    Ns_ParseUrl on the Tcl layer.
- *
- * Results:
- *    Tcl result.
- *
- * Side effects:
- *    none
- *
- *----------------------------------------------------------------------
- */
-int
-NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
-{
-    int         result = TCL_OK;
-    const char *urlString;
-    Ns_ObjvSpec args[] = {
-        {"url",  Ns_ObjvString, &urlString, NULL},
-        {NULL, NULL, NULL, NULL}
-    };
-
-    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
-        result = TCL_ERROR;
-    } else {
-        char     *url, *protocol, *host, *portString, *path, *tail;
-
-        url = ns_strdup(urlString);
-        if (Ns_ParseUrl(url, &protocol, &host, &portString, &path, &tail) == NS_OK) {
-            Tcl_Obj  *resultObj = Tcl_NewListObj(0, NULL);
-
-            if (protocol != NULL) {
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj("proto", 5));
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj(protocol, -1));
-            }
-            if (host != NULL) {
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj("host", 4));
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj(host, -1));
-            }
-            if (portString != NULL) {
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj("portString", 10));
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj(portString, -1));
-            }
-            if (path != NULL) {
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj("path", 4));
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj(path, -1));
-            }
-            if (tail != NULL) {
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj("tail", 4));
-                Tcl_ListObjAppendElement(NULL, resultObj, Tcl_NewStringObj(tail, -1));
-            }
-            
-            Tcl_SetObjResult(interp, resultObj);
-
-        } else {
-            Ns_TclPrintfResult(interp, "Could not parse url \"%s\"", url);
-            result = TCL_ERROR;
-        }
-        ns_free(url);
-
-
-    }
-    return result;
 }
 
 /*
