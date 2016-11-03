@@ -1,0 +1,21 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Thu, 3 Nov 2016 11:38:44 +0000
+Subject: Remove extra space from log partial times
+
+---
+ nsd/dstring.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nsd/dstring.c b/nsd/dstring.c
+index 58a90a5..0be97b0 100644
+--- a/nsd/dstring.c
++++ b/nsd/dstring.c
+@@ -424,7 +424,7 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
+     NS_NONNULL_ASSERT(dsPtr != NULL);
+     NS_NONNULL_ASSERT(timePtr != NULL);
+ 
+-    return Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
++    return Ns_DStringPrintf(dsPtr, "%" PRIu64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
+ }
+  
+  

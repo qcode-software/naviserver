@@ -1,3 +1,9 @@
+naviserver (4.99.12-1+deb8u7) jessie; urgency=medium
+
+  * Patch to remove extra space from log partial times
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 03 Nov 2016 11:39:05 +0000
+
 naviserver (4.99.12-1+deb8u6) jessie; urgency=medium
 
   * Patch to fix logpartialtimes

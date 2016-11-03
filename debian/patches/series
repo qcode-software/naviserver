@@ -2,3 +2,4 @@
 0002-Add-to-disclean-files.patch
 0003-bug-fix-for-mime-type-in-fastpath.patch
 0004-partialtimes-bug-fix.patch
+0005-Remove-extra-space-from-log-partial-times.patch
