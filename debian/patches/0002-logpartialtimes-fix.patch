@@ -1,0 +1,43 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Thu, 3 Nov 2016 14:45:06 +0000
+Subject: logpartialtimes fix
+
+---
+ nsd/dstring.c |    2 +-
+ nsd/queue.c   |    3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/nsd/dstring.c b/nsd/dstring.c
+index 58a90a5..0be97b0 100644
+--- a/nsd/dstring.c
++++ b/nsd/dstring.c
+@@ -424,7 +424,7 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
+     NS_NONNULL_ASSERT(dsPtr != NULL);
+     NS_NONNULL_ASSERT(timePtr != NULL);
+ 
+-    return Ns_DStringPrintf(dsPtr, " %" PRIu64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
++    return Ns_DStringPrintf(dsPtr, "%" PRIu64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
+ }
+  
+  
+diff --git a/nsd/queue.c b/nsd/queue.c
+index 1009fc6..4782e2d 100644
+--- a/nsd/queue.c
++++ b/nsd/queue.c
+@@ -1565,6 +1565,8 @@ ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
+         }
+     }
+ 
++    Ns_ConnTimeStats(conn);
++
+     if ((status == NS_OK) || (status == NS_FILTER_RETURN)) {
+         status = NsRunFilters(conn, NS_FILTER_TRACE);
+         if (status == NS_OK) {
+@@ -1601,7 +1603,6 @@ ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
+ 
+     (void) Ns_ConnClose(conn);
+ 
+-    Ns_ConnTimeStats(conn);
+     connPtr->reqPtr = NULL;
+ 
+     /*
