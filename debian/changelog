@@ -2,7 +2,7 @@ naviserver (4.99.12-1+deb8u6) jessie; urgency=medium
 
   * Patch to fix logpartialtimes
 
- --  Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 03 Nov 2016 11:11:53 +0000
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 03 Nov 2016 11:11:53 +0000
 
 naviserver (4.99.12-1+deb8u5) jessie; urgency=medium
 
