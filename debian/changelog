@@ -1,3 +1,9 @@
+naviserver (4.99.12-1+deb7u3) wheezy; urgency=low
+
+  * Patch to return correct mime type when gzipped delivery
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 06 Jan 2017 16:57:11 +0000
+
 naviserver (4.99.12-1+deb7u2) wheezy; urgency=low
 
   * Patch to fix logpartialtimes

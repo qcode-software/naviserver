@@ -1,0 +1,42 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Fri, 6 Jan 2017 16:56:18 +0000
+Subject: Gzipped Mime Type Fix
+
+---
+ nsd/fastpath.c |   16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/nsd/fastpath.c b/nsd/fastpath.c
+index 3319977..1cade97 100644
+--- a/nsd/fastpath.c
++++ b/nsd/fastpath.c
+@@ -509,6 +509,14 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
+         return status;
+     }
+ 
++    /*
++     * Determine the mime type if not given.
++     */
++
++    if (mimeType == NULL) {
++        mimeType = Ns_GetMimeType(file);
++    }
++    
+     Tcl_DStringInit(dsPtr);
+ 
+     /*
+@@ -556,14 +564,6 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
+     }
+ 
+     /*
+-     * Determine the mime type if not given.
+-     */
+-
+-    if (mimeType == NULL) {
+-        mimeType = Ns_GetMimeType(file);
+-    }
+-    
+-    /*
+      * For no output (i.e., HEAD request), just send required
+      * headers.
+      */
