@@ -1,3 +1,9 @@
+naviserver (4.99.15-1+deb8u1) jessie; urgency=medium
+
+  * Upstream 4.99.15 release
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 13 Feb 2017 16:58:42 +0000
+
 naviserver (4.99.12-1+deb8u7) jessie; urgency=medium
 
   * Patch to remove extra space from log partial times
