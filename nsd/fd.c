@@ -132,7 +132,8 @@ NsInitFd(void)
 #ifdef __APPLE__
 #include <sys/sysctl.h>
                     size_t len = sizeof(int);
-                    int maxf;
+                    rlim_t maxf;
+
                     if (!sysctlbyname("kern.maxfiles", &maxf, &len, NULL, 0)) {
                         rl.rlim_cur = rl.rlim_max = maxf > OPEN_MAX ? OPEN_MAX : maxf;
                     } else {
@@ -144,7 +145,7 @@ NsInitFd(void)
                     rl.rlim_cur = rl.rlim_max = 256;
 #endif /* __APPLE__ */
                     if (setrlimit(RLIMIT_NOFILE, &rl)) {
-                        Ns_Log(Warning,"fd: setrlimit(RLIMIT_NOFILE, %u) failed: %s",
+                        Ns_Log(Warning, "fd: setrlimit(RLIMIT_NOFILE, %u) failed: %s",
                                (unsigned int) rl.rlim_max, strerror(errno));
                     }
                 }
@@ -348,7 +349,7 @@ Ns_GetTemp(void)
     do {
         Ns_GetTime(&now);
         snprintf(buf, sizeof(buf), "nstmp.%" PRId64 ".%06ld", (int64_t)now.sec, now.usec);
-        path = Ns_MakePath(&ds, P_tmpdir, buf, NULL);
+        path = Ns_MakePath(&ds, P_tmpdir, buf, (char *)0);
 #ifdef _WIN32
         fd = _sopen(path, flags, _SH_DENYRW, _S_IREAD|_S_IWRITE);
 #else

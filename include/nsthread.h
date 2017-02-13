@@ -134,6 +134,12 @@ typedef          long int intmax_t;
 typedef unsigned long int uintmax_t;
 
 typedef          DWORD pid_t;
+typedef          long uid_t;
+typedef          long gid_t;
+typedef          long suseconds_t;
+
+#  define NS_INITGROUPS_GID_T int
+#  define NS_MSG_IOVLEN_T int
 
 #  define NS_SOCKET		SOCKET
 #  define NS_INVALID_SOCKET     (INVALID_SOCKET)
@@ -178,10 +184,6 @@ MSVC++ 14.0 _MSC_VER == 1900 (Visual Studio 2015)
 
 #  define getpid()                    (pid_t)GetCurrentProcessId()
 #  define ftruncate(f,s)              _chsize((f),(s))
-
-#  ifndef P_tmpdir
-#   define P_tmpdir "/tmp"
-#  endif
 
 # else
 /*
@@ -258,6 +260,7 @@ MSVC++ 14.0 _MSC_VER == 1900 (Visual Studio 2015)
 #  define HAVE_IPV6                   1
 #  define HAVE_INET_NTOP              1
 #  define HAVE_INET_PTON              1
+#  define NS_NAVISERVER               "c:/ns"
 # endif
 
 /*
@@ -392,13 +395,26 @@ typedef struct DIR_ *DIR;
 # endif
 
 #if defined(__APPLE__) || defined(__darwin__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-/* The *BSD family seem to requires these access macros */
 # ifndef s6_addr16
 #  define s6_addr16 __u6_addr.__u6_addr16
 # endif
 # ifndef s6_addr32
 #  define s6_addr32 __u6_addr.__u6_addr32
 # endif
+# define S6_ADDR16(x) ((uint16_t*)(x).s6_addr16)
+# define NS_INITGROUPS_GID_T int
+# define NS_MSG_IOVLEN_T int
+#else
+# if defined(__sun)
+#  define S6_ADDR16(x) ((uint16_t*)((char*)&(x).s6_addr))
+#  ifndef s6_addr32
+#   define s6_addr32 _S6_un._S6_u32
+#  endif
+# else
+#  define S6_ADDR16(x) ((uint16_t*)(x).s6_addr16)
+# endif
+# define NS_INITGROUPS_GID_T gid_t
+# define NS_MSG_IOVLEN_T size_t
 #endif
 
 # ifdef __OpenBSD__
@@ -499,7 +515,6 @@ typedef struct DIR_ *DIR;
 # include <sys/param.h>
 #endif
 
-
 #ifdef HAVE_IPV6
 # ifndef AF_INET6
 #  warning "Strange System: have no AF_INET6. Deactivating IPv6 support."
@@ -527,6 +542,53 @@ typedef struct DIR_ *DIR;
 # define NS_IPADDR_SIZE      INET_ADDRSTRLEN
 #endif
 
+/*
+ * Well behaved compiler with C99 support should define __STDC_VERSION__
+ */
+#if defined(__STDC_VERSION__)
+# if __STDC_VERSION__ >= 199901L
+#  define NS_HAVE_C99
+# endif
+#endif
+
+/* 
+ * Starting with Visual Studio 2013, Microsoft provides C99 library support.
+ */
+#if (!defined(NS_HAVE_C99)) && defined(_MSC_VER) && (_MSC_VER >= 1800)
+# define NS_HAVE_C99
+#endif
+
+/*
+ * Boolean type "bool" and constants
+ */
+#ifdef NS_HAVE_C99
+   /* 
+    * C99 
+    */
+# include <stdbool.h>
+# define NS_TRUE                    true
+# define NS_FALSE                   false
+#else
+   /* 
+    * Not C99 
+    */
+# if defined(__cplusplus)
+   /* 
+    * C++ is similar to C99, but no include necessary
+    */
+#  define NS_TRUE                    true
+#  define NS_FALSE                   false
+# else
+   /* 
+    * If everything fails, use int type and int values for bool
+    */
+typedef int bool;
+#  define NS_TRUE                    1
+#  define NS_FALSE                   0
+# endif
+#endif
+
+
 #ifdef _WIN32
 # ifndef EINPROGRESS
 #  define EINPROGRESS                WSAEINPROGRESS
@@ -536,6 +598,9 @@ typedef struct DIR_ *DIR;
 # endif
 # ifndef ETIMEDOUT
 #  define ETIMEDOUT                 1
+# endif
+# ifndef P_tmpdir
+#  define P_tmpdir "/tmp"
 # endif
 #endif
 
@@ -549,13 +614,6 @@ typedef struct DIR_ *DIR;
 
 #ifndef F_CLOEXEC
 # define F_CLOEXEC                  1
-#endif
-
-#ifndef __linux
-# ifdef FD_SETSIZE
-#  undef FD_SETSIZE
-# endif
-# define FD_SETSIZE                  1024
 #endif
 
 #ifndef PATH_MAX
@@ -743,6 +801,53 @@ typedef struct DIR_ *DIR;
 #endif
 
 /*
+ * Well behaved compiler with C99 support should define __STDC_VERSION__
+ */
+#if defined(__STDC_VERSION__)
+# if __STDC_VERSION__ >= 199901L
+#  define NS_HAVE_C99
+# endif
+#endif
+
+/* 
+ * Starting with Visual Studio 2013, Microsoft provides C99 library support.
+ */
+#if (!defined(NS_HAVE_C99)) && defined(_MSC_VER) && (_MSC_VER >= 1800)
+# define NS_HAVE_C99
+#endif
+
+/*
+ * Boolean type "bool" and constants
+ */
+#ifdef NS_HAVE_C99
+   /* 
+    * C99 
+    */
+# include <stdbool.h>
+# define NS_TRUE                    true
+# define NS_FALSE                   false
+#else
+   /* 
+    * Not C99 
+    */
+# if defined(__cplusplus)
+   /* 
+    * C++ is similar to C99, but no include necessary
+    */
+#  define NS_TRUE                    true
+#  define NS_FALSE                   false
+# else
+   /* 
+    * If everything fails, use int type and int values for bool
+    */
+typedef int bool;
+#  define NS_TRUE                    1
+#  define NS_FALSE                   0
+# endif
+#endif
+
+   
+/*
  * NaviServer return codes. Similar to Tcl return codes, but not compatible,
  * since negative numbers denote different kinds of non-success.
  */
@@ -906,7 +1011,7 @@ NS_EXTERN int ns_signal(int sig, void (*proc)(int));
  * thread.c:
  */
 
-NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stackSize,
+NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, ssize_t stackSize,
 			       Ns_Thread *resultPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadExit(void *arg);
 NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr) NS_GNUC_NONNULL(1);
@@ -916,7 +1021,7 @@ NS_EXTERN uintptr_t Ns_ThreadId(void);
 NS_EXTERN void Ns_ThreadSelf(Ns_Thread *threadPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN const char *Ns_ThreadGetName(void)       NS_GNUC_RETURNS_NONNULL;
 NS_EXTERN const char *Ns_ThreadGetParent(void)     NS_GNUC_RETURNS_NONNULL;
-NS_EXTERN long Ns_ThreadStackSize(long size);
+NS_EXTERN ssize_t Ns_ThreadStackSize(ssize_t size);
 NS_EXTERN void Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -930,7 +1035,7 @@ NS_EXTERN void Ns_GetTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_AdjTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_IncrTime(Ns_Time *timePtr, long sec, long usec)  NS_GNUC_NONNULL(1);
 NS_EXTERN Ns_Time *Ns_AbsoluteTime(Ns_Time *absPtr, Ns_Time *adjPtr)  NS_GNUC_NONNULL(1);
-NS_EXTERN int  Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *resultPtr)  
+NS_EXTERN long Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *resultPtr)  
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 /*
  * tls.c:
@@ -972,6 +1077,7 @@ NS_EXTERN ssize_t ns_recv(NS_SOCKET socket, void *buffer, size_t length, int fla
 NS_EXTERN ssize_t ns_send(NS_SOCKET socket, const void *buffer, size_t length, int flags);
 #endif
 
+
 /*
  * Tcl 8.6 and TIP 330/336 compatability
  */
@@ -980,7 +1086,9 @@ NS_EXTERN ssize_t ns_send(NS_SOCKET socket, const void *buffer, size_t length, i
 #define Tcl_GetErrorLine(interp) ((interp)->errorLine)
 #endif
 
+
 NS_EXTERN int NS_finalshutdown;
+NS_EXTERN bool NS_mutexlocktrace;
 
 #endif /* NSTHREAD_H */
 

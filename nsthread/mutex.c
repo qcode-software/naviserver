@@ -48,6 +48,16 @@
  * #define NS_NO_MUTEX_TIMING 1
  */
 
+#ifdef _WIN32
+# define NS_THREAD_ID GetCurrentThreadId()
+NS_EXTERN bool NS_mutexlocktrace;
+#else
+# define NS_THREAD_ID (void*)pthread_self()
+#endif
+
+bool NS_mutexlocktrace = NS_FALSE;
+
+
 
 /*
  * The following structure defines a mutex with
@@ -70,6 +80,7 @@ typedef struct Mutex {
 #define GETMUTEX(mutex) (*(mutex) != NULL ? ((Mutex *)*(mutex)) : GetMutex((mutex)))
 static Mutex *GetMutex(Ns_Mutex *mutex) NS_GNUC_NONNULL(1);
 static Mutex *firstMutexPtr;
+
 
 
 /*
@@ -267,9 +278,9 @@ Ns_MutexLock(Ns_Mutex *mutex)
         Ns_DiffTime(&end, &startTime, &diff);
 	Ns_IncrTime(&mutexPtr->total_waiting_time, diff.sec, diff.usec);
 
-	if (diff.sec > 1 || diff.usec > 100000) {
-	    fprintf(stderr, "Mutex lock %s: wait duration %" PRIu64 ".%06ld\n",
-		   mutexPtr->name, (int64_t)diff.sec, diff.usec);
+	if (NS_mutexlocktrace && (diff.sec > 1 || diff.usec > 100000)) {
+	    fprintf(stderr, "[%lx] Mutex lock %s: wait duration %" PRIu64 ".%06ld\n",
+                    (long)NS_THREAD_ID, mutexPtr->name, (int64_t)diff.sec, diff.usec);
 	}
 
         /* 
@@ -356,12 +367,10 @@ Ns_MutexUnlock(Ns_Mutex *mutex)
 
     NsLockUnset(mutexPtr->lock);
 
-    /*
-    if (diff.sec > 1 || diff.usec > 100000) {
-	fprintf(stderr, "Mutex unlock %s: lock duration %" PRIu64 ".%.6ld\n",
-		mutexPtr->name, (int64_t)diff.sec, diff.usec);
+    if (NS_mutexlocktrace && (diff.sec > 1 || diff.usec > 100000)) {
+        fprintf(stderr, "[%lx] Mutex unlock %s: lock duration %" PRIu64 ".%06ld\n",
+                (long)NS_THREAD_ID, mutexPtr->name, (int64_t)diff.sec, diff.usec);
     }
-    */
 
 }
 

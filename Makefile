@@ -53,7 +53,7 @@ all:
 help:
 	@echo 'Commonly used make targets:'
 	@echo '  all          - build program and documentation'
-	@echo '  install      - install program and man pages to PREFIX ($(PREFIX))'
+	@echo '  install      - install program and man pages under $(NAVISERVER)'
 	@echo '  test         - run all tests in the automatic test suite'
 	@echo '  gdbtest      - run all tests, under the control of the debugger'
 	@echo '  runtest      - start the server in interactive command mode'
@@ -134,9 +134,17 @@ install-tests:
 	$(CP) -r tests $(INSTSRVPAG)
 
 install-doc:
-	@$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc
-	$(CP) doc/html/* $(DESTDIR)$(NAVISERVER)/pages/doc
-	$(CP) contrib/banners/*.png $(DESTDIR)$(NAVISERVER)/pages/doc
+	@if [ -d doc/html ]; then \
+		$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		$(CP) doc/html/* $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		$(CP) contrib/banners/*.png $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		echo "\nThe documentation is installed under: $(DESTDIR)$(NAVISERVER)/pages/doc" ; \
+	else \
+		echo "\nNo documentation is installed locally; either generate the documentation with" ; \
+		echo "   make build-doc"; \
+		echo "(which requires tcllib to be installed, such that dtplite can be used for the generation)" ; \
+		echo "or use the online documentation from http://naviserver.sourceforge.net/n/toc.html" ; \
+	fi;
 
 install-examples:
 	@$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/examples
@@ -222,7 +230,7 @@ gdbtest: all
 	rm gdb.run
 
 lldbtest: all
-	$(NS_LD_LIBRARY_PATH) lldb -o run -- ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL) 
+	$(NS_LD_LIBRARY_PATH) lldb -- ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL) 
 
 lldb-sample: all
 	lldb -o run -- $(DESTDIR)$(NAVISERVER)/bin/nsd -f -u nsadmin -t $(DESTDIR)$(NAVISERVER)/conf/nsd-config.tcl
@@ -239,7 +247,7 @@ helgrind: all
 	$(NS_LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
 cppcheck:
-	cppcheck --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
 checkexports: all
@@ -265,6 +273,8 @@ dist: clean
 	$(MKDIR) naviserver-$(NS_PATCH_LEVEL)
 	$(CP) $(distfiles) naviserver-$(NS_PATCH_LEVEL)
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/include/{config.h,Makefile.global,Makefile.module,stamp-h1}
+	$(RM) naviserver-$(NS_PATCH_LEVEL)/*/*-{debug,gn}
+	$(RM) naviserver-$(NS_PATCH_LEVEL)/*/*~
 	hg log --style=changelog > naviserver-$(NS_PATCH_LEVEL)/ChangeLog
 	find naviserver-$(NS_PATCH_LEVEL) -name '.[a-zA-Z_]*' -exec rm \{} \;
 	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)

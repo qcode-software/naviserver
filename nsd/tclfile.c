@@ -188,6 +188,9 @@ FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, const char *cmd)
         result = TCL_ERROR;
 
     } else {
+        /*
+         * All parameters are ok.
+         */
         Ns_ReturnCode status;
 
         if (*cmd == 'p' /* "purge" */ ) {
@@ -223,80 +226,49 @@ NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 /*
  *----------------------------------------------------------------------
  *
- * NsTclMkTempCmd --
+ * NsTclMkTempObjCmd --
  *
- *      Implements ns_mktemp.
+ *      Implements ns_mktemp. The function generates a unique
+ *      temporary filename using optionally a template as argument.
+ *
+ *      In general, the function mktemp() is not recommended, since
+ *      there is a time gap between the generation of a file name and
+ *      the generation of a file or directory with the * name. This
+ *      can result in race conditions or * attacks. however, using the
+ *      finction is still better than * home-brewed solutions for the
+ *      same task.
  *
  * Results:
  *      Tcl result.
  *
  * Side effects:
- *      Allocates memory for the filename as a TCL_VOLATILE object.
+ *      Allocates potentially memory for the filename.
  *
  *----------------------------------------------------------------------
  */
 int
-NsTclMkTempCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int argc, CONST84 char *argv[])
+NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int result = TCL_OK;
+    int          result = TCL_OK;
+    char        *templateString = NULL;
+    Ns_ObjvSpec  args[] = {
+        {"?template", Ns_ObjvString, &templateString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (argc == 1) {
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (objc == 1) {
         char buffer[PATH_MAX] = "";
 
         snprintf(buffer, sizeof(buffer), "%s/ns-XXXXXX", nsconf.tmpDir);
 	Tcl_SetObjResult(interp, Tcl_NewStringObj(mktemp(buffer), -1));
 
-    } else if (argc == 2) {
-	char *buffer = ns_strdup(argv[1]);
+    } else /*if (objc == 2)*/ {
+	char *buffer = ns_strdup(templateString);
 
 	Tcl_SetResult(interp, mktemp(buffer), (Tcl_FreeProc *)ns_free);
-
-    } else {
-        Ns_TclPrintfResult(interp, "wrong # of args: should be \"%s ?template?\"",
-                           argv[0]);
-        result = TCL_ERROR;
-    }
-
-    return result;
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * NsTclTmpNamObjCmd --
- *
- *  Implements ns_tmpnam as obj command.
- *
- *  The fallback definition of L_tmpnam was removed in Tcl on
- *  2015-07-15, so we add it here locally, since this is the only
- *  usage
- *
- * Results:
- *  Tcl result.
- *
- * Side effects:
- *  See docs.
- *
- *----------------------------------------------------------------------
- */
-#ifndef L_tmpnam
-# define L_tmpnam	100
-#endif
-
-int
-NsTclTmpNamObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int UNUSED(objc), Tcl_Obj *CONST* objv)
-{
-    char buf[L_tmpnam];
-    int  result = TCL_OK;
-
-    Ns_LogDeprecated(objv, 1, "ns_mktemp ?template?", NULL);
-
-    if (tmpnam(buf) == NULL) {
-        Tcl_SetResult(interp, "could not get temporary filename", TCL_STATIC);
-        result = TCL_ERROR;
-    } else {
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, -1));
     }
 
     return result;
@@ -365,7 +337,7 @@ NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 int
 NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char *file1, *file2;
+    char       *file1, *file2;
     int         nocomplain = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-nocomplain", Ns_ObjvBool,  &nocomplain, INT2PTR(NS_TRUE)},
@@ -430,6 +402,9 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
         Tcl_SetResult(interp, "no connection", TCL_STATIC);
         result = TCL_ERROR;
     } else  {
+        /*
+         * All parameters are ok.
+         */
         Ns_ReturnCode status = Ns_ConnSendChannel(itPtr->conn, chan, (size_t)nbytes);
         if (unlikely(status != NS_OK)) {
             Tcl_SetResult(interp, "i/o failed", TCL_STATIC);
@@ -459,9 +434,9 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 int
 NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char *fileString;
-    off_t       length = 0;
-    int         result = TCL_OK;
+    char    *fileString;
+    off_t    length = 0;
+    int      result = TCL_OK;
 
     Ns_ObjvSpec args[] = {
 	{"file",      Ns_ObjvString, &fileString, NULL},
@@ -504,8 +479,7 @@ NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 {
     int         fd, result = TCL_OK;
     off_t       length = 0;
-    const char *fileIdString;
-
+    char       *fileIdString;
     Ns_ObjvSpec args[] = {
 	{"fileId",    Ns_ObjvString, &fileIdString, NULL},
 	{"?length",   Ns_ObjvInt,    &length,  NULL},
@@ -582,7 +556,7 @@ NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int 
 static int
 ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char     *name, *chanName;
+    char           *name, *chanName;
     int             result = TCL_OK;
     Ns_ObjvSpec     args[] = {
         {"channel", Ns_ObjvString, &chanName, NULL},
@@ -604,6 +578,9 @@ ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *C
             result = TCL_ERROR;
 
         } else {
+            /*
+             * All parameters are ok.
+             */
             const NsInterp *itPtr = clientData;
             NsServer       *servPtr = itPtr->servPtr;
             Tcl_HashEntry  *hPtr;
@@ -654,10 +631,10 @@ ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *C
 static int
 ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char     *name;
-    int             result = TCL_OK;
-    Ns_ObjvSpec     args[] = {
-        {"name",     Ns_ObjvString, &name, NULL},
+    char        *name;
+    int          result = TCL_OK;
+    Ns_ObjvSpec  args[] = {
+        {"name", Ns_ObjvString, &name, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -716,9 +693,9 @@ ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
 static int
 ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char     *name;
-    int             result = TCL_OK;
-    Ns_ObjvSpec     args[] = {
+    char         *name;
+    int           result = TCL_OK;
+    Ns_ObjvSpec   args[] = {
         {"name",     Ns_ObjvString, &name, NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -1000,7 +977,7 @@ UnspliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
      * during the Tcl_UnregisterChannel().
      */
 
-    Tcl_RegisterChannel((Tcl_Interp *) NULL, chan);
+    Tcl_RegisterChannel(NULL, chan);
     (void) Tcl_UnregisterChannel(interp, chan);
 
     Tcl_CutChannel(chan);

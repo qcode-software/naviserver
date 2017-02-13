@@ -145,20 +145,22 @@ Ns_SetUser(const char *UNUSED(user))
 BOOL APIENTRY
 DllMain(HANDLE hModule, DWORD why, LPVOID UNUSED(lpReserved))
 {
+    BOOL    result = TRUE;
     WSADATA wsd;
 
     if (why == (DWORD)DLL_PROCESS_ATTACH) {
         Ns_TlsAlloc(&tls, ns_free);
         if (WSAStartup((WORD)MAKEWORD(1, 1), &wsd) != 0) {
-            return FALSE;
+            result = FALSE;
+        } else {
+            DisableThreadLibraryCalls(hModule);
+            Nsd_LibInit();
         }
-        DisableThreadLibraryCalls(hModule);
-        Nsd_LibInit();
     } else if (why == (DWORD)DLL_PROCESS_DETACH) {
         WSACleanup();
     }
 
-    return TRUE;
+    return result;
 }
 
 
@@ -363,7 +365,7 @@ NsInstallService(char *service)
         Ns_DStringInit(&name);
         Ns_DStringInit(&cmd);
         Ns_DStringVarAppend(&cmd, "\"", nsd, "\"",
-                            " -S -s ", service, " -t \"", config, "\"", NULL);
+                            " -S -s ", service, " -t \"", config, "\"", (char *)0);
         (void) GetServiceName(&name, service);
         hmgr = OpenSCManager(NULL, NULL, (DWORD)SC_MANAGER_ALL_ACCESS);
         if (hmgr != NULL) {
@@ -538,9 +540,9 @@ NsSendSignal(int sig)
 Ns_ReturnCode
 NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
 {
-    HANDLE hndl, mobj;
-    LPCVOID addr;
-    char name[256];
+    HANDLE        hndl, mobj;
+    char          name[256];
+    Ns_ReturnCode status = NS_OK;
 
     switch (mode) {
     case NS_MMAP_WRITE:
@@ -582,28 +584,32 @@ NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
     if (mobj == NULL || mobj == INVALID_HANDLE_VALUE) {
         Ns_Log(Error, "CreateFileMapping(%s): %ld", path, GetLastError());
         CloseHandle(hndl);
-        return NS_ERROR;
+        status = NS_ERROR;
+
+    } else {
+        LPCVOID       addr;
+
+        addr = MapViewOfFile(mobj,
+                             mode == NS_MMAP_WRITE ? (DWORD)FILE_MAP_WRITE : (DWORD)FILE_MAP_READ,
+                             0u,
+                             0u,
+                             size);
+
+        if (addr == NULL) {
+            Ns_Log(Warning, "MapViewOfFile(%s): %ld", path, GetLastError());
+            CloseHandle(mobj);
+            CloseHandle(hndl);
+            status = NS_ERROR;
+            
+        } else {
+            mapPtr->mapobj = (void *) mobj;
+            mapPtr->handle = (int) hndl;
+            mapPtr->addr   = (void *) addr;
+            mapPtr->size   = size;
+        }
     }
-
-    addr = MapViewOfFile(mobj,
-                         mode == NS_MMAP_WRITE ? (DWORD)FILE_MAP_WRITE : (DWORD)FILE_MAP_READ,
-                         0u,
-                         0u,
-                         size);
-
-    if (addr == NULL) {
-        Ns_Log(Warning, "MapViewOfFile(%s): %ld", path, GetLastError());
-        CloseHandle(mobj);
-        CloseHandle(hndl);
-        return NS_ERROR;
-    }
-
-    mapPtr->mapobj = (void *) mobj;
-    mapPtr->handle = (int) hndl;
-    mapPtr->addr   = (void *) addr;
-    mapPtr->size   = size;
-
-    return NS_OK;
+    
+    return status;
 }
 
 
@@ -653,11 +659,15 @@ NsMemUmap(const FileMap *mapPtr)
 int
 ns_socknbclose(NS_SOCKET sock)
 {
+    int result;
+    
     if (Ns_SockCloseLater(sock) != NS_OK) {
-        return SOCKET_ERROR;
+        result = SOCKET_ERROR;
+    } else {
+        result = 0;
     }
 
-    return 0;
+    return result;
 }
 
 
@@ -680,15 +690,18 @@ ns_socknbclose(NS_SOCKET sock)
 NS_SOCKET
 ns_sockdup(NS_SOCKET sock)
 {
-    HANDLE hp, src, dup;
+    HANDLE    hp, src, dup;
+    NS_SOCKET result;
 
     src = (HANDLE) sock;
     hp = GetCurrentProcess();
     if (DuplicateHandle(hp, src, hp, &dup, 0u, FALSE, (DWORD)DUPLICATE_SAME_ACCESS) == 0) {
-        return NS_INVALID_SOCKET;
+        result = NS_INVALID_SOCKET;
+    } else {
+        result = (NS_SOCKET) dup;
     }
 
-    return (NS_SOCKET) dup;
+    return result;
 }
 
 
@@ -765,14 +778,21 @@ ns_mkstemp(char *charTemplate)
     err = _mktemp_s(charTemplate, strlen(charTemplate));
 
     if (err == 0) {
+        /* 
+         * We had for a while _O_TEMPORARY here as well, which deletes the
+         * file, when he file when the last file descriptor is
+         * closed. It is removed here for compatibility reasons.
+         *
+         * note, that O_TMPFILE (since Linux 3.11) has different semantics.
+         */
 	err = _sopen_s(&fd, charTemplate, 
-		       O_RDWR | O_CREAT |_O_TEMPORARY | O_EXCL, 
+		       O_RDWR | O_CREAT | O_EXCL, 
 		       _SH_DENYRW,
 		       _S_IREAD | _S_IWRITE);
     }
 
     if (err != 0) {
-	return -1;
+	fd = NS_INVALID_FD;
     }
 
     return fd;
@@ -800,35 +820,49 @@ ns_mkstemp(char *charTemplate)
 static bool
 SockAddrEqual(const struct sockaddr *saPtr1, const struct sockaddr *saPtr2)
 {
+    bool equal = NS_TRUE;
+    
 #ifdef HAVE_IPV6
     if (saPtr1->sa_family != saPtr2->sa_family) {
-        return NS_FALSE;
-    }
-    if (saPtr1->sa_family == AF_INET) {
+        /*
+         * Different families.
+         */
+        equal = NS_FALSE;
+    } else if (saPtr1->sa_family == AF_INET) {
+        /*
+         * IPv4, we can directly compare the IP addresses.
+         */
         if (((struct sockaddr_in *)saPtr1)->sin_addr.s_addr !=
             ((struct sockaddr_in *)saPtr2)->sin_addr.s_addr) {
-            return NS_FALSE;
+            equal = NS_FALSE;
         }
     } else if (saPtr1->sa_family == AF_INET6) {
         const struct in6_addr *sa1Bits = &(((struct sockaddr_in6 *)saPtr1)->sin6_addr);
         const struct in6_addr *sa2Bits = &(((struct sockaddr_in6 *)saPtr2)->sin6_addr);
         int i;
         
+        /*
+         * Compare the eight words
+         */
         for (i = 0; i < 8; i++) {
             if (sa1Bits->u.Word[i] != sa2Bits->u.Word[i]) {
-                return NS_FALSE;
+                equal = NS_FALSE;
+                break;
             }
         }
     } else {
-        return NS_FALSE;
+        equal = NS_FALSE;
     }
 #else
+    /*
+     * Handle here just IPv4.
+     */
     if (((struct sockaddr_in *)saPtr1)->sin_addr.s_addr !=
         ((struct sockaddr_in *)saPtr2)->sin_addr.s_addr) {
-        return NS_FALSE;
+        equal = NS_FALSE;
     }
 #endif
-    return NS_TRUE;
+    return equal;
 }
 
 
@@ -908,7 +942,7 @@ ns_sockpair(NS_SOCKET socks[2])
  */
 
 NS_SOCKET
-Ns_SockListenEx(const char *address, unsigned short port, int backlog)
+Ns_SockListenEx(const char *address, unsigned short port, int backlog, bool reuseport)
 {
     NS_SOCKET sock;
     struct NS_SOCKADDR_STORAGE sa;
@@ -917,7 +951,7 @@ Ns_SockListenEx(const char *address, unsigned short port, int backlog)
     if (Ns_GetSockAddr(saPtr, address, port) != NS_OK) {
         sock = NS_INVALID_SOCKET;
     } else {
-        sock = Ns_SockBind(saPtr);
+        sock = Ns_SockBind(saPtr, reuseport);
         if (sock != NS_INVALID_SOCKET && listen(sock, backlog) != 0) {
             ns_sockclose(sock);
             sock = NS_INVALID_SOCKET;
@@ -972,7 +1006,7 @@ ConsoleHandler(DWORD UNUSED(code))
 static char *
 GetServiceName(Ns_DString *dsPtr, char *service)
 {
-    Ns_DStringVarAppend(dsPtr, PACKAGE_NAME, "-", service, NULL);
+    Ns_DStringVarAppend(dsPtr, PACKAGE_NAME, "-", service, (char *)0);
     return dsPtr->string;
 }
 
@@ -1182,7 +1216,7 @@ ReportStatus(DWORD state, DWORD code, DWORD hint)
  */
 
 int
-ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
+ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, long timo)
 {
     struct timeval        timeout;
     const struct timeval *toPtr;
@@ -1230,7 +1264,7 @@ ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
                 continue;
             }
             if (FD_ISSET(fds[i].fd, &ifds)) {
-                fds[i].revents |= POLLIN;
+                fds[i].revents |= (short)POLLIN;
             }
             if (FD_ISSET(fds[i].fd, &ofds)) {
                 fds[i].revents |= POLLOUT;

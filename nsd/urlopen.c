@@ -65,6 +65,9 @@ static bool FillBuf(Stream *sPtr)
  *      Fetch a page off of this very server. Url must reference a 
  *      file in the filesystem. 
  *
+ *      This function is deprecated, one should use the nmuch more general
+ *      "ns_http" machinery instead.
+ *
  * Results:
  *      NS_OK or NS_ERROR.
  *
@@ -110,7 +113,10 @@ Ns_FetchPage(Ns_DString *dsPtr, const char *url, const char *server)
  *
  * Ns_FetchURL --
  *
- *      Open up an HTTP connection to an arbitrary URL. 
+ *      Open up an HTTP connection to an arbitrary URL.  
+ *
+ *      This function is deprecated, one should use the nmuch more general
+ *      "ns_http" machinery instead.
  *
  * Results:
  *      NS_OK or NS_ERROR.
@@ -144,7 +150,7 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
      * Parse the URL and open a connection.
      */
 
-    Ns_DStringVarAppend(&ds, "GET ", url, " HTTP/1.0", NULL);
+    Ns_DStringVarAppend(&ds, "GET ", url, " HTTP/1.0", (char *)0);
     status = Ns_ParseRequest(&request, ds.string);
     if (status == NS_ERROR ||
         request.protocol == NULL ||
@@ -168,9 +174,9 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
      */
      
     Ns_DStringSetLength(&ds, 0);
-    Ns_DStringVarAppend(&ds, "GET ", request.url, NULL);
+    Ns_DStringVarAppend(&ds, "GET ", request.url, (char *)0);
     if (request.query != NULL) {
-        Ns_DStringVarAppend(&ds, "?", request.query, NULL);
+        Ns_DStringVarAppend(&ds, "?", request.query, (char *)0);
     }
     Ns_DStringAppend(&ds, " HTTP/1.0\r\nAccept: */*\r\n\r\n");
     p = ds.string;
@@ -254,6 +260,7 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
  * NsTclGetUrlObjCmd --
  *
  *      Implements ns_geturl. 
+ *      This function is deprecated, use ns_http instead.
  *
  * Results:
  *      Tcl result.
@@ -267,55 +274,54 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
 int
 NsTclGetUrlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const NsInterp *itPtr = clientData;
-    Ns_DString      ds;
-    Ns_Set         *headers;
     int             code;
-    Ns_ReturnCode   status;
-    const char     *url;
 
     if ((objc != 3) && (objc != 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "url ?headersSetIdVar?");
-        return TCL_ERROR;
-    }
+        code = TCL_ERROR;
 
-    Ns_LogDeprecated(objv, 2, "ns_http queue ...; ns_http wait ...", NULL);
-    
-    code = TCL_ERROR;
-    if (objc == 2) {
-        headers = NULL;
     } else {
-        headers = Ns_SetCreate(NULL);
-    }
-    Ns_DStringInit(&ds);
-    url = Tcl_GetString(objv[1]);
-    if (url[1] == '/') {
-        status = Ns_FetchPage(&ds, url, itPtr->servPtr->server);
-    } else {
-        status = Ns_FetchURL(&ds, url, headers);
-    }
-    if (status != NS_OK) {
-        Tcl_AppendStringsToObj(Tcl_GetObjResult(interp), "could not fetch: ",
-                               Tcl_GetString(objv[1]), NULL);
-        if (headers != NULL) {
-            Ns_SetFree(headers);
-        }
-        goto done;
-    }
-    if (objc == 3) {
-        if (Ns_TclEnterSet(interp, headers, NS_TCL_SET_DYNAMIC) != TCL_OK) {
-            goto done;
-        }
-        if (Tcl_ObjSetVar2(interp, objv[2], NULL, Tcl_GetObjResult(interp),
-                           TCL_LEAVE_ERR_MSG) == NULL) {
-            goto done;
-        }
-    }
-    Tcl_DStringResult(interp, &ds);
-    code = TCL_OK;
+        const NsInterp *itPtr = clientData;
+        Ns_Set         *headers;
+        Ns_ReturnCode   status;
+        const char     *url;
+        Ns_DString      ds;
+        
+        Ns_LogDeprecated(objv, 2, "ns_http queue ...; ns_http wait ...", NULL);
     
-done:
-    Ns_DStringFree(&ds);
+        code = TCL_ERROR;
+        if (objc == 2) {
+            headers = NULL;
+        } else {
+            headers = Ns_SetCreate(NULL);
+        }
+        Ns_DStringInit(&ds);
+        url = Tcl_GetString(objv[1]);
+        if (url[1] == '/') {
+            status = Ns_FetchPage(&ds, url, itPtr->servPtr->server);
+        } else {
+            status = Ns_FetchURL(&ds, url, headers);
+        }
+        if (status != NS_OK) {
+            Ns_TclPrintfResult(interp, "could not fetch: %s", Tcl_GetString(objv[1]));
+            if (headers != NULL) {
+                Ns_SetFree(headers);
+            }
+
+        } else if (objc == 3) {
+            code = Ns_TclEnterSet(interp, headers, NS_TCL_SET_DYNAMIC);
+            if (code == TCL_OK
+                && Tcl_ObjSetVar2(interp, objv[2], NULL, Tcl_GetObjResult(interp),
+                                  TCL_LEAVE_ERR_MSG) == NULL) {
+                code = TCL_ERROR;
+            }
+        }
+        if (code == TCL_OK) {
+            Tcl_DStringResult(interp, &ds);
+        }
+
+        Ns_DStringFree(&ds);
+    }
 
     return code;
 }
@@ -341,6 +347,7 @@ static bool
 FillBuf(Stream *sPtr)
 {
     ssize_t n;
+    bool    result = NS_TRUE;
     
     NS_NONNULL_ASSERT(sPtr != NULL);
 
@@ -351,20 +358,21 @@ FillBuf(Stream *sPtr)
                    strerror(errno));
             sPtr->error = 1;
         }
-        return NS_FALSE;
+        result = NS_FALSE;
+    } else {
+        assert(n > 0);
+
+        /*
+         * The recv() operation was sucessuful, fill values into result fields and
+         * return NS_TRUE.
+         */
+        
+        sPtr->buf[n] = '\0';
+        sPtr->ptr = sPtr->buf;
+        sPtr->cnt = (size_t)n;
     }
-    assert(n > 0);
-
-    /*
-     * The recv() operation was sucessuful, fill values into result fields and
-     * return NS_TRUE.
-     */
-
-    sPtr->buf[n] = '\0';
-    sPtr->ptr = sPtr->buf;
-    sPtr->cnt = (size_t)n;
-
-    return NS_TRUE;
+    
+    return result;
 }
 
 
@@ -377,7 +385,7 @@ FillBuf(Stream *sPtr)
  *      the \n and \r.
  *
  * Results:
- *      1 or 0.
+ *      boolean success
  *
  * Side effects:
  *      The dstring is truncated on entry.
@@ -390,6 +398,7 @@ GetLine(Stream *sPtr, Ns_DString *dsPtr)
 {
     char   *eol;
     size_t  n;
+    bool    success = NS_FALSE;
 
     NS_NONNULL_ASSERT(sPtr != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
@@ -412,12 +421,13 @@ GetLine(Stream *sPtr, Ns_DString *dsPtr)
                 if (n > 0u && dsPtr->string[n - 1u] == '\r') {
                     Ns_DStringSetLength(dsPtr, (int)n - 1);
                 }
-                return NS_TRUE;
+                success = NS_TRUE;
+                break;
             }
         }
-    } while (FillBuf(sPtr) == NS_TRUE);
+    } while (FillBuf(sPtr));
 
-    return NS_FALSE;
+    return success;
 }
 
 /*

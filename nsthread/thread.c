@@ -74,7 +74,7 @@ static Thread *firstThreadPtr;
  */
 
 static Ns_Tls key;
-static long defstacksize = 0;
+static size_t defstacksize = 0u;
 
 
 /*
@@ -124,19 +124,19 @@ NsInitThreads(void)
  */
 
 void
-Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stack,
+Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, ssize_t stackSize,
     	    	Ns_Thread *resultPtr)
 {
-    Thread *thrPtr;
-    size_t nameLength;
+    Thread     *thrPtr;
+    size_t      nameLength;
     const char *name;
 
     NS_NONNULL_ASSERT(proc != NULL);
 
     Ns_MasterLock();
 
-    if (stack <= 0) {
-        stack = defstacksize;
+    if (stackSize < 0) {
+        stackSize = (ssize_t)defstacksize;
     }
 
     /*
@@ -156,7 +156,7 @@ Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stack,
     memcpy(thrPtr->parent, name, nameLength + 1u);
     Ns_MasterUnlock();
     
-    NsCreateThread(thrPtr, stack, resultPtr);
+    NsCreateThread(thrPtr, stackSize, resultPtr);
 }
 
 
@@ -176,15 +176,15 @@ Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, long stack,
  *----------------------------------------------------------------------
  */
 
-long
-Ns_ThreadStackSize(long size)
+ssize_t
+Ns_ThreadStackSize(ssize_t size)
 {
-    long prev;
+    ssize_t prev;
 
     Ns_MasterLock();
-    prev = defstacksize;
+    prev = (ssize_t)defstacksize;
     if (size > 0) {
-        defstacksize = size;
+        defstacksize = (size_t)size;
     }
     Ns_MasterUnlock();
 
@@ -222,7 +222,7 @@ NsThreadMain(void *arg)
     Ns_ThreadSetName(name);
     SetBottomOfStack(&thrPtr);
 #ifdef HAVE_GETTID
-    thrPtr->ostid = syscall(SYS_gettid);
+    thrPtr->ostid = (pid_t)syscall(SYS_gettid);
 #endif
     (*thrPtr->proc) (thrPtr->arg);
 }
@@ -439,7 +439,7 @@ GetThread(void)
         thrPtr->tid = Ns_ThreadId();
         Ns_TlsSet(&key, thrPtr);
 #ifdef HAVE_GETTID
-        thrPtr->ostid = syscall(SYS_gettid);
+        thrPtr->ostid = (pid_t)syscall(SYS_gettid);
 #endif
     }
     return thrPtr;
@@ -559,7 +559,7 @@ Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize) {
   
   Ns_MasterLock();
   *maxStackSize = defstacksize;
-  *estimatedSize = abs((int)(thisPtr->bottomOfStack - (unsigned char *)&thisPtr));
+  *estimatedSize = (size_t)labs((long)(thisPtr->bottomOfStack - (unsigned char *)&thisPtr));
   Ns_MasterUnlock();  
 }
 

@@ -109,14 +109,9 @@ Ns_ReturnCode
 Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const char *file,
               const char *init)
 {
-    Tcl_PackageInitProc  *tclInitProc = NULL, *moduleVersionAddr = NULL;
     Ns_DString            ds;
-    int                   rc;
-    bool                  privateInterp = (interp == NULL);
     Ns_ReturnCode         status = NS_OK;
     Tcl_Obj              *pathObj;
-    Tcl_LoadHandle        lh = NULL;
-    Tcl_FSUnloadFileProc *uPtr;
 
     NS_NONNULL_ASSERT(module != NULL);
     NS_NONNULL_ASSERT(file != NULL);
@@ -126,7 +121,7 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
 
     Ns_DStringInit(&ds);
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
-        file = Ns_HomePath(&ds, "bin", file, NULL);
+        file = Ns_HomePath(&ds, "bin", file, (char *)0);
     }
     pathObj = Tcl_NewStringObj(file, -1);
 
@@ -134,62 +129,69 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
     if (Tcl_FSGetNormalizedPath(NULL, pathObj) == NULL) {
         Ns_Log(Error, "modload: %s: invalid path", file);
         Tcl_DecrRefCount(pathObj);
-        Ns_DStringFree(&ds);
-        return NS_ERROR;
-    }
+        status = NS_ERROR;
 
-    if (privateInterp) {
-      interp = NsTclCreateInterp();
-    }
-    /*
-     * The 3rd arg of Tcl_FSLoadFile is the 1st symbol, typically
-     * "Ns_ModuleInit".  The 4th arg of Tcl_FSLoadFile is the 2nd
-     * symbol, hardcoded here to "Ns_ModuleVersion".
-     *
-     * Note that this is a little bit hacky, since the intention of
-     * the Tcl interface is to return here the safeInitProc, which is
-     * a procPtr and not a pointer to a global variable (object pointer).
-     */
-    rc = Tcl_FSLoadFile(interp, pathObj, init, "Ns_ModuleVersion",
+    } else {
+        Tcl_PackageInitProc  *tclInitProc = NULL, *moduleVersionAddr = NULL;
+        int                   rc;
+        bool                  privateInterp = (interp == NULL);
+        Tcl_LoadHandle        lh = NULL;
+        Tcl_FSUnloadFileProc *uPtr;
+
+        if (privateInterp) {
+            interp = NsTclCreateInterp();
+        }
+        /*
+         * The 3rd arg of Tcl_FSLoadFile is the 1st symbol, typically
+         * "Ns_ModuleInit".  The 4th arg of Tcl_FSLoadFile is the 2nd
+         * symbol, hardcoded here to "Ns_ModuleVersion".
+         *
+         * Note that this is a little bit hacky, since the intention of
+         * the Tcl interface is to return here the safeInitProc, which is
+         * a procPtr and not a pointer to a global variable (object pointer).
+         */
+        rc = Tcl_FSLoadFile(interp, pathObj, init, "Ns_ModuleVersion",
                             &tclInitProc, &moduleVersionAddr, &lh, &uPtr);
 
-    Tcl_DecrRefCount(pathObj);
-    if (rc != TCL_OK) {
-        Ns_Log(Error, "modload: %s: %s", file, Tcl_GetStringResult(interp));
-	if (privateInterp) {
-	  Tcl_DeleteInterp(interp);
-	}
-        Ns_DStringFree(&ds);
-        return NS_ERROR;
-    }
-    if (privateInterp) {
-      Tcl_DeleteInterp(interp);
-    }
-
-    if (tclInitProc == NULL) {
-        Ns_Log(Error, "modload: %s: %s: symbol not found", file, init);
-        status = NS_ERROR;
-    }
-    if (moduleVersionAddr == NULL) {
-        Ns_Log(Error, "modload: %s: %s: symbol not found", file, "Ns_ModuleVersion");
-        status = NS_ERROR;        
-    }
-    if (status == NS_OK) {
-        Ns_ModuleInitProc *initProc   = (Ns_ModuleInitProc *) tclInitProc;
-        const int         *versionPtr = (const int *) moduleVersionAddr;
-
-        /*
-         * Calling Ns_ModuleInit()
-         */
-        status = (*initProc)(server, module);
+        Tcl_DecrRefCount(pathObj);
+    
+        if (rc != TCL_OK) {
+            Ns_Log(Error, "modload: %s: %s", file, Tcl_GetStringResult(interp));
+            if (privateInterp) {
+                Tcl_DeleteInterp(interp);
+            }
+            status = NS_ERROR;
         
-        if (*versionPtr < 1) {
-            status = NS_OK;
-        } else if (status != NS_OK) {
-            Ns_Log(Error, "modload: %s: %s returned: %d", file, init, status);
+        } else {
+            if (privateInterp) {
+                Tcl_DeleteInterp(interp);
+            }
+
+            if (tclInitProc == NULL) {
+                Ns_Log(Error, "modload: %s: %s: symbol not found", file, init);
+                status = NS_ERROR;
+            }
+            if (moduleVersionAddr == NULL) {
+                Ns_Log(Error, "modload: %s: %s: symbol not found", file, "Ns_ModuleVersion");
+                status = NS_ERROR;        
+            }
+            if (status == NS_OK) {
+                Ns_ModuleInitProc *initProc   = (Ns_ModuleInitProc *) tclInitProc;
+                const int         *versionPtr = (const int *) moduleVersionAddr;
+            
+                /*
+                 * Calling Ns_ModuleInit()
+                 */
+                status = (*initProc)(server, module);
+            
+                if (*versionPtr < 1) {
+                    status = NS_OK;
+                } else if (status != NS_OK) {
+                    Ns_Log(Error, "modload: %s: %s returned: %d", file, init, status);
+                }
+            }
         }
     }
-
     Ns_DStringFree(&ds);
 
     return status;
@@ -216,7 +218,7 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
 int
 NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char   *module, *file, *init = "Ns_ModuleInit";
+    char         *module, *file, *init = "Ns_ModuleInit";
     int           global = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec   opts[] = {
 	{"-global", Ns_ObjvBool,   &global, INT2PTR(NS_TRUE)},

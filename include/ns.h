@@ -62,54 +62,6 @@
 #endif
 #endif
 
-
-/*
- * Well behaved compiler with C99 support should define __STDC_VERSION__
- */
-#if defined(__STDC_VERSION__)
-# if __STDC_VERSION__ >= 199901L
-#  define NS_HAVE_C99
-# endif
-#endif
-
-/* 
- * Starting with Visual Studio 2013, Microsoft provides C99 library support.
- */
-#if (!defined(NS_HAVE_C99)) && defined(_MSC_VER) && (_MSC_VER >= 1800)
-# define NS_HAVE_C99
-#endif
-
-/*
- * Boolean type "bool" and constants
- */
-#ifdef NS_HAVE_C99
-   /* 
-    * C99 
-    */
-# include <stdbool.h>
-# define NS_TRUE                    true
-# define NS_FALSE                   false
-#else
-   /* 
-    * Not C99 
-    */
-# if defined(__cplusplus)
-   /* 
-    * C++ is similar to C99, but no include necessary
-    */
-#  define NS_TRUE                    true
-#  define NS_FALSE                   false
-# else
-   /* 
-    * If everything fails, use int type and int values for bool
-    */
-typedef int bool;
-#  define NS_TRUE                    1
-#  define NS_FALSE                   0
-# endif
-#endif
-
-
 /*
  * The following describe various properties of a connection. Used in the
  * public interface in e.g. Ns_ConnWriteVChars() or Ns_ConnWriteData()
@@ -492,8 +444,9 @@ typedef struct Ns_TclCallback {
 typedef struct Ns_Driver {
     void       *arg;           /* Driver callback data. */
     const char *server;        /* Virtual server name. */
-    const char *module;        /* Driver module. */
-    const char *name;          /* Driver name. */
+    const char *type;          /* Type of driver, e.g. "nssock" */
+    const char *moduleName;    /* Module name, e.g. "nssock1" */    
+    const char *threadName;    /* Thread name, e.g. "nssock1:1" */
     const char *location;      /* Location, e.g, "http://foo:9090" */
     const char *address;       /* Address in location, e.g. "foo" */
     const char *protocol;      /* Protocol in location, e.g, "http" */
@@ -543,7 +496,7 @@ typedef enum {
  */
 
 typedef NS_SOCKET
-(Ns_DriverListenProc)(Ns_Driver *driver, const char *address, unsigned short port, int backlog)
+(Ns_DriverListenProc)(Ns_Driver *driver, const char *address, unsigned short port, int backlog, bool reusePort)
      NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 typedef NS_DRIVER_ACCEPT_STATUS
@@ -896,7 +849,7 @@ Ns_CompressBufsGzip(Ns_CompressStream *cStream, struct iovec *bufs, int nbufs,
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
 NS_EXTERN Ns_ReturnCode
-Ns_CompressGzip(const char *buf, int len, Tcl_DString *outPtr, int level)
+Ns_CompressGzip(const char *buf, int len, Tcl_DString *dsPtr, int level)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN Ns_ReturnCode
@@ -1121,7 +1074,7 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest) NS_GNUC_NONNULL(1) NS_GNU
 NS_EXTERN const char *
 Ns_ConnHost(const Ns_Conn *conn) NS_GNUC_NONNULL(1);
 
-NS_EXTERN int
+NS_EXTERN unsigned short
 Ns_ConnPort(const Ns_Conn *conn) NS_GNUC_NONNULL(1);
 
 NS_EXTERN NS_SOCKET
@@ -1164,9 +1117,6 @@ NS_EXTERN void
 Ns_ConnTimeSpans(const Ns_Conn *conn, Ns_Time *acceptTimeSpanPtr, Ns_Time *queueTimeSpanPtr, 
 		 Ns_Time *filterTimeSpanPtr, Ns_Time *runTimeSpanPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
-
-NS_EXTERN void
-Ns_ConnTimeStats(Ns_Conn *conn) NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_Time *
 Ns_ConnTimeout(Ns_Conn *conn) NS_GNUC_NONNULL(1);
@@ -1915,6 +1865,11 @@ Ns_PurgeFiles(const char *file, int max)
 
 NS_EXTERN Ns_ReturnCode
 Ns_RollFileByDate(const char *file, int max)
+    NS_GNUC_NONNULL(1)
+    NS_GNUC_DEPRECATED_FOR(Ns_PurgeFiles);
+
+NS_EXTERN Ns_ReturnCode
+Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -2599,27 +2554,27 @@ Ns_SetIGetValue(const Ns_Set *set, const char *key, const char *def)
  */
 
 NS_EXTERN NS_SOCKET
-Ns_SockListenEx(const char *address, unsigned short port, int backlog);
+Ns_SockListenEx(const char *address, unsigned short port, int backlog, bool reuseport);
 
 NS_EXTERN NS_SOCKET
-Ns_SockListenUdp(const char *address, unsigned short port);
+Ns_SockListenUdp(const char *address, unsigned short port, bool reuseport);
 
 NS_EXTERN NS_SOCKET
 Ns_SockListenRaw(int proto);
 
 NS_EXTERN NS_SOCKET
-Ns_SockListenUnix(const char *path, int backlog, int mode)
+Ns_SockListenUnix(const char *path, int backlog, unsigned short mode)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN NS_SOCKET
-Ns_SockBindUdp(const struct sockaddr *saPtr)
+Ns_SockBindUdp(const struct sockaddr *saPtr, bool reusePort)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN NS_SOCKET
 Ns_SockBindRaw(int proto);
 
 NS_EXTERN NS_SOCKET
-Ns_SockBindUnix(const char *path, int socktype, int mode)
+Ns_SockBindUnix(const char *path, int socktype, unsigned short mode)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN void
@@ -2629,7 +2584,7 @@ NS_EXTERN void
 NsStopBinder(void);
 
 NS_EXTERN NS_SOCKET
-Ns_SockBinderListen(int type, const char *address, unsigned short port, int options);
+Ns_SockBinderListen(char type, const char *address, unsigned short port, int options);
 
 /*
  * sls.c
@@ -2733,7 +2688,7 @@ Ns_BindSock(const struct sockaddr *saPtr)
     NS_GNUC_DEPRECATED_FOR(Ns_SockBind);
 
 NS_EXTERN NS_SOCKET
-Ns_SockBind(const struct sockaddr *saPtr)
+Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN NS_SOCKET
@@ -2777,7 +2732,7 @@ NS_EXTERN Ns_ReturnCode
 Ns_SockSetBlocking(NS_SOCKET sock);
 
 NS_EXTERN void
-Ns_SockSetDeferAccept(NS_SOCKET sock, int secs);
+Ns_SockSetDeferAccept(NS_SOCKET sock, long secs);
 
 NS_EXTERN Ns_ReturnCode
 Ns_SockCloseLater(NS_SOCKET sock);
@@ -3347,29 +3302,29 @@ NS_EXTERN int
 ns_mkstemp(char *charTemplate);
 
 NS_EXTERN int
-ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, int timo)
+ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, long timo)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN bool
-Ns_GetNameForUid(Ns_DString *dsPtr, int uid)
+Ns_GetNameForUid(Ns_DString *dsPtr, uid_t uid)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN bool
-Ns_GetNameForGid(Ns_DString *dsPtr, int gid);
+Ns_GetNameForGid(Ns_DString *dsPtr, gid_t gid);
 
 NS_EXTERN bool
 Ns_GetUserHome(Ns_DString *dsPtr, const char *user)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int
+NS_EXTERN long
 Ns_GetUserGid(const char *user)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int
+NS_EXTERN long
 Ns_GetUid(const char *user)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int
+NS_EXTERN long
 Ns_GetGid(const char *group)
     NS_GNUC_NONNULL(1);
 

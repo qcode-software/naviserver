@@ -40,6 +40,8 @@ if {1} {
 
     if {$xotcl == 2} {
         if {[catch {
+            package require nsf
+            ns_ictl trace delete {if {[info commands ::nsf::finalize] ne ""} {::nsf::finalize}}
             package require XOTcl 2
             package require nx::serializer
             namespace import -force ::xotcl::*
@@ -74,6 +76,14 @@ proc ns_share args {
 if {[info commands ::nx::Object] ne "" && [::nx::Object info lookup method object] ne ""} {
     ns_log notice "Using ns_cache based on NX [package require nx]"
 
+    if {[info commands ::ad_log] eq ""} {
+        #
+        # Provide a minimal variant of OpenACS's value added version
+        # of ns_log (showing e.g. call stack, etc.)
+        #
+        proc ::ad_log {level message} {ns_log $level $message}
+    }
+    
     #
     # Minimal ns_cache implementation based on NX
     #
@@ -100,7 +110,7 @@ if {[info commands ::nx::Object] ne "" && [::nx::Object info lookup method objec
             set r [ns_cache_keys $cache_name {*}$args]
             set span [expr {[clock clicks -milliseconds] - $ts0}]
             if {$span > 200} {
-                ns_log notice "!!!! long ns_cache_names $span ms, ns_cache names $cache_name $args"
+                ad_log notice "!!!! long ns_cache_names $span ms, ns_cache names $cache_name $args"
             }
             return $r
         }
@@ -124,7 +134,7 @@ if {[info commands ::nx::Object] ne "" && [::nx::Object info lookup method objec
             set rc [catch {uplevel ns_cache_$subcmd $cache_name $args} result]
             set span [expr {[clock clicks -milliseconds] - $ts0}]
             if {$span > 200} {
-                ns_log notice "!!!! long ns_cache $subcmd $span ms, ns_cache $subcmd $cache_name $args"
+                ad_log notice "!!!! long ns_cache $subcmd $span ms, ns_cache $subcmd $cache_name $args"
             }
             #if {$rc != 0} {ns_log notice "EVAL returned code=$rc result='$result'"}
             return -code $rc $result

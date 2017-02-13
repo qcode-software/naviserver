@@ -158,7 +158,7 @@ Ns_ModuleInit(const char *server, const char *module)
          */
 
         if (Ns_HomePathExists("logs", (char *)0)) {
-            (void) Ns_HomePath(&ds, "logs", "/", file, NULL);
+            (void) Ns_HomePath(&ds, "logs", "/", file, (char *)0);
         } else {
             Tcl_Obj *dirpath;
 	    int rc;
@@ -225,7 +225,7 @@ Ns_ModuleInit(const char *server, const char *module)
      */
 
     Ns_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, Ns_ConfigGetValue(path, "extendedheaders"), NULL);
+    Ns_DStringVarAppend(&ds, Ns_ConfigGetValue(path, "extendedheaders"), (char *)0);
     if (Tcl_SplitList(NULL, ds.string, &logPtr->numheaders,
                       &logPtr->extheaders) != TCL_OK) {
         Ns_Log(Error, "nslog: invalid %s/extendedHeaders parameter: '%s'",
@@ -429,7 +429,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
             if ((flags & LOG_CHECKFORPROXY)) {
                 Ns_DStringAppend(&ds, "checkforproxy ");
             }
-            if ((rc & LOG_SUPPRESSQUERY)) {
+            if ((flags & LOG_SUPPRESSQUERY)) {
                 Ns_DStringAppend(&ds, "suppressquery ");
             }
             Tcl_DStringResult(interp, &ds);
@@ -441,7 +441,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
             Ns_DStringInit(&ds);
             strarg = Tcl_GetString(objv[2]);
             if (Ns_PathIsAbsolute(strarg) == NS_FALSE) {
-                Ns_HomePath(&ds, strarg, NULL);
+                Ns_HomePath(&ds, strarg, (char *)0);
                 strarg = ds.string;
             }
             Ns_MutexLock(&logPtr->lock);
@@ -586,7 +586,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
 
     p = NULL;
-    if ((logPtr->flags & LOG_CHECKFORPROXY)) {
+    if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
         p = Ns_SetIGet(conn->headers, "X-Forwarded-For");
         if (p != NULL && !strcasecmp(p, "unknown")) {
             p = NULL;
@@ -610,9 +610,9 @@ LogTrace(void *arg, Ns_Conn *conn)
 	    quote = (CHARTYPE(space, *p) != 0);
         }
         if (quote != 0) {
-            Ns_DStringVarAppend(dsPtr, " - \"", user, "\" ", NULL);
+            Ns_DStringVarAppend(dsPtr, " - \"", user, "\" ", (char *)0);
         } else {
-            Ns_DStringVarAppend(dsPtr, " - ", user, " ", NULL);
+            Ns_DStringVarAppend(dsPtr, " - ", user, " ", (char *)0);
         }
     }
 
@@ -736,7 +736,7 @@ LogTrace(void *arg, Ns_Conn *conn)
     Ns_DStringNAppend(dsPtr, "\n", 1);
 
     if (logPtr->maxlines == 0) {
-        bufferSize = ds.length;
+        bufferSize = (size_t)ds.length;
 	if (bufferSize < PIPE_BUF) {
 	  /* 
            * Only ns_write() operations < PIPE_BUF are guaranteed to be atomic
@@ -749,7 +749,7 @@ LogTrace(void *arg, Ns_Conn *conn)
     } else {
         Ns_DStringNAppend(&logPtr->buffer, ds.string, ds.length);
         if (++logPtr->curlines > logPtr->maxlines) {
-	    bufferSize = logPtr->buffer.length;
+	    bufferSize = (size_t)logPtr->buffer.length;
             if (bufferSize < PIPE_BUF) {
                 /* 
                  * Only ns_write() operations < PIPE_BUF are guaranteed to be
@@ -876,7 +876,7 @@ LogFlush(Log *logPtr, Ns_DString *dsPtr)
     char *buf = dsPtr->string;
 
     if (len > 0) {
-        if (logPtr->fd >= 0 && ns_write(logPtr->fd, buf, len) != len) {
+        if (logPtr->fd >= 0 && ns_write(logPtr->fd, buf, (size_t)len) != len) {
             Ns_Log(Error, "nslog: logging disabled: ns_write() failed: '%s'",
                    strerror(errno));
             ns_close(logPtr->fd);
@@ -911,63 +911,26 @@ LogFlush(Log *logPtr, Ns_DString *dsPtr)
 static Ns_ReturnCode
 LogRoll(Log *logPtr)
 {
-    Ns_ReturnCode status;
-    Tcl_Obj      *path;
+    Ns_ReturnCode status = NS_OK;
+    Tcl_Obj      *pathObj;
 
     NsAsyncWriterQueueDisable(NS_FALSE);
 
     (void)LogClose(logPtr);
 
-    path = Tcl_NewStringObj(logPtr->file, -1);
-    Tcl_IncrRefCount(path);
-    status = Tcl_FSAccess(path, F_OK);
+    pathObj = Tcl_NewStringObj(logPtr->file, -1);
+    Tcl_IncrRefCount(pathObj);
 
-    if (status == 0) {
-
+    if (Tcl_FSAccess(pathObj, F_OK) == 0) {
         /*
          * We are already logging to some file
          */
-
-        if (logPtr->rollfmt == NULL) {
-            status = Ns_RollFile(logPtr->file, logPtr->maxbackup);
-        } else {
-            time_t      now = time(NULL);
-            char        timeBuf[512];
-            Ns_DString  ds;
-	    Tcl_Obj    *newpath;
-            struct tm  *ptm;
-
-            ptm = ns_localtime(&now);
-            (void) strftime(timeBuf, sizeof(timeBuf)-1, logPtr->rollfmt, ptm);
-
-            Ns_DStringInit(&ds);
-            Ns_DStringVarAppend(&ds, logPtr->file, ".", timeBuf, NULL);
-            newpath = Tcl_NewStringObj(ds.string, -1);
-            Tcl_IncrRefCount(newpath);
-            status = Tcl_FSAccess(newpath, F_OK);
-            if (status == 0) {
-                status = Ns_RollFile(ds.string, logPtr->maxbackup);
-            } else if (Tcl_GetErrno() != ENOENT) {
-                Ns_Log(Error, "nslog: access(%s, F_OK) failed: '%s'",
-                       ds.string, strerror(Tcl_GetErrno()));
-                status = NS_ERROR;
-            } else {
-		status = NS_OK;
-	    }
-            if (status == NS_OK && Tcl_FSRenameFile(path, newpath)) {
-                Ns_Log(Error, "nslog: rename(%s,%s) failed: '%s'",
-                       logPtr->file, ds.string, strerror(Tcl_GetErrno()));
-                status = NS_ERROR;
-            }
-            Tcl_DecrRefCount(newpath);
-            Ns_DStringFree(&ds);
-            if (status == NS_OK) {
-                status = Ns_PurgeFiles(logPtr->file, logPtr->maxbackup);
-            }
-        }
+        status = Ns_RollFileFmt(pathObj,
+                                logPtr->rollfmt,
+                                logPtr->maxbackup);
     }
 
-    Tcl_DecrRefCount(path);
+    Tcl_DecrRefCount(pathObj);
     
     if (status == NS_OK) {
 	status = LogOpen(logPtr);
@@ -995,7 +958,7 @@ LogRoll(Log *logPtr)
  */
 
 static void
-LogCallback(int(proc)(Log *), void *arg, char *desc)
+LogCallback(Ns_ReturnCode(proc)(Log *), void *arg, char *desc)
 {
     int  status;
     Log *logPtr = arg;

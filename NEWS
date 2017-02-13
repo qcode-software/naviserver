@@ -1,4 +1,515 @@
 =======================================
+NaviServer 4.99.15, released 2017-01-10
+=======================================
+
+ 103 files changed, 3497 insertions(+), 1577 deletions(-)
+
+New Features:
+
+ - Multiple driver threads for listening on the same port:
+
+   When OS kernels support SO_REUSEPORT (which is the case on Linux
+   since Kernel 3.9, Mac OS 10.3, Solaris 11, *BSD), one can specify
+   now multiple driver threads for exactly the same listening address
+   (protocol/IP-address/port) via the new config option
+   "driverthreads" with a value larger than 1. With this new feature,
+   NaviServer supports now for all stages of a request multi-threaded
+   execution (driverthreads, spoolerthreads, connection threads, and
+   writerthreads).
+
+   Tests show that even with high number of concurrent clients, one
+   can improve the throughput for high numbers of concurrent clients
+   slightly (e.g. for 2 driverthreads and 250 concurrent clients, the
+   throughput increases by ~9%, see
+   https://www.mail-archive.com/naviserver-devel@lists.sourceforge.net/msg03445.html)
+
+   Note: When using multiple driver threads on privileged ports, one
+   has to add "#" followed by the number of necessary bind operations
+   to the prebind address. Otherwise, prebind will bind to the address
+   only once, and only one driver thread can be used.
+
+
+ - Dynamic connection thread pool mapping:
+ 
+   The new version of NaviServer extends the mapping of requests to
+   connection thread pools by making it (a) introspectible and (b)
+   dynamic (changeable at runtime). Dynamic thread pool mapping can
+   avoid overlong blocking of connection threads by an unexpected peak
+   of slow requests by moving these to a separate connection pool.
+   For a detailed motivation, see
+   https://www.mail-archive.com/naviserver-devel@lists.sourceforge.net/msg03446.html.
+   
+   The following new subcommands of "ns_server" implement the
+   dynamic mapping to connection pools:
+   
+     * ns_server ?-server /s/? ?-pool /p/? map ?-noinherit? ?/mapspec/?
+       Map HTTP-method and path (mapspec) to a certain pool, or list
+       mappings from a pool (when no mapspec is given)
+       
+     * ns_server ?-server /s/? mapped ?-exact? ?-noinherit? /mapspec/
+       Obtain the pool for a mapspec (HTTP method and path)
+       
+     * ns_server ?-server /s/? ?-pool /p/? unmap ?-noinherit? /mapspec/
+       Undo previous mapping
+
+
+ - New commands to obtain network driver information:
+
+     * ns_driver info
+       Return per driver detailed configuration information (name of
+       module, type of driver, associated server, configured location,
+       protocol, address, sendwait recvwait, and extraheaders)
+       
+     * ns_driver names
+       Return a list of the names of the loaded driver modules.
+       
+     * ns_driver threads
+       Return a list of the names of the driver threads
+     
+     * ns_driver stats
+       Return for every driver thread the name of the driver module,
+       the number of received requests, the number of spooled
+       requests, the partial requests (received via multiple receive
+       operations), and the number of errors.
+
+
+
+ - Obtain detailed timing results from currently running request
+
+     * ns_conn partialtimes
+
+       Returns detailed timing snapshot about the current
+       requests. The result is a dict containing the keys
+       "accepttime", "queuetime", "filtertime", and "runtime" (similar
+       to the per-pool timing statistics in "ns_server stats")
+
+ - Added debug severity "Debug(nsproxy)" for separate debugging of nsproxy.
+
+
+Performance Improvements:
+
+ - Move JoinConnThread() out of lock to reduce locking duration and to
+   improve scalability.
+
+
+Bug Fixes:
+
+ - Better error behavior, when prebind fails.
+ 
+ - Fixed underspecified config file (simple-config does not set
+   address, fallback to NS_IP_UNSPECIFIED.
+
+ - Make sure, that URLs produced by urlspace's walk callbacks are
+   proper list elements.
+
+ - Make startup more robust, when called with invalid arguments.
+
+ - nsproxy:
+     * Don't reset timeout for for reaper when slaves already expired
+     * Improve debug messages
+
+ - Improve forward compatibility to forthcoming Tcl 8.7 (fixed bug in
+   Tcl's Memory allocator; Zoran).
+
+ - configure: Align behavior when "--with-openssl" is specified
+   without arguments vs. when it is not specified (--with-openssl is
+   activated per default). Previously, pkg-config was only looked at
+   when "--with-openssl" was specified.
+
+
+Documentation improvements:
+
+ - Improved sample config files
+    * added new config parameters
+    * document parameter "listenbacklog"
+    * make simple-config working with default installed tree (activate
+      .adp parsing)
+
+ - Improved inline documentation about usage of
+   Tcl_FindExecutable(argv[0]) (before fork vs. after fork)
+   
+ - Improved/new documentation pages of
+    * admin-maintenance
+    * ns_cgi
+    * ns_conn
+    * ns_connchan
+    * ns_driver
+    * ns_filestat
+    * ns_http
+    * ns_httpopen
+    * ns_itcl
+    * ns_parseargs
+    * ns_register
+    * ns_sendmail
+    * ns_server
+    * nssock
+    * nsssl
+    * nsv
+
+  - more consistent capitalization:
+    * use Tcl instead of TCL
+    * use HTTP (or HTTPS) instead of http (or https).
+
+
+C API Changes:
+
+ - Additional argument for reuseport for Ns_SockBind(),
+   Ns_DriverListenProc(), Ns_SockListenEx(), Ns_SockBindUdp(), and
+   Ns_SockListenUdp().
+   
+
+Configuration Changes:
+ - New parameter for drivers (e.g. nssock)
+ 
+   * Boolean Parameter "reuseport": When the parameter is set and
+     SO_REUSEPORT is supported by the os, NaviServer will allow
+     multiple listen operations on the same port (default: false)
+
+   * Integer Parameter "driverthreads": set to a value > 1 when
+     multiple driver threads should be used (default: 1). When
+     multiple driver threads are configured, parameter "reuseport" is
+     automatically set to "true".
+
+ - New Boolean parameter "mutexlocktrace" for section "ns/parameters":
+ 
+   When this parameter is set to true, timing of long mutex calls are
+   printed to stderr.
+
+ - Improve configurability: Allow to pass alternative implementation
+   of CPPCHECK to "make"
+
+
+Command Line Changes:
+
+ - Value provided to prebind option (-b) can be extended by a suffix
+   "#n", where n is the number of pre-bound sockets (when e.g. multiple
+   driver threads are used on privileged ports)
+
+
+Code Changes:
+
+ - Extended regression tests
+    * ns_conn.test
+    * ns_driver.test
+    * ns_server.test
+    * ns_adp_compress.test (fixed compatibility with lib version >
+      1.2.8, which leads to different encoding)
+
+ - Driver reform: make distinction explicit between driver type
+   (e.g. "nssock"), driver name (e.g. "nssock1"), and driver thread
+   name (e.g. "nssock1:1")
+
+ - Moved definition of type "bool" from ns.h to nsthread.h to make
+   boolean types as well available in nsthread implementation.
+
+  - Improve compilation under windows:
+     * don't pass "const char*" as member dest of Ns_ObjvSpec
+     * add compatibility type "suseconds_t" for windows
+     * define NS_NAVISERVER fro windows (no configure script)
+     * move conditional definition of P_tmpdir after the .h files are
+       loaded
+     * fix type in macro PTR2UINT in windows code
+
+ - Further Tcl cleanup
+   * Replaced remaining Tcl_CmdProcs into Tcl_ObjCmdProcs
+   * Reduced usage of Tcl_AppendResult()
+
+ - Don't mess around with FD_SETSIZE
+ - Don't use implementation defined NULL as last argument of variadic functions
+ - Reduced size of huge switch statements
+ - Reduced variable scopes
+ - Reduce number of return statements before end of function
+ - Added const declarations
+ - Use "unsigned short" consistently for ports
+ - Align argument names in prototypes and function definitions
+ - Silenced static checker
+
+
+Modules:
+
+ - nsdhcpd, nsdns, nsldapd, nsradiusd, nssip, nssmtpd, nssnmp,
+   nssyslogd, nstftpd, and nsudp: Aligned function definitions with
+   ns.h due to changes in
+
+       Ns_SockListenUdp()
+       Ns_SockListenEx()
+
+   Note: Not all of these drivers are aligned yet with IPv6 interfaces.
+
+ - nssyslogd: Added support for IPv6.
+ 
+ - nsstats:
+    * Added statistics for driver usage
+    * Added Page for showing urls mapped to connection threads pools
+    * Added information about driver threads
+
+
+=======================================
+NaviServer 4.99.14, released 2016-11-18
+=======================================
+
+ 86 files changed, 2655 insertions(+), 1451 deletions(-)
+
+New Features:
+
+  * Added statistics for "trace times": i.e. the time spent in a
+    connection thread after the main request was executed, for running
+    post filters, server traces (e.g. writing access.log) and
+    cleanups.  The statistic results are included in [ns_server
+    stats].
+
+  * Improved compatibility with FreeBSD and OminOS (Solaris).
+  
+  * Added module "revproxy" for implementing a reverse proxy based
+    on ns_connchan (working as well for proxying WebSockets).
+
+
+Performance Improvements:
+
+  * Added new config flag "concurrentinterpcreate" to "ns/parameters"
+    to allow optionally concurrent creations of Tcl interpreters.
+    Concurrent creations of Tcl interpreters were a problem with Tcl
+    8.5, but seems to work with Tcl 8.6. Per default, this feature is
+    turned off.
+    
+  * Don't update interp in "ns_ictl cleanup", when no defer callbacks
+    were executed.
+
+
+Bug Fixes:
+
+  * ns_connchan improvements:
+    - Handle potential race condition between ns_connchan and socket
+      callbacks during shutdown
+    - Make sure, channel is writable before we are writing to it
+    - Add support for partial write operations ("ns_connchan write"
+      and "ns_connchan open")
+    - Provide more detailed error messages
+    - Allow callback changes without invoking socket-shutdown
+      machinery
+
+  * Make sure, the tests are running with expected locale and
+    encoding (fixed a problem on FreeBSD)
+  
+  * Fix bug #77 (potential crash during ns_mktemp, strdup()
+    vs. ns_strdup(), introduced in 4.99.13, reported by
+    Patrick Heissenberger)
+
+  * Collect statistics before traces are run (i.e. before
+    access.log is written); this fixes a bug reported by
+    David Osborne.
+    
+  * In HTTP client requests, don't start urls with "//" under certain
+    conditions
+  
+  * Keep internally convention, that stored request lines do not end
+    with crlf to avoid unneeded tests
+    
+  * Don't "roll away" log file from stderr, when nsd was started with
+    "-c" or "-f" flags
+  
+  * Don't complain about uncorking, when user has already closed the
+    connection
+
+  * Make windows variant of ns_mkstemp() more compatible with unix/mac
+    (remove _O_TEMPORARY flag)
+  
+  * Use datatype "int" for parameters passed with Ns_ObjvBool (rather
+    than bool, which causes invalid values on gcc 4.8.4 (Ubuntu
+    4.8.4-2ubuntu1~14.04.3))
+
+  * Fix several bugs in keylist
+
+
+Documentation improvements:
+
+  * doc/src/naviserver/ns_connchan.man:
+    - Added documentation for "ns_connchan open"
+    - Clarified format in which timeouts can be specified
+    - document new flags
+
+  * doc/src/manual/admin-tuning.man:
+   - Added documentation of "ns/parameter" option "concurrentinterpcreate"
+   
+  * doc/src/manual/admin-maintenance.man:
+   - Added section with sample configuration for systemd
+
+  * doc/src/naviserver/ns_mktemp.man:
+    - Improved function, explain deprecation state of c-library function,
+
+  * General overhaul of the contrib/example scripts
+    contrib/examples/index.adp, contrib/examples/upload.tcl,
+    contrib/examples/writer.tcl
+
+  * Various small documentation improvements.
+  
+  * Improved sample config files.
+
+
+Tcl API Changes:
+  * ns_connchan:
+    Added flag "-version" to "ns_connchan open" to specify
+    HTTP version (default 1.0)
+
+
+Configuration Changes:
+  * Improved output of "make help"
+  
+  * Don't throw error message, when doing an install from a bitbucket
+    checkout and no documentation was generated locally.
+
+Command Line Changes:
+  * improve usefulness of "nsd -c": in case the environment variable
+    NAVISERVER is not set, and bin/init.tcl is not found under the
+    running binary, fall-back to the configured install directory as
+    "home".
+
+
+Code Changes:
+ * Extended regression test
+ * Keylists:
+   - Added new testset for keylists
+   - fixed several bugs
+   - use naviserver memory management
+   - prefer Tcl_Objs over string based interface
+   
+ * Improved source code documentation
+
+ * Turn ns_tmpnam into a proc and get rid of call to deprecated C
+   library function tmpnam()
+
+ * Added preprocessor variable NS_NAVISERVER to point to the
+   configured install directory (can be used as last resort to find
+   configuration data when started e.g. with "nsd -c").
+
+ * C-Code cleanup:
+   * Improved type cleanness on gcc 4.8.4 (Ubuntu) and
+     under gcc7.
+     
+   * Aligned function prototype with definition
+     (Ns_DbInterpretSqlFile(), Ns_ThreadCreate(),
+     Ns_ThreadStackSize(), caused complaints under Solaris)
+     
+   * Introduce macros for IPv6 support under Solaris, since
+     it does not define s6_addr16 members)
+
+   * don't use implementation defined NULL as last argument of
+     variadic function Ns_ConfigGetPath(), Ns_DStringVarAppend(),
+     Ns_HomePath(), Ns_MakePath(), Ns_TclEvalCallback()
+
+   * Reduced number of return statement before end of function.
+   * Reduced number of gotos.
+   * Reduced variable scopes.
+
+Modules:
+   * revproxy:
+     New Tcl module based on ns_connchan to implement
+     a reverse proxy (works as well with tuneling WebSockets).
+     
+   * nsexample, nsphp:
+     Aligned function definitions with ns.h to improve
+     cleanness of compilation
+
+
+=======================================
+NaviServer 4.99.13, released 2016-10-15
+=======================================
+
+ 143 files changed, 3051 insertions(+), 2091 deletions(-)
+
+New Features:
+  - New Tcl functions:
+
+      * ns_parseurl /url/
+        Parse the provided URL into its parts and
+        returns these in the form of a Tcl dict. The function supports
+        IP-literal notation as specified in RFC 3986. 
+
+      * ns_absoluteurl /incompleteurl/ /baseurl/
+        Construct a completed URL from a incomplete (e.g. relative)
+        URL by taking as many parts as possible from the provided base
+        URL. 
+
+  - ns_striphtml: The function honors now numeric entities between 33
+    and 255 instead of ignoring it.
+
+  - New configure option for error.log: "logrollfmt", which can be
+    specified in (section ns/parameters).  This option has the same
+    interpretation as already provided for access log and provides
+    timestamp based log file naming. This option can reduce back-up
+    demands for large error.logs significantly (since the names are
+    stable) and increases the orthogonality of options (in respect to
+    access.logs).
+
+  - Ns_ParseUrl(): add support for protocol agnostic URLs (starting
+    with two slashes as defined in RFC 3986).
+
+  - ns_deletecookie: mark deleted cookie as non-scriptable to improve
+    ratings on security scanners.
+
+
+Bug Fixes:
+ - Fix for [naviserver:bugs] #76: ns_configsections returned
+   only one section (bug introduced in 4.99.12).
+   
+ - Fix URL parser in Ns_ParseUrl(), could return incorrect results
+   when it received an URL in IP-literal notation (bug introduced in
+   4.99.11).
+ 
+ - Fix for potentially incorrect mime-types in fastpath, when static
+   gzip is activated. The mime type was incorrectly set to
+   application/gzip, when the static gzipped file was returned. This
+   bug was introduced in 4.99.12, many thanks to David Osborne for
+   reporting).
+
+Documentation improvements:
+  - Documenting new functions
+  - Several small cleanups
+  - Improved sample config files
+
+C API Changes:
+   - using unsigned int for ports
+       Ns_SockListenUnix(), Ns_SockBindUnix()
+   - using "long" for secs
+       Ns_SockSetDeferAccept(), ns_poll(), Ns_DiffTime()
+   - makeing argument types more precise
+       NsPoll(), Ns_SockBinderListen(), Ns_GetNameForGid(), Ns_ThreadStackSize()
+
+Code Changes:
+ - Extended regression test
+ - Improved source code documentation
+
+ - C-Code cleanup:
+   * Removed all implicit type-conversions, signed/unsigned comparisons
+     as flagged by the following gcc/clang flags (ensure cleanness on 64bit)
+     -Wconversion -Wsign-conversion -Wfloat-conversion -Wsign-compare
+
+   * Reduced number of return statement before end of function
+   * Reduced variable scopes
+   * added types for uid_t, gid_t if not defined
+   
+   * Remove calls to Tcl functions which are deprecated/ going to be
+     deprecated by Tcl. Code can be compiled now with -DTCL_NO_DEPRECATED
+     
+   * Converted all remaining Tcl_CmdProc to Tcl_ObjCmdProc
+	NsTclAdpStatsCmd    -> NsTclAdpStatsObjCmd
+	NsTclCrashCmd       -> NsTclCrashObjCmd
+	NsTclHrefsCmd       -> NsTclHrefsObjCmd
+	NsTclLibraryCmd     -> NsTclLibraryObjCmd
+	NsTclMkTempCmd      -> NsTclMkTempObjCmd
+	NsTclParseHeaderCmd -> NsTclParseHeaderObjCmd
+	NsTclQuoteHtmlCmd   -> NsTclQuoteHtmlObjCmd
+	NsTclStripHtmlCmd   -> NsTclStripHtmlObjCmd
+   
+ - Tcl-Code
+   * tcl/aolserver-openacs.tcl:
+     Register delete trace to run nsf::finalize in a safe state (before
+     any other c-based finalize handler are fired)
+   * regression test: Replaced Tcl "eval" by expand operator
+
+
+
+=======================================
 NaviServer 4.99.12, released 2016-08-21
 =======================================
 

@@ -89,7 +89,7 @@ ConfigServerVhost(const char *server)
 
     NS_NONNULL_ASSERT(server != NULL);
 
-    path = Ns_ConfigGetPath(server, NULL, "vhost", NULL);
+    path = Ns_ConfigGetPath(server, NULL, "vhost", (char *)0);
 
     servPtr->vhost.enabled = Ns_ConfigBool(path, "enabled", NS_FALSE);
     if (servPtr->vhost.enabled
@@ -145,10 +145,7 @@ Ns_PathIsAbsolute(const char *path)
         path += 2;
     }
 #endif
-    if (ISSLASH(*path)) {
-        return NS_TRUE;
-    }
-    return NS_FALSE;
+    return (ISSLASH(*path));
 }
 
 
@@ -365,7 +362,7 @@ Ns_LibPath(Ns_DString *dsPtr, ...)
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "lib", NULL);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "lib", (char *)0);
     va_start(ap, dsPtr);
     path = MakePath(dsPtr, &ap);
     va_end(ap);
@@ -400,7 +397,7 @@ Ns_BinPath(Ns_DString *dsPtr, ...)
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "bin", NULL);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "bin", (char *)0);
     va_start(ap, dsPtr);
     path = MakePath(dsPtr, &ap);
     va_end(ap);
@@ -433,7 +430,7 @@ Ns_HomePath(Ns_DString *dsPtr, ...)
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), NULL);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), (char *)0);
     va_start(ap, dsPtr);
     path = MakePath(dsPtr, &ap);
     va_end(ap);
@@ -469,7 +466,7 @@ Ns_HomePathExists(const char *path, ...)
     NS_NONNULL_ASSERT(path != NULL);
 
     Ns_DStringInit(&ds);
-    Ns_MakePath(&ds, Ns_InfoHomePath(), path, NULL);
+    Ns_MakePath(&ds, Ns_InfoHomePath(), path, (char *)0);
 
     va_start(ap, path);
     MakePath(&ds, &ap);
@@ -507,7 +504,6 @@ char *
 Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...)
 {
     const NsServer *servPtr;
-    va_list         ap;
     char           *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
@@ -515,12 +511,16 @@ Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...)
     
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
-        return NULL;
+        path = NULL;
+
+    } else {
+        va_list ap;
+
+        (void) ServerRoot(dsPtr, servPtr, NULL);
+        va_start(ap, server);
+        path = MakePath(dsPtr, &ap);
+        va_end(ap);
     }
-    (void) ServerRoot(dsPtr, servPtr, NULL);
-    va_start(ap, server);
-    path = MakePath(dsPtr, &ap);
-    va_end(ap);
 
     return path;
 }
@@ -546,7 +546,6 @@ char *
 Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
 {
     const NsServer *servPtr;
-    va_list         ap;
     char           *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
@@ -554,12 +553,16 @@ Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
 
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
-        return NULL;
+        path = NULL;
+  
+    } else {
+        va_list         ap;
+
+        (void) NsPageRoot(dsPtr, servPtr, NULL);
+        va_start(ap, server);
+        path = MakePath(dsPtr, &ap);
+        va_end(ap);
     }
-    (void) NsPageRoot(dsPtr, servPtr, NULL);
-    va_start(ap, server);
-    path = MakePath(dsPtr, &ap);
-    va_end(ap);
 
     return path;
 }
@@ -591,12 +594,12 @@ Ns_ModulePath(Ns_DString *dsPtr, const char *server, const char *module, ...)
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), NULL);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), (char *)0);
     if (server != NULL) {
-       Ns_MakePath(dsPtr, "servers", server, NULL);
+       Ns_MakePath(dsPtr, "servers", server, (char *)0);
     }
     if (module != NULL) {
-       Ns_MakePath(dsPtr, "modules", module, NULL);
+       Ns_MakePath(dsPtr, "modules", module, (char *)0);
     }
     va_start(ap, module);
     path = MakePath(dsPtr, &ap);
@@ -668,7 +671,7 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
         path = Ns_DStringAppend(dsPtr, servPtr->fastpath.pagedir);
     } else {
 	(void) ServerRoot(dsPtr, servPtr, host);
-        path = Ns_MakePath(dsPtr, servPtr->fastpath.pagedir, NULL);
+        path = Ns_MakePath(dsPtr, servPtr->fastpath.pagedir, (char *)0);
     }
 
     return path;
@@ -696,24 +699,23 @@ int
 NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     Ns_DString  path;
-    int         levels;
+    int         levels, result = TCL_OK;
 
     if (objc != 3) {
         Tcl_WrongNumArgs(interp, 1, objv, "string levels");
-        return TCL_ERROR;
-    }
-    if (Tcl_GetIntFromObj(interp, objv[2], &levels) != TCL_OK
+        result = TCL_ERROR;
+        
+    } else if (Tcl_GetIntFromObj(interp, objv[2], &levels) != TCL_OK
         || levels <= 0) {
-
-        Tcl_SetResult(interp, "levels must be an integer greater than zero",
-                      TCL_STATIC);
-        return TCL_ERROR;
+        Ns_TclPrintfResult(interp, "levels must be an integer greater than zero");
+        result = TCL_ERROR;
+        
+    } else {
+        Ns_DStringInit(&path);
+        Ns_HashPath(&path, Tcl_GetString(objv[1]), levels);
+        Tcl_DStringResult(interp, &path);
     }
-    Ns_DStringInit(&path);
-    Ns_HashPath(&path, Tcl_GetString(objv[1]), levels);
-    Tcl_DStringResult(interp, &path);
-
-    return TCL_OK;
+    return result;
 }
 
 
@@ -737,28 +739,31 @@ NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 int
 NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_DString    ds;
-    int           i;
-    const char   *module;
+    int result = TCL_OK;
 
-    Ns_DStringInit(&ds);
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "server ?module ...?");
-        return TCL_ERROR;
-    }
-    module = objc > 2 ? Tcl_GetString(objv[2]) : NULL;
-    /* 
-     * Use (char *)0 as sentinel instead of NULL to make the function
-     * portable. Cppcheck showed this problem in a first step.  See
-     * e.g. http://ewontfix.com/11/.
-     */
-    Ns_ModulePath(&ds, Tcl_GetString(objv[1]), module, (char *)0);
-    for (i = 3; i < objc; ++i) {
-        Ns_MakePath(&ds, Tcl_GetString(objv[i]), NULL);
-    }
-    Tcl_DStringResult(interp, &ds);
+        result = TCL_ERROR;
+        
+    } else {
+        Ns_DString  ds;
+        int         i;
+        const char *module = objc > 2 ? Tcl_GetString(objv[2]) : NULL;
 
-    return TCL_OK;
+        Ns_DStringInit(&ds);        
+        /* 
+         * Use (char *)0 as sentinel instead of NULL to make the function
+         * portable. Cppcheck showed this problem in a first step.  See
+         * e.g. http://ewontfix.com/11/.
+         */
+        Ns_ModulePath(&ds, Tcl_GetString(objv[1]), module, (char *)0);
+        for (i = 3; i < objc; ++i) {
+            Ns_MakePath(&ds, Tcl_GetString(objv[i]), (char *)0);
+        }
+        Tcl_DStringResult(interp, &ds);
+    }
+
+    return result;
 }
 
 
@@ -794,11 +799,8 @@ NsTclPagePathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 static int
 PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
 {
-    const NsInterp *itPtr = clientData;
-    const NsServer *servPtr;
-    Ns_DString      ds;
-    const char     *host = NULL;
-    int             i, npaths = 0;
+    char *host = NULL;
+    int   npaths = 0, result = TCL_OK;
 
     Ns_ObjvSpec opts[] = {
         {"-host", Ns_ObjvString, &host, NULL},
@@ -812,30 +814,38 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
     NS_NONNULL_ASSERT(interp != NULL);
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
-    }
+        result = TCL_ERROR;
 
-    servPtr = itPtr->servPtr;
-    if (servPtr == NULL) {
-        servPtr = NsGetInitServer();
-    }
-    if (servPtr == NULL) {
-        Tcl_SetResult(interp, "no server available", TCL_STATIC);
-        return TCL_ERROR;
-    }
-
-    Ns_DStringInit(&ds);
-    if (cmd == 'p') {
-        (void) NsPageRoot(&ds, servPtr, host);
     } else {
-        (void) ServerRoot(&ds, servPtr, host);
-    }
-    for (i = objc - npaths; i < objc; ++i) {
-        Ns_MakePath(&ds, Tcl_GetString(objv[i]), NULL);
-    }
-    Tcl_DStringResult(interp, &ds);
+        const NsServer *servPtr;
+        const NsInterp *itPtr = clientData;
+    
+        servPtr = itPtr->servPtr;
+        if (servPtr == NULL) {
+            servPtr = NsGetInitServer();
+        }
+        if (servPtr == NULL) {
+            Tcl_SetResult(interp, "no server available", TCL_STATIC);
+            result = TCL_ERROR;
+            
+        } else {
+            Ns_DString      ds;
+            int             i;
 
-    return TCL_OK;
+            Ns_DStringInit(&ds);
+            if (cmd == 'p') {
+                (void) NsPageRoot(&ds, servPtr, host);
+            } else {
+                (void) ServerRoot(&ds, servPtr, host);
+            }
+            for (i = objc - npaths; i < objc; ++i) {
+                Ns_MakePath(&ds, Tcl_GetString(objv[i]), (char *)0);
+            }
+            Tcl_DStringResult(interp, &ds);
+        }
+    }
+    
+    return result;
 }
 
 
@@ -859,22 +869,25 @@ int
 NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     const NsServer *servPtr = NsGetInitServer();
-    Ns_TclCallback *cbPtr;
     int             result = TCL_OK;
 
     if (unlikely(objc < 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
-        return TCL_ERROR;
-    }
-    if (unlikely(servPtr == NULL)) {
-        Ns_TclPrintfResult(interp, "no initializing server");
-        return TCL_ERROR;
-    }
-    cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclServerRoot, objv[1],
-                              objc - 2, objv + 2);
-    if (unlikely(Ns_SetServerRootProc(NsTclServerRoot, cbPtr) != NS_OK)) {
         result = TCL_ERROR;
-    } 
+        
+    } else if (unlikely(servPtr == NULL)) {
+        Ns_TclPrintfResult(interp, "no initializing server");
+        result = TCL_ERROR;
+        
+    } else {
+        Ns_TclCallback *cbPtr;
+            
+        cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclServerRoot, objv[1],
+                                  objc - 2, objv + 2);
+        if (unlikely(Ns_SetServerRootProc(NsTclServerRoot, cbPtr) != NS_OK)) {
+            result = TCL_ERROR;
+        }
+    }
 
     return result;
 }
@@ -1041,7 +1054,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
          */
 
         path = Ns_MakePath(dest, servPtr->fastpath.serverdir,
-                           servPtr->vhost.hostprefix, NULL);
+                           servPtr->vhost.hostprefix, (char *)0);
         if (servPtr->vhost.hosthashlevel > 0) {
             Ns_HashPath(dest, safehost, servPtr->vhost.hosthashlevel);
         }
@@ -1055,7 +1068,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
          */
 
     defpath:
-        path = Ns_MakePath(dest, servPtr->fastpath.serverdir, NULL);
+        path = Ns_MakePath(dest, servPtr->fastpath.serverdir, (char *)0);
     }
 
     return path;

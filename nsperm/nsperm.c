@@ -118,8 +118,7 @@ NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv, int allow, int user);
 
 static bool ValidateUserAddr(User * userPtr, const char *peer);
-static int AuthProc(const char *server, const char *method, const char *url,
-		    const char *user, const char *pwd, const char *peer);
+static Ns_RequestAuthorizeProc AuthProc;
 static void WalkCallback(Tcl_DString * dsPtr, const void *arg);
 static int CreateNonce(const char *privatekey, char **nonce, char *uri);
 static int CreateHeader(Server * servPtr, Ns_Conn *conn, bool stale);
@@ -161,7 +160,6 @@ Ns_ModuleInit(const char *server, const char *module)
     Tcl_HashEntry *hPtr;
     int            isNew;
     Ns_ReturnCode  result;
-    /*char *path;*/
 
     NS_NONNULL_ASSERT(module != NULL);
 
@@ -188,7 +186,6 @@ Ns_ModuleInit(const char *server, const char *module)
     }
     servPtr = ns_malloc(sizeof(Server));
     servPtr->server = server;
-    /*path = Ns_ConfigGetPath(server, module, NULL);*/
     Tcl_InitHashTable(&servPtr->users, TCL_STRING_KEYS);
     Tcl_InitHashTable(&servPtr->groups, TCL_STRING_KEYS);
     Ns_RWLockInit(&servPtr->lock);
@@ -363,18 +360,18 @@ static int PermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *C
  *----------------------------------------------------------------------
  */
 
-static int AuthProc(const char *server, const char *method, const char *url,
-		    const char *user, const char *pwd, const char *peer)
+static Ns_ReturnCode AuthProc(const char *server, const char *method, const char *url,
+                              const char *user, const char *pwd, const char *peer)
 {
-    int status;
-    Ns_Set *set;
-    Server *servPtr;
-    Perm *permPtr;
-    User *userPtr;
+    Ns_ReturnCode  status;
+    Ns_Set        *set;
+    Server        *servPtr;
+    Perm          *permPtr;
+    User          *userPtr;
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
-    char buf[NS_ENCRYPT_BUFSIZE], *group, *auth = NULL;
-    Ns_Conn *conn = Ns_GetConn();
+    char           buf[NS_ENCRYPT_BUFSIZE], *group, *auth = NULL;
+    Ns_Conn       *conn = Ns_GetConn();
 
     if (user == NULL) {
         user = "";
@@ -854,7 +851,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
             validIp = ns_inet_pton(ipPtr, net);
             if (strchr(slash, INTCHAR('.')) == NULL && strchr(slash, INTCHAR(':')) == NULL) {
                 maskPtr->sa_family = ipPtr->sa_family;
-                Ns_SockaddrMaskBits(maskPtr, strtol(slash, NULL, 10));
+                Ns_SockaddrMaskBits(maskPtr, (unsigned int)strtol(slash, NULL, 10));
                 validMask = 1;
             } else {
                 validMask = ns_inet_pton(maskPtr, slash);
@@ -1475,25 +1472,25 @@ static void WalkCallback(Tcl_DString * dsPtr, const void *arg)
 
     hPtr = Tcl_FirstHashEntry(&permPtr->allowuser, &search);
     while (hPtr != NULL) {
-        Ns_DStringVarAppend(dsPtr, " -allowuser {", Tcl_GetHashKey(&permPtr->allowuser, hPtr), "}", NULL);
+        Ns_DStringVarAppend(dsPtr, " -allowuser {", Tcl_GetHashKey(&permPtr->allowuser, hPtr), "}", (char *)0);
         hPtr = Tcl_NextHashEntry(&search);
     }
 
     hPtr = Tcl_FirstHashEntry(&permPtr->denyuser, &search);
     while (hPtr != NULL) {
-        Ns_DStringVarAppend(dsPtr, " -denyuser {", Tcl_GetHashKey(&permPtr->denyuser, hPtr), "}", NULL);
+        Ns_DStringVarAppend(dsPtr, " -denyuser {", Tcl_GetHashKey(&permPtr->denyuser, hPtr), "}", (char *)0);
         hPtr = Tcl_NextHashEntry(&search);
     }
 
     hPtr = Tcl_FirstHashEntry(&permPtr->allowgroup, &search);
     while (hPtr != NULL) {
-        Ns_DStringVarAppend(dsPtr, " -allowgroup {", Tcl_GetHashKey(&permPtr->allowgroup, hPtr), "}", NULL);
+        Ns_DStringVarAppend(dsPtr, " -allowgroup {", Tcl_GetHashKey(&permPtr->allowgroup, hPtr), "}", (char *)0);
         hPtr = Tcl_NextHashEntry(&search);
     }
 
     hPtr = Tcl_FirstHashEntry(&permPtr->denygroup, &search);
     while (hPtr != NULL) {
-        Ns_DStringVarAppend(dsPtr, " -denygroup {", Tcl_GetHashKey(&permPtr->denygroup, hPtr), "}", NULL);
+        Ns_DStringVarAppend(dsPtr, " -denygroup {", Tcl_GetHashKey(&permPtr->denygroup, hPtr), "}", (char *)0);
         hPtr = Tcl_NextHashEntry(&search);
     }
 }
@@ -1716,7 +1713,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
     Ns_CtxMD5Init(&md5);
 
     Ns_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, ntime, ":", uri, ":", privatekey, NULL);
+    Ns_DStringVarAppend(&ds, ntime, ":", uri, ":", privatekey, (char *)0);
 
     Ns_CtxMD5Update(&md5, (unsigned char *) ds.string, (unsigned int) ds.length);
     Ns_CtxMD5Final(&md5, sig);
@@ -1772,7 +1769,7 @@ static int CreateHeader(Server *servPtr, Ns_Conn *conn, bool stale)
     Ns_DStringPrintf(&ds, "Digest realm=\"%s\", nonce=\"%s\", algorithm=\"MD5\", qop=\"auth\"", servPtr->server, nonce);
 
     if (stale) {
-        Ns_DStringVarAppend(&ds, ", stale=\"true\"", NULL);
+        Ns_DStringVarAppend(&ds, ", stale=\"true\"", (char *)0);
     }
     Ns_ConnSetHeaders(conn, "WWW-Authenticate", ds.string);
     return NS_OK;

@@ -59,6 +59,30 @@ static bool neededAdditionalConnectionThreads(const ConnPool *poolPtr)
 static void WakeupConnThreads(ConnPool *poolPtr) 
     NS_GNUC_NONNULL(1);
 
+static Ns_ReturnCode MapspecParse(Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+
+static int ServerMaxThreadsObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                                  ConnPool *poolPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+static int ServerMinThreadsObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                                  ConnPool *poolPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+static int ServerMapObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                           NsServer  *servPtr, ConnPool *poolPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6);
+
+static int ServerMappedObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                              NsServer *servPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+static int ServerUnmapObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                             NsServer *servPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+static Ns_ArgProc WalkCallback;
 
 /*
  * Static variables defined in this file.
@@ -154,11 +178,10 @@ Ns_GetConn(void)
  */
 
 void
-NsMapPool(ConnPool *poolPtr, const char *map)
+NsMapPool(ConnPool *poolPtr, const char *map, unsigned int flags)
 {
-    const char **mv;
-    const char *server;
-    int  mc;
+    const char **mv, *server;
+    int          mc;
 
     NS_NONNULL_ASSERT(poolPtr != NULL);
     NS_NONNULL_ASSERT(map != NULL);
@@ -167,13 +190,14 @@ NsMapPool(ConnPool *poolPtr, const char *map)
 
     if (Tcl_SplitList(NULL, map, &mc, &mv) == TCL_OK) {
         if (mc == 2) {
-            Ns_UrlSpecificSet(server, mv[0], mv[1], poolid, poolPtr, 0u, NULL);
+            Ns_UrlSpecificSet(server, mv[0], mv[1], poolid, poolPtr, flags, NULL);
             Ns_Log(Notice, "pool[%s]: mapped %s %s -> %s", 
 		   server, mv[0], mv[1], poolPtr->pool);
         }
         Tcl_Free((char *) mv);
     }
 }
+
 
 
 /*
@@ -335,7 +359,9 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 
     NS_NONNULL_ASSERT(sockPtr != NULL);
     NS_NONNULL_ASSERT(nowPtr != NULL);
-
+    assert(sockPtr->drvPtr != NULL);
+    
+    sockPtr->drvPtr->stats.received++;
     servPtr = sockPtr->servPtr;
 
     /*
@@ -447,8 +473,9 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     }
 
     if (connPtr == NULL) {
-	Ns_Log(Notice, "[%s] All avalaible connections are used, waiting %d idle %d current %d",
-	       poolPtr->servPtr->server, 
+	Ns_Log(Notice, "[%s pool %s] All available connections are used, waiting %d idle %d current %d",
+	       poolPtr->servPtr->server,
+               poolPtr->pool,
 	       poolPtr->wqueue.wait.num,
 	       poolPtr->threads.idle, 
 	       poolPtr->threads.current);
@@ -508,6 +535,457 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     return queued;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * WalkCallback --
+ *
+ *    Callback for Ns_UrlSpecificWalk() used in "ns_server map".  Currently a
+ *    placeholder, might output useful information in the future.
+ *
+ * Results:
+ *    None.
+ *
+ * Side effects:
+ *    None
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+WalkCallback(Ns_DString *dsPtr, const void *arg)
+{
+    const ConnPool *poolPtr = (ConnPool *)arg;
+    Tcl_DStringAppendElement(dsPtr, poolPtr->pool);
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ServerMaxThreadsObjCmd, subcommand of NsTclServerObjCmd --
+ *
+ *    Implements the "ns_server ... maxthreads ..." command.
+ *
+ * Results:
+ *    Tcl result. 
+ *
+ * Side effects:
+ *    Might update maxthreads setting of a pool
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ServerMaxThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                       ConnPool *poolPtr, int nargs)
+{
+    int             result = TCL_OK, value = 0;
+    Ns_ObjvSpec args[] = {
+        {"?value",   Ns_ObjvInt, &value, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
+    
+    if (Ns_ParseObjv(NULL, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (nargs == 1) {
+        if (value < poolPtr->threads.min || value > poolPtr->wqueue.maxconns) {
+            Ns_TclPrintfResult(interp, "argument is not an integer in valid range: %s", Tcl_GetString(objv[objc-1]));
+            result = TCL_ERROR;
+        } else {
+            Ns_MutexLock(&poolPtr->threads.lock);
+            poolPtr->threads.max = value;
+            Ns_MutexUnlock(&poolPtr->threads.lock);
+        }
+    } else {
+        /* 
+         * Called without an argument, just return the current setting.
+         */
+        assert(nargs == 0);
+    }
+    
+    if (result == TCL_OK) {
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.max));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ServerMinThreadsObjCmd, subcommand of NsTclServerObjCmd --
+ *
+ *    Implements the "ns_server ... minthreads ..." command.
+ *
+ * Results:
+ *    Tcl result. 
+ *
+ * Side effects:
+ *    Might update minthreads setting of a pool
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ServerMinThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                       ConnPool *poolPtr, int nargs)
+{
+    int             result = TCL_OK, value = 0;
+    Ns_ObjvSpec args[] = {
+        {"?value",   Ns_ObjvInt, &value, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
+    
+    if (Ns_ParseObjv(NULL, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (nargs == 1) {
+        if (value < 1 || value > poolPtr->threads.max) {
+            Ns_TclPrintfResult(interp, "argument is not an integer in valid range: %d", value);
+            result = TCL_ERROR;
+        } else {
+            Ns_MutexLock(&poolPtr->threads.lock);
+            poolPtr->threads.min = value;
+            Ns_MutexUnlock(&poolPtr->threads.lock);
+        }
+    } else {
+        /* 
+         * Called without an argument, just return the current setting.
+         */
+        assert(nargs == 0);
+    }
+    
+    if (result == TCL_OK) {
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.min));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * MapspecParse --
+ *
+ *      Check, if the mapspec Tcl_Obj in the first argumet is of the right
+ *      syntax and return its componets as strings. Note, that the lifetime of
+ *      the returned strings depends on the lifetime of the first argument.
+ *
+ * Results:
+ *      Ns_ReturnCode NS_OK or NS_ERROR;
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Ns_ReturnCode
+MapspecParse( Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url) {
+    Ns_ReturnCode status;
+    int           oc;
+    Tcl_Obj     **ov;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(mapspecObj != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    
+    if (Tcl_ListObjGetElements(NULL, mapspecObj, &oc, &ov) == TCL_OK && oc == 2) {
+        *method = Tcl_GetString(ov[0]);
+        *url = Tcl_GetString(ov[1]);
+        status = NS_OK;
+    } else {
+        Ns_TclPrintfResult(interp,
+                           "invalid mapspec '%s'; must be 2-element list containing http method and URL",
+                           Tcl_GetString(mapspecObj));
+        status = NS_ERROR;
+    }
+    
+    return status;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ServerMapObjCmd, subcommand of NsTclServerObjCmd --
+ *
+ *    Implements the "ns_server ... map ..." command.
+ *
+ * Results:
+ *    Tcl result. 
+ *
+ * Side effects:
+ *    Map method + URL to specified pool
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ServerMapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                NsServer  *servPtr, ConnPool *poolPtr, int nargs)
+{
+    int             result = TCL_OK, noinherit = 0;
+    Tcl_Obj        *mapspecObj = NULL;
+    Ns_ObjvSpec     lopts[] = {
+        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
+        {NULL, NULL, NULL, NULL}
+    };            
+    Ns_ObjvSpec args[] = {
+        {"?mapspec",   Ns_ObjvObj, &mapspecObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
+    
+    if (Ns_ParseObjv(lopts, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (mapspecObj != NULL) {
+        char *method, *url;
+            
+        if (MapspecParse(interp, mapspecObj, &method, &url) != NS_OK) {
+            result = TCL_ERROR;
+        } else {
+            unsigned int flags = 0u;
+            
+            if (noinherit != 0) {
+                flags |= NS_OP_NOINHERIT;
+            }
+            
+            Ns_MutexLock(&servPtr->urlspace.lock);
+            Ns_UrlSpecificSet(servPtr->server, method, url, poolid, poolPtr, flags, NULL);
+            Ns_MutexUnlock(&servPtr->urlspace.lock);
+            
+            Ns_Log(Notice, "pool[%s]: mapped %s %s -> %s", 
+                   servPtr->server, method, url, poolPtr->pool);
+        }
+
+    } else {
+        Tcl_DString  ds, *dsPtr = &ds;
+        Tcl_Obj     **ov, *fullListObj;
+        int          oc;
+        
+        /*
+         * Return the current mappings just in the case, when the map
+         * operation was called without the optional argument.
+         */
+        Ns_DStringInit(dsPtr);
+        
+        Ns_MutexLock(&servPtr->urlspace.lock);
+        Ns_UrlSpecificWalk(poolid, servPtr->server, WalkCallback, dsPtr);
+        Ns_MutexUnlock(&servPtr->urlspace.lock);
+        
+        /*
+         * Convert the Tcl_Dstring into a list, and filter the elements
+         * from different pools.
+         */
+        fullListObj = Tcl_NewStringObj(dsPtr->string, dsPtr->length);
+        Tcl_IncrRefCount(fullListObj);
+        
+        result = Tcl_ListObjGetElements(interp, fullListObj, &oc, &ov);
+        if (result == TCL_OK) {
+            Tcl_Obj *resultObj;
+            int i;
+
+            /*
+             * The result should be always a proper list, so the potential
+             * error should not occur.
+             */
+            resultObj = Tcl_NewListObj(oc, NULL);
+                
+            for (i = 0; i < oc; i++) {
+                Tcl_Obj *elemObj = ov[i];
+                int      length;
+
+                /*
+                 * Get the last element, which is the pool, and compare it
+                 * with the current pool name.
+                 */
+                result = Tcl_ListObjLength(interp, elemObj, &length);
+                if (result == TCL_OK) {
+                    Tcl_Obj *lastSubElem;
+                        
+                    result = Tcl_ListObjIndex(interp, elemObj, length-1, &lastSubElem);
+                    if (result == TCL_OK) {
+                        const char *pool = Tcl_GetString(lastSubElem);
+                        
+                        if (!STREQ(poolPtr->pool, pool)) {
+                            continue;
+                        }
+                    }
+                }
+                /*
+                 * The element is from the current pool. Remove the last
+                 * element (poolname) from the list...
+                 */
+                if (result == TCL_OK) {
+                    result = Tcl_ListObjReplace(interp, elemObj, length-1, 1, 0, NULL);
+                }
+                /*
+                 * ... and append the element.
+                 */
+                if (result == TCL_OK) {
+                    Tcl_ListObjAppendElement(interp, resultObj, elemObj);
+                } else {
+                    break;
+                }
+            }
+            if (result == TCL_OK) {
+                Tcl_SetObjResult(interp, resultObj);
+            } else {
+                Ns_TclPrintfResult(interp, "invalid result from mapped URLs");
+            }
+        }
+        Tcl_DecrRefCount(fullListObj);
+        Tcl_DStringFree(dsPtr);
+
+    }
+    
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ServerMappedObjCmd, subcommand of NsTclServerObjCmd --
+ *
+ *    Implements the "ns_server ... mapped " command.
+ *
+ * Results:
+ *    Tcl result. 
+ *
+ * Side effects:
+ *    None
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ServerMappedObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                  NsServer *servPtr, int nargs)
+{
+    int          result = TCL_OK, noinherit = 0, exact = 0;
+    Tcl_Obj     *mapspecObj;
+    char        *method, *url;
+    Ns_ObjvSpec  lopts[] = {
+        {"-exact",     Ns_ObjvBool,   &exact, INT2PTR(NS_TRUE)},
+        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
+        {NULL, NULL, NULL, NULL}
+    };            
+    Ns_ObjvSpec  args[] = {
+        {"mapspec", Ns_ObjvObj, &mapspecObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    
+    if (Ns_ParseObjv(lopts, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (MapspecParse(interp, mapspecObj, &method, &url) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        unsigned int    flags = 0u;
+        const ConnPool *mappedPoolPtr;
+        NsUrlSpaceOp    op;
+            
+        if (noinherit != 0) {
+            flags |= NS_OP_NOINHERIT;
+        }
+
+        if (exact == (int)NS_TRUE) {
+            op = NS_URLSPACE_EXACT;
+        } else {
+            op = NS_URLSPACE_DEFAULT;
+        }
+
+        Ns_MutexLock(&servPtr->urlspace.lock);
+        mappedPoolPtr = (ConnPool *)NsUrlSpecificGet(servPtr,  method, url, poolid, flags, op);
+        Ns_MutexUnlock(&servPtr->urlspace.lock);
+
+        if (mappedPoolPtr != NULL) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(mappedPoolPtr->pool, -1));
+        }
+    }
+    
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ServerUnmapObjCmd, subcommand of NsTclServerObjCmd --
+ *
+ *    Implements the "ns_server ... unmap ..." command.
+ *
+ * Results:
+ *    Tcl result. 
+ *
+ * Side effects:
+ *    might unmap a method/url pair.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ServerUnmapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv,
+                  NsServer *servPtr, int nargs)
+{
+    int          result = TCL_OK, noinherit = 0;
+    char        *method, *url;
+    Tcl_Obj     *mapspecObj;
+    Ns_ObjvSpec  lopts[] = {
+        {"-noinherit", Ns_ObjvBool, &noinherit, INT2PTR(NS_TRUE)},
+        {NULL, NULL, NULL, NULL}
+    };            
+    Ns_ObjvSpec  args[] = {
+        {"mapspec",   Ns_ObjvObj, &mapspecObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
+    
+    if (Ns_ParseObjv(lopts, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (MapspecParse(interp, mapspecObj, &method, &url) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        bool          success;
+        unsigned int  flags = 0u;
+        const void   *data;
+
+        if (noinherit != 0) {
+            flags |= NS_OP_NOINHERIT;
+        }
+        
+        Ns_MutexLock(&servPtr->urlspace.lock);
+        data = Ns_UrlSpecificDestroy(servPtr->server,  method, url, poolid, flags);
+        Ns_MutexUnlock(&servPtr->urlspace.lock);
+
+        success = (data != NULL);
+        if (success) {
+            Ns_Log(Notice, "pool[%s]: unmapped %s %s", servPtr->server, method, url);
+        } else {
+            Ns_Log(Warning, "pool[%s]: could not unmap %s %s", servPtr->server, method, url);
+        }
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(success));
+    }
+    
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -530,8 +1008,8 @@ int
 NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     const NsInterp *itPtr = clientData;
-    int             subcmd = 0, value = 0, result = TCL_OK;
-    const NsServer *servPtr = NULL;
+    int             subcmd = 0, result = TCL_OK, nargs = 0;
+    NsServer       *servPtr = NULL;
     ConnPool       *poolPtr;
     char           *pool = NULL, *optArg = NULL, buf[100];
     Tcl_DString     ds, *dsPtr = &ds;
@@ -539,12 +1017,14 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     enum {
         SActiveIdx, SAllIdx, SConnectionsIdx, 
         SFiltersIdx,
-        SKeepaliveIdx, 
+        SKeepaliveIdx,
+        SMapIdx, SMappedIdx,
         SMaxthreadsIdx, SMinthreadsIdx,
         SPagedirIdx, SPoolsIdx, SQueuedIdx, 
         SRequestprocsIdx,
         SServerdirIdx, SStatsIdx, 
         STcllibIdx, SThreadsIdx, STracesIdx,
+        SUnmapIdx, 
         SUrl2fileIdx, SWaitingIdx
     };
     
@@ -554,6 +1034,8 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         {"connections",  (unsigned int)SConnectionsIdx},
         {"filters",      (unsigned int)SFiltersIdx},
         {"keepalive",    (unsigned int)SKeepaliveIdx},
+        {"map",          (unsigned int)SMapIdx},
+        {"mapped",       (unsigned int)SMappedIdx},
         {"maxthreads",   (unsigned int)SMaxthreadsIdx},
         {"minthreads",   (unsigned int)SMinthreadsIdx},
         {"pagedir",      (unsigned int)SPagedirIdx},
@@ -565,6 +1047,7 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         {"tcllib",       (unsigned int)STcllibIdx},
         {"threads",      (unsigned int)SThreadsIdx},
         {"traces",       (unsigned int)STracesIdx},
+        {"unmap",        (unsigned int)SUnmapIdx},
         {"url2file",     (unsigned int)SUrl2fileIdx},
         {"waiting",      (unsigned int)SWaitingIdx},
         {NULL,           0u}
@@ -578,7 +1061,7 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     };
     Ns_ObjvSpec args[] = {
         {"subcmd",  Ns_ObjvIndex,  &subcmd,   subcmds},
-        {"?arg",    Ns_ObjvString, &optArg,   NULL},
+        {"?args",   Ns_ObjvArgs,   &nargs,    NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -596,13 +1079,19 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 	    return TCL_ERROR;
     }
 
-    if (subcmd != SMinthreadsIdx && subcmd != SMaxthreadsIdx) {	
+    if (subcmd != SMinthreadsIdx
+        && subcmd != SMaxthreadsIdx
+        && subcmd != SMapIdx
+        && subcmd != SMappedIdx
+        && subcmd != SUnmapIdx
+        ) {
 	/*
-	 * just for backwards compatibility
+	 * Just for backwards compatibility
 	 */
-	if (optArg != NULL) {
+	if (nargs > 0) {
 	    Ns_LogDeprecated(objv, objc, "ns_server ?-pool p? ...", 
 			     "Passing pool as second argument is deprecated.");
+            optArg = Tcl_GetString(objv[objc-1]);
 	    pool = optArg;
 	}
     }
@@ -615,9 +1104,11 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         poolPtr = servPtr->pools.firstPtr;
         while (poolPtr != NULL && !STREQ(poolPtr->pool, pool)) {
             poolPtr = poolPtr->nextPtr;
+            if (poolPtr != NULL) {
+            }
         }
         if (unlikely(poolPtr == NULL)) {
-            Ns_TclPrintfResult(interp, "no such pool %s for server %s", pool, servPtr->server);
+            Ns_TclPrintfResult(interp, "no such pool '%s' for server '%s'", pool, servPtr->server);
             return TCL_ERROR;
         }
     } else {
@@ -692,36 +1183,24 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
         break;
 
+    case SMapIdx:
+        result = ServerMapObjCmd(clientData, interp, objc, objv, servPtr, poolPtr, nargs);
+	break;
+
+    case SMappedIdx:
+        result = ServerMappedObjCmd(clientData, interp, objc, objv, servPtr,nargs);
+        break;
+
+    case SUnmapIdx:
+        result = ServerUnmapObjCmd(clientData, interp, objc, objv, servPtr, nargs);
+        break;
+    
     case SMaxthreadsIdx:
-	if (optArg != NULL) {
-	    if (Ns_StrToInt(optArg, &value) != NS_OK || value < poolPtr->threads.min || value > poolPtr->wqueue.maxconns) {
-		Ns_TclPrintfResult(interp, "argument is not an integer in valid range: %s", optArg);
-		result = TCL_ERROR;
-	    } else {
-                Ns_MutexLock(&poolPtr->threads.lock);
-                poolPtr->threads.max = value;
-                Ns_MutexUnlock(&poolPtr->threads.lock);
-            }
-	}
-        if (result == TCL_OK) {
-            Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.max));
-        }
+        result = ServerMaxThreadsObjCmd(clientData, interp, objc, objv, poolPtr, nargs);
 	break;
 
     case SMinthreadsIdx:
-	if (optArg != NULL) {
-	    if (Ns_StrToInt(optArg, &value) != NS_OK || value < 1 || value > poolPtr->threads.max) {
-		Ns_TclPrintfResult(interp, "argument is not a integer in the valid range: %s", optArg);
-		result = TCL_ERROR;
-	    } else {
-                Ns_MutexLock(&poolPtr->threads.lock);
-                poolPtr->threads.min = value;
-                Ns_MutexUnlock(&poolPtr->threads.lock);
-            }
-	}
-        if (result == TCL_OK) {
-            Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.min));
-        }
+        result = ServerMinThreadsObjCmd(clientData, interp, objc, objv, poolPtr, nargs);
 	break;
     
     case SConnectionsIdx:
@@ -758,6 +1237,9 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
         Ns_DStringAppend(dsPtr, " runtime ");
 	Ns_DStringAppendTime(dsPtr, &poolPtr->stats.runTime);
+
+        Ns_DStringAppend(dsPtr, " tracetime ");
+	Ns_DStringAppendTime(dsPtr, &poolPtr->stats.traceTime);
 
         Tcl_DStringResult(interp, dsPtr);
         break;
@@ -1377,13 +1859,14 @@ NsConnThread(void *arg)
     Ns_MutexLock(&servPtr->pools.lock);
     joinThread = servPtr->pools.joinThread;
     Ns_ThreadSelf(&servPtr->pools.joinThread);
+    Ns_MutexUnlock(&servPtr->pools.lock);
+
     /*fprintf(stderr, "###stopping joinThread %p, self %p\n",
       joinThread, servPtr->pools.joinThread);*/
     
     if (joinThread != NULL) {
         JoinConnThread(&joinThread);
     }
-    Ns_MutexUnlock(&servPtr->pools.lock);
     
     Ns_Log(Notice, "exiting: %s", exitMsg);
 
@@ -1458,7 +1941,7 @@ ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
     memset(&(connPtr->reqPtr->request), 0, sizeof(struct Ns_Request));
 
     /*{ConnPool *poolPtr = argPtr->poolPtr;
-      Ns_Log(Notice,"ConnRun [%d] connPtr %p req %p %s", ThreadNr(poolPtr, argPtr), connPtr, connPtr->request, connPtr->request.line);
+      Ns_Log(Notice, "ConnRun [%d] connPtr %p req %p %s", ThreadNr(poolPtr, argPtr), connPtr, connPtr->request, connPtr->request.line);
       } */   
     connPtr->headers = Ns_SetRecreate(connPtr->reqPtr->headers);
     connPtr->contentLength = connPtr->reqPtr->length;
@@ -1565,10 +2048,18 @@ ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
         }
     }
 
+    /*
+     * Update runtime statistics to make these usable for traces (e.g. access log).
+     */
+    NsConnTimeStatsUpdate(conn);
+
     if ((status == NS_OK) || (status == NS_FILTER_RETURN)) {
         status = NsRunFilters(conn, NS_FILTER_TRACE);
         if (status == NS_OK) {
             (void) NsRunFilters(conn, NS_FILTER_VOID_TRACE);
+            /*
+             * Run Server traces (e.g. writing access log entries)
+             */
             NsRunTraces(conn);
         }
     }
@@ -1601,7 +2092,6 @@ ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
 
     (void) Ns_ConnClose(conn);
 
-    Ns_ConnTimeStats(conn);
     connPtr->reqPtr = NULL;
 
     /*
@@ -1643,6 +2133,8 @@ ConnRun(const ConnThreadArg *UNUSED(argPtr), Conn *connPtr)
         ns_free(connPtr->clientData);
         connPtr->clientData = NULL;
     }
+
+    NsConnTimeStatsFinalize(conn);
 
 }
 

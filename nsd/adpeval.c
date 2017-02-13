@@ -157,7 +157,7 @@ ConfigServerAdp(const char *server)
     NsServer   *servPtr = NsGetServer(server); 
     const char *path;
 
-    path = Ns_ConfigGetPath(server, NULL, "adp", NULL);
+    path = Ns_ConfigGetPath(server, NULL, "adp", (char *)0);
 
     /*
      * Initialize the page and tag tables and locks.
@@ -455,9 +455,9 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
 
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
         if (itPtr->adp.cwd == NULL) {
-            file = Ns_PagePath(&tmp, servPtr->server, file, NULL);
+            file = Ns_PagePath(&tmp, servPtr->server, file, (char *)0);
         } else {
-            file = Ns_MakePath(&tmp, itPtr->adp.cwd, file, NULL);
+            file = Ns_MakePath(&tmp, itPtr->adp.cwd, file, (char *)0);
         }
     }
     file = Ns_NormalizePath(&path, file);
@@ -635,7 +635,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
                     cachePtr = ns_malloc(sizeof(AdpCache));
 
                     /*
-                     * Turn off TCL mode after cached result, in caching mode
+                     * Turn off Tcl mode after cached result, in caching mode
                      * we wrap Tcl file into proc 'adp:filename' and return
                      * as result only
                      *      ns_adp_append {<% adp:filename %>}
@@ -770,7 +770,7 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
 /*
  *----------------------------------------------------------------------
  *
- * NsTclAdpStatsCmd --
+ * NsTclAdpStatsObjCmd --
  *
  *      Implement the ns_adp_stats command to return stats on cached
  *      ADP pages.
@@ -785,8 +785,8 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
  */
 
 int
-NsTclAdpStatsCmd(ClientData clientData, Tcl_Interp *interp, 
-		 int UNUSED(argc), CONST char* UNUSED(argv[]))
+NsTclAdpStatsObjCmd(ClientData clientData, Tcl_Interp *interp, 
+		 int UNUSED(objc), Tcl_Obj *CONST* (objv))
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -1262,7 +1262,7 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
             result = TCL_ERROR;
 	} else {
 	    Ns_DStringTrunc(&ds, 0);
-	    Ns_DStringVarAppend(&ds, "source ", debugfile, NULL);
+	    Ns_DStringVarAppend(&ds, "source ", debugfile, (char *)0);
 	    result = Tcl_EvalEx(interp, ds.string, ds.length, 0);
 	}
 	(void) ns_close(fd);

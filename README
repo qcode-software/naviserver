@@ -84,7 +84,7 @@ Mac OS/X 10.2+ and Windows. To compile and install:
 
     Official releases:
 
-        http://sourceforge.net/project/showfiles.php?group_id=130646
+        https://sourceforge.net/projects/naviserver/files/
 
     Latest development source code:
 
@@ -92,8 +92,8 @@ Mac OS/X 10.2+ and Windows. To compile and install:
 
     The following should work for official releases:
 
-        $ gunzip < naviserver-4.99.12.tar.gz | tar xvf -
-        $ cd naviserver-4.99.12
+        $ gunzip < naviserver-4.99.15.tar.gz | tar xvf -
+        $ cd naviserver-4.99.15
         $ ./configure --prefix=/usr/local/ns --with-tcl=/usr/local/ns/lib --enable-symbols
         $ make
         $ su -c 'make install'
@@ -179,17 +179,17 @@ Mac OS/X 10.2+ and Windows. To compile and install:
 
 3f. To download and install additional modules:
 
-    For releases, usuall a distribution of the current modules is
-    provided ass well via sourceforge. To get e.g. a modules
-    named "nsfoo" installed
+    For tar releases of naviserver, a compatible version of the modules
+    is as well provided via sourceforge. In order to obtain a module
+    named "nsfoo", get it from the modules tar file and install it
+    like sketched below:
 
-        $ gunzip < naviserver-4.99.12-modules.tar.gz | tar xvf -
+        $ gunzip < naviserver-4.99.15-modules.tar.gz | tar xvf -
         $ cd modules/nsfoo
         $ make install NAVISERVER=/usr/local/ns
 
-    Alternatively, modules can be obtained from bitbucket:
-    included in most Linux distributions: e.g. yum install mercurial. For
-    Windows and Mac OSX see: http://www.selenic.com/mercurial
+    Alternatively, modules can be obtained from the code repository at
+    bitbucket via mercurial.
 
     To get a module "nsfoo" via mercurial
 
@@ -218,12 +218,13 @@ Mac OS/X 10.2+ and Windows. To compile and install:
 
     Example of building naviserver.exe:
 
-    Run dos prompt or cmd.exe, assuming msys_mingw8.zip is unpacked in the root of drive c:
+    Run dos prompt or cmd.exe, assuming msys_mingw8.zip is unpacked in the
+    root of drive c:
 
         c:>cd msys
         c:\msys> msys.bat
 
-        $ cd /c/naviserver-4.99.12
+        $ cd /c/naviserver-4.99.15
         $ ./configure --prefix=c:/naviserver --with-tcl=c:/naviserver/lib
         $ make install
 

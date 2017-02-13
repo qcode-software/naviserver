@@ -153,6 +153,7 @@ NsConfUpdate(void)
     Ns_DString ds;
     const char *path = NS_CONFIG_PARAMETERS;
 
+    NsConfigTcl();
     NsConfigLog();
     NsConfigAdp();
     NsConfigFastpath();
@@ -172,7 +173,7 @@ NsConfUpdate(void)
         i = Ns_ConfigIntRange(path, "stacksize", 0, 0, INT_MAX);
     }
     if (i > 0) {
-	(void) Ns_ThreadStackSize((long)i);
+	(void) Ns_ThreadStackSize((ssize_t)i);
     }
 
     /*
@@ -211,7 +212,7 @@ NsConfUpdate(void)
     if (Ns_PathIsAbsolute(nsconf.tcl.sharedlibrary) == NS_FALSE) {
 	Ns_Set *set = Ns_ConfigCreateSection(NS_CONFIG_PARAMETERS);
 
-        Ns_HomePath(&ds, nsconf.tcl.sharedlibrary, NULL);
+        Ns_HomePath(&ds, nsconf.tcl.sharedlibrary, (char *)0);
         nsconf.tcl.sharedlibrary = Ns_DStringExport(&ds);
 
 	Ns_SetUpdate(set, "tcllibrary", nsconf.tcl.sharedlibrary);

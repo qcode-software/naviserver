@@ -389,25 +389,25 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
         msec = (int)(timeoutPtr->sec * 1000 + timeoutPtr->usec / 1000);
     }
     pfd.fd = sock;
+    pfd.revents = 0;
     pfd.events = 0;
 
     if ((what & (unsigned int)NS_SOCK_READ) != 0u) {
-	pfd.events |= POLLIN;
+	pfd.events |= (short)POLLIN;
     }
     if ((what & (unsigned int)NS_SOCK_WRITE) != 0u) {
-	pfd.events |= POLLOUT;
+	pfd.events |= (short)POLLOUT;
     }
     if ((what & (unsigned int)NS_SOCK_EXCEPTION) != 0u) {
-	pfd.events |= POLLPRI;
+	pfd.events |= (short)POLLPRI;
     }
 
-    pfd.revents = 0;
     do {
 	n = ns_poll(&pfd, (NS_POLL_NFDS_TYPE)1, msec);
     } while (n < 0 && errno == EINTR);
 
-    if (n > 0) {
-        result =  NS_OK;
+    if (likely(n > 0)) {
+        result = NS_OK;
     } else {
         result = NS_TIMEOUT;
     }
@@ -461,7 +461,7 @@ Ns_SockWait(NS_SOCKET sock, unsigned int what, int timeout)
 NS_SOCKET
 Ns_SockListen(const char *address, unsigned short port)
 {
-    return Ns_SockListenEx(address, port, nsconf.backlog);
+    return Ns_SockListenEx(address, port, nsconf.backlog, NS_FALSE);  // TODO: currently no parameter defined
 }
 
 
@@ -507,7 +507,8 @@ Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
  *      A socket or NS_INVALID_SOCKET on error.
  *
  * Side effects:
- *      Will set SO_REUSEADDR on the socket.
+ *      Will set SO_REUSEADDR always on the socket, SO_REUSEPORT 
+ *      optionally.
  *
  *----------------------------------------------------------------------
  */
@@ -515,11 +516,11 @@ Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
 NS_SOCKET
 Ns_BindSock(const struct sockaddr *saPtr)
 {
-    return Ns_SockBind(saPtr);
+    return Ns_SockBind(saPtr, NS_FALSE);
 }
 
 NS_SOCKET
-Ns_SockBind(const struct sockaddr *saPtr)
+Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
 {
     NS_SOCKET sock;
 
@@ -528,6 +529,13 @@ Ns_SockBind(const struct sockaddr *saPtr)
     sock = socket(saPtr->sa_family, SOCK_STREAM, 0);
 
     if (sock != NS_INVALID_SOCKET) {
+        
+#if defined(SO_REUSEPORT)
+        if (reusePort) {
+            int optval = 1;
+            setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+        }
+#endif
         sock = SockSetup(sock);
     }
     if (sock != NS_INVALID_SOCKET) {
@@ -784,7 +792,7 @@ Ns_SockSetBlocking(NS_SOCKET sock)
  */
 
 void
-Ns_SockSetDeferAccept(NS_SOCKET sock, int secs)
+Ns_SockSetDeferAccept(NS_SOCKET sock, long secs)
 {
 #ifdef TCP_FASTOPEN
 # if defined(__APPLE__) && defined(__MACH__)
@@ -807,7 +815,7 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, int secs)
 	Ns_Log(Error, "deferaccept setsockopt(TCP_DEFER_ACCEPT): %s",
 	       ns_sockstrerror(ns_sockerrno));
     } else {
-        Ns_Log(Notice, "deferaccept: socket option DEFER_ACCEPT activated (timeout %d)", secs);
+        Ns_Log(Notice, "deferaccept: socket option DEFER_ACCEPT activated (timeout %ld)", secs);
     }
 # else
 #  ifdef SO_ACCEPTFILTER
@@ -970,10 +978,11 @@ Ns_SockStrError(int err)
  */
 
 int
-NsPoll(struct pollfd *pfds, int nfds, const Ns_Time *timeoutPtr)
+NsPoll(struct pollfd *pfds, NS_POLL_NFDS_TYPE nfds, const Ns_Time *timeoutPtr)
 {
     Ns_Time now, diff;
-    int     i, n, ms;
+    int     n, ms;
+    NS_POLL_NFDS_TYPE i;
 
     /*
      * Clear revents.
@@ -999,7 +1008,7 @@ NsPoll(struct pollfd *pfds, int nfds, const Ns_Time *timeoutPtr)
                 ms = (int)(diff.sec * 1000 + diff.usec / 1000);
             }
         }
-        n = ns_poll(pfds, (size_t) nfds, ms);
+        n = ns_poll(pfds, nfds, ms);
     } while (n < 0 && ns_sockerrno == EINTR);
 
     /*
@@ -1062,36 +1071,33 @@ SockConnect(const char *host, unsigned short port, const char *lhost, unsigned s
     }
     if (result != NS_OK) {
         Ns_Log(Debug, "SockConnect %s %d (local %s %d) fails", host, port, lhost, lport);
-        return NS_INVALID_SOCKET;
-    }
-    sock = Ns_SockBind(lsaPtr);
-    /*
-      Ns_LogSockaddr(Notice, "SockConnect  sa", saPtr);
-      Ns_LogSockaddr(Notice, "SockConnect lsa", lsaPtr);
-    */
-    if (sock != NS_INVALID_SOCKET) {
-        if (async) {
-            if (Ns_SockSetNonBlocking(sock) != NS_OK) {
-                Ns_Log(Warning, "attempt to set socket nonblocking failed");
+        sock = NS_INVALID_SOCKET;
+        
+    } else {
+        sock = Ns_SockBind(lsaPtr, NS_FALSE);
+        if (sock != NS_INVALID_SOCKET) {
+            if (async) {
+                if (Ns_SockSetNonBlocking(sock) != NS_OK) {
+                    Ns_Log(Warning, "attempt to set socket nonblocking failed");
+                }
             }
-        }
 
-        if (connect(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) != 0) {
-            unsigned int err = ns_sockerrno;
-
-            if (!async || (err != EINPROGRESS && err != EWOULDBLOCK)) {
-                ns_sockclose(sock);
-                Ns_LogSockaddr(Warning, "SockConnect fails", saPtr);
-                sock = NS_INVALID_SOCKET;
+            if (connect(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) != 0) {
+                int err = ns_sockerrno;
+                
+                if (!async || (err != EINPROGRESS && err != EWOULDBLOCK)) {
+                    ns_sockclose(sock);
+                    Ns_LogSockaddr(Warning, "SockConnect fails", saPtr);
+                    sock = NS_INVALID_SOCKET;
+                }
             }
-        }
-        if (async && (sock != NS_INVALID_SOCKET)) {
-            if (Ns_SockSetBlocking(sock) != NS_OK) {
-                Ns_Log(Warning, "attempt to set socket blocking failed");
+            if (async && (sock != NS_INVALID_SOCKET)) {
+                if (Ns_SockSetBlocking(sock) != NS_OK) {
+                    Ns_Log(Warning, "attempt to set socket blocking failed");
+                }
             }
         }
     }
-
     return sock;
 }
 
@@ -1151,31 +1157,29 @@ SockSetup(NS_SOCKET sock)
 static ssize_t
 SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
 {
+    ssize_t n;
 
 #ifdef _WIN32
     DWORD RecvBytes, Flags = (DWORD)flags;
     if (WSARecv(sock, (LPWSABUF)bufs, nbufs, &RecvBytes, &Flags,
                 NULL, NULL) != 0) {
-        return -1;
+        n = -1;
+    } else {
+        n = (ssize_t)RecvBytes;
     }
-
-    return (ssize_t)RecvBytes;
 #else
-    ssize_t n;
     struct msghdr msg;
 
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = bufs;
-    msg.msg_iovlen = nbufs;
-
-    n = recvmsg(sock, &msg, flags);
-
+    msg.msg_iovlen = (NS_MSG_IOVLEN_T)nbufs;
+    n = recvmsg(sock, &msg, (int)flags);
     if (n < 0) {
         Ns_Log(Debug, "SockRecv: %s",
                ns_sockstrerror(ns_sockerrno));
     }
-    return n;
 #endif
+    return n;
 }
 
 

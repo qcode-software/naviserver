@@ -713,7 +713,7 @@ Ns_ObjvIndex(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
                                            sizeof(Ns_ObjvTable), "option",
                                            TCL_EXACT, &tableIdx);
         if (result == TCL_OK) {
-            *dest = tablePtr[tableIdx].value;
+            *dest = (int)tablePtr[tableIdx].value;
             *objcPtr -= 1;
         }
     } else {
@@ -826,7 +826,7 @@ Ns_ObjvBreak(Ns_ObjvSpec *UNUSED(spec), Tcl_Interp *UNUSED(interp),
  *	    unprocessed.
  *
  * Results:
- *	    Always TCL_BREAK.
+ *	    Always TCL_OK.
  *
  * Side effects:
  *	    Argument processing will end sucessfully.
@@ -911,9 +911,8 @@ Ns_ObjvServer(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *CONS
 int
 NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_ObjvSpec   *opts, *args, *specPtr;
-    Tcl_Obj      **argv, *argsObj;
-    int            argc, doneOpts = 0, status = TCL_OK;
+    Tcl_Obj  **argv, *argsObj;
+    int        argc, status = TCL_OK;
 
     if (objc != 3) {
         Tcl_WrongNumArgs(interp, 1, objv, "specification args");
@@ -933,42 +932,44 @@ NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 
     if (Tcl_ListObjGetElements(interp, argsObj, &argc, &argv) != TCL_OK
         || Tcl_ConvertToType(interp, objv[1], &specType) != TCL_OK) {
-        if (argsObj != objv[2]) {
-            Tcl_DecrRefCount(argsObj);
-        }
-        return TCL_ERROR;
-    }
-    opts = objv[1]->internalRep.twoPtrValue.ptr1;
-    args = objv[1]->internalRep.twoPtrValue.ptr2;
-    if (Ns_ParseObjv(opts, args, interp, 0, argc, argv) != NS_OK) {
-        if (argsObj != objv[2]) {
-            Tcl_DecrRefCount(argsObj);
-        }
-        return TCL_ERROR;
-    }
+        status = TCL_ERROR;
 
-    /*
-     * Set defaults for args which were passed no values and reset the
-     * dest pointer for subsequent calls to this command.
-     */
+    } else {
+        Ns_ObjvSpec   *opts, *args;
 
-    specPtr = opts;
-    for (;;) {
-        if (specPtr->key == NULL) {
-            if (doneOpts != 0) {
-                break;
+        opts = objv[1]->internalRep.twoPtrValue.ptr1;
+        args = objv[1]->internalRep.twoPtrValue.ptr2;
+        if (Ns_ParseObjv(opts, args, interp, 0, argc, argv) != NS_OK) {
+            status = TCL_ERROR;
+        
+        } else {
+            int          doneOpts = 0;
+            Ns_ObjvSpec *specPtr = opts;
+
+            /*
+             * Set defaults for args which were passed no values and
+             * reset the dest pointer for subsequent calls to this
+             * command.
+             */
+
+            for (;;) {
+                if (specPtr->key == NULL) {
+                    if (doneOpts != 0) {
+                        break;
+                    }
+                    doneOpts = 1;
+                    specPtr++;
+                    continue;
+                }
+                if (status == TCL_OK && specPtr->dest == NULL && specPtr->arg != NULL) {
+                    status = SetValue(interp, specPtr->key, specPtr->arg);
+                }
+                specPtr->dest = NULL;
+                specPtr++;
             }
-            doneOpts = 1;
-            specPtr++;
-            continue;
-        }
-        if (status == TCL_OK && specPtr->dest == NULL && specPtr->arg != NULL) {
-            status = SetValue(interp, specPtr->key, specPtr->arg);
-        }
-        specPtr->dest = NULL;
-        specPtr++;
-    }
 
+        }
+    }    
     if (argsObj != objv[2]) {
         Tcl_DecrRefCount(argsObj);
     }
@@ -1450,8 +1451,13 @@ WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *inter
                              (*specPtr->key == '?') ? "?" : "");
         }
     }
-    Ns_DStringSetLength(&ds, Ns_DStringLength(&ds) - 1);
-    Tcl_WrongNumArgs(interp, objc, objv, ds.string);
+    if (ds.length > 0) {
+        Ns_DStringSetLength(&ds, ds.length - 1);
+        Tcl_WrongNumArgs(interp, objc, objv, ds.string);
+    } else {
+        Tcl_WrongNumArgs(interp, objc, objv, NULL);
+    }
+
     Ns_DStringFree(&ds);
 }
 
@@ -1564,34 +1570,34 @@ GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const N
          * Produce a fancy error message.
          */
         resultPtr = Tcl_NewObj();
-        Tcl_AppendStringsToObj(resultPtr,"bad ", msg, " \"", key, NULL);
+        Tcl_AppendStringsToObj(resultPtr, "bad ", msg, " \"", key, (char *)0);
 
         entryPtr = tablePtr;
         if (entryPtr->key == NULL) {
             /*
              * The table is empty
              */
-            Tcl_AppendStringsToObj(resultPtr, "\": no valid options", NULL);
+            Tcl_AppendStringsToObj(resultPtr, "\": no valid options", (char *)0);
         } else {
             int count = 0;
             /*
              * The table has keys
              */
-            Tcl_AppendStringsToObj(resultPtr, "\": must be ", entryPtr->key, NULL);
+            Tcl_AppendStringsToObj(resultPtr, "\": must be ", entryPtr->key, (char *)0);
             entryPtr++;
             while (entryPtr->key != NULL) {
                 if ((entryPtr+1)->key == NULL) {
                     Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : ""),
                                            " or ", entryPtr->key, NULL);
                 } else if (entryPtr->key != NULL) {
-                    Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, NULL);
+                    Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, (char *)0);
                     count++;
                 }
                 entryPtr++;
             }
         }
         Tcl_SetObjResult(interp, resultPtr);
-        Tcl_SetErrorCode(interp, "TCL", "LOOKUP", "INDEX", msg, key, NULL);
+        Tcl_SetErrorCode(interp, "TCL", "LOOKUP", "INDEX", msg, key, (char *)0L);
     }
 
    return result;

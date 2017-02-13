@@ -107,6 +107,8 @@ Ns_Db0or1Row(Ns_DbHandle *handle, const char *sql, int *nrows)
 
     row = Ns_DbSelect(handle, sql);
     if (row != NULL) {
+        bool success = NS_TRUE;
+            
         if (Ns_DbGetRow(handle, row) == NS_END_DATA) {
             *nrows = 0;
         } else {
@@ -125,10 +127,14 @@ Ns_Db0or1Row(Ns_DbHandle *handle, const char *sql, int *nrows)
 		    /* FALLTHROUGH */
 
 		default:
-		    return NULL;
+		    success = NS_FALSE;
+                    row = NULL;
+                    break;
 	    }
         }
-        row = Ns_SetCopy(row);
+        if (success) {
+            row = Ns_SetCopy(row);
+        }
     }
 
     return row;

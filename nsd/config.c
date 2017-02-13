@@ -41,8 +41,8 @@
  * Local functions defined in this file.
  */
 
-static Tcl_CmdProc SectionCmd;
-static Tcl_CmdProc ParamCmd;
+static Tcl_ObjCmdProc SectionObjCmd;
+static Tcl_ObjCmdProc ParamObjCmd;
 
 static Ns_Set* GetSection(const char *section, bool create)
     NS_GNUC_NONNULL(1);
@@ -443,7 +443,7 @@ Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
  *      a boolean value.
  *
  * Results:
- *      NS_TRUE/NS_FALSE
+ *      NS_TRUE/NS_FALSE when parameter was found
  *
  * Side effects:
  *      The boolean value is returned by reference
@@ -500,10 +500,10 @@ Ns_ConfigGetPath(const char *server, const char *module, ...)
     Ns_DStringInit(&ds);
     Ns_DStringAppend(&ds, "ns");
     if (server != NULL) {
-        Ns_DStringVarAppend(&ds, "/server/", server, NULL);
+        Ns_DStringVarAppend(&ds, "/server/", server, (char *)0);
     }
     if (module != NULL) {
-        Ns_DStringVarAppend(&ds, "/module/", module, NULL);
+        Ns_DStringVarAppend(&ds, "/module/", module, (char *)0);
     }
     va_start(ap, module);
     for (s = va_arg(ap, char *); s != NULL; s = va_arg(ap, char *)) {
@@ -668,51 +668,47 @@ NsConfigRead(const char *file)
 {
     Tcl_Channel  chan;
     Tcl_Obj     *buf;
-    const char  *call = "open", *data, *conf;
-    int          length;
+    const char  *call = "open", *conf = NULL;
 
     NS_NONNULL_ASSERT(file != NULL);
+
     /*
      * Open the channel for reading the config file
      */
-
     chan = Tcl_OpenFileChannel(NULL, file, "r", 0);
     if (chan == NULL) {
         buf = NULL;
-        goto err;
+
+    } else {
+
+        /*
+         * Slurp entire file into memory
+         */
+        buf = Tcl_NewObj();
+        Tcl_IncrRefCount(buf);
+        if (Tcl_ReadChars(chan, buf, -1, 0) == -1) {
+            call = "read";
+
+        } else {
+            int         length;
+            const char *data = Tcl_GetStringFromObj(buf, &length);
+           
+            conf = ns_strncopy(data, length);
+        }
     }
-
-    /*
-     * Slurp entire file in memory
-     */
-
-    buf = Tcl_NewObj();
-    Tcl_IncrRefCount(buf);
-    if (Tcl_ReadChars(chan, buf, -1, 0) == -1) {
-        call = "read";
-        goto err;
-    }
-
-    (void) Tcl_Close(NULL, chan);
-    data = Tcl_GetStringFromObj(buf, &length);
-    conf = ns_strncopy(data, length);
-    Tcl_DecrRefCount(buf);
-
-    return conf;
-
- err:
+    
     if (chan != NULL) {
         (void) Tcl_Close(NULL, chan);
     }
     if (buf != NULL) {
         Tcl_DecrRefCount(buf);
     }
-    Ns_Fatal("config: can't %s config file '%s': '%s'",
-             call,
-             file,
-             strerror(Tcl_GetErrno()));
+    if (conf == NULL) {
+        Ns_Fatal("config: can't %s config file '%s': '%s'",
+                 call, file, strerror(Tcl_GetErrno()));
+    }
 
-    return NULL; /* Keep the compiler happy */
+    return conf; 
 }
 
 
@@ -748,8 +744,8 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optind)
 
     set = NULL;
     interp = Ns_TclCreateInterp();
-    (void)Tcl_CreateCommand(interp, "ns_section", SectionCmd, &set, NULL);
-    (void)Tcl_CreateCommand(interp, "ns_param", ParamCmd, &set, NULL);
+    (void)Tcl_CreateObjCommand(interp, "ns_section", SectionObjCmd, &set, NULL);
+    (void)Tcl_CreateObjCommand(interp, "ns_param", ParamObjCmd, &set, NULL);
     for (i = 0; argv[i] != NULL; ++i) {
         (void) Tcl_SetVar(interp, "argv", argv[i], TCL_APPEND_VALUE|TCL_LIST_ELEMENT|TCL_GLOBAL_ONLY);
     }
@@ -766,7 +762,7 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optind)
 /*
  *----------------------------------------------------------------------
  *
- * ParamCmd --
+ * ParamObjCmd --
  *
  *      Add a single entry to the current section of the config.  This
  *      command may only be run from within an ns_section.
@@ -781,23 +777,28 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optind)
  */
 
 static int
-ParamCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv[])
+ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Set *set;
-    int     result = TCL_OK;
+    int         result = TCL_OK;
+    char       *paramName = NULL, *paramValue = NULL;
+    Ns_ObjvSpec args[] = {
+        {"name",  Ns_ObjvString,  &paramName, NULL},
+        {"value", Ns_ObjvString,  &paramValue, NULL},        
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (argc != 3) {
-        Ns_TclPrintfResult(interp, "wrong # args: should be \"%s key value\"", argv[0]);
-        return TCL_ERROR;
-    }
-    
-    set = *((Ns_Set **) clientData);
-
-    if (likely(set != NULL)) {
-        (void)Ns_SetPut(set, argv[1], argv[2]);
-    } else {
-        Ns_TclPrintfResult(interp, "%s not preceded by an ns_section command.", argv[0]);
+    if (unlikely(Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK)) {
         result = TCL_ERROR;
+        
+    } else {
+        Ns_Set *set = *((Ns_Set **) clientData);
+        
+        if (likely(set != NULL)) {
+            (void)Ns_SetPut(set, paramName, paramValue);
+        } else {
+            Ns_TclPrintfResult(interp, "parameter %s not preceded by an ns_section command.", paramName);
+            result = TCL_ERROR;
+        }
     }
 
     return result;
@@ -807,14 +808,14 @@ ParamCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv
 /*
  *----------------------------------------------------------------------
  *
- * SectionCmd --
+ * SectionObjCmd --
  *
  *      This creates a new config section and sets a shared variable
  *      to point at a newly-allocated set for holding config data.
  *      ns_param stores config data in the set.
  *
  * Results:
- *      Standard tcl result.
+ *      Standard Tcl result.
  *
  * Side effects:
  *      Section set is created (if necessary).
@@ -823,17 +824,22 @@ ParamCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv
  */
 
 static int
-SectionCmd(ClientData clientData, Tcl_Interp *interp, int argc, CONST84 char *argv[])
+SectionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int       result = TCL_OK;
+    int         result = TCL_OK;
+    char       *sectionName = NULL;
+    Ns_ObjvSpec args[] = {
+        {"sectionname", Ns_ObjvString,  &sectionName, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (unlikely(argc != 2)) {
-        Ns_TclPrintfResult(interp, "wrong # args: should be \"%s sectionname\"", argv[0]);
+    if (unlikely(Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK)) {
         result = TCL_ERROR;
+        
     } else {
         Ns_Set  **set = (Ns_Set **) clientData;
         
-        *set = GetSection(argv[1], NS_TRUE);
+        *set = GetSection(sectionName, NS_TRUE);
     }
 
     return result;

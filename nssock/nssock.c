@@ -93,7 +93,7 @@ Ns_ModuleInit(const char *server, const char *module)
     cfg->nodelay = Ns_ConfigBool(path, "nodelay", NS_FALSE);
 
     init.version = NS_DRIVER_VERSION_4;
-    init.name = "nssock";
+    init.name         = "nssock";
     init.listenProc   = SockListen;
     init.acceptProc   = SockAccept;
     init.recvProc     = SockRecv;
@@ -102,11 +102,11 @@ Ns_ModuleInit(const char *server, const char *module)
     init.keepProc     = Keep;
     init.requestProc  = NULL;
     init.closeProc    = SockClose;
-    init.opts = NS_DRIVER_ASYNC;
-    init.arg = cfg;
-    init.path = (char*)path;
-    init.protocol = "http";
-    init.defaultPort = 80;
+    init.opts         = NS_DRIVER_ASYNC;
+    init.arg          = cfg;
+    init.path         = (char*)path;
+    init.protocol     = "http";
+    init.defaultPort  = 80;
 
     return Ns_DriverInit(server, module, &init);
 }
@@ -129,18 +129,18 @@ Ns_ModuleInit(const char *server, const char *module)
  */
 
 static NS_SOCKET
-SockListen(Ns_Driver *driver, const char *address, unsigned short port, int backlog)
+SockListen(Ns_Driver *driver, const char *address, unsigned short port, int backlog, bool reuseport)
 {
     NS_SOCKET sock;
 
-    sock = Ns_SockListenEx((char*)address, port, backlog);
+    sock = Ns_SockListenEx((char*)address, port, backlog, reuseport);
     if (sock != NS_INVALID_SOCKET) {
-	Config *cfg = driver->arg;
+        Config *cfg = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
-	if (cfg->deferaccept != 0) {
-	    Ns_SockSetDeferAccept(sock, driver->recvwait);
-	}
+        if (cfg->deferaccept != 0) {
+            Ns_SockSetDeferAccept(sock, driver->recvwait);
+        }
     }
     return sock;
 }
@@ -169,22 +169,22 @@ SockAccept(Ns_Sock *sock, NS_SOCKET listensock,
            struct sockaddr *sockaddrPtr, socklen_t *socklenPtr)
 {
     Config *cfg    = sock->driver->arg;
-    int     status = NS_DRIVER_ACCEPT_ERROR;
+    NS_DRIVER_ACCEPT_STATUS status = NS_DRIVER_ACCEPT_ERROR;
 
     sock->sock = Ns_SockAccept(listensock, sockaddrPtr, socklenPtr);
     if (sock->sock != NS_INVALID_SOCKET) {
 
 #ifdef __APPLE__
-      /* 
-       * Darwin's poll returns per default writable in situations,
-       * where nothing can be written.  Setting the socket option for
-       * the send low watermark to 1 fixes this problem.
-       */
+        /* 
+         * Darwin's poll returns per default writable in situations,
+         * where nothing can be written.  Setting the socket option for
+         * the send low watermark to 1 fixes this problem.
+         */
         int value = 1;
-	setsockopt(sock->sock, SOL_SOCKET,SO_SNDLOWAT, &value, sizeof(value));
+        setsockopt(sock->sock, SOL_SOCKET,SO_SNDLOWAT, &value, sizeof(value));
 #endif
         (void)Ns_SockSetNonBlocking(sock->sock);
-	SetNodelay(sock->driver, sock->sock);
+        SetNodelay(sock->driver, sock->sock);
         status = (cfg->deferaccept != 0) ? NS_DRIVER_ACCEPT_DATA : NS_DRIVER_ACCEPT;
     }
     return status;
@@ -210,13 +210,13 @@ SockAccept(Ns_Sock *sock, NS_SOCKET listensock,
 
 static ssize_t
 SockRecv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
-     Ns_Time *timeoutPtr, unsigned int flags)
+         Ns_Time *timeoutPtr, unsigned int flags)
 {
     ssize_t n;
     
     n = Ns_SockRecvBufs(sock->sock, bufs, nbufs, timeoutPtr, flags);
     if (n == 0) {
-	/* 
+        /* 
          * n == 0 this means usually eof (peer closed connection), return
          * value of 0 means in the driver SOCK_MORE. In order to cause a close
          * of the socket, return -1, but clear the errno. This might not be
@@ -224,7 +224,7 @@ SockRecv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
          * operation without logging an error.
          */
         errno = 0;
-	n = -1;
+        n = -1;
     }
     return n;
 }
@@ -249,7 +249,7 @@ SockRecv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
 
 static ssize_t
 SockSend(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
-     const Ns_Time *timeoutPtr, unsigned int flags)
+         const Ns_Time *timeoutPtr, unsigned int flags)
 {
     ssize_t   n;
     bool      decork;
@@ -259,25 +259,25 @@ SockSend(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
 
     {
 #ifdef _WIN32
-	DWORD n1;
-	if (WSASend(sock, (LPWSABUF)bufs, nbufs, &n1, flags,
-		    NULL, NULL) != 0) {
-	    n1 = -1;
-	}
-	n = n1;
+        DWORD n1;
+        if (WSASend(sock, (LPWSABUF)bufs, nbufs, &n1, flags,
+                    NULL, NULL) != 0) {
+            n1 = -1;
+        }
+        n = n1;
 #else
-	struct msghdr msg;
+        struct msghdr msg;
       
-	memset(&msg, 0, sizeof(msg));
-	msg.msg_iov = (struct iovec *)bufs;
-	msg.msg_iovlen = nbufs;
+        memset(&msg, 0, sizeof(msg));
+        msg.msg_iov = (struct iovec *)bufs;
+        msg.msg_iovlen = (NS_MSG_IOVLEN_T)nbufs;    
 
-	n = sendmsg(sock, &msg, flags);
-	
-	if (n < 0) {
-	    Ns_Log(Debug, "SockSend: %s",
-		   ns_sockstrerror(ns_sockerrno));
-	}
+        n = sendmsg(sock, &msg, (int)flags);
+    
+        if (n < 0) {
+            Ns_Log(Debug, "SockSend: %s",
+                   ns_sockstrerror(ns_sockerrno));
+        }
 #endif
     }
 
@@ -375,15 +375,15 @@ SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
     
     cfg = driver->arg;
     if (cfg->nodelay != 0) {
-	int value = 1;
+        int value = 1;
 
         if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
                        (const void *)&value, sizeof(value)) == -1) {
             Ns_Log(Error, "nssock: setsockopt(TCP_NODELAY): %s",
                    ns_sockstrerror(ns_sockerrno));
         } else {
-	    Ns_Log(Debug, "nodelay: socket option TCP_NODELAY activated");
-	}
+            Ns_Log(Debug, "nodelay: socket option TCP_NODELAY activated");
+        }
     }
 #endif
 }

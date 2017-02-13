@@ -179,7 +179,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
             continue;
         }
 
-        towrite += length;
+        towrite += (ssize_t)length;
 
         if (fd < 0) {
             /*
@@ -344,23 +344,27 @@ NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
 
 ssize_t pread(int fd, char *buf, size_t count, off_t offset)
 {
-    OVERLAPPED overlapped = { 0u };
-    HANDLE fh = (HANDLE)_get_osfhandle(fd);
-    DWORD ret, c = (DWORD)count;
+    HANDLE   fh = (HANDLE)_get_osfhandle(fd);
+    ssize_t  result;
 
     if (fh == INVALID_HANDLE_VALUE) {
         errno = EBADF;
-	return -1;
+	result = -1;
+    } else {
+        DWORD      ret, c = (DWORD)count;
+        OVERLAPPED overlapped = { 0u };
+
+        overlapped.Offset = (DWORD)offset;
+        overlapped.OffsetHigh = (DWORD)(((uint64_t)offset) >> 32);
+
+        if (ReadFile(fh, buf, c, &ret, &overlapped) == FALSE) {
+            result = -1;
+        } else {
+            result = (ssize_t)ret;
+        }
     }
 
-    overlapped.Offset = (DWORD)offset;
-    overlapped.OffsetHigh = (DWORD)(((uint64_t)offset) >> 32);
-
-    if (ReadFile(fh, buf, c, &ret, &overlapped) == FALSE) {
-        return -1;
-    }
-
-    return (ssize_t)ret;
+    return result;
 }
 #endif
 
@@ -407,11 +411,15 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
 	       sockPtr->sock);
     } else {
 	/*
-	 * The cork state changes, try to alter the socket options.
+	 * The cork state changes, try to alter the socket options, unless the
+	 * socket is already closed (don't complain in such cases to the
+	 * error.log).
 	 */
 #if defined(TCP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) == 0) {
-            if (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &corkInt, sizeof(corkInt)) == -1) {
+            if ((sockPtr->sock == NS_INVALID_SOCKET)
+                || (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &corkInt, sizeof(corkInt)) == -1)
+                ) {
                 Ns_Log(Error, "socket(%d): setsockopt(TCP_CORK) %d: %s",
                        sockPtr->sock, corkInt, ns_sockstrerror(ns_sockerrno));
             } else {
@@ -421,7 +429,9 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
 #endif
 #if defined(UDP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) != 0) {
-            if (setsockopt(sockPtr->sock, IPPROTO_UDP, UDP_CORK, &corkInt, sizeof(corkInt)) == -1) {
+            if ((sockPtr->sock == NS_INVALID_SOCKET)
+                || (setsockopt(sockPtr->sock, IPPROTO_UDP, UDP_CORK, &corkInt, sizeof(corkInt)) == -1)
+                ) {
                 Ns_Log(Error, "socket(%d): setsockopt(UDP_CORK) %d: %s",
                        sockPtr->sock, corkInt, ns_sockstrerror(ns_sockerrno));
             } else {
@@ -472,7 +482,7 @@ SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
 {
     char          buf[16384];
     struct iovec  iov;
-    ssize_t       nwrote = 0, toRead = (ssize_t)length;
+    ssize_t       nwrote = 0, toRead = (ssize_t)length, result;
     bool          decork;
 
     decork = Ns_SockCork(sock, NS_TRUE);
@@ -502,10 +512,12 @@ SendFd(Ns_Sock *sock, int fd, off_t offset, size_t length,
     }
 
     if (nwrote > 0) {
-        return nwrote;
+        result = nwrote;
     } else {
-        return -1;
+        result = -1;
     }
+    
+    return result;
 }
 
 

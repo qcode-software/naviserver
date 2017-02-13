@@ -303,16 +303,18 @@ Ns_DbDriverName(Ns_DbHandle *handle)
 char *
 Ns_DbDriverDbType(Ns_DbHandle *handle)
 {
+    char *result;
     const DbDriver *driverPtr = NsDbGetDriver(handle);
     
     if (driverPtr == NULL ||
 	driverPtr->typeProc == NULL ||
 	!handle->connected) {
 
-    	return NULL;
+    	result = NULL;
+    } else {
+        result = (*driverPtr->typeProc)(handle);
     }
-
-    return (*driverPtr->typeProc)(handle);
+    return result;
 }
 
 
@@ -698,7 +700,7 @@ NsDbLoadDriver(const char *driver)
         if (module == NULL) {
 	    Ns_Log(Error, "dbdrv: no such driver '%s'", driver);
 	} else {
-	    const char *path = Ns_ConfigGetPath(NULL, NULL, "db", "driver", driver, NULL);
+	    const char *path = Ns_ConfigGetPath(NULL, NULL, "db", "driver", driver, (char *)0);
 
 	    /*
 	     * For unknown reasons, Ns_ModuleLoad is called with a
@@ -717,7 +719,7 @@ NsDbLoadDriver(const char *driver)
         }
     }
     if (driverPtr->registered == 0) {
-	return NULL;
+	driverPtr = NULL;
     }
 
     return driverPtr;
@@ -775,21 +777,22 @@ NsDbDriverInit(const char *server, const DbDriver *driverPtr)
 Ns_ReturnCode
 NsDbOpen(Ns_DbHandle *handle)
 {
+    Ns_ReturnCode   status = NS_OK;
     const DbDriver *driverPtr = NsDbGetDriver(handle);
 
     Ns_Log(Notice, "dbdrv: opening database '%s:%s'", handle->driver,
 	   handle->datasource);
-    if (driverPtr == NULL ||
-	driverPtr->openProc == NULL ||
-	(*driverPtr->openProc) (handle) != NS_OK) {
-
+    if (driverPtr == NULL
+        || driverPtr->openProc == NULL
+        || (*driverPtr->openProc) (handle) != NS_OK
+        ) {
 	Ns_Log(Error, "dbdrv: failed to open database '%s:%s'",
 	       handle->driver, handle->datasource);
 	handle->connected = NS_FALSE;
-        return NS_ERROR;
+        status = NS_ERROR;
     }
 
-    return NS_OK;
+    return status;
 }
 
 
@@ -892,7 +895,7 @@ Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtyp
 
 	Ns_DStringInit(&args);
 	Ns_DStringVarAppend(&args, paramname, " ", paramtype, " ", inout, " ",
-			    value, NULL);
+			    value, (char *)0);
 	status = (*driverPtr->spsetparamProc)(handle, args.string);
 	Ns_DStringFree(&args);
     }

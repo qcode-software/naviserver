@@ -311,7 +311,8 @@ Ns_Match(const char *a, const char *b)
             char c1 = (CHARTYPE(lower, *a) != 0) ? *a : CHARCONV(lower, *a);
             char c2 = (CHARTYPE(lower, *b) != 0) ? *b : CHARCONV(lower, *b);
             if (c1 != c2) {
-                return NULL;
+                b = NULL;
+                break;
             }
             a++;
             b++;
@@ -379,18 +380,21 @@ Ns_StrNStr(const char *chars, const char *subString)
 const char *
 Ns_StrCaseFind(const char *chars, const char *subString)
 {
+    const char *result = NULL;
+    
     NS_NONNULL_ASSERT(chars != NULL);
     NS_NONNULL_ASSERT(subString != NULL);
 
     if (strlen(chars) > strlen(subString)) {
         while (*chars != '\0') {
             if (Ns_Match(chars, subString) != NULL) {
-                return chars;
+                result = chars;
+                break;
             }
             ++chars;
         }
     }
-    return NULL;
+    return result;
 }
 
 

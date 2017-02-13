@@ -132,9 +132,11 @@ static Ns_Tls       tls;
 static Ns_Mutex     lock;
 static Ns_Cond      cond;
 
-static const char  *file;
+static bool         logOpenCalled = NS_FALSE;
+static const char  *file = NULL;
+static const char  *rollfmt = NULL;
 static unsigned int flags = 0u;
-static int          maxback;
+static int          maxbackup;
 
 static LogFilter   *filters;
 static const char  *const filterType = "ns:logfilter";
@@ -400,19 +402,22 @@ NsConfigLog(void)
         }
     }
 
-    maxback  = Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
+    maxbackup = Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
 
     file = Ns_ConfigString(path, "serverlog", "nsd.log");
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
         Ns_DStringInit(&ds);
         if (Ns_HomePathExists("logs", (char *)0)) {
-            Ns_HomePath(&ds, "logs", file, NULL);
+            Ns_HomePath(&ds, "logs", file, (char *)0);
         } else {
-            Ns_HomePath(&ds, file, NULL);
+            Ns_HomePath(&ds, file, (char *)0);
         }
         file = Ns_DStringExport(&ds);
 	Ns_SetUpdate(set, "serverlog", file);
     }
+    
+    rollfmt = Ns_ConfigString(path, "logrollfmt", "");
+
 }
 
 
@@ -517,10 +522,14 @@ Ns_CreateLogSeverity(const char *name)
 const char *
 Ns_LogSeverityName(Ns_LogSeverity severity)
 {
+    const char *result;
+    
     if (severity < severityMaxCount) {
-        return severityConfig[severity].label;
+        result = severityConfig[severity].label;
+    } else {
+        result = "Unknown";
     }
-    return "Unknown";
+    return result;
 }
 
 
@@ -707,51 +716,50 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
      * or if severity level out of range(s).
      */
 
-    if (Ns_LogSeverityEnabled(severity) == NS_FALSE) {
-        return;
-    }
+    if (Ns_LogSeverityEnabled(severity)) {
     
-    /*
-     * Track usage to provide statistics.
-     */
-    severityConfig[severity].count ++;
+        /*
+         * Track usage to provide statistics.
+         */
+        severityConfig[severity].count ++;
 
-    /*
-     * Append new or reuse log entry record.
-     */
-    cachePtr = GetCache();
-    if (cachePtr->currEntry != NULL) {
-        entryPtr = cachePtr->currEntry->nextPtr;
-    } else {
-        entryPtr = cachePtr->firstEntry;
-    }
-    if (entryPtr == NULL) {
-        entryPtr = ns_malloc(sizeof(LogEntry));
-        entryPtr->nextPtr = NULL;
+        /*
+         * Append new or reuse log entry record.
+         */
+        cachePtr = GetCache();
         if (cachePtr->currEntry != NULL) {
-            cachePtr->currEntry->nextPtr = entryPtr;
+            entryPtr = cachePtr->currEntry->nextPtr;
         } else {
-            cachePtr->firstEntry = entryPtr;
+            entryPtr = cachePtr->firstEntry;
         }
-    }
+        if (entryPtr == NULL) {
+            entryPtr = ns_malloc(sizeof(LogEntry));
+            entryPtr->nextPtr = NULL;
+            if (cachePtr->currEntry != NULL) {
+                cachePtr->currEntry->nextPtr = entryPtr;
+            } else {
+                cachePtr->firstEntry = entryPtr;
+            }
+        }
 
-    cachePtr->currEntry = entryPtr;
-    cachePtr->count++;
+        cachePtr->currEntry = entryPtr;
+        cachePtr->count++;
 
-    offset = (size_t)Ns_DStringLength(&cachePtr->buffer);
-    Ns_DStringVPrintf(&cachePtr->buffer, fmt, *vaPtr);
-    length = (size_t)Ns_DStringLength(&cachePtr->buffer) - offset;
+        offset = (size_t)Ns_DStringLength(&cachePtr->buffer);
+        Ns_DStringVPrintf(&cachePtr->buffer, fmt, *vaPtr);
+        length = (size_t)Ns_DStringLength(&cachePtr->buffer) - offset;
 
-    entryPtr->severity = severity;
-    entryPtr->offset   = offset;
-    entryPtr->length   = length;
-    Ns_GetTime(&entryPtr->stamp);
+        entryPtr->severity = severity;
+        entryPtr->offset   = offset;
+        entryPtr->length   = length;
+        Ns_GetTime(&entryPtr->stamp);
 
-    /*
-     * Flush it out if not held or severity is "Fatal"
-     */
-    if (cachePtr->hold == 0 || severity == Fatal) {
-        LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
+        /*
+         * Flush it out if not held or severity is "Fatal"
+         */
+        if (cachePtr->hold == 0 || severity == Fatal) {
+            LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
+        }
     }
 }
 
@@ -885,7 +893,7 @@ Ns_Fatal(const char *fmt, ...)
 }
 
 static void
-Panic(CONST char *fmt, ...)
+Panic(const char *fmt, ...)
 {
     va_list ap;
 
@@ -974,6 +982,9 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
     NS_NONNULL_ASSERT(cachePtr != NULL);
     NS_NONNULL_ASSERT(timePtr != NULL);
 
+    /*
+     * Use either GMT or local time.
+     */
     if (gmt) {
         tp = &cachePtr->gtime;
         bp = cachePtr->gbuf;
@@ -1005,7 +1016,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
             bp[n++] = ']';
             bp[n] = '\0';
         } else {
- 	    int gmtoff;
+ 	    long gmtoff;
             char sign;
 #ifdef HAVE_TM_GMTOFF
             gmtoff = ptm->tm_gmtoff / 60;
@@ -1021,7 +1032,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
             } else {
                 sign = '+';
             }
-            n += (size_t)sprintf(bp + n, " %c%02d%02d]", sign, gmtoff/60, gmtoff%60);
+            n += (size_t)sprintf(bp + n, " %c%02ld%02ld]", sign, gmtoff/60, gmtoff%60);
         }
         *sizePtr = n;
     }
@@ -1049,34 +1060,33 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
 int
 NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_LogSeverity severity;
-    Ns_DString     ds;
-    void 	  *addrPtr;
+    void *addrPtr;
+    int   result = TCL_OK;
 
     if (objc < 3) {
         Tcl_WrongNumArgs(interp, 1, objv, "severity string ?string ...?");
-        return TCL_ERROR;
-    }
-    if (unlikely(GetSeverityFromObj(interp, objv[1], &addrPtr) != TCL_OK)) {
-        return TCL_ERROR;
-    }
-    severity = PTR2INT(addrPtr);
-
-    if (likely(objc == 3)) {
-        Ns_Log(severity, "%s", Tcl_GetString(objv[2]));
+        result = TCL_ERROR;
+    } else if (unlikely(GetSeverityFromObj(interp, objv[1], &addrPtr) != TCL_OK)) {
+        result = TCL_ERROR;
     } else {
-        int i;
+        Ns_LogSeverity severity = PTR2INT(addrPtr);
+        Ns_DString     ds;
 
-        Ns_DStringInit(&ds);
-        for (i = 2; i < objc; ++i) {
-            Ns_DStringVarAppend(&ds, Tcl_GetString(objv[i]),
-                                i < (objc-1) ? " " : NULL, NULL);
+        if (likely(objc == 3)) {
+            Ns_Log(severity, "%s", Tcl_GetString(objv[2]));
+        } else {
+            int i;
+
+            Ns_DStringInit(&ds);
+            for (i = 2; i < objc; ++i) {
+                Ns_DStringVarAppend(&ds, Tcl_GetString(objv[i]),
+                                    i < (objc-1) ? " " : (char *)0, (char *)0);
+            }
+            Ns_Log(severity, "%s", Ns_DStringValue(&ds));
+            Ns_DStringFree(&ds);
         }
-        Ns_Log(severity, "%s", Ns_DStringValue(&ds));
-        Ns_DStringFree(&ds);
     }
-
-    return TCL_OK;
+    return result;
 }
 
 
@@ -1333,10 +1343,14 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * Ns_LogRoll --
  *
- *      Signal handler for SIGHUP which will roll the files.
+ *      Utility function and signal handler for SIGHUP which will roll
+ *      the files. When NaviServer is logging to stderr (when
+ *      e.g. started with -f) no rolling will be performed. The
+ *      function returns potentially errors from opening the log file
+ *      as result.
  *
  * Results:
- *      NS_OK/NS_ERROR.
+ *      NS_OK/NS_ERROR
  *
  * Side effects:
  *      Will rename the log file and reopen it.
@@ -1347,21 +1361,37 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 Ns_ReturnCode
 Ns_LogRoll(void)
 {
-    Ns_ReturnCode rc = NS_OK;
+    Ns_ReturnCode status = NS_OK;
 
-    if (file != NULL) {
+    if (file != NULL && logOpenCalled) {
+        Tcl_Obj      *pathObj;
+        
+        /*
+         * We are already logging to some file
+         */
+
 	NsAsyncWriterQueueDisable(NS_FALSE);
 
-        if (access(file, F_OK) == 0) {
-            (void) Ns_RollFile(file, maxback);
-        }
-        Ns_Log(Notice, "log: re-opening log file '%s'", file);
-	rc = LogOpen();
+        pathObj = Tcl_NewStringObj(file, -1);
+        Tcl_IncrRefCount(pathObj);
 
-	NsAsyncWriterQueueEnable();
+        if (Tcl_FSAccess(pathObj, F_OK) == 0) {
+            /*
+             * The current logfile exists.
+             */
+            (void) Ns_RollFileFmt(pathObj,
+                                  rollfmt,
+                                  maxbackup);
+        }
+        Tcl_DecrRefCount(pathObj);
+
+        Ns_Log(Notice, "log: re-opening log file '%s'", file);
+        status = LogOpen();
+
+        NsAsyncWriterQueueEnable();
     }
 
-    return rc;
+    return status;
 }
 
 
@@ -1397,6 +1427,7 @@ NsLogOpen(void)
     if ((flags & LOG_ROLL) != 0u) {
         (void) Ns_RegisterAtSignal((Ns_Callback *) Ns_LogRoll, NULL);
     }
+    logOpenCalled = NS_TRUE;
 }
 
 
@@ -1610,6 +1641,10 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     timeString = LogTime(cachePtr, stamp, NS_FALSE);
     timeStringLength = cachePtr->lbufSize;
 
+    /*
+     * In case colorization was configured, add the escape necessary
+     * sequences.
+     */
     if ((flags & LOG_COLORIZE) != 0u) {
         Ns_DStringPrintf(dsPtr, "%s%d;%dm", LOG_COLORSTART, prefixIntensity, prefixColor);
     }
@@ -1720,12 +1755,6 @@ static Ns_ReturnCode
 LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
          const char *msg, size_t len)
 {
-    int                   ii, ret;
-    void                 *logfile = INT2PTR(STDERR_FILENO);
-    Tcl_Obj              *stampObj;
-    Ns_DString            ds, ds2;
-    Tcl_Interp           *interp;
-    const Ns_TclCallback *cbPtr = (Ns_TclCallback *)arg;
     Ns_ReturnCode         status;
 
     NS_NONNULL_ASSERT(arg != NULL);
@@ -1733,65 +1762,77 @@ LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     NS_NONNULL_ASSERT(msg != NULL);
 
     if (severity == Fatal) {
-        return NS_OK;
-    }
+        /*
+         * In case of Fatal severity, do nothing. We have to assume
+         * that Tcl is not functioning anymore.
+         */
+        status = NS_OK;
 
-    /*
-     * Try to obtain an interpreter:
-     */ 
-    interp = Ns_TclAllocateInterp(cbPtr->server);
-    if (interp == NULL) {
-        (void)LogToFile(logfile, Error, stamp,
-                        "LogToTcl: can't get interpreter", 0u);
-        status = NS_ERROR;
     } else {
-
-        Ns_DStringInit(&ds);
-        stampObj = Tcl_NewObj();
-        Ns_TclSetTimeObj(stampObj, stamp);
-
-        /*
-         * Construct args for passing to the callback script:
-         *
-         *      callback severity timestamp log ?arg...?
-         *
-         * The script may contain blanks therefore append as regular
-         * string instead of as list element.  Other arguments are
-         * appended to it as elements.
-         */
-        Ns_DStringVarAppend(&ds, cbPtr->script, " ", Ns_LogSeverityName(severity), NULL);
-        Ns_DStringAppendElement(&ds, Tcl_GetString(stampObj));
-        Tcl_DecrRefCount(stampObj);
+        int                   ii, ret;
+        void                 *logfile = INT2PTR(STDERR_FILENO);
+        Tcl_Obj              *stampObj;
+        Ns_DString            ds, ds2;
+        Tcl_Interp           *interp;
+        const Ns_TclCallback *cbPtr = (Ns_TclCallback *)arg;
 
         /*
-         * Append n bytes of msg as proper list element to ds. Since
-         * Tcl_DStringAppendElement has no length parameter, we have
-         * to use a temporary DString here.
-         */
-        Ns_DStringInit(&ds2);
-        Ns_DStringNAppend(&ds2, msg, (int)len);
-        Ns_DStringAppendElement(&ds, ds2.string);
-        Ns_DStringFree(&ds2);
+         * Try to obtain an interpreter:
+         */ 
+        interp = Ns_TclAllocateInterp(cbPtr->server);
+        if (interp == NULL) {
+            (void)LogToFile(logfile, Error, stamp,
+                            "LogToTcl: can't get interpreter", 0u);
+            status = NS_ERROR;
+        } else {
 
-        for (ii = 0; ii < cbPtr->argc; ii++) {
-            Ns_DStringAppendElement(&ds, cbPtr->argv[ii]);
-        }
-        ret = Tcl_EvalEx(interp, Ns_DStringValue(&ds), Ns_DStringLength(&ds), 0);
-        if (ret == TCL_ERROR) {
+            Ns_DStringInit(&ds);
+            stampObj = Tcl_NewObj();
+            Ns_TclSetTimeObj(stampObj, stamp);
 
             /*
-             * Error in Tcl callback is always logged to file.
+             * Construct args for passing to the callback script:
+             *
+             *      callback severity timestamp log ?arg...?
+             *
+             * The script may contain blanks therefore append as regular
+             * string instead of as list element.  Other arguments are
+             * appended to it as elements.
              */
-            Ns_DStringSetLength(&ds, 0);
-            Ns_DStringAppend(&ds, "LogToTcl: ");
-            Ns_DStringAppend(&ds, Tcl_GetStringResult(interp));
-            (void)LogToFile(logfile, Error, stamp, Ns_DStringValue(&ds),
-                            (size_t)Ns_DStringLength(&ds));
-        }
-        Ns_DStringFree(&ds);
-        Ns_TclDeAllocateInterp(interp);
+            Ns_DStringVarAppend(&ds, cbPtr->script, " ", Ns_LogSeverityName(severity), (char *)0);
+            Ns_DStringAppendElement(&ds, Tcl_GetString(stampObj));
+            Tcl_DecrRefCount(stampObj);
 
-        status = (ret == TCL_ERROR) ? NS_ERROR: NS_OK;
+            /*
+             * Append n bytes of msg as proper list element to ds. Since
+             * Tcl_DStringAppendElement has no length parameter, we have
+             * to use a temporary DString here.
+             */
+            Ns_DStringInit(&ds2);
+            Ns_DStringNAppend(&ds2, msg, (int)len);
+            Ns_DStringAppendElement(&ds, ds2.string);
+            Ns_DStringFree(&ds2);
+
+            for (ii = 0; ii < cbPtr->argc; ii++) {
+                Ns_DStringAppendElement(&ds, cbPtr->argv[ii]);
+            }
+            ret = Tcl_EvalEx(interp, Ns_DStringValue(&ds), Ns_DStringLength(&ds), 0);
+            if (ret == TCL_ERROR) {
+
+                /*
+                 * Error in Tcl callback is always logged to file.
+                 */
+                Ns_DStringSetLength(&ds, 0);
+                Ns_DStringAppend(&ds, "LogToTcl: ");
+                Ns_DStringAppend(&ds, Tcl_GetStringResult(interp));
+                (void)LogToFile(logfile, Error, stamp, Ns_DStringValue(&ds),
+                                (size_t)Ns_DStringLength(&ds));
+            }
+            Ns_DStringFree(&ds);
+            Ns_TclDeAllocateInterp(interp);
+
+            status = (ret == TCL_ERROR) ? NS_ERROR: NS_OK;
+        }
     }
     return status;
 }

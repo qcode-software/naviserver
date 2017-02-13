@@ -24,7 +24,7 @@
 
 #include "nsd.h"
 
-static int TclX_WrongArgs(Tcl_Interp *interp, Tcl_Obj *commandNameObj, const char *msg);
+static int  TclX_WrongArgs(Tcl_Interp *interp, Tcl_Obj *commandNameObj, const char *msg);
 static bool TclX_IsNullObj(Tcl_Obj *objPtr) NS_GNUC_NONNULL(1);
 
 
@@ -40,20 +40,6 @@ static bool TclX_IsNullObj(Tcl_Obj *objPtr) NS_GNUC_NONNULL(1);
 #define TRUE  1
 #define FALSE 0
 
-/*
- * Macro that behaves like strdup, only uses ckalloc.  Also macro that does the
- * same with a string that might contain zero bytes,
- */
-static char *ckstrdup(const char *s) NS_GNUC_NONNULL(1) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
-
-static char *ckstrdup(const char *s) {
-    size_t len;
-
-    NS_NONNULL_ASSERT(s != NULL);
-
-    len = strlen(s) + 1u;
-    return memcpy(ckalloc(len), s, len);
-}
 
 #define ckbinstrdup(a,b) \
   ((char *)memcpy(ckalloc((unsigned int)((b)+1)),(a),(size_t)((b)+1)))
@@ -185,11 +171,10 @@ int
 Tcl_GetKeyedListKeys(Tcl_Interp *interp, const char *subFieldName, const char *keyedList, 
 		     int *keysArgcPtr, char ***keysArgvPtr)
 {
-    Tcl_Obj *keylistPtr = Tcl_NewStringObj(keyedList, -1);
-    const char    *keylistKey = subFieldName;
-
-    Tcl_Obj *objValPtr;
-    int status;
+    Tcl_Obj    *keylistPtr = Tcl_NewStringObj(keyedList, -1);
+    const char *keylistKey = subFieldName;
+    Tcl_Obj    *objValPtr;
+    int         status;
 
     Tcl_IncrRefCount(keylistPtr);
 
@@ -436,39 +421,36 @@ static void DupSharedKeyListChild(const keylIntObj_t *keylIntPtr, int idx) NS_GN
 
 #ifdef TCLX_DEBUG
 static void
-ValidateKeyedList _ANSI_ARGS_((keylIntObj_t *keylIntPtr));
+ValidateKeyedList(keylIntObj_t *keylIntPtr);
 #endif
 
 static int
-ValidateKey _ANSI_ARGS_((Tcl_Interp *interp,
-                         const char *key,
-                         int keyLen,
-                         int isPath));
+ValidateKey(Tcl_Interp *interp, const char *key, int keyLen, int isPath);
 
 static keylIntObj_t *
-AllocKeyedListIntRep _ANSI_ARGS_((void));
+AllocKeyedListIntRep(void);
 
 static void
-FreeKeyedListData _ANSI_ARGS_((keylIntObj_t *keylIntPtr));
+FreeKeyedListData(keylIntObj_t *keylIntPtr);
 
 static void
-EnsureKeyedListSpace _ANSI_ARGS_((keylIntObj_t *keylIntPtr,
-                                  int           newNumEntries));
+EnsureKeyedListSpace(keylIntObj_t *keylIntPtr,
+                     int           newNumEntries);
 
 static void
-DeleteKeyedListEntry _ANSI_ARGS_((keylIntObj_t *keylIntPtr,
-                                 int        entryIdx));
+DeleteKeyedListEntry(keylIntObj_t *keylIntPtr,
+                     int        entryIdx);
 
 static int
-FindKeyedListEntry _ANSI_ARGS_((const keylIntObj_t *keylIntPtr,
-                                const char   *key,
-                                size_t       *keyLenPtr,
-                                const char  **nextSubKeyPtr));
+FindKeyedListEntry(const keylIntObj_t *keylIntPtr,
+                   const char   *key,
+                   size_t       *keyLenPtr,
+                   const char  **nextSubKeyPtr);
 
 static int
-ObjToKeyedListEntry _ANSI_ARGS_((Tcl_Interp  *interp,
-                                 Tcl_Obj     *objPtr,
-                                 keylEntry_t *entryPtr));
+ObjToKeyedListEntry(Tcl_Interp  *interp,
+                    Tcl_Obj     *objPtr,
+                    keylEntry_t *entryPtr);
 
 
 static Tcl_FreeInternalRepProc FreeKeyedListInternalRep;
@@ -600,7 +582,7 @@ AllocKeyedListIntRep()
 {
     keylIntObj_t *keylIntPtr;
 
-    keylIntPtr = (keylIntObj_t *) ckalloc(sizeof (keylIntObj_t));
+    keylIntPtr = (keylIntObj_t *) ckalloc(sizeof(keylIntObj_t));
 
     keylIntPtr->arraySize = 0;
     keylIntPtr->numEntries = 0;
@@ -623,11 +605,11 @@ FreeKeyedListData(keylIntObj_t * keylIntPtr)
     int idx;
 
     for (idx = 0; idx < keylIntPtr->numEntries ; idx++) {
-        ckfree(keylIntPtr->entries[idx].key);
+        ns_free(keylIntPtr->entries[idx].key);
         Tcl_DecrRefCount(keylIntPtr->entries[idx].valuePtr);
     }
     if (keylIntPtr->entries != NULL) {
-        ckfree((char *) keylIntPtr->entries);
+        ns_free((char *) keylIntPtr->entries);
     }
     ckfree((char *) keylIntPtr);
 }
@@ -653,10 +635,10 @@ EnsureKeyedListSpace(keylIntObj_t * keylIntPtr, int newNumEntries)
             KEYEDLIST_ARRAY_INCR_SIZE;
         if (keylIntPtr->entries == NULL) {
             keylIntPtr->entries = (keylEntry_t *)
-                ckalloc((unsigned)newSize * sizeof(keylEntry_t));
+                ns_malloc((unsigned)newSize * (unsigned)sizeof(keylEntry_t));
         } else {
             keylIntPtr->entries = (keylEntry_t *)
-                ckrealloc((char *) keylIntPtr->entries,
+                ns_realloc((char *) keylIntPtr->entries,
 			  (unsigned)newSize * sizeof(keylEntry_t));
         }
         keylIntPtr->arraySize = newSize;
@@ -679,7 +661,7 @@ DeleteKeyedListEntry(keylIntObj_t *keylIntPtr, int entryIdx)
 {
     int idx;
 
-    ckfree(keylIntPtr->entries[entryIdx].key);
+    ns_free(keylIntPtr->entries[entryIdx].key);
     Tcl_DecrRefCount(keylIntPtr->entries[entryIdx].valuePtr);
 
     for (idx = entryIdx; idx < keylIntPtr->numEntries - 1; idx++) {
@@ -785,7 +767,7 @@ ObjToKeyedListEntry(Tcl_Interp *interp, Tcl_Obj *objPtr, keylEntry_t *entryPtr)
             result = TCL_ERROR;
 
         } else {
-            entryPtr->key = ckstrdup(key);
+            entryPtr->key = ns_strdup(key);
             entryPtr->valuePtr = Tcl_DuplicateObj(objv[1]);
             Tcl_IncrRefCount(entryPtr->valuePtr);
         }
@@ -830,11 +812,11 @@ DupKeyedListInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr)
     copyIntPtr->arraySize = srcIntPtr->arraySize;
     copyIntPtr->numEntries = srcIntPtr->numEntries;
     copyIntPtr->entries = (keylEntry_t *)
-        ckalloc((unsigned)copyIntPtr->arraySize * sizeof(keylEntry_t));
+        ns_malloc((unsigned)copyIntPtr->arraySize * (unsigned)sizeof(keylEntry_t));
 
     for (idx = 0; idx < srcIntPtr->numEntries ; idx++) {
         copyIntPtr->entries[idx].key = 
-            ckstrdup(srcIntPtr->entries[idx].key);
+            ns_strdup(srcIntPtr->entries[idx].key);
         copyIntPtr->entries[idx].valuePtr = srcIntPtr->entries[idx].valuePtr;
         Tcl_IncrRefCount(copyIntPtr->entries[idx].valuePtr);
     }
@@ -858,39 +840,42 @@ DupKeyedListInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr)
 static int
 SetKeyedListFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr) 
 {
-    keylIntObj_t *keylIntPtr;
-    int idx, objc;
+    int       objc, result = TCL_OK;
     Tcl_Obj **objv;
 
     if (Tcl_ListObjGetElements(interp, objPtr, &objc, &objv) != TCL_OK) {
-        return TCL_ERROR;
+        result = TCL_ERROR;
+
+    } else {
+        int           idx;
+        keylIntObj_t *keylIntPtr = AllocKeyedListIntRep();
+
+        EnsureKeyedListSpace(keylIntPtr, objc);
+
+        for (idx = 0; idx < objc; idx++) {
+            if (ObjToKeyedListEntry(interp, objv[idx], 
+                                    &(keylIntPtr->entries[keylIntPtr->numEntries])) != TCL_OK) {
+                result = TCL_ERROR;
+                break;
+            }
+            keylIntPtr->numEntries++;
+        }
+
+        if (result == TCL_OK) {
+            if ((objPtr->typePtr != NULL) &&
+                (objPtr->typePtr->freeIntRepProc != NULL)) {
+                (*objPtr->typePtr->freeIntRepProc)(objPtr);
+            }
+            objPtr->internalRep.otherValuePtr = (VOID *) keylIntPtr;
+            objPtr->typePtr = &keyedListType;
+        
+            KEYL_REP_ASSERT(keylIntPtr);
+        } else {
+            FreeKeyedListData(keylIntPtr);
+        }
     }
     
-    keylIntPtr = AllocKeyedListIntRep();
-
-    EnsureKeyedListSpace(keylIntPtr, objc);
-
-    for (idx = 0; idx < objc; idx++) {
-        if (ObjToKeyedListEntry(interp, objv[idx], 
-				&(keylIntPtr->entries[keylIntPtr->numEntries])) != TCL_OK) {
-            goto errorExit;
-	}
-        keylIntPtr->numEntries++;
-    }
-
-    if ((objPtr->typePtr != NULL) &&
-        (objPtr->typePtr->freeIntRepProc != NULL)) {
-        (*objPtr->typePtr->freeIntRepProc) (objPtr);
-    }
-    objPtr->internalRep.otherValuePtr = (VOID *) keylIntPtr;
-    objPtr->typePtr = &keyedListType;
-
-    KEYL_REP_ASSERT(keylIntPtr);
-    return TCL_OK;
-    
-  errorExit:
-    FreeKeyedListData(keylIntPtr);
-    return TCL_ERROR;
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
@@ -916,7 +901,7 @@ UpdateStringOfKeyedList(Tcl_Obj *keylPtr)
      * Conversion to strings is done via list objects to support binary data.
      */
     if (keylIntPtr->numEntries > UPDATE_STATIC_SIZE) {
-        listObjv = (Tcl_Obj **) ckalloc((unsigned)keylIntPtr->numEntries * sizeof(Tcl_Obj *));
+        listObjv = (Tcl_Obj **) ckalloc((unsigned)keylIntPtr->numEntries * (unsigned)sizeof(Tcl_Obj *));
     } else {
         staticListObjv[0] = NULL;
         listObjv = staticListObjv;
@@ -985,39 +970,43 @@ TclX_NewKeyedListObj()
 int
 TclX_KeyedListGet(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj **valuePtrPtr)
 {
-    const keylIntObj_t *keylIntPtr;
-    const char         *nextSubKey;
-    int                 findIdx;
+    int result = TCL_OK;
 
     if (Tcl_ConvertToType(interp, keylPtr, &keyedListType) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
-    KEYL_REP_ASSERT(keylIntPtr);
-
-    findIdx = FindKeyedListEntry(keylIntPtr, key, NULL, &nextSubKey);
-
-    /*
-     * If not found, return status.
-     */
-    if (findIdx < 0) {
-        *valuePtrPtr = NULL;
-        return TCL_BREAK;
-    }
-
-    /*
-     * If we are at the last subkey, return the entry, otherwise recurse
-     * down looking for the entry.
-     */
-    if (nextSubKey == NULL) {
-        *valuePtrPtr = keylIntPtr->entries[findIdx].valuePtr;
-        return TCL_OK;
+        result = TCL_ERROR;
+        
     } else {
-        return TclX_KeyedListGet(interp, 
-				 keylIntPtr->entries[findIdx].valuePtr,
-				 nextSubKey,
-				 valuePtrPtr);
-    }
+        const char         *nextSubKey;
+        const keylIntObj_t *keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
+        int                 findIdx;
+        
+        KEYL_REP_ASSERT(keylIntPtr);
+
+        findIdx = FindKeyedListEntry(keylIntPtr, key, NULL, &nextSubKey);
+
+        /*
+         * If not found, return status.
+         */
+        if (findIdx < 0) {
+            *valuePtrPtr = NULL;
+            result = TCL_BREAK;
+        } else {
+
+            /*
+             * If we are at the last subkey, return the entry, otherwise recurse
+             * down looking for the entry.
+             */
+            if (nextSubKey == NULL) {
+                *valuePtrPtr = keylIntPtr->entries[findIdx].valuePtr;
+            } else {
+                result = TclX_KeyedListGet(interp, 
+                                           keylIntPtr->entries[findIdx].valuePtr,
+                                           nextSubKey,
+                                           valuePtrPtr);
+            }
+        }
+    }    
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
@@ -1037,82 +1026,85 @@ TclX_KeyedListGet(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj
 int
 TclX_KeyedListSet(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj *valuePtr)
 {
-    keylIntObj_t *keylIntPtr;
-    const char   *nextSubKey;
-    size_t        keyLen;
-    int           findIdx;
-    Tcl_Obj      *newKeylPtr;
+    int result = TCL_OK;
 
     if (Tcl_ConvertToType(interp, keylPtr, &keyedListType) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
-    KEYL_REP_ASSERT(keylIntPtr);
-
-    findIdx = FindKeyedListEntry(keylIntPtr, key,
-				 &keyLen, &nextSubKey);
-
-    /*
-     * If we are at the last subkey, either update or add an entry.
-     */
-    if (nextSubKey == NULL) {
-        if (findIdx < 0) {
-            EnsureKeyedListSpace(keylIntPtr, 1);
-            findIdx = keylIntPtr->numEntries;
-            keylIntPtr->numEntries++;
-        } else {
-            ckfree(keylIntPtr->entries[findIdx].key);
-            Tcl_DecrRefCount(keylIntPtr->entries[findIdx].valuePtr);
-        }
-        keylIntPtr->entries[findIdx].key = (char *)ckalloc((unsigned)keyLen + 1u);
-        memcpy(keylIntPtr->entries[findIdx].key, key, keyLen);
-        keylIntPtr->entries[findIdx].key[keyLen] = '\0';
-        keylIntPtr->entries[findIdx].valuePtr = valuePtr;
-        Tcl_IncrRefCount(valuePtr);
-        Tcl_InvalidateStringRep(keylPtr);
-
-        KEYL_REP_ASSERT(keylIntPtr);
-        return TCL_OK;
-    }
-
-    /*
-     * If we are not at the last subkey, recurse down, creating new
-     * entries if neccessary.  If this level key was not found, it
-     * means we must build new subtree. Don't insert the new tree until we
-     * come back without error.
-     */
-    if (findIdx >= 0) {
-        int status;
-
-        DupSharedKeyListChild(keylIntPtr, findIdx);
-        status = TclX_KeyedListSet(interp, 
-				   keylIntPtr->entries[findIdx].valuePtr,
-				   nextSubKey, valuePtr);
-        if (status == TCL_OK) {
-            Tcl_InvalidateStringRep(keylPtr);
-        }
-
-        KEYL_REP_ASSERT(keylIntPtr);
-        return status;
+        result = TCL_ERROR;
     } else {
-        newKeylPtr = TclX_NewKeyedListObj();
-        if (TclX_KeyedListSet(interp, newKeylPtr,
-			      nextSubKey, valuePtr) != TCL_OK) {
-            Tcl_DecrRefCount(newKeylPtr);
-            return TCL_ERROR;
-        }
-        EnsureKeyedListSpace(keylIntPtr, 1);
-        findIdx = keylIntPtr->numEntries++;
-        keylIntPtr->entries[findIdx].key = (char *) ckalloc((unsigned)keyLen + 1u);
-        memcpy(keylIntPtr->entries[findIdx].key, key, keyLen);
-        keylIntPtr->entries[findIdx].key[keyLen] = '\0';
-        keylIntPtr->entries[findIdx].valuePtr = newKeylPtr;
-        Tcl_IncrRefCount(newKeylPtr);
-        Tcl_InvalidateStringRep(keylPtr);
-
+        const char   *nextSubKey;
+        size_t        keyLen;
+        keylIntObj_t *keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
+        int           findIdx;
+        
         KEYL_REP_ASSERT(keylIntPtr);
-        return TCL_OK;
-    }
+
+        findIdx = FindKeyedListEntry(keylIntPtr, key,
+                                     &keyLen, &nextSubKey);
+
+        /*
+         * If we are at the last subkey, either update or add an
+         * entry.
+         */
+        if (nextSubKey == NULL) {
+            if (findIdx < 0) {
+                EnsureKeyedListSpace(keylIntPtr, 1);
+                findIdx = keylIntPtr->numEntries;
+                keylIntPtr->numEntries++;
+            } else {
+                ns_free(keylIntPtr->entries[findIdx].key);
+                Tcl_DecrRefCount(keylIntPtr->entries[findIdx].valuePtr);
+            }
+            keylIntPtr->entries[findIdx].key = (char *)ns_malloc((unsigned)keyLen + 1u);
+            memcpy(keylIntPtr->entries[findIdx].key, key, keyLen);
+            keylIntPtr->entries[findIdx].key[keyLen] = '\0';
+            keylIntPtr->entries[findIdx].valuePtr = valuePtr;
+            Tcl_IncrRefCount(valuePtr);
+            Tcl_InvalidateStringRep(keylPtr);
+
+            KEYL_REP_ASSERT(keylIntPtr);
+        } else {
+
+            /*
+             * If we are not at the last subkey, recurse down, creating
+             * new entries if neccessary.  If this level key was not
+             * found, it means we must build new subtree. Don't insert the
+             * new tree until we come back without error.
+             */
+            if (findIdx >= 0) {
+
+                DupSharedKeyListChild(keylIntPtr, findIdx);
+                result = TclX_KeyedListSet(interp, 
+                                           keylIntPtr->entries[findIdx].valuePtr,
+                                           nextSubKey, valuePtr);
+                if (result == TCL_OK) {
+                    Tcl_InvalidateStringRep(keylPtr);
+                }
+
+                KEYL_REP_ASSERT(keylIntPtr);
+
+            } else {
+                Tcl_Obj      *newKeylPtr = TclX_NewKeyedListObj();
+                
+                if (TclX_KeyedListSet(interp, newKeylPtr,
+                                      nextSubKey, valuePtr) != TCL_OK) {
+                    Tcl_DecrRefCount(newKeylPtr);
+                    result = TCL_ERROR;
+                } else {
+                    EnsureKeyedListSpace(keylIntPtr, 1);
+                    findIdx = keylIntPtr->numEntries++;
+                    keylIntPtr->entries[findIdx].key = (char *)ns_malloc((unsigned)keyLen + 1u);
+                    memcpy(keylIntPtr->entries[findIdx].key, key, keyLen);
+                    keylIntPtr->entries[findIdx].key[keyLen] = '\0';
+                    keylIntPtr->entries[findIdx].valuePtr = newKeylPtr;
+                    Tcl_IncrRefCount(newKeylPtr);
+                    Tcl_InvalidateStringRep(keylPtr);
+                }
+
+                KEYL_REP_ASSERT(keylIntPtr);
+            }
+        }
+    }    
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
@@ -1133,60 +1125,58 @@ TclX_KeyedListSet(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj
 int
 TclX_KeyedListDelete(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key)
 {
-    keylIntObj_t *keylIntPtr;
-    const char   *nextSubKey;
-    int           findIdx;
-    int           status;
+    int  status;
 
     if (Tcl_ConvertToType(interp, keylPtr, &keyedListType) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
+        status = TCL_ERROR;
+        
+    } else {
+        int           findIdx;
+        const char   *nextSubKey;
+        keylIntObj_t *keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
 
-    findIdx = FindKeyedListEntry(keylIntPtr, key, NULL, &nextSubKey);
+        findIdx = FindKeyedListEntry(keylIntPtr, key, NULL, &nextSubKey);
 
-    /*
-     * If not found, return status.
-     */
-    if (findIdx < 0) {
-        KEYL_REP_ASSERT(keylIntPtr);
-        return TCL_BREAK;
-    }
+        /*
+         * If not found, return status.
+         */
+        if (findIdx < 0) {
+            status = TCL_BREAK;
 
-    /*
-     * If we are at the last subkey, delete the entry.
-     */
-    if (nextSubKey == NULL) {
-        DeleteKeyedListEntry(keylIntPtr, findIdx);
-        Tcl_InvalidateStringRep(keylPtr);
-
-        KEYL_REP_ASSERT(keylIntPtr);
-        return TCL_OK;
-    }
-
-    /*
-     * If we are not at the last subkey, recurse down.  If the entry
-     * is deleted and the sub-keyed list is empty, delete it as well.
-     * Must invalidate string, as it caches all representations below
-     * it.
-     */
-    DupSharedKeyListChild(keylIntPtr, findIdx);
-
-    status = TclX_KeyedListDelete(interp,
-				  keylIntPtr->entries[findIdx].valuePtr,
-				  nextSubKey);
-    if (status == TCL_OK) {
-        const keylIntObj_t *subKeylIntPtr;
-
-        subKeylIntPtr = (keylIntObj_t *)
-            keylIntPtr->entries[findIdx].valuePtr->internalRep.otherValuePtr;
-        if (subKeylIntPtr->numEntries == 0) {
+        } else if (nextSubKey == NULL) {
+            /*
+             * If we are at the last subkey, delete the entry.
+             */
             DeleteKeyedListEntry(keylIntPtr, findIdx);
+            Tcl_InvalidateStringRep(keylPtr);
+            status = TCL_OK;
+            
+        } else {
+            /*
+             * If we are not at the last subkey, recurse down.  If the entry
+             * is deleted and the sub-keyed list is empty, delete it as well.
+             * Must invalidate string, as it caches all representations below
+             * it.
+             */
+            DupSharedKeyListChild(keylIntPtr, findIdx);
+
+            status = TclX_KeyedListDelete(interp,
+                                          keylIntPtr->entries[findIdx].valuePtr,
+                                          nextSubKey);
+            if (status == TCL_OK) {
+                const keylIntObj_t *subKeylIntPtr;
+
+                subKeylIntPtr = (keylIntObj_t *)
+                    keylIntPtr->entries[findIdx].valuePtr->internalRep.otherValuePtr;
+                if (subKeylIntPtr->numEntries == 0) {
+                    DeleteKeyedListEntry(keylIntPtr, findIdx);
+                }
+                Tcl_InvalidateStringRep(keylPtr);
+            }
         }
-        Tcl_InvalidateStringRep(keylPtr);
+        KEYL_REP_ASSERT(keylIntPtr);
     }
 
-    KEYL_REP_ASSERT(keylIntPtr);
     return status;
 }
 
@@ -1209,303 +1199,316 @@ TclX_KeyedListDelete(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key)
 int
 TclX_KeyedListGetKeys(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj **listObjPtrPtr)
 {
-    const keylIntObj_t *keylIntPtr;
-    Tcl_Obj            *listObjPtr;
-    const char         *nextSubKey;
-    int                 idx;
+    int result = TCL_OK;
 
     if (Tcl_ConvertToType(interp, keylPtr, &keyedListType) != TCL_OK) {
-        return TCL_ERROR;
-    }
-    keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
+        result = TCL_ERROR;
 
-    /*
-     * If key is not NULL or empty, then recurse down until we go past
-     * the end of all of the elements of the key.
-     */
-    if ((key != NULL) && (key[0] != '\0')) {
-        int findIdx = FindKeyedListEntry(keylIntPtr, key, NULL, &nextSubKey);
-        if (findIdx < 0) {
-            assert(keylIntPtr->arraySize >= keylIntPtr->numEntries);
-            return TCL_BREAK;
+    } else {
+        const keylIntObj_t *keylIntPtr;
+            
+        keylIntPtr = (keylIntObj_t *) keylPtr->internalRep.otherValuePtr;
+
+        /*
+         * If key is not NULL or empty, then recurse down until we go past
+         * the end of all of the elements of the key.
+         */
+        if ((key != NULL) && (key[0] != '\0')) {
+            const char *nextSubKey;
+            int         findIdx = FindKeyedListEntry(keylIntPtr, key, NULL, &nextSubKey);
+        
+            if (findIdx < 0) {
+                assert(keylIntPtr->arraySize >= keylIntPtr->numEntries);
+                result = TCL_BREAK;
+            } else {
+                assert(keylIntPtr->arraySize >= keylIntPtr->numEntries);
+                result = TclX_KeyedListGetKeys(interp, 
+                                               keylIntPtr->entries[findIdx].valuePtr,
+                                               nextSubKey,
+                                               listObjPtrPtr);
+            }
+        } else {
+            /*
+             * Reached the end of the full key, return all keys at this level.
+             */
+            int      idx;
+            Tcl_Obj *listObjPtr = Tcl_NewListObj(0, NULL);
+        
+            for (idx = 0u; idx < keylIntPtr->numEntries; idx++) {
+                Tcl_Obj  *nameObjPtr = Tcl_NewStringObj(keylIntPtr->entries[idx].key, -1);
+
+                if (Tcl_ListObjAppendElement(interp, listObjPtr,
+                                             nameObjPtr) != TCL_OK) {
+                    Tcl_DecrRefCount(nameObjPtr);
+                    Tcl_DecrRefCount(listObjPtr);
+                    result = TCL_ERROR;
+                    break;
+                }
+            }
+            if (result == TCL_OK) {
+                *listObjPtrPtr = listObjPtr;
+                assert(keylIntPtr->arraySize >= keylIntPtr->numEntries);
+            }
         }
-        assert(keylIntPtr->arraySize >= keylIntPtr->numEntries);
-        return TclX_KeyedListGetKeys(interp, 
-				     keylIntPtr->entries[findIdx].valuePtr,
-				     nextSubKey,
-				     listObjPtrPtr);
     }
-
-    /*
-     * Reached the end of the full key, return all keys at this level.
-     */
-    listObjPtr = Tcl_NewListObj(0, NULL);
-    for (idx = 0; idx < keylIntPtr->numEntries; idx++) {
-	Tcl_Obj  *nameObjPtr = Tcl_NewStringObj(keylIntPtr->entries[idx].key, -1);
-
-        if (Tcl_ListObjAppendElement(interp, listObjPtr,
-				     nameObjPtr) != TCL_OK) {
-            Tcl_DecrRefCount(nameObjPtr);
-            Tcl_DecrRefCount(listObjPtr);
-            return TCL_ERROR;
-        }
-    }
-    *listObjPtrPtr = listObjPtr;
-    assert(keylIntPtr->arraySize >= keylIntPtr->numEntries);
-    return TCL_OK;
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
  * Tcl_KeylgetObjCmd --
- *     Implements the TCL keylget command:
+ *     Implements the Tcl keylget command:
  *         keylget listvar ?key? ?retvar | {}?
  *-----------------------------------------------------------------------------
  */
 int
 TclX_KeylgetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Tcl_Obj *keylPtr, *valuePtr;
-    const char *varName, *key;
-    int keyLen, status;
+    Tcl_Obj    *keylPtr, *valuePtr;
+    int         keyLen, status = TCL_OK;
 
     if ((objc < 2) || (objc > 4)) {
-        return TclX_WrongArgs(interp, objv[0],
-                               "listvar ?key? ?retvar | {}?");
-    }
-    varName = Tcl_GetStringFromObj(objv[1], NULL);
+        status = TclX_WrongArgs(interp, objv[0], "listvar ?key? ?retvar | {}?");
 
-    /*
-     * Handle request for list of keys, use keylkeys command.
-     */
-    if (objc == 2) {
-        return TclX_KeylkeysObjCmd(clientData, interp, objc, objv);
-    }
-
-    keylPtr = Tcl_GetVar2Ex(interp, varName, NULL, 
-                            TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG);
-    if (keylPtr == NULL) {
-        return TCL_ERROR;
-    }
-
-    /*
-     * Handle retrieving a value for a specified key.
-     */
-    key = Tcl_GetStringFromObj(objv[2], &keyLen);
-    if (ValidateKey(interp, key, keyLen, TRUE) == TCL_ERROR) {
-        return TCL_ERROR;
-    }
-
-    status = TclX_KeyedListGet(interp, keylPtr, key, &valuePtr);
-    if (status == TCL_ERROR) {
-        return TCL_ERROR;
-    }
-
-    /*
-     * Handle key not found.
-     */
-    if (status == TCL_BREAK) {
-        if (objc == 3) {
-            Ns_TclPrintfResult(interp, "key \"%s\" not found in keyed list", key);
-            return TCL_ERROR;
+    } else if (objc == 2) {
+        /*
+         * Handle request for list of keys, use keylkeys command.
+         */
+        status = TclX_KeylkeysObjCmd(clientData, interp, objc, objv);
+        
+    } else {
+        keylPtr = Tcl_ObjGetVar2(interp, objv[1], NULL, TCL_LEAVE_ERR_MSG);
+        if (keylPtr == NULL) {
+            status = TCL_ERROR;
+            
         } else {
-            Tcl_SetObjResult(interp, Tcl_NewBooleanObj(NS_FALSE));
-            return TCL_OK;
+            const char *key;
+
+            /*
+             * Handle retrieving a value for a specified key.
+             */
+            key = Tcl_GetStringFromObj(objv[2], &keyLen);
+            if (ValidateKey(interp, key, keyLen, TRUE) == TCL_ERROR) {
+                status = TCL_ERROR;
+            } else {
+
+                status = TclX_KeyedListGet(interp, keylPtr, key, &valuePtr);
+                if (status == TCL_BREAK) {
+                    /*
+                     * Handle key not found.
+                     */
+                    if (objc == 3) {
+                        Ns_TclPrintfResult(interp, "key \"%s\" not found in keyed list", key);
+                        status = TCL_ERROR;
+                    } else {
+                        status = TCL_OK;
+                        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(NS_FALSE));
+                    }
+        
+                } else if (status == TCL_OK) {
+                    if (objc == 3) {
+                        /*
+                         * No variable specified, so return value in the result.
+                         */
+                        Tcl_SetObjResult(interp, valuePtr);
+                    } else {
+
+                        /*
+                         * Variable (or empty variable name) specified.
+                         */
+                        if (!TclX_IsNullObj(objv[3])) {
+                            if (Tcl_SetVar2Ex(interp, Tcl_GetStringFromObj(objv[3], NULL), NULL,
+                                              valuePtr, TCL_LEAVE_ERR_MSG) == NULL) {
+                                status = TCL_ERROR;
+                            }
+                        }
+                        if (status == TCL_OK) {
+                            Tcl_SetObjResult(interp, Tcl_NewBooleanObj(NS_TRUE));
+                        }
+                    }
+                } else /* (status == TCL_ERROR) */ {
+                }
+            }
         }
     }
-
-    /*
-     * No variable specified, so return value in the result.
-     */
-    if (objc == 3) {
-        Tcl_SetObjResult(interp, valuePtr);
-        return TCL_OK;
-    }
-
-    /*
-     * Variable (or empty variable name) specified.
-     */
-    if (!TclX_IsNullObj(objv[3])) {
-        if (Tcl_SetVar2Ex(interp, Tcl_GetStringFromObj(objv[3], NULL), NULL,
-                          valuePtr, TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG) == NULL) {
-            return TCL_ERROR;
-	}
-    }
-    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(NS_TRUE));
-    return TCL_OK;
+    return status;
 }
 
 /*-----------------------------------------------------------------------------
  * Tcl_KeylsetObjCmd --
- *     Implements the TCL keylset command:
+ *     Implements the Tcl keylset command:
  *         keylset listvar key value ?key value...?
  *-----------------------------------------------------------------------------
  */
 int
 TclX_KeylsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Tcl_Obj *keylVarPtr, *newVarObj;
-    const char *varName, *key;
-    int idx, keyLen;
+    int         result = TCL_OK;
 
     if ((objc < 4) || ((objc % 2) != 0)) {
-        return TclX_WrongArgs(interp, objv[0],
-                              "listvar key value ?key value...?");
-    }
-    varName = Tcl_GetStringFromObj(objv[1], NULL);
-
-    /*
-     * Get the variable that we are going to update.  If the var
-     * doesn't exist, create it.  If it is shared by more than being a
-     * variable, duplicated it.
-     */
-    keylVarPtr = Tcl_GetVar2Ex(interp, varName, NULL, TCL_PARSE_PART1);
-    if ((keylVarPtr == NULL) || (Tcl_IsShared(keylVarPtr))) {
-        if (keylVarPtr == NULL) {
-            keylVarPtr = TclX_NewKeyedListObj();
-        } else {
-            keylVarPtr = Tcl_DuplicateObj(keylVarPtr);
-        }
-        newVarObj = keylVarPtr;
+        result = TclX_WrongArgs(interp, objv[0],
+                                "listvar key value ?key value...?");
     } else {
-        newVarObj = NULL;
-    }
+        Tcl_Obj    *keylVarPtr, *newVarObj;
+        int         idx, keyLen;
 
-    for (idx = 2; idx < objc; idx += 2) {
-        key = Tcl_GetStringFromObj(objv[idx], &keyLen);
-        if (ValidateKey(interp, key, keyLen, TRUE) == TCL_ERROR) {
-            goto errorExit;
+        /*
+         * Get the variable that we are going to update.  If the var
+         * doesn't exist, create it.  If it is shared by more than
+         * being a variable, duplicated it.
+         */
+        keylVarPtr = Tcl_ObjGetVar2(interp, objv[1], NULL, 0);
+        if (keylVarPtr == NULL) {
+            newVarObj = keylVarPtr = TclX_NewKeyedListObj();
+            Tcl_IncrRefCount(newVarObj);
+        } else if (Tcl_IsShared(keylVarPtr)) {
+            newVarObj = keylVarPtr = Tcl_DuplicateObj(keylVarPtr);
+            Tcl_IncrRefCount(newVarObj);
+        } else {
+            newVarObj = NULL;
         }
-        if (TclX_KeyedListSet(interp, keylVarPtr, key, objv[idx+1]) != TCL_OK) {
-            goto errorExit;
+
+        for (idx = 2; idx < objc; idx += 2) {
+            const char *key = Tcl_GetStringFromObj(objv[idx], &keyLen);
+            
+            result = ValidateKey(interp, key, keyLen, TRUE);
+            if (result == TCL_ERROR) {
+                break;
+            }
+            result = TclX_KeyedListSet(interp, keylVarPtr, key, objv[idx+1]);
+            if (result == TCL_ERROR) {
+                break;
+            }
+        }
+
+        if ((result == TCL_OK)
+            && (Tcl_ObjSetVar2(interp, objv[1], NULL, keylVarPtr,
+                               TCL_LEAVE_ERR_MSG) == NULL)) {
+            result = TCL_ERROR;
+        }
+
+        if (newVarObj != NULL) {
+            Tcl_DecrRefCount(newVarObj);
         }
     }
-
-    if (Tcl_SetVar2Ex(interp, varName, NULL, keylVarPtr,
-                      TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG) == NULL) {
-        goto errorExit;
-    }
-
-    return TCL_OK;
-
-  errorExit:
-    if (newVarObj != NULL) {
-        Tcl_DecrRefCount(newVarObj);
-    }
-    return TCL_ERROR;
+    return result;
 }
 
 /*-----------------------------------------------------------------------------
  * Tcl_KeyldelObjCmd --
- *     Implements the TCL keyldel command:
+ *     Implements the Tcl keyldel command:
  *         keyldel listvar key ?key ...?
  *----------------------------------------------------------------------------
  */
 int
 TclX_KeyldelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Tcl_Obj *keylVarPtr, *keylPtr;
-    const char *varName;
-    int idx, keyLen, result = TCL_OK;
+    int result = TCL_OK;
 
     if (objc < 3) {
-        return TclX_WrongArgs(interp, objv[0], "listvar key ?key ...?");
-    }
-    varName = Tcl_GetStringFromObj(objv[1], NULL);
+        result = TclX_WrongArgs(interp, objv[0], "listvar key ?key ...?");
 
-    /*
-     * Get the variable that we are going to update.  If it is shared
-     * by more than being a variable, duplicated it.
-     */
-    keylVarPtr = Tcl_GetVar2Ex(interp, varName, NULL, 
-                               TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG);
-    if (keylVarPtr == NULL) {
-        return TCL_ERROR;
-    }
-    if (Tcl_IsShared(keylVarPtr)) {
-        keylPtr = Tcl_DuplicateObj(keylVarPtr);
-        keylVarPtr = Tcl_SetVar2Ex(interp, varName, NULL, keylPtr,
-                                   TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG);
+    } else {
+        Tcl_Obj *keylVarPtr;
+        
+        /*
+         * Get the variable that we are going to update.  If it is shared
+         * by more than being a variable, duplicated it.
+         */
+        keylVarPtr = Tcl_ObjGetVar2(interp, objv[1], NULL, TCL_LEAVE_ERR_MSG);
         if (keylVarPtr == NULL) {
-            Tcl_DecrRefCount(keylPtr);
-            return TCL_ERROR;
-        }
-        if (keylVarPtr != keylPtr) {
-            Tcl_DecrRefCount(keylPtr);
-        }
-    }
-    keylPtr = keylVarPtr;
-
-    for (idx = 2; idx < objc; idx++) {
-        const char *key = Tcl_GetStringFromObj(objv[idx], &keyLen);
-
-        if (ValidateKey(interp, key, keyLen, TRUE) == TCL_ERROR) {
             result = TCL_ERROR;
+            
         } else {
-            result = TclX_KeyedListDelete(interp, keylPtr, key);
+            Tcl_Obj *keylPtr;
+            
+            if (Tcl_IsShared(keylVarPtr)) {
+                keylPtr = Tcl_DuplicateObj(keylVarPtr);
+                keylVarPtr = Tcl_ObjSetVar2(interp, objv[1], NULL, keylPtr,
+                                            TCL_LEAVE_ERR_MSG);
+                if (keylVarPtr == NULL) {
+                    Tcl_DecrRefCount(keylPtr);
+                    result = TCL_ERROR;
+                } else if (keylVarPtr != keylPtr) {
+                    Tcl_DecrRefCount(keylPtr);
+                }
+            }
+            if (result == TCL_OK) {
+                int idx;
+                
+                keylPtr = keylVarPtr;
 
-            if (result == TCL_BREAK) {
-                Ns_TclPrintfResult(interp, "key not found: \"%s\"", key);
-                result = TCL_ERROR;
+                for (idx = 2; idx < objc; idx++) {
+                    int        keyLen;
+                    const char *key = Tcl_GetStringFromObj(objv[idx], &keyLen);
+
+                    if (ValidateKey(interp, key, keyLen, TRUE) == TCL_ERROR) {
+                        result = TCL_ERROR;
+                    } else {
+                        result = TclX_KeyedListDelete(interp, keylPtr, key);
+
+                        if (result == TCL_BREAK) {
+                            Ns_TclPrintfResult(interp, "key not found: \"%s\"", key);
+                            result = TCL_ERROR;
+                        }
+                    }
+                }
             }
         }
     }
-
     return result;
 }
 
 /*-----------------------------------------------------------------------------
  * Tcl_KeylkeysObjCmd --
- *     Implements the TCL keylkeys command:
+ *     Implements the Tcl keylkeys command:
  *         keylkeys listvar ?key?
  *-----------------------------------------------------------------------------
  */
 int
 TclX_KeylkeysObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Tcl_Obj    *keylPtr;
-    const char *varName;
     int         result;
 
     if ((objc < 2) || (objc > 3)) {
-        return TclX_WrongArgs(interp, objv[0], "listvar ?key?");
-    }
-
-    varName = Tcl_GetStringFromObj(objv[1], NULL);
-    keylPtr = Tcl_GetVar2Ex(interp, varName, NULL, 
-                            TCL_PARSE_PART1|TCL_LEAVE_ERR_MSG);
-    if (keylPtr == NULL) {
-        result = TCL_ERROR;
+        result = TclX_WrongArgs(interp, objv[0], "listvar ?key?");
     } else {
-        const char *key;
-        Tcl_Obj    *listObjPtr = NULL;
+        const char *varName = Tcl_GetStringFromObj(objv[1], NULL);
+        Tcl_Obj    *keylPtr = Tcl_GetVar2Ex(interp, varName, NULL, TCL_LEAVE_ERR_MSG);
         
-        /*
-         * If "key" argument is not specified, then objv[2] is NULL or
-         * empty, meaning get top level keys.
-         */
-        if (objc < 3) {
-            key = NULL;
-            result = TCL_OK;
-        } else {
-            int keyLen;
+        if (keylPtr == NULL) {
+            result = TCL_ERROR;
             
-            key = Tcl_GetStringFromObj(objv[2], &keyLen);
-            result = ValidateKey(interp, key, keyLen, TRUE);
-        }
+        } else {
+            const char *key;
+            Tcl_Obj    *listObjPtr = NULL;
         
-        if (result == TCL_OK) {
-            result = TclX_KeyedListGetKeys(interp, keylPtr, key, &listObjPtr);
-            if (result == TCL_BREAK) {
-                Ns_TclPrintfResult(interp, "key not found: \"%s\"", key);
-                result = TCL_ERROR;
+            /*
+             * If "key" argument is not specified, then objv[2] is NULL or
+             * empty, meaning get top level keys.
+             */
+            if (objc < 3) {
+                key = NULL;
+                result = TCL_OK;
+            } else {
+                int keyLen;
+            
+                key = Tcl_GetStringFromObj(objv[2], &keyLen);
+                result = ValidateKey(interp, key, keyLen, TRUE);
+            }
+        
+            if (result == TCL_OK) {
+                result = TclX_KeyedListGetKeys(interp, keylPtr, key, &listObjPtr);
+                if (result == TCL_BREAK) {
+                    Ns_TclPrintfResult(interp, "key not found: \"%s\"", key);
+                    result = TCL_ERROR;
+                }
+            }
+
+            if (result == TCL_OK) {
+                Tcl_SetObjResult(interp, listObjPtr);
             }
         }
-
-        if (result == TCL_OK) {
-            Tcl_SetObjResult(interp, listObjPtr);
-        }
     }
-
     return result;
 }
 
