@@ -45,7 +45,7 @@ typedef struct Event {
     NS_SOCKET          sock;          /* Underlying socket. */
     Ns_EventProc      *proc;          /* Event callback. */
     void              *arg;           /* Callback data. */
-    int                idx;           /* Poll index. */
+    NS_POLL_NFDS_TYPE  idx;           /* Poll index. */
     short              events;        /* Poll events. */
     Ns_Time            timeout;       /* Non-null timeout data. */
     unsigned int       status;        /* Manipulated by Ns_EventCallback(). */
@@ -257,12 +257,13 @@ Ns_EventCallback(Ns_Event *event, Ns_SockState when, const Ns_Time *timeoutPtr)
 bool
 Ns_RunEventQueue(Ns_EventQueue *queue)
 {
-    EventQueue    *queuePtr = (EventQueue *) queue;
-    Event         *evPtr, *nextPtr;
-    Ns_Time        now;
-    const Ns_Time *timeoutPtr;
-    int            i, n, nfds;
-    char           c;
+    EventQueue       *queuePtr = (EventQueue *) queue;
+    Event            *evPtr, *nextPtr;
+    Ns_Time           now;
+    const Ns_Time    *timeoutPtr;
+    int               i, n;
+    NS_POLL_NFDS_TYPE nfds;
+    char              c;
 
     NS_NONNULL_ASSERT(queue != NULL);
 
@@ -286,7 +287,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
      */
 
     queuePtr->pfds[0].fd = queuePtr->trigger[0];
-    queuePtr->pfds[0].events = POLLIN;
+    queuePtr->pfds[0].events = (short)POLLIN;
     queuePtr->pfds[0].revents = 0;
     nfds = 1;
     timeoutPtr = NULL;
@@ -345,7 +346,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
 
         revents = queuePtr->pfds[evPtr->idx].revents;
         if ((revents & POLLHUP) != 0) {
-            revents |= POLLIN;
+            revents |= (short)POLLIN;
         }
         if (revents != 0) {
             for (i = 0; i < Ns_NrElements(map); ++i) {

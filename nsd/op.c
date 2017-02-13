@@ -288,41 +288,45 @@ Ns_ConnRunRequest(Ns_Conn *conn)
      */
     if ((connPtr->flags & NS_CONN_ENTITYTOOLARGE) != 0u) {
         connPtr->flags &= ~NS_CONN_ENTITYTOOLARGE;
-        return Ns_ConnReturnEntityTooLarge(conn);
+        status = Ns_ConnReturnEntityTooLarge(conn);
+        
     } else if ((connPtr->flags & NS_CONN_REQUESTURITOOLONG) != 0u) {
         connPtr->flags &= ~NS_CONN_REQUESTURITOOLONG;
-        return Ns_ConnReturnRequestURITooLong(conn);
+        status = Ns_ConnReturnRequestURITooLong(conn);
+        
     } else if ((connPtr->flags & NS_CONN_LINETOOLONG) != 0u) {
         connPtr->flags &= ~NS_CONN_LINETOOLONG;
-        return Ns_ConnReturnHeaderLineTooLong(conn);
-    }
+        status = Ns_ConnReturnHeaderLineTooLong(conn);
 
-    /*
-     * True requests.
-     */
+    } else {
+        /*
+         * True requests.
+         */
     
-    if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
-        Req        *reqPtr;
+        if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
+            Req        *reqPtr;
 
-        Ns_MutexLock(&ulock);
-        reqPtr = NsUrlSpecificGet(connPtr->poolPtr->servPtr,
-                                  conn->request.method, conn->request.url, uid,
-                                  0u, NS_URLSPACE_DEFAULT);
-        if (reqPtr == NULL) {
-            Ns_MutexUnlock(&ulock);
-            if (STREQ(conn->request.method, "BAD")) {
-                return Ns_ConnReturnBadRequest(conn, NULL);
+            Ns_MutexLock(&ulock);
+            reqPtr = NsUrlSpecificGet(connPtr->poolPtr->servPtr,
+                                      conn->request.method, conn->request.url, uid,
+                                      0u, NS_URLSPACE_DEFAULT);
+            if (reqPtr == NULL) {
+                Ns_MutexUnlock(&ulock);
+                if (STREQ(conn->request.method, "BAD")) {
+                    status = Ns_ConnReturnBadRequest(conn, NULL);
+                } else {
+                    status = Ns_ConnReturnInvalidMethod(conn);
+                }
             } else {
-                return Ns_ConnReturnInvalidMethod(conn);
+                ++reqPtr->refcnt;
+                Ns_MutexUnlock(&ulock);
+                status = (*reqPtr->proc) (reqPtr->arg, conn);
+            
+                Ns_MutexLock(&ulock);
+                FreeReq(reqPtr);
+                Ns_MutexUnlock(&ulock);
             }
         }
-        ++reqPtr->refcnt;
-        Ns_MutexUnlock(&ulock);
-        status = (*reqPtr->proc) (reqPtr->arg, conn);
-
-        Ns_MutexLock(&ulock);
-        FreeReq(reqPtr);
-        Ns_MutexUnlock(&ulock);
     }
     return status;
 }
@@ -416,11 +420,7 @@ void
 Ns_RegisterProxyRequest(const char *server, const char *method, const char *protocol,
                         Ns_OpProc *proc, Ns_Callback *deleteCallback, void *arg)
 {
-    NsServer      *servPtr;
-    Req           *reqPtr;
-    Ns_DString     ds;
-    int            isNew;
-    Tcl_HashEntry *hPtr;
+    NsServer *servPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -430,24 +430,29 @@ Ns_RegisterProxyRequest(const char *server, const char *method, const char *prot
     servPtr = NsGetServer(server);
     if (servPtr == NULL) {
         Ns_Log(Error, "Ns_RegisterProxyRequest: no such server: %s", server);
-        return;
+    } else {
+        Req           *reqPtr;
+        Ns_DString     ds;
+        int            isNew;
+        Tcl_HashEntry *hPtr;
+
+        Ns_DStringInit(&ds);
+        Ns_DStringVarAppend(&ds, method, protocol, (char *)0);
+        reqPtr = ns_malloc(sizeof(Req));
+        reqPtr->refcnt = 1;
+        reqPtr->proc = proc;
+        reqPtr->deleteCallback = deleteCallback;
+        reqPtr->arg = arg;
+        reqPtr->flags = 0u;
+        Ns_MutexLock(&servPtr->request.plock);
+        hPtr = Tcl_CreateHashEntry(&servPtr->request.proxy, ds.string, &isNew);
+        if (isNew == 0) {
+            FreeReq(Tcl_GetHashValue(hPtr));
+        }
+        Tcl_SetHashValue(hPtr, reqPtr);
+        Ns_MutexUnlock(&servPtr->request.plock);
+        Ns_DStringFree(&ds);
     }
-    Ns_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, method, protocol, NULL);
-    reqPtr = ns_malloc(sizeof(Req));
-    reqPtr->refcnt = 1;
-    reqPtr->proc = proc;
-    reqPtr->deleteCallback = deleteCallback;
-    reqPtr->arg = arg;
-    reqPtr->flags = 0u;
-    Ns_MutexLock(&servPtr->request.plock);
-    hPtr = Tcl_CreateHashEntry(&servPtr->request.proxy, ds.string, &isNew);
-    if (isNew == 0) {
-        FreeReq(Tcl_GetHashValue(hPtr));
-    }
-    Tcl_SetHashValue(hPtr, reqPtr);
-    Ns_MutexUnlock(&servPtr->request.plock);
-    Ns_DStringFree(&ds);
 }
 
 
@@ -484,7 +489,7 @@ Ns_UnRegisterProxyRequest(const char *server, const char *method,
         Ns_DString     ds;
 
         Ns_DStringInit(&ds);
-        Ns_DStringVarAppend(&ds, method, protocol, NULL);
+        Ns_DStringVarAppend(&ds, method, protocol, (char *)0);
         Ns_MutexLock(&servPtr->request.plock);
         hPtr = Tcl_FindHashEntry(&servPtr->request.proxy, ds.string);
         if (hPtr != NULL) {
@@ -529,7 +534,7 @@ NsConnRunProxyRequest(Ns_Conn *conn)
     servPtr = connPtr->poolPtr->servPtr;
 
     Ns_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, conn->request.method, conn->request.protocol, NULL);
+    Ns_DStringVarAppend(&ds, conn->request.method, conn->request.protocol, (char *)0);
     Ns_MutexLock(&servPtr->request.plock);
     hPtr = Tcl_FindHashEntry(&servPtr->request.proxy, ds.string);
     if (hPtr != NULL) {

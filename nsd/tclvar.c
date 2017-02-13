@@ -1197,7 +1197,7 @@ static int
 IncrVar(Array *arrayPtr, const char *key, int incr, Tcl_WideInt *valuePtr)
 {
     Tcl_HashEntry *hPtr;
-    CONST char    *oldString;
+    const char    *oldString;
     int            isNew, status;
     Tcl_WideInt    counter = -1;
 
@@ -1418,7 +1418,7 @@ NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
 
 	    result = Tcl_ListObjAppendElement(interp, elemObj, Tcl_NewStringObj(key, -1));
             if (likely(result == TCL_OK)) {
-                result = Tcl_ListObjAppendElement(interp, elemObj, Tcl_NewIntObj(arrayPtr->locks));
+                result = Tcl_ListObjAppendElement(interp, elemObj, Tcl_NewLongObj(arrayPtr->locks));
             }
             if (likely(result == TCL_OK)) {
                 result = Tcl_ListObjAppendElement(interp, listObj, elemObj);

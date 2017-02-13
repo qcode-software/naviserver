@@ -99,15 +99,16 @@ ns_section ns/parameters
 	ns_param	serverlog	${logroot}/error.log 
 	ns_param	pidfile		${logroot}/nsd.pid
 	ns_param	home		$homedir 
-	ns_param	debug		$debug
+        ns_param	debug		$debug
+
 	#
 	# ns_param	logroll		on
         ns_param	logmaxbackup	100  ;# 10 is default
 	ns_param	logdebug	$debug
         ns_param	logdev		$dev
         ns_param	logcolorize	true
-        ns_param	logprefixcolor 	   green
-        ns_param	logprefixintensity normal
+        ns_param	logprefixcolor 	green
+	ns_param	logrollfmt	%Y-%m-%d ;# format appended to serverlog file name when rolled
 
 	# ns_param	mailhost	localhost 
 	# ns_param	jobsperthread	0
@@ -116,6 +117,16 @@ ns_section ns/parameters
 
 	# Write asynchronously to log files (access log and error log)
 	# ns_param	asynclogwriter	true		;# false
+
+        #ns_param       mutexlocktrace       true   ;# default false; print duractions of long mutex calls to stderr
+
+        # Allow concurrent create operations of Tcl interpreters.
+        # Versions up to at least Tcl 8.5 are known that these might
+        # crash in case two threads create interpreters at the same
+        # time. These crashes were hard to reproduce, but serializeing
+        # interpreter creation helped. Probably it is possible to
+        # allow concurrent interpreter create operations in Tcl 8.6.
+        #ns_param        concurrentinterpcreate true   ;# default: false
 
 	# Enforce sequential thread initialization. This is not really
 	# desirably in general, but might be useful for hunting strange
@@ -136,7 +147,7 @@ ns_section ns/parameters
 	# ns_param	URLCharset	utf-8
 
 	# Running behind proxy? Used by OpenACS...
-	ns_param	ReverseProxyMode	$proxy_mode
+        ns_param	ReverseProxyMode	$proxy_mode
 
 
 #---------------------------------------------------------------------
@@ -341,6 +352,7 @@ foreach address $addresses suffix $suffixes {
 	ns_param	writersize	1024	;# 1024*1024, use writer threads for files larger than this value
 	# ns_param	writerbufsize	8192	;# 8192, buffer size for writer threads
 	# ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
+	# ns_param	driverthreads	2	;# 1; use multiple driver threads  (requires support of SO_REUSEPORT)
 }
 
 
@@ -373,7 +385,7 @@ ns_section ns/server/${server}/module/nslog
 	# ns_param	rolllog		true	;# true, should server log files automatically
 	# ns_param	rollhour	0	;# 0, specify at which hour to roll
 	# ns_param	rollonsignal	true	;# false, perform roll on a sighup
-	ns_param	rollfmt		%Y-%m-%d-%H:%M	;# format appendend to log file name
+	ns_param	rollfmt		%Y-%m-%d ;# format appendend to log file name
 
 
 #---------------------------------------------------------------------

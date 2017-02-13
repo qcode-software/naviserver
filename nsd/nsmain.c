@@ -74,7 +74,6 @@ extern void NsthreadsInit();
 extern void NsdInit();
 #endif
 
-
 
 /*
  *----------------------------------------------------------------------
@@ -95,34 +94,33 @@ extern void NsdInit();
  */
 
 int
-Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
+Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 {
-    Args      cmd;
-    int       sig, optind;
-    const char *config = NULL;
-    Ns_Time   timeout;
-    Ns_Set   *set;
-
+    Args           cmd;
+    int            sig, optind;
+    const char    *config = NULL;
+    Ns_Time        timeout;
+    Ns_Set        *set;
 #ifndef _WIN32
-    int       debug = 0;
-    char      mode = '\0';
-    const char     *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
-    const char     *bindargs = NULL, *bindfile = NULL;
-    Ns_Set   *servers;
+    int            debug = 0;
+    char           mode = '\0';
+    const char    *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
+    const char    *bindargs = NULL, *bindfile = NULL;
+    Ns_Set        *servers;
     struct rlimit  rl;
+    Ns_ReturnCode  status;
 #else
     /*
      * The following variables are declared static so they
      * preserve their values when Ns_Main is re-entered by
      * the Win32 service control manager.
      */
-    static char    mode = '\0';
+    static char    mode = '\0', *procname, *server = NULL;
     static Ns_Set *servers;
-    static char   *procname, *server = NULL;
 #endif
 
     /*
-     * Initialise the Nsd library.
+     * Initialize the Nsd library.
      */
     Nsd_LibInit();
 
@@ -353,9 +351,15 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
      * subsystem. The notifier subsystem creates special private
      * notifier thread and we should better do this after all those
      * ns_fork's above...
+     * Starting with Tcl 8.7, the notifier thread is created on-demand
+     * hence the above call may be placed anywhere (preferably at
+     * the startup of the procedure, before anything else). We still
+     * leave it here as to be backward-compatible with older versions.
+     * In case the notifier thread is entirely removed (as it may be
+     * the case for some platforms), this does not apply anyways.
      */
-
     Tcl_FindExecutable(argv[0]);
+
     nsconf.nsd = ns_strdup(Tcl_GetNameOfExecutable());
 
     /*
@@ -371,7 +375,7 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
         }
     }
 
-    if (mode != 'c' || nsconf.config != NULL) {
+    if (nsconf.config != NULL) {
 	config = NsConfigRead(nsconf.config);
     }
 
@@ -383,12 +387,14 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
      * name-based addresses.
      */
 
-    NsPreBind(bindargs, bindfile);
+    status = NsPreBind(bindargs, bindfile);
+    if (status != NS_OK) {
+        Ns_Fatal("nsmain: prebind failed");
+    }
 
     /*
      * Chroot() if requested before setuid from root.
      */
-
     if (root != NULL) {
         if (chroot(root) != 0) {
             Ns_Fatal("nsmain: chroot(%s) failed: '%s'", root, strerror(errno));
@@ -451,6 +457,17 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
     }
 
     /*
+     * This is the first place, where we can use values from the config file.
+     *
+     * Turn on logging of long mutex calls if desired. For whatever reason, we
+     * can't access NS_mutexlocktrace from here (unknown external symbol),
+     * although it is defined exactly like NS_finalshutdown;
+     */
+#ifndef _WIN32
+    NS_mutexlocktrace = Ns_ConfigBool(NS_CONFIG_PARAMETERS, "mutexlocktrace", NS_FALSE);
+#endif
+    
+    /*
      * If no servers were defained, autocreate server "default"
      * so all default config values will be used for that server
      */
@@ -478,7 +495,6 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
         }
         server = Ns_SetKey(servers, i);
     }
-
 
     /*
      * Verify and change to the home directory.
@@ -510,11 +526,29 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
 	 */
 	nsconf.home = getenv("NAVISERVER");
 	if (nsconf.home == NULL) {
-	    nsconf.home = MakePath("");
+            /*
+             * There is no such environment variable. Try, if we can get the
+             * home from the binary. In such cases, we expect to find
+             * "bin/init.tcl" under home.
+             */
+            const char *path = MakePath("bin/init.tcl");
+            if (path != NULL) {
+                /*
+                 * Yep, we found it, use its parent directory.
+                 */
+                nsconf.home =  MakePath("");
+            } else {
+                /*
+                 * Desparate fallback. Use the name of the configured install
+                 * directory.
+                 */
+                nsconf.home = NS_NAVISERVER;
+            }
 	}
     }
     nsconf.home = SetCwd(nsconf.home);
 
+    
     /* 
      * Make the result queryable.
      */
@@ -613,8 +647,10 @@ Ns_Main(int argc, char *const*argv, Ns_ServerInitProc *initProc)
                    (unsigned int)rl.rlim_cur, (unsigned int)rl.rlim_max);
         }
         if (rl.rlim_cur > FD_SETSIZE) {
-            Ns_Log(Warning, "nsmain: rl_cur > FD_SETSIZE, select() calls should not be used");
+            Ns_Log(Warning, "nsmain: rl_cur (%ld) > FD_SETSIZE (%d), select() calls should not be used",
+                   (long)rl.rlim_cur, FD_SETSIZE);
         }
+        /* fprintf(stderr, "FD_SETSIZE %d\n", FD_SETSIZE); */
     }
 
 #endif
@@ -841,14 +877,15 @@ Ns_StopServer(char *server)
 int
 NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int         timeout = 0, sig = NS_SIGTERM, result = TCL_OK;
+    int         sig = NS_SIGTERM, result = TCL_OK;
+    long        timeout = 0;
     Ns_ObjvSpec opts[] = {
         {"-restart", Ns_ObjvBool,  &sig, INT2PTR(NS_SIGINT)},
         {"--",       Ns_ObjvBreak, NULL, NULL},
         {NULL,       NULL,         NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"?timeout", Ns_ObjvInt, &timeout, NULL},
+        {"?timeout", Ns_ObjvLong, &timeout, NULL},
         {NULL,       NULL,       NULL,     NULL}
     };
 
@@ -865,7 +902,7 @@ NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
         Ns_MutexUnlock(&nsconf.state.lock);
 
         NsSendSignal(sig);
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(timeout));
+        Tcl_SetObjResult(interp, Tcl_NewLongObj(timeout));
     }
     return result;
 }
@@ -1044,7 +1081,7 @@ MakePath(char *file)
              * Make sure we have valid path on all platforms
              */
             obj = Tcl_NewStringObj(nsconf.nsd, (int)(str - nsconf.nsd));
-            Tcl_AppendStringsToObj(obj, "/", file, NULL);
+            Tcl_AppendStringsToObj(obj, "/", file, (char *)0);
         
             Tcl_IncrRefCount(obj);
             if (Tcl_FSGetNormalizedPath(NULL, obj) != NULL) {

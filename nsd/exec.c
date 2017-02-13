@@ -314,7 +314,7 @@ Ns_ExecArgblk(const char *exec, const char *dir, int fdin, int fdout,
     Ns_DStringInit(&eds);
     if (args == NULL) {
         /* NB: exec specifies a complete cmd.exe command string. */
-        Ns_DStringVarAppend(&cds, cmd, " /c ", exec, NULL);
+        Ns_DStringVarAppend(&cds, cmd, " /c ", exec, (char *)0);
         exec = NULL;
     } else {
         char *s;
@@ -429,7 +429,7 @@ Ns_ExecArgv(const char *exec, const char *dir, int fdin, int fdout,
 
 	for (i = 0u; i < Ns_SetSize(env); ++i) {
             Ns_DStringVarAppend(&eds,
-				Ns_SetKey(env, i), "=", Ns_SetValue(env, i), NULL);
+				Ns_SetKey(env, i), "=", Ns_SetValue(env, i), (char *)0);
             Ns_DStringNAppend(&eds, "", 1);
 	}
 	Ns_DStringNAppend(&eds, "", 1);
@@ -529,7 +529,7 @@ ExecProc(const char *exec, const char *dir, int fdin, int fdout, char **argv,
 	}
 	errnum = errno;
 	{ 
-	    size_t written = writev(errpipe[1], iov, 2);
+	    ssize_t written = writev(errpipe[1], iov, 2);
 	    if (written != 2) {
 		/* just ignore the attempt to write */
 		;
@@ -539,7 +539,7 @@ ExecProc(const char *exec, const char *dir, int fdin, int fdout, char **argv,
 	_exit(1);
 	
     } else {
-        int nread;
+        ssize_t nread;
 	/*
 	 * Read result and errno from the child if any.
 	 */
@@ -611,7 +611,7 @@ Set2Argv(Ns_DString *dsPtr, const Ns_Set *env)
 
     for (i = 0u; i < Ns_SetSize(env); ++i) {
         Ns_DStringVarAppend(dsPtr,
-                            Ns_SetKey(env, i), "=", Ns_SetValue(env, i), NULL);
+                            Ns_SetKey(env, i), "=", Ns_SetValue(env, i), (char *)0);
         Ns_DStringNAppend(dsPtr, "", 1);
     }
     Ns_DStringNAppend(dsPtr, "", 1);

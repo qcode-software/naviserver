@@ -66,8 +66,8 @@ static int Unlink(const char *file)
  * Ns_RollFile --
  *
  *      Roll the log file. When the log is rolled, it gets renamed to
- *      filename.xyz, where 000 <= xyz <= 999. Older files have
- *      higher numbers.
+ *      filename.xyz, where 000 <= xyz <= 999. Older files have higher
+ *      numbers.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -86,70 +86,146 @@ static int Unlink(const char *file)
 Ns_ReturnCode
 Ns_RollFile(const char *file, int max)
 {
-    char *first;
-    int   err;
+    Ns_ReturnCode status = NS_OK;
 
     NS_NONNULL_ASSERT(file != NULL);
     
     if (max < 0 || max > 999) {
         Ns_Log(Error, "rollfile: invalid max parameter '%d'; "
                "must be > 0 and < 999", max);
-        return NS_ERROR;
-    }
+        status = NS_ERROR;
 
-    first = ns_malloc(strlen(file) + 5u);
-    sprintf(first, "%s.000", file);
-    err = Exists(first);
+    } else {
+        char *first;
+        int   err;
 
-    if (err > 0) {
-        const char *next;
-        int num = 0;
+        first = ns_malloc(strlen(file) + 5u);
+        sprintf(first, "%s.000", file);
+        err = Exists(first);
 
-        next = ns_strdup(first);
-
-        /*
-         * Find the highest version
-         */
-
-        do {
-            char *dot = strrchr(next, INTCHAR('.')) + 1;
-            sprintf(dot, "%03d", num++);
-        } while ((err = Exists(next)) == 1 && num < max);
-
-        num--; /* After this, num holds the max version found */
-
-        if (err == 1) {
-            err = Unlink(next); /* The excessive version */
-        }
-
-        /*
-         * Shift *.010 -> *.011, *:009 -> *.010, etc
-         */
-
-        while (err == 0 && num-- > 0) {
-            char *dot = strrchr(first, INTCHAR('.')) + 1;
-            sprintf(dot, "%03d", num);
-            dot = strrchr(next, INTCHAR('.')) + 1;
-            sprintf(dot, "%03d", num + 1);
-            err = Rename(first, next);
-        }
-        ns_free((char *)next);
-    }
-
-    if (err == 0) {
-        err = Exists(file);
         if (err > 0) {
-            err = Rename(file, first);
+            const char *next;
+            int         num = 0;
+
+            next = ns_strdup(first);
+
+            /*
+             * Find the highest version
+             */
+
+            do {
+                char *dot = strrchr(next, INTCHAR('.')) + 1;
+                sprintf(dot, "%03d", num++);
+            } while ((err = Exists(next)) == 1 && num < max);
+
+            num--; /* After this, num holds the max version found */
+
+            if (err == 1) {
+                err = Unlink(next); /* The excessive version */
+            }
+
+            /*
+             * Shift *.010 -> *.011, *:009 -> *.010, etc
+             */
+
+            while (err == 0 && num-- > 0) {
+                char *dot = strrchr(first, INTCHAR('.')) + 1;
+                sprintf(dot, "%03d", num);
+                dot = strrchr(next, INTCHAR('.')) + 1;
+                sprintf(dot, "%03d", num + 1);
+                err = Rename(first, next);
+            }
+            ns_free((char *)next);
+        }
+
+        if (err == 0) {
+            err = Exists(file);
+            if (err > 0) {
+                err = Rename(file, first);
+            }
+        }
+
+        ns_free(first);
+
+        if (err != 0) {
+            status = NS_ERROR;
         }
     }
+    return status;
+}
 
-    ns_free(first);
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_RollFileFmt --
+ *
+ *      Roll the log file either based on a timestamp and a rollfmt, or
+ *      based on sequential numbers, when not rollfmt is given.
+ *
+ * Results:
+ *      NS_OK/NS_ERROR
+ *
+ * Side effects:
 
-    if (err != 0) {
-        return NS_ERROR;
+ *      The log file will be renamed, old log files (outside maxbackup)
+ *      are deleted.
+ *
+ *----------------------------------------------------------------------
+ */
+
+Ns_ReturnCode
+Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
+{
+    Ns_ReturnCode status;
+    const char   *file;
+
+    NS_NONNULL_ASSERT(fileObj != NULL);
+
+    file = Tcl_GetString(fileObj);
+            
+    if (rollfmt == NULL || *rollfmt == '\0') {
+        status = Ns_RollFile(file, maxbackup);
+
+    } else {
+        time_t           now = time(NULL);
+        char             timeBuf[512];
+        Ns_DString       ds;
+        Tcl_Obj         *newPath;
+        const struct tm *ptm;
+
+        ptm = ns_localtime(&now);
+        (void) strftime(timeBuf, sizeof(timeBuf)-1u, rollfmt, ptm);
+
+        Ns_DStringInit(&ds);
+        Ns_DStringVarAppend(&ds, file, ".", timeBuf, (char *)0);
+        newPath = Tcl_NewStringObj(ds.string, -1);
+        Tcl_IncrRefCount(newPath);
+        
+        if (Tcl_FSAccess(newPath, F_OK) == 0) {
+            status = Ns_RollFile(ds.string, maxbackup);
+        } else if (Tcl_GetErrno() != ENOENT) {
+            Ns_Log(Error, "rollfile: access(%s, F_OK) failed: '%s'",
+                   ds.string, strerror(Tcl_GetErrno()));
+            status = NS_ERROR;
+        } else {
+            status = NS_OK;
+        }
+        if (status == NS_OK && Tcl_FSRenameFile(fileObj, newPath) != 0) {
+            Ns_Log(Error, "rollfile: rename(%s,%s) failed: '%s'",
+                   file, ds.string, strerror(Tcl_GetErrno()));
+            status = NS_ERROR;
+        }
+        
+        Tcl_DecrRefCount(newPath);
+        Ns_DStringFree(&ds);
+        
+        if (status == NS_OK) {
+            status = Ns_PurgeFiles(file, maxbackup);
+        }
     }
-
-    return NS_OK;
+    
+    return status;
 }
 
 
@@ -159,9 +235,10 @@ Ns_RollFile(const char *file, int max)
  * Ns_PurgeFiles, Ns_RollFileByDate --
  *
  *      Purge files by date, keeping max files.  The file parameter is
- *      used as a basename to select files to purge.  Ns_RollFileByDate
- *      is a poorly named wrapper for historical reasons (rolling
- *      implies rotating filenames).
+ *      used as a basename to select files to purge.
+ *
+ *      Ns_RollFileByDate is deprecated and is a poorly named wrapper
+ *      for historical reasons (rolling implies rotating filenames).
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -184,7 +261,7 @@ Ns_PurgeFiles(const char *file, int max)
     const File   *fiPtr;
     File         *files = NULL;
     int           nfiles;
-    Ns_ReturnCode status = NS_ERROR;
+    Ns_ReturnCode status = NS_OK;
 
     NS_NONNULL_ASSERT(file != NULL);
     
@@ -196,30 +273,29 @@ Ns_PurgeFiles(const char *file, int max)
     if (nfiles == -1) {
         Ns_Log(Error, "rollfile: failed to match files '%s': %s",
                file, strerror(Tcl_GetErrno()));
-        return NS_ERROR;
-    }
+        status = NS_ERROR;
 
-    /*
-     * Purge (any) excessive files after sorting them
-     * on descening file mtime.
-     */
+    } else {
+        /*
+         * Purge (any) excessive files after sorting them
+         * on descening file mtime.
+         */
 
-    if (nfiles >= max) {
-        int ii;
+        if (nfiles >= max) {
+            int ii;
         
-	assert(files != NULL);
+            assert(files != NULL);
 
-        qsort(files, (size_t)nfiles, sizeof(File), CmpFile);
-        for (ii = max, fiPtr = files + ii; ii < nfiles; ii++, fiPtr++) {
-            if (Unlink(Tcl_GetString(fiPtr->path)) != 0) {
-                goto err;
+            qsort(files, (size_t)nfiles, sizeof(File), CmpFile);
+            for (ii = max, fiPtr = files + ii; ii < nfiles; ii++, fiPtr++) {
+                if (Unlink(Tcl_GetString(fiPtr->path)) != 0) {
+                    status = NS_ERROR;
+                    break;
+                }
             }
         }
     }
-
-    status = NS_OK;
-
- err:
+    
     if (nfiles > 0) {
         int ii;
 
@@ -358,7 +434,7 @@ MatchFiles(const char *fileName, File **files)
  *      qsort() callback to select oldest file.
  *
  * Results:
- *      Stadard qsort() result.
+ *      Standard qsort() result (-1/0/1)
  *
  * Side effects:
  *      None.
@@ -369,16 +445,19 @@ MatchFiles(const char *fileName, File **files)
 static int
 CmpFile(const void *arg1, const void *arg2)
 {
+    int         result;
     const File *f1Ptr = (const File *) arg1;
     const File *f2Ptr = (const File *) arg2;
 
     if (f1Ptr->mtime < f2Ptr->mtime) {
-        return 1;
+        result = 1;
     } else if (f1Ptr->mtime > f2Ptr->mtime) {
-        return -1;
+        result = -1;
+    } else {
+        result = 0;
     }
 
-    return 0;
+    return result;
 }
 
 
@@ -469,7 +548,7 @@ Exists(const char *file)
  * Local Variables:
  * mode: c
  * c-basic-offset: 4
- * fill-column: 78
+ * fill-column: 72
  * indent-tabs-mode: nil
  * End:
  */

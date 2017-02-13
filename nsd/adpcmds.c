@@ -42,7 +42,7 @@
 static int ExceptionObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv,
                            AdpResult exception) NS_GNUC_NONNULL(1);
 static int EvalObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv) NS_GNUC_NONNULL(1);
-static int GetFrame(const ClientData arg, AdpFrame **framePtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static int GetFrame(const ClientData clientData, AdpFrame **framePtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static int GetOutput(ClientData clientData, Tcl_DString **dsPtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static int GetInterp(Tcl_Interp *interp, NsInterp **itPtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
@@ -403,9 +403,9 @@ NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
     Tcl_DString   *dsPtr;
     int            result;
     unsigned int   flags;
-    const char    *file;
+    char          *file;
     int            tcl = 0, nocache = 0, nargs = 0;
-    const Ns_Time *ttlPtr = NULL;
+    Ns_Time       *ttlPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
         {"-cache",       Ns_ObjvTime,   &ttlPtr,  NULL},
@@ -438,7 +438,7 @@ NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
      * buffer. It will be compiled into the cached result.
      */
 
-    if (nocache != 0 && itPtr->adp.refresh) {
+    if (nocache != 0 && itPtr->adp.refresh > 0) {
         int i;
         if (GetOutput(clientData, &dsPtr) != TCL_OK) {
             return TCL_ERROR;
@@ -485,7 +485,8 @@ NsTclAdpParseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
     int          result, nargs = 0;
     unsigned int savedFlags;
     bool         asFile = NS_FALSE, safe = NS_FALSE, asString = NS_FALSE, tcl = NS_FALSE;
-    const char  *cwd = NULL, *savedCwd = NULL, *resvar = NULL;
+    const char  *savedCwd = NULL, *resvar = NULL;
+    char        *cwd = NULL;
 
     Ns_ObjvSpec opts[] = {
         {"-cwd",         Ns_ObjvString, &cwd,      NULL},
@@ -597,9 +598,9 @@ NsTclAdpAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
 int
 NsTclAdpPutsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    NsInterp   *itPtr = clientData;
-    const char *s;
-    int         length, nonewline = 0;
+    NsInterp *itPtr = clientData;
+    char     *s;
+    int       length, nonewline = 0;
 
     Ns_ObjvSpec opts[] = {
         {"-nonewline", Ns_ObjvBool,  &nonewline, INT2PTR(NS_TRUE)},
@@ -1133,7 +1134,7 @@ int
 NsTclAdpDebugObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp *itPtr = clientData;
-    const char *host = NULL, *port = NULL, *procs = NULL;
+    char     *host = NULL, *port = NULL, *procs = NULL;
 
     Ns_ObjvSpec opts[] = {
         {"-host",  Ns_ObjvString, &host,  NULL},

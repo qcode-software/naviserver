@@ -207,7 +207,7 @@ Ns_ModuleInit(const char *server, const char *module)
     Ns_DStringInit(&ds);
     section = Ns_ConfigGetValue(path, "interps");
     if (section != NULL) {
-        Ns_DStringVarAppend(&ds, "ns/interps/", section, NULL);
+        Ns_DStringVarAppend(&ds, "ns/interps/", section, (char *)0);
         modPtr->interps = Ns_ConfigGetSection(ds.string);
         if (modPtr->interps == NULL) {
             Ns_Log(Warning, "nscgi: no such interps section: %s",
@@ -217,7 +217,7 @@ Ns_ModuleInit(const char *server, const char *module)
     }
     section = Ns_ConfigGetValue(path, "environment");
     if (section != NULL) {
-        Ns_DStringVarAppend(&ds, "ns/environment/", section, NULL);
+        Ns_DStringVarAppend(&ds, "ns/environment/", section, (char *)0);
         modPtr->mergeEnv = Ns_ConfigGetSection(ds.string);
         if (modPtr->mergeEnv == NULL) {
             Ns_Log(Warning, "nscgi: no such environment section: %s",
@@ -464,7 +464,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
 	    }
 	    cgiPtr->name = Ns_DStringAppend(CgiDs(cgiPtr), url);
             cgiPtr->path = Ns_DStringVarAppend(CgiDs(cgiPtr),
-	    	    	    	    	      mapPtr->path, "/", s, NULL);
+	    	    	    	    	      mapPtr->path, "/", s, (char *)0L);
     	    if (e == NULL) {
 		cgiPtr->pathinfo = "";
 	    } else {
@@ -826,7 +826,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
          Ns_SetUpdate(cgiPtr->env, "PATH_INFO", "");
     }
     Ns_SetUpdate(cgiPtr->env, "GATEWAY_INTERFACE", "CGI/1.1");
-    Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), NULL);
+    Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), (char *)0L);
     Ns_SetUpdate(cgiPtr->env, "SERVER_SOFTWARE", dsPtr->string);
     Ns_DStringTrunc(dsPtr, 0);
     Ns_DStringPrintf(dsPtr, "HTTP/%2.1f", conn->request.version);
@@ -855,7 +855,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_SetUpdate(cgiPtr->env, "SERVER_NAME", dsPtr->string);
     Ns_DStringTrunc(dsPtr, 0);
     if (p == NULL) {
-        Ns_DStringPrintf(dsPtr, "%d", Ns_ConnPort(conn));
+        Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
         Ns_SetUpdate(cgiPtr->env, "SERVER_PORT", dsPtr->string);
         Ns_DStringTrunc(dsPtr, 0);
     }
@@ -1144,7 +1144,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
                 ++value;
             }
             if (STRIEQ(ds.string, "status")) {
-                httpstatus = strtol(value, NULL, 10);
+                httpstatus = (int)strtol(value, NULL, 10);
             } else if (STRIEQ(ds.string, "location")) {
                 httpstatus = 302;
                 if (*value == '/') {
@@ -1164,32 +1164,32 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     }
     Ns_DStringFree(&ds);
     if (n < 0) {
-	return Ns_ConnReturnInternalError(conn);
+	status = Ns_ConnReturnInternalError(conn);
+    } else {
+
+        /*
+         * Queue the headers and copy remaining content up to end of file.
+         */
+
+        Ns_ConnSetResponseStatus(conn, httpstatus);
+    copy:
+        do {
+            struct iovec vbuf;
+
+            vbuf.iov_base = cgiPtr->ptr;
+            vbuf.iov_len  = (size_t)cgiPtr->cnt;
+            status = Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
+        } while (status == NS_OK && CgiRead(cgiPtr) > 0);
+
+        /*
+         * Close connection now so it will not linger on
+         * waiting for process exit.
+         */
+
+        if (status == NS_OK) {
+            status = Ns_ConnClose(conn);
+        }
     }
-
-    /*
-     * Queue the headers and copy remaining content up to end of file.
-     */
-
-    Ns_ConnSetResponseStatus(conn, httpstatus);
-copy:
-    do {
-	struct iovec vbuf;
-
-	vbuf.iov_base = cgiPtr->ptr;
-	vbuf.iov_len  = (size_t)cgiPtr->cnt;
-    	status = Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
-    } while (status == NS_OK && CgiRead(cgiPtr) > 0);
-
-    /*
-     * Close connection now so it will not linger on
-     * waiting for process exit.
-     */
-
-    if (status == NS_OK) {
-    	status = Ns_ConnClose(conn);
-    }
-
     return status;
 }
 
@@ -1348,7 +1348,7 @@ SetAppend(const Ns_Set *set, int index, const char *sep, char *value)
 
     Ns_DStringInit(&ds);
     Ns_DStringVarAppend(&ds, Ns_SetValue(set, index),
-                        sep, value, NULL);
+                        sep, value, (char *)0L);
     Ns_SetPutValue(set, (size_t)index, ds.string);
     Ns_DStringFree(&ds);
 }

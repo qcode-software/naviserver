@@ -420,16 +420,17 @@ typedef struct Driver {
      * Visible in Ns_Driver.
      */
 
-    void  *arg;                         /* Driver callback data */
+    void        *arg;                   /* Driver callback data */
     const char  *server;                /* Virtual server name */
-    const char  *module;                /* Driver module */
-    const char  *name;                  /* Driver name */
+    const char  *type;                  /* Type of driver, e.g. "nssock" */
+    const char  *moduleName;            /* Module name, e.g. "nssock1" */    
+    const char  *threadName;            /* Thread name, e.g. "nssock1:1" */
     const char  *location;              /* Location, e.g, "http://foo:9090" */
     const char  *address;               /* Address in location, e.g. "foo" */
     const char  *protocol;              /* Protocol in location, e.g, "http" */
-    long   sendwait;                    /* send() I/O timeout */
-    long   recvwait;                    /* recv() I/O timeout */
-    size_t bufsize;                     /* Conn bufsize (0 for SSL) */
+    long         sendwait;              /* send() I/O timeout */
+    long         recvwait;              /* recv() I/O timeout */
+    size_t       bufsize;               /* Conn bufsize (0 for SSL) */
     const char  *extraHeaders;          /* Extra header fields added for every request */
 
     /*
@@ -467,6 +468,8 @@ typedef struct Driver {
     int queuesize;                      /* Current number of sockets in the queue */
     int maxqueuesize;                   /* Maximum number of sockets in the queue */
     int acceptsize;                     /* Number requests to accept at once */
+    bool reuseport;                     /* Allow optionally multiple drivers to connect to the same port */
+    int driverthreads;                  /* Number of identical driver threads to be created */
     unsigned int loggingFlags;          /* Logging control flags */
 
     unsigned int flags;                 /* Driver state flags. */
@@ -481,6 +484,13 @@ typedef struct Driver {
 
     DrvSpooler spooler;                 /* Tracks upload spooler threads */
     DrvWriter  writer;                  /* Tracks writer threads */
+
+    struct {
+        Tcl_WideInt spooled;            /* Spooled incoming requests .. */
+        Tcl_WideInt partial;            /* Partial operations */
+        Tcl_WideInt received;           /* Received requests */
+        Tcl_WideInt errors;             /* Dropped requests due to errors */
+    } stats;
 
 } Driver;
 
@@ -511,7 +521,7 @@ typedef struct Sock {
 
     const char         *location;
     bool                keep;
-    int                 pidx;            /* poll() index */
+    NS_POLL_NFDS_TYPE   pidx;            /* poll() index */
     unsigned int        flags;           /* state flags used by driver */
     Ns_Time             timeout;
     Request            *reqPtr;
@@ -615,6 +625,7 @@ typedef struct Conn {
     Ns_Time requestQueueTime;    /* time stamp, when the request was queued */
     Ns_Time requestDequeueTime;  /* time stamp, when the request was dequeued */
     Ns_Time filterDoneTime;      /* time stamp, after filters */
+    Ns_Time runDoneTime;         /* time stamp, after running main connection task */
 
     Ns_Time acceptTimeSpan;
     Ns_Time queueTimeSpan;
@@ -747,10 +758,11 @@ typedef struct ConnPool {
         unsigned long queued;
         unsigned long processed;
         unsigned long connthreads;
-        Ns_Time acceptTime;
-        Ns_Time queueTime;
-        Ns_Time filterTime;
-        Ns_Time runTime;
+        Ns_Time acceptTime;          /* cumulated accept times */
+        Ns_Time queueTime;           /* cumulated queue times */
+        Ns_Time filterTime;          /* cumulated file times */
+        Ns_Time runTime;             /* cumulated run times */
+        Ns_Time traceTime;           /* cumulated trace times */
     } stats;
 
 } ConnPool;
@@ -871,7 +883,7 @@ typedef struct NsServer {
         const char *library;
         struct TclTrace *firstTracePtr;
         struct TclTrace *lastTracePtr;
-        const char *initfile;
+        Tcl_Obj *initfile;
         Ns_RWLock lock;
         const char *script;
         int length;
@@ -1013,7 +1025,7 @@ typedef struct NsInterp {
     struct adp {
         unsigned int      flags;
         AdpResult         exception;
-        bool              refresh;
+        int               refresh;
         size_t            bufsize;
         int               errorLevel;
         int               debugLevel;
@@ -1054,7 +1066,8 @@ typedef struct NsInterp {
  */
 
 NS_EXTERN Tcl_ObjCmdProc
-NsTclAdpAbortObjCmd,
+    NsTclAbsoluteUrlObjCmd,
+    NsTclAdpAbortObjCmd,
     NsTclAdpAppendObjCmd,
     NsTclAdpArgcObjCmd,
     NsTclAdpArgvObjCmd,
@@ -1081,6 +1094,7 @@ NsTclAdpAbortObjCmd,
     NsTclAdpRegisterTagObjCmd,
     NsTclAdpReturnObjCmd,
     NsTclAdpSafeEvalObjCmd,
+    NsTclAdpStatsObjCmd,
     NsTclAdpTellObjCmd,
     NsTclAdpTruncObjCmd,
     NsTclAfterObjCmd,
@@ -1110,11 +1124,13 @@ NsTclAdpAbortObjCmd,
     NsTclConnChanObjCmd,
     NsTclConnObjCmd,
     NsTclConnSendFpObjCmd,
+    NsTclCrashObjCmd,
     NsTclCritSecObjCmd,
     NsTclCryptObjCmd,
     NsTclCryptoHmacObjCmd,
     NsTclCryptoMdObjCmd,
     NsTclDeleteCookieObjCmd,
+    NsTclDriverObjCmd,
     NsTclEncodingForCharsetObjCmd,
     NsTclEnvObjCmd,
     NsTclFTruncateObjCmd,
@@ -1134,6 +1150,7 @@ NsTclAdpAbortObjCmd,
     NsTclHeadersObjCmd,
     NsTclHttpObjCmd,
     NsTclHttpTimeObjCmd,
+    NsTclHrefsObjCmd,
     NsTclICtlObjCmd,
     NsTclImgMimeObjCmd,
     NsTclImgSizeObjCmd,
@@ -1143,6 +1160,7 @@ NsTclAdpAbortObjCmd,
     NsTclJobObjCmd,
     NsTclJpegSizeObjCmd,
     NsTclKillObjCmd,
+    NsTclLibraryObjCmd,
     NsTclListLimitsObjCmd,
     NsTclLocalTimeObjCmd,
     NsTclLocationProcObjCmd,
@@ -1150,6 +1168,7 @@ NsTclAdpAbortObjCmd,
     NsTclLogObjCmd,
     NsTclLogRollObjCmd,
     NsTclMD5ObjCmd,
+    NsTclMkTempObjCmd,
     NsTclModuleLoadObjCmd,
     NsTclModulePathObjCmd,
     NsTclMutexObjCmd,
@@ -1166,12 +1185,15 @@ NsTclAdpAbortObjCmd,
     NsTclNsvUnsetObjCmd,
     NsTclPagePathObjCmd,
     NsTclParseArgsObjCmd,
+    NsTclParseHeaderObjCmd,
     NsTclParseHttpTimeObjCmd,
     NsTclParseQueryObjCmd,
+    NsTclParseUrlObjCmd,
     NsTclPauseObjCmd,
     NsTclPngSizeObjCmd,
     NsTclProgressObjCmd,
     NsTclPurgeFilesObjCmd,
+    NsTclQuoteHtmlObjCmd,
     NsTclRWLockObjCmd,
     NsTclRandObjCmd,
     NsTclRegisterAdpObjCmd,
@@ -1232,10 +1254,10 @@ NsTclAdpAbortObjCmd,
     NsTclSocketPairObjCmd,
     NsTclStartContentObjCmd,
     NsTclStrftimeObjCmd,
+    NsTclStripHtmlObjCmd,
     NsTclSymlinkObjCmd,
     NsTclThreadObjCmd,
     NsTclTimeObjCmd,
-    NsTclTmpNamObjCmd,
     NsTclTruncateObjCmd,
     NsTclUnRegisterOpObjCmd,
     NsTclUnRegisterUrl2FileObjCmd,
@@ -1253,23 +1275,12 @@ NsTclAdpAbortObjCmd,
     TclX_KeylkeysObjCmd,
     TclX_KeylsetObjCmd;
 
-NS_EXTERN Tcl_CmdProc
-    NsTclAdpStatsCmd,
-    NsTclCrashCmd,
-    NsTclHrefsCmd,
-    NsTclLibraryCmd,
-    NsTclMkTempCmd,
-    NsTclParseHeaderCmd,
-    NsTclQuoteHtmlCmd,
-    NsTclStripHtmlCmd;
-
-NS_EXTERN Ns_LogSeverity Ns_LogRequestDebug;    /* Severity at which to log verbose. */
-NS_EXTERN Ns_LogSeverity Ns_LogConnchanDebug;   /* Severity at which to log verbose. */
+NS_EXTERN Ns_LogSeverity Ns_LogRequestDebug; 
+NS_EXTERN Ns_LogSeverity Ns_LogConnchanDebug;
 
 /*
  * Libnsd initialization routines.
  */
-
 NS_EXTERN void NsInitBinder(void);
 NS_EXTERN void NsInitConf(void);
 NS_EXTERN void NsInitDrivers(void);
@@ -1297,6 +1308,7 @@ NS_EXTERN void NsConfigDNS(void);
 NS_EXTERN void NsConfigRedirects(void);
 NS_EXTERN void NsConfigVhost(void);
 NS_EXTERN void NsConfigEncodings(void);
+NS_EXTERN void NsConfigTcl(void);
 
 /*
  * Virtual server management routines.
@@ -1331,8 +1343,8 @@ NS_EXTERN ssize_t NsDriverSend(Sock *sockPtr, const struct iovec *bufs, int nbuf
     NS_GNUC_NONNULL(1);
 NS_EXTERN ssize_t NsDriverSendFile(Sock *sockPtr, Ns_FileVec *bufs, int nbufs, unsigned int flags)
     NS_GNUC_NONNULL(1);
-NS_EXTERN int NSDriverClientOpen(Tcl_Interp *interp, const char *url, const char *method, const Ns_Time *timeoutPtr, Sock **sockPtrPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+NS_EXTERN int NSDriverClientOpen(Tcl_Interp *interp, const char *url, const char *method, const char *version, const Ns_Time *timeoutPtr, Sock **sockPtrPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6);
 
 
 NS_EXTERN ssize_t NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
@@ -1346,13 +1358,13 @@ NS_EXTERN bool NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 NS_EXTERN void NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN void NsMapPool(ConnPool *poolPtr, const char *map)
+NS_EXTERN void NsMapPool(ConnPool *poolPtr, const char *map, unsigned int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN void NsSockClose(Sock *sockPtr, int keep)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int NsPoll(struct pollfd *pfds, int nfds, const Ns_Time *timeoutPtr);
+NS_EXTERN int NsPoll(struct pollfd *pfds, NS_POLL_NFDS_TYPE nfds, const Ns_Time *timeoutPtr);
 
 NS_EXTERN Request *NsGetRequest(Sock *sockPtr, const Ns_Time *nowPtr)
     NS_GNUC_NONNULL(1);
@@ -1413,12 +1425,12 @@ NS_EXTERN void NsRemovePidFile(void);
 NS_EXTERN void NsLogOpen(void);
 NS_EXTERN void NsTclInitObjs(void);
 NS_EXTERN void NsBlockSignals(int debug);
-NS_EXTERN void NsBlockSignal(int sig);
-NS_EXTERN void NsUnblockSignal(int sig);
+NS_EXTERN void NsBlockSignal(int signal);
+NS_EXTERN void NsUnblockSignal(int signal);
 NS_EXTERN int  NsHandleSignals(void);
 NS_EXTERN void NsStopDrivers(void);
 NS_EXTERN void NsStopSpoolers(void);
-NS_EXTERN void NsPreBind(const char *args, const char *file);
+NS_EXTERN Ns_ReturnCode NsPreBind(const char *args, const char *file);
 NS_EXTERN void NsClosePreBound(void);
 NS_EXTERN const char *NsConfigRead(const char *file) NS_GNUC_NONNULL(1);
 NS_EXTERN void NsConfigEval(const char *config, int argc, char *const*argv, int optind) NS_GNUC_NONNULL(1);
@@ -1457,6 +1469,8 @@ NS_EXTERN void NsTclAddServerCmds(NsInterp *itPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN void NsRestoreSignals(void);
 NS_EXTERN void NsSendSignal(int sig);
 
+NS_EXTERN Tcl_Obj * NsDriverStats(Tcl_Interp *interp) NS_GNUC_NONNULL(1);
+
 /*
  * limits.c
  */
@@ -1488,6 +1502,12 @@ NS_EXTERN int NsConnParseRange(Ns_Conn *conn, const char *type,
  * conn.c
  */
 NS_EXTERN const char * NsConnIdStr(const Ns_Conn *conn)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN void NsConnTimeStatsUpdate(Ns_Conn *conn)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN void NsConnTimeStatsFinalize(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -1613,8 +1633,6 @@ NS_EXTERN Ns_ReturnCode NsConnRunProxyRequest(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 #endif /* NSD_H */
-
-NS_EXTERN bool NS_shutdown;
 
 /*
  * Local Variables:

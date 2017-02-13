@@ -64,8 +64,8 @@
  [list_end]
 
 [call [cmd  "ns_connchan callback"] \
-	[opt [option "-timeout [arg s]"]] \
-	[opt [option "-receivetimeout [arg s]"]] \
+	[opt [option "-timeout [arg t]"]] \
+	[opt [option "-receivetimeout [arg r]"]] \
 	[opt [option "-sendtimeout [arg s]"]] \
 	[arg channel] \
 	[arg command] \
@@ -75,7 +75,7 @@
 Register a Tcl callback for the names connection [arg channel]. The argument
 [arg when] consist of one or more characters
 of r, w, e, or x, specifying, when the callback should fire.
-All timeouts are specified in the form secs:?microsecs?.
+All timeouts are specified in the form secs:?microsecs? or secs.fraction.
 
 When the callback is fired, the specified Tcl command will be called
 with two additional arguments, namely the [arg handle] and and
@@ -88,6 +88,22 @@ as follows:
 [item] x - the server is shutting down
 [item] t - timeout received
 [list_end]
+
+[call [cmd  "ns_connchan open"] \
+	[opt [option "-headers [arg h]"]] \
+	[opt [option "-method [arg m]"]] \
+	[opt [option "-timeout [arg t]"]] \
+	[opt [option "-version [arg v]"]] \
+	[arg url] \
+]
+
+Open a connection channel to the specified [arg url].
+The URL might be an HTTP or an HTTPS URL.
+[option -headers] refers to a [term ns_set] of request header fields,
+[option -method] is the HTTP method (default GET),
+[option -timeout] is the timeout for establising the connection
+(default 1 second), and
+[option -version] specifies the HTTP version (default 1.0)
 
 [call [cmd  "ns_connchan read"] \
 	[arg channel] \

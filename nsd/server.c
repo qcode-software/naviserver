@@ -83,15 +83,17 @@ static ServerInit       *lastInitPtr;  /* Last in list of server config callback
 NsServer *
 NsGetServer(const char *server)
 {
+    NsServer *result = NULL;
+    
     if (server != NULL) {
         const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
         
         if (hPtr != NULL) {
-            return Tcl_GetHashValue(hPtr);
+            result = Tcl_GetHashValue(hPtr);
         }
     }
 
-    return NULL;
+    return result;
 }
 
 
@@ -304,7 +306,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      */
 
     CreatePool(servPtr, "");
-    path = Ns_ConfigGetPath(server, NULL, "pools", NULL);
+    path = Ns_ConfigGetPath(server, NULL, "pools", (char *)0);
     set = Ns_ConfigGetSection(path);
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
@@ -393,11 +395,11 @@ CreatePool(NsServer *servPtr, const char *pool)
          * Map requested method/URL's to this pool.
          */
 
-        path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, NULL);
+        path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, (char *)0);
         set = Ns_ConfigGetSection(path);
         for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
             if (strcasecmp(Ns_SetKey(set, i), "map") == 0) {
-                NsMapPool(poolPtr, Ns_SetValue(set, i));
+                NsMapPool(poolPtr, Ns_SetValue(set, i), 0u);
             }
         }
     }

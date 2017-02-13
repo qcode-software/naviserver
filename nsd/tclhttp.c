@@ -143,7 +143,7 @@ HttpWaitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
 	        *elapsedVarPtr = NULL, *resultVarPtr = NULL, 
 	        *statusVarPtr = NULL, *fileVarPtr = NULL;
     Ns_Time     *timeoutPtr = NULL;
-    const char  *id = NULL;
+    char        *id = NULL;
     Ns_Set      *hdrPtr = NULL;
     Ns_HttpTask *httpPtr = NULL;
     Ns_Time      diff;
@@ -287,7 +287,7 @@ static int
 HttpCancelObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     NsInterp    *itPtr = clientData;
-    const char  *idString;
+    char        *idString;
     int          result = TCL_OK;
     Ns_ObjvSpec  args[] = {
         {"id", Ns_ObjvString,  &idString, NULL},
@@ -453,11 +453,11 @@ HttpQueueCmd(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, int run)
     Tcl_Interp    *interp;
     int            verifyInt = 0, result = TCL_OK;
     Ns_HttpTask   *httpPtr;
-    const char    *cert = NULL, *caFile = NULL, *caPath = NULL;
-    const char    *method = "GET", *url = NULL, *bodyFileName = NULL;
+    char          *cert = NULL, *caFile = NULL, *caPath = NULL;
+    char          *method = "GET", *url = NULL, *bodyFileName = NULL;
     Ns_Set        *hdrPtr = NULL;
     Tcl_Obj       *bodyPtr = NULL;
-    const Ns_Time *timeoutPtr = NULL;
+    Ns_Time       *timeoutPtr = NULL;
     int            keepInt = 0;
 
     Ns_ObjvSpec opts[] = {
@@ -736,7 +736,7 @@ Ns_HttpCheckSpool(Ns_HttpTask *httpPtr)
 		     && length >= httpPtr->spoolLimit
 		     ) || (int)contentSize >= httpPtr->spoolLimit
 		    ) {
-		    int fd;
+		    int   fd;
                     char *spoolFileName;
                     
 		    /*
@@ -861,12 +861,12 @@ Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *h
     NS_NONNULL_ASSERT(hostString != NULL);
 
     if (protoString != NULL) {
-        Ns_DStringVarAppend(dsPtr, protoString, "://", NULL);
+        Ns_DStringVarAppend(dsPtr, protoString, "://", (char *)0);
     }
     if (strchr(hostString, INTCHAR(':')) != NULL) {
-        Ns_DStringVarAppend(dsPtr, "[", hostString, "]", NULL);
+        Ns_DStringVarAppend(dsPtr, "[", hostString, "]", (char *)0);
     } else {
-        Ns_DStringVarAppend(dsPtr, hostString, NULL);
+        Ns_DStringVarAppend(dsPtr, hostString, (char *)0);
     }
     if (port != defPort) {
         (void) Ns_DStringPrintf(dsPtr, ":%d", port);
@@ -904,7 +904,7 @@ Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *h
 void
 Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
 {
-    bool ipv6 = NS_FALSE;
+    bool ip_literal = NS_FALSE;
     
     NS_NONNULL_ASSERT(hostString != NULL);
     NS_NONNULL_ASSERT(portStart != NULL);
@@ -913,11 +913,11 @@ Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
         char *p;
         
         /*
-         * Maybe this is an IPv6 address in square braces
+         * Maybe this is an address in IP-literal notation in square braces
          */
         p = strchr(hostString + 1, INTCHAR(']'));
         if (p != NULL) {
-            ipv6 = NS_TRUE;
+            ip_literal = NS_TRUE;
             
             /*
              * Terminate the IP-literal if hostStart is given.
@@ -934,7 +934,7 @@ Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
             }
         }
     }
-    if (!ipv6) {
+    if (!ip_literal) {
         *portStart = strchr(hostString, INTCHAR(':'));
         if (hostStart != NULL) {
             *hostStart = hostString;
@@ -1009,7 +1009,8 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url,
 {
     NS_SOCKET      sock = NS_INVALID_SOCKET;
     Ns_HttpTask   *httpPtr;
-    int            result, uaFlag = -1, bodyFileSize = 0, bodyFileFd = 0;
+    int            result, uaFlag = -1, bodyFileFd = 0;
+    off_t          bodyFileSize = 0;
     unsigned short defaultPort = 0u, portNr;
     char          *url2, *protocol, *host, *portString, *path, *tail;
     const char    *contentType = NULL;
@@ -1239,7 +1240,7 @@ HttpConnect(Tcl_Interp *interp, const char *method, const char *url,
             Tcl_DStringAppend(dsPtr, bodyString, length);
 
         } else {
-            Ns_DStringPrintf(dsPtr, "Content-Length: %d\r\n\r\n", bodyFileSize);
+            Ns_DStringPrintf(dsPtr, "Content-Length: %" PROTd "\r\n\r\n", bodyFileSize);
         }
 
     } else {
@@ -1452,7 +1453,7 @@ HttpTaskSend(const Ns_HttpTask *httpPtr, const void *buffer, size_t length)
             ssize_t n;
         
             n = SSL_write(httpPtr->ssl, iov.iov_base, (int)iov.iov_len);
-            err = SSL_get_error(httpPtr->ssl, n);
+            err = SSL_get_error(httpPtr->ssl, (int)n);
             if (err == SSL_ERROR_WANT_WRITE) {
                 Ns_Time timeout = { 0, 10000 }; /* 10ms */
                 

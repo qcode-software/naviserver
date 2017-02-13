@@ -143,7 +143,7 @@ static Tcl_ObjCmdProc ICtlUpdateObjCmd;
 
 static Ns_Tls tls;  /* Slot for per-thread Tcl interp cache. */
 static Ns_Mutex interpLock = NULL; 
-
+static bool concurrent_interp_create = NS_FALSE;
 
 
 /*
@@ -169,6 +169,29 @@ Nsd_Init(Tcl_Interp *interp)
     NS_NONNULL_ASSERT(interp != NULL);
 
     return Ns_TclInit(interp);
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsConfigTcl --
+ *
+ *      Allow configuration of Tcl-specific parameters via the config file.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Setting static configuration variable.
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
+NsConfigTcl(void)
+{
+    concurrent_interp_create = Ns_ConfigBool(NS_CONFIG_PARAMETERS, "concurrentinterpcreate", NS_FALSE);
 }
 
 
@@ -209,7 +232,7 @@ ConfigServerTcl(const char *server)
 {
     NsServer   *servPtr;
     Ns_DString  ds;
-    const char *path, *p;
+    const char *path, *p, *initFileString;
     int         n;
     Ns_Set     *set;
 
@@ -218,25 +241,27 @@ ConfigServerTcl(const char *server)
     servPtr = NsGetServer(server);
     assert(servPtr != NULL);
 
-    path = Ns_ConfigGetPath(server, NULL, "tcl", NULL);
+    path = Ns_ConfigGetPath(server, NULL, "tcl", (char *)0);
     set = Ns_ConfigCreateSection(path);
 
     Ns_DStringInit(&ds);
 
     servPtr->tcl.library = Ns_ConfigString(path, "library", "modules/tcl");
     if (Ns_PathIsAbsolute(servPtr->tcl.library) == NS_FALSE) {
-        Ns_HomePath(&ds, servPtr->tcl.library, NULL);
+        Ns_HomePath(&ds, servPtr->tcl.library, (char *)0);
         servPtr->tcl.library = Ns_DStringExport(&ds);
 	Ns_SetUpdate(set, "library", servPtr->tcl.library);
     }
 
-    servPtr->tcl.initfile = Ns_ConfigString(path, "initfile", "bin/init.tcl");
-    if (Ns_PathIsAbsolute(servPtr->tcl.initfile) == NS_FALSE) {
-        Ns_HomePath(&ds, servPtr->tcl.initfile, NULL);
-        servPtr->tcl.initfile = Ns_DStringExport(&ds);
-	Ns_SetUpdate(set, "initfile", servPtr->tcl.initfile);
+    initFileString = Ns_ConfigString(path, "initfile", "bin/init.tcl");
+    if (Ns_PathIsAbsolute(initFileString) == NS_FALSE) {
+        Ns_HomePath(&ds, initFileString, (char *)0);
+        initFileString = Ns_DStringExport(&ds);
+	Ns_SetUpdate(set, "initfile", initFileString);
     }
-
+    servPtr->tcl.initfile = Tcl_NewStringObj(initFileString, -1);
+    Tcl_IncrRefCount(servPtr->tcl.initfile);
+    
     servPtr->tcl.modules = Tcl_NewObj();
     Tcl_IncrRefCount(servPtr->tcl.modules);
 
@@ -577,7 +602,7 @@ Ns_TclDestroyInterp(Tcl_Interp *interp)
 
     itPtr = NsGetInterpData(interp);
     /*
-     * If this naviserver interp, clean it up
+     * If this is an naviserver interp, clean it up
      */
 
     if (itPtr != NULL) {
@@ -1311,8 +1336,8 @@ ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
         result = TCL_ERROR;
         
-    } else {
-        Defer                *deferPtr;
+    } else if (itPtr->firstDeferPtr != NULL) {
+        Defer  *deferPtr;
 
         for (deferPtr = itPtr->firstDeferPtr; deferPtr != NULL; deferPtr = deferPtr->nextPtr) {
             (*deferPtr->proc)(interp, deferPtr->arg);
@@ -1630,7 +1655,7 @@ NsTclInitServer(const char *server)
     if (servPtr != NULL) {
 	Tcl_Interp *interp = NsTclAllocateInterp(servPtr);
 
-        if (Tcl_EvalFile(interp, servPtr->tcl.initfile) != TCL_OK) {
+        if ( Tcl_FSEvalFile(interp, servPtr->tcl.initfile) != TCL_OK) {
             (void) Ns_TclLogErrorInfo(interp, "\n(context: init server)");
         }
         Ns_TclDeAllocateInterp(interp);
@@ -1860,6 +1885,7 @@ static void
 PushInterp(NsInterp *itPtr)
 {
     Tcl_Interp *interp;
+    bool        ok = NS_TRUE;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     
@@ -1875,13 +1901,15 @@ PushInterp(NsInterp *itPtr)
         if (itPtr->deleteInterp) {
             Ns_Log(Debug, "ns_markfordelete: true");
             Ns_TclDestroyInterp(interp);
-            return;
+            ok = NS_FALSE;
         }
     }
-    Tcl_ResetResult(interp);
-    itPtr->refcnt--;
+    if (ok) {
+        Tcl_ResetResult(interp);
+        itPtr->refcnt--;
 
-    assert(itPtr->refcnt >= 0);
+        assert(itPtr->refcnt >= 0);
+    }
 }
 
 
@@ -1939,10 +1967,13 @@ Tcl_Interp *
 NsTclCreateInterp() {
     Tcl_Interp *interp;
 
-    Ns_MutexLock(&interpLock);
-    interp = Tcl_CreateInterp();
-    Ns_MutexUnlock(&interpLock);
-
+    if (concurrent_interp_create) {
+        interp = Tcl_CreateInterp();
+    } else {
+        Ns_MutexLock(&interpLock);
+        interp = Tcl_CreateInterp();
+        Ns_MutexUnlock(&interpLock);
+    }
     return interp;
 }
 
@@ -2149,7 +2180,7 @@ RunTraces(const NsInterp *itPtr, Ns_TclTraceType why)
     const NsServer *servPtr;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
-
+    
     servPtr = itPtr->servPtr;
     if (servPtr != NULL) {
 
@@ -2290,7 +2321,7 @@ DeleteInterps(void *arg)
     Tcl_HashTable       *tablePtr = arg;
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
- 
+
     hPtr = Tcl_FirstHashEntry(tablePtr, &search);
     while (hPtr != NULL) {
         const NsInterp *itPtr;

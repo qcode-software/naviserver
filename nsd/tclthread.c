@@ -186,7 +186,7 @@ NsTclThreadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     case TBeginIdx:         /* fall through */
     case TBeginDetachedIdx:
         {
-            const char *threadName = NULL, *script;
+            char       *threadName = NULL, *script;
             Ns_ObjvSpec lopts[] = {
                 {"-name", Ns_ObjvString, &threadName, NULL},
                 {"--",    Ns_ObjvBreak,  NULL,    NULL},
@@ -469,8 +469,7 @@ NsTclCritSecObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 int
 NsTclSemaObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int             opt, cnt = 0, result = TCL_OK;
-
+    int                      opt = 0, cnt = 0, result = TCL_OK;
     static const char *const opts[] = {
         "create", "destroy", "release", "wait", NULL
     };
@@ -973,7 +972,6 @@ CreateSynchObject(const NsInterp *itPtr,
 {
     NsServer      *servPtr;
     Tcl_Interp    *interp;
-    Tcl_HashEntry *hPtr;
     void          *addr;
     int            isNew = 0;
 
@@ -985,53 +983,54 @@ CreateSynchObject(const NsInterp *itPtr,
     interp  = itPtr->interp;
 
     if (objPtr != NULL
-	&& Ns_TclGetOpaqueFromObj(objPtr, type, &addr) == TCL_OK) {
+	&& Ns_TclGetOpaqueFromObj(objPtr, type, &addr) == TCL_OK
+        ) {
         Tcl_SetObjResult(interp, objPtr);
-        return addr;
-    }
+    } else {
+        Tcl_HashEntry *hPtr;
 
-    servPtr = itPtr->servPtr;
-    Ns_MutexLock(&servPtr->tcl.synch.lock);
+        servPtr = itPtr->servPtr;
+        Ns_MutexLock(&servPtr->tcl.synch.lock);
 
-    if (objPtr == NULL) {
-        Ns_DString     ds;
+        if (objPtr == NULL) {
+            Ns_DString     ds;
         
-        Ns_DStringInit(&ds);
-        do {
-            Ns_DStringTrunc(&ds, 0);
-            Ns_DStringPrintf(&ds, "%s:tcl:%u", type, (*idPtr)++);
-            hPtr = Tcl_CreateHashEntry(typeTable, ds.string, &isNew);
-        } while (isNew == 0);
+            Ns_DStringInit(&ds);
+            do {
+                Ns_DStringTrunc(&ds, 0);
+                Ns_DStringPrintf(&ds, "%s:tcl:%u", type, (*idPtr)++);
+                hPtr = Tcl_CreateHashEntry(typeTable, ds.string, &isNew);
+            } while (isNew == 0);
 
-        objPtr = Tcl_NewStringObj(ds.string, ds.length);
-        Tcl_SetObjResult(interp, objPtr);
-        Ns_DStringFree(&ds);
+            objPtr = Tcl_NewStringObj(ds.string, ds.length);
+            Tcl_SetObjResult(interp, objPtr);
+            Ns_DStringFree(&ds);
 
-    } else {
-        hPtr = Tcl_CreateHashEntry(typeTable, Tcl_GetString(objPtr), &isNew);
-        Tcl_SetObjResult(interp, objPtr);
-    }
-
-    if (isNew != 0) {
-        addr = ns_calloc(1u, sizeof(void *));
-        if (cnt > -1) {
-            Ns_SemaInit((Ns_Sema *) addr, cnt);
-        } else if (initProc != NULL) {
-	  (*initProc)(addr);
-          /*
-           * Just for mutexes, provide a name
-           */
-          if (type == mutexType) {
-              Ns_MutexSetName2(addr, "syncobj", Tcl_GetString(objPtr));
-          }
+        } else {
+            hPtr = Tcl_CreateHashEntry(typeTable, Tcl_GetString(objPtr), &isNew);
+            Tcl_SetObjResult(interp, objPtr);
         }
-        Tcl_SetHashValue(hPtr, addr);
-        Ns_TclSetOpaqueObj(objPtr, type, addr);
-    } else {
-        addr = Tcl_GetHashValue(hPtr);
-    }
-    Ns_MutexUnlock(&servPtr->tcl.synch.lock);
 
+        if (isNew != 0) {
+            addr = ns_calloc(1u, sizeof(void *));
+            if (cnt > -1) {
+                Ns_SemaInit((Ns_Sema *) addr, cnt);
+            } else if (initProc != NULL) {
+                (*initProc)(addr);
+                /*
+                 * Just for mutexes, provide a name
+                 */
+                if (type == mutexType) {
+                    Ns_MutexSetName2(addr, "syncobj", Tcl_GetString(objPtr));
+                }
+            }
+            Tcl_SetHashValue(hPtr, addr);
+            Ns_TclSetOpaqueObj(objPtr, type, addr);
+        } else {
+            addr = Tcl_GetHashValue(hPtr);
+        }
+        Ns_MutexUnlock(&servPtr->tcl.synch.lock);
+    }
     return addr;
 }
 

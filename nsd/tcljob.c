@@ -394,7 +394,7 @@ JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 {
     int            result = TCL_OK;
     int            jpt = -1;
-    const Ns_Time *timeoutPtr = NULL;
+    Ns_Time       *timeoutPtr = NULL;
     Ns_ObjvSpec    lopts[] = {
         {"-jobsperthread",  Ns_ObjvInt,  &jpt,        NULL},
         {"-timeout",        Ns_ObjvTime, &timeoutPtr, NULL},
@@ -444,7 +444,7 @@ JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 
     int          result = TCL_OK, max = NS_JOB_DEFAULT_MAXTHREADS;
     Tcl_Obj     *queueIdObj;
-    const char  *descString  = "";
+    char        *descString  = "";
     Ns_ObjvSpec  lopts[] = {
         {"-desc",   Ns_ObjvString,   &descString,   NULL},
         {NULL, NULL, NULL, NULL}
@@ -544,7 +544,7 @@ static int
 JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     int         result = TCL_OK, create = 0, head = 0, detached = 0;
-    const char *script = NULL, *jobIdString = NULL, *queueIdString = NULL;
+    char       *script = NULL, *jobIdString = NULL, *queueIdString = NULL;
     char        buf[100];
     Ns_ObjvSpec lopts[] = {
         {"-head",      Ns_ObjvBool,    &head,        INT2PTR(NS_TRUE)},
@@ -692,9 +692,9 @@ static int
 JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     int            result = TCL_OK;
-    const Ns_Time *deltaTimeoutPtr = NULL;
-    const char    *jobIdString;
-    Queue         *queue;
+    Ns_Time       *deltaTimeoutPtr = NULL;
+    char          *jobIdString;
+    Queue         *queue = NULL;
     Ns_ObjvSpec    lopts[] = {
         {"-timeout",  Ns_ObjvTime,   &deltaTimeoutPtr, NULL},
         {NULL, NULL, NULL, NULL}
@@ -720,6 +720,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
             Ns_IncrTime(&timeout, deltaTimeoutPtr->sec, deltaTimeoutPtr->usec);
         }
 
+        assert(queue != NULL);
         hPtr = Tcl_FindHashEntry(&queue->jobs, jobIdString);
         if (hPtr == NULL) {
             Ns_TclPrintfResult(interp, "no such job: %s", jobIdString);
@@ -749,7 +750,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
                                                           &queue->lock, &timeout);
                 if (timedOut == NS_TIMEOUT) {
                     Tcl_SetResult(interp, "Wait timed out.", TCL_STATIC);
-                    Tcl_SetErrorCode(interp, "NS_TIMEOUT", NULL);
+                    Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
                     jobPtr->req = JOB_NONE;
                     result = TCL_ERROR;
                     goto releaseQueue;
@@ -787,7 +788,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
             result = jobPtr->code;
             if (result == TCL_ERROR) {
                 if (jobPtr->errorCode != NULL) {
-                    Tcl_SetErrorCode(interp, jobPtr->errorCode, NULL);
+                    Tcl_SetErrorCode(interp, jobPtr->errorCode, (char *)0L);
                 }
                 if (jobPtr->errorInfo != NULL) {
                     Tcl_AddObjErrorInfo(interp, "\n", 1);
@@ -823,9 +824,9 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
 static int
 JobCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Queue        *queue;
+    Queue        *queue = NULL;
     int          result = TCL_OK;
-    const char  *jobIdString;
+    char        *jobIdString;
     Ns_ObjvSpec  args[] = {
         {"queueId",  ObjvQueue,      &queue,       NULL},
         {"jobId",    Ns_ObjvString,  &jobIdString, NULL},
@@ -837,8 +838,10 @@ JobCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 
     } else {
         Job                  *jobPtr = NULL;
-        const Tcl_HashEntry  *hPtr = Tcl_FindHashEntry(&queue->jobs, jobIdString);
+        const Tcl_HashEntry  *hPtr;
 
+        assert(queue != NULL);
+        hPtr = Tcl_FindHashEntry(&queue->jobs, jobIdString);
         if (hPtr == NULL) {
             (void)ReleaseQueue(queue, NS_FALSE);
             Ns_TclPrintfResult(interp, "no such job: %s", jobIdString);
@@ -848,7 +851,7 @@ JobCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
             jobPtr = Tcl_GetHashValue(hPtr);
             if (unlikely(jobPtr->req == JOB_WAIT)) {
                 (void)ReleaseQueue(queue, NS_FALSE);
-                Ns_TclPrintfResult(interp,"can't cancel job \"%s\", someone is waiting on it",
+                Ns_TclPrintfResult(interp, "can't cancel job \"%s\", someone is waiting on it",
                                    Tcl_DStringValue(&jobPtr->id));
                 result = TCL_ERROR;
             }
@@ -892,7 +895,7 @@ JobExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 {
     Queue       *queue = NULL;
     int          result = TCL_OK;
-    const char  *jobIdString;
+    char        *jobIdString;
     Ns_ObjvSpec  args[] = {
         {"queueId",  ObjvQueue,     &queue,       NULL},
         {"jobId",    Ns_ObjvString, &jobIdString, NULL},
@@ -933,7 +936,7 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 {
     Queue         *queue;
     int            result = TCL_OK;
-    const Ns_Time *deltaTimeoutPtr = NULL;
+    Ns_Time       *deltaTimeoutPtr = NULL;
     Ns_ObjvSpec    lopts[] = {
         {"-timeout",  Ns_ObjvTime, &deltaTimeoutPtr, NULL},
         {NULL, NULL, NULL, NULL}
@@ -970,7 +973,7 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
                                                           &queue->lock, &timeout);
                 if (timedOut == NS_TIMEOUT) {
                     Tcl_SetResult(interp, "Wait timed out.", TCL_STATIC);
-                    Tcl_SetErrorCode(interp, "NS_TIMEOUT", NULL);
+                    Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
                     result = TCL_ERROR;
                 }
             }
@@ -1602,7 +1605,7 @@ static int
 JobAbort(ClientData UNUSED(clientData), Tcl_Interp *interp, int UNUSED(code))
 {
     if (interp != NULL) {
-        Tcl_SetErrorCode(interp, "ECANCEL", NULL);
+        Tcl_SetErrorCode(interp, "ECANCEL", (char *)0L);
         Tcl_SetResult(interp, "Job cancelled.", TCL_STATIC);
     } else {
         Ns_Log(Warning, "ns_job: job cancelled");

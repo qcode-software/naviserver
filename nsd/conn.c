@@ -753,7 +753,7 @@ Ns_ConnHost(const Ns_Conn *conn)
  *----------------------------------------------------------------------
  */
 
-int
+unsigned short
 Ns_ConnPort(const Ns_Conn *conn)
 {
     const Driver *drvPtr;
@@ -877,7 +877,7 @@ Ns_ConnDriverName(const Ns_Conn *conn)
     drvPtr = ((const Conn *)conn)->drvPtr;
     assert(drvPtr != NULL);
     
-    return drvPtr->name;
+    return drvPtr->moduleName;
 }
 
 
@@ -990,7 +990,7 @@ Ns_ConnTimeSpans(const Ns_Conn *conn,
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConnTimeStats --
+ * NsConnTimeStatsUpdate --
  *
  *      Compute for a given connection various time spans such as
  *      acceptTimeSpan, queueTimeSpan, filterTimeSpan and
@@ -999,43 +999,79 @@ Ns_ConnTimeSpans(const Ns_Conn *conn,
  *         acceptTimeSpan = queueTime - acceptTime 
  *         queueTimeSpan  = dequeueTime - queueTime
  *         filterTimeSpan = filterDoneTime - dequeueTime
- *         runTimeSpan    = now - filterDoneTime
+ *         runTimeSpan    = runDoneTime - filterDoneTime
+ *
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Update time span values in connPtr
+ *
+ *----------------------------------------------------------------------
+ */
+void
+NsConnTimeStatsUpdate(Ns_Conn *conn) {
+    Conn     *connPtr;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    connPtr = (Conn *) conn;
+    
+    Ns_GetTime(&connPtr->runDoneTime);
+
+    (void)Ns_DiffTime(&connPtr->requestQueueTime,   &connPtr->acceptTime,         &connPtr->acceptTimeSpan);
+    (void)Ns_DiffTime(&connPtr->requestDequeueTime, &connPtr->requestQueueTime,   &connPtr->queueTimeSpan);
+    (void)Ns_DiffTime(&connPtr->filterDoneTime,     &connPtr->requestDequeueTime, &connPtr->filterTimeSpan);
+    (void)Ns_DiffTime(&connPtr->runDoneTime,        &connPtr->filterDoneTime,     &connPtr->runTimeSpan);
+
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsConnTimeStatsFinalize --
+ *
+ *      Record the time after running the connection main task and the end of
+ *      the processing of this task called traceTimeSpan. This value is
+ *      calculated as follows:
+ *      
+ *         traceTimeSpan  = now - runDoneTime
  *
  *      In addition, this function updates the statistics and should
  *      be called only once per request.
  *
  * Results:
- *      none
+ *      None.
  *
  * Side effects:
- *      update statistics
+ *      Update statistics.
  *
  *----------------------------------------------------------------------
  */
 void
-Ns_ConnTimeStats(Ns_Conn *conn) {
-    Conn     *connPtr;
-    ConnPool *poolPtr;
-    Ns_Time   now;
+NsConnTimeStatsFinalize(Ns_Conn *conn) {
+    const Conn *connPtr;
+    ConnPool   *poolPtr;
+    Ns_Time     now, diffTimeSpan;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    connPtr = (Conn *) conn;
+    connPtr = (const Conn *) conn;
     poolPtr = connPtr->poolPtr;
     assert(poolPtr != NULL);
     
     Ns_GetTime(&now);
 
-    (void)Ns_DiffTime(&connPtr->requestQueueTime,   &connPtr->acceptTime,         &connPtr->acceptTimeSpan);
-    (void)Ns_DiffTime(&connPtr->requestDequeueTime, &connPtr->requestQueueTime,   &connPtr->queueTimeSpan);
-    (void)Ns_DiffTime(&connPtr->filterDoneTime,     &connPtr->requestDequeueTime, &connPtr->filterTimeSpan);
-    (void)Ns_DiffTime(&now,                         &connPtr->filterDoneTime,     &connPtr->runTimeSpan);
+    (void)Ns_DiffTime(&now, &connPtr->runDoneTime, &diffTimeSpan);
 
     Ns_MutexLock(&poolPtr->threads.lock);
     Ns_IncrTime(&poolPtr->stats.acceptTime, connPtr->acceptTimeSpan.sec, connPtr->acceptTimeSpan.usec);
     Ns_IncrTime(&poolPtr->stats.queueTime,  connPtr->queueTimeSpan.sec,  connPtr->queueTimeSpan.usec);
     Ns_IncrTime(&poolPtr->stats.filterTime, connPtr->filterTimeSpan.sec, connPtr->filterTimeSpan.usec);
     Ns_IncrTime(&poolPtr->stats.runTime,    connPtr->runTimeSpan.sec,    connPtr->runTimeSpan.usec);
+    Ns_IncrTime(&poolPtr->stats.traceTime,  diffTimeSpan.sec,            diffTimeSpan.usec);
     Ns_MutexUnlock(&poolPtr->threads.lock);
 }
 
@@ -1321,14 +1357,14 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
 	"contentfile", "contentlength", "contentsentlength", "copy", 
 	"driver", 
 	"encoding", 
-	"fileheaders", "filelength", "fileoffset","files", "flags", "form", 
+	"fileheaders", "filelength", "fileoffset", "files", "flags", "form", 
 	"headers", "host", 
 	"id", "isconnected", 
 	"keepalive", 
 	"location", 
 	"method",
 	"outputheaders", 
-	"peeraddr", "peerport", "pool", "port", "protocol",
+	"partialtimes", "peeraddr", "peerport", "pool", "port", "protocol",
 	"query", 
 	"request", 
 	"server", "sock", "start", "status", 
@@ -1351,7 +1387,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
 	CLocationIdx, 
 	CMethodIdx, 
 	COutputHeadersIdx, 
-	CPeerAddrIdx, CPeerPortIdx, CPoolIdx, CPortIdx, CProtocolIdx, 
+	CPartialTimesIdx, CPeerAddrIdx, CPeerPortIdx, CPoolIdx, CPortIdx, CProtocolIdx, 
 	CQueryIdx, 
 	CRequestIdx,
 	CServerIdx, CSockIdx, CStartIdx, CStatusIdx, 
@@ -1464,13 +1500,13 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
 
     case CAuthUserIdx:
         if (connPtr->auth != NULL) {
-            Tcl_AppendResult(interp, Ns_ConnAuthUser(conn), NULL);
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnAuthUser(conn), -1));
         }
         break;
 
     case CAuthPasswordIdx:
         if (connPtr->auth != NULL) {
-            Tcl_AppendResult(interp, Ns_ConnAuthPasswd(conn), NULL);
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnAuthPasswd(conn), -1));
         }
         break;
 
@@ -1585,7 +1621,12 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case CContentFileIdx:
-        Tcl_AppendResult(interp, Ns_ConnContentFile(conn), NULL);
+        {
+            const char *file = Ns_ConnContentFile(conn);
+            if (file != NULL) {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(file, -1));
+            }
+        }
         break;
 
     case CEncodingIdx:
@@ -1758,6 +1799,36 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     case CMethodIdx:
 	Tcl_SetObjResult(interp, Tcl_NewStringObj(request->method, -1));
         break;
+        
+    case CPartialTimesIdx:
+        {
+            Ns_Time   now, acceptTime, queueTime, filterTime, runTime;
+            Tcl_DString ds, *dsPtr = &ds;
+            
+            Ns_GetTime(&now);
+            Tcl_DStringInit(dsPtr);
+
+            (void)Ns_DiffTime(&connPtr->requestQueueTime,   &connPtr->acceptTime,         &acceptTime);
+            (void)Ns_DiffTime(&connPtr->requestDequeueTime, &connPtr->requestQueueTime,   &queueTime);
+            (void)Ns_DiffTime(&connPtr->filterDoneTime,     &connPtr->requestDequeueTime, &filterTime);
+            (void)Ns_DiffTime(&now,                         &connPtr->filterDoneTime,     &runTime);
+
+            Ns_DStringNAppend(dsPtr, "accepttime ", 11);
+            Ns_DStringAppendTime(dsPtr, &acceptTime);
+
+            Ns_DStringNAppend(dsPtr, " queuetime ", 11);
+            Ns_DStringAppendTime(dsPtr, &queueTime);
+
+            Ns_DStringNAppend(dsPtr, " filtertime ", 12);
+            Ns_DStringAppendTime(dsPtr, &filterTime);
+
+            Ns_DStringNAppend(dsPtr, " runtime ", 9);
+            Ns_DStringAppendTime(dsPtr, &runTime);
+
+            Tcl_DStringResult(interp, dsPtr);
+
+            break;
+        }
 
     case CProtocolIdx:
         Tcl_SetObjResult(interp, Tcl_NewStringObj(connPtr->drvPtr->protocol, -1));
@@ -1953,8 +2024,8 @@ int
 NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     const NsInterp *itPtr = clientData;
-    int             toCopy = 0, result = TCL_OK;;
-    const char     *chanName;
+    int             toCopy = 0, result = TCL_OK;
+    char           *chanName;
     Tcl_Channel     chan;
 
     /*
@@ -2144,62 +2215,64 @@ static Tcl_Channel
 MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
 {
     Conn       *connPtr;
-    Tcl_Channel chan;
+    Tcl_Channel chan = NULL;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(itPtr != NULL);
 
     connPtr = (Conn *) conn;
-    if ((connPtr->flags & NS_CONN_CLOSED) != 0u) {
+    if (unlikely((connPtr->flags & NS_CONN_CLOSED) != 0u)) {
         Ns_TclPrintfResult(itPtr->interp, "connection closed");
-        return NULL;
-    }
 
-    assert(connPtr->sockPtr != NULL);
-    if (connPtr->sockPtr->sock == NS_INVALID_SOCKET) {
-        Ns_TclPrintfResult(itPtr->interp, "no socket for connection");
-        return NULL;
-    }
+    } else {
 
-    /*
-     * Create Tcl channel arround the connection socket
-     */
+        assert(connPtr->sockPtr != NULL);
+        if (connPtr->sockPtr->sock == NS_INVALID_SOCKET) {
+            Ns_TclPrintfResult(itPtr->interp, "no socket for connection");
 
-    chan = Tcl_MakeTcpClientChannel(NSSOCK2PTR(connPtr->sockPtr->sock));
-    if (chan == NULL) {
-        Tcl_AppendResult(itPtr->interp, Tcl_PosixError(itPtr->interp), NULL);
-        return NULL;
-    }
-
-    /*
-     * Disable keep-alive and chunking headers.
-     */
-
-    if (connPtr->responseLength < 0) {
-        connPtr->keep = (int)NS_FALSE;
-    }
-
-    /*
-     * Check to see if HTTP headers are required and flush
-     * them now before the conn socket is dissociated.
-     */
-
-    if ((conn->flags & NS_CONN_SENTHDRS) == 0u) {
-        if ((itPtr->nsconn.flags & CONN_TCLHTTP) == 0u) {
-            conn->flags |= NS_CONN_SKIPHDRS;
         } else {
-            if (Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM) != NS_OK) {
-		Ns_Log(Error, "make channel: error writing headers");
-	    }
+
+            /*
+             * Create Tcl channel arround the connection socket
+             */
+
+            chan = Tcl_MakeTcpClientChannel(NSSOCK2PTR(connPtr->sockPtr->sock));
+            if (unlikely(chan == NULL)) {
+                Ns_TclPrintfResult(itPtr->interp, "%s", Tcl_PosixError(itPtr->interp));
+
+            } else {
+                /*
+                 * Disable keep-alive and chunking headers.
+                 */
+
+                if (connPtr->responseLength < 0) {
+                    connPtr->keep = (int)NS_FALSE;
+                }
+
+                /*
+                 * Check to see if HTTP headers are required and flush
+                 * them now before the conn socket is dissociated.
+                 */
+
+                if ((conn->flags & NS_CONN_SENTHDRS) == 0u) {
+                    if ((itPtr->nsconn.flags & CONN_TCLHTTP) == 0u) {
+                        conn->flags |= NS_CONN_SKIPHDRS;
+                    } else {
+                        if (Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM) != NS_OK) {
+                            Ns_Log(Error, "make channel: error writing headers");
+                        }
+                    }
+                }
+
+                if (Ns_SockSetBlocking(connPtr->sockPtr->sock) != NS_OK) {
+                    Ns_Log(Error, "make channel: error while making channel blocking");
+                }
+
+                connPtr->sockPtr->sock = NS_INVALID_SOCKET;
+            }
         }
     }
-
-    if (Ns_SockSetBlocking(connPtr->sockPtr->sock) != NS_OK) {
-	Ns_Log(Error, "make channel: error while making channel blocking");
-    }
-
-    connPtr->sockPtr->sock = NS_INVALID_SOCKET;
-
+    
     return chan;
 }
 

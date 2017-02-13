@@ -58,7 +58,7 @@ static bool ReturnRedirect(Ns_Conn *conn, int status, Ns_ReturnCode *resultPtr)
  *      will be issued to the url.
  *
  * Results:
- *      None.
+ *      Status code (always NS_OK).
  *
  * Side effects:
  *      Previous registration is deleted if url is NULL.
@@ -82,7 +82,7 @@ ConfigServerRedirects(const char *server)
 
     Tcl_InitHashTable(&servPtr->request.redirect, TCL_ONE_WORD_KEYS);
 
-    path = Ns_ConfigGetPath(server, NULL, "redirects", NULL);
+    path = Ns_ConfigGetPath(server, NULL, "redirects", (char *)0);
     set = Ns_ConfigGetSection(path);
 
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
@@ -91,7 +91,7 @@ ConfigServerRedirects(const char *server)
 
         key = Ns_SetKey(set, i);
         map = Ns_SetValue(set, i);
-        statusCode = strtol(key, NULL, 10);
+        statusCode = (int)strtol(key, NULL, 10);
         if (statusCode <= 0 || *map == '\0') {
             Ns_Log(Error, "redirects[%s]: invalid redirect '%s=%s'",
                    server, key, map);
@@ -167,11 +167,11 @@ Ns_ConnReturnStatus(Ns_Conn *conn, int status)
 
     NS_NONNULL_ASSERT(conn != NULL);
     
-    if (ReturnRedirect(conn, status, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, status, &result)) {
+        Ns_ConnSetResponseStatus(conn, status);
+        result = Ns_ConnWriteVData(conn, NULL, 0, 0u);
     }
-    Ns_ConnSetResponseStatus(conn, status);
-    return Ns_ConnWriteVData(conn, NULL, 0, 0u);
+    return result;
 }
 
 
@@ -349,22 +349,22 @@ Ns_ConnReturnRedirect(Ns_Conn *conn, const char *url)
 Ns_ReturnCode
 Ns_ConnReturnBadRequest(Ns_Conn *conn, const char *reason)
 {
-    Ns_DString    ds;
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    if (ReturnRedirect(conn, 400, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 400, &result)) {
+        Ns_DString    ds;
+
+        Ns_DStringInit(&ds);
+        Ns_DStringAppend(&ds,
+                         "<p>The HTTP request presented by your browser is invalid.");
+        if (reason != NULL) {
+            Ns_DStringVarAppend(&ds, "<p>\n", reason, (char *)0);
+        }
+        result = Ns_ConnReturnNotice(conn, 400, "Invalid Request", ds.string);
+        Ns_DStringFree(&ds);
     }
-    Ns_DStringInit(&ds);
-    Ns_DStringAppend(&ds,
-        "<p>The HTTP request presented by your browser is invalid.");
-    if (reason != NULL) {
-        Ns_DStringVarAppend(&ds, "<p>\n", reason, NULL);
-    }
-    result = Ns_ConnReturnNotice(conn, 400, "Invalid Request", ds.string);
-    Ns_DStringFree(&ds);
 
     return result;
 }
@@ -399,17 +399,16 @@ Ns_ConnReturnUnauthorized(Ns_Conn *conn)
     if (Ns_SetIGet(conn->outputheaders, "WWW-Authenticate") == NULL) {
         Ns_DStringInit(&ds);
         Ns_DStringVarAppend(&ds, "Basic realm=\"",
-                            connPtr->poolPtr->servPtr->opts.realm, "\"", NULL);
+                            connPtr->poolPtr->servPtr->opts.realm, "\"", (char *)0);
         Ns_ConnSetHeaders(conn, "WWW-Authenticate", ds.string);
         Ns_DStringFree(&ds);
     }
-    if (ReturnRedirect(conn, 401, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 401, &result)) {
+        result = Ns_ConnReturnNotice(conn, 401, "Access Denied",
+                                     "The requested URL cannot be accessed because a "
+                                     "valid username and password are required.");
     }
-
-    return Ns_ConnReturnNotice(conn, 401, "Access Denied",
-               "The requested URL cannot be accessed because a "
-               "valid username and password are required.");
+    return result;
 }
 
 
@@ -436,12 +435,13 @@ Ns_ConnReturnForbidden(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    if (ReturnRedirect(conn, 403, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 403, &result)) {
+        result = Ns_ConnReturnNotice(conn, 403, "Forbidden",
+                                     "The requested URL cannot be accessed by this server.");
     }
 
-    return Ns_ConnReturnNotice(conn, 403, "Forbidden",
-               "The requested URL cannot be accessed by this server.");
+    return result;
+
 }
 
 
@@ -468,12 +468,12 @@ Ns_ConnReturnNotFound(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
     
-    if (ReturnRedirect(conn, 404, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 404, &result)) {
+        result = Ns_ConnReturnNotice(conn, 404, "Not Found",
+                                     "The requested URL was not found on this server.");
     }
 
-    return Ns_ConnReturnNotice(conn, 404, "Not Found",
-               "The requested URL was not found on this server.");
+    return result;
 }
 
 
@@ -500,12 +500,12 @@ Ns_ConnReturnInvalidMethod(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
     
-    if (ReturnRedirect(conn, 405, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 405, &result)) {
+        result = Ns_ConnReturnNotice(conn, 405, "Method Not Allowed",
+                                     "The requested method is not allowed on this server.");
     }
 
-    return Ns_ConnReturnNotice(conn, 405, "Method Not Allowed",
-               "The requested method is not allowed on this server.");
+    return result;
 }
 
 /*
@@ -553,11 +553,11 @@ Ns_ConnReturnEntityTooLarge(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    if (ReturnRedirect(conn, 413, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 413, &result)) {
+        result = Ns_ConnReturnNotice(conn, 413, "Request Entity Too Large",
+                                     "The request entity (e.g. file to be uploaded) is too large.");
     }
-    return Ns_ConnReturnNotice(conn, 413, "Request Entity Too Large",
-	"The request entity (e.g. file to be uploaded) is too large.");
+    return result;
 }
 
 /*
@@ -582,12 +582,13 @@ Ns_ConnReturnRequestURITooLong(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    if (ReturnRedirect(conn, 414, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 414, &result)) {
+        result = Ns_ConnReturnNotice(conn, 414, "Request-URI Too Long",
+                                     "The request URI is too long. You might "
+                                     "consider to provide a larger value for "
+                                     "maxline in your NaviServer config file.");
     }
-    return Ns_ConnReturnNotice(conn, 414, "Request-URI Too Long",
-        "The request URI is too long. "
-	"You might to consider to provide a larger value for maxline in your NaviServer config file.");
+    return result;
 }
 
 /*
@@ -612,12 +613,13 @@ Ns_ConnReturnHeaderLineTooLong(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    if (ReturnRedirect(conn, 431, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 431, &result)) {
+        result = Ns_ConnReturnNotice(conn, 431, "Request Header Fields Too Large",
+                                     "A provided request header line is too long. "
+                                     "You might consider to provide a larger value "
+                                     "for maxline in your NaviServer config file");
     }
-    return Ns_ConnReturnNotice(conn, 431, "Request Header Fields Too Large",
-        "A provided request header line is too long. "
-	"You might to consider to provide a larger value for maxline in your NaviServer config file");
+   return result;
 }
 
 /*
@@ -643,13 +645,12 @@ Ns_ConnReturnNotImplemented(Ns_Conn *conn)
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    if (ReturnRedirect(conn, 501, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 501, &result)) {
+        result = Ns_ConnReturnNotice(conn, 501, "Not Implemented",
+                                     "The requested URL or method is not implemented "
+                                     "by this server.");
     }
-
-    return Ns_ConnReturnNotice(conn, 501, "Not Implemented",
-               "The requested URL or method is not implemented "
-               "by this server.");
+    return result;
 }
 
 
@@ -677,13 +678,12 @@ Ns_ConnReturnInternalError(Ns_Conn *conn)
     NS_NONNULL_ASSERT(conn != NULL);
 
     Ns_SetTrunc(conn->outputheaders, 0u);
-    if (ReturnRedirect(conn, 500, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 500, &result)) {
+        result = Ns_ConnReturnNotice(conn, 500, "Server Error",
+                                     "The requested URL cannot be accessed "
+                                     "due to a system error on this server.");
     }
-
-    return Ns_ConnReturnNotice(conn, 500, "Server Error",
-               "The requested URL cannot be accessed "
-               "due to a system error on this server.");
+    return result;
 }
 
 
@@ -711,13 +711,12 @@ Ns_ConnReturnUnavailable(Ns_Conn *conn)
     NS_NONNULL_ASSERT(conn != NULL);
 
     Ns_SetTrunc(conn->outputheaders, 0u);
-    if (ReturnRedirect(conn, 503, &result)) {
-        return result;
+    if (!ReturnRedirect(conn, 503, &result)) {
+        result = Ns_ConnReturnNotice(conn, 503, "Service Unavailable",
+                                     "The server is temporarily unable to service your request. "
+                                     "Please try again later.");
     }
-
-    return Ns_ConnReturnNotice(conn, 503, "Service Unavailable",
-               "The server is temporarily unable to service your request. "
-               "Please try again later.");
+    return result;
 }
 
 
@@ -744,6 +743,7 @@ ReturnRedirect(Ns_Conn *conn, int status, Ns_ReturnCode *resultPtr)
     const Tcl_HashEntry *hPtr;
     Conn                *connPtr = (Conn *) conn;
     NsServer            *servPtr;
+    bool                 result = NS_FALSE;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(resultPtr != NULL);
@@ -759,10 +759,10 @@ ReturnRedirect(Ns_Conn *conn, int status, Ns_ReturnCode *resultPtr)
         } else {
             connPtr->responseStatus = status;
             *resultPtr = Ns_ConnRedirect(conn, Tcl_GetHashValue(hPtr));
-            return NS_TRUE;
+            result = NS_TRUE;
         }
     }
-    return NS_FALSE;
+    return result;
 }
 
 /*

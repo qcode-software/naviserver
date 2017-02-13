@@ -68,7 +68,7 @@
  * myId = Ns_UrlSpecificAlloc();
  *
  * Ns_UrlSpecificSet("server1", "GET", "/foo/bar/\*.html", myID, myData,
- *                   0, MyDeleteProc);
+ *                   0u, MyDeleteProc);
  *
  *
  *
@@ -751,13 +751,19 @@ WalkTrie(const Trie *triePtr, Ns_ArgProc func,
         if (stack[depth] == NULL) {
             Tcl_DStringAppendElement(&subDs, "/");
         } else {
+            Tcl_DString   elementDs;
+
+            Tcl_DStringInit(&elementDs);
             while (stack[depth] != NULL) {
-                Ns_DStringVarAppend(&subDs, "/", stack[depth], NULL);
+                Ns_DStringVarAppend(&elementDs, "/", stack[depth], (char *)0);
                 depth++;
             }
+            Tcl_DStringAppendElement(&subDs, elementDs.string);
+            Tcl_DStringFree(&elementDs);
+            
         }
 
-        Ns_DStringVarAppend(&subDs, " ", filter, " ", NULL);
+        Ns_DStringVarAppend(&subDs, " ", filter, " ", (char *)0);
 
         /*
          * Append a sublist for each type of proc.
@@ -2282,8 +2288,8 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     int             result = TCL_OK, id = -1;
-    const char     *key = ".", *url;
-    bool            exact = NS_FALSE, noinherit = NS_FALSE;
+    char           *key = ".", *url;
+    int             exact = (int)NS_FALSE, noinherit = (int)NS_FALSE;
     Ns_ObjvSpec     lopts[] = {
         {"-exact",     Ns_ObjvBool,   &exact,     INT2PTR(NS_TRUE)},
         {"-id",        Ns_ObjvInt,    &id,        NULL},
@@ -2312,11 +2318,11 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         const char   *data;
 
 
-        if (noinherit) {
+        if (noinherit == (int)NS_TRUE) {
             exact = NS_TRUE;
         }
         
-        if (exact) {
+        if (exact == (int)NS_TRUE) {
             op = NS_URLSPACE_EXACT;
             if (noinherit) {
                 flags |= NS_OP_NOINHERIT;
@@ -2445,7 +2451,7 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     int             result = TCL_OK, id = -1, noinherit = 0;
-    const char     *key = ".", *url, *data;
+    char           *key = ".", *url, *data;
     Ns_ObjvSpec     lopts[] = {
         {"-id",        Ns_ObjvInt,    &id,        NULL},
         {"-key",       Ns_ObjvString, &key,       NULL},
@@ -2507,8 +2513,8 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     int             result = TCL_OK, id = -1;
-    const char     *key = ".", *url;
-    bool            recurse = NS_FALSE, noinherit = NS_FALSE;
+    char           *key = ".", *url;
+    int             recurse = (int)NS_FALSE, noinherit = (int)NS_FALSE;
     Ns_ObjvSpec     lopts[] = {
         {"-id",        Ns_ObjvInt,    &id,        NULL},
         {"-key",       Ns_ObjvString, &key,       NULL},
@@ -2536,10 +2542,10 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
             return TCL_ERROR;
         }
 
-        if (noinherit) {
+        if (noinherit == (int)NS_TRUE) {
             flags |= NS_OP_NOINHERIT;
         }
-        if (recurse) {
+        if (recurse == (int)NS_TRUE) {
             flags |= NS_OP_RECURSE;
             if ((flags & NS_OP_NOINHERIT) == NS_OP_NOINHERIT) {
                 Ns_Log(Warning, "flag -noinherit is ignored");

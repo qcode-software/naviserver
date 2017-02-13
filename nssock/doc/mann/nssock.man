@@ -2,12 +2,12 @@
 
 [manpage_begin nssock n [vset version]]
 [moddesc   {NaviServer Modules}]
-[titledesc {Configuring http socket communications}]
+[titledesc {Configuring HTTP socket communications}]
 
 [description]
 
-This module [term nssock] is used for the socket communication for http. For
-the communication via https, the module [term nsssl] is used, which shares
+This module [term nssock] is used for the socket communication over HTTP. For
+the communication over HTTPS, the module [term nsssl] is used, which shares
 the configuration parameters presented here and adds additional parameters.
 
 [para]
@@ -54,13 +54,14 @@ Maximum size in bytes (octets) for a single receive operation
 Timeout in seconds for close on socket to drain potential garbage if
 no keep alive is performed. (integer, default: 2)
 
-[def defaultserver]
-When virtual servers are defined, this refers to the default server
-(the server, receiving all urls not mapped to a specific server)
+[def defaultserver] In a virtual server setup (when the driver module
+is loaded globally), this parameter is required and refers to the
+default server (the server, receiving all requests without host header
+fields unspecified or with unspecified host header fields, not mapped
+to a specific server)
 
 [def deferaccept]
-
-TCP Performance option; use TCP_FASTOPEN or TCP_DEFER_ACCEPT or
+TCP performance option; use TCP_FASTOPEN or TCP_DEFER_ACCEPT or
 SO_ACCEPTFILTER, whatever is available in your operating system to
 improve the performance of the initial TCP 3-way handshake. The
 capabilities of the operating system are determined at compile time.
@@ -69,6 +70,26 @@ you might have to activate this option in your kernel,
 by using [example {
    sudo sysctl net.ipv4.tcp_fastopen=1
 }] (boolean, default: false)
+
+[def driverthreads]
+Number of driver threads threads. Specifying multiple driver threads
+require the OS kernel to support SO_REUSEPORT and can improve the
+performance for high load applications slightly. (integer, default: 1)
+
+[para] When multiple driver threads are configured, parameter "reuseport" is
+automatically set to "true".
+
+[para] Note: When using multiple driver threads on privileged ports,
+one has to add "#" followed by the number of necessary bind operations
+to the prebind address. Otherwise, prebind will bind to the address
+only once, and only one driverthread can be used.
+
+[def extraheaders]
+This parameter can be used to add extra response headers
+for every response sent over this driver. The extraheaders
+have the form for attribute/value pairs. This mechanism can be used
+to implement for example HTTP Strict Transport Security in 
+nsssl, which uses the same parameter definition.
 
 [def hostname]
 Hostname of the server, can be looked up automatically if not specified.
@@ -105,7 +126,7 @@ Size of the queue of accepted requests waiting for a connection thread
 
 [def maxupload] Spool uploads to tmp-files for uploads larger than
 this size in bytes in order to keep the memory footprint small. This
-is especially important when large upoads are allowed via [term maxinput]. If
+is especially important when large uploads are allowed via [term maxinput]. If
 this value is 0, this feature is deactivated. When spool-to-file is
 activated, the minimal size is the size of [term readahead]
 (see as well [term spoolerthreads]).
@@ -120,12 +141,6 @@ the module with its defined commands (such as [cmd ns_http] is
 loaded, but the driver will not be listening on any port.
 (integer, default: 80)
 
-[def extraheaders]
-This parameter can be used to add extra response headers
-for every reponse sent over this driver. The extraheaders
-have the form for attribute/value pairs. This mechanism can be used
-to implement for example HTTP Strict Transport Security in 
-nsssl, which uses the same parameter definition.
 
 [def readahead]
 Maximum size in bytes (octets) for asynchronous read ahead operations
@@ -133,6 +148,11 @@ Maximum size in bytes (octets) for asynchronous read ahead operations
 
 [def recvwait]
 Timeout in seconds for receive operations. (integer, default: 30)
+
+[def reuseport] When the parameter is set and SO_REUSEPORT is
+supported by the os, NaviServer will allow multiple listen operations
+on the same port (default: false)
+
 
 [def sendwait]
 Timeout in seconds for send operations. (integer, default: 30)
@@ -182,7 +202,8 @@ More to come here...
 
 
 [see_also ns_log ns_write ns_http ns_ssl]
-[keywords performance tuning configuration TCP TCP_FASTOPEN nssock \
-nsssl driver]
+[keywords performance tuning configuration \
+SO_REUSEPORT TCP TCP_FASTOPEN nssock \
+nsssl driver prebind]
 
 [manpage_end]

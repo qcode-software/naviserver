@@ -43,11 +43,15 @@ ns_param        serverlog           error.log
 ns_param        pidfile             nsd.pid
 #ns_param       logdebug            true               ;# default: false
 #ns_param       logroll             false              ;# default: true
+#ns_param	logrollfmt	    %Y-%m-%d           ;# format appendend to log file name
 #ns_param       dbcloseonexit       off                ;# default: off; from nsdb
 ns_param        jobsperthread       1000               ;# default: 0
 ns_param        jobtimeout          0                  ;# default: 300
 ns_param        schedsperthread     10                 ;# default: 0
 ns_param        progressminsize     [expr 1024*1024*1] ;# default: 0
+#ns_param       concurrentinterpcreate true            ;# default: false
+#ns_param       listenbacklog        256               ;# default: 32; backlog for ns_socket commands
+#ns_param       mutexlocktrace       true              ;# default false; print duractions of long mutex calls to stderr
 
 # configure SMTP module
 ns_param        smtphost            "localhost"
@@ -152,6 +156,9 @@ ns_param        rollonsignal        false    ;# default: false; perform roll on 
 ns_param        rollhour            0        ;# default: 0; specify at which hour to roll
 ns_param        maxbackup           7        ;# default: 10; max number of backup log files
 #ns_param       rollfmt		    %Y-%m-%d-%H:%M	;# format appendend to log file name
+#ns_param       logpartialtimes     true     ;# default: false
+#ns_param	logreqtime	    true     ;# default: false; include time to service the request
+
 
 ns_section     "ns/server/default/module/nssock"
 ns_param        port                 $port
@@ -160,7 +167,7 @@ ns_param        port                 $port
 ns_param        address             $address
 ns_param        hostname            [ns_info hostname]
 ns_param        maxinput            [expr 1024*1024*10] ;# default: 1024*1024, maximum size for inputs (uploads)
-ns_param        readahead           [expr 1024*1024*1]  ;# default: 16384; size of readahead for requests
+#ns_param        readahead           [expr 1024*1024*1]  ;# default: 16384; size of readahead for requests
 ns_param        backlog             1024         ;# default: 256; backlog for listen operations
 ns_param        acceptsize          10           ;# default: value of "backlog"; max number of accepted (but unqueued) requests
 ns_param        closewait           0            ;# default: 2; timeout in seconds for close on socket
@@ -172,10 +179,11 @@ ns_param        keepalivemaxdownloadsize 1000000 ;# 0, don't allow keep-alive fo
 # Spooling Threads
 #
 #ns_param       spoolerthreads	1	;# default: 0; number of upload spooler threads
-#ns_param       maxupload	0       ;# default: 0, when specified, spool uploads larger than this value to a temp file
-#ns_param       writerthreads	1	;# default: 0, number of writer threads
+ns_param       maxupload	1000000 ;# default: 0, when specified, spool uploads larger than this value to a temp file
+ns_param       writerthreads	1	;# default: 0, number of writer threads
 #ns_param       writersize	1048576	;# default: 1024*1024, use writer threads for files larger than this value
 #ns_param       writerbufsize	8192	;# default: 8192, buffer size for writer threads
+#ns_param       driverthreads   2	;# default: 1, number of driver threads (requires support of SO_REUSEPORT)
 
 
 ns_section     "ns/server/default/module/nscp"

@@ -140,7 +140,7 @@ Ns_ParseHttpTime(char *chars)
 {
     char      *s;
     struct tm  timeInfo;
-    time_t     t;
+    time_t     t = 0;
 
     NS_NONNULL_ASSERT(chars != NULL);
     
@@ -262,7 +262,7 @@ Ns_ParseHttpTime(char *chars)
       Ns_MasterLock();
       if (lock == NULL) {
 	Ns_MutexInit(&lock);
-	Ns_MutexSetName2(&lock,"ns:httptime",NULL);
+	Ns_MutexSetName2(&lock, "ns:httptime", NULL);
       }
       Ns_MasterUnlock();
     }

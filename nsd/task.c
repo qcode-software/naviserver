@@ -74,7 +74,7 @@ typedef struct Task {
     NS_SOCKET          sock;          /* Underlying socket. */
     Ns_TaskProc       *proc;          /* Queue callback. */
     void              *arg;           /* Callback data. */
-    int                idx;           /* Poll index. */
+    NS_POLL_NFDS_TYPE  idx;           /* Poll index. */
     short              events;        /* Poll events. */
     Ns_Time            timeout;       /* Non-null timeout data. */
     unsigned int       signalFlags;   /* Signal bits sent to/from queue thread. */
@@ -680,7 +680,7 @@ RunTask(Task *taskPtr, short revents, const Ns_Time *nowPtr)
      */
 
     if ((revents & POLLHUP) != 0) {
-        revents |= POLLIN;
+        revents |= (short)POLLIN;
     }
     if (revents != 0) {
 	int i;
@@ -718,8 +718,7 @@ static bool
 SignalQueue(Task *taskPtr, unsigned int bit)
 {
     TaskQueue *queuePtr;
-    bool       pending = NS_FALSE;
-    bool       shutdown;
+    bool       pending = NS_FALSE, shutdown, result = NS_TRUE;
 
     NS_NONNULL_ASSERT(taskPtr != NULL);
 
@@ -744,12 +743,11 @@ SignalQueue(Task *taskPtr, unsigned int bit)
     }
     Ns_MutexUnlock(&queuePtr->lock);
     if (shutdown) {
-        return NS_FALSE;
-    }
-    if (!pending) {
+        result = NS_FALSE;
+    } else if (!pending) {
         TriggerQueue(queuePtr);
     }
-    return NS_TRUE;
+    return result;
 }
 
 
@@ -872,10 +870,11 @@ TaskThread(void *arg)
     firstWaitPtr = NULL;
 
     for (;;) {
-        int            n, broadcast, nfds;
-        bool           shutdown;
-	Ns_Time        now;
-        const Ns_Time *timeoutPtr;
+        int               n, broadcast;
+        NS_POLL_NFDS_TYPE nfds;
+        bool              shutdown;
+	Ns_Time           now;
+        const Ns_Time    *timeoutPtr;
 
         /*
          * Get the shutdown flag and process any incoming signals.
@@ -909,7 +908,7 @@ TaskThread(void *arg)
          */
 
         pfds[0].fd = queuePtr->trigger[0];
-        pfds[0].events = POLLIN;
+        pfds[0].events = (short)POLLIN;
         pfds[0].revents = 0;
         nfds = 1;
         timeoutPtr = NULL;
