@@ -2,7 +2,7 @@ Source: naviserver
 Section: web
 Priority: extra
 Maintainer: Qcode Software Ltd <hackers@qcode.co.uk> 
-Build-Depends: debhelper (>= 9),
+Build-Depends: debhelper (>= 9.20160114),
                dh-systemd,
                autotools-dev,
                tcl8.5-dev,
@@ -44,11 +44,3 @@ Description: Naviserver - development files
  to use, at both the C and Tcl level.
  This package contains header files and libraries needed to develop
  applications based on Naviserver.
-
-Package: naviserver-dbg
-Section: debug
-Priority: extra
-Architecture: any
-Depends: ${misc:Depends}, naviserver (= ${binary:Version})
-Description: Naviserver debugging symbols
- This package includes the debugging symbols for Naviserver.

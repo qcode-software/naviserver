@@ -1,3 +1,9 @@
+naviserver (4.99.15-1+deb8u2) jessie; urgency=medium
+
+  * Allow headerless replies for HTTP 0.9. Use auto dbgsym generation.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 16 Feb 2017 09:57:20 +0000
+
 naviserver (4.99.15-1+deb8u1) jessie; urgency=medium
 
   * Upstream 4.99.15 release
