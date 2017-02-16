@@ -7,7 +7,7 @@ Subject: Specify bash for distclean regexp
  1 file changed, 2 insertions(+)
 
 diff --git a/Makefile b/Makefile
-index a127f52..5f6b75f 100644
+index 2e0ffbd..73dfbb7 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -29,6 +29,8 @@

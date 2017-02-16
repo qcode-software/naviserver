@@ -7,10 +7,10 @@ Subject: Add to disclean files
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index 5f6b75f..5a2dd12 100644
+index 73dfbb7..4c9547c 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -259,8 +259,8 @@ clean-bak: clean
+@@ -267,8 +267,8 @@ clean-bak: clean
  
  distclean: clean
  	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
