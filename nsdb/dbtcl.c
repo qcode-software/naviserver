@@ -165,7 +165,7 @@ NsDbAddCmds(Tcl_Interp *interp, const void *arg)
  */
 
 int
-NsDbReleaseHandles(Tcl_Interp *interp, const void *arg)
+NsDbReleaseHandles(Tcl_Interp *interp, const void *UNUSED(arg))
 {
     InterpData     *idataPtr;
 
@@ -222,7 +222,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 	BINDROW, FLUSH, RELEASEHANDLE, RESETHANDLE, CONNECTED, SP_EXEC,
 	SP_GETPARAMS, SP_RETURNCODE, GETROW, DML, ONE_ROW, ZERO_OR_ONE_ROW, EXEC,
 	SELECT, SP_START, INTERPRETSQLFILE, VERBOSE, SETEXCEPTION, SP_SETPARAM,
-        STATS, LOGMINDURATION
+        STATS, LOGMINDURATION, SESSIONID
     };
     static const char *const subcmd[] = {
         "pools", "bouncepool", "gethandle", "exception", "poolname",
@@ -230,7 +230,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 	"bindrow", "flush", "releasehandle", "resethandle", "connected", "sp_exec",
 	"sp_getparams", "sp_returncode", "getrow", "dml", "1row", "0or1row", "exec",
 	"select", "sp_start", "interpretsqlfile", "verbose", "setexception", "sp_setparam",
-        "stats", "logminduration",
+        "stats", "logminduration", "session_id",
         NULL
     };
 
@@ -301,7 +301,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 	if (poolString == NULL) {
 	    pool = Ns_DbPoolDefault(idataPtr->server);
             if (pool == NULL) {
-                Tcl_SetResult(interp, "no defaultpool configured", TCL_STATIC);
+                Ns_TclPrintfResult(interp, "no defaultpool configured");
                 return TCL_ERROR;
             }
         } else {
@@ -414,7 +414,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             result = TCL_ERROR;
 
         } else {
-            Tcl_Obj *listObj = Tcl_NewListObj(2, NULL);
+            Tcl_Obj *listObj = Tcl_NewListObj(0, NULL);
             
             Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(handlePtr->cExceptionCode, -1));
             Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(handlePtr->dsExceptionMsg.string, -1));
@@ -432,22 +432,23 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
         break;
     }
 
-    case POOLNAME:
-    case PASSWORD:
-    case USER:
-    case DATASOURCE:
-    case DISCONNECT:
-    case DBTYPE:
-    case DRIVER:
-    case CANCEL:
-    case BINDROW:
-    case FLUSH:
-    case RELEASEHANDLE:
-    case RESETHANDLE:
-    case CONNECTED:
-    case SP_EXEC:
-    case SP_GETPARAMS:
-    case SP_RETURNCODE:
+    case POOLNAME:       /* fall through */
+    case PASSWORD:       /* fall through */
+    case USER:           /* fall through */
+    case DATASOURCE:     /* fall through */
+    case DISCONNECT:     /* fall through */
+    case DBTYPE:         /* fall through */
+    case DRIVER:         /* fall through */
+    case CANCEL:         /* fall through */
+    case BINDROW:        /* fall through */
+    case FLUSH:          /* fall through */
+    case RELEASEHANDLE:  /* fall through */
+    case RESETHANDLE:    /* fall through */
+    case CONNECTED:      /* fall through */
+    case SP_EXEC:        /* fall through */
+    case SP_GETPARAMS:   /* fall through */
+    case SP_RETURNCODE:  /* fall through */
+    case SESSIONID:   
 
         if (objc < 3) {
             Tcl_WrongNumArgs(interp, 2, objv, "dbId");
@@ -477,7 +478,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             break;
 
         case DATASOURCE:
-      	    Tcl_SetResult(interp, (char *)handlePtr->datasource, TCL_STATIC);
+      	    Tcl_SetObjResult(interp, Tcl_NewStringObj(handlePtr->datasource, -1));
             break;
 
         case DISCONNECT:
@@ -485,11 +486,11 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             break;
 
         case DBTYPE:
-            Tcl_SetResult(interp, Ns_DbDriverDbType(handlePtr), TCL_STATIC);
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_DbDriverDbType(handlePtr), -1));
             break;
 
         case DRIVER:
-            Tcl_SetResult(interp, Ns_DbDriverName(handlePtr), TCL_STATIC);
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_DbDriverName(handlePtr), -1));
             break;
 
         case CANCEL:
@@ -535,13 +536,22 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
       	    Tcl_SetObjResult(interp, Tcl_NewBooleanObj(handlePtr->connected));
             break;
 
+        case SESSIONID:
+            {
+                char idstr[TCL_INTEGER_SPACE + 4];
+                
+                snprintf(idstr, sizeof(idstr), "sid%" PRIuPTR, NsDbGetSessionId(handlePtr));
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(idstr, -1));
+            }
+            break;
+            
         case SP_EXEC:
 	    switch (Ns_DbSpExec(handlePtr)) {
 	    case NS_DML:
-	        Tcl_SetResult(interp, "NS_DML", TCL_STATIC);
+	        Tcl_SetObjResult(interp, Tcl_NewStringObj("NS_DML", 6));
 	        break;
 	    case NS_ROWS:
-	        Tcl_SetResult(interp, "NS_ROWS", TCL_STATIC);
+	        Tcl_SetObjResult(interp, Tcl_NewStringObj("NS_ROWS", 7));
 	        break;
 	    default:
 	        result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
@@ -637,10 +647,10 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
         case EXEC:
             switch (Ns_DbExec(handlePtr, Tcl_GetString(objv[3]))) {
             case NS_DML:
-                Tcl_SetResult(interp, "NS_DML", TCL_STATIC);
+                Tcl_SetObjResult(interp, Tcl_NewStringObj("NS_DML", 6));
                 break;
             case NS_ROWS:
-                Tcl_SetResult(interp, "NS_ROWS", TCL_STATIC);
+                Tcl_SetObjResult(interp, Tcl_NewStringObj("NS_ROWS", 7));
                 break;
             default:
                 result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
@@ -661,7 +671,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 	    if (Ns_DbSpStart(handlePtr, Tcl_GetString(objv[3])) != NS_OK) {
 	        result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
 	    } else {
-                Tcl_SetResult(interp, "0", TCL_STATIC);
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
             }
             break;
 
@@ -678,10 +688,10 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             }
             switch (Ns_DbGetRow(handlePtr, rowPtr)) {
             case NS_OK:
-                Tcl_SetResult(interp, "1", TCL_STATIC);
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
                 break;
             case NS_END_DATA:
-                Tcl_SetResult(interp, "0", TCL_STATIC);
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
                 break;
             default:
                 result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
@@ -749,8 +759,8 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             const char *arg5 = Tcl_GetString(objv[5]);
             
             if (!STREQ(arg5, "in") && !STREQ(arg5, "out")) {
-                Tcl_SetResult(interp, "inout parameter of setparam must "
-                              "be \"in\" or \"out\"", TCL_STATIC);
+                Ns_TclPrintfResult(interp, "inout parameter of setparam must "
+                              "be \"in\" or \"out\"");
                 result = TCL_ERROR;
             } else {
                 assert(handlePtr != NULL);
@@ -762,7 +772,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
                                     Tcl_GetString(objv[6])) != NS_OK) {
                     result = DbFail(interp, handlePtr, Tcl_GetString(objv[1]));
                 } else {
-                    Tcl_SetResult(interp, "1", TCL_STATIC);
+                    Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
                 }
             }
         }
@@ -989,7 +999,7 @@ static int
 GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     int           result = TCL_OK;
-    char         *delimiter = ",", *fileId, *varName;
+    char         *delimiter = (char *)",", *fileId, *varName;
     Tcl_Channel	  chan;
     Ns_ObjvSpec   opts[] = {
         {"-delimiter", Ns_ObjvString,   &delimiter, NULL},
@@ -1023,7 +1033,7 @@ GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Ob
                                    fileId, Tcl_PosixError(interp));
                 return TCL_ERROR;
             }
-            Tcl_SetResult(interp, "-1", TCL_STATIC);
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(-1));
             return TCL_OK;
         }
 

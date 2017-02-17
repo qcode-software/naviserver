@@ -432,7 +432,7 @@ retry:
 	if (Tcl_RecordAndEval(interp, ds.string, 0) != TCL_OK) {
 	    (void) Ns_TclLogErrorInfo(interp, "\n(context: nscp)");
 	}
-	Tcl_AppendResult(interp, "\r\n", NULL);
+	Tcl_AppendResult(interp, "\r\n", (char *)0);
 	res = Tcl_GetStringResult(interp);
 	len = strlen(res);
 	while (len > 0u) {
@@ -666,7 +666,7 @@ ExitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* 
         int *stopPtr = (int *) clientData;
         
         *stopPtr = 1;
-        Tcl_SetResult(interp, "\nGoodbye!", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "\nGoodbye!");
     }
     return result;
 }

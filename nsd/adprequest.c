@@ -121,77 +121,106 @@ static Ns_ReturnCode
 PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned int aflags)
 {
     const Conn     *connPtr = (const Conn *) conn;
-    Tcl_Interp     *interp;
-    NsInterp       *itPtr;
-    const char     *type, *start;
-    const NsServer *servPtr;
-    Tcl_Obj        *objv[2];
-    int             result;
+    NsServer       *servPtr;
+    bool            fileNotFound;
+    Tcl_DString     ds, *dsPtr = NULL;
     Ns_ReturnCode   status;
 
     NS_NONNULL_ASSERT(connPtr != NULL);
 
+    servPtr = connPtr->poolPtr->servPtr;
+    
     /*
      * Verify the file exists.
      */
 
-    if (file == NULL || access(file, R_OK) != 0) {
-        return Ns_ConnReturnNotFound(conn);
-    }
-
-    interp = Ns_GetConnInterp(conn);
-    itPtr = NsGetInterpData(interp);
-
-
-    /*
-     * Set the output type based on the file type.
-     */
-
-    type = Ns_GetMimeType(file);
-    if (type == NULL || STREQ(type, "*/*")) {
-        type = NSD_TEXTHTML;
-    }
-    Ns_ConnSetEncodedTypeHeader(conn, type);
-
-    /*
-     * Enable TclPro debugging if requested.
-     */
-
-    servPtr = connPtr->poolPtr->servPtr;
-    if ((servPtr->adp.flags & ADP_DEBUG) != 0u &&
-        conn->request.method != NULL &&
-        STREQ(conn->request.method, "GET")) {
-        const Ns_Set *query = Ns_ConnGetQuery(conn);
+    if (file == NULL) {
+        fileNotFound = NS_TRUE;
         
-        if (query != NULL) {
-            itPtr->adp.debugFile = Ns_SetIGet(query, "debug");
+    } else if (access(file, R_OK) == 0) {
+        fileNotFound = NS_FALSE;
+        
+    } else if (servPtr->adp.defaultExtension != NULL) {
+        
+        Tcl_DStringInit(&ds);
+        dsPtr = &ds;
+        
+        Tcl_DStringAppend(dsPtr, file, -1);
+        Tcl_DStringAppend(dsPtr, servPtr->adp.defaultExtension, -1);
+        
+        if (access(dsPtr->string, R_OK) == 0) {
+            file = dsPtr->string;
+            fileNotFound = NS_FALSE;
+        } else {
+            fileNotFound = NS_TRUE;
+        }
+    } else {
+        fileNotFound = NS_TRUE;
+    }
+    
+    if (fileNotFound) {
+        status = Ns_ConnReturnNotFound(conn);
+        
+    } else {
+        Tcl_Interp     *interp = Ns_GetConnInterp(conn);
+        NsInterp       *itPtr = NsGetInterpData(interp);
+        const char     *type, *start;
+        Tcl_Obj        *objv[2];
+        int             result;
+        
+        /*
+         * Set the output type based on the file type.
+         */
+
+        type = Ns_GetMimeType(file);
+        if (type == NULL || STREQ(type, "*/*")) {
+            type = NSD_TEXTHTML;
+        }
+        Ns_ConnSetEncodedTypeHeader(conn, type);
+
+        /*
+         * Enable TclPro debugging if requested.
+         */
+
+        servPtr = connPtr->poolPtr->servPtr;
+        if ((servPtr->adp.flags & ADP_DEBUG) != 0u &&
+            conn->request.method != NULL &&
+            STREQ(conn->request.method, "GET")) {
+            const Ns_Set *query = Ns_ConnGetQuery(conn);
+        
+            if (query != NULL) {
+                itPtr->adp.debugFile = Ns_SetIGet(query, "debug");
+            }
+        }
+
+        /*
+         * Include the ADP with the special start page and null args.
+         */
+
+        itPtr->adp.flags |= aflags;
+        itPtr->adp.conn = conn;
+        start = ((servPtr->adp.startpage != NULL) ? servPtr->adp.startpage : file);
+        objv[0] = Tcl_NewStringObj(start, -1);
+        objv[1] = Tcl_NewStringObj(file, -1);
+        Tcl_IncrRefCount(objv[0]);
+        Tcl_IncrRefCount(objv[1]);
+        result = NsAdpInclude(itPtr, 2, objv, start, expiresPtr);
+        Tcl_DecrRefCount(objv[0]);
+        Tcl_DecrRefCount(objv[1]);
+
+        if (itPtr->adp.exception == ADP_TIMEOUT) {
+            status = Ns_ConnReturnUnavailable(conn);
+        
+        } else if (NsAdpFlush(itPtr, NS_FALSE) != TCL_OK || result != TCL_OK) {
+            status = NS_ERROR;
+        } else {
+            status = NS_OK;
         }
     }
 
-    /*
-     * Include the ADP with the special start page and null args.
-     */
-
-    itPtr->adp.flags |= aflags;
-    itPtr->adp.conn = conn;
-    start = ((servPtr->adp.startpage != NULL) ? servPtr->adp.startpage : file);
-    objv[0] = Tcl_NewStringObj(start, -1);
-    objv[1] = Tcl_NewStringObj(file, -1);
-    Tcl_IncrRefCount(objv[0]);
-    Tcl_IncrRefCount(objv[1]);
-    result = NsAdpInclude(itPtr, 2, objv, start, expiresPtr);
-    Tcl_DecrRefCount(objv[0]);
-    Tcl_DecrRefCount(objv[1]);
-
-    if (itPtr->adp.exception == ADP_TIMEOUT) {
-        status = Ns_ConnReturnUnavailable(conn);
-        
-    } else if (NsAdpFlush(itPtr, NS_FALSE) != TCL_OK || result != TCL_OK) {
-        status = NS_ERROR;
-    } else {
-        status = NS_OK;
+    if (dsPtr != NULL) {
+        Tcl_DStringFree(dsPtr);
     }
-    
     return status;
 }
 
@@ -216,11 +245,10 @@ int
 NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
     char          *method, *url, *file = NULL;
-    int            noinherit = 0;
-    unsigned int   rflags = 0u, aflags = 0u;
+    int            noinherit = 0, result;
+    unsigned int   aflags = 0u;
     Ns_Time       *expiresPtr = NULL;
-
-    Ns_ObjvSpec opts[] = {
+    Ns_ObjvSpec    opts[] = {
 	{"-noinherit", Ns_ObjvBool,  &noinherit,  INT2PTR(NS_TRUE)},
         {"-expires",   Ns_ObjvTime,  &expiresPtr, NULL},
         {"-options",   Ns_ObjvFlags, &aflags,     adpOpts},
@@ -233,20 +261,26 @@ NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
         {"?file",    Ns_ObjvString, &file,     NULL},
         {NULL, NULL, NULL, NULL}
     };
+
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
+        result = TCL_ERROR;
+
+    } else {
+        unsigned int rflags = 0u;
+        
+        if (noinherit != 0) {
+            rflags |= NS_OP_NOINHERIT;
+        }
+        result = RegisterPage(clientData, method, url, file, expiresPtr, rflags, aflags);
     }
-    if (noinherit != 0) {rflags |= NS_OP_NOINHERIT;}
-    return RegisterPage(clientData, method, url, file, expiresPtr, rflags, aflags);
+    return result;
 }
 
 int
 NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int          noinherit = 0;
-    unsigned int rflags = 0u;
-    char        *method, *url, *file = NULL;
-
+    int         noinherit = 0, result;
+    char       *method, *url, *file = NULL;
     Ns_ObjvSpec opts[] = {
         {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_TRUE)},
         {"--",         Ns_ObjvBreak, NULL,    NULL},
@@ -258,11 +292,18 @@ NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
         {"?file",    Ns_ObjvString, &file,     NULL},
         {NULL, NULL, NULL, NULL}
     };
+    
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
+        result = TCL_ERROR;
+    } else {
+        unsigned int rflags = 0u;
+
+        if (noinherit != 0) {
+            rflags |= NS_OP_NOINHERIT;
+        }
+        result = RegisterPage(clientData, method, url, file, NULL, rflags, ADP_TCLFILE);
     }
-    if (noinherit != 0) {rflags |= NS_OP_NOINHERIT;}
-    return RegisterPage(clientData, method, url, file, NULL, rflags, ADP_TCLFILE);
+    return result;
 }
 
 
@@ -437,7 +478,7 @@ Ns_AdpFlush(Tcl_Interp *interp, bool doStream)
     if (likely(itPtr != NULL)) {
         result = NsAdpFlush(itPtr, doStream);
     } else {
-        Tcl_SetResult(interp, "not a server interp", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "not a server interp");
         result = TCL_ERROR;
     }
     return result;
@@ -465,7 +506,7 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
 
     if (conn == NULL) {
         assert(itPtr->adp.chan == NULL);
-        Tcl_SetResult(interp, "no adp output context", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "no adp output context");
         return TCL_ERROR;
     }
     assert(conn != NULL);
@@ -508,7 +549,7 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
     Tcl_ResetResult(interp);
 
     if (itPtr->adp.exception == ADP_ABORT) {
-        Tcl_SetResult(interp, "adp flush disabled: adp aborted", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "adp flush disabled: adp aborted");
     } else
     if ((conn->flags & NS_CONN_SENT_VIA_WRITER) != 0u || (len == 0 && doStream)) {
         result = TCL_OK;
@@ -529,8 +570,7 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
         } else {
             if ((conn->flags & NS_CONN_CLOSED) != 0u) {
                 result = TCL_OK;
-                Tcl_SetResult(interp, "adp flush failed: connection closed",
-                              TCL_STATIC);
+                Ns_TclPrintfResult(interp, "adp flush failed: connection closed");
             } else {
 		struct iovec sbuf;
 
@@ -550,9 +590,7 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
                     result = TCL_OK;
                 }
                 if (result != TCL_OK) {
-                    Tcl_SetResult(interp,
-                                  "adp flush failed: connection flush error",
-                                  TCL_STATIC);
+                    Ns_TclPrintfResult(interp, "adp flush failed: connection flush error");
                 }
             }
         }

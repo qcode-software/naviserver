@@ -11,7 +11,7 @@
  *
  * The Original Code is AOLserver Code and related documentation
  * distributed by AOL.
- * 
+ *
  * The Initial Developer of the Original Code is America Online,
  * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
  * Inc. All Rights Reserved.
@@ -27,7 +27,7 @@
  * version of this file under either the License or the GPL.
  */
 
-/* 
+/*
  * nsdb.c --
  *
  *	Database module entry point.
@@ -56,15 +56,15 @@ NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
  */
 
 NS_EXPORT Ns_ReturnCode
-Ns_ModuleInit(const char *server, const char *module)
+Ns_ModuleInit(const char *server, const char *UNUSED(module))
 {
     Ns_ReturnCode status = NS_OK;
-    static bool   once = NS_FALSE;
+    static bool   initialized = NS_FALSE;
 
-    if (!once) {
+    if (!initialized) {
         Ns_LogSqlDebug = Ns_CreateLogSeverity("Debug(sql)");
 	NsDbInitPools();
-	once = NS_TRUE;
+	initialized = NS_TRUE;
     }
     NsDbInitServer(server);
     if (Ns_TclRegisterTrace(server, NsDbAddCmds, server,

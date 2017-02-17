@@ -40,13 +40,10 @@
  * Local functions defined in this file.
  */
 
-static Ns_Conn *GetConn(Tcl_Interp *interp)
-    NS_GNUC_NONNULL(1);
-
 static int SearchFirstCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName, const char *name) 
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
-static int DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
+static bool DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 
@@ -305,10 +302,10 @@ SearchFirstCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName, con
  *----------------------------------------------------------------------
  */
 
-static int
+static bool
 DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
 {
-    int success = 0;
+    bool success = NS_FALSE;
 
     NS_NONNULL_ASSERT(hdrs != NULL);
     NS_NONNULL_ASSERT(setName != NULL);
@@ -318,7 +315,7 @@ DeleteNamedCookies(Ns_Set *hdrs, const char *setName, const char *name)
 	int idx = SearchFirstCookie(NULL, hdrs, setName, name);
 	if (idx != -1) {
 	    Ns_SetDelete(hdrs, idx);
-	    success = 1;
+	    success = NS_TRUE;
 	} else {
 	    break;
 	}
@@ -501,14 +498,11 @@ Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
 int
 NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    Ns_Conn       *conn = GetConn(interp);
+    Ns_Conn       *conn;
     char          *name, *data, *domain = NULL, *path = NULL;
-    int            secure = 0, scriptable = 0, discard = 0, replace = 0;
-    unsigned int   flags = 0u;
-    time_t         maxage;
+    int            secure = 0, scriptable = 0, discard = 0, replace = 0, result;
     Ns_Time       *expiresPtr = NULL;
-
-    Ns_ObjvSpec opts[] = {
+    Ns_ObjvSpec    opts[] = {
         {"-discard",    Ns_ObjvBool,   &discard,    NULL},
         {"-replace",    Ns_ObjvBool,   &replace,    NULL},
         {"-secure",     Ns_ObjvBool,   &secure,     NULL},
@@ -519,50 +513,57 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         {"--",          Ns_ObjvBreak,  NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
-    Ns_ObjvSpec args[] = {
+    Ns_ObjvSpec    args[] = {
         {"name", Ns_ObjvString, &name, NULL},
         {"data", Ns_ObjvString, &data, NULL},
         {NULL, NULL, NULL, NULL}
     };
-    if (conn == NULL || Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
-    }
+    
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK
+        || NsConnRequire(interp, &conn) != NS_OK) {
+        result = TCL_ERROR;
 
-    if (secure != 0) {
-        flags |= NS_COOKIE_SECURE;
-    }
-    if (scriptable != 0) {
-        flags |= NS_COOKIE_SCRIPTABLE;
-    }
-    if (discard != 0) {
-        flags |= NS_COOKIE_DISCARD;
-    }
-    if (replace != 0) {
-        flags |= NS_COOKIE_REPLACE;
-    }
-
-    /*
-     * Accept expiry time as relative or absolute and adjust to the relative
-     * time Ns_ConnSetCookieEx expects, taking account of the special value
-     * -1 which is short hand for infinite.
-     */
-
-    if (expiresPtr != NULL) {
-        const Ns_Time *nowPtr = Ns_ConnStartTime(conn); /* Approximately now... */
-        if (expiresPtr->sec < 0) {
-            maxage = TIME_T_MAX;
-        } else if (expiresPtr->sec > nowPtr->sec) {
-            maxage = (time_t)expiresPtr->sec - (time_t)nowPtr->sec;
-        } else {
-            maxage = expiresPtr->sec;
-        }
     } else {
-        maxage = 0;
+        unsigned int   flags = 0u;
+        time_t         maxage;
+
+        if (secure != 0) {
+            flags |= NS_COOKIE_SECURE;
+        }
+        if (scriptable != 0) {
+            flags |= NS_COOKIE_SCRIPTABLE;
+        }
+        if (discard != 0) {
+            flags |= NS_COOKIE_DISCARD;
+        }
+        if (replace != 0) {
+            flags |= NS_COOKIE_REPLACE;
+        }
+
+        /*
+         * Accept expiry time as relative or absolute and adjust to the relative
+         * time Ns_ConnSetCookieEx expects, taking account of the special value
+         * -1 which is short hand for infinite.
+         */
+
+        if (expiresPtr != NULL) {
+            const Ns_Time *nowPtr = Ns_ConnStartTime(conn); /* Approximately now... */
+            if (expiresPtr->sec < 0) {
+                maxage = TIME_T_MAX;
+            } else if (expiresPtr->sec > nowPtr->sec) {
+                maxage = (time_t)expiresPtr->sec - (time_t)nowPtr->sec;
+            } else {
+                maxage = expiresPtr->sec;
+            }
+        } else {
+            maxage = 0;
+        }
+
+        Ns_ConnSetCookieEx(conn, name, data, maxage, domain, path, flags);
+        result = TCL_OK;
     }
 
-    Ns_ConnSetCookieEx(conn, name, data, maxage, domain, path, flags);
-
-    return TCL_OK;
+    return result;
 }
 
 
@@ -586,11 +587,10 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 int
 NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const Ns_Conn *conn;
-    Ns_DString     ds;
+    Ns_Conn       *conn;
     char          *nameString;
     Tcl_Obj       *defaultObj = NULL;
-    int            idx = -1, status = TCL_OK;
+    int            status = TCL_OK;
     int            withSetCookies = (int)NS_FALSE;
 
     Ns_ObjvSpec opts[] = {
@@ -603,34 +603,35 @@ NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         {"?default",  Ns_ObjvObj,    &defaultObj,  NULL},
         {NULL, NULL, NULL, NULL}
     };
-    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
-    }
-    
-    conn = GetConn(interp);
-    if (unlikely(conn == NULL)) {
-        return TCL_ERROR;
-    }
 
-    Ns_DStringInit(&ds);
-
-    if (withSetCookies == (int)NS_TRUE) {
-	idx = SearchFirstCookie(&ds, Ns_ConnOutputHeaders(conn), "set-cookie", nameString);
-    }
-    if (idx == -1) {
-	idx = SearchFirstCookie(&ds, Ns_ConnHeaders(conn), "cookie", nameString);
-    }
-    
-    if (idx != -1) {
-        Tcl_DStringResult(interp, &ds);
-    } else if (defaultObj != NULL) {
-        Tcl_SetObjResult(interp, defaultObj);
-    } else {
-        Tcl_SetResult(interp, "no matching cookie", TCL_STATIC);
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK
+        || NsConnRequire(interp, &conn) != NS_OK) {
         status = TCL_ERROR;
-    }
-    Ns_DStringFree(&ds);
 
+    } else {
+        Ns_DString     ds;
+        int            idx = -1;
+
+        Ns_DStringInit(&ds);
+
+        if (withSetCookies == (int)NS_TRUE) {
+            idx = SearchFirstCookie(&ds, Ns_ConnOutputHeaders(conn), "set-cookie", nameString);
+        }
+        if (idx == -1) {
+            idx = SearchFirstCookie(&ds, Ns_ConnHeaders(conn), "cookie", nameString);
+        }
+    
+        if (idx != -1) {
+            Tcl_DStringResult(interp, &ds);
+        } else if (defaultObj != NULL) {
+            Tcl_SetObjResult(interp, defaultObj);
+        } else {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj("no matching cookie", -1));
+            status = TCL_ERROR;
+        }
+        Ns_DStringFree(&ds);
+    }
+    
     return status;
 }
 
@@ -654,11 +655,9 @@ NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 int
 NsTclDeleteCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const Ns_Conn  *conn = GetConn(interp);
+    Ns_Conn        *conn;
     char           *name, *domain = NULL, *path = NULL;
-    unsigned int    flags = 0;
-    int             secure = 0, replace = 0;
-
+    int             secure = 0, replace = 0, result;
     Ns_ObjvSpec     opts[] = {
         {"-secure",  Ns_ObjvBool,   &secure,  NULL},
         {"-domain",  Ns_ObjvString, &domain,  NULL},
@@ -671,53 +670,26 @@ NsTclDeleteCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
         {"name",  Ns_ObjvString, &name, NULL},
         {NULL, NULL, NULL, NULL}
     };
-    if (conn == NULL || Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        return TCL_ERROR;
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK
+        || NsConnRequire(interp, &conn) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        unsigned int flags = 0u;
+
+        if (replace != 0) {
+            flags |= NS_COOKIE_REPLACE;
+        }
+        if (secure != 0) {
+            flags |= NS_COOKIE_SECURE;
+        }
+
+        Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW|flags);
+        result = TCL_OK;
     }
 
-    if (replace != 0) {
-        flags |= NS_COOKIE_REPLACE;
-    }
-    if (secure != 0) {
-        flags |= NS_COOKIE_SECURE;
-    }
-
-    Ns_ConnSetCookieEx(conn, name, NULL, (time_t)0, domain, path, NS_COOKIE_EXPIRENOW|flags);
-
-    return TCL_OK;
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * GetConn --
- *
- *      Return the conn for the given interp, logging an error if
- *      not available.
- *
- * Results:
- *      Ns_Conn pointer or NULL.
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
- */
-
-static Ns_Conn *
-GetConn(Tcl_Interp *interp)
-{
-    Ns_Conn *conn;
-
-    NS_NONNULL_ASSERT(interp != NULL);
-    
-    conn = Ns_TclGetConn(interp);
-    if (conn == NULL) {
-        Tcl_SetResult(interp, "No connection available.", TCL_STATIC);
-    }
-
-    return conn;
+    return result;
 }
 
 /*

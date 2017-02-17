@@ -56,6 +56,9 @@ static void Abort(int signal);
 static bool GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, char **freePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5);
 
+static bool GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr)
+    NS_GNUC_NONNULL(5);
+
 /*
  * Static variables defined in this file.
  */
@@ -447,13 +450,13 @@ ns_sock_set_blocking(NS_SOCKET sock, bool blocking)
 {
     int result;
 #if defined USE_FIONBIO
-    int state = (blocking == 0);
+    int state = (!blocking);
 
     result = ioctl(sock, FIONBIO, &state);
 #else
     int flags = fcntl(sock, F_GETFL, 0);
 
-    if (blocking != 0) {
+    if (blocking) {
 	result = fcntl(sock, F_SETFL, flags & ~O_NONBLOCK);
     } else {
 	result = fcntl(sock, F_SETFL, flags|O_NONBLOCK);
@@ -557,7 +560,7 @@ GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, 
  *----------------------------------------------------------------------
  */
 
-bool
+static bool
 GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr) {
     struct passwd *pwPtr;
     bool           success;
@@ -565,6 +568,8 @@ GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **fr
     struct passwd  pw;
     char          *buffer;
     size_t         bufSize = 4096u;
+
+    NS_NONNULL_ASSERT(freePtr != NULL);
 
     pwPtr = NULL;
     buffer = ns_malloc(bufSize);

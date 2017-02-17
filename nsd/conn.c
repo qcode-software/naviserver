@@ -1346,7 +1346,6 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     Tcl_Channel          chan;
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
-    Ns_DString           ds;
     int                  idx, off, len, opt = 0, n, result = TCL_OK;
     const char          *setName;
     int                  setNameLength;
@@ -1414,7 +1413,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         && unlikely(opt != (int)CIsConnectedIdx)
         && unlikely(connPtr == NULL)
         ) {
-        Tcl_SetResult(interp, "no current connection", TCL_STATIC);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj("no current connection", -1));
         result = TCL_ERROR;
     }
 
@@ -1859,10 +1858,14 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case CLocationIdx:
-        Ns_DStringInit(&ds);
-        (void) Ns_ConnLocationAppend(conn, &ds);
-        Tcl_DStringResult(interp, &ds);
-        break;
+        {
+            Tcl_DString ds;
+            
+            Ns_DStringInit(&ds);
+            (void) Ns_ConnLocationAppend(conn, &ds);
+            Tcl_DStringResult(interp, &ds);
+            break;
+        }
 
     case CDriverIdx:
         Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnDriverName(conn), -1));
@@ -2042,11 +2045,8 @@ NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
         {NULL,       NULL,          NULL,      NULL}
     };
 
-    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
-        result = TCL_ERROR;
-        
-    } else if (itPtr->conn == NULL) {
-        Tcl_SetResult(interp, "no connection", TCL_STATIC);
+    if (NsConnRequire(interp, NULL) != NS_OK
+        || Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
         
     } else if (GetChan(interp, chanName, &chan) != TCL_OK) {
@@ -2063,7 +2063,7 @@ NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
             toCopy = (int)reqPtr->avail;
         }
         if (Ns_ConnCopyToChannel(itPtr->conn, (size_t)toCopy, chan) != NS_OK) {
-            Tcl_SetResult(interp, "could not copy content", TCL_STATIC);
+            Tcl_SetObjResult(interp, Tcl_NewStringObj("could not copy content", -1));
             result = TCL_ERROR;
         }
     }
@@ -2275,6 +2275,47 @@ MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
     
     return chan;
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsConnRequire --
+ *
+ *      Return the conn for the given interp. In case that interp is not
+ *      connected, return NS_ERROR. If connPtr is given, it sets the conn to
+ *      that address on success.
+ *
+ * Results:
+ *      NaviServer result code
+ *
+ * Side effects:
+ *      Sets Tcl result on error.
+ *
+ *----------------------------------------------------------------------
+ */
+
+Ns_ReturnCode
+NsConnRequire(Tcl_Interp *interp, Ns_Conn **connPtr)
+{
+    Ns_Conn      *conn;
+    Ns_ReturnCode status;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+
+    conn = Ns_TclGetConn(interp);
+    if (conn == NULL) {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj("no connection", -1));
+        status = NS_ERROR;
+    } else {
+        if (connPtr != NULL) {
+            *connPtr = conn;
+        }
+        status = NS_OK;
+    }
+    
+    return status;
+}
+
 
 /*
  * Local Variables:
