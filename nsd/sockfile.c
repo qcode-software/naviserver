@@ -160,7 +160,7 @@ Sendfile(Ns_Sock *sock, int fd, off_t offset, size_t toSend, const Ns_Time *time
 
 ssize_t
 Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
-                    const Ns_Time *timeoutPtr, unsigned int flags)
+                    const Ns_Time *timeoutPtr, unsigned int UNUSED(flags))
 {
 
     ssize_t       sent, towrite, nwrote;
@@ -399,11 +399,11 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
     
     /* fprintf(stderr, "### Ns_SockCork sock %d %d\n", sockPtr->sock, cork); */
 
-    if (cork && (sockPtr->flags & NS_CONN_SOCK_CORKED)) {
+    if (cork && (sockPtr->flags & NS_CONN_SOCK_CORKED) != 0u) {
 	/*
 	 * Don't cork an already corked connection.
 	 */
-    } else if (!cork && (sockPtr->flags & NS_CONN_SOCK_CORKED) == 0) {
+    } else if (!cork && (sockPtr->flags & NS_CONN_SOCK_CORKED) == 0u) {
 	/*
 	 * Don't uncork an already uncorked connection.
 	 */
@@ -415,10 +415,10 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
 	 * socket is already closed (don't complain in such cases to the
 	 * error.log).
 	 */
-#if defined(TCP_CORK)
+# if defined(TCP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) == 0) {
-            if ((sockPtr->sock == NS_INVALID_SOCKET)
-                || (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &corkInt, sizeof(corkInt)) == -1)
+            if ((sockPtr->sock != NS_INVALID_SOCKET)
+                && (setsockopt(sockPtr->sock, IPPROTO_TCP, TCP_CORK, &corkInt, sizeof(corkInt)) == -1)
                 ) {
                 Ns_Log(Error, "socket(%d): setsockopt(TCP_CORK) %d: %s",
                        sockPtr->sock, corkInt, ns_sockstrerror(ns_sockerrno));
@@ -426,11 +426,11 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
                 success = NS_TRUE;
             }
         }
-#endif
-#if defined(UDP_CORK)
+# endif
+# if defined(UDP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) != 0) {
-            if ((sockPtr->sock == NS_INVALID_SOCKET)
-                || (setsockopt(sockPtr->sock, IPPROTO_UDP, UDP_CORK, &corkInt, sizeof(corkInt)) == -1)
+            if ((sockPtr->sock != NS_INVALID_SOCKET)
+                && setsockopt(sockPtr->sock, IPPROTO_UDP, UDP_CORK, &corkInt, sizeof(corkInt)) == -1)
                 ) {
                 Ns_Log(Error, "socket(%d): setsockopt(UDP_CORK) %d: %s",
                        sockPtr->sock, corkInt, ns_sockstrerror(ns_sockerrno));
@@ -438,7 +438,7 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
                 success = NS_TRUE;
             }
         }
-#endif
+# endif
         if (success) {
             /*
              * On success, update the corked flag.
@@ -450,6 +450,9 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
 	    }
 	}
     }
+#else
+    (void)cork;
+    (void)sock;
 #endif
     return success;
 }

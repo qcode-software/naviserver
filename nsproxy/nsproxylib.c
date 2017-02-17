@@ -193,7 +193,7 @@ typedef enum Err {
     EEvalTimeout
 } Err;
 
-static char *errMsg[] = {
+static const char *errMsg[] = {
     "no error",
     "currently evaluating a script",
     "child process died",
@@ -211,7 +211,7 @@ static char *errMsg[] = {
     NULL
 };
 
-static char *errCode[] = {
+static const char *errCode[] = {
     "ENone",
     "EBusy",
     "EDead",
@@ -286,7 +286,7 @@ static void   Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr) NS_GNUC_N
 
 static void   UpdateIov(struct iovec *iov, size_t n) NS_GNUC_NONNULL(1);
 static void   SetOpt(const char *str, char const **optPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static void   ReaperThread(void *ignored);
+static void   ReaperThread(void *UNUSED(arg));
 static void   CloseSlave(Slave *slavePtr, int ms) NS_GNUC_NONNULL(1);
 static void   ReapProxies(void);
 static long   GetTimeDiff(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
@@ -591,7 +591,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
  */
 
 int
-Ns_ProxyCleanup(Tcl_Interp *interp, const void *ignored)
+Ns_ProxyCleanup(Tcl_Interp *interp, const void *UNUSED(arg))
 {
     InterpData *idataPtr = Tcl_GetAssocData(interp, ASSOC_DATA, NULL);
 
@@ -621,7 +621,7 @@ Ns_ProxyCleanup(Tcl_Interp *interp, const void *ignored)
  */
 
 void
-Shutdown(const Ns_Time *toutPtr, void *arg)
+Shutdown(const Ns_Time *toutPtr, void *UNUSED(arg))
 {
     Pool           *poolPtr;
     Proxy          *proxyPtr, *tmpPtr;
@@ -1438,7 +1438,7 @@ Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
 {
     Res          hdr;
     const char  *einfo = NULL, *ecode = NULL, *result = NULL;
-    unsigned int clen = 0, ilen = 0, rlen = 0;
+    unsigned int clen = 0u, ilen = 0u, rlen = 0u;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
@@ -1450,8 +1450,8 @@ Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
             ecode = Tcl_GetVar(interp, "errorCode", TCL_GLOBAL_ONLY);
             einfo = Tcl_GetVar(interp, "errorInfo", TCL_GLOBAL_ONLY);
         }
-        clen = (ecode != NULL) ? ((unsigned int)strlen(ecode) + 1) : 0;
-        ilen = (einfo != NULL) ? ((unsigned int)strlen(einfo) + 1) : 0;
+        clen = (ecode != NULL) ? ((unsigned int)strlen(ecode) + 1) : 0u;
+        ilen = (einfo != NULL) ? ((unsigned int)strlen(einfo) + 1) : 0u;
         result = Tcl_GetStringResult(interp);
         rlen = (unsigned int)strlen(result);
     }
@@ -2779,7 +2779,7 @@ CloseProxy(Proxy *proxyPtr)
  */
 
 static void
-ReaperThread(void *ignored)
+ReaperThread(void *UNUSED(arg))
 {
     Tcl_HashSearch  search;
     Proxy          *proxyPtr, *prevPtr, *nextPtr;
@@ -3362,7 +3362,7 @@ DeleteData(ClientData clientData, Tcl_Interp *interp)
  */
 
 static void
-ReapProxies()
+ReapProxies(void)
 {
     Ns_MutexLock(&plock);
     if (reaperState == Stopped) {

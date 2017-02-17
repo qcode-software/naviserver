@@ -444,7 +444,7 @@ JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 
     int          result = TCL_OK, max = NS_JOB_DEFAULT_MAXTHREADS;
     Tcl_Obj     *queueIdObj;
-    char        *descString  = "";
+    char        *descString  = (char *)"";
     Ns_ObjvSpec  lopts[] = {
         {"-desc",   Ns_ObjvString,   &descString,   NULL},
         {NULL, NULL, NULL, NULL}
@@ -543,12 +543,13 @@ JobDeleteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 static int
 JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    int         result = TCL_OK, create = 0, head = 0, detached = 0;
+    int         result = TCL_OK, head = 0, detached = 0;
+    bool        create = NS_FALSE;
     char       *script = NULL, *jobIdString = NULL, *queueIdString = NULL;
     char        buf[100];
     Ns_ObjvSpec lopts[] = {
+        {"-detached",  Ns_ObjvBool,    &detached,    INT2PTR(NS_TRUE)},        
         {"-head",      Ns_ObjvBool,    &head,        INT2PTR(NS_TRUE)},
-        {"-detached",  Ns_ObjvBool,    &detached,    INT2PTR(NS_TRUE)},
         {"-jobid",     Ns_ObjvString,  &jobIdString, NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -646,10 +647,10 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
          */
 
         if (tp.nidle == 0 && tp.nthreads < tp.maxThreads) {
-            create = 1;
+            create = NS_TRUE;
             ++tp.nthreads;
         } else {
-            create = 0;
+            create = NS_FALSE;
         }
 
         Tcl_DStringAppend(&jobPtr->id, jobIdString, -1);
@@ -661,7 +662,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
             (void)ReleaseQueue(queue, NS_TRUE);
         }
         Ns_MutexUnlock(&tp.queuelock);
-        if (create != 0) {
+        if (create) {
             Ns_ThreadCreate(JobThread, NULL, 0, NULL);
         }
         if (result == TCL_OK) {
@@ -749,7 +750,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
                 Ns_ReturnCode timedOut = Ns_CondTimedWait(&queue->cond,
                                                           &queue->lock, &timeout);
                 if (timedOut == NS_TIMEOUT) {
-                    Tcl_SetResult(interp, "Wait timed out.", TCL_STATIC);
+                    Ns_TclPrintfResult(interp, "Wait timed out.");
                     Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
                     jobPtr->req = JOB_NONE;
                     result = TCL_ERROR;
@@ -772,7 +773,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
          */
         hPtr = Tcl_FindHashEntry(&queue->jobs, jobIdString);
         if (hPtr == NULL || jobPtr == Tcl_GetHashValue(hPtr)) {
-            Tcl_SetResult(interp, "Internal ns_job error.", TCL_STATIC);
+            Ns_TclPrintfResult(interp, "Internal ns_job error.");
             /*
              * logically, there should be a "result = TCL_ERROR;"
              * here. however, this would change the results of the
@@ -972,7 +973,7 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
                 Ns_ReturnCode timedOut = Ns_CondTimedWait(&queue->cond,
                                                           &queue->lock, &timeout);
                 if (timedOut == NS_TIMEOUT) {
-                    Tcl_SetResult(interp, "Wait timed out.", TCL_STATIC);
+                    Ns_TclPrintfResult(interp, "Wait timed out.");
                     Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
                     result = TCL_ERROR;
                 }
@@ -1606,7 +1607,7 @@ JobAbort(ClientData UNUSED(clientData), Tcl_Interp *interp, int UNUSED(code))
 {
     if (interp != NULL) {
         Tcl_SetErrorCode(interp, "ECANCEL", (char *)0L);
-        Tcl_SetResult(interp, "Job cancelled.", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "Job cancelled.");
     } else {
         Ns_Log(Warning, "ns_job: job cancelled");
     }
@@ -1637,11 +1638,11 @@ GetNextJob(void)
 {
     Queue         *queue;
     Job           *prevPtr, *jobPtr;
-    int            done = 0;
+    bool           done = NS_FALSE;
 
     jobPtr = prevPtr = tp.firstPtr;
 
-    while (done == 0 && jobPtr != NULL) {
+    while (!done && jobPtr != NULL) {
 
         if (LookupQueue(NULL, jobPtr->queueId, &queue, NS_TRUE) != TCL_OK) {
             Ns_Log(Fatal, "cannot find queue: %s", jobPtr->queueId);
@@ -1659,7 +1660,7 @@ GetNextJob(void)
                 prevPtr->nextPtr = jobPtr->nextPtr;
             }
 
-            done = 1;
+            done = NS_TRUE;
 
         } else {
 

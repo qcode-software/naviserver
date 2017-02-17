@@ -119,10 +119,10 @@ static DWORD tlskey;
 void
 Nsthreads_LibInit(void)
 {
-    static int once = 0;
+    static bool initialized = NS_FALSE;
 
-    if (once == 0) {
-        once = 1;
+    if (!initialized) {
+        initialized = NS_TRUE;
         tlskey = TlsAlloc();
         if (tlskey == 0xFFFFFFFF) {
             return;
@@ -715,7 +715,7 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *resultPtr)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ThreadExit --
+ * NsThreadExit --
  *
  *      Terminate a thread.  Note the use of _endthreadex instead
  *      of ExitThread which, as mentioned above, is correct.
@@ -730,10 +730,9 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *resultPtr)
  */
 
 void
-Ns_ThreadExit(void *arg)
+NsThreadExit(void *arg)
 {
-    NsThreadShutdownStarted();
-    _endthreadex( PTR2UINT(arg) ); 
+    _endthreadex(PTR2UINT(arg));
 }
 
 
@@ -1183,8 +1182,10 @@ truncate(const char *path, off_t length)
     return 0;
 }
 #else
-/* avoid empty translation unit */
-   typedef void empty; 
+/*
+ *avoid empty translation unit
+ */
+   typedef void empty;
 #endif
 
 /*

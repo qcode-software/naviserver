@@ -387,27 +387,28 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
     const NsInterp *itPtr = clientData;
     Tcl_Channel     chan;
     int             nbytes = INT_MAX, result = TCL_OK;
-
-    if (objc != 2 && objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "fileid ?nbytes?");
+    char           *fileidString;
+    Ns_ObjvSpec     args[] = {
+        {"fileid", Ns_ObjvString, &fileidString, NULL},
+        {"nbytes", Ns_ObjvInt,    &nbytes, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK
+        || NsConnRequire(interp, NULL) != NS_OK) {
         result = TCL_ERROR;
 
-    } else if (Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[1]), 0, NS_TRUE, &chan) != TCL_OK) {
+    } else if (Ns_TclGetOpenChannel(interp, fileidString, 0, NS_TRUE, &chan) != TCL_OK) {
         result = TCL_ERROR;
 
-    } else if (objc == 3 && Tcl_GetIntFromObj(interp, objv[2], &nbytes) != TCL_OK) {
-        result = TCL_ERROR;
-
-    } else if (unlikely(itPtr->conn == NULL)) {
-        Tcl_SetResult(interp, "no connection", TCL_STATIC);
-        result = TCL_ERROR;
     } else  {
         /*
          * All parameters are ok.
          */
         Ns_ReturnCode status = Ns_ConnSendChannel(itPtr->conn, chan, (size_t)nbytes);
+
         if (unlikely(status != NS_OK)) {
-            Tcl_SetResult(interp, "i/o failed", TCL_STATIC);
+            Ns_TclPrintfResult(interp, "I/O failed");
             result = TCL_ERROR;
         }
     }
@@ -574,7 +575,7 @@ ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *C
             result = TCL_ERROR;
 
         } else if (Tcl_IsChannelShared(chan) == 1) {
-            Tcl_SetResult(interp, "channel is shared", TCL_STATIC);
+            Ns_TclPrintfResult(interp, "channel is shared");
             result = TCL_ERROR;
 
         } else {
@@ -660,7 +661,7 @@ ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
             result = TCL_ERROR;
         } else {
             int isNew;
-            
+
             /*
              * We have a valid NsRegChan.
              */
@@ -719,7 +720,7 @@ ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONS
             if (chan == NULL || chan != regChan->chan) {
                 Tcl_DeleteHashEntry(hPtr);
                 if (chan != regChan->chan) {
-                    Tcl_SetResult(interp, "channel mismatch", TCL_STATIC);
+                    Ns_TclPrintfResult(interp, "channel mismatch");
                 }
                 result = TCL_ERROR;
             } else {
@@ -782,7 +783,7 @@ ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
         } else {
             tabPtr = &itPtr->chans;
         }
-        
+
         /*
          * Compute a Tcl list of the keys of every entry of the hash
          * table.
@@ -841,7 +842,7 @@ ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         } else {
             tabPtr = &itPtr->chans;
         }
-        
+
         /*
          * Cleanup every entry found in the the hash table.
          */

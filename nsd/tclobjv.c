@@ -89,7 +89,7 @@ static Tcl_ObjType specType = {
  */
 
 void
-NsTclInitSpecType()
+NsTclInitSpecType(void)
 {
     Tcl_RegisterObjType(&specType);
 }
@@ -777,7 +777,7 @@ Ns_ObjvFlags(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
                     }
                 }
             } else {
-                Tcl_SetResult(interp, "blank flag specification", TCL_STATIC);
+                Ns_TclPrintfResult(interp, "blank flag specification");
                 result = TCL_ERROR;
             }
     	}
@@ -941,9 +941,9 @@ NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         args = objv[1]->internalRep.twoPtrValue.ptr2;
         if (Ns_ParseObjv(opts, args, interp, 0, argc, argv) != NS_OK) {
             status = TCL_ERROR;
-        
+
         } else {
-            int          doneOpts = 0;
+            bool         doneOpts = NS_FALSE;
             Ns_ObjvSpec *specPtr = opts;
 
             /*
@@ -954,10 +954,10 @@ NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 
             for (;;) {
                 if (specPtr->key == NULL) {
-                    if (doneOpts != 0) {
+                    if (doneOpts) {
                         break;
                     }
-                    doneOpts = 1;
+                    doneOpts = NS_TRUE;
                     specPtr++;
                     continue;
                 }
@@ -969,7 +969,7 @@ NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
             }
 
         }
-    }    
+    }
     if (argsObj != objv[2]) {
         Tcl_DecrRefCount(argsObj);
     }
@@ -1062,10 +1062,11 @@ SetSpecFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
 
         if ((key[0] != '-' && defObjPtr != NULL)
             || (i + 1 == numSpecs && STREQ(key, "args"))) {
+            char *rewrittenKey  = ns_malloc((size_t)keyLen + 2u);
 
-            specPtr->key = ns_malloc((size_t)keyLen + 2u);
-            specPtr->key[0] = '?';
-            memcpy(specPtr->key + 1, key, (size_t)keyLen + 1u);
+            *rewrittenKey = '?';
+            memcpy(rewrittenKey + 1, key, (size_t)keyLen + 1u);
+            specPtr->key = rewrittenKey;
         } else {
             specPtr->key = ns_strdup(key);
         }
@@ -1111,20 +1112,20 @@ static void
 FreeSpecs(Ns_ObjvSpec *specPtr)
 {
     Ns_ObjvSpec  *saveSpec = specPtr;
-    int           doneOpts = 0;
+    bool          doneOpts = NS_FALSE;
 
     NS_NONNULL_ASSERT(specPtr != NULL);
 
     for (;;) {
         if (specPtr->key == NULL) {
-            if (doneOpts != 0) {
+            if (doneOpts) {
                 break;
             }
-            doneOpts = 1;
+            doneOpts = NS_TRUE;
             specPtr++;
             continue;
         }
-        ns_free(specPtr->key);
+        ns_free((char *)specPtr->key);
         if (specPtr->arg != NULL) {
             Tcl_DecrRefCount((Tcl_Obj *) specPtr->arg);
         }
@@ -1185,17 +1186,17 @@ UpdateStringOfSpec(Tcl_Obj *objPtr)
     const Ns_ObjvSpec *specPtr;
     Tcl_Obj           *defaultObj;
     Tcl_DString        ds;
-    int                doneOpts = 0;
+    bool               doneOpts = NS_FALSE;
 
     Tcl_DStringInit(&ds);
     Tcl_DStringStartSublist(&ds);
     specPtr = (Ns_ObjvSpec *) objPtr->internalRep.twoPtrValue.ptr1;
     for (;;) {
         if (specPtr->key == NULL) {
-            if (doneOpts != 0) {
+            if (doneOpts) {
                 break;
             }
-            doneOpts = 1;
+            doneOpts = NS_TRUE;
             specPtr++;
             continue;
         }
@@ -1588,7 +1589,7 @@ GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const N
             while (entryPtr->key != NULL) {
                 if ((entryPtr+1)->key == NULL) {
                     Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : ""),
-                                           " or ", entryPtr->key, NULL);
+                                           " or ", entryPtr->key, (char *)0);
                 } else if (entryPtr->key != NULL) {
                     Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, (char *)0);
                     count++;

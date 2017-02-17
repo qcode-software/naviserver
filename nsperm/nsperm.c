@@ -120,7 +120,7 @@ static int AllowDenyObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
 static bool ValidateUserAddr(User * userPtr, const char *peer);
 static Ns_RequestAuthorizeProc AuthProc;
 static void WalkCallback(Tcl_DString * dsPtr, const void *arg);
-static int CreateNonce(const char *privatekey, char **nonce, char *uri);
+static int CreateNonce(const char *privatekey, char **nonce, const char *uri);
 static int CreateHeader(Server * servPtr, Ns_Conn *conn, bool stale);
 /*static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeout);*/
 
@@ -167,7 +167,7 @@ Ns_ModuleInit(const char *server, const char *module)
         double d;
         char buf[TCL_INTEGER_SPACE];
         Ns_CtxMD5 md5;
-        unsigned long result;
+        unsigned long bigRamdomNumber;
         unsigned char sig[16];
 
         uskey = Ns_UrlSpecificAlloc();
@@ -175,11 +175,11 @@ Ns_ModuleInit(const char *server, const char *module)
 
         /* Make a really big random number */
         d = Ns_DRand();
-        result = (unsigned long) (d * 1024 * 1024 * 1024);
+        bigRamdomNumber = (unsigned long) (d * 1024 * 1024 * 1024);
 
         /* There is no requirement to hash it but it won't hurt */
         Ns_CtxMD5Init(&md5);
-        snprintf(buf, sizeof(buf), "%lu", result);
+        snprintf(buf, sizeof(buf), "%lu", bigRamdomNumber);
         Ns_CtxMD5Update(&md5, (unsigned char *) buf, strlen(buf));
         Ns_CtxMD5Final(&md5, sig);
         Ns_HexString(sig, usdigest, 16, NS_TRUE);
@@ -370,7 +370,8 @@ static Ns_ReturnCode AuthProc(const char *server, const char *method, const char
     User          *userPtr;
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
-    char           buf[NS_ENCRYPT_BUFSIZE], *group, *auth = NULL;
+    char           buf[NS_ENCRYPT_BUFSIZE], *group;
+    const char *auth = NULL;
     Ns_Conn       *conn = Ns_GetConn();
 
     if (user == NULL) {
@@ -983,7 +984,7 @@ static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
+static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
     Server         *servPtr = data;
     Tcl_HashSearch  search, msearch;
@@ -1228,7 +1229,7 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 
-static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
+static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
     Server         *servPtr = data;
     Tcl_HashSearch  search;
@@ -1446,7 +1447,7 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *CONST* objv)
+static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
     Server *servPtr = data;
     Ns_DString ds;
@@ -1626,7 +1627,7 @@ static int SetPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
 */
 
-static int CreateNonce(const char *privatekey, char **nonce, char *uri)
+static int CreateNonce(const char *privatekey, char **nonce, const char *uri)
 {
     time_t now;
     Ns_DString ds;
@@ -1635,7 +1636,7 @@ static int CreateNonce(const char *privatekey, char **nonce, char *uri)
     char buf[33];
     char bufcoded[1 + (4 * 48) / 2];
 
-    if (privatekey == 0) {
+    if (privatekey == NULL) {
         return NS_ERROR;
     }
 
@@ -1694,7 +1695,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
     unsigned char sig[16];
     time_t now, nonce_time;
 
-    if (privatekey == 0) {
+    if (privatekey == NULL) {
         return NS_ERROR;
     }
 

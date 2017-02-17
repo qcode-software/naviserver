@@ -136,10 +136,16 @@ static void HMAC_CTX_free(HMAC_CTX *ctx)
 void NsInitOpenSSL(void)
 {
 #ifdef HAVE_OPENSSL_EVP_H
+# if OPENSSL_VERSION_NUMBER < 0x10100000L
     CRYPTO_set_mem_functions(ns_malloc, ns_realloc, ns_free);
+# endif
     OpenSSL_add_all_algorithms();
     SSL_load_error_strings();
+# if OPENSSL_VERSION_NUMBER < 0x10100000L
     SSL_library_init();
+# else
+    OPENSSL_init_ssl(0, NULL);
+# endif    
     Ns_Log(Notice, "%s initialized", SSLeay_version(SSLEAY_VERSION));
 #endif
 }
@@ -272,11 +278,11 @@ Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
     SSL_set_connect_state(ssl);
     
     for (;;) {
-	int rc, err;
+	int sslRc, err;
 
 	Ns_Log(Debug, "ssl connect");
-	rc  = SSL_connect(ssl);
-	err = SSL_get_error(ssl, rc);
+	sslRc = SSL_connect(ssl);
+	err   = SSL_get_error(ssl, sslRc);
 
 	if ((err == SSL_ERROR_WANT_WRITE) || (err == SSL_ERROR_WANT_READ)) {
 	    Ns_Time timeout = { 0, 10000 }; /* 10ms */

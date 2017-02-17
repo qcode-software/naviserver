@@ -66,8 +66,8 @@ static Ns_ThreadProc CmdThread;
 static void UsageError(const char *msg, ...);
 static void StatusMsg(runState state);
 static void LogTclVersion(void);
-static const char *MakePath(char *file);
-static const char *SetCwd(const char *path);
+static const char *MakePath(const char *file) NS_GNUC_NONNULL(1);
+static const char *SetCwd(const char *path) NS_GNUC_NONNULL(1);
 
 #if defined(STATIC_BUILD) && (STATIC_BUILD == 1)
 extern void NsthreadsInit();
@@ -97,12 +97,13 @@ int
 Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 {
     Args           cmd;
-    int            sig, optind;
+    int            sig, optionIndex;
     const char    *config = NULL;
     Ns_Time        timeout;
     Ns_Set        *set;
 #ifndef _WIN32
     int            debug = 0;
+    bool           forked = NS_FALSE;
     char           mode = '\0';
     const char    *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
     const char    *bindargs = NULL, *bindfile = NULL;
@@ -120,13 +121,23 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 #endif
 
     /*
+     * Before doing anything else, initalize the Tcl API
+     * as we rely heavily on it, even for the most basic
+     * functions like memory allocation.
+     */
+
+    Tcl_FindExecutable(argv[0]);
+
+    /*
      * Initialize the Nsd library.
      */
+
     Nsd_LibInit();
 
     /*
      * Mark the server stopped until initialization is complete.
      */
+
     Ns_MutexLock(&nsconf.state.lock);
     nsconf.state.started = NS_FALSE;
     Ns_MutexUnlock(&nsconf.state.lock);
@@ -151,11 +162,11 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * Parse the command line arguments.
      */
 
-    for (optind = 1; optind < argc; optind++) {
-        if (argv[optind][0] != '-') {
+    for (optionIndex = 1; optionIndex < argc; optionIndex++) {
+        if (argv[optionIndex][0] != '-') {
             break;
         }
-        switch (argv[optind][1]) {
+        switch (argv[optionIndex][1]) {
         case 'h':
             UsageError(NULL);
             break;
@@ -179,14 +190,14 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
                            " options may be specified");
 #endif
             }
-            mode = argv[optind][1];
+            mode = argv[optionIndex][1];
             break;
         case 's':
             if (server != NULL) {
                 UsageError("multiple -s <server> options");
             }
-            if (optind + 1 < argc) {
-                server = argv[++optind];
+            if (optionIndex + 1 < argc) {
+                server = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -s option");
             }
@@ -195,8 +206,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             if (nsconf.config != NULL) {
                 UsageError("multiple -t <file> options");
             }
-            if (optind + 1 < argc) {
-                nsconf.config = argv[++optind];
+            if (optionIndex + 1 < argc) {
+                nsconf.config = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -t option");
             }
@@ -207,22 +218,22 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             break;
 #ifndef _WIN32
         case 'b':
-            if (optind + 1 < argc) {
-            	bindargs = argv[++optind];
+            if (optionIndex + 1 < argc) {
+            	bindargs = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -b option");
             }
             break;
         case 'B':
-            if (optind + 1 < argc) {
-            	bindfile = argv[++optind];
+            if (optionIndex + 1 < argc) {
+            	bindfile = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -B option");
             }
             break;
         case 'r':
-            if (optind + 1 < argc) {
-            	root = argv[++optind];
+            if (optionIndex + 1 < argc) {
+            	root = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -r option");
             }
@@ -231,22 +242,22 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             debug = 1;
             break;
         case 'g':
-            if (optind + 1 < argc) {
-                garg = argv[++optind];
+            if (optionIndex + 1 < argc) {
+                garg = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -g option");
             }
             break;
         case 'u':
-            if (optind + 1 < argc) {
-                uarg = argv[++optind];
+            if (optionIndex + 1 < argc) {
+                uarg = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -u option");
             }
             break;
 #endif
         default:
-            UsageError("invalid option: -%c", argv[optind][1]);
+            UsageError("invalid option: -%c", argv[optionIndex][1]);
             break;
         }
     }
@@ -261,10 +272,10 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
     if (mode == 'c') {
 	int i;
-        cmd.argv = ns_calloc(((size_t)argc - (size_t)optind) + 2u, sizeof(char *));
+        cmd.argv = ns_calloc(((size_t)argc - (size_t)optionIndex) + 2u, sizeof(char *));
         cmd.argc = 0;
         cmd.argv[cmd.argc++] = argv[0];
-        for (i = optind; i < argc; i++) {
+        for (i = optionIndex; i < argc; i++) {
             cmd.argv[cmd.argc++] = argv[i];
         }
         Ns_ThreadCreate(CmdThread, &cmd, 0, NULL);
@@ -304,6 +315,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         if (i > 0) {
             return 0;
         }
+        forked = NS_TRUE;
         setsid(); /* Detach from the controlling terminal device */
     }
 
@@ -329,6 +341,32 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         /*
          * Continue as watched server process.
          */
+        forked = NS_TRUE;
+    }
+
+   /*
+    * Keep up the C-compatibility with Tcl 8.4.
+    */
+
+    if (forked) {
+        int major, minor;
+        
+        Tcl_GetVersion(&major, &minor, NULL, NULL);
+        if (major == 8 && minor <= 4) {
+
+           /*
+            * For Tcl versions up to (and including the) Tcl 8.4
+            * we need to re-init the notifier after the fork.
+            * Failing to do so will make Tcl_ThreadAlert (et.al.)
+            * unusable since the notifier subsystem may not be
+            * initialized. The problematic behaviour may be exibited
+            * for any loadable module that creates threads using the
+            * Tcl API but never calls directly into Tcl_CreateInterp
+            * that handles the notifier initialization indirectly.
+            */
+
+            Tcl_InitNotifier();
+        }
     }
 
     nsconf.pid = getpid();
@@ -341,24 +379,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     NsBlockSignals(debug);
 
 #endif /* ! _WIN32 */
-
-    /*
-     * The call to Tcl_FindExecutable() must be done before we ever
-     * attempt any file-related operation, because it is initializing
-     * the Tcl library and Tcl VFS (virtual filesystem interface)
-     * which is used throughout the code.
-     * Side-effect of this call is initialization of the notifier
-     * subsystem. The notifier subsystem creates special private
-     * notifier thread and we should better do this after all those
-     * ns_fork's above...
-     * Starting with Tcl 8.7, the notifier thread is created on-demand
-     * hence the above call may be placed anywhere (preferably at
-     * the startup of the procedure, before anything else). We still
-     * leave it here as to be backward-compatible with older versions.
-     * In case the notifier thread is entirely removed (as it may be
-     * the case for some platforms), this does not apply anyways.
-     */
-    Tcl_FindExecutable(argv[0]);
 
     nsconf.nsd = ns_strdup(Tcl_GetNameOfExecutable());
 
@@ -448,11 +468,12 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 #endif /* ! _WIN32 */
 
     if (config != NULL) {
+
 	/*
 	 * Evaluate the config file.
 	 */
 	
-	NsConfigEval(config, argc, argv, optind);
+	NsConfigEval(config, argc, argv, optionIndex);
 	ns_free((char *)config);
     }
 
@@ -545,6 +566,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
                 nsconf.home = NS_NAVISERVER;
             }
 	}
+        assert(nsconf.home != NULL);
     }
     nsconf.home = SetCwd(nsconf.home);
 
@@ -552,6 +574,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     /* 
      * Make the result queryable.
      */
+
     set = Ns_ConfigCreateSection(NS_CONFIG_PARAMETERS);
     Ns_SetUpdate(set, "home", nsconf.home);
 
@@ -575,6 +598,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     /*
      * Set the procname used for the pid file.
      */
+
     procname = ((server != NULL) ? server : Ns_SetKey(servers, 0));
 
     /*
@@ -817,10 +841,10 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 Ns_ReturnCode
 Ns_WaitForStartup(void)
 {
-
     /*
      * This dirty-read is worth the effort.
      */
+
     if (unlikely(!nsconf.state.started)) {
         Ns_MutexLock(&nsconf.state.lock);
         while (nsconf.state.started == NS_FALSE) {
@@ -1046,6 +1070,7 @@ UsageError(const char *msg, ...)
     exit ((msg != NULL) ? 1 : 0);
 }
 
+
 /*
  *----------------------------------------------------------------------
  *
@@ -1063,10 +1088,12 @@ UsageError(const char *msg, ...)
  */
 
 static const char *
-MakePath(char *file)
+MakePath(const char *file)
 {
     const char *result = NULL;
-    
+
+    NS_NONNULL_ASSERT(file != NULL);
+
     if (Ns_PathIsAbsolute(nsconf.nsd) == NS_TRUE) {
 	const char *str = strstr(nsconf.nsd, "/bin/");
         
@@ -1127,6 +1154,8 @@ SetCwd(const char *path)
 {
     Tcl_Obj *pathObj;
 
+    NS_NONNULL_ASSERT(path != NULL);
+    
     pathObj = Tcl_NewStringObj(path, -1);
     Tcl_IncrRefCount(pathObj);
     if (Tcl_FSChdir(pathObj) == -1) {

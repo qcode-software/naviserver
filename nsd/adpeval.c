@@ -63,10 +63,10 @@ typedef struct Page {
     unsigned int   flags;    /* Flags used on last compile, e.g., SAFE. */
     int            refcnt;   /* Refcnt of current interps using page. */
     int            evals;    /* Count of page evaluations. */
-    int            locked;   /* Page locked for cache update. */
     int            cacheGen; /* Cache generation id. */
     AdpCache      *cachePtr; /* Cached output. */
     AdpCode        code;     /* ADP code blocks. */
+    bool           locked;   /* Page locked for cache update. */
 } Page;
 
 /*
@@ -180,6 +180,7 @@ ConfigServerAdp(const char *server)
     servPtr->adp.tracesize = Ns_ConfigInt(path, "tracesize", 40);
     servPtr->adp.cachesize = (size_t)Ns_ConfigInt(path, "cachesize", 5000 * 1024);
     servPtr->adp.bufsize   = (size_t)Ns_ConfigInt(path, "bufsize",   1 * 1024 * 1000);
+    servPtr->adp.defaultExtension = Ns_ConfigString(path, "defaultextension", NULL);
 
     servPtr->adp.flags = 0u;
     (void) Ns_ConfigFlag(path, "cache",        ADP_CACHE,     0, &servPtr->adp.flags);
@@ -598,7 +599,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
              * First, wait for an initial cache if already executing.
              */
 
-            while ((cachePtr = pagePtr->cachePtr) == NULL && pagePtr->locked == 1) {
+            while ((cachePtr = pagePtr->cachePtr) == NULL && pagePtr->locked) {
                 Ns_CondWait(&servPtr->adp.pagecond, &servPtr->adp.pagelock);
             }
 
@@ -606,10 +607,10 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
              * Next, if a cache exists and isn't locked, check expiration.
              */
 
-            if (cachePtr != NULL && pagePtr->locked == 0) {
+            if (cachePtr != NULL && ! pagePtr->locked) {
                 Ns_GetTime(&now);
                 if (Ns_DiffTime(&cachePtr->expires, &now, NULL) < 0) {
-                    pagePtr->locked = 1;
+                    pagePtr->locked = NS_TRUE;
                     cachePtr = NULL;
                 }
             }
@@ -661,7 +662,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *file,
                     ++pagePtr->cacheGen;
                     pagePtr->cachePtr = cachePtr;
                 }
-                pagePtr->locked = 0;
+                pagePtr->locked = NS_FALSE;
                 Ns_CondBroadcast(&servPtr->adp.pagecond);
             }
             cacheGen = pagePtr->cacheGen;
@@ -728,13 +729,13 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
 {
     Tcl_Interp  *interp;
     Tcl_DString  ds;
-    int          code;
+    int          result;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
 
     interp = itPtr->interp;
+    result = TCL_OK;
 
-    code = TCL_OK;
     if (itPtr->adp.debugInit == 0) {
         itPtr->deleteInterp = NS_TRUE;
         Tcl_DStringInit(&ds);
@@ -742,28 +743,29 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
         Tcl_DStringAppendElement(&ds, (procs != NULL) ? procs : "");
         Tcl_DStringAppendElement(&ds, (host  != NULL) ? host : "");
         Tcl_DStringAppendElement(&ds, (port  != NULL) ? port : "");
-        code = Tcl_EvalEx(interp, ds.string, ds.length, 0);
+        result = Tcl_EvalEx(interp, ds.string, ds.length, 0);
         Tcl_DStringFree(&ds);
-        if (code != TCL_OK) {
+        if (result != TCL_OK) {
             NsAdpLogError(itPtr);
-            return TCL_ERROR;
+            result = TCL_ERROR;
+            
+        } else {
+            /*
+             * Link the ADP output buffer result to a global variable
+             * which can be monitored with a variable watch.
+             */
+
+            if (Tcl_LinkVar(interp, "ns_adp_output",
+                            (char *) &itPtr->adp.output.string,
+                            TCL_LINK_STRING | TCL_LINK_READ_ONLY) != TCL_OK) {
+                NsAdpLogError(itPtr);
+            }
+
+            itPtr->adp.debugInit = 1;
+            itPtr->adp.debugLevel = 1;
         }
-
-        /*
-         * Link the ADP output buffer result to a global variable
-         * which can be monitored with a variable watch.
-         */
-
-        if (Tcl_LinkVar(interp, "ns_adp_output",
-                        (char *) &itPtr->adp.output.string,
-                        TCL_LINK_STRING | TCL_LINK_READ_ONLY) != TCL_OK) {
-            NsAdpLogError(itPtr);
-        }
-
-        itPtr->adp.debugInit = 1;
-        itPtr->adp.debugLevel = 1;
     }
-    return code;
+    return result;
 }
 
 
@@ -786,7 +788,7 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
 
 int
 NsTclAdpStatsObjCmd(ClientData clientData, Tcl_Interp *interp, 
-		 int UNUSED(objc), Tcl_Obj *CONST* (objv))
+                    int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -920,7 +922,7 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
         pagePtr->flags = flags;
         pagePtr->refcnt = 0;
         pagePtr->evals = 0;
-        pagePtr->locked = 0;
+        pagePtr->locked = NS_FALSE;
         pagePtr->cacheGen = 0;
         pagePtr->cachePtr = NULL;
         pagePtr->mtime = stPtr->st_mtime;
@@ -1253,7 +1255,7 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
              level, nscript);
     fd = ns_mkstemp(debugfile);
     if (fd < 0) {
-        Tcl_SetResult(interp, "could not create adp debug file", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "could not create adp debug file");
         result = TCL_ERROR;
     } else {
         if (ns_write(fd, ds.string, (size_t)ds.length) < 0) {

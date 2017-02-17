@@ -705,7 +705,6 @@ Ns_Log(Ns_LogSeverity severity, const char *fmt, ...)
 void
 Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
 {
-    size_t    length, offset;
     LogCache *cachePtr;
     LogEntry *entryPtr = NULL;
 
@@ -717,7 +716,8 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
      */
 
     if (Ns_LogSeverityEnabled(severity)) {
-    
+        size_t    length, offset;
+        
         /*
          * Track usage to provide statistics.
          */
@@ -1331,7 +1331,7 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 		   int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
 {
     if (Ns_LogRoll() != NS_OK) {
-        Tcl_SetResult(interp, "could not roll server log", TCL_STATIC);
+        Ns_TclPrintfResult(interp, "could not roll server log");
     }
 
     return TCL_OK;
