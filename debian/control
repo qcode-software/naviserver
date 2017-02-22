@@ -19,7 +19,7 @@ Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, debconf (>= 1.2.9), ucf (>= 0.30), logrotate (>= 3.7.8-6), tcl8.5 (>= 8.5.8-2), naviserver-core (= ${binary:Version})
 Conflicts: naviserver-nsssl
 Replaces: naviserver-nsssl
-Description: Programmable web server written in C & Tcl.
+Description: Programmable web server written in C & Tcl
  It offers many features for building custom web sites. The 
  implementation is high performance, but the interface is easy 
  to use, at both the C and Tcl level.
