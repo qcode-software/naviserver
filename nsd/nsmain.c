@@ -272,6 +272,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
     if (mode == 'c') {
 	int i;
+
         cmd.argv = ns_calloc(((size_t)argc - (size_t)optionIndex) + 2u, sizeof(char *));
         cmd.argc = 0;
         cmd.argv[cmd.argc++] = argv[0];
@@ -308,15 +309,62 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     if (mode == 0 || mode == 'w') {
-	int i = ns_fork();
+#ifdef HAVE_COREFOUNDATION
+        Ns_Fatal("nsmain: Tcl compiled with Core Foundation support does not support forking modes; "
+                 "use e.g. the '-i' mode parameter in the command line.\n");
+#else
+        int i;
+
+        /*
+         * Setup pipe for realizing non-zero return codes in case setup fails.
+         */
+        ns_pipe(nsconf.state.pipefd);
+        
+        i = ns_fork();
         if (i == -1) {
             Ns_Fatal("nsmain: fork() failed: '%s'", strerror(errno));
         }
         if (i > 0) {
-            return 0;
+            /*
+             * We are in the parent process.
+             */
+            char    buf = '\0';
+            ssize_t nread;
+
+            /*
+             * Close the write-end of the pipe, we do not use it
+             */
+            ns_close(nsconf.state.pipefd[1]);
+            nsconf.state.pipefd[1] = 0;
+            
+            /*
+             * Read the status from the child process. We expect as result
+             * either 'O' (when initialzation went OK) or 'F' (for Fatal).
+             */
+            nread = ns_read(nsconf.state.pipefd[0], &buf, 1);
+            if (nread < 0) {
+                /*
+                 * Do nothing, even when the read fails
+                 */
+                ;
+            }
+            Ns_Log(Notice, "main: received from child %ld bytes", nread);
+            ns_close(nsconf.state.pipefd[0]);
+            nsconf.state.pipefd[0] = 0;
+ 
+            return (buf == 'O') ? 0 : 1;
         }
+        /*
+         * We are in the child process.
+         *
+         * Close the read-end of the pipe, we do not use it
+         */
+        ns_close(nsconf.state.pipefd[0]);
+        nsconf.state.pipefd[0] = 0;
+        
         forked = NS_TRUE;
         setsid(); /* Detach from the controlling terminal device */
+#endif
     }
 
     /*
@@ -725,6 +773,19 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     nsconf.state.started = NS_TRUE;
     Ns_CondBroadcast(&nsconf.state.cond);
     Ns_MutexUnlock(&nsconf.state.lock);
+
+    if (nsconf.state.pipefd[1] != 0) {
+        ssize_t nwrite;
+        /*
+         * Tell the parent process, that initialization went OK.
+         */
+        nwrite = ns_write(nsconf.state.pipefd[1], "O", 1);
+        if (nwrite < 1) {
+            Ns_Fatal("nsmain: can't communicate with parent process, nwrite %ld", nwrite);
+        }
+        ns_close(nsconf.state.pipefd[1]);
+        nsconf.state.pipefd[1] = 0;
+    }
 
     /*
      * Run any post-startup procs.

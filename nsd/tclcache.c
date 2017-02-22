@@ -149,6 +149,51 @@ NsTclCacheCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
 /*
  *----------------------------------------------------------------------
  *
+ * NsTclCacheExistsObjCmd --
+ *
+ *      Check, whether a cache with the given name exists.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+NsTclCacheExistsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+{
+    int       result = TCL_OK;
+    TclCache *cPtr = NULL;
+    Ns_ObjvSpec args[] = {
+        {"cache",     ObjvCache,     &cPtr,   clientData},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    /*
+     * The existence for the cache is checked in parseObjv(). So not every
+     * fail of this function is an error.
+     */
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+        if (objc == 2) {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
+        } else {
+            result = TCL_ERROR;
+        }
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
+    }
+
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
  * NsTclCacheConfigureObjCmd --
  *
  *      Configure a Tcl cache. Usage:
@@ -1056,6 +1101,7 @@ ObjvCache(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
                 Ns_MutexUnlock(&servPtr->tcl.cachelock);
                 if (hPtr == NULL) {
                     Ns_TclPrintfResult(interp, "no such cache: %s", cacheName);
+                    Tcl_SetErrorCode(interp, "NSCACHE", "LOOKUP", NULL);
                     result = TCL_ERROR;
                 } else {
                     *cPtrPtr = Tcl_GetHashValue(hPtr);
