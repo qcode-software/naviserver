@@ -35,7 +35,6 @@ Description: Naviserver - core libraries
  naviserver.
 
 Package: naviserver-dev
-Section: web
 Architecture: any
 Depends: tcl8.5-dev, zlib1g-dev | libz-dev, ${misc:Depends}, naviserver-core (= ${binary:Version})
 Description: Naviserver - development files
