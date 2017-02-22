@@ -1,3 +1,9 @@
+naviserver (4.99.16~20170222-1+deb8u2) jessie; urgency=medium
+
+  * Patch ns_connchan driver option
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 22 Feb 2017 17:51:01 +0000
+
 naviserver (4.99.16~20170222-1+deb8u1) jessie; urgency=medium
 
   * Import from upstream
