@@ -1,3 +1,9 @@
+naviserver (4.99.16~20170222-1+deb8u2~debug) jessie; urgency=medium
+
+  * Debug release
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 24 Feb 2017 12:52:21 +0000
+
 naviserver (4.99.16~20170222-1+deb8u2) jessie; urgency=medium
 
   * Patch ns_connchan driver option
