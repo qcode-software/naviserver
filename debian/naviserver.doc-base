@@ -1,0 +1,11 @@
+Document: naviserver-manual
+Title: NaviServer Documentation
+Abstract: This documentation describes the configuration of the NaviServer
+ web server and the included modules.
+Section: Network/Communication
+
+Format: HTML
+Index: /usr/share/doc/naviserver/doc/toc.html
+Files: /usr/share/doc/naviserver/doc/*.html
+ /usr/share/doc/naviserver/doc/*/*.html
+ /usr/share/doc/naviserver/doc/*/*/*.html
