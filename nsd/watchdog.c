@@ -61,7 +61,7 @@
 static void WatchdogSIGTERMHandler(int sig);
 static void WatchdogSIGALRMHandler(int UNUSED(sig));
 static int  WaitForServer(void);
-static void SysLog(int priority, const char *fmt, ...);
+static void SysLog(int priority, const char *fmt, ...)  NS_GNUC_PRINTF(2, 3);
 
 
 /*
@@ -228,7 +228,7 @@ WaitForServer(void)
 
     do {
         pid = waitpid(watchedPid, &status, 0);
-    } while (pid == NS_INVALID_PID && errno == EINTR && watchedPid);
+    } while (pid == NS_INVALID_PID && errno == NS_EINTR && watchedPid);
 
     if (processDied) {
         msg = "terminated";
