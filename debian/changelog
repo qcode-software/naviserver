@@ -1,3 +1,9 @@
+naviserver (4.99.16~20170407-1+deb8u1) jessie; urgency=medium
+
+  * Import from upstream (includes ssl fix for revproxy timeouts)
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 28 Feb 2017 00:38:04 +0000
+
 naviserver (4.99.16~20170227-1+deb8u1) jessie; urgency=medium
 
   * Import from upstream (includes signal 11 fix)
