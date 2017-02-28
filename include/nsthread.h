@@ -134,6 +134,7 @@ typedef          long int intmax_t;
 typedef unsigned long int uintmax_t;
 
 typedef          DWORD pid_t;
+typedef          DWORD ns_sockerrno_t;
 typedef          long uid_t;
 typedef          long gid_t;
 typedef          long suseconds_t;
@@ -167,10 +168,14 @@ MSVC++ 14.0 _MSC_VER == 1900 (Visual Studio 2015)
 MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
 */
 
+/* 
+ * Cope with changes in Universal CRT in Visual Studio 2015 where
+ * e.g. vsnprintf() is no longer identical to _vsnprintf()
+ */
 #  if _MSC_VER < 1900
-#    define vsnprintf                 _vsnprintf
+#   define vsnprintf                  _vsnprintf
+#   define snprintf                   ns_snprintf
 #  endif
-#  define snprintf                    ns_snprintf
 
 #  define strtoll                     _strtoi64
 
@@ -182,6 +187,9 @@ MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
 #  define open                        _open
 #  define putenv                      _putenv
 #  define unlink                      _unlink
+
+#  define timezone                    _timezone
+#  define daylight                    _daylight
 
 #  define getpid()                    (pid_t)GetCurrentProcessId()
 #  define ftruncate(f,s)              _chsize((f),(s))
@@ -240,7 +248,9 @@ MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
 #  define W_OK                        2
 #  define R_OK                        4
 #  define X_OK                        (R_OK)
-#  define va_copy(dst,src)            ((void)((dst) = (src)))
+#  ifndef va_copy
+#   define va_copy(dst,src)           ((void)((dst) = (src)))
+#  endif
 #  define USE_TCLVFS                  1
 #  define USE_THREAD_ALLOC            1
 #  define VERSION                     (NS_PATCH_LEVEL)
@@ -357,6 +367,9 @@ typedef struct DIR_ *DIR;
 #ifndef SOCKET
 # define SOCKET NS_SOCKET
 #endif
+
+typedef int ns_sockerrno_t;
+
 
 # if defined(HAVE_SYS_UIO_H)
 #  include <sys/uio.h>
@@ -591,18 +604,34 @@ typedef int bool;
 
 
 #ifdef _WIN32
-# ifndef EINPROGRESS
-#  define EINPROGRESS                WSAEINPROGRESS
-# endif
-# ifndef EWOULDBLOCK
-#  define EWOULDBLOCK                WSAEWOULDBLOCK
-# endif
+/*
+ * Starting with VS2010 constants like EWOULDBLOCK are defined defined in
+ * errno.h differently to the WSA* counterparts.  Relevant to NaviServer are
+ *
+ *     EWOULDBLOCK != WSAEWOULDBLOCK
+ *     EINPROGRESS != WSAEINPROGRESS
+ *     EINTR       != WSAEINTR
+ * 
+ * However, winsock2 continues to return the WSA values, but defined as well
+ * the names without the "WSA" prefix.  So we have to abstract to NS_* to cope
+ * with earlier versions and to provide cross_platform support.
+ *
+ * http://stackoverflow.com/questions/14714654/c-project-in-vs2008-works-but-in-vs2010-does-not
+ * https://lists.gnu.org/archive/html/bug-gnulib/2011-10/msg00256.html
+ */
+# define NS_EWOULDBLOCK              WSAEWOULDBLOCK
+# define NS_EINPROGRESS              WSAEINPROGRESS
+# define NS_EINTR                    WSAEINTR
 # ifndef ETIMEDOUT
-#  define ETIMEDOUT                 1
+#  define ETIMEDOUT                  1
 # endif
 # ifndef P_tmpdir
-#  define P_tmpdir "/tmp"
+#  define P_tmpdir "c:/tmp"
 # endif
+#else
+# define NS_EWOULDBLOCK              EWOULDBLOCK
+# define NS_EINPROGRESS              EINPROGRESS
+# define NS_EINTR                    EINTR
 #endif
 
 #ifndef S_ISREG
@@ -746,7 +775,11 @@ typedef int bool;
  */
 #if !defined(__PRIPTR_PREFIX)
 # if defined(_LP64) || defined(_I32LPx) || defined(HAVE_64BIT)
-#  define __PRIPTR_PREFIX "l"
+#  if defined(_WIN32)
+#   define __PRIPTR_PREFIX "ll"
+#  else
+#   define __PRIPTR_PREFIX "l"
+#  endif
 # else
 #  define __PRIPTR_PREFIX
 # endif
@@ -1017,7 +1050,7 @@ NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, ssize_t stackSize
 NS_EXTERN void Ns_ThreadExit(void *arg);
 NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadYield(void);
-NS_EXTERN void Ns_ThreadSetName(const char *name, ...) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_ThreadSetName(const char *name, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 0);
 NS_EXTERN uintptr_t Ns_ThreadId(void);
 NS_EXTERN void Ns_ThreadSelf(Ns_Thread *threadPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN const char *Ns_ThreadGetName(void)       NS_GNUC_RETURNS_NONNULL;

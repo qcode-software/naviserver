@@ -350,10 +350,12 @@ typedef struct Ns_Request {
     const char     *protocol;
     const char     *host;
     const char     *url;
+    const char     *urlv;
     char           *query;
+    int             url_len;
+    int             urlv_len;
     int             urlc;
     unsigned short  port;
-    char          **urlv;
     double          version;
 } Ns_Request;
 
@@ -1330,7 +1332,7 @@ Ns_DStringPrintf(Ns_DString *dsPtr, const char *fmt, ...)
 
 NS_EXTERN char *
 Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_PRINTF(2, 0);
 
 NS_EXTERN char **
 Ns_DStringAppendArgv(Ns_DString *dsPtr)
@@ -1813,7 +1815,7 @@ Ns_Log(Ns_LogSeverity severity, const char *fmt, ...)
 
 NS_EXTERN void
 Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
-    NS_GNUC_NONNULL(2);
+    NS_GNUC_NONNULL(2)  NS_GNUC_PRINTF(2, 0);
 
 NS_EXTERN void
 Ns_Fatal(const char *fmt, ...)
@@ -2013,7 +2015,7 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
  */
 
 NS_EXTERN void
-Ns_SetThreadServer(const char *server);
+Ns_SetThreadServer(const char *server) NS_GNUC_PRINTF(1, 0);
 
 NS_EXTERN const char *
 Ns_GetThreadServer(void);
@@ -2753,24 +2755,21 @@ Ns_SockCloseLater(NS_SOCKET sock);
 NS_EXTERN char *
 Ns_SockError(void);
 
-NS_EXTERN int
-Ns_SockErrno(void);
-
 NS_EXTERN void
 Ns_ClearSockErrno(void);
 
-NS_EXTERN int
+NS_EXTERN ns_sockerrno_t
 Ns_GetSockErrno(void);
 
 NS_EXTERN void
-Ns_SetSockErrno(int err);
+Ns_SetSockErrno(ns_sockerrno_t err);
 
 NS_EXTERN char *
-Ns_SockStrError(int err);
+Ns_SockStrError(ns_sockerrno_t err);
 
 #ifdef _WIN32
 NS_EXTERN char *
-NsWin32ErrMsg(DWORD err);
+NsWin32ErrMsg(ns_sockerrno_t err);
 
 NS_EXTERN NS_SOCKET
 ns_sockdup(NS_SOCKET sock);
@@ -3211,6 +3210,14 @@ Ns_UrlQueryDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encodi
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN char *
+Ns_CookieEncode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN char *
+Ns_CookieDecode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN char *
 Ns_EncodeUrlWithEncoding(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding)
     NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryEncode)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -3229,6 +3236,10 @@ NS_EXTERN char *
 Ns_DecodeUrlCharset(Ns_DString *dsPtr, const char *urlSegment, const char *charset)
      NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryDecode)
      NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN void
+Ns_UrlEncodingWarnUnencoded(const char *msg, const char *chars) 
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * urlopen.c:

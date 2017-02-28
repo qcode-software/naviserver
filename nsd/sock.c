@@ -187,7 +187,7 @@ Ns_SockRecvBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
 
     n = SockRecv(sock, bufs, nbufs, flags);
     if (n < 0
-        && (ns_sockerrno == EWOULDBLOCK)
+        && (ns_sockerrno == NS_EWOULDBLOCK)
         && Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_READ, timeoutPtr) == NS_OK) {
         n = SockRecv(sock, bufs, nbufs, flags);
     }
@@ -254,7 +254,7 @@ Ns_SockSendBufs(Ns_Sock *sockPtr, const struct iovec *bufs, int nbufs,
 
         sent = NsDriverSend(sock, sbufPtr, nsbufs, flags);
         if (sent < 0
-            && ns_sockerrno == EWOULDBLOCK
+            && ns_sockerrno == NS_EWOULDBLOCK
             && Ns_SockTimedWait(sock->sock, (unsigned int)NS_SOCK_WRITE, timeoutPtr) == NS_OK) {
             sent = NsDriverSend(sock, sbufPtr, nsbufs, flags);
         }
@@ -318,7 +318,7 @@ Ns_SockRecv(NS_SOCKET sock, void *buffer, size_t length, const Ns_Time *timeoutP
 
     nread = ns_recv(sock, buffer, length, 0);
     if (nread == -1
-        && ns_sockerrno == EWOULDBLOCK
+        && ns_sockerrno == NS_EWOULDBLOCK
         && Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_READ, timeoutPtr) == NS_OK) {
         nread = ns_recv(sock, buffer, length, 0);
     }
@@ -353,7 +353,7 @@ Ns_SockSend(NS_SOCKET sock, const void *buffer, size_t length, const Ns_Time *ti
 
     nwrote = ns_send(sock, buffer, length, 0);
     if (nwrote == -1
-        && ns_sockerrno == EWOULDBLOCK
+        && ns_sockerrno == NS_EWOULDBLOCK
         && Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_WRITE, timeoutPtr) == NS_OK) {
         nwrote = ns_send(sock, buffer, length, 0);
     }
@@ -404,7 +404,7 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
 
     do {
 	n = ns_poll(&pfd, (NS_POLL_NFDS_TYPE)1, msec);
-    } while (n < 0 && errno == EINTR);
+    } while (n < 0 && errno == NS_EINTR);
 
     if (likely(n > 0)) {
         result = NS_OK;
@@ -543,7 +543,7 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
         if (Ns_SockaddrGetPort((const struct sockaddr *)saPtr) != 0u) {
             int n = 1;
 
-            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *) &n, sizeof(n));
+            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const void *) &n, sizeof(n));
 #ifdef HAVE_IPV6
             /*
              * IPv4 connectivity through AF_INET6 can be disabled by default, for
@@ -552,7 +552,7 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
              * for v4 and v6.
              */
             n = 0;
-            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char *) &n, sizeof(n));
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const void *) &n, sizeof(n));
 #endif
         }
 
@@ -686,8 +686,8 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost, u
                 int err;
             
                 len = (socklen_t)sizeof(err);
-                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&err, &len) != -1) {
-                    return sock;
+                if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (void *)&err, &len) == -1) {
+                    status = NS_ERROR;
                 }
                 break;
             }
@@ -702,8 +702,10 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost, u
         case NS_UNAUTHORIZED:  
             break;
         }
-        ns_sockclose(sock);
-        sock = NS_INVALID_SOCKET;
+        if (status != NS_OK) {
+            ns_sockclose(sock);
+            sock = NS_INVALID_SOCKET;
+        }
     }
 
     return sock;
@@ -800,9 +802,9 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, long secs)
 # else
     int qlen = 5;
 # endif
-
+    
     if (setsockopt(sock, IPPROTO_TCP, TCP_FASTOPEN,
-		   &qlen, sizeof(qlen)) == -1) {
+		   (const void *)&qlen, sizeof(qlen)) == -1) {
 	Ns_Log(Error, "deferaccept setsockopt(TCP_FASTOPEN): %s",
 	       ns_sockstrerror(ns_sockerrno));
     } else {
@@ -812,7 +814,7 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, long secs)
 #else
 # ifdef TCP_DEFER_ACCEPT
     if (setsockopt(sock, IPPROTO_TCP, TCP_DEFER_ACCEPT,
-		   &secs, sizeof(secs)) == -1) {
+		   (const void *)&secs, sizeof(secs)) == -1) {
 	Ns_Log(Error, "deferaccept setsockopt(TCP_DEFER_ACCEPT): %s",
 	       ns_sockstrerror(ns_sockerrno));
     } else {
@@ -908,7 +910,7 @@ Ns_SockCloseLater(NS_SOCKET sock)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_SockErrno --
+ * Ns_ClearSockErrno, Ns_GetSockErrno, Ns_SetSockErrno, Ns_SockStrError  --
  *
  *      Errno/GetLastError utility routines.
  *
@@ -931,28 +933,24 @@ Ns_ClearSockErrno(void)
 #endif
 }
 
-int
+ns_sockerrno_t
 Ns_GetSockErrno(void)
 {
-#ifdef _WIN32
-    return (int) WSAGetLastError();
-#else
-    return errno;
-#endif
+    return ns_sockerrno;
 }
 
 void
-Ns_SetSockErrno(int err)
+Ns_SetSockErrno(ns_sockerrno_t err)
 {
 #ifdef _WIN32
-    SetLastError((DWORD) err);
+    SetLastError(err);
 #else
     errno = err;
 #endif
 }
 
 char *
-Ns_SockStrError(int err)
+Ns_SockStrError(ns_sockerrno_t err)
 {
 #ifdef _WIN32
     return NsWin32ErrMsg(err);
@@ -1011,7 +1009,7 @@ NsPoll(struct pollfd *pfds, NS_POLL_NFDS_TYPE nfds, const Ns_Time *timeoutPtr)
             }
         }
         n = ns_poll(pfds, nfds, ms);
-    } while (n < 0 && ns_sockerrno == EINTR);
+    } while (n < 0 && ns_sockerrno == NS_EINTR);
 
     /*
      * Poll errors are not tolerated in as they must indicate
@@ -1085,9 +1083,9 @@ SockConnect(const char *host, unsigned short port, const char *lhost, unsigned s
             }
 
             if (connect(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) != 0) {
-                int err = ns_sockerrno;
+                ns_sockerrno_t err = ns_sockerrno;
                 
-                if (!async || (err != EINPROGRESS && err != EWOULDBLOCK)) {
+                if (!async || (err != NS_EINPROGRESS && err != NS_EWOULDBLOCK)) {
                     ns_sockclose(sock);
                     Ns_LogSockaddr(Warning, "SockConnect fails", saPtr);
                     sock = NS_INVALID_SOCKET;
@@ -1163,7 +1161,7 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
 
 #ifdef _WIN32
     DWORD RecvBytes, Flags = (DWORD)flags;
-    if (WSARecv(sock, (LPWSABUF)bufs, nbufs, &RecvBytes, &Flags,
+    if (WSARecv(sock, (LPWSABUF)bufs, (unsigned long)nbufs, &RecvBytes, &Flags,
                 NULL, NULL) != 0) {
         n = -1;
     } else {
