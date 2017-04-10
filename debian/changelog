@@ -1,3 +1,9 @@
+naviserver (4.99.16~20170407-1+deb8u2) jessie; urgency=medium
+
+  * nsssl error handling
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 10 Apr 2017 11:03:53 +0100
+
 naviserver (4.99.16~20170407-1+deb8u1) jessie; urgency=medium
 
   * Import from upstream (includes ssl fix for revproxy timeouts)
