@@ -1,3 +1,9 @@
+naviserver (4.99.16~20170407-1+deb8u2~debug) jessie; urgency=medium
+
+  * Debug version
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 04 May 2017 17:36:34 +0100
+
 naviserver (4.99.16~20170407-1+deb8u2) jessie; urgency=medium
 
   * nsssl error handling
