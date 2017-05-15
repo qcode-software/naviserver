@@ -463,10 +463,14 @@ static const ByteKey path_enc[] = {
  *                      ; whitespace DQUOTE, comma, semicolon,
  *                      ; and backslash
  *
- * This definition implies that a total of 90 characters are allowed
+ * In additions, '%' has to be encoded, because elsewise a raw string
+ * "%20" would be encoded as "%20" (no need to encode anything) but
+ * decoded as " " (space).
+ *
+ * This definition implies that a total of 89 characters are allowed
  * unencoded in a cookie:
  * 
- *     ! # $ % & ' ( ) * + - . / 0 1 2 3 4 5 6 7 8 9 : < = > ? @ 
+ *     ! # $ & ' ( ) * + - . / 0 1 2 3 4 5 6 7 8 9 : < = > ? @ 
  *     A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ ] ^ _ ` 
  *     a b c d e f g h i j k l m n o p q r s t u v w x y z { | } ~
  */
@@ -481,7 +485,7 @@ static const ByteKey cookie_enc[] = {
     /* 0x18 */  {3, "18"}, {3, "19"}, {3, "1a"}, {3, "1b"}, 
     /* 0x1c */  {3, "1c"}, {3, "1d"}, {3, "1e"}, {3, "1f"}, 
     /* 0x20 */  {3, "20"}, {1, NULL}, {3, "22"}, {1, NULL}, 
-    /* 0x24 */  {1, NULL}, {1, NULL}, {1, NULL}, {1, NULL}, 
+    /* 0x24 */  {1, NULL}, {3, "25"}, {1, NULL}, {1, NULL}, 
     /* 0x28 */  {1, NULL}, {1, NULL}, {1, NULL}, {1, NULL}, 
     /* 0x2c */  {3, "2c"}, {1, NULL}, {1, NULL}, {1, NULL}, 
     /* 0x30 */  {1, NULL}, {1, NULL}, {1, NULL}, {1, NULL}, 
@@ -598,7 +602,7 @@ Ns_UrlEncodingWarnUnencoded(const char *msg, const char *chars)
 
     for (i = 0u; i < strlen(chars); i++) {
         if (mustBeEncoded[UCHAR(chars[i])]) {
-            Ns_Log(Warning, "%s value '%s': byte with binary value %u must be url encoded",
+            Ns_Log(Warning, "%s value '%s': byte with binary value 0x%.2x must be url encoded",
                    msg, chars, UCHAR(chars[i]));
             /* 
              * Just warn about the first invalid character 
@@ -678,7 +682,7 @@ Ns_GetUrlEncoding(const char *charset)
                literal checks against path traversal based on
                character data (here in Ns_NormalizePath()) fail. As a
                consequence, it would be possible to retrieve
-               e.g. /etc/passwd from naviserver. For more details,
+               e.g. /etc/passwd from NaviServer. For more details,
                see Section "Canonicalization" in
 
                http://www.cgisecurity.com/owasp/html/ch11s03.html 
@@ -689,7 +693,7 @@ Ns_GetUrlEncoding(const char *charset)
 
                -gustaf neumann
             */
-            encoding = Ns_GetCharsetEncoding("utf-8");
+            encoding = NS_utf8Encoding;
 	}
     }
 
@@ -1001,6 +1005,8 @@ NsTclUrlDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         Ns_DStringInit(&ds);
         if (charset != NULL) {
             encoding = Ns_GetCharsetEncoding(charset);
+        } else {
+            encoding = Ns_GetUrlEncoding(NULL);
         }
         
         (void)UrlDecode(&ds, chars, encoding, part);
@@ -1103,29 +1109,26 @@ UrlEncode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, char
 /*
  *----------------------------------------------------------------------
  *
- * UrlDecode --
+ * PercentDecode --
  *
- *      Decode the given URL component according to part.
+ *      Helper function of UrlDecode(), which performs the actual
+ *      decoding. It assumes a large enough buffer in 'dest' and returns
+ *      the number of decoded characters.
  *
  * Results:
- *      A pointer to the dstring's value, containing the decoded 
- *	    URL.
+ *      Number of decoded characters.
  *
  * Side effects:
- *	    Decoded URL will be copied to given dstring.
+ *	None.
  *
  *----------------------------------------------------------------------
  */
-
-static char *
-UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, char part)
+static int
+PercentDecode(char *dest, const char *source, char part)
 {
-    register int     i, n;
-    register char   *q;
-    register const char *p;
-    char            *copy = NULL;
-    size_t           length;
-    Tcl_DString      ds;
+    register char       *q = dest;
+    register const char *p = source;
+    register int         n = 0;
     static const int hex_code[] = {
         /* 0x00 */  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 
         /* 0x10 */  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 
@@ -1145,31 +1148,8 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, char
         /* 0xf0 */  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
     };
 
-    NS_NONNULL_ASSERT(dsPtr != NULL);
-    NS_NONNULL_ASSERT(urlSegment != NULL);
-
-    /*
-     * Copy the decoded characters directly to the dstring,
-     * unless we need to do encoding.
-     */
-    length = strlen(urlSegment);
-    if (encoding != NULL) {
-        copy = ns_malloc(length + 1u);
-        q = copy;
-    } else {
-        /*
-         * Expand the dstring to the length of the input
-         * string which will be the largest size required.
-         */
-        i = dsPtr->length;
-        Ns_DStringSetLength(dsPtr, i + (int)length);
-        q = dsPtr->string + i;
-    }
-
-    p = urlSegment;
-    n = 0;
     while (likely(*p != '\0')) {
-	int j;
+        int  i, j;
         char c1, c2 = '\0';
 
         if (unlikely(p[0] == '%')) {
@@ -1186,9 +1166,9 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, char
         }
 
         /*
-         * when c2 != '\0', hex conversion is possible
+         * When c2 != '\0', hex conversion is possible
          */
-	if (c2 != '\0'
+        if (c2 != '\0'
             && (i = hex_code[UCHAR(c1)]) >= 0
             && (j = hex_code[UCHAR(c2)]) >= 0) {
             *q++ = (char)(UCHAR(UCHAR(i) << 4u) + UCHAR(j));
@@ -1201,22 +1181,101 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, char
         }
         n++;
     }
-    /* Ensure our new string is terminated */
+    /* 
+     * Ensure the resulting string is null-terminated.
+     */
     *q = '\0';
 
-    if (encoding != NULL) {
-        (void)Tcl_ExternalToUtfDString(encoding, copy, n, &ds);
-        Ns_DStringAppend(dsPtr, Tcl_DStringValue(&ds));
-        Tcl_DStringFree(&ds);
-        if (copy != 0) {
-            ns_free(copy);
-        }
-    } else {
-        /*
-         * Set the dstring length to the actual size required.
-         */
+    return n;
+}
 
-        Ns_DStringSetLength(dsPtr, n);
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * UrlDecode --
+ *
+ *      Decode the given URL component according to part.
+ *
+ * Results:
+ *      A pointer to the dstring's value, containing the decoded 
+ *	    URL.
+ *
+ * Side effects:
+ *	    Decoded URL will be copied to given dstring.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static char *
+UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, char part)
+{
+    const char      *firstCode;
+    size_t           inputLength;
+
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(urlSegment != NULL);
+
+    /*
+     * The size of the hex-decoded string is less or equal the size of
+     * the encoded string.  Get the size of the input string.
+     */
+    inputLength = strlen(urlSegment);
+
+    /*
+     * Check, if character decoding is necessary (i.e. input string
+     * contains '%' or '+'.
+     */
+    firstCode = strpbrk(urlSegment, "%+");
+    
+    if (likely(firstCode == NULL)
+        && (likely(encoding == NS_utf8Encoding) || (encoding == NULL) )
+        ) {
+        /*
+         * There is no decoding character in the input string (this is
+         * quite common for e.g. paths) and there is no change in the
+         * encoding required (the required encoded == utf-8 == system
+         * encoding). This optimization improves this function roughly
+         * 2x.
+         */
+        Ns_DStringNAppend(dsPtr, urlSegment, (int)inputLength);
+    } else {
+        int          oldLength, decodedLength;
+        char        *decoded;
+
+        oldLength = dsPtr->length;
+
+        /*
+         * Expand the Tcl_DString by the length of the input
+         * string which will be the largest size required.
+         */
+        Ns_DStringSetLength(dsPtr, oldLength + (int)inputLength);
+        decoded = dsPtr->string + oldLength;
+        
+        if (firstCode != NULL) {
+            decodedLength = PercentDecode(decoded, urlSegment, part);
+        } else {
+            memcpy(decoded, urlSegment, inputLength);
+            decodedLength = (int)inputLength;
+        }
+
+        if (likely(encoding != NULL)) {
+            Tcl_DString  ds;
+
+            (void)Tcl_ExternalToUtfDString(encoding, decoded, decodedLength, &ds);
+                        
+            Ns_DStringSetLength(dsPtr, oldLength);
+            Ns_DStringAppend(dsPtr, Tcl_DStringValue(&ds));
+            Tcl_DStringFree(&ds);
+            
+        } else {
+            /*
+             * The length of dsPtr is now (oldLength + inputLength);
+             * adjust the length to (oldLength + decodedLength), which
+             * might be less.
+             */
+            Ns_DStringSetLength(dsPtr, (oldLength + decodedLength));
+        }
     }
 
     return dsPtr->string;

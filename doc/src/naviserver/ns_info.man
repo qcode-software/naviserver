@@ -24,7 +24,9 @@ This command provides information about the current state of the running NaviSer
 
 [call [cmd  ns_info] [arg address]]
 
-Returns the primary IP address of this machine, or "0.0.0.0" if unable to determine
+Returns the primary IP address of the hostname of this machine, or
+the unspecified IP address (for IPv4 "0.0.0.0", for IPv6 "::") if
+unable to determine.
 
 [call [cmd  ns_info] [arg argv0]]
 
@@ -136,7 +138,7 @@ procname, arg}:
     [item] lastend - Last time run finished
 
     [item] procname - for tasks scheduled with ns_schedule_proc this
-    will be ns:tclschedproc and arg will be the actual scheduled tcl
+    will be ns:tclschedproc and arg will be the actual scheduled Tcl
     script.
 
     [item] arg - client data 

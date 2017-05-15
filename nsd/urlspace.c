@@ -199,7 +199,7 @@ static int NS_strcmp(const char *a, const char *b) {
  * This structure defines a Node. It is the lowest-level structure in
  * urlspace and contains the data the the user puts in. It holds data
  * whose scope is a set of URLs, such as /foo/bar/ *.html.
- * Data/cleanup functions are kept seperately for inheriting and non-
+ * Data/cleanup functions are kept separately for inheriting and non-
  * inheriting URLs, as there could be overlap.
  */
 
@@ -402,7 +402,7 @@ static bool tclUrlSpaces[MAX_URLSPACES] = {NS_FALSE};
  *
  * Ns_UrlSpecificAlloc --
  *
- *      Allocate a unique ID to create a seperate virtual URL-space.
+ *      Allocate a unique ID to create a separate virtual URL-space.
  *
  * Results:
  *      An integer handle, or -1 on error.
@@ -2319,7 +2319,7 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
 
         if (noinherit == (int)NS_TRUE) {
-            exact = NS_TRUE;
+            exact = (int)NS_TRUE;
         }
         
         if (exact == (int)NS_TRUE) {
@@ -2533,15 +2533,14 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
     } else if (CheckTclUrlSpaceId(interp, servPtr, &id) != TCL_OK) {
         result = TCL_ERROR;
 
+    } else if (NS_strlen(key) < 1u) {
+        Ns_TclPrintfResult(interp, "the provided key must contain at least one character");
+        result = TCL_ERROR;
+        
     } else {
         const char   *data;
         unsigned int  flags = 0u;
         
-        if (NS_strlen(key) < 1u) {
-            Ns_TclPrintfResult(interp, "provided key must be at least one character");
-            return TCL_ERROR;
-        }
-
         if (noinherit == (int)NS_TRUE) {
             flags |= NS_OP_NOINHERIT;
         }

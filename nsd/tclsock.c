@@ -574,7 +574,7 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *
  * NsTclSelectObjCmd --
  *
- *      Imlements select: basically a tcl version of select(2).
+ *      Imlements select: basically a Tcl version of select(2).
  *
  * Results:
  *      Tcl result. 
@@ -681,7 +681,7 @@ NsTclSelectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
 
         
         do {
-            sock = select(maxfd + 1, rPtr, wPtr, ePtr, tvPtr);
+            sock = (NS_SOCKET)select(maxfd + 1, rPtr, wPtr, ePtr, tvPtr);
         } while (sock == NS_INVALID_SOCKET && errno == NS_EINTR);
         if (sock == NS_INVALID_SOCKET) {
             Tcl_AppendStringsToObj(Tcl_GetObjResult(interp), "select failed: ",
@@ -1115,7 +1115,7 @@ GetSet(Tcl_Interp *interp, const char *flist, int write, fd_set **setPtrPtr,
  *
  * EnterSock, EnterDup, EnterDupedSocks --
  *
- *      Append a socket handle to the tcl result and register its 
+ *      Append a socket handle to the Tcl result and register its 
  *      channel.
  *
  * Results:

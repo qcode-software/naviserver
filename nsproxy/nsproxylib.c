@@ -47,8 +47,62 @@
 
 #include "nsproxy.h"
 
-#include <grp.h>
-#include <poll.h>
+#ifdef _WIN32
+# define SIGKILL 9
+# define SIGTERM 15
+
+ssize_t writev(int fildes, const struct iovec *iov, int iovcnt);
+
+/* 
+ * Minimal writev() and readv() emulation for windows. Must be probably
+ * extended to be useful.
+ */
+ssize_t writev(int fildes, const struct iovec *iov, int iovcnt)
+{
+    ssize_t result = 0;
+    int i;
+    
+    for (i = 0; i < iovcnt; i++) {
+        ssize_t written = ns_write(fildes, iov[i].iov_base, iov[i].iov_len);
+        
+        if (written != iov[i].iov_len) {
+            /*
+             * Give up, since we did not receive the expected data. 
+             * Maybe overly cautious and we have to handle partial
+             * writes.
+             */
+            result = -1;
+            break;
+        } else {
+            result += written;
+        }
+    }
+
+    return result;
+}
+
+ssize_t readv(int fildes, const struct iovec *iov, int iovcnt)
+{
+    ssize_t result = 0;
+    int i;
+    
+    for (i = 0; i < iovcnt; i++) {
+        ssize_t read = ns_read(fildes, iov[i].iov_base, iov[i].iov_len);
+        
+        if (read < 0) {
+            result = -1;
+            break;
+        } else {
+            result += read;
+        }
+    }
+
+    return result;
+}
+#else
+# include <grp.h>
+# include <poll.h>
+#endif
 
 /*
  * It is pain in the neck to get a satisfactory definition of
@@ -404,7 +458,7 @@ int
 Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
 {
     Tcl_Interp  *interp;
-    Slave         proc;
+    Slave        proc;
     int          result, max;
     Tcl_DString  in, out;
     const char  *script, *dots, *uarg = NULL, *user = NULL;
@@ -435,8 +489,13 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     }
 
     /*
+     * Initialize Slave structure
+     */
+    memset(&proc, 0, sizeof(proc));
+
+    /*
      * Move the proxy input and output fd's from 0 and 1 to avoid
-     * protocal errors with scripts accessing stdin and stdout.
+     * protocol errors with scripts accessing stdin and stdout.
      * Stdin is open on /dev/null and stdout is dup'ed to stderr.
      */
 
@@ -1181,7 +1240,7 @@ SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
     }
 
     ulen = htonl((unsigned int)dsPtr->length);
-    iov[0].iov_base = (caddr_t) &ulen;
+    iov[0].iov_base = (void *)&ulen;
     iov[0].iov_len  = sizeof(ulen);
     iov[1].iov_base = dsPtr->string;
     iov[1].iov_len  = (size_t)dsPtr->length;
@@ -1255,7 +1314,7 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
     }
 
     avail = (size_t)dsPtr->spaceAvl - 1u;
-    iov[0].iov_base = (caddr_t) &ulen;
+    iov[0].iov_base = (void *)&ulen;
     iov[0].iov_len  = sizeof(ulen);
     iov[1].iov_base = dsPtr->string;
     iov[1].iov_len  = avail;
@@ -2943,14 +3002,16 @@ ReaperThread(void *UNUSED(arg))
                 }
 
                 tmpSlavePtr = slavePtr->nextPtr;
-                ns_close(slavePtr->rfd);
+                if (slavePtr->rfd != NS_INVALID_FD) {
+                    ns_close(slavePtr->rfd);
+                }
                 ns_free(slavePtr);
                 slavePtr = tmpSlavePtr;
 
             } else {
 
                 /*
-                 * Process is still arround, try killing it but leave it
+                 * Process is still around, try killing it but leave it
                  * in the list. Calculate the latest time we'll visit
                  * this one again.
                  */
@@ -3180,7 +3241,8 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
 
     if (proxyPtr->state == Idle) {
         Tcl_DString ds;
-        int reinit;
+        int         reinit;
+        
         Tcl_DStringInit(&ds);
         Ns_MutexLock(&proxyPtr->poolPtr->lock);
         reinit = proxyPtr->poolPtr->reinit != NULL;
@@ -3192,6 +3254,16 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
             result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), -1);
         }
         Tcl_DStringFree(&ds);
+    } else if (proxyPtr->state == Busy) {
+        Ns_Log(Notice, "releasing busy proxy %s", proxyPtr->id);
+        /*
+         * In case the proxy is busy, make sure to drain the pipe, otherwise
+         * the proxy might be hanging in a send operation. Closing our end
+         * causes in the slave an exception and terminates the potentially
+         * blocking write operation.
+         */
+        ns_close(proxyPtr->slavePtr->rfd);
+        proxyPtr->slavePtr->rfd = NS_INVALID_FD;
     }
     if (proxyPtr->cmdToken != NULL) {
         /*
@@ -3230,7 +3302,7 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
 static int
 RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
 {
-    const char *scriptString;
+    char       *scriptString;
     int         ms = -1, result = TCL_OK;
     Ns_ObjvSpec args[] = {
         {"script",    Ns_ObjvString, &scriptString, NULL},
