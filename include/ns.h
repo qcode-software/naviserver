@@ -283,10 +283,14 @@ typedef enum {
 } Ns_HeaderCaseDisposition;
 
 /*
- * LogSeverity, which can be used from modules (e.g. nsssl)
+ * Global variables:
+ *
+ *  LogSeverity, which can be used from modules (e.g. nsssl)
+ *  
  */
 
-NS_EXTERN Ns_LogSeverity Ns_LogTaskDebug;    /* Severity at which to log verbose. */
+NS_EXTERN Ns_LogSeverity Ns_LogTaskDebug;   /* Severity at which to log verbose. */
+NS_EXTERN Tcl_Encoding   NS_utf8Encoding;   /* Cached UTF-8 encoding */
 
 /*
  * Typedefs of functions
@@ -1866,15 +1870,15 @@ Ns_LogSeveritySetEnabled(Ns_LogSeverity severity, bool enabled);
  */
 
 NS_EXTERN Ns_ReturnCode
-Ns_RollFile(const char *file, int max)
+Ns_RollFile(const char *fileName, int max)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_PurgeFiles(const char *file, int max)
+Ns_PurgeFiles(const char *fileName, int max)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_RollFileByDate(const char *file, int max)
+Ns_RollFileByDate(const char *fileName, int max)
     NS_GNUC_NONNULL(1)
     NS_GNUC_DEPRECATED_FOR(Ns_PurgeFiles);
 

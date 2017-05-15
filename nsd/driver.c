@@ -80,7 +80,7 @@ typedef struct PollData {
 #define PollHup(ppd, i)          (((ppd)->pfds[(i)].revents & POLLHUP) == POLLHUP)
 
 /*
- * Async writer definitons
+ * Async writer definitions
  */
 
 typedef struct AsyncWriter {
@@ -1741,8 +1741,8 @@ DriverThread(void *arg)
                     /*
                      * Got some data
                      */
-                    ssize_t recieved = ns_recv(sockPtr->sock, drain, sizeof(drain), 0);
-                    if (recieved <= 0) {
+                    ssize_t received = ns_recv(sockPtr->sock, drain, sizeof(drain), 0);
+                    if (received <= 0) {
                         Ns_Log(DriverDebug, "poll closewait pollin; sockrelease SOCK_READERROR (sock %d)",
                                sockPtr->sock);
                         SockRelease(sockPtr, SOCK_READERROR, 0);
@@ -3613,7 +3613,7 @@ static void
 SockSetServer(Sock *sockPtr)
 {
     const ServerMap *mapPtr = NULL;
-    const char      *host;
+    char            *host;
     int              status = 1;
     Request         *reqPtr;
 
@@ -3627,7 +3627,7 @@ SockSetServer(Sock *sockPtr)
     sockPtr->location = sockPtr->drvPtr->location;
 
     host = Ns_SetIGet(reqPtr->headers, "Host");
-    Ns_Log(DriverDebug, "SockSetServer host %s request line %s", host, reqPtr->request.line);
+    Ns_Log(DriverDebug, "SockSetServer host '%s' request line '%s'", host, reqPtr->request.line);
 
     if (unlikely((host == NULL) && (reqPtr->request.version >= 1.1))) {
         /*
@@ -3639,8 +3639,17 @@ SockSetServer(Sock *sockPtr)
     }
     if (sockPtr->servPtr == NULL) {
         if (host != NULL) {
-            const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&hosts, host);
+            const Tcl_HashEntry *hPtr;
+            size_t               hostLength = strlen(host);
 
+            /*
+             * Remove trailing dot of host header field, since RFC 2976 allows
+             * fully qualified "abolute" DNS names in host fields (see e.g. §3.2.2).
+             */
+            if (host[hostLength] == '.') {
+                host[hostLength] = '\0';
+            }
+            hPtr = Tcl_FindHashEntry(&hosts, host);
             if (hPtr != NULL) {
                 mapPtr = Tcl_GetHashValue(hPtr);
             }
@@ -4513,7 +4522,7 @@ WriterThread(void *arg)
             } else {
 
                 /*
-                 *  Mark when first timeout occured or check if it is already
+                 *  Mark when first timeout occurred or check if it is already
                  *  for too long and we need to stop this socket
                  */
                 if (sockPtr->timeout.sec == 0) {
@@ -4655,78 +4664,92 @@ Ns_ReturnCode
 NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
               struct iovec *bufs, int nbufs, int everysize)
 {
-    Conn          *connPtr = (Conn *)conn;
+    Conn          *connPtr;
     WriterSock    *wrSockPtr;
     SpoolerQueue  *queuePtr;
     DrvWriter     *wrPtr;
     bool           trigger = NS_FALSE;
     size_t         headerSize;
+    Ns_ReturnCode  status = NS_OK;
 
     NS_NONNULL_ASSERT(conn != NULL);
-
+    connPtr = (Conn *)conn;
+    
     if (unlikely(connPtr->sockPtr == NULL)) {
         Ns_Log(Warning,
                "NsWriterQueue: called without sockPtr size %" PRIdz " bufs %d flags %.6x stream %.6x chan %p fd %d",
                nsend, nbufs, connPtr->flags, connPtr->flags & NS_CONN_STREAM,
                (void *)chan, fd);
-        return NS_ERROR;
+        status = NS_ERROR;
+        wrPtr = NULL;
+    } else {
+
+        wrPtr = &connPtr->sockPtr->drvPtr->writer;
+
+        Ns_Log(DriverDebug,
+               "NsWriterQueue: size %" PRIdz " bufs %p (%d) flags %.6x stream %.6x chan %p fd %d thread %d",
+               nsend, (void *)bufs, nbufs, connPtr->flags, connPtr->flags & NS_CONN_STREAM,
+               (void *)chan, fd, wrPtr->threads);
+
+        if (unlikely(wrPtr->threads == 0)) {
+            Ns_Log(DriverDebug, "NsWriterQueue: no writer threads configured");
+            status = NS_ERROR;
+
+        } else if (nsend < (size_t)wrPtr->maxsize && everysize == 0 && connPtr->fd == 0) {
+            Ns_Log(DriverDebug, "NsWriterQueue: file is too small(%" PRIdz " < %" PRIdz ")",
+                   nsend, wrPtr->maxsize);
+            status = NS_ERROR;
+        }
+    }
+    if (status != NS_OK) {
+        return status;
     }
 
-    wrPtr = &connPtr->sockPtr->drvPtr->writer;
-
-    Ns_Log(DriverDebug,
-           "NsWriterQueue: size %" PRIdz " bufs %p (%d) flags %.6x stream %.6x chan %p fd %d thread %d",
-           nsend, (void *)bufs, nbufs, connPtr->flags, connPtr->flags & NS_CONN_STREAM,
-           (void *)chan, fd, wrPtr->threads);
-
-    if (unlikely(wrPtr->threads == 0)) {
-        Ns_Log(DriverDebug, "NsWriterQueue: no writer threads configured");
-        return NS_ERROR;
-    }
-
-    if (nsend < (size_t)wrPtr->maxsize && everysize == 0 && connPtr->fd == 0) {
-        Ns_Log(DriverDebug, "NsWriterQueue: file is too small(%" PRIdz " < %" PRIdz ")",
-               nsend, wrPtr->maxsize);
-        return NS_ERROR;
-    }
-
+    assert(wrPtr != NULL);
+        
     if (((connPtr->flags & NS_CONN_STREAM) != 0u) || connPtr->fd > 0) {
         bool        first = NS_FALSE;
         size_t      wrote = 0u;
         WriterSock *wrSockPtr1 = NULL;
 
         if (wrPtr->doStream == NS_WRITER_STREAM_NONE) {
-            return NS_ERROR;
-        }
+            status = NS_ERROR;
 
-        if (unlikely(fp != NULL || fd != NS_INVALID_FD)) {
+        } else if (unlikely(fp != NULL || fd != NS_INVALID_FD)) {
             Ns_Log(DriverDebug, "NsWriterQueue: does not stream from this source via writer");
-            return NS_ERROR;
-        }
-
-        Ns_Log(DriverDebug, "NsWriterQueue: streaming writer job");
-
-        if (connPtr->fd == 0) {
-            /*
-             * Create a new temporary spool file.
-             */
-            first = NS_TRUE;
-            fd = connPtr->fd = Ns_GetTemp();
-
-            Ns_Log(DriverDebug, "NsWriterQueue: new tmp file has fd %d", fd);
+            status = NS_ERROR;
 
         } else {
-            /*
-             * Reuse previously created spool file.
-             */
-            wrSockPtr1 = WriterSockRequire(connPtr);
-            if (wrSockPtr1 == NULL) {
-                Ns_Log(Notice,
-                       "NsWriterQueue: writer job was already canceled; maybe user dropped connection.");
-                return NS_ERROR;
+
+            Ns_Log(DriverDebug, "NsWriterQueue: streaming writer job");
+        
+            if (connPtr->fd == 0) {
+                /*
+                 * Create a new temporary spool file.
+                 */
+                first = NS_TRUE;
+                fd = connPtr->fd = Ns_GetTemp();
+
+                Ns_Log(DriverDebug, "NsWriterQueue: new tmp file has fd %d", fd);
+                
+            } else {
+                /*
+                 * Reuse previously created spool file.
+                 */
+                wrSockPtr1 = WriterSockRequire(connPtr);
+                if (wrSockPtr1 == NULL) {
+                    Ns_Log(Notice,
+                           "NsWriterQueue: writer job was already canceled; maybe user dropped connection.");
+                    status = NS_ERROR;
+                    
+                } else {
+                    Ns_MutexLock(&wrSockPtr1->c.file.fdlock);
+                    (void)ns_lseek(connPtr->fd, 0, SEEK_END);
+                }
             }
-            Ns_MutexLock(&wrSockPtr1->c.file.fdlock);
-            (void)ns_lseek(connPtr->fd, 0, SEEK_END);
+        }
+        if (status != NS_OK) {
+            return status;
         }
 
         /*
@@ -4735,9 +4758,11 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
          */
         {
             int i;
+
             assert(bufs != NULL);
             for (i = 0; i < nbufs; i++) {
                 ssize_t j = ns_write(connPtr->fd, bufs[i].iov_base, bufs[i].iov_len);
+
                 if (j > 0) {
                     wrote += (size_t)j;
                     Ns_Log(Debug, "NsWriterQueue: fd %d [%d] spooled %" PRIdz " of %" PRIiovlen " OK %d",
@@ -4796,10 +4821,9 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
         } else if (chan != NULL) {
             ClientData clientData;
             /*
-             * The client provided an open tcl channel and closes it
+             * The client provided an open Tcl channel and closes it
              */
-            if (Tcl_GetChannelHandle(chan, TCL_READABLE,
-                                     &clientData) != TCL_OK) {
+            if (Tcl_GetChannelHandle(chan, TCL_READABLE, &clientData) != TCL_OK) {
                 return NS_ERROR;
             }
             fd = ns_dup(PTR2INT(clientData));

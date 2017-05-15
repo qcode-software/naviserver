@@ -325,7 +325,7 @@ Ns_ConnServer(const Ns_Conn *conn)
  *
  * Ns_ConnResponseStatus, Ns_ConnSetResponseStatus --
  *
- *      Get (set) the HTTP reponse code that will be sent.
+ *      Get (set) the HTTP response code that will be sent.
  *
  * Results:
  *      An integer response code (e.g., 200 for OK).
@@ -643,7 +643,7 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
     const NsServer *servPtr;
     const Ns_Set   *headers;
     const char     *host;
-    char           *location;
+    char           *location = NULL;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(dest != NULL);
@@ -662,9 +662,6 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
 
         location = (*servPtr->vhost.connLocationProc)
             (conn, dest, servPtr->vhost.connLocationArg);
-        if (location == NULL) {
-            goto deflocation;
-        }
 
     } else if (servPtr->vhost.locationProc != NULL) {
 
@@ -673,33 +670,30 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
          */
 
         location = (*servPtr->vhost.locationProc)(conn);
-        if (location == NULL) {
-            goto deflocation;
+        if (location != NULL) {
+            location = Ns_DStringAppend(dest, location);
         }
-        location = Ns_DStringAppend(dest, location);
 
     } else if (servPtr->vhost.enabled
                && (headers = Ns_ConnHeaders(conn)) != NULL
                && (host = Ns_SetIGet(headers, "Host")) != NULL
                && *host != '\0') {
-
         /*
          * Construct a location string from the HTTP host header.
          */
-
-        if (!Ns_StrIsHost(host)) {
-            goto deflocation;
+        if (Ns_StrIsHost(host)) {
+            /* 
+             * We have here no port and no default port
+             */
+            location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0, 0);
         }
-        /* we have here no port and no default port */
-        location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0, 0);
 
-    } else {
+    }
 
-        /*
-         * If everything else fails, append the static driver location.
-         */
-
-    deflocation:
+    /*
+     * If everything else fails, append the static driver location.
+     */
+    if (location == NULL) {
         location = Ns_DStringAppend(dest, connPtr->location);
     }
 
@@ -1346,9 +1340,8 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     Tcl_Channel          chan;
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
-    int                  idx, off, len, opt = 0, n, result = TCL_OK;
+    int                  setNameLength, idx, off, len, opt = 0, n, result = TCL_OK;
     const char          *setName;
-    int                  setNameLength;
 
     static const char *const opts[] = {
 	"auth", "authpassword", "authuser", 
@@ -1534,7 +1527,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
                  * content will crash the server. Although we might not have
                  * the same problem when the content is allocated
                  * differently, we use here the restrictive strategy to
-                 * provide consistant behavior independent of the allocation
+                 * provide consistent behavior independent of the allocation
                  * strategy.
                  */
                 Ns_TclPrintfResult(interp, "connection already closed, can't get content");
@@ -2198,7 +2191,7 @@ GetIndices(Tcl_Interp *interp, const Conn *connPtr, Tcl_Obj *CONST* objv, int *o
  *
  * MakeConnChannel --
  *
- *      Wraps a Tcl channel arround the current connection socket
+ *      Wraps a Tcl channel around the current connection socket
  *      and returns the channel handle to the caller.
  *
  * Result:
@@ -2232,7 +2225,7 @@ MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
         } else {
 
             /*
-             * Create Tcl channel arround the connection socket
+             * Create Tcl channel around the connection socket
              */
 
             chan = Tcl_MakeTcpClientChannel(NSSOCK2PTR(connPtr->sockPtr->sock));

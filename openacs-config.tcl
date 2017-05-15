@@ -14,7 +14,7 @@ set httpport		8000
 set httpsport		8443 
 
 # The hostname and address should be set to actual values.
-# setting the address to 0.0.0.0 means aolserver listens on all interfaces
+# setting the address to 0.0.0.0 means AOLserver listens on all interfaces
 set hostname		localhost
 set address_v4		127.0.0.1  ;# listen on loopback via IPv4
 #set address_v4		0.0.0.0    ;# listen on all IPv4-Adresses
@@ -71,13 +71,17 @@ set env(LANG) en_US.UTF-8
 #---------------------------------------------------------------------
 # Set headers that should be included in every reply from the server
 #
-set extraheaders {
+set nssock_extraheaders {
     X-Frame-Options            "SAMEORIGIN"
     X-Content-Type-Options     "nosniff"
     X-XSS-Protection           "1; mode=block"
     Referrer-Policy            "strict-origin"
 }
-
+    
+set nsssl_extraheaders {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+append nsssl_extraheaders $nssock_extraheaders
 ###################################################################### 
 #
 # End of instance-specific settings 
@@ -155,7 +159,7 @@ ns_section ns/parameters
 	#
 	# ns_param	HackContentType	1
 
-	# NaviServer's defaults charsets are all utf-8.  Allthough the
+	# NaviServer's defaults charsets are all utf-8.  Although the
 	# default charset is utf-8, set the parameter "OutputCharset"
 	# here, since otherwise OpenACS uses in the meta-tags the charset
 	# from [ad_conn charset], which is taken from the db and
@@ -244,9 +248,9 @@ ns_section ns/server/${server}
 	# ns_param	headercase	preserve;# preserve, might be "tolower" or "toupper"
 	# ns_param	checkmodifiedsince	false	;# true, check modified-since before returning files from cache. Disable for speedup
 
-#
+#---------------------------------------------------------------------
 # Special HTTP pages
-#
+#---------------------------------------------------------------------
 ns_section ns/server/${server}/redirects
 	ns_param	404	"/global/file-not-found.html"
 	ns_param	403	"/global/forbidden.html"
@@ -254,9 +258,7 @@ ns_section ns/server/${server}/redirects
 	ns_param	500	"/global/error.html"
 
 #---------------------------------------------------------------------
-# 
 # ADP (AOLserver Dynamic Page) configuration 
-# 
 #---------------------------------------------------------------------
 ns_section ns/server/${server}/adp 
 	ns_param	enabledebug	$debug
@@ -312,9 +314,25 @@ ns_section "ns/server/${server}/fastpath"
 	#
 
 #---------------------------------------------------------------------
+# OpenACS specfic settings (per server)
+#---------------------------------------------------------------------
 #
+# Define/override kernel parameters in section /acs
+#
+ns_section ns/server/${server}/acs
+#        ns_param LogIncludeUserId 1
+#
+# Define/override OpenACS package parameters in section /acs/PACKAGENAME
+#
+# Set for all package instances of acs-mail-lite the EmailDeliveryMode
+#
+#ns_section ns/server/${server}/acs/acs-mail-lite
+#        ns_param EmailDeliveryMode log
+
+
+
+#---------------------------------------------------------------------
 # WebDAV Support (optional, requires oacs-dav package to be installed
-#
 #---------------------------------------------------------------------
 ns_section ns/server/${server}/tdav
 	ns_param	propdir		${serverroot}/data/dav/properties
@@ -337,9 +355,7 @@ ns_section ns/server/${server}/tdav/share/share1
 
 
 #---------------------------------------------------------------------
-# 
 # Socket driver module (HTTP)  -- nssock 
-# 
 #---------------------------------------------------------------------
 foreach address $addresses suffix $suffixes {
     ns_section ns/server/${server}/module/nssock_$suffix
@@ -375,9 +391,7 @@ foreach address $addresses suffix $suffixes {
 
 
 #---------------------------------------------------------------------
-# 
 # Access log -- nslog 
-# 
 #---------------------------------------------------------------------
 ns_section ns/server/${server}/module/nslog 
 	#
@@ -393,9 +407,16 @@ ns_section ns/server/${server}/module/nslog
 	ns_param	logpartialtimes	true	;# false, include high-res start time and partial request durations (accept, queue, filter, run)
 	# ns_param	formattedtime	true	;# true, timestamps formatted or in secs (unix time)
 	# ns_param	logcombined	true	;# true, Log in NSCA Combined Log Format (referer, user-agent)
-	# ns_param	extendedheaders	COOKIE	;# space delimited list of HTTP heads to log per entry
 	ns_param	checkforproxy	$proxy_mode ;# false, check for proxy header (X-Forwarded-For)
-	#
+        #
+        # Add extra entries to the access log via specfiying a comma delimited
+        # list of request header fields in "extendedheaders"
+        #
+        if {[ns_config "ns/server/${server}/acs" LogIncludeUserId 0]} {
+	    ns_param   extendedheaders    "X-User-Id"
+	}
+
+        #
 	#
 	# Control log file rolling
 	#
@@ -432,9 +453,7 @@ ns_section ns/server/${server}/module/nspam
 
 
 #---------------------------------------------------------------------
-#
-# SSL
-# 
+# SSL/TLS
 #---------------------------------------------------------------------
 foreach address $addresses suffix $suffixes {
     ns_section    "ns/server/${server}/module/nsssl_$suffix"
@@ -451,7 +470,7 @@ foreach address $addresses suffix $suffixes {
        #ns_param	writerstreaming	true	;# false
        #ns_param	deferaccept	true    ;# false, Performance optimization
        ns_param		maxinput	[expr {$max_file_upload_mb * 1024*1024}] ;# Maximum File Size for uploads in bytes
-       ns_param         extraheaders    $extraheaders
+       ns_param         extraheaders    $nsssl_extraheaders
 }
 
 #---------------------------------------------------------------------

@@ -260,7 +260,7 @@ NsInitLog(void)
      */
 
     for (i = PredefinedLogSeveritiesCount; i < severityMaxCount; i++) {
-        snprintf(buf, sizeof(buf), "%d", i);
+        snprintf(buf, sizeof(buf), "%d", (int)i);
         hPtr = Tcl_CreateHashEntry(&severityTable, buf, &isNew);
         Tcl_SetHashValue(hPtr, INT2PTR(i));
         severityConfig[i].label = Tcl_GetHashKey(&severityTable, hPtr);
@@ -695,7 +695,7 @@ Ns_Log(Ns_LogSeverity severity, const char *fmt, ...)
  *
  * Ns_VALog --
  *
- *      Add an entry to the log cache if the severity is not surpressed.
+ *      Add an entry to the log cache if the severity is not suppressed.
  *
  * Results:
  *      None.
@@ -1936,7 +1936,7 @@ GetCache(void)
  *
  * FreeCache --
  *
- *      TLS cleanup callback to destory per-thread Cache struct.
+ *      TLS cleanup callback to destroy per-thread Cache struct.
  *
  * Results:
  *      None.

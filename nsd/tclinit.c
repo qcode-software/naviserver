@@ -363,7 +363,7 @@ Ns_TclInit(Tcl_Interp *interp)
  *
  * Ns_TclEval --
  *
- *      Execute a tcl script in the context of the given server.
+ *      Execute a Tcl script in the context of the given server.
  *
  * Results:
  *      NaviServer result code. String result or error placed in dsPtr if
@@ -510,10 +510,11 @@ Ns_TclDeAllocateInterp(Tcl_Interp *interp)
 Tcl_Interp *
 Ns_GetConnInterp(Ns_Conn *conn)
 {
-    Conn     *connPtr = (Conn *) conn;
+    Conn     *connPtr;
     NsInterp *itPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
+    connPtr = (Conn *) conn;
 
     if (connPtr->itPtr == NULL) {
         itPtr = PopInterp(connPtr->poolPtr->servPtr, NULL);
@@ -602,7 +603,7 @@ Ns_TclDestroyInterp(Tcl_Interp *interp)
 
     itPtr = NsGetInterpData(interp);
     /*
-     * If this is an naviserver interp, clean it up
+     * If this is an NaviServer interp, clean it up
      */
 
     if (itPtr != NULL) {
@@ -649,7 +650,7 @@ Ns_TclDestroyInterp(Tcl_Interp *interp)
  * Ns_TclMarkForDelete --
  *
  *      Mark the interp to be deleted after next cleanup.  This routine
- *      is useful for destory interps after they've been modified in
+ *      is useful for destroy interps after they've been modified in
  *      weird ways, e.g., by the TclPro debugger.
  *
  * Results:
@@ -884,7 +885,7 @@ Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
  *
  * Ns_TclLibrary --
  *
- *      Return the name of the private tcl lib if configured, or the
+ *      Return the name of the private Tcl lib if configured, or the
  *      global shared library otherwise.
  *
  * Results:
@@ -1673,7 +1674,7 @@ NsTclInitServer(const char *server)
  *      Tcl result.
  *
  * Side effects:
- *      Override Tcl exit command so that propper server shutdown
+ *      Override Tcl exit command so that proper server shutdown
  *      takes place.
  *
  *----------------------------------------------------------------------
@@ -2014,12 +2015,13 @@ CreateInterp(NsInterp **itPtrPtr, NsServer *servPtr)
     /*
      * Make sure, the system encoding is UTF-8. Changing the system
      * encoding at runtime is a potentially dangerous operation, since
-     * tcl might be loading already files based on a previous
+     * Tcl might be loading already files based on a previous
      * enconding in another thread. So, we want to perform this
      * operation only once for all threads.
      */
     if (strcmp("utf-8", Tcl_GetEncodingName(Tcl_GetEncoding(interp, NULL))) != 0) {
 	int result = Tcl_SetSystemEncoding(interp, "utf-8");
+        
 	if (result != TCL_OK) {
 	    (void) Ns_TclLogErrorInfo(interp, "\n(context: set system encoding to utf-8)");
 	}
