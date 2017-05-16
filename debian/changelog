@@ -1,3 +1,9 @@
+naviserver (4.99.16~20170515-1+deb8u2) jessie; urgency=medium
+
+  * Make proxy shutdown more robust
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 16 May 2017 09:59:34 +0100
+
 naviserver (4.99.16~20170515-1+deb8u1) jessie; urgency=medium
 
   * Import from upstream (includes ns_proxy fix)

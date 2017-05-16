@@ -1,0 +1,21 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Tue, 16 May 2017 09:58:37 +0100
+Subject: make proxy shutdown more robust
+
+---
+ nsproxy/nsproxylib.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nsproxy/nsproxylib.c b/nsproxy/nsproxylib.c
+index fcf6434..666ad0a 100644
+--- a/nsproxy/nsproxylib.c
++++ b/nsproxy/nsproxylib.c
+@@ -3254,7 +3254,7 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
+             result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), -1);
+         }
+         Tcl_DStringFree(&ds);
+-    } else if (proxyPtr->state == Busy) {
++    } else if ( (proxyPtr->state == Busy) && (proxyPtr->slavePtr != NULL) ) {
+         Ns_Log(Notice, "releasing busy proxy %s", proxyPtr->id);
+         /*
+          * In case the proxy is busy, make sure to drain the pipe, otherwise
