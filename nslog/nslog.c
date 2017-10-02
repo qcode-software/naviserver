@@ -84,7 +84,7 @@ static Ns_ReturnCode LogOpen (Log *logPtr);
 static Ns_ReturnCode LogRoll (Log *logPtr);
 static Ns_ReturnCode LogClose(Log *logPtr);
 
-static void AppendEscaped(Ns_DString *dsPtr, const char *chars)
+static void AppendEscaped(Ns_DString *dsPtr, const char *toProcess)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -163,7 +163,7 @@ Ns_ModuleInit(const char *server, const char *module)
             Tcl_Obj *dirpath;
 	    int rc;
 
-            Ns_DStringTrunc(&ds, 0);
+            Ns_DStringSetLength(&ds, 0);
             (void) Ns_ModulePath(&ds, server, module, NULL, (char *)0);
             dirpath = Tcl_NewStringObj(ds.string, -1);
             Tcl_IncrRefCount(dirpath);
@@ -175,7 +175,7 @@ Ns_ModuleInit(const char *server, const char *module)
                 Ns_DStringFree(&ds);
                 return NS_ERROR;
             }
-            Ns_DStringTrunc(&ds, 0);
+            Ns_DStringSetLength(&ds, 0);
             (void) Ns_ModulePath(&ds, server, module, file, (char *)0);
         }
         logPtr->file = Ns_DStringExport(&ds);
@@ -405,7 +405,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
                 if (strstr(ds.string, "suppressquery")) {
                     flags |= LOG_SUPPRESSQUERY;
                 }
-                Ns_DStringTrunc(&ds, 0);
+                Ns_DStringSetLength(&ds, 0);
                 Ns_MutexLock(&logPtr->lock);
                 logPtr->flags = flags;
                 Ns_MutexUnlock(&logPtr->lock);
@@ -514,40 +514,58 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
  */
 
 static void
-AppendEscaped(Ns_DString *dsPtr, const char *chars)
+AppendEscaped(Ns_DString *dsPtr, const char *toProcess)
 {
+    const char *breakChar;
+
     NS_NONNULL_ASSERT(dsPtr != NULL);
-    NS_NONNULL_ASSERT(chars != NULL);
-    
-    while (likely(*chars != '\0')) {
-        switch (*chars) {
-        case '\n':
-            Ns_DStringNAppend(dsPtr, "\\n", 2);
-            break;
+    NS_NONNULL_ASSERT(toProcess != NULL);
 
-        case '\r':
-            Ns_DStringNAppend(dsPtr, "\\r", 2);
-            break;
+    do {
+        breakChar = strpbrk(toProcess, "\r\n\t\\\"");
+        if (breakChar == NULL) {
+            /*
+             * No break-char found, append all and stop
+             */
+            Ns_DStringNAppend(dsPtr, toProcess, -1);
+        } else {
+            /*
+             * Append the break-char free prefix
+             */
+            Ns_DStringNAppend(dsPtr, toProcess, (int)(breakChar - toProcess));
 
-        case '\t':
-            Ns_DStringNAppend(dsPtr, "\\t", 2);
-            break;
+            /*
+             * Escape the break-char
+             */
+            switch (*breakChar) {
+            case '\n':
+                Ns_DStringNAppend(dsPtr, "\\n", 2);
+                break;
+            case '\r':
+                Ns_DStringNAppend(dsPtr, "\\r", 2);
+                break;
+            case '\t':
+                Ns_DStringNAppend(dsPtr, "\\t", 2);
+                break;
+            case '"':
+                Ns_DStringNAppend(dsPtr, "\\\"", 2);
+                break;
+            case '\\':
+                Ns_DStringNAppend(dsPtr, "\\\\",2);
+                break;
+            default:
+                /*should not happen */ assert(0);
+                break;
+            }
 
-        case '"':
-            Ns_DStringNAppend(dsPtr, "\\\"", 2);
-            break;
-
-	case '\\':
-            Ns_DStringNAppend(dsPtr, "\\\\",2);
-            break;
-
-	default:
-            Ns_DStringNAppend(dsPtr, chars, 1);
-            break;
+            /*
+             * Check for further protected characters after the break char.
+             */
+            toProcess = breakChar + 1;
         }
-        ++chars;
-    }
+    } while (breakChar != NULL);
 }
+
 
 /*
  *----------------------------------------------------------------------
@@ -757,7 +775,7 @@ LogTrace(void *arg, Ns_Conn *conn)
                  */
 	      memcpy(buffer, logPtr->buffer.string, bufferSize);  
 	      bufferPtr = buffer;
-	      Ns_DStringTrunc(&logPtr->buffer, 0);
+	      Ns_DStringSetLength(&logPtr->buffer, 0);
               status = NS_OK;
 	    } else {
 	      status = LogFlush(logPtr, &logPtr->buffer);
@@ -882,7 +900,7 @@ LogFlush(Log *logPtr, Ns_DString *dsPtr)
             ns_close(logPtr->fd);
             logPtr->fd = NS_INVALID_FD;
         }
-        Ns_DStringTrunc(dsPtr, 0);
+        Ns_DStringSetLength(dsPtr, 0);
     }
 
     return (logPtr->fd == NS_INVALID_FD) ? NS_ERROR : NS_OK;

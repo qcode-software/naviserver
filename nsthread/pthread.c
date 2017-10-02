@@ -72,7 +72,7 @@ static pthread_key_t key;
  *
  * Nsthreads_LibInit --
  *
- *      Pthread library initialisation routine.
+ *      Pthread library initialization routine.
  *
  * Results:
  *      None.
@@ -469,12 +469,11 @@ NsThreadExit(void *arg)
 void
 Ns_ThreadJoin(Ns_Thread *thread, void **argPtr)
 {
-    pthread_t thr = (pthread_t) *thread;
     int err;
 
     NS_NONNULL_ASSERT(thread != NULL);
 
-    err = pthread_join(thr, argPtr);
+    err = pthread_join((pthread_t)*thread, argPtr);
     if (err != 0) {
         NsThreadFatal("Ns_ThreadJoin", "pthread_join", err);
     }

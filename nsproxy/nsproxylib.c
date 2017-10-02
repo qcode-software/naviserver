@@ -369,7 +369,7 @@ static Ns_DString defexec;             /* Stores full path of the proxy executab
  *
  * Nsproxy_Init --
  *
- *      libnsproxy initialisation.
+ *      libnsproxy initialization.
  *
  * Results:
  *      None.
@@ -618,8 +618,8 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
         if (SendBuf(&proc, -1, &out) == NS_FALSE) {
             break;
         }
-        Tcl_DStringTrunc(&in, 0);
-        Tcl_DStringTrunc(&out, 0);
+        Tcl_DStringSetLength(&in, 0);
+        Tcl_DStringSetLength(&out, 0);
     }
 
     if (uarg != NULL) {
@@ -1061,7 +1061,7 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
             req.len   = htonl((uint32_t)len);
             req.major = htons(MAJOR_VERSION);
             req.minor = htons(MINOR_VERSION);
-            Tcl_DStringTrunc(&proxyPtr->in, 0);
+            Tcl_DStringSetLength(&proxyPtr->in, 0);
             Tcl_DStringAppend(&proxyPtr->in, (char *) &req, sizeof(req));
             if (len > 0u) {
                 Tcl_DStringAppend(&proxyPtr->in, script, (int)len);
@@ -1185,7 +1185,7 @@ Recv(Tcl_Interp *interp, Proxy *proxyPtr, int *resultPtr)
     } else if (proxyPtr->state == Busy) {
         err = ENoWait;
     } else {
-        Tcl_DStringTrunc(&proxyPtr->out, 0);
+        Tcl_DStringSetLength(&proxyPtr->out, 0);
         if (RecvBuf(proxyPtr->slavePtr, proxyPtr->conf.trecv,
                     &proxyPtr->out) == NS_FALSE) {
             err = ERecv;
@@ -1615,7 +1615,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
     Tcl_HashSearch search;
     Tcl_Obj       *listObj;
 
-    static const char *const opts[] = {
+    static const char *opts[] = {
         "get", "put", "release", "eval", "cleanup", "configure",
         "ping", "free", "active", "handles", "clear", "stop",
         "send", "wait", "recv", "pools", NULL
@@ -1898,7 +1898,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* o
     Proxy      *proxyPtr;
     int         flag, n, result = TCL_OK, reap = 0;
 
-    static const char *const flags[] = {
+    static const char *flags[] = {
         "-init", "-reinit", "-maxslaves", "-exec", "-env",
         "-gettimeout", "-evaltimeout", "-sendtimeout", "-recvtimeout",
         "-waittimeout", "-idletimeout", "-maxruns", NULL
@@ -2730,8 +2730,8 @@ ResetProxy(Proxy *proxyPtr)
     }
     Ns_MutexUnlock(&poolPtr->lock);
 
-    Tcl_DStringTrunc(&proxyPtr->in, 0);
-    Tcl_DStringTrunc(&proxyPtr->out, 0);
+    Tcl_DStringSetLength(&proxyPtr->in, 0);
+    Tcl_DStringSetLength(&proxyPtr->out, 0);
 }
 
 
@@ -2983,15 +2983,41 @@ ReaperThread(void *UNUSED(arg))
                 case SIGKILL: slavePtr->signal = -1;      break;
                 }
             }
-            if (slavePtr->signal == -1 || WaitFd(slavePtr->rfd, POLLIN, 0)) {
-
+                            
+            if (slavePtr->signal == -1
+                || slavePtr->rfd == NS_INVALID_FD
+                || WaitFd(slavePtr->rfd, POLLIN, 0)) {
+                
                 /*
-                 * We either have a zombie or the process has exited ok
-                 * so splice it out the list.
+                 * We either have timeouted eval (rfd==NS_INVALID_FD), a
+                 * zombie or the process has exited ok so splice it out the
+                 * list.
                  */
-
                 if (slavePtr->signal >= 0) {
-                    (void) Ns_WaitProcess(slavePtr->pid); /* Should not really wait */
+                    int waitStatus = 0;
+                    
+                    /*
+                     * Pass waitStatus ptr to Ns_WaitForProcessStatus() to
+                     * indicate that we want to handle the signal here and to
+                     * suppress warning entries in the error.log.
+                     *
+                     * The following wait operation should not really wait.
+                     */
+                    (void) Ns_WaitForProcessStatus(slavePtr->pid, NULL, &waitStatus);
+#ifdef WTERMSIG
+                    if (slavePtr->signal != 0 && WTERMSIG(waitStatus) != 0) {
+                        Ns_LogSeverity severity;
+
+                        if (WTERMSIG(waitStatus) != slavePtr->signal) {
+                            severity = Warning;
+                        } else {
+                            severity = Notice;
+                        }
+                        Ns_Log(severity, "nsproxy process %d killed with signal %d (%s)",
+                               slavePtr->pid,
+                               WTERMSIG(waitStatus), strsignal(WTERMSIG(waitStatus)));
+                    }
+#endif
                 } else {
                     Ns_Log(Warning, "nsproxy: zombie: %ld", (long)slavePtr->pid);
                 }
@@ -3254,8 +3280,11 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
             result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), -1);
         }
         Tcl_DStringFree(&ds);
-    } else if (proxyPtr->state == Busy) {
+
+    } else if ( (proxyPtr->state == Busy) && (proxyPtr->slavePtr != NULL) ) {
+        proxyPtr->slavePtr->signal = 0;
         Ns_Log(Notice, "releasing busy proxy %s", proxyPtr->id);
+
         /*
          * In case the proxy is busy, make sure to drain the pipe, otherwise
          * the proxy might be hanging in a send operation. Closing our end

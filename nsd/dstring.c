@@ -425,7 +425,7 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
     return Ns_DStringPrintf(dsPtr, "%" PRIu64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
 }
  
- 
+
 
 /*
  *----------------------------------------------------------------------
@@ -474,7 +474,7 @@ Ns_DStringSetLength(Ns_DString *dsPtr, int length)
 
 #undef Ns_DStringTrunc
 
-NS_EXTERN void Ns_DStringTrunc(Ns_DString *dsPtr, int length) NS_GNUC_DEPRECATED_FOR(Tcl_DStringTrunc);
+NS_EXTERN void Ns_DStringTrunc(Ns_DString *dsPtr, int length) NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
 
 void
 Ns_DStringTrunc(Ns_DString *dsPtr, int length)

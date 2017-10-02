@@ -11,7 +11,7 @@ ns_log notice "nsd.tcl: starting to read config file..."
 #---------------------------------------------------------------------
 # change to 80 and 443 for production use
 set httpport		8000
-set httpsport		8443 
+#set httpsport		8443
 
 # The hostname and address should be set to actual values.
 # setting the address to 0.0.0.0 means AOLserver listens on all interfaces
@@ -314,12 +314,13 @@ ns_section "ns/server/${server}/fastpath"
 	#
 
 #---------------------------------------------------------------------
-# OpenACS specfic settings (per server)
+# OpenACS specific settings (per server)
 #---------------------------------------------------------------------
 #
 # Define/override kernel parameters in section /acs
 #
 ns_section ns/server/${server}/acs
+         ns_param NsShutdownWithNonZeroExitCode 1
 #        ns_param LogIncludeUserId 1
 #
 # Define/override OpenACS package parameters in section /acs/PACKAGENAME
@@ -386,7 +387,7 @@ foreach address $addresses suffix $suffixes {
 	# ns_param	writerbufsize	8192	;# 8192, buffer size for writer threads
 	# ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
         # ns_param	driverthreads	2	;# 1; use multiple driver threads  (requires support of SO_REUSEPORT)
-        ns_param        extraheaders    $extraheaders
+        ns_param        extraheaders    $nssock_extraheaders
 }
 
 
@@ -409,7 +410,7 @@ ns_section ns/server/${server}/module/nslog
 	# ns_param	logcombined	true	;# true, Log in NSCA Combined Log Format (referer, user-agent)
 	ns_param	checkforproxy	$proxy_mode ;# false, check for proxy header (X-Forwarded-For)
         #
-        # Add extra entries to the access log via specfiying a comma delimited
+        # Add extra entries to the access log via specifying a comma delimited
         # list of request header fields in "extendedheaders"
         #
         if {[ns_config "ns/server/${server}/acs" LogIncludeUserId 0]} {
@@ -452,25 +453,27 @@ ns_section ns/server/${server}/module/nspam
 	ns_param	PamDomain          "pam_domain"
 
 
-#---------------------------------------------------------------------
-# SSL/TLS
-#---------------------------------------------------------------------
-foreach address $addresses suffix $suffixes {
-    ns_section    "ns/server/${server}/module/nsssl_$suffix"
-       ns_param		address    	$address
-       ns_param		port       	$httpsport
-       ns_param		hostname       	$hostname
-       ns_param		ciphers		"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
-       ns_param		protocols	"!SSLv2"
-       ns_param		certificate	$serverroot/etc/certfile.pem
-       ns_param		verify     	0
-       ns_param		writerthreads	2
-       ns_param		writersize	1024
-       ns_param		writerbufsize	16384	;# 8192, buffer size for writer threads
-       #ns_param	writerstreaming	true	;# false
-       #ns_param	deferaccept	true    ;# false, Performance optimization
-       ns_param		maxinput	[expr {$max_file_upload_mb * 1024*1024}] ;# Maximum File Size for uploads in bytes
-       ns_param         extraheaders    $nsssl_extraheaders
+if {[info exists httpsport]} {
+    #---------------------------------------------------------------------
+    # SSL/TLS
+    #---------------------------------------------------------------------
+    foreach address $addresses suffix $suffixes {
+	ns_section    "ns/server/${server}/module/nsssl_$suffix"
+	ns_param		address    	$address
+	ns_param		port       	$httpsport
+	ns_param		hostname       	$hostname
+	ns_param		ciphers		"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
+	ns_param		protocols	"!SSLv2"
+	ns_param		certificate	$serverroot/etc/certfile.pem
+	ns_param		verify     	0
+	ns_param		writerthreads	2
+	ns_param		writersize	1024
+	ns_param		writerbufsize	16384	;# 8192, buffer size for writer threads
+	#ns_param	writerstreaming	true	;# false
+	#ns_param	deferaccept	true    ;# false, Performance optimization
+	ns_param		maxinput	[expr {$max_file_upload_mb * 1024*1024}] ;# Maximum File Size for uploads in bytes
+	ns_param         extraheaders    $nsssl_extraheaders
+    }
 }
 
 #---------------------------------------------------------------------
@@ -587,8 +590,8 @@ ns_section ns/server/${server}/modules
 	ns_param	nsproxy		${bindir}/nsproxy.so
         if {[info exists address_v4]} { ns_param nssock_v4 ${bindir}/nssock.so }
         if {[info exists address_v6]} { ns_param nssock_v6 ${bindir}/nssock.so }
-        #if {[info exists address_v4]} { ns_param nsssl_v4 ${bindir}/nsssl.so }
-        #if {[info exists address_v6]} { ns_param nsssl_v6 ${bindir}/nsssl.so }
+        if {[info exists address_v4] && [info exists httpsport]} { ns_param nsssl_v4 ${bindir}/nsssl.so }
+        if {[info exists address_v6] && [info exists httpsport]} { ns_param nsssl_v6 ${bindir}/nsssl.so }
 
 	#
 	# Determine, if libthread is installed

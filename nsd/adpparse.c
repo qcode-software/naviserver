@@ -678,10 +678,9 @@ AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsigned int fla
             /*
              * Increment line numbers based on the passed-in segment
              */
-            while (likely(s < e)) {
-                if (unlikely(*s++ == '\n')) {
-                    ++parsePtr->line;
-                }
+            while( ((s = strchr(s, '\n')) != NULL) && (s < e)) {
+                ++parsePtr->line;
+                ++s;
             }
         }
     }
@@ -721,7 +720,7 @@ GetTag(Tcl_DString *dsPtr, char *s, const char *e, char **aPtr)
     while (s < e  && CHARTYPE(space, *s) == 0) {
         ++s;
     }
-    Tcl_DStringTrunc(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
     Tcl_DStringAppend(dsPtr, t, (int)(s - t));
     if (aPtr != NULL) {
 	while (s < e && CHARTYPE(space, *s) != 0) {
