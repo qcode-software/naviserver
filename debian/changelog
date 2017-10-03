@@ -1,3 +1,9 @@
+naviserver (4.99.16~20171002-1+deb8u1) jessie; urgency=medium
+
+  * Import from upstream (includes checkforproxy ns_server option)
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 03 Oct 2017 11:06:01 +0100
+
 naviserver (4.99.16~20170515-1+deb8u3) jessie; urgency=medium
 
   * Remove debugging
