@@ -1,2 +1,3 @@
 0001-Specify-bash-for-distclean-regexp.patch
 0002-Add-to-disclean-files.patch
+0003-checkforproxy-logix-fix.patch
