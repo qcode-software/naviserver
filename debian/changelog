@@ -1,3 +1,9 @@
+naviserver (4.99.16~20171003-1+deb8u1_debug) jessie; urgency=medium
+
+  * Debug version
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 05 Oct 2017 15:37:48 +0100
+
 naviserver (4.99.16~20171003-1+deb8u1) jessie; urgency=medium
 
   * Import from upstream (includes checkforproxy ns_server option fix)
