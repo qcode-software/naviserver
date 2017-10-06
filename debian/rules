@@ -36,7 +36,7 @@ override_dh_shlibdeps:
 override_dh_auto_clean:
 	rm -f $(CURDIR)/tests/testserver/*.log
 	rm -f $(CURDIR)/tests/testserver/*.pid
-	 ./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man --enable_symbols
+	 ./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man --enable-symbols
 	dh_auto_clean
 
 override_dh_strip:
