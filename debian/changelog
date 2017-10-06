@@ -1,3 +1,9 @@
+naviserver (4.99.16~20171010-1+deb8u3) jessie; urgency=medium
+
+  * Performance improvement patch
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Sat, 07 Oct 2017 00:20:54 +0100
+
 naviserver (4.99.16~20171010-1+deb8u2) jessie; urgency=medium
 
   * Remove Debugging

@@ -1,0 +1,145 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Sat, 7 Oct 2017 00:20:25 +0100
+Subject: perfomance improvement
+
+---
+ include/ns.h |  5 ++++
+ nsd/queue.c  |  8 +++---
+ nsd/set.c    | 82 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 92 insertions(+), 3 deletions(-)
+
+diff --git a/include/ns.h b/include/ns.h
+index f4bed6c..f2d1c41 100644
+--- a/include/ns.h
++++ b/include/ns.h
+@@ -2501,6 +2501,11 @@ Ns_SetRecreate(Ns_Set *set)
+     NS_GNUC_NONNULL(1)
+     NS_GNUC_RETURNS_NONNULL;
+ 
++NS_EXTERN Ns_Set *
++Ns_SetRecreate2(Ns_Set **to, Ns_Set *from)
++    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2)
++    NS_GNUC_RETURNS_NONNULL;
++
+ NS_EXTERN void
+ Ns_SetFree(Ns_Set *set);
+ 
+diff --git a/nsd/queue.c b/nsd/queue.c
+index 17eaa1f..7de7610 100644
+--- a/nsd/queue.c
++++ b/nsd/queue.c
+@@ -1936,8 +1936,9 @@ NsConnThread(void *arg)
+          */
+         Ns_MutexLock(tqueueLockPtr);
+         connPtr->flags &= ~NS_CONN_CONFIGURED;
+-        Ns_SetFree(connPtr->headers);
+-        connPtr->headers = NULL;
++        //Ns_SetFree(connPtr->headers);
++        //connPtr->headers = NULL;
++        Ns_SetTrunc(connPtr->headers, 0);
+ 
+         argPtr->state = connThread_ready;
+         Ns_MutexUnlock(tqueueLockPtr);
+@@ -2143,7 +2144,8 @@ ConnRun(Conn *connPtr)
+     /*{ConnPool *poolPtr = argPtr->poolPtr;
+       Ns_Log(Notice, "ConnRun [%d] connPtr %p req %p %s", ThreadNr(poolPtr, argPtr), connPtr, connPtr->request, connPtr->request.line);
+       } */
+-    connPtr->headers = Ns_SetRecreate(connPtr->reqPtr->headers);
++    //connPtr->headers = Ns_SetRecreate2(&connPtr->headers, connPtr->reqPtr->headers);
++    (void) Ns_SetRecreate2(&connPtr->headers, connPtr->reqPtr->headers);
+ 
+     /*
+      * Flag, that the connection is fully configured and we can use its
+diff --git a/nsd/set.c b/nsd/set.c
+index dd0c849..a74f3eb 100644
+--- a/nsd/set.c
++++ b/nsd/set.c
+@@ -998,6 +998,88 @@ Ns_SetRecreate(Ns_Set *set)
+ /*
+  *----------------------------------------------------------------------
+  *
++ * Ns_SetRecreate2 --
++ *
++ *	This is a faster version of Ns_SetRecreate() since it tries to reuse
++ *	pre-allocated, but truncated Ns_Set structures. It saves potentially
++ *	three ns_malloc operatons:
++ *        1) the Ns_Set structure
++ *        2) the set name (it preserves the old name)
++ *        3) the field set
++ *      At the end content is copied and the the from set is truncated.
++ *
++ * Results:
++ *	new set.
++ *
++ * Side effects:
++ *	None.
++ *
++ *----------------------------------------------------------------------
++ */
++
++Ns_Set *
++Ns_SetRecreate2(Ns_Set **toPtr, Ns_Set *from)
++{
++    Ns_Set      *newSet;
++    size_t       i;
++
++    NS_NONNULL_ASSERT(toPtr != NULL);
++    NS_NONNULL_ASSERT(from != NULL);
++
++    if (*toPtr == NULL) {
++        /*
++         * Eveything has to e created, essentially the same happens in
++         * Ns_SetRecreate()
++         */
++        newSet = ns_malloc(sizeof(Ns_Set));
++        newSet->name = ns_strcopy(from->name);
++        //Ns_Log(Notice, "Ns_SetRecreate2: create a new set, new %lu/%lu", from->size, from->maxSize);
++        *toPtr = newSet;
++        newSet->size = from->size;
++        newSet->maxSize = from->maxSize;
++        newSet->fields = ns_malloc(sizeof(Ns_SetField) * newSet->maxSize);
++
++    } else {
++        newSet = *toPtr;
++        /*
++         * Keep always the old name.
++         */
++        assert(newSet->size == 0u);
++
++        if (newSet->maxSize >= from->size) {
++            /*
++             * The old Ns_Set has enough space, there is no need to create new
++             * fields.
++             */
++            Ns_Log(Notice, "Ns_SetRecreate2: keep the old set and fields, old %lu/%lu from %lu/%lu",
++                   newSet->size, newSet->maxSize, from->size, from->maxSize);
++
++        } else {
++            /*
++             * We have to grow the old Ns_Set, since it does not fit all the
++             * entries that have to bbe stored.
++             */
++            Ns_Log(Notice, "Ns_SetRecreate2: keep the old set, make new fields old %lu/%lu from %lu/%lu",
++                   newSet->size, newSet->maxSize, from->size, from->maxSize);
++            newSet->maxSize = from->maxSize;
++            ns_free(newSet->fields);
++            newSet->fields = ns_malloc(sizeof(Ns_SetField) * newSet->maxSize);
++        }
++        newSet->size = from->size;
++    }
++
++    for (i = 0u; i < from->size; i++) {
++	newSet->fields[i].name  = from->fields[i].name;
++        newSet->fields[i].value = from->fields[i].value;
++    }
++    from->size = 0u;
++
++    return newSet;
++}
++
++/*
++ *----------------------------------------------------------------------
++ *
+  * Ns_SetPrint --
+  *
+  *	Dump the contents of a set to stderr.
