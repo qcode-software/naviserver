@@ -15,7 +15,7 @@ COREPACKAGE=naviserver-core
 TARGETDIR=$(CURDIR)/debian/tmp
 
 override_dh_auto_configure:
-	./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
+	./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man --enable-symbols
 
 override_dh_auto_build:
 	$(MAKE)
@@ -36,11 +36,11 @@ override_dh_shlibdeps:
 override_dh_auto_clean:
 	rm -f $(CURDIR)/tests/testserver/*.log
 	rm -f $(CURDIR)/tests/testserver/*.pid
-	 ./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
+	 ./autogen.sh --with-tcl=/usr/lib/tcl8.5 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man --enable_symbols
 	dh_auto_clean
 
-#override_dh_strip:
-#	dh_strip --dbg-package=naviserver-dbg
+override_dh_strip:
+	dh_strip --dbg-package=naviserver-dbg
 
 override_dh_installinit:
 	dh_systemd_enable -pnaviserver --name=naviserver@ naviserver@.service
