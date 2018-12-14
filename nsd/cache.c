@@ -49,10 +49,10 @@ typedef struct Entry {
     struct Entry   *prevPtr;
     struct Cache   *cachePtr;
     Tcl_HashEntry  *hPtr;
-    Ns_Time         expires;          /* Absolute ttl timeout. */
+    Ns_Time         expires;          /* Absolute TTL timeout. */
     size_t          size;
-    int		    cost;             /* cost to compute a single entry */
-    int		    count;            /* reuse count of this entry */
+    int             cost;             /* cost to compute a single entry */
+    size_t          count;            /* reuse count of this entry */
     void           *value;            /* Will appear NULL for concurrent updates. */
     void           *uncommittedValue; /* Used for transactional mode */
     uintptr_t       transactionEpoch; /* Used for identifying transaction */
@@ -135,7 +135,7 @@ Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_Callback *freePr
 
     cachePtr = ns_calloc(1u, sizeof(Cache) + nameLength);
     memcpy(cachePtr->name, name, nameLength + 1u);
-    
+
     cachePtr->freeProc        = freeProc;
     cachePtr->maxSize         = maxSize;
     cachePtr->currentSize     = 0u;
@@ -179,7 +179,7 @@ Ns_CacheDestroy(Ns_Cache *cache)
     Cache      *cachePtr = (Cache *) cache;
 
     NS_NONNULL_ASSERT(cache != NULL);
-    
+
     (void) Ns_CacheFlush(cache);
     Ns_MutexDestroy(&cachePtr->lock);
     Ns_CondDestroy(&cachePtr->cond);
@@ -233,7 +233,7 @@ Ns_CacheFindEntryT(Ns_Cache *cache, const char *key, const Ns_CacheTransactionSt
         Entry *ePtr = Tcl_GetHashValue(hPtr);
 
         if (unlikely(ePtr->value == NULL
-                     && (transactionStackPtr == NULL || transactionStackPtr->depth == 0)
+                     && (transactionStackPtr == NULL || transactionStackPtr->depth == 0u)
                      )) {
             /*
              * Entry is being updated by some other thread.
@@ -321,7 +321,7 @@ Ns_CacheCreateEntry(Ns_Cache *cache, const char *key, int *newPtr)
             Ns_CacheUnsetValue((Ns_Entry *) ePtr);
             isNew = 1;
         } else {
-	    ePtr->count ++;
+            ePtr->count ++;
             ++cachePtr->stats.nhit;
         }
         Delink(ePtr);
@@ -416,7 +416,7 @@ Ns_CacheKey(const Ns_Entry *entry)
  *----------------------------------------------------------------------
  *
  * Ns_CacheGetValue, Ns_CacheGetSize, Ns_CacheGetExpirey,
- * Ns_CacheGetTransactionEpoch --
+ * Ns_CacheGetTransactionEpoch, Ns_CacheGetReuse --
  *
  *      Get the bare components of a cache entry via API.
  *
@@ -429,11 +429,18 @@ Ns_CacheKey(const Ns_Entry *entry)
  *----------------------------------------------------------------------
  */
 
-void *
-Ns_CacheGetValue(const Ns_Entry *entry)
+const Ns_Time *
+Ns_CacheGetExpirey(const Ns_Entry *entry)
 {
     NS_NONNULL_ASSERT(entry != NULL);
-    return ((const Entry *) entry)->value;
+    return &((const Entry *) entry)->expires;
+}
+
+size_t
+Ns_CacheGetReuse(const Ns_Entry *entry)
+{
+    NS_NONNULL_ASSERT(entry != NULL);
+    return ((const Entry *) entry)->count;
 }
 
 size_t
@@ -443,18 +450,18 @@ Ns_CacheGetSize(const Ns_Entry *entry)
     return ((const Entry *) entry)->size;
 }
 
-const Ns_Time *
-Ns_CacheGetExpirey(const Ns_Entry *entry)
-{
-    NS_NONNULL_ASSERT(entry != NULL);
-    return &((const Entry *) entry)->expires;
-}
-
 uintptr_t
 Ns_CacheGetTransactionEpoch(const Ns_Entry *entry)
 {
     NS_NONNULL_ASSERT(entry != NULL);
     return ((const Entry *) entry)->transactionEpoch;
+}
+
+void *
+Ns_CacheGetValue(const Ns_Entry *entry)
+{
+    NS_NONNULL_ASSERT(entry != NULL);
+    return ((const Entry *) entry)->value;
 }
 
 
@@ -464,7 +471,7 @@ Ns_CacheGetTransactionEpoch(const Ns_Entry *entry)
  * Ns_CacheGetValueT --
  *
  *      Get the value a cache entry, respecting the cache transaction
- *      stack. The functio returns either the bare stack value (if present) or
+ *      stack. The function returns either the bare stack value (if present) or
  *      the uncommitted value, when called from within a cache transaction.
  *
  * Results:
@@ -524,7 +531,7 @@ Ns_CacheGetValueT(const Ns_Entry *entry, const Ns_CacheTransactionStack *transac
  *      positive integer, type align with Tcl Hash Tables
  *
  * Side effects:
- *      Nonoe.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -590,19 +597,19 @@ Ns_CacheSetValueExpires(Ns_Entry *entry, void *value, size_t size,
 
     Ns_CacheUnsetValue(entry);
 
-    if (transactionEpoch == 0) {
+    if (transactionEpoch == 0u) {
         ePtr->value = value;
         result = 0;
     } else {
-        int            isNew;
+        int isNew;
 
         ePtr->uncommittedValue = value;
         ePtr->transactionEpoch = transactionEpoch;
 
-        (void) Tcl_CreateHashEntry(&cachePtr->uncommittedTable, ePtr, &isNew);
+        (void) Tcl_CreateHashEntry(&cachePtr->uncommittedTable, (const char *)ePtr, &isNew);
         if (unlikely(isNew == 0)) {
-            Ns_Log(Warning, "cache %s: adding entry %p with value '%s' multiple times to pending table",
-                   ePtr->cachePtr->name, (void *)ePtr, (char *)value);
+            Ns_Log(Warning, "cache %s: adding entry %p with key '%s' multiple times to pending table",
+                   ePtr->cachePtr->name, (void *)ePtr, Ns_CacheKey(entry));
         }
 
         result = 1;
@@ -630,12 +637,12 @@ Ns_CacheSetValueExpires(Ns_Entry *entry, void *value, size_t size,
 
     if (maxSize > 0u) {
         /*
-	 * Make space for the new entry, but don't delete the current
-	 * entry, and don't delete other newborn entries (with a value
-	 * of NULL) of some other threads which are concurrently
-	 * created.  There might be concurrent updates, since
-	 * e.g. nscache_eval releases its mutex.
-	 */
+         * Make space for the new entry, but don't delete the current
+         * entry, and don't delete other newborn entries (with a value
+         * of NULL) of some other threads which are concurrently
+         * created.  There might be concurrent updates, since
+         * e.g. nscache_eval releases its mutex.
+         */
         while (cachePtr->currentSize > maxSize &&
                cachePtr->lastEntryPtr != ePtr &&
                cachePtr->lastEntryPtr->value != NULL) {
@@ -677,14 +684,14 @@ Ns_CacheUnsetValue(Ns_Entry *entry)
         Cache *cachePtr;
         void  *value;
 
-	/*
-	 * In case, the freeProc() wants to allocate itself
-	 * (indirectly) a cache entry, we have to make sure, that
-	 * ePtr->value is not freed twice. Therefore, we keep the
-	 * affected member "value" in a local variable and set
-	 * ePtr->value to NULL before it is actually deallocated and
-	 * call the freeProc after updating all entry members.
-	 */
+        /*
+         * In case, the freeProc() wants to allocate itself
+         * (indirectly) a cache entry, we have to make sure that
+         * ePtr->value is not freed twice. Therefore, we keep the
+         * affected member "value" in a local variable and set
+         * ePtr->value to NULL before it is actually deallocated and
+         * call the freeProc after updating all entry members.
+         */
         if (likely(ePtr->value != NULL)) {
             value = ePtr->value;
             ePtr->value = NULL;
@@ -695,7 +702,7 @@ Ns_CacheUnsetValue(Ns_Entry *entry)
 
         cachePtr = ePtr->cachePtr;
         cachePtr->currentSize -= ePtr->size;
-	ePtr->size = 0u;
+        ePtr->size = 0u;
         ePtr->expires.sec = ePtr->expires.usec = 0;
 
         if (cachePtr->freeProc != NULL) {
@@ -748,7 +755,7 @@ Ns_CacheDeleteEntry(Ns_Entry *entry)
     Delink(ePtr);
     Tcl_DeleteHashEntry(ePtr->hPtr);
 
-    hPtr = Tcl_FindHashEntry(&ePtr->cachePtr->uncommittedTable, ePtr);
+    hPtr = Tcl_FindHashEntry(&ePtr->cachePtr->uncommittedTable, (const char *)ePtr);
     if (unlikely(hPtr != NULL)) {
         Tcl_DeleteHashEntry(hPtr);
     }
@@ -936,7 +943,7 @@ CacheTransaction(Cache *cachePtr, uintptr_t epoch, bool commit)
 
     hPtr = Tcl_FirstHashEntry(&cachePtr->uncommittedTable, &search.hsearch);
     while (hPtr != NULL) {
-        Ns_Entry  *entry = Tcl_GetHashKey(&cachePtr->uncommittedTable, hPtr);
+        Ns_Entry  *entry = (Ns_Entry *)Tcl_GetHashKey(&cachePtr->uncommittedTable, hPtr);
         Entry     *e = (Entry *) entry;
 
         if (e->value == NULL && e->transactionEpoch == epoch) {
@@ -1184,7 +1191,7 @@ Ns_CacheBroadcast(Ns_Cache *cache)
  *
  * Ns_CacheStats --
  *
- *      Append statistics about cache usage to dstring.
+ *      Append statistics about cache usage to Tcl_DString.
  *
  * Results:
  *      Pointer to current string value.
@@ -1199,17 +1206,17 @@ char *
 Ns_CacheStats(Ns_Cache *cache, Ns_DString *dest)
 {
     const Cache    *cachePtr;
-    unsigned long   count, hitrate;
+    unsigned long   count;
     const Entry    *ePtr;
     Ns_CacheSearch  search;
-    double          savedCost = 0.0;
+    double          savedCost = 0.0, hitrate;
 
     NS_NONNULL_ASSERT(cache != NULL);
     NS_NONNULL_ASSERT(dest != NULL);
 
     cachePtr = (Cache *)cache;
     count = cachePtr->stats.nhit + cachePtr->stats.nmiss;
-    hitrate = ((count != 0u) ? (cachePtr->stats.nhit * 100u) / count : 0u);
+    hitrate = ((count != 0u) ? ((double)cachePtr->stats.nhit * 100.0) / (double)count : 0.0);
 
     ePtr = (Entry *)Ns_CacheFirstEntry(cache, &search);
     while (ePtr != NULL) {
@@ -1218,15 +1225,15 @@ Ns_CacheStats(Ns_Cache *cache, Ns_DString *dest)
     }
 
     return Ns_DStringPrintf(dest, "maxsize %lu size %lu entries %d "
-               "flushed %lu hits %lu missed %lu hitrate %lu "
+               "flushed %lu hits %lu missed %lu hitrate %.2f "
                "expired %lu pruned %lu commit %lu rollback %lu saved %.6f",
                (unsigned long) cachePtr->maxSize,
                (unsigned long) cachePtr->currentSize,
                cachePtr->entriesTable.numEntries, cachePtr->stats.nflushed,
                cachePtr->stats.nhit, cachePtr->stats.nmiss, hitrate,
-			    cachePtr->stats.nexpired, cachePtr->stats.npruned,
+                            cachePtr->stats.nexpired, cachePtr->stats.npruned,
                             cachePtr->stats.ncommit, cachePtr->stats.nrollback,
-			    savedCost);
+                            savedCost);
 }
 
 
@@ -1235,7 +1242,7 @@ Ns_CacheStats(Ns_Cache *cache, Ns_DString *dest)
  *
  * Ns_CacheResetStats --
  *
- *      Set all statictics to zero.
+ *      Set all statistics to zero.
  *
  * Results:
  *      None.
@@ -1295,7 +1302,7 @@ Ns_CacheGetMaxSize(const Ns_Cache *cache)
  *
  * Expired --
  *
- *      Has the absolute ttl expired?
+ *      Has the absolute TTL expired?
  *
  * Results:
  *      NS_TRUE if entry has expired, NS_FALSE otherwise.
@@ -1406,4 +1413,3 @@ Push(Entry *ePtr)
  * indent-tabs-mode: nil
  * End:
  */
-

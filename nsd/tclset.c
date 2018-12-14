@@ -65,7 +65,7 @@ static Tcl_Obj *EnterSet(NsInterp *itPtr, Ns_Set *set, Ns_TclSetType type)
  * Ns_TclEnterSet --
  *
  *      Let this Tcl interpreter manage lifecycle of an existing Ns_Set.  The
- *      last argument determines the the lifespan of the Ns_Set. When the type
+ *      last argument determines the lifespan of the Ns_Set. When the type
  *      is NS_TCL_SET_STATIC, the Ns_Set is deleted, when the interp is
  *      freed. When the value is NS_TCL_SET_DYNAMIC, it is deleted via "ns_set
  *      free|cleanup". Effectively, this means that a "dynamic" ns_set is
@@ -92,7 +92,7 @@ Ns_TclEnterSet(Tcl_Interp *interp, Ns_Set *set, Ns_TclSetType type)
 
     itPtr = NsGetInterpData(interp);
     if (unlikely(itPtr == NULL)) {
-        Ns_TclPrintfResult(interp, "ns_set not supported");
+        Ns_TclPrintfResult(interp, "ns_set requires an interpreter");
         result = TCL_ERROR;
     } else {
         Tcl_SetObjResult(interp, EnterSet(itPtr, set, type));
@@ -204,7 +204,7 @@ Ns_TclFreeSet(Tcl_Interp *interp, const char *setId)
  *
  * NsTclSetObjCmd --
  *
- *      Implelments ns_set.
+ *      Implements ns_set.
  *
  * Results:
  *      Tcl result.
@@ -216,7 +216,7 @@ Ns_TclFreeSet(Tcl_Interp *interp, const char *setId)
  */
 
 int
-NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     NsInterp            *itPtr = clientData;
     Ns_Set              *set = NULL;
@@ -675,7 +675,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CON
  */
 
 int
-NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     NsInterp    *itPtr = clientData;
     int          result = TCL_OK;

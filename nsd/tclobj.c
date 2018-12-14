@@ -55,8 +55,8 @@ static Tcl_ObjType addrType = {
     SetAddrFromAny
 };
 
-static const Tcl_ObjType *byteArrayTypePtr; /* For NsTclIsByteArray(). */
-static const Tcl_ObjType *properByteArrayTypePtr;  /* For NsTclIsByteArray(). */
+static const Tcl_ObjType *byteArrayTypePtr; /* For NsTclObjIsByteArray(). */
+static const Tcl_ObjType *properByteArrayTypePtr;  /* For NsTclObjIsByteArray(). */
 
 /*
  *----------------------------------------------------------------------
@@ -87,13 +87,22 @@ NsTclInitAddrType(void)
      * Get the "tclByteArrayType" via name "bytearray".
      */
     byteArrayTypePtr = Tcl_GetObjType("bytearray");
-    newByteObj = Tcl_NewByteArrayObj(NULL,0);
 
     /*
      * Get the "properByteArrayType" via a TclObj.
      * In versions before Tcl 8.7, both values will be the same.
      */
+    newByteObj = Tcl_NewByteArrayObj(NULL, 0);
     properByteArrayTypePtr = newByteObj->typePtr;
+    if (properByteArrayTypePtr == byteArrayTypePtr) {
+        /*
+         * When both values are the same, we are in a Tcl version before 8.7,
+         * where we have no properByteArrayTypePtr. So set it to an invalid
+         * value to avoid potential confusions. Without this stunt, we would
+         * need several ifdefs.
+         */
+        properByteArrayTypePtr = (Tcl_ObjType *)INT2PTR(0xffffff);
+    }
     Tcl_DecrRefCount(newByteObj);
 }
 
@@ -348,11 +357,21 @@ Ns_TclGetOpaqueFromObj(const Tcl_Obj *objPtr, const char *type, void **addrPtrPt
     NS_NONNULL_ASSERT(type != NULL);
     NS_NONNULL_ASSERT(addrPtrPtr != NULL);
 
-    if (objPtr->typePtr != &addrType
-        || objPtr->internalRep.twoPtrValue.ptr1 != (void *) type) {
-        result = TCL_ERROR;
-    } else {
+    if (objPtr->typePtr == &addrType
+        && objPtr->internalRep.twoPtrValue.ptr1 == (void *) type) {
         *addrPtrPtr = objPtr->internalRep.twoPtrValue.ptr2;
+    } else {
+        char      s[33] = {0};
+        uintptr_t t = 0u, a = 0u;
+
+        if ((sscanf(Tcl_GetString((Tcl_Obj *) objPtr), "t%20" SCNxPTR "-a%20" SCNxPTR "-%32s", &t, &a, s) != 3)
+            || (strcmp(s, type) != 0)
+            || (t != (uintptr_t)type)
+            ) {
+            result = TCL_ERROR;
+        } else {
+            *addrPtrPtr = (void *)a;
+        }
     }
 
     return result;
@@ -410,9 +429,51 @@ NsTclObjIsByteArray(const Tcl_Obj *objPtr)
 {
     NS_NONNULL_ASSERT(objPtr != NULL);
 
-    return ((objPtr->typePtr == properByteArrayTypePtr)
-            || (objPtr->typePtr == byteArrayTypePtr)
+    /*
+     * This function resembles the tclInt.h function for testing pure byte
+     * arrays. In versions up to at least on Tcl 8.6, a pure byte array was
+     * defined as a byte array without a string rep.  Starting with Tcl
+     * 8.7a1, Tcl has introduced the properByteArrayTypePtr, which allows as
+     * well a string rep.
+     */
+#if 0
+    fprintf(stderr, "NsTclObjIsByteArray type %p proper %d old %d bytes %p name %s\n",
+            (void*)(objPtr->typePtr), (objPtr->typePtr == properByteArrayTypePtr),
+            (objPtr->typePtr == byteArrayTypePtr),
+            (void*)(objPtr->bytes),
+            objPtr->typePtr == NULL ? "string" : objPtr->typePtr->name);
+#endif
+
+    return ((objPtr->typePtr == properByteArrayTypePtr) ||
+            ((objPtr->typePtr == byteArrayTypePtr) && (objPtr->bytes == NULL))
             ) ? NS_TRUE : NS_FALSE;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclObjIsEncodedByteArray --
+ *
+ *      This function is true, when we encounter a bytearray with a string
+ *      rep.  In this cases, it is necessary to use Tcl_UtfToExternalDString()
+ *      to obtain the proper byte array.
+ *
+ * Results:
+ *      Boolean.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+bool
+NsTclObjIsEncodedByteArray(const Tcl_Obj *objPtr)
+{
+    NS_NONNULL_ASSERT(objPtr != NULL);
+
+    return ((objPtr->typePtr == byteArrayTypePtr) && (objPtr->bytes != NULL));
 }
 
 
@@ -442,7 +503,7 @@ UpdateStringOfAddr(Tcl_Obj *objPtr)
     char        buf[128];
     int         len;
 
-    len = snprintf(buf, sizeof(buf), "t%p-a%p-%s", (const void *)type, (const void *)addr, type);
+    len = snprintf(buf, sizeof(buf), "t%" PRIxPTR "-a%" PRIxPTR "-%s", (uintptr_t)type, (uintptr_t)addr, type);
     Ns_TclSetStringRep(objPtr, buf, len);
 }
 
@@ -473,8 +534,10 @@ SetAddrFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     char *chars;
 
     chars = Tcl_GetString(objPtr);
-    if (sscanf(chars, "t%20p-a%20p", &type, &addr) != 2
-        || type == NULL || addr == NULL) {
+    if ((sscanf(chars, "t%20p-a%20p", &type, &addr) != 2)
+        || (type == NULL)
+        || (addr == NULL)
+        ) {
         Ns_TclPrintfResult(interp, "invalid address \"%s\"", chars);
         result = TCL_ERROR;
     } else {

@@ -37,7 +37,7 @@ proc ns_perm_filter { args } {
 
     set url [ns_conn url]
 
-    # Do not allow to server special files
+    # Do not serve special files
     switch -- [file tail $url] {
         .htaccess -
         .htpasswd {
@@ -121,12 +121,12 @@ proc ns_perm_addperm { file url line } {
     ns_log debug "--- ns_perm_addperm [list $file $url $line]"
 
     set op [lindex $line 0]
-    if { $op != "allow" && $op != "deny" } {
+    if { $op ne "allow" && $op ne "deny" } {
         return
     }
 
     # Without users we clear the whole directory from any permissions
-    if { [lindex $line 1] == "" } {
+    if { [lindex $line 1] eq "" } {
         ns_perm delperm GET $url
         ns_perm delperm POST $url
     }

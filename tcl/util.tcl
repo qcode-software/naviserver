@@ -59,7 +59,7 @@
 #
 
 proc ns_adp_include {args} {
-    eval _ns_adp_include $args
+    _ns_adp_include {*}$args
 }
 
 
@@ -173,7 +173,7 @@ proc ns_findset {sets name} {
 proc ns_parsetime {option time} {
 
     set parts {sec min hour mday mon year wday yday isdst}
-    set pos [lsearch $parts $option]
+    set pos [lsearch -exact $parts $option]
 
     if {$pos == -1} {
         error "Incorrect option to ns_parsetime: \"$option\" Should be\
@@ -545,6 +545,7 @@ proc ns_set_precision {precision} {
 #
 
 proc ns_updateheader {key value} {
+    ns_deprecated {ns_set update [ns_conn outputheaders]}
     ns_set update [ns_conn outputheaders] $key $value
 }
 

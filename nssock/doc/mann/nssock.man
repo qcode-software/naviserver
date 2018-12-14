@@ -159,7 +159,7 @@ Timeout in seconds for send operations. (integer, default: 30)
 
 [def spoolerthreads]
 Number of spooler threads used when content larger than
-[term maxupload] is received. when spoolerthreads are set to 0, the driver
+[term maxupload] is received. When spoolerthreads are set to 0, the driver
 threads handles upload-spooling as wellto memory; (integer, default: 0)
 
 [def uploadpath]
@@ -221,7 +221,7 @@ requests.
 [para]
 
 In the section [term ns/module/nssock/servers] we define the
-mapping between the host names and the defined servers. Note, that one
+mapping between the host names and the defined servers. Note that one
 can define multiple DNS names also for a single server.
 
 [example_begin]
@@ -262,7 +262,7 @@ More to come here...
 
 
 [see_also ns_log ns_write ns_http ns_ssl]
-[keywords performance tuning configuration \
+[keywords module performance tuning configuration \
 SO_REUSEPORT TCP TCP_FASTOPEN nssock \
 nsssl driver prebind]
 

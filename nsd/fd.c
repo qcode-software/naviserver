@@ -93,6 +93,9 @@ NsInitFd(void)
 #endif
     int fd;
 
+    Ns_MutexInit(&lock);
+    Ns_MutexSetName(&lock, "ns:fd");
+
     /*
      * Ensure fd 0, 1, and 2 are open on at least /dev/null.
      */
@@ -351,10 +354,9 @@ Ns_GetTemp(void)
 
         Ns_DStringInit(&ds);
 
-#ifdef _WIN32
-        flags = _O_SHORT_LIVED|_O_NOINHERIT|_O_TEMPORARY|_O_BINARY;
-#else
         flags = O_RDWR|O_CREAT|O_TRUNC|O_EXCL;
+#ifdef _WIN32
+        flags |= _O_SHORT_LIVED|_O_NOINHERIT|_O_TEMPORARY|_O_BINARY;
 #endif
 
         trys = 0;
@@ -363,7 +365,7 @@ Ns_GetTemp(void)
 
             Ns_GetTime(&now);
             snprintf(buf, sizeof(buf), "nstmp.%" PRId64 ".%06ld", (int64_t)now.sec, now.usec);
-            path = Ns_MakePath(&ds, P_tmpdir, buf, (char *)0);
+            path = Ns_MakePath(&ds, P_tmpdir, buf, (char *)0L);
 #ifdef _WIN32
             fd = _sopen(path, flags, _SH_DENYRW, _S_IREAD|_S_IWRITE);
 #else

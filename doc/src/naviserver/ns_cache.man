@@ -67,7 +67,7 @@ form of an attribute value list.
      [opt [option "-timeout [arg t]"]] \
      [opt [option "-expires [arg t]"]] \
      [opt [option "-maxentry [arg s]"]] \
-     [opt [arg --]] \
+     [opt [option --]] \
      [arg name] \
      [arg size]  ]
 
@@ -93,7 +93,7 @@ Return the list of all caches for the current virtual server.
 
 [call [cmd ns_cache_keys] \
         [opt [option "-exact"]] \
-        [opt [arg --]] \
+        [opt [option --]] \
         [arg name] \
         [opt [arg pattern]] ]
 
@@ -108,7 +108,7 @@ literally,  either a key with a literally exact match or empty is returned.
      [opt [option "-timeout [arg t]"]] \
      [opt [option "-expires [arg t]"]] \
      [opt [option "-force [arg bool]"]] \
-     [opt [arg --]] \
+     [opt [option --]] \
      [arg name] \
      [arg key] \
      [arg script] \
@@ -142,7 +142,7 @@ nsv_get).
 [call [cmd ns_cache_incr] \
      [opt [option "-timeout [arg t]"]] \
      [opt [option "-expires [arg t]"]] \
-     [opt [arg --]] \
+     [opt [option --]] \
      [arg name] \
      [arg key] \
      [opt [arg incr]] ]
@@ -155,7 +155,7 @@ and return it.
 [call [cmd ns_cache_append] \
      [opt [option "-timeout [arg t]"]] \
      [opt [option "-expires [arg t]"]] \
-     [opt [arg --]] \
+     [opt [option --]] \
      [arg name] \
      [arg key] \
      [arg args] ]
@@ -171,7 +171,7 @@ If the cache value does not already exist it is created.
 [call [cmd ns_cache_lappend] \
      [opt [option "-timeout [arg t]"]] \
      [opt [option "-expires [arg t]"]] \
-     [opt [arg --]] \
+     [opt [option --]] \
      [arg name] \
      [arg key] \
      [arg args] ]
@@ -187,7 +187,7 @@ If the cache value does not already exist it is created.
 
 [call [cmd ns_cache_flush] \
         [opt [option "-glob"]] \
-        [opt [arg --]] \
+        [opt [option --]] \
         [arg name] \
         [opt [arg args]] ]
 
@@ -200,20 +200,19 @@ matching keys are flushed.
 [call [cmd ns_cache_stats] \
         [opt [option "-contents"]] \
         [opt [option "-reset"]] \
-        [opt [arg --]] \
+        [opt [option --]] \
         [arg name] ]
 
-Return the accumulated statistics for the given cache [arg name] in array-get
+Return the accumulated statistics for the given cache [arg name] in dict
 format since the cache was created or was last reset.
 
 [para]
 If the [option -reset] option is given then the statistics will be reset
 to zero after the command returns.
 
-[para]
-If the [option -contents] option is given then the first element of the
-returned list contains the size and expire time for each entry in the
-cache. The time is in [cmd ns_time] timespec format.
+[para] If the [option -contents] option is given then a list of all
+entries is returned containing the key, size, hits and expire time for
+each entry in the cache. The time is in [cmd ns_time] timespec format.
 
 The cache statistics track the following items:
 
@@ -284,7 +283,7 @@ rollback all nested transactions currently open in this thread.
 [call [cmd ns_fastpath_cache_stats] \
         [opt [option "-contents"]] \
         [opt [option "-reset"]] \
-        [opt [arg --]] \
+        [opt [option --]] \
         [arg name] ]
 
 Return the accumulated statistics for fastpath cache in array-get
@@ -293,6 +292,53 @@ format since the cache was created or was last reset. For details, see
 
 [list_end]
 
+
+[section "Cache Transactions"]
+
+Background: when ns_cache_* commands are used within a database
+transaction (e.g. in OpenACS), it might occur, that partial results of
+the transaction are cached before the transaction is committed.  When
+the transaction is rolled back, invalid values might be kept in the
+stack leading to erroneous and hard to debug behavior.  Furthermore,
+information about changes might leak into other concurrent threads via
+the cache, even before the transaction is committed.
+
+[para] The cache transaction semantics is implemented via the three
+commands:
+
+[list_begin itemized]
+
+[item] [cmd ns_cache_transaction_begin]
+[item] [cmd ns_cache_transaction_commit]
+[item] [cmd ns_cache_transaction_rollback]
+[list_end]
+
+When no ns_cache_transaction* commands are used, the behavior is
+exactly as before, the caches are not transactions aware. When cache
+transactions are used, which are initiated by a
+[cmd ns_cache_transaction_begin] call and ended via
+[cmd ns_cache_transaction_commit] or
+[cmd ns_cache_transaction_rollback],
+the ns_cache commands provide in essence the following
+functionalities:
+
+[list_begin enumerated]
+
+[enum] The ability to rollback of the values since the matching
+ns_cache_transaction_begin
+	
+[enum] Isolation of behavior: cached values from incomplete cache
+transactions are just visible from the current thread, but not from
+other threads.
+	
+[enum] Nesting: transactions can be nested (up to a compile time
+constant, per default: 16)
+	
+[enum]	
+Introspection: the statistics about cache commits and rollbacks are
+included in the cache statistics.
+[list_end]
+Note that the cache transactions span over all defined caches.
 
 [section EXAMPLES]
 
@@ -341,6 +387,6 @@ ns_return 200 text/html [lb]example_personalized_page $user $ad[rb]
 
 
 [see_also ns_memoize nsv ns_time ns_urlspace]
-[keywords cache fastpath]
+[keywords "server built-in" "global built-in" cache fastpath]
 
 [manpage_end]

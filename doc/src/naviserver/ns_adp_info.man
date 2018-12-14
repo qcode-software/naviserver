@@ -2,7 +2,7 @@
 [manpage_begin ns_adp_info n [vset version]]
 [moddesc {NaviServer Built-in Commands}]
 
-[titledesc {Get inforamtion about currrently procesing ADP}]
+[titledesc {Get information about currrently procesing ADP}]
 
 [description]
 
@@ -29,7 +29,7 @@ ns_adp_info
 [example_end]
 
 [see_also nsd]
-[keywords ADP]
+[keywords "server built-in" ADP]
 
 [manpage_end]
 

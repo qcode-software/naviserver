@@ -25,14 +25,14 @@ adds new ns_ssl command.
       see sample below)
 
 * New in Version 0.5:
-    - Support for Elliptic Curve Cryptography 
+    - Support for Elliptic Curve Cryptography
       (such as Elliptic Curve Diffie-Hellman (ECDH))
     - Provide compiled-in defaults for DH parameters
     - Handling several SSL and TLS bugs.
     - Deactivated SSLv2
 
 * New in Version 0.6:
-    - Ability to load the module without listening to socket by speciying 0 as port.
+    - Ability to load the module without listening to socket by specifying 0 as port.
       This is ueful for e.g. just using the HTTPS client command ns_ssl.
 
 * New in Version 0.7:
@@ -51,6 +51,9 @@ adds new ns_ssl command.
 
 * New in Version 2.0:
     - OpenSSL support in core.
+
+* New in Version 2.1:
+    - Support for client-side Server Name Indication (SNI).
 ***
 
 ## Configuration: ##
@@ -75,7 +78,7 @@ adds new ns_ssl command.
      }
 
 
- * The parameter "certificate" is required, nsssl won't load without it; 
+ * The parameter "certificate" is required, nsssl won't load without it;
    the .pem file should contain cert and privkey, and could contain DH parameters.
 
  * The parameter "ciphers" defines which ciphers will be used, by default nsssl uses all ciphers;
@@ -84,7 +87,7 @@ adds new ns_ssl command.
  * The parameter "protocols" defines which protocols are enabled;
    by default all protocols are enabled.
 
- * If the parameter "verify" is set to 1, nsssl will reject any connections without 
+ * If the parameter "verify" is set to 1, nsssl will reject any connections without
    valid ceritificate.
 
  * The parameter "extraheaders" specifies, which headers should be sent on every request.
@@ -94,7 +97,7 @@ adds new ns_ssl command.
  All other driver related parameters if the HTTP driver can be specified
  (see nssock for more details).
 
- Creating self-signed certificate 
+ Creating self-signed certificate
  (The last line is optional but necessary perfect forward secrecy)
 
     openssl genrsa 1024 > host.key

@@ -15,7 +15,7 @@ details of HMAC, consult RFC 4231.
 [para] The provided commands provide a one-step interface and an
 incremental interface, where the latter one can be used to
 e.g. incrementally compute a HMAC by reading data from a file. This is
-especially important for computing HMAC on content which is to large
+especially important for computing a HMAC on content which is too large
 to be kept in memory.
 
 [para] The listed commands are available in installations when
@@ -58,7 +58,7 @@ Create and return a new HMAC object for incremental operations.
 [call [arg \$hmac_object] [cmd "add"] [arg data]]
 
 Method to add [arg data] incrementally to the HMAC object, which was created
-previously  with [cmd "ns_hmac new"].
+previously with [cmd "ns_hmac new"].
 
 
 [call [arg \$hmac_object] [cmd "get"]]
@@ -78,11 +78,13 @@ Method to delete the HMAC object (used for incremental operations).
 [list_begin options]
 
 [opt_def -digest [arg digest]]
-Digest algorithm for the checksum computation. The available algorithms
-are implemented in OpenSSL. The current versions of OpenSSL supports
-the following message digest algorithms: "dsa dsa-sha ecdsa-with-sha1
-md4 md5 mdc2 ripemd160 sha sha1 sha224 sha256 sha384 sha512
-whirlpool".  The default value is "sha256"
+
+Digest algorithm for the checksum computation. The available
+algorithms are implemented in OpenSSL. The current versions of OpenSSL
+supports the following message digest algorithms: "blake2b512
+blake2s256 md4 md5 md5-sha1 mdc2 ripemd160 sha1 sha224 sha256 sha3-224
+sha3-256 sha3-384 sha3-512 sha384 sha512 sha512-224 sha512-256
+shake128 shake256 sm3 whirlpool". The default value is "sha256"
 
 [list_end]
 
@@ -93,7 +95,7 @@ whirlpool".  The default value is "sha256"
 
 [example_end]
 
-[see_also nsd ns_hotp ns_totp ns_md ns_md5 ns_sha1 ns_sha ns_crypt ns_rand]
+[see_also nsd ns_hotp ns_totp ns_md ns_md5 ns_sha1 ns_sha ns_crypt ns_crypto ns_rand]
 [keywords encoding crypt HMAC nsf]
 
 [manpage_end]

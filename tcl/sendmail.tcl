@@ -50,7 +50,7 @@
 proc ns_sendmail args {
     
     lassign $args to from subject body headers bcc cc
-    if {![string match -* $to]} {
+    if {![string match "-*" $to]} {
         ns_log warning "Deprecated syntax. Use: [list ns_sendmail -to $to -from $from -subject $subject -body BODY -headers HEADERS -bcc $bcc -cc $cc]"
     } else {
         ns_parseargs {
@@ -349,7 +349,7 @@ proc ns_sendmail args {
         }
 
         #
-        # Optionaly authorize (PLAIN or LOGIN)
+        # Optionally authorize (PLAIN or LOGIN)
         #
 
         if {$user ne "" && $pass ne ""} {

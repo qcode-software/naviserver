@@ -128,7 +128,7 @@ CopyCookieValue(Tcl_DString *dest, char *valueStart)
  *      semicolons.
  *
  * Results:
- *      On success a non-null value pointing the the begin of the found
+ *      On success a non-null value pointing the begin of the found
  *      cookie such we can iterate to search for more cookies with the same
  *      name
  *
@@ -213,7 +213,7 @@ GetFromCookieHeader(Ns_DString *dest, char *chars, const char *name,
  *      name/value pair.
  *
  * Results:
- *      On success a non-null value pointing the the begin of the found
+ *      On success a non-null value pointing the begin of the found
  *      cookie
  *
  * Side effects:
@@ -286,7 +286,7 @@ static int
 GetFirstNamedCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName,
                     const char *name)
 {
-    int      index = -1;
+    int      idx = -1;
     size_t   nameLen, i;
     CookieParser *cookieParser;
 
@@ -310,13 +310,13 @@ GetFirstNamedCookie(Ns_DString *dest, const Ns_Set *hdrs, const char *setName,
                 /*
                  * We found the result.
                  */
-                index = (int) i;
+                idx = (int) i;
                 break;
             }
         }
     }
 
-    return index;
+    return idx;
 }
 
 /*
@@ -453,7 +453,7 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value,
     }
 
     Ns_DStringInit(&cookie);
-    Ns_DStringVarAppend(&cookie, name, "=\"", (char *)0);
+    Ns_DStringVarAppend(&cookie, name, "=\"", (char *)0L);
     if (value != NULL) {
         Ns_CookieEncode(&cookie, value, NULL);
     }
@@ -471,10 +471,10 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value,
     }
     /* ignore empty domain, since IE rejects it */
     if (domain != NULL && *domain != '\0') {
-        Ns_DStringVarAppend(&cookie, "; Domain=", domain, (char *)0);
+        Ns_DStringVarAppend(&cookie, "; Domain=", domain, (char *)0L);
     }
     if (path != NULL) {
-        Ns_DStringVarAppend(&cookie, "; Path=", path, (char *)0);
+        Ns_DStringVarAppend(&cookie, "; Path=", path, (char *)0L);
     }
     if ((flags & NS_COOKIE_SECURE) != 0u) {
         Ns_DStringAppend(&cookie, "; Secure");
@@ -601,7 +601,7 @@ Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
 
 int
 NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *CONST* objv)
+                     int objc, Tcl_Obj *const* objv)
 {
     Ns_Conn       *conn;
     char          *name, *data, *domain = NULL, *path = NULL;
@@ -694,7 +694,7 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *CONST* objv)
+                     int objc, Tcl_Obj *const* objv)
 {
     Ns_Conn       *conn;
     char          *nameString;
@@ -776,7 +776,7 @@ NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclDeleteCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                        int objc, Tcl_Obj *CONST* objv)
+                        int objc, Tcl_Obj *const* objv)
 {
     Ns_Conn        *conn;
     char           *name, *domain = NULL, *path = NULL;

@@ -21,62 +21,62 @@ nx::Class create ::ns_crypto::HashFunctions {
     :variable ctx
 
     :public method readfile {filename} {
-	#
-	# Read a file blockwisw and call the incremental crypo
-	# function on every block.
-	#
-	set F [open $filename]
-	fconfigure $F -encoding binary -translation binary
-	while (1) {
-	    set block [read $F 32768]
-	    :add $block
-	    if {[string length $block] < 32768} {
-		break
-	    }
-	}
-	close $F
-	#
-	# Return the hash sum
-	#
-	return [:get]
+        #
+        # Read a file blockwise and call the incremental crypto
+        # function on every block.
+        #
+        set F [open $filename]
+        fconfigure $F -encoding binary -translation binary
+        while (1) {
+            set block [read $F 32768]
+            :add $block
+            if {[string length $block] < 32768} {
+                break
+            }
+        }
+        close $F
+        #
+        # Return the hash sum
+        #
+        return [:get]
     }
 }
 
 ###########################################################################
 # class ns_md
 #
-#     Provide an oo interface to the OpenSSL Message Digest
+#     Provide an OO interface to the OpenSSL Message Digest
 #     functionality.
 #
 nx::Class create ns_md -superclass ::ns_crypto::HashFunctions {
-   
+
     :public object method string {-digest message} {
-	::ns_crypto::md string -digest $digest $message
+        ::ns_crypto::md string -digest $digest $message
     }
-    
+
     :public object method file {-digest filename} {
-	if {![file readable $filename]} {
-	    return -code error "file $filename is not readable"
-	}
-	set m [:new -digest $digest]
-	set r [$m readfile $filename]
-	$m destroy
-	return $r
+        if {![file readable $filename]} {
+            return -code error "file $filename is not readable"
+        }
+        set m [:new -digest $digest]
+        set r [$m readfile $filename]
+        $m destroy
+        return $r
     }
-    
+
     :method init {} {
-	set :ctx [::ns_crypto::md new ${:digest}]
+        set :ctx [::ns_crypto::md new ${:digest}]
     }
     :public method destroy {} {
-	::ns_crypto::md free ${:ctx}
-	next
+        ::ns_crypto::md free ${:ctx}
+        next
     }
-   
+
     :public method add {message} {
-	::ns_crypto::md add ${:ctx} $message
+        ::ns_crypto::md add ${:ctx} $message
     }
     :public method get {} {
-	::ns_crypto::md get ${:ctx}
+        ::ns_crypto::md get ${:ctx}
     }
 }
 
@@ -84,41 +84,41 @@ nx::Class create ns_md -superclass ::ns_crypto::HashFunctions {
 ###########################################################################
 # class ns_hmac
 #
-#     Provide an oo interface to the OpenSSL Hash Based Message
+#     Provide an OO interface to the OpenSSL Hash Based Message
 #     authentication Code (HMAC). In essence, this is a password
 #     secured hash code.
 #
 
 nx::Class create ns_hmac -superclass ::ns_crypto::HashFunctions {
     :property key:required
-   
+
     :public object method string {-digest key message} {
-	::ns_crypto::hmac string -digest $digest $key $message
+        ::ns_crypto::hmac string -digest $digest $key $message
     }
 
     :public object method file {-digest key filename} {
-	if {![file readable $filename]} {
-	    return -code error "file $filename is not readable"
-	}
-	set m [:new -digest $digest -key $key]
-	set r [$m readfile $filename]
-	$m destroy
-	return $r
+        if {![file readable $filename]} {
+            return -code error "file $filename is not readable"
+        }
+        set m [:new -digest $digest -key $key]
+        set r [$m readfile $filename]
+        $m destroy
+        return $r
     }
-    
+
     :method init {} {
-	set :ctx [::ns_crypto::hmac new ${:digest} ${:key}]
+        set :ctx [::ns_crypto::hmac new ${:digest} ${:key}]
     }
     :public method destroy {} {
-	::ns_crypto::hmac free ${:ctx}
-	next
+        ::ns_crypto::hmac free ${:ctx}
+        next
     }
-   
+
     :public method add {message} {
-	::ns_crypto::hmac add ${:ctx} $message
+        ::ns_crypto::hmac add ${:ctx} $message
     }
     :public method get {} {
-	::ns_crypto::hmac get ${:ctx}
+        ::ns_crypto::hmac get ${:ctx}
     }
 }
 
@@ -130,9 +130,10 @@ nx::Class create ns_hmac -superclass ::ns_crypto::HashFunctions {
 #
 #    K: key
 #    C: counter (moving factor for one time passwd)
-#    
-# The function below allows to choose the digest algorithm, the number
-# of digits. C is provided as data. 
+#
+# The function "ns_hotp" receives as input the digest algorithm, the
+# number of digits of the resulting password, a key and data used for
+# the HMAC (C in above formula).
 
 nsf::proc ns_hotp {
     {-digest sha256}
@@ -163,7 +164,7 @@ nsf::proc ::ns_crypto::hotp_truncate {
     set dbc1 [expr {"0x[string range $input $offset $offset+7]" & 0x7fffffff}]
     #
     # DBC1 (stands for "dynamic binary code" in RFC 4226) is assumed to
-    # be equal to DBC2. The same is done in the refence implementation
+    # be equal to DBC2. The same is done in the reference implementation
     # RFC 4226.
     #
     # Finally return last $digits digits of $dbc1
@@ -174,7 +175,7 @@ nsf::proc ::ns_crypto::hotp_truncate {
 
 ###########################################################################
 # TOTP: Implementation of a Time-Based One-Time Password Algorithm as
-# defined in RFC 6238 based on HOTP. TOTP is defined as
+# specified in RFC 6238 based on HOTP. TOTP is defined as
 #
 #     TOTP = HOTP(K, T), where T is an integer
 #
@@ -196,11 +197,11 @@ nsf::proc ns_totp {
 } {
     #
     # If no key is provided, get configured secret and personalize
-    # this for the given user_id
+    # this for the given user_id.
     #
     if {![info exists key]} {
-	set secret [ns_config "ns/server/[ns_info server]" serversecret ""]; 
-	set key [binary format H* [::ns_crypto::md string -digest sha224 $secret-$user_id]]
+        set secret [ns_config "ns/server/[ns_info server]" serversecret ""];
+        set key [binary format H* [::ns_crypto::md string -digest sha224 $secret-$user_id]]
     }
     #
     # If no time is provided, take the current time
@@ -211,12 +212,54 @@ nsf::proc ns_totp {
     # value for interval seconds)
     #
     set totp [ns_hotp \
-		  -digest $digest \
-		  -digits $digits \
-		  -key $key \
-		  [binary format W [expr {$time / $interval}]]]
+                  -digest $digest \
+                  -digits $digits \
+                  -key $key \
+                  [binary format W [expr {$time / $interval}]]]
     return $totp
 }
 
+#
+# ns_uuid: Generate a Version 4 UUID according to RFC 4122
+#
+# Uses the OpenSSL RAND_bytes function to generate a Version 4 UUID,
+# which is meant for generating UUIDs from truly-random or
+# pseudo-random numbers.
+#
+#   The algorithm is as follows:
+#
+#   o  Set the two most significant bits (bits 6 and 7) of the
+#      clock_seq_hi_and_reserved to zero and one, respectively.
+#
+#   o  Set the four most significant bits (bits 12 through 15) of the
+#      time_hi_and_version field to the 4-bit version number from
+#      Section 4.1.3.
+#
+#   o  Set all the other bits to randomly (or pseudo-randomly) chosen values.
+#
+proc ns_uuid {} {
+    set b [ns_crypto::randombytes 16]
+    set time_hi_and_version [string replace [string range $b 12 15] 0 0 4]
+    set clk_seq_hi_res      [string range $b 16 17]
+    set clk_seq_hi_res2     [format %2x [expr {("0x$clk_seq_hi_res" & 0x3f) | 0x80}]]
+    format %s-%s-%s-%s%s-%s \
+        [string range $b 0 7] \
+        [string range $b 8 11] \
+        $time_hi_and_version \
+        $clk_seq_hi_res2 \
+        [string range $b 18 19] \
+        [string range $b 20 31]
+}
+# % package require uuid
+# 1.0.5
+# % time {::uuid::uuid generate} 10000
+# 366.14292850000004 microseconds per iteration
+# % time {ns_uuid} 10000
+# 5.559969000000001 microseconds per iteration
 
-
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

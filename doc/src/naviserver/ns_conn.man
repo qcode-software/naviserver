@@ -20,6 +20,14 @@ The subcommands of ns_conn are (in alphabetical order):
 
 [list_begin definitions]
 
+[call [cmd  "ns_conn acceptedcompression"]]
+
+Returns the compression formats accepted by the client.
+
+[call [cmd  "ns_conn addr"]]
+
+Returns the local IP address of the current connection.
+
 [call [cmd  "ns_conn auth"]]
 
 Returns all authorization headers as a ns_set. For Basic authentication
@@ -143,9 +151,11 @@ the flags might change over versions.
 
 [call [cmd  "ns_conn form"]]
 
-Returns any submitted form data as an ns_set. This form data may have been submitted
-with a POST or appended to the URL in a GET request. Note: ns_conn form is not suitable
-for multipart formdata file upload widgets.
+Returns any submitted form data as an [term ns_set]. This form data may have been submitted
+with a POST or appended to the URL in a GET request.
+
+[para] Note: ns_conn form is not suitable for multipart formdata file
+upload widgets. Use [cmd ns_getform] instead.
 
 
 [call [cmd  "ns_conn headers"]]
@@ -255,7 +265,7 @@ Returns the socket id (integer fd) of current connection.
 
 [call [cmd  "ns_conn start"]]
 
-Returns the time the connection request started in "sec:usec" (aka
+Returns the time the connection request started in "sec:usec" (a.k.a.
 ns_time) format.
 
 
@@ -314,8 +324,8 @@ if { [lb]string match /page/* [lb]ns_conn url[rb][rb] } {
 
 [example_end]
 
-[see_also ns_adp ns_getform ns_queryget ns_time]
-[keywords gzip connection]
+[see_also ns_adp ns_getform ns_set ns_queryget ns_time]
+[keywords "server built-in" gzip connection]
 
 [manpage_end]
 

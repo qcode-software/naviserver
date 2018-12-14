@@ -348,7 +348,7 @@ Ns_SkipUrl(const Ns_Request *request, int n)
     int          length;
 
     NS_NONNULL_ASSERT(request != NULL);
-    
+
     Tcl_SplitList(NULL, request->urlv, &length, &elements);
 
     if (n <= request->urlc) {
@@ -435,7 +435,7 @@ FreeUrl(Ns_Request *request)
  *
  * SetUrl --
  *
- *    Break up an URL and put it in the request.
+ *    Break up a URL and put it in the request.
  *
  * Results:
  *    None.
@@ -504,7 +504,7 @@ SetUrl(Ns_Request *request, char *url)
     Tcl_DStringFree(&ds2);
 
     /*
-     * Build the urlv and set urlc. 
+     * Build the urlv and set urlc.
      */
     {
         Tcl_Obj *listPtr, *segmentObj;
@@ -515,9 +515,9 @@ SetUrl(Ns_Request *request, char *url)
          * Skip the leading slash.
          */
         encodedPath++;
-        
+
         while (*encodedPath != '\0') {
-            p = strchr(encodedPath, (int)UCHAR('/'));
+            p = strchr(encodedPath, INTCHAR('/'));
             if (p == NULL) {
                 break;
             }
@@ -526,8 +526,8 @@ SetUrl(Ns_Request *request, char *url)
             segmentObj = Tcl_NewStringObj(ds1.string, ds1.length);
             Tcl_ListObjAppendElement(NULL, listPtr, segmentObj);
             Tcl_DStringSetLength(&ds1, 0);
-	    encodedPath = p + 1;
-	}
+            encodedPath = p + 1;
+        }
         /*
          * Append last segment if not empty (for compatibility with previous
          * versions).
@@ -590,17 +590,17 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
             status = NS_ERROR;
 
         } else {
-            size_t index = Ns_SetLast(set);
+            size_t idx = Ns_SetLast(set);
             while (CHARTYPE(space, *line) != 0) {
                 ++line;
             }
             if (*line != '\0') {
                 Ns_DString ds;
-                char      *value = Ns_SetValue(set, index);
+                char      *value = Ns_SetValue(set, idx);
 
                 Ns_DStringInit(&ds);
-                Ns_DStringVarAppend(&ds, value, " ", line, (char *)0);
-                Ns_SetPutValue(set, index, ds.string);
+                Ns_DStringVarAppend(&ds, value, " ", line, (char *)0L);
+                Ns_SetPutValue(set, idx, ds.string);
                 Ns_DStringFree(&ds);
             }
         }
@@ -617,14 +617,14 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
         } else {
             const char *value;
             char       *key;
-            size_t      index;
+            size_t      idx;
 
             *sep = '\0';
             for (value = sep + 1; (*value != '\0') && CHARTYPE(space, *value) != 0; value++) {
                 ;
             }
-            index = Ns_SetPut(set, line, value);
-            key = Ns_SetKey(set, index);
+            idx = Ns_SetPut(set, line, value);
+            key = Ns_SetKey(set, idx);
             if (disp == ToLower) {
                 while (*key != '\0') {
                     if (CHARTYPE(upper, *key) != 0) {
@@ -666,61 +666,64 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
  */
 static const char *
 GetQvalue(const char *str, int *lenPtr) {
-    const char *resultString;
+    const char *resultString = NULL;
 
     NS_NONNULL_ASSERT(str != NULL);
     NS_NONNULL_ASSERT(lenPtr != NULL);
 
-    for (; *str == ' '; str++) {
-        ;
-    }
-    if (*str != ';') {
-        return NULL;
-    }
-    for (str ++; *str == ' '; str++) {
-        ;
-    }
-    if (*str != 'q') {
-        return NULL;
-    }
-    for (str ++; *str == ' '; str++) {
-        ;
-    }
-    if (*str != '=') {
-        return NULL;
-    }
-    for (str ++; *str == ' '; str++) {
-        ;
-    }
-    if (CHARTYPE(digit,*str) == 0) {
-        return NULL;
-    }
+    for (;;) {
+        for (; *str == ' '; str++) {
+            ;
+        }
+        if (*str != ';') {
+            break;
+        }
+        for (str ++; *str == ' '; str++) {
+            ;
+        }
+        if (*str != 'q') {
+            break;
+        }
+        for (str ++; *str == ' '; str++) {
+            ;
+        }
+        if (*str != '=') {
+            break;
+        }
+        for (str ++; *str == ' '; str++) {
+            ;
+        }
+        if (CHARTYPE(digit,*str) == 0) {
+            break;
+        }
 
-    resultString = str;
-    str++;
-    if (*str == '.') {
-        /*
-         * Looks like a floating point number; RFC2612 allows up to
-         * three digits after the comma.
-         */
-        str ++;
-        if (CHARTYPE(digit, *str) != 0) {
-            str++;
+        resultString = str;
+        str++;
+        if (*str == '.') {
+            /*
+             * Looks like a floating point number; RFC2612 allows up to
+             * three digits after the comma.
+             */
+            str ++;
             if (CHARTYPE(digit, *str) != 0) {
                 str++;
                 if (CHARTYPE(digit, *str) != 0) {
                     str++;
+                    if (CHARTYPE(digit, *str) != 0) {
+                        str++;
+                    }
                 }
             }
         }
-    }
-    /*
-     * str should point to a valid terminator of the number
-     */
-    if (*str == ' ' || *str == ',' || *str == ';' || *str == '\0') {
-        *lenPtr = (int)(str - resultString);
-    } else {
-        resultString = NULL;
+        /*
+         * "str" should point to a valid terminator of the number.
+         */
+        if (*str == ' ' || *str == ',' || *str == ';' || *str == '\0') {
+            *lenPtr = (int)(str - resultString);
+        } else {
+            resultString = NULL;
+        }
+        break;
     }
     return resultString;
 }
@@ -736,7 +739,8 @@ GetQvalue(const char *str, int *lenPtr) {
  *      encodingFormat (e.g. "gzip", "identy") and return its q value.
  *
  * Results:
- *      On success non-NULL value and he parsed qValue;
+ *      On success non-NULL value and the parsed qValue
+ *      (when no qvalue is provided then assume qvalue as 1.0);
  *      On failure NULL value qValue set to -1;
  *
  * Side effects:
@@ -770,7 +774,66 @@ GetEncodingFormat(const char *encodingString, const char *encodingFormat, double
     return encodingStr;
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * CompressAllow --
+ *
+ *      Handle quality values expressed expicitly (for gzip or brotli) in the
+ *      header fields. Respect cases, where compression is forbidden via
+ *      identy or default rules.
+ *
+ * Results:
+ *      boolen
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static bool
+CompressAllow(double compressQvalue, double identityQvalue, double starQvalue)
+{
+    bool result;
 
+    if (compressQvalue > 0.999) {
+        /*
+         * Compress qvalue 1, use it, nothing else can be higher, so it is
+         * allowed.
+         */
+        result = NS_TRUE;
+    } else if (compressQvalue < 0.0009) {
+        /*
+         * Compress qvalue 0, forbid this kind of compressions
+         */
+        result = NS_FALSE;
+    } else {
+        /*
+         * A middle compress qvalue was specified, compare it with identity
+         * and default.
+         */
+        if (identityQvalue >=- 1.0) {
+            /*
+             * The compression format is allowed, when the compression qvalue
+             * is larger than identity.
+             */
+            result = (compressQvalue >= identityQvalue);
+        } else if (starQvalue >= -1.0) {
+            /*
+             * gzip is used, when gzip qvalue is larger than default
+             */
+            result = (compressQvalue >= starQvalue);
+        } else {
+            /*
+             * Accept the low qvalue due to lack of alternatives
+             */
+            result = NS_TRUE;
+        }
+        //fprintf(stderr, "CompressAllow middle compressQvalue %f identity %f result %d\n", compressQvalue, identityQvalue,result);
+    }
+    return result;
+}
 
 /*
  *----------------------------------------------------------------------
@@ -781,81 +844,66 @@ GetEncodingFormat(const char *encodingString, const char *encodingFormat, double
  *      encoding is accepted or not.
  *
  * Results:
- *      0 or 1
+ *      The result is passed back in the last two arguments.
  *
  * Side effects:
  *      None.
  *
  *----------------------------------------------------------------------
  */
-bool
-NsParseAcceptEncoding(double version, const char *hdr)
+void
+NsParseAcceptEncoding(double version, const char *hdr, bool *gzipAcceptPtr, bool *brotliAcceptPtr)
 {
-    double gzipQvalue = -1.0, starQvalue = -1.0, identityQvalue = -1.0;
-    bool   gzipAccept;
+    double      gzipQvalue = -1.0, brotliQvalue = -1, starQvalue = -1.0, identityQvalue = -1.0;
+    bool        gzipAccept, brotliAccept;
+    const char *gzipFormat, *brotliFormat, *starFormat;
 
     NS_NONNULL_ASSERT(hdr != NULL);
+    NS_NONNULL_ASSERT(gzipAcceptPtr != NULL);
+    NS_NONNULL_ASSERT(brotliAcceptPtr != NULL);
 
-    if (GetEncodingFormat(hdr, "gzip", &gzipQvalue) != NULL) {
+    gzipFormat    = GetEncodingFormat(hdr, "gzip", &gzipQvalue);
+    brotliFormat  = GetEncodingFormat(hdr, "br", &brotliQvalue);
+    starFormat    = GetEncodingFormat(hdr, "*", &starQvalue);
+    (void)GetEncodingFormat(hdr, "identity", &identityQvalue);
+
+    //fprintf(stderr, "hdr line <%s> gzipFormat <%s> brotliFormat <%s>\n", hdr, gzipFormat, brotliFormat);
+    if ((gzipFormat != NULL) || (brotliFormat != NULL)) {
+        gzipAccept   = CompressAllow(gzipQvalue, identityQvalue, starQvalue);
+        brotliAccept = CompressAllow(brotliQvalue, identityQvalue, starQvalue);
+    } else if (starFormat != NULL) {
         /*
-         * we have gzip specified in accept-encoding
-         */
-        if (gzipQvalue > 0.999) {
-            /*
-             * gzip qvalue 1, use it, nothing else can be higher
-             */
-            gzipAccept = NS_TRUE;
-        } else if (gzipQvalue < 0.0009) {
-            /*
-             * gzip qvalue 0, forbid gzip
-             */
-            gzipAccept = NS_FALSE;
-        } else {
-            /*
-             * a middle gzip qvalue, compare it with identity and default
-             */
-            if (GetEncodingFormat(hdr, "identity", &identityQvalue) != NULL) {
-                /*
-                 * gzip qvalue larger than identity
-                 */
-                gzipAccept = (gzipQvalue >= identityQvalue);
-            } else if (GetEncodingFormat(hdr, "*", &starQvalue) != NULL) {
-                /*
-                 * gzip qvalue larger than default
-                 */
-                gzipAccept = (gzipQvalue >= starQvalue);
-            } else {
-                /*
-                 * just the low qvalue was specified
-                 */
-                gzipAccept = NS_TRUE;
-            }
-        }
-    } else if (GetEncodingFormat(hdr, "*", &starQvalue) != NULL) {
-        /*
-         * star matches everything, so as well gzip
+         * No compress format was specified, star matches everything, so as
+         * well the compression formats.
          */
         if (starQvalue < 0.0009) {
             /*
-             * star qvalue forbids gzip
+             * The low "*" qvalue forbids the compression formats.
              */
             gzipAccept = NS_FALSE;
-        } else if (GetEncodingFormat(hdr, "identity", &identityQvalue) != NULL) {
+        } else if (identityQvalue >= -1) {
             /*
-             * star qvalue allows gzip in HTTP/1.1
+             * Star qvalue allows gzip in HTTP/1.1, when it is larger
+             * than identity.
              */
             gzipAccept = (starQvalue >= identityQvalue) && (version >= 1.1);
         } else {
             /*
-             * no identity specified, assume gzip is matched with * in HTTP/1.1
+             * No identity was specified, assume compression format is matched
+             * with "*" in HTTP/1.1
              */
             gzipAccept = (version >= 1.1);
         }
+        /*
+         * The implicit rules are the same for gzip and brotli.
+         */
+        brotliAccept = gzipAccept;
     } else {
-        gzipAccept = NS_FALSE;
+        gzipAccept   = NS_FALSE;
+        brotliAccept = NS_FALSE;
     }
-
-    return gzipAccept;
+    *gzipAcceptPtr   = gzipAccept;
+    *brotliAcceptPtr = brotliAccept;
 }
 
 /*

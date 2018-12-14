@@ -89,23 +89,24 @@ Ns_RollFile(const char *fileName, int max)
     Ns_ReturnCode status = NS_OK;
 
     NS_NONNULL_ASSERT(fileName != NULL);
-    
+
     if (max <= 0 || max > 999) {
         Ns_Log(Error, "rollfile: invalid max parameter '%d'; "
                "must be > 0 and < 999", max);
         status = NS_ERROR;
 
     } else {
-        char *first;
-        int   err;
+        char  *first;
+        int    err;
+        size_t bufferSize = strlen(fileName) + 5u;
 
-        first = ns_malloc(strlen(fileName) + 5u);
-        sprintf(first, "%s.000", fileName);
+        first = ns_malloc(bufferSize);
+        snprintf(first, bufferSize, "%s.000", fileName);
         err = Exists(first);
 
         if (err > 0) {
-            const char *next;
-            int         num = 0;
+            const char  *next;
+            unsigned int num = 0;
 
             next = ns_strdup(first);
 
@@ -115,8 +116,9 @@ Ns_RollFile(const char *fileName, int max)
 
             do {
                 char *dot = strrchr(next, INTCHAR('.')) + 1;
-                sprintf(dot, "%03d", num++);
-            } while ((err = Exists(next)) == 1 && num < max);
+                snprintf(dot, 4u, "%03d", MIN(num, 999) );
+                num ++;
+            } while ((err = Exists(next)) == 1 && num < (unsigned int)max);
 
             num--; /* After this, num holds the max version found */
 
@@ -130,9 +132,9 @@ Ns_RollFile(const char *fileName, int max)
 
             while (err == 0 && num-- > 0) {
                 char *dot = strrchr(first, INTCHAR('.')) + 1;
-                sprintf(dot, "%03d", num);
+                snprintf(dot, 4u, "%03d", MIN(num, 999));
                 dot = strrchr(next, INTCHAR('.')) + 1;
-                sprintf(dot, "%03d", num + 1);
+                snprintf(dot, 4u, "%03d", MIN(num + 1, 999));
                 err = Rename(first, next);
             }
             ns_free((char *)next);
@@ -183,7 +185,7 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
     NS_NONNULL_ASSERT(fileObj != NULL);
 
     file = Tcl_GetString(fileObj);
-            
+
     if (rollfmt == NULL || *rollfmt == '\0') {
         status = Ns_RollFile(file, maxbackup);
 
@@ -198,10 +200,10 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
         (void) strftime(timeBuf, sizeof(timeBuf)-1u, rollfmt, ptm);
 
         Ns_DStringInit(&ds);
-        Ns_DStringVarAppend(&ds, file, ".", timeBuf, (char *)0);
+        Ns_DStringVarAppend(&ds, file, ".", timeBuf, (char *)0L);
         newPath = Tcl_NewStringObj(ds.string, -1);
         Tcl_IncrRefCount(newPath);
-        
+
         if (Tcl_FSAccess(newPath, F_OK) == 0) {
             status = Ns_RollFile(ds.string, maxbackup);
         } else if (Tcl_GetErrno() != ENOENT) {
@@ -216,15 +218,15 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
                    file, ds.string, strerror(Tcl_GetErrno()));
             status = NS_ERROR;
         }
-        
+
         Tcl_DecrRefCount(newPath);
         Ns_DStringFree(&ds);
-        
+
         if (status == NS_OK) {
             status = Ns_PurgeFiles(file, maxbackup);
         }
     }
-    
+
     return status;
 }
 
@@ -258,9 +260,6 @@ Ns_RollFileByDate(const char *fileName, int max)
 Ns_ReturnCode
 Ns_PurgeFiles(const char *fileName, int max)
 {
-    const File   *fiPtr;
-    File         *files = NULL;
-    int           nfiles;
     Tcl_Obj      *pathObj;
     Ns_ReturnCode status = NS_OK;
 
@@ -274,10 +273,12 @@ Ns_PurgeFiles(const char *fileName, int max)
      */
     if (Tcl_FSGetNormalizedPath(NULL, pathObj) == NULL) {
         Ns_Log(Error, "rollfile: invalid path '%s'", fileName);
-        nfiles = -1;
         status = NS_ERROR;
 
     } else {
+        File *files = NULL;
+        int   nfiles;
+
         /*
          * Get all files matching "file*" pattern.
          */
@@ -286,41 +287,34 @@ Ns_PurgeFiles(const char *fileName, int max)
             Ns_Log(Error, "rollfile: failed to match files '%s': %s",
                    fileName, strerror(Tcl_GetErrno()));
             status = NS_ERROR;
-        }
-    }
 
-    if (status == NS_OK) {
-        /*
-         * Purge (any) excessive files after sorting them
-         * on descening file mtime.
-         */
+        } else if (files != NULL) {
+            const File *fiPtr;
+            int         ii;
 
-        if (nfiles >= max) {
-            int ii;
-        
-            assert(files != NULL);
+            /*
+             * Purge (any) excessive files after sorting them
+             * on descening file mtime.
+             */
 
-            qsort(files, (size_t)nfiles, sizeof(File), CmpFile);
-            for (ii = max, fiPtr = files + ii; ii < nfiles; ii++, fiPtr++) {
-                if (Unlink(Tcl_GetString(fiPtr->path)) != 0) {
-                    status = NS_ERROR;
-                    break;
+            if (nfiles >= max) {
+                qsort(files, (size_t)nfiles, sizeof(File), CmpFile);
+                for (ii = max, fiPtr = files + ii; ii < nfiles; ii++, fiPtr++) {
+                    if (Unlink(Tcl_GetString(fiPtr->path)) != 0) {
+                        status = NS_ERROR;
+                        break;
+                    }
                 }
+            }
+
+            if (nfiles > 0) {
+                for (ii = 0, fiPtr = files; ii < nfiles; ii++, fiPtr++) {
+                    Tcl_DecrRefCount(fiPtr->path);
+                }
+                ns_free(files);
             }
         }
     }
-    
-    if (nfiles > 0) {
-        int ii;
-
-        assert(files != NULL);
-
-        for (ii = 0, fiPtr = files; ii < nfiles; ii++, fiPtr++) {
-            Tcl_DecrRefCount(fiPtr->path);
-        }
-        ns_free(files);
-    }
-
     Tcl_DecrRefCount(pathObj);
     return status;
 }
@@ -356,7 +350,7 @@ MatchFiles(Tcl_Obj *pathObj, File **files)
 
     NS_NONNULL_ASSERT(pathObj != NULL);
     NS_NONNULL_ASSERT(files != NULL);
-    
+
     /*
      * Get the parent directory of the passed filename
      */
@@ -398,13 +392,13 @@ MatchFiles(Tcl_Obj *pathObj, File **files)
         int result = Tcl_ListObjGetElements(NULL, matched, &numElems, &matchElems);
 
         if (result == TCL_OK && numElems > 0) {
-	    File *fiPtr;
-	    int   ii;
+            File *fiPtr;
+            int   ii;
 
             *files = ns_malloc(sizeof(File) * (size_t)numElems);
             for (ii = 0, fiPtr = *files; ii < numElems; ii++, fiPtr++) {
                 if (Tcl_FSStat(matchElems[ii], &st) != 0) {
-		    int jj;
+                    int jj;
 
                     for (jj = 0, fiPtr = *files; jj < ii; jj++, fiPtr++) {
                         Tcl_DecrRefCount(fiPtr->path);
@@ -486,7 +480,7 @@ Unlink(const char *file)
     Tcl_Obj *fileObj;
 
     NS_NONNULL_ASSERT(file != NULL);
-    
+
     fileObj = Tcl_NewStringObj(file, -1);
     Tcl_IncrRefCount(fileObj);
     err = Tcl_FSDeleteFile(fileObj);
@@ -507,7 +501,7 @@ Rename(const char *from, const char *to)
 
     NS_NONNULL_ASSERT(from != NULL);
     NS_NONNULL_ASSERT(to != NULL);
-    
+
     fromObj = Tcl_NewStringObj(from, -1);
     Tcl_IncrRefCount(fromObj);
 
@@ -532,7 +526,7 @@ Exists(const char *file)
     int exists;
 
     NS_NONNULL_ASSERT(file != NULL);
-    
+
     if (Tcl_Access(file, F_OK) == 0) {
         exists = 1;
     } else if (Tcl_GetErrno() == ENOENT) {

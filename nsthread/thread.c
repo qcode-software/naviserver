@@ -70,7 +70,7 @@ static void SetBottomOfStack(void *ptr)  NS_GNUC_NONNULL(1);
 static Thread *firstThreadPtr;
 
 /*
- * The following maintains the tls key for the thread context.
+ * The following maintains the TLS key for the thread context.
  */
 
 static Ns_Tls key;
@@ -204,7 +204,7 @@ Ns_ThreadStackSize(ssize_t size)
  *      None.
  *
  * Side effects:
- *      Will call Ns_ThreadExit() if not alreday done by the user code.
+ *      Will call Ns_ThreadExit() if not already done by the user code.
  *
  *----------------------------------------------------------------------
  */
@@ -232,7 +232,7 @@ NsThreadMain(void *arg)
     (*thrPtr->proc) (thrPtr->arg);
 
     /*
-     * Controllaby exit this thread, pulling all of the
+     * Controllably exit this thread, pulling all of the
      * cleanup callbacks that need to be run.
      */
     Ns_ThreadExit(NULL);
@@ -354,7 +354,7 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
             Tcl_DStringStartSublist(dsPtr);
             Tcl_DStringAppendElement(dsPtr, thrPtr->name);
             Tcl_DStringAppendElement(dsPtr, thrPtr->parent);
-            written = snprintf(buf, sizeof(buf), " %" PRIxPTR " %d %" PRIu64,
+            written = snprintf(buf, sizeof(buf), " %" PRIxPTR " %d %" PRId64,
                                thrPtr->tid, thrPtr->flags, (int64_t) thrPtr->ctime);
             Tcl_DStringAppend(dsPtr, buf, written);
             if (proc != NULL) {
@@ -411,7 +411,7 @@ Ns_ThreadExit(void *arg)
      * Clear TLS slots for this (now exiting) thread controllably,
      * augmenting the TLS cleanup invoked automatically by
      * the system's thread exit machinery. It is at this place
-     * that we have the thread completely initalized, so an
+     * that we have the thread completely initialized, so an
      * proper cleanup has better chance to finish it's work.
      */
 
@@ -427,7 +427,7 @@ Ns_ThreadExit(void *arg)
 
    /*
     * Now, exit the thread really. This will invoke all of the
-    * registerd TLS cleanup callbacks again (no harm).
+    * registered TLS cleanup callbacks again (no harm).
     */
 
     NsThreadExit(arg);

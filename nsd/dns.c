@@ -112,17 +112,17 @@ NsConfigDNS(void)
     const char *path = NS_CONFIG_PARAMETERS;
 
     if (Ns_ConfigBool(path, "dnscache", NS_TRUE) == NS_TRUE) {
-        int max = Ns_ConfigIntRange(path, "dnscachemaxsize", 1024*500, 0, INT_MAX);
+        int maxValue = Ns_ConfigIntRange(path, "dnscachemaxsize", 1024*500, 0, INT_MAX);
 
-        if (max > 0) {
+        if (maxValue > 0) {
             timeout = Ns_ConfigIntRange(path, "dnswaittimeout",  5, 0, INT_MAX);
             ttl = Ns_ConfigIntRange(path, "dnscachetimeout", 60, 0, INT_MAX);
             ttl *= 60; /* NB: Config specifies minutes, seconds used internally. */
 
             hostCache = Ns_CacheCreateSz("ns:dnshost", TCL_STRING_KEYS,
-                                         (size_t) max, ns_free);
+                                         (size_t) maxValue, ns_free);
             addrCache = Ns_CacheCreateSz("ns:dnsaddr", TCL_STRING_KEYS,
-                                         (size_t) max, ns_free);
+                                         (size_t) maxValue, ns_free);
         }
     }
 }
@@ -237,6 +237,10 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, bo
 
     if (success) {
         if (getProc == GetAddr && !all) {
+            /*
+             * When "all" is not specified for an GetAddr, return just
+             * the first address.
+             */
             const char *p = ds.string;
 
             while (*p != '\0' && CHARTYPE(space, *p) == 0) {
@@ -299,6 +303,7 @@ GetHost(Ns_DString *dsPtr, const char *addr)
             success = NS_TRUE;
         }
     }
+
     return success;
 }
 

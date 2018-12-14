@@ -31,7 +31,7 @@
 /*
  * set.c --
  *
- *	Implements the Ns_Set data type.
+ *      Implements the Ns_Set data type.
  */
 
 #include "nsd.h"
@@ -42,13 +42,13 @@
  *
  * Ns_SetIUpdate --
  *
- *	Remove a tuple and re-add it (case insensitive).
+ *      Remove a tuple and re-add it (case insensitive).
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -69,13 +69,13 @@ Ns_SetIUpdate(Ns_Set *set, const char *key, const char *value)
  *
  * Ns_SetUpdate --
  *
- *	Remove a tuple and re-add it.
+ *      Remove a tuple and re-add it.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -96,13 +96,13 @@ Ns_SetUpdate(Ns_Set *set, const char *key, const char *value)
  *
  * Ns_SetCreate --
  *
- *	Initialize a new set.
+ *      Initialize a new set.
  *
  * Results:
- *	A pointer to a new set.
+ *      A pointer to a new set.
  *
  * Side effects:
- *	Memory is allocated; free with Ns_SetFree.
+ *      Memory is allocated; free with Ns_SetFree.
  *
  *----------------------------------------------------------------------
  */
@@ -126,13 +126,13 @@ Ns_SetCreate(const char *name)
  *
  * Ns_SetFree --
  *
- *	Free a set and its associated data with ns_free.
+ *      Free a set and its associated data with ns_free.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free both the Ns_Set structure AND its tuples.
+ *      Will free both the Ns_Set structure AND its tuples.
  *
  *----------------------------------------------------------------------
  */
@@ -161,13 +161,13 @@ Ns_SetFree(Ns_Set *set)
  *
  * Ns_SetPut --
  *
- *	Insert a tuple into an existing set.
+ *      Insert a tuple into an existing set.
  *
  * Results:
- *	The index number of the new tuple.
+ *      The index number of the new tuple.
  *
  * Side effects:
- *	The key/value will be strdup'ed.
+ *      The key/value will be strdup'ed.
  *
  *----------------------------------------------------------------------
  */
@@ -175,23 +175,24 @@ Ns_SetFree(Ns_Set *set)
 size_t
 Ns_SetPutSz(Ns_Set *set, const char *key, const char *value, ssize_t size)
 {
-    size_t index;
+    size_t idx;
 
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(key != NULL);
-    NS_NONNULL_ASSERT(set->size <  set->maxSize);
 
-    index = set->size;
+    assert(set->size <=  set->maxSize);
+
+    idx = set->size;
     set->size++;
     if (set->size >= set->maxSize) {
         set->maxSize = set->size * 2u;
         set->fields = ns_realloc(set->fields,
-				 sizeof(Ns_SetField) * set->maxSize);
+                                 sizeof(Ns_SetField) * set->maxSize);
     }
-    set->fields[index].name = ns_strdup(key);
-    set->fields[index].value = ns_strncopy(value, size);
-    
-    return index;
+    set->fields[idx].name = ns_strdup(key);
+    set->fields[idx].value = ns_strncopy(value, size);
+
+    return idx;
 }
 
 size_t
@@ -208,22 +209,22 @@ Ns_SetPut(Ns_Set *set, const char *key, const char *value)
  *
  * Ns_SetUniqueCmp --
  *
- *	Using the comparison function, see if multiple keys match
- *	key.
+ *      Using the comparison function, see if multiple keys match
+ *      key.
  *
  * Results:
- *	NS_FALSE: multiple keys match key
- *	NS_TRUE: 0 or 1 keys match key.
+ *      NS_FALSE: multiple keys match key
+ *      NS_TRUE: 0 or 1 keys match key.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
 
 bool
 Ns_SetUniqueCmp(const Ns_Set *set, const char *key,
-                int (*cmp) (CONST char *s1, CONST char *s2))
+                int (*cmp) (const char *s1, const char *s2))
 {
     size_t i;
     bool   found, result = NS_TRUE;
@@ -255,14 +256,14 @@ Ns_SetUniqueCmp(const Ns_Set *set, const char *key,
  *
  * Ns_SetFindCmp --
  *
- *	Returns the index of a tuple matching key, using a comparison
- *	function callback.
+ *      Returns the index of a tuple matching key, using a comparison
+ *      function callback.
  *
  * Results:
- *	A tuple index or -1 if no matches.
+ *      A tuple index or -1 if no matches.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -276,23 +277,23 @@ Ns_SetFindCmp(const Ns_Set *set, const char *key,
 
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(cmp != NULL);
-    
-    if (likely(key != NULL)) {
-	for (i = 0u; i < set->size; i++) {
-	    const char *name = set->fields[i].name;
 
-	    if (likely(name != NULL) && ((*cmp) (key, name)) == 0) {
+    if (likely(key != NULL)) {
+        for (i = 0u; i < set->size; i++) {
+            const char *name = set->fields[i].name;
+
+            if (likely(name != NULL) && ((*cmp) (key, name)) == 0) {
                 result = (int)i;
                 break;
-	    }
-	}
+            }
+        }
     } else {
-	for (i = 0u; i < set->size; i++) {
-	    if (unlikely(set->fields[i].name == NULL)) {
+        for (i = 0u; i < set->size; i++) {
+            if (unlikely(set->fields[i].name == NULL)) {
                 result = (int)i;
                 break;
-	    }
-	}
+            }
+        }
     }
 
     return result;
@@ -304,14 +305,14 @@ Ns_SetFindCmp(const Ns_Set *set, const char *key,
  *
  * Ns_SetGetCmp --
  *
- *	Returns the value of a tuple matching key, using a comparison
- *	function callback.
+ *      Returns the value of a tuple matching key, using a comparison
+ *      function callback.
  *
  * Results:
- *	A value or NULL if no matches.
+ *      A value or NULL if no matches.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -342,13 +343,13 @@ Ns_SetGetCmp(const Ns_Set *set, const char *key,
  *
  * Ns_SetUnique --
  *
- *	Check if a key in a set is unique (case sensitive).
+ *      Check if a key in a set is unique (case sensitive).
  *
  * Results:
- *	NS_TRUE if unique, NS_FALSE if not.
+ *      NS_TRUE if unique, NS_FALSE if not.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -369,13 +370,13 @@ Ns_SetUnique(const Ns_Set *set, const char *key)
  *
  * Ns_SetIUnique --
  *
- *	Check if a key in a set is unique (case insensitive).
+ *      Check if a key in a set is unique (case insensitive).
  *
  * Results:
- *	NS_TRUE if unique, NS_FALSE if not.
+ *      NS_TRUE if unique, NS_FALSE if not.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -396,13 +397,13 @@ Ns_SetIUnique(const Ns_Set *set, const char *key)
  *
  * Ns_SetFind --
  *
- *	Locate the index of a field in a set (case sensitive)
+ *      Locate the index of a field in a set (case sensitive)
  *
  * Results:
- *	A field index or -1 if not found.
+ *      A field index or -1 if not found.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -423,13 +424,13 @@ Ns_SetFind(const Ns_Set *set, const char *key)
  *
  * Ns_SetIFind --
  *
- *	Locate the index of a field in a set (case insensitive)
+ *      Locate the index of a field in a set (case insensitive)
  *
  * Results:
- *	A field index or -1 if not found.
+ *      A field index or -1 if not found.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -450,13 +451,13 @@ Ns_SetIFind(const Ns_Set *set, const char *key)
  *
  * Ns_SetGet --
  *
- *	Return the value associated with a key, case sensitive.
+ *      Return the value associated with a key, case sensitive.
  *
  * Results:
- *	A value or NULL if key not found.
+ *      A value or NULL if key not found.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -477,13 +478,13 @@ Ns_SetGet(const Ns_Set *set, const char *key)
  *
  * Ns_SetIGet --
  *
- *	Return the value associated with a key, case insensitive.
+ *      Return the value associated with a key, case insensitive.
  *
  * Results:
- *	A value or NULL if key not found.
+ *      A value or NULL if key not found.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -526,7 +527,7 @@ Ns_SetGetValue(const Ns_Set *set, const char *key, const char *def)
     value = Ns_SetGet(set, key);
 
     if (value == NULL || *value == '\0') {
-	value = def;
+        value = def;
     }
     return value;
 }
@@ -559,7 +560,7 @@ Ns_SetIGetValue(const Ns_Set *set, const char *key, const char *def)
     value = Ns_SetIGet(set, key);
 
     if (value == NULL || *value == '\0') {
-	value = def;
+        value = def;
     }
     return value;
 }
@@ -570,13 +571,13 @@ Ns_SetIGetValue(const Ns_Set *set, const char *key, const char *def)
  *
  * Ns_SetTrunc --
  *
- *	Remove all tuples after 'size'
+ *      Remove all tuples after 'size'
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free tuple memory.
+ *      Will free tuple memory.
  *
  *----------------------------------------------------------------------
  */
@@ -587,11 +588,11 @@ Ns_SetTrunc(Ns_Set *set, size_t size)
     NS_NONNULL_ASSERT(set != NULL);
 
     if (size < set->size) {
-	size_t index;
+        size_t idx;
 
-        for (index = size; index < set->size; index++) {
-            ns_free(set->fields[index].name);
-            ns_free(set->fields[index].value);
+        for (idx = size; idx < set->size; idx++) {
+            ns_free(set->fields[idx].name);
+            ns_free(set->fields[idx].value);
         }
         set->size = size;
     }
@@ -603,14 +604,14 @@ Ns_SetTrunc(Ns_Set *set, size_t size)
  *
  * Ns_SetDelete --
  *
- *	Delete a tuple from a set. If index is -1, this function does
- *	nothing.
+ *      Delete a tuple from a set. If index is -1, this function does
+ *      nothing.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free tuple memory.
+ *      Will free tuple memory.
  *
  *----------------------------------------------------------------------
  */
@@ -621,7 +622,7 @@ Ns_SetDelete(Ns_Set *set, int index)
     NS_NONNULL_ASSERT(set != NULL);
 
     if ((index != -1) && (index < (int)set->size)) {
-	size_t i;
+        size_t i;
 
         ns_free(set->fields[index].name);
         ns_free(set->fields[index].value);
@@ -639,13 +640,13 @@ Ns_SetDelete(Ns_Set *set, int index)
  *
  * Ns_SetPutValue --
  *
- *	Set the value for a given tuple.
+ *      Set the value for a given tuple.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free the old value dup the new value.
+ *      Will free the old value dup the new value.
  *
  *----------------------------------------------------------------------
  */
@@ -668,13 +669,13 @@ Ns_SetPutValue(const Ns_Set *set, size_t index, const char *value)
  *
  * Ns_SetDeleteKey --
  *
- *	Delete a tuple from the set (case sensitive).
+ *      Delete a tuple from the set (case sensitive).
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free tuple memory.
+ *      Will free tuple memory.
  *
  *----------------------------------------------------------------------
  */
@@ -694,13 +695,13 @@ Ns_SetDeleteKey(Ns_Set *set, const char *key)
  *
  * Ns_SetIDeleteKey --
  *
- *	Delete a tuple from the set (case insensitive).
+ *      Delete a tuple from the set (case insensitive).
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free tuple memory.
+ *      Will free tuple memory.
  *
  *----------------------------------------------------------------------
  */
@@ -720,14 +721,14 @@ Ns_SetIDeleteKey(Ns_Set *set, const char *key)
  *
  * Ns_SetListFind --
  *
- *	In a null-terminated array of sets, find the set with the
- *	given name.
+ *      In a null-terminated array of sets, find the set with the
+ *      given name.
  *
  * Results:
- *	A set, or NULL.
+ *      A set, or NULL.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -736,7 +737,7 @@ Ns_Set *
 Ns_SetListFind(Ns_Set *const*sets, const char *name)
 {
     Ns_Set *result = NULL;
-    
+
     NS_NONNULL_ASSERT(sets != NULL);
 
     while (*sets != NULL) {
@@ -747,7 +748,7 @@ Ns_SetListFind(Ns_Set *const*sets, const char *name)
             }
         } else {
             if ((*sets)->name != NULL &&
-		STREQ((*sets)->name, name)) {
+                STREQ((*sets)->name, name)) {
                 result = *sets;
                 break;
             }
@@ -763,18 +764,18 @@ Ns_SetListFind(Ns_Set *const*sets, const char *name)
  *
  * Ns_SetSplit --
  *
- *	Split a set into an array of new sets. This assumes that each
- *	key name in the fields of a set contains a separating
- *	character. The fields of the set are partitioned into new
- *	sets whose set names are the characters before the separator
- *	and whose field key names are the characters after the
- *	separator.
+ *      Split a set into an array of new sets. This assumes that each
+ *      key name in the fields of a set contains a separating
+ *      character. The fields of the set are partitioned into new
+ *      sets whose set names are the characters before the separator
+ *      and whose field key names are the characters after the
+ *      separator.
  *
  * Results:
- *	A new set.
+ *      A new set.
  *
  * Side effects:
- *	Will allocate a new set and tuples.
+ *      Will allocate a new set and tuples.
  *
  *----------------------------------------------------------------------
  */
@@ -815,7 +816,7 @@ Ns_SetSplit(const Ns_Set *set, char sep)
         }
         (void)Ns_SetPut(next, key, set->fields[i].value);
         if (name != NULL) {
-            *--key = sep;
+            *(key-1) = sep;
         }
     }
     return (Ns_Set **) Ns_DStringExport(&ds);
@@ -827,13 +828,13 @@ Ns_SetSplit(const Ns_Set *set, char sep)
  *
  * Ns_SetListFree --
  *
- *	Free a null-terminated array of sets.
+ *      Free a null-terminated array of sets.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will free all sets in the array and their tuples.
+ *      Will free all sets in the array and their tuples.
  *
  *----------------------------------------------------------------------
  */
@@ -859,13 +860,13 @@ Ns_SetListFree(Ns_Set **sets)
  *
  * Ns_SetMerge --
  *
- *	Combine the 'low' set into the 'high' set.
+ *      Combine the 'low' set into the 'high' set.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will add tuples to 'high'.
+ *      Will add tuples to 'high'.
  *
  *----------------------------------------------------------------------
  */
@@ -892,13 +893,13 @@ Ns_SetMerge(Ns_Set *high, const Ns_Set *low)
  *
  * Ns_SetCopy --
  *
- *	Make a duplicate of a set.
+ *      Make a duplicate of a set.
  *
  * Results:
- *	A new set.
+ *      A new set.
  *
  * Side effects:
- *	Will copy tuples and alloc new memory for them, too.
+ *      Will copy tuples and alloc new memory for them, too.
  *
  *----------------------------------------------------------------------
  */
@@ -928,14 +929,14 @@ Ns_SetCopy(const Ns_Set *old)
  *
  * Ns_SetMove --
  *
- *	Moves the data from one set to another, truncating the "from"
- *	set.
+ *      Moves the data from one set to another, truncating the "from"
+ *      set.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -949,7 +950,7 @@ Ns_SetMove(Ns_Set *to, Ns_Set *from)
     NS_NONNULL_ASSERT(to != NULL);
 
     for (i = 0u; i < from->size; i++) {
-	(void)Ns_SetPut(to, from->fields[i].name, from->fields[i].value);
+        (void)Ns_SetPut(to, from->fields[i].name, from->fields[i].value);
     }
     Ns_SetTrunc(from, 0u);
 }
@@ -960,15 +961,15 @@ Ns_SetMove(Ns_Set *to, Ns_Set *from)
  *
  * Ns_SetRecreate --
  *
- *	Combination of a create and a move operation. A new set is created,
- *	all data from the old set is moved to the new set, and the old set is
- *	truncated.
+ *      Combination of a create and a move operation. A new set is created,
+ *      all data from the old set is moved to the new set, and the old set is
+ *      truncated.
  *
  * Results:
- *	new set.
+ *      new set.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -985,13 +986,97 @@ Ns_SetRecreate(Ns_Set *set)
     newSet->maxSize = set->maxSize;
     newSet->name = ns_strcopy(set->name);
     newSet->fields = ns_malloc(sizeof(Ns_SetField) * newSet->maxSize);
-    
+
     for (i = 0u; i < set->size; i++) {
-	newSet->fields[i].name  = set->fields[i].name;
+        newSet->fields[i].name  = set->fields[i].name;
         newSet->fields[i].value = set->fields[i].value;
     }
     set->size = 0u;
-    
+
+    return newSet;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SetRecreate2 --
+ *
+ *      This is a faster version of Ns_SetRecreate() since it tries to reuse
+ *      pre-allocated, but truncated Ns_Set structures. It saves potentially
+ *      three ns_malloc operations:
+ *        1) the Ns_Set structure
+ *        2) the set name (it preserves the old name)
+ *        3) the field set
+ *      At the end content is copied and the from set is truncated.
+ *
+ * Results:
+ *      new set.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+Ns_Set *
+Ns_SetRecreate2(Ns_Set **toPtr, Ns_Set *from)
+{
+    Ns_Set      *newSet;
+    size_t       i;
+
+    NS_NONNULL_ASSERT(toPtr != NULL);
+    NS_NONNULL_ASSERT(from != NULL);
+
+    if (*toPtr == NULL) {
+        /*
+         * Everything has to e created, essentially the same happens in
+         * Ns_SetRecreate()
+         */
+        newSet = ns_malloc(sizeof(Ns_Set));
+        newSet->name = ns_strcopy(from->name);
+        Ns_Log(Debug, "Ns_SetRecreate2: create a new set, new %" PRIuz "/%" PRIuz,
+               from->size, from->maxSize);
+        *toPtr = newSet;
+        newSet->size = from->size;
+        newSet->maxSize = from->maxSize;
+        newSet->fields = ns_malloc(sizeof(Ns_SetField) * newSet->maxSize);
+
+    } else {
+        newSet = *toPtr;
+        /*
+         * Keep always the old name.
+         */
+        assert(newSet->size == 0u);
+
+        if (newSet->maxSize >= from->size) {
+            /*
+             * The old Ns_Set has enough space, there is no need to create new
+             * fields.
+             */
+            //Ns_Log(Debug, "Ns_SetRecreate2: keep the old set and fields, old %lu/%lu from %lu/%lu",
+            //       newSet->size, newSet->maxSize, from->size, from->maxSize);
+
+        } else {
+            /*
+             * We have to grow the old Ns_Set, since it does not fit all the
+             * entries that have to be stored.
+             */
+            Ns_Log(Debug, "Ns_SetRecreate2: keep the old set, make new fields old %"
+                   PRIuz "/%" PRIuz " from %" PRIuz "/%" PRIuz,
+                   newSet->size, newSet->maxSize, from->size, from->maxSize);
+            newSet->maxSize = from->maxSize;
+            ns_free(newSet->fields);
+            newSet->fields = ns_malloc(sizeof(Ns_SetField) * newSet->maxSize);
+        }
+        newSet->size = from->size;
+    }
+
+    for (i = 0u; i < from->size; i++) {
+        newSet->fields[i].name  = from->fields[i].name;
+        newSet->fields[i].value = from->fields[i].value;
+    }
+    from->size = 0u;
+
     return newSet;
 }
 
@@ -1000,13 +1085,13 @@ Ns_SetRecreate(Ns_Set *set)
  *
  * Ns_SetPrint --
  *
- *	Dump the contents of a set to stderr.
+ *      Dump the contents of a set to stderr.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Will write to stderr.
+ *      Will write to stderr.
  *
  *----------------------------------------------------------------------
  */
@@ -1017,7 +1102,9 @@ Ns_SetPrint(const Ns_Set *set)
     size_t  i;
 
     NS_NONNULL_ASSERT(set != NULL);
-
+    if (set->name != NULL) {
+        fprintf(stderr, "%s:\n", set->name);
+    }
     for (i = 0u; i < set->size; ++i) {
         if (set->fields[i].name == NULL) {
             fprintf(stderr, "\t(null) = ");

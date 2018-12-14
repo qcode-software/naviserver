@@ -31,7 +31,7 @@
 /*
  * dbtcl.c --
  *
- *	Tcl database access routines.
+ *      Tcl database access routines.
  */
 
 #include "db.h"
@@ -64,7 +64,7 @@ static Tcl_ObjCmdProc
     GetCsvObjCmd,
     PoolDescriptionObjCmd,
     QuoteListToListObjCmd;
-static int ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd);
+static int ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd);
 
 
 /*
@@ -205,7 +205,7 @@ NsDbReleaseHandles(Tcl_Interp *interp, const void *UNUSED(arg))
  */
 
 static int
-DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     InterpData     *idataPtr = clientData;
     char            tmpbuf[32] = "";
@@ -393,7 +393,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
         } else {
             pool = (const char *)poolString;
             /*
-             * Set the minduration the the specified value.
+             * Set the minduration the specified value.
              */
             if (Ns_DbSetMinDuration(interp, pool, minDurationPtr) != TCL_OK) {
                 result = TCL_ERROR;
@@ -719,6 +719,9 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
             if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
                 result = TCL_ERROR;
 
+            } else if (DbGetHandle(idataPtr, interp, idString, &handlePtr, NULL) != TCL_OK) {
+                result = TCL_ERROR;
+
             } else {
                 assert(handlePtr != NULL);
                 Ns_LogDeprecated(objv, 2, "ns_logctl debug(sql) ...", NULL);
@@ -737,6 +740,10 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
         if (objc != 5) {
             Tcl_WrongNumArgs(interp, 2, objv, "dbId code message");
             result = TCL_ERROR;
+
+        } else if (DbGetHandle(idataPtr, interp, Tcl_GetString(objv[2]), &handlePtr, NULL) != TCL_OK) {
+            result = TCL_ERROR;
+
         } else {
             const char *code;
             int codeLen;
@@ -762,8 +769,12 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
 
             if (!STREQ(arg5, "in") && !STREQ(arg5, "out")) {
                 Ns_TclPrintfResult(interp, "inout parameter of setparam must "
-                              "be \"in\" or \"out\"");
+                                   "be \"in\" or \"out\"");
                 result = TCL_ERROR;
+
+            } else if (DbGetHandle(idataPtr, interp, Tcl_GetString(objv[2]), &handlePtr, NULL) != TCL_OK) {
+                result = TCL_ERROR;
+
             } else {
                 assert(handlePtr != NULL);
 
@@ -797,7 +808,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
  *
  * Results:
  *      Returns TCL_OK and database exception code is set as Tcl result
- *	or TCL_ERROR if failure.
+ *      or TCL_ERROR if failure.
  *
  * Side effects:
  *      None.
@@ -806,7 +817,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* ob
  */
 
 static int
-ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv, char cmd)
+ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
 {
     InterpData  *idataPtr = clientData;
     Ns_DbHandle *handle;
@@ -830,13 +841,13 @@ ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST*
 }
 
 static int
-DbErrorCodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbErrorCodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     return ErrorObjCmd(clientData, interp, objc, objv, 'c');
 }
 
 static int
-DbErrorMsgObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbErrorMsgObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     return ErrorObjCmd(clientData, interp, objc, objv, 'm');
 }
@@ -850,7 +861,7 @@ DbErrorMsgObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *C
  *
  * Results:
  *      TCL_OK and the database section name is set as the Tcl result
- *	or TCL_ERROR if failure.
+ *      or TCL_ERROR if failure.
  *
  * Side effects:
  *      None.
@@ -859,7 +870,7 @@ DbErrorMsgObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *C
  */
 
 static int
-DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK;
 
@@ -868,7 +879,7 @@ DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
         result = TCL_ERROR;
     } else {
         const InterpData *idataPtr = clientData;
-        const char *section = Ns_ConfigGetPath(idataPtr->server, NULL, "db", (char *)0);
+        const char *section = Ns_ConfigGetPath(idataPtr->server, NULL, "db", (char *)0L);
 
         Tcl_SetObjResult(interp, Tcl_NewStringObj(section, -1));
     }
@@ -884,7 +895,7 @@ DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *
  * Results:
  *      Return TCL_OK and the pool's description string is set as the
- *	Tcl result string or TCL_ERROR if failure.
+ *      Tcl result string or TCL_ERROR if failure.
  *
  * Side effects:
  *      None.
@@ -893,7 +904,7 @@ DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 static int
-PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -916,7 +927,7 @@ PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *
  * Results:
  *      TCL_OK and set the stripped string as the Tcl result or TCL_ERROR
- *	if failure.
+ *      if failure.
  *
  * Side effects:
  *      None.
@@ -925,7 +936,7 @@ PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 static int
-QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
 
@@ -985,20 +996,20 @@ QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *
  * GetCsvCmd --
  *
- *	Implement the ns_getcsv command to read a single line from a CSV file
- *	and parse the results into a Tcl list variable.
+ *      Implement the ns_getcsv command to read a single line from a CSV file
+ *      and parse the results into a Tcl list variable.
  *
  * Results:
- *	A standard Tcl result.
+ *      A standard Tcl result.
  *
  * Side effects:
- *	One line is read for given open channel.
+ *      One line is read for given open channel.
  *
  *----------------------------------------------------------------------
  */
 
 static int
-GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int           result = TCL_OK;
     char         *delimiter = (char *)",", *fileId, *varName;
@@ -1136,7 +1147,7 @@ GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Ob
  *      Return TCL_OK if handle is found or TCL_ERROR otherwise.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */

@@ -118,6 +118,10 @@
 /*
  * Visual Studio defines
  */
+
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#else
 typedef          __int8 int8_t;
 typedef unsigned __int8 uint8_t;
 
@@ -132,6 +136,7 @@ typedef unsigned __int64 uint64_t;
 
 typedef          long int intmax_t;
 typedef unsigned long int uintmax_t;
+#endif
 
 typedef          DWORD pid_t;
 typedef          DWORD ns_sockerrno_t;
@@ -193,6 +198,11 @@ MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
 
 #  define getpid()                    (pid_t)GetCurrentProcessId()
 #  define ftruncate(f,s)              _chsize((f),(s))
+
+#  if _MSC_VER > 1600
+#   define HAVE_INTPTR_T
+#   define HAVE_UINTPTR_T
+#  endif
 
 # else
 /*
@@ -271,7 +281,9 @@ MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
 #  define HAVE_IPV6                   1
 #  define HAVE_INET_NTOP              1
 #  define HAVE_INET_PTON              1
+#  ifndef NS_NAVISERVER
 #  define NS_NAVISERVER               "c:/ns"
+#  endif
 # endif
 
 /*
@@ -332,7 +344,7 @@ typedef struct DIR_ *DIR;
  *
  * Not windows
  *
- * mostly Unix style OSes, including Mac OS X
+ * mostly Unix style OSes, including macOS
  *
  ***************************************************************/
 #include <sys/types.h>
@@ -605,7 +617,7 @@ typedef int bool;
 
 #ifdef _WIN32
 /*
- * Starting with VS2010 constants like EWOULDBLOCK are defined defined in
+ * Starting with VS2010 constants like EWOULDBLOCK are defined in
  * errno.h differently to the WSA* counterparts.  Relevant to NaviServer are
  *
  *     EWOULDBLOCK != WSAEWOULDBLOCK
@@ -724,6 +736,20 @@ typedef int bool;
 # endif
 # define SCNd64      __PRI64_PREFIX "d"
 #endif
+
+/* We assume, HAVE_64BIT implies __WORDSIZE == 64 */
+#if !defined(SCNxPTR)
+# if !defined __PRIPTR_PREFIX
+#  if defined(HAVE_64BIT)
+#   define __PRIPTR_PREFIX  "l"
+#  else
+#   define __PRIPTR_PREFIX  "ll"
+#  endif
+# endif
+# define SCNxPTR      __PRIPTR_PREFIX "x"
+#endif
+
+
 /*
  * There is apparently no platform independent print format for items
  * of size_t. Therefore, we invent here our own variant, trying to
@@ -774,7 +800,7 @@ typedef int bool;
  * of pointer formatting macros.
  */
 #if !defined(__PRIPTR_PREFIX)
-# if defined(_LP64) || defined(_I32LPx) || defined(HAVE_64BIT)
+# if defined(_LP64) || defined(_I32LPx) || defined(HAVE_64BIT) || defined(_WIN64) || defined(_WIN32)
 #  if defined(_WIN32)
 #   define __PRIPTR_PREFIX "ll"
 #  else
@@ -833,53 +859,6 @@ typedef int bool;
 #else
 # define NS_EXTERN                   extern NS_STORAGE_CLASS
 #endif
-
-/*
- * Well behaved compiler with C99 support should define __STDC_VERSION__
- */
-#if defined(__STDC_VERSION__)
-# if __STDC_VERSION__ >= 199901L
-#  define NS_HAVE_C99
-# endif
-#endif
-
-/*
- * Starting with Visual Studio 2013, Microsoft provides C99 library support.
- */
-#if (!defined(NS_HAVE_C99)) && defined(_MSC_VER) && (_MSC_VER >= 1800)
-# define NS_HAVE_C99
-#endif
-
-/*
- * Boolean type "bool" and constants
- */
-#ifdef NS_HAVE_C99
-   /*
-    * C99
-    */
-# include <stdbool.h>
-# define NS_TRUE                    true
-# define NS_FALSE                   false
-#else
-   /*
-    * Not C99
-    */
-# if defined(__cplusplus)
-   /*
-    * C++ is similar to C99, but no include necessary
-    */
-#  define NS_TRUE                    true
-#  define NS_FALSE                   false
-# else
-   /*
-    * If everything fails, use int type and int values for bool
-    */
-typedef int bool;
-#  define NS_TRUE                    1
-#  define NS_FALSE                   0
-# endif
-#endif
-
 
 /*
  * NaviServer return codes. Similar to Tcl return codes, but not compatible,

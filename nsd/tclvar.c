@@ -90,7 +90,7 @@ static Array *GetArray(Bucket *bucketPtr, const char *arrayName, bool create)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static unsigned int BucketIndex(const char *arrayName)
-    NS_GNUC_NONNULL(1);
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 
 /*
  *-----------------------------------------------------------------------------
@@ -148,7 +148,7 @@ NsTclCreateBuckets(const char *server, int nbuckets)
 
 int
 NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                  int objc, Tcl_Obj *CONST* objv)
+                  int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -209,7 +209,7 @@ NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *CONST* objv)
+                     int objc, Tcl_Obj *const* objv)
 {
     int result;
 
@@ -234,13 +234,34 @@ NsTclNsvExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     return result;
 }
 
+static bool
+SetResultToOldValue(Tcl_Interp *interp, Array *arrayPtr, const char *key)
+{
+    const Tcl_HashEntry *hPtr;
+    bool                 result;
+
+    /*
+     * Get old value
+     */
+    hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, NULL);
+    if (likely(hPtr != NULL)) {
+        result = NS_TRUE;
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+    } else {
+        result = NS_FALSE;
+        Tcl_SetObjResult(interp, Tcl_NewStringObj("", 0));
+    }
+    return result;
+}
+
+
 
 /*
  *-----------------------------------------------------------------------------
  *
  * NsTclNsvSetObjCmd --
  *
- *      Implelments nsv_set.
+ *      Implements nsv_set.
  *
  * Results:
  *      Tcl result.
@@ -253,47 +274,119 @@ NsTclNsvExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                  int objc, Tcl_Obj *CONST* objv)
+                  int objc, Tcl_Obj *const* objv)
 {
-    int result = TCL_OK;
+    int      result = TCL_OK, doReset = 0, doDefault = 0;
+    Array   *arrayPtr;
+    Tcl_Obj *arrayObj, *valueObj = NULL;
+    char    *key;
 
-    if (unlikely(objc != 3 && objc != 4)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "array key ?value?");
+    Ns_ObjvSpec lopts[] = {
+        {"-default", Ns_ObjvBool,   &doDefault, INT2PTR(NS_TRUE)},
+        {"-reset",   Ns_ObjvBool,   &doReset,   INT2PTR(NS_TRUE)},
+        {"--",       Ns_ObjvBreak,  NULL,       NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"array",  Ns_ObjvObj,    &arrayObj, NULL},
+        {"key",    Ns_ObjvString, &key,      NULL},
+        {"?value",  Ns_ObjvObj,   &valueObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(lopts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if ((doDefault != 0) && (doReset != 0)) {
+        Ns_TclPrintfResult(interp, "only '-default' or '-reset' can be used");
+        result = TCL_ERROR;
+
+    } else if (valueObj != NULL) {
+        int         len;
+        bool        setArrayValue = NS_TRUE, returnNewValue = NS_TRUE;
+        const char *value = Tcl_GetStringFromObj(valueObj, &len);
+
+        arrayPtr = LockArrayObj(interp, arrayObj, NS_TRUE);
+        assert(arrayPtr != NULL);
+
+        /*
+         * Handle special flags.
+         */
+        if (unlikely((doReset != 0) || (doDefault != 0))) {
+            bool didExist = SetResultToOldValue(interp, arrayPtr, key);
+
+            if (doReset != 0) {
+                /*
+                 * When "-reset" was given, we return always the old value.
+                 */
+                returnNewValue = NS_FALSE;
+            }
+            if (doDefault != 0) {
+                /*
+                 * When "-default" was given, we return the old value, when
+                 * the array element existed already.
+                 */
+                if (didExist) {
+                    returnNewValue = NS_FALSE;
+                } else {
+                    /*
+                     * It is a new array element, so set it.
+                     */
+                    setArrayValue = NS_TRUE;
+                }
+            }
+        }
+        /*
+         * Set the array to the provided value.
+         */
+        if (setArrayValue) {
+            SetVar(arrayPtr, key, value, (size_t)len);
+        }
+        UnlockArray(arrayPtr);
+
+        if (returnNewValue) {
+            //fprintf(stderr, "Setting new value <%s>\n", Tcl_GetString(valueObj));
+            Tcl_SetObjResult(interp, valueObj);
+        }
+
+    } else if (doReset == (int)NS_TRUE) {
+
+        /*
+         * Get the old value and unset.
+         */
+
+        arrayPtr = LockArrayObj(interp, arrayObj, NS_FALSE);
+        if (unlikely(arrayPtr == NULL)) {
+            result = TCL_ERROR;
+
+        } else {
+            SetResultToOldValue(interp, arrayPtr, key);
+            (void) Unset(arrayPtr, key);
+            UnlockArray(arrayPtr);
+        }
+
+    } else if (doDefault == (int)NS_TRUE) {
+        Ns_TclPrintfResult(interp, "can't use '-default' without providing a value for key %s", key);
         result = TCL_ERROR;
 
     } else {
-        Array      *arrayPtr;
-        const char *key = Tcl_GetString(objv[2]);
+        const Tcl_HashEntry *hPtr;
 
-        if (likely(objc == 4)) {
-            int         len;
-            const char *value = Tcl_GetStringFromObj(objv[3], &len);
-
-            arrayPtr = LockArrayObj(interp, objv[1], NS_TRUE);
-            assert(arrayPtr != NULL);
-            SetVar(arrayPtr, key, value, (size_t)len);
-            UnlockArray(arrayPtr);
-
-            Tcl_SetObjResult(interp, objv[3]);
+        /*
+         * This is the undocumented but used (e.g. in nstrace.tcl) variant of
+         * "ns_set" behaving like "nsv_get".
+         */
+        arrayPtr = LockArrayObj(interp, objv[1], NS_FALSE);
+        hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, NULL);
+        if (likely(hPtr != NULL)) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
         } else {
-
-            arrayPtr = LockArrayObj(interp, objv[1], NS_FALSE);
-            if (unlikely(arrayPtr == NULL)) {
-                result = TCL_ERROR;
-            } else {
-                const Tcl_HashEntry *hPtr;
-
-                hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, NULL);
-                if (likely(hPtr != NULL)) {
-                    Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
-                } else {
-                    Ns_TclPrintfResult(interp, "no such key: %s", key);
-                    result = TCL_ERROR;
-                }
-                UnlockArray(arrayPtr);
-            }
+            Ns_TclPrintfResult(interp, "no such key: %s", key);
+            result = TCL_ERROR;
         }
+        UnlockArray(arrayPtr);
     }
+
     return result;
 }
 
@@ -316,7 +409,7 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                   int objc, Tcl_Obj *CONST* objv)
+                   int objc, Tcl_Obj *const* objv)
 {
     int  result, count = 1;
 
@@ -363,7 +456,7 @@ NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                      int objc, Tcl_Obj *CONST* objv)
+                      int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -419,7 +512,7 @@ NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *CONST* objv)
+                     int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -472,7 +565,7 @@ NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int objc, Tcl_Obj *CONST* objv)
+                    int objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj    *arrayObj;
     char       *key = NULL;
@@ -522,7 +615,7 @@ NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
             if (result == TCL_OK && key == NULL) {
                 /*
-                 * Free the actual array data strucure and invalidate the
+                 * Free the actual array data structure and invalidate the
                  * Tcl_Obj.
                  */
                 ns_free(arrayPtr);
@@ -557,7 +650,7 @@ NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  */
 
 int
-NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -627,7 +720,7 @@ NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 
 int
 NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int objc, Tcl_Obj *CONST* objv)
+                    int objc, Tcl_Obj *const* objv)
 {
     int                      opt, result = TCL_OK;
     static const char *const opts[] = {
@@ -1034,16 +1127,16 @@ Ns_VarUnset(const char *server, const char *array, const char *key)
 
 static unsigned int
 BucketIndex(const char *arrayName) {
-    unsigned int index = 0u;
+    unsigned int idx = 0u;
 
     for (;;) {
         register unsigned int i = UCHAR(*(arrayName++));
         if (unlikely(i == 0u)) {
             break;
         }
-        index += (index << 3u) + i;
+        idx += (idx << 3u) + i;
     }
-    return index;
+    return idx;
 }
 
 
@@ -1121,13 +1214,13 @@ static Array *
 LockArray(const NsServer *servPtr, const char *arrayName, bool create)
 {
     Bucket        *bucketPtr;
-    unsigned int   index;
+    unsigned int   idx;
 
     NS_NONNULL_ASSERT(servPtr != NULL);
     NS_NONNULL_ASSERT(arrayName != NULL);
 
-    index = BucketIndex(arrayName);
-    bucketPtr = &servPtr->nsv.buckets[index % (unsigned int)servPtr->nsv.nbuckets];
+    idx = BucketIndex(arrayName);
+    bucketPtr = &servPtr->nsv.buckets[idx % (unsigned int)servPtr->nsv.nbuckets];
     Ns_MutexLock(&bucketPtr->lock);
 
     return GetArray(bucketPtr, arrayName, create);
@@ -1351,7 +1444,7 @@ Flush(Array *arrayPtr)
 static Array *
 LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
 {
-    Array              *arrayPtr = NULL;
+    Array              *arrayPtr;
     Bucket             *bucketPtr;
     static const char  *const arrayType = "nsv:array";
     const char         *arrayName;
@@ -1405,7 +1498,7 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
  */
 
 int
-NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     const NsServer *servPtr = itPtr->servPtr;

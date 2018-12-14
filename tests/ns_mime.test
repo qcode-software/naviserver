@@ -5,52 +5,6 @@ namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
 
-test ns_uuencode-1.1 {basic syntax: plain call} -body {
-     ns_uuencode
-} -returnCodes error -result {wrong # args: should be "ns_uuencode string"}
-
-test ns_uudecode-1.2 {basic syntax: plain call} -body {
-     ns_uudecode
-} -returnCodes error -result {wrong # args: should be "ns_uudecode string"}
-
-test ns_base64encode-1.3 {basic syntax: plain call} -body {
-     ns_base64encode
-} -returnCodes error -result {wrong # args: should be "ns_base64encode string"}
-
-test ns_base64decode-1.4 {basic syntax: plain call} -body {
-     ns_base64decode
-} -returnCodes error -result {wrong # args: should be "ns_base64decode string"}
-
-
-
-test ns_uuencode-2.1 {basic operation ns_uuencode} -body {
-     ns_uuencode "true friends stab you in the front"
-} -result "dHJ1ZSBmcmllbmRzIHN0YWIgeW91IGluIHRoZSBmcm9udA=="
-
-test ns_uudecode-2.2 {basic operation ns_uudecode} -body {
-     ns_uudecode "dHJ1ZSBmcmllbmRzIHN0YWIgeW91IGluIHRoZSBmcm9udA=="
-} -result "true friends stab you in the front"
-
-test ns_base64encode-3.1 {basic operation ns_base64encode} -body {
-     ns_base64encode "true friends stab you in the front"
-} -result "dHJ1ZSBmcmllbmRzIHN0YWIgeW91IGluIHRoZSBmcm9udA=="
-
-test ns_base64decode-3.2 {basic operation ns_base64decode} -body {
-     ns_base64decode "dHJ1ZSBmcmllbmRzIHN0YWIgeW91IGluIHRoZSBmcm9udA=="
-} -result "true friends stab you in the front"
-
-test ns_base64encode-3.3 {line wrap at char 60} -body {
-     ns_base64encode "true friends stab you in the front one two three four five six seven eight nine"
-} -result "dHJ1ZSBmcmllbmRzIHN0YWIgeW91IGluIHRoZSBmcm9udCBvbmUgdHdvIHRo
-cmVlIGZvdXIgZml2ZSBzaXggc2V2ZW4gZWlnaHQgbmluZQ=="
-
-
-
-test ns_uuencode-4.1 {test crash bug...} -body {
-     ns_uuencode @
-} -result "QA=="
-
-
 
 test ns_guesstype-5.1 {basic syntax: ns_guesstype} -body {
      ns_guesstype
@@ -69,7 +23,6 @@ test ns_guesstype-5.4 {path, extension} -body {
 } -result "text/plain"
 
 
-
 test ns_guesstype-6.1 {spot check: .html} -body {
      ns_guesstype "filename.html"
 } -match "glob" -result "text/html*"
@@ -81,3 +34,9 @@ test ns_guesstype-6.2 {spot check: .gif} -body {
 
 
 cleanupTests
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:
