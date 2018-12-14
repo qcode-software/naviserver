@@ -149,7 +149,7 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
     if (url[0] == '/' && url[1] == '/') {
 
         /*
-         * There are two slashes, which means a host is specified.
+         * The URL starts with two slashes, which means a host is specified.
          * Advance url past that and set *phost.
          *
          * http\0//www.foo.com:8000/baz/blah/spoo.html
@@ -245,39 +245,35 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
                 *ptail = end + 1;
             }
         }
-    } else {
-
+    } else if (*url == '/') {
         /*
-         * This URL does not have a protocol or host. If it begins with a
-         * slash, then separate the tail from the path, otherwise it's all
-         * tail.
+         * The URL begins with a single slash. Separate the tail from the
+         * path, otherwise it's all "tail".
          */
 
-        if (*url == '/') {
-            url++;
-            *ppath = url;
+        url++;
+        *ppath = url;
 
-            /*
-             * Find the last slash on the right and everything after that
-             * becomes tail; if there are no slashes then it's all tail
-             * and path is an empty string.
-             */
+        /*
+         * Find the last slash on the right and everything after that
+         * becomes tail; if there are no slashes then it's all tail
+         * and path is an empty string.
+         */
 
-            end = strrchr(url, INTCHAR('/'));
-            if (end == NULL) {
-                *ptail = *ppath;
-                *ppath = (char *)"";
-            } else {
-                *end = '\0';
-                *ptail = end + 1;
-            }
+        end = strrchr(url, INTCHAR('/'));
+        if (end == NULL) {
+            *ptail = *ppath;
+            *ppath = (char *)"";
         } else {
-            /*
-             * Just set the tail, there are no slashes.
-             */
-
-            *ptail = url;
+            *end = '\0';
+            *ptail = end + 1;
         }
+    } else {
+        /*
+         * The URL starts with no slash, just set the "tail".
+         */
+
+        *ptail = url;
     }
     return NS_OK;
 }
@@ -288,7 +284,7 @@ Ns_ParseUrl(char *url, char **pprotocol, char **phost,
  *
  * Ns_AbsoluteUrl --
  *
- *      Construct an URL based on baseurl but with as many parts of
+ *      Construct a URL based on baseurl but with as many parts of
  *      the incomplete url as possible.
  *
  * Results:
@@ -346,17 +342,17 @@ Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *url, const char *base)
          * We have to use IP literal notation to avoid ambiguity of colon
          * (part of address or separator for port).
          */
-        Ns_DStringVarAppend(dsPtr, proto, "://", host, (char *)0);
+        Ns_DStringVarAppend(dsPtr, proto, "://", host, (char *)0L);
     } else {
-        Ns_DStringVarAppend(dsPtr, proto, "://[", host, "]", (char *)0);
+        Ns_DStringVarAppend(dsPtr, proto, "://[", host, "]", (char *)0L);
     }
     if (port != NULL) {
-        Ns_DStringVarAppend(dsPtr, ":", port, (char *)0);
+        Ns_DStringVarAppend(dsPtr, ":", port, (char *)0L);
     }
     if (*path == '\0') {
-        Ns_DStringVarAppend(dsPtr, "/", tail, (char *)0);
+        Ns_DStringVarAppend(dsPtr, "/", tail, (char *)0L);
     } else {
-        Ns_DStringVarAppend(dsPtr, "/", path, "/", tail, (char *)0);
+        Ns_DStringVarAppend(dsPtr, "/", path, "/", tail, (char *)0L);
     }
 done:
     Ns_DStringFree(&urlDs);
@@ -383,7 +379,7 @@ done:
  *----------------------------------------------------------------------
  */
 int
-NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *urlString;
@@ -425,7 +421,7 @@ NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
             Tcl_SetObjResult(interp, resultObj);
 
         } else {
-            Ns_TclPrintfResult(interp, "Could not parse url \"%s\"", url);
+            Ns_TclPrintfResult(interp, "Could not parse URL \"%s\"", url);
             result = TCL_ERROR;
         }
         ns_free(url);
@@ -452,7 +448,7 @@ NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *----------------------------------------------------------------------
  */
 int
-NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *urlString, *baseString;
@@ -471,7 +467,7 @@ NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
         if (Ns_AbsoluteUrl(&ds, urlString, baseString) == NS_OK) {
             Tcl_DStringResult(interp, &ds);
         } else {
-            Ns_TclPrintfResult(interp, "Could not parse base url into protocol, host and path");
+            Ns_TclPrintfResult(interp, "Could not parse base URL into protocol, host and path");
             Tcl_DStringFree(&ds);
             result = TCL_ERROR;
         }

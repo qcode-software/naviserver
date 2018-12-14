@@ -41,6 +41,18 @@ if {[ns_info ipv6]} {
 
 ns_log notice "configure LOOPBACK  $loopback"
 ns_log notice "configure LISTENURL [ns_config test listenurl]"
+
+#
+# Small helper to allow to share config file with windows
+#
+proc sharedlibextension {} {
+    switch -- $::tcl_platform(os) {
+	Darwin {return .so}
+	default {return [info sharedlibextension]}
+    }
+}
+
+
 #
 # The following are for the tests in tests/ns_config.test.
 #
@@ -60,7 +72,7 @@ ns_param   isTestServer true
 
 ns_section "ns/modules"
 if {[ns_config "test" listenport]} {
-    ns_param   nssock      [ns_config "test" home]/../nssock/nssock.so
+    ns_param   nssock      [ns_config "test" home]/../nssock/nssock[sharedlibextension]
 }
 
 ns_section "ns/module/nssock"
@@ -80,6 +92,7 @@ ns_param   writerthreads   3
 ns_param   writersize      1026
 ns_param   writerbufsize   512
 ns_param   deferaccept     0
+ns_param   maxupload       10000
 #ns_param   writerstreaming	true	;# false;  activate writer for streaming HTML output (e.g. ns_writer)
 
 ns_section "ns/module/nssock/servers"
@@ -90,7 +103,7 @@ ns_param   testvhost       testvhost
 ns_param   testvhost2      testvhost2
 
 ns_section	"ns/mimetypes"
-ns_param    .html             "text/html"
+#ns_param    .html             "text/html"
 ns_param    .utf_adp          "text/plain"
 ns_param    .iso_adp          "text/plain"
 ns_param    .utf2iso_adp      "text/plain; charset=iso-8859-1"
@@ -230,9 +243,9 @@ ns_section "ns/server/test/module/nsproxy"
 ns_param   exec            [ns_config "test" home]/../nsproxy/test-nsproxy.sh
 
 ns_section "ns/server/test/modules"
-ns_param   nslog           [ns_config "test" home]/../nslog/nslog.so
-ns_param   nsdb            [ns_config "test" home]/../nsdb/nsdb.so
-ns_param   nsproxy         [ns_config "test" home]/../nsproxy/nsproxy.so
+ns_param   nslog           [ns_config "test" home]/../nslog/nslog[sharedlibextension]
+ns_param   nsdb            [ns_config "test" home]/../nsdb/nsdb[sharedlibextension]
+ns_param   nsproxy         [ns_config "test" home]/../nsproxy/nsproxy[sharedlibextension]
 
 #
 # Virtual host test server config.
@@ -284,7 +297,7 @@ ns_param   library         [ns_config "test" home]/testserver/modules
 #
 
 ns_section "ns/db/drivers"
-ns_param   nsdbtest        [ns_config "test" home]/../nsdbtest/nsdbtest.so
+ns_param   nsdbtest        [ns_config "test" home]/../nsdbtest/nsdbtest[sharedlibextension]
 
 ns_section "ns/db/pools"
 ns_param   a               A

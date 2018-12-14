@@ -31,7 +31,7 @@
 /*
  * tclmisc.c --
  *
- *	Implements a lot of Tcl API commands.
+ *      Implements a lot of Tcl API commands.
  */
 
 #include "nsd.h"
@@ -40,11 +40,17 @@
  * Local functions defined in this file
  */
 
-static bool WordEndsInSemi(const char *ip) NS_GNUC_NONNULL(1);
+static bool WordEndsInSemi(const char *word, size_t *lengthPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 static void SHAByteSwap(uint32_t *dest, const uint8_t *src, unsigned int words)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static void SHATransform(Ns_CtxSHA1 *sha) NS_GNUC_NONNULL(1);
-static void MD5Transform(uint32_t buf[4], const uint8_t block[64]) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void SHATransform(Ns_CtxSHA1 *sha)
+    NS_GNUC_NONNULL(1);
+static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
+static int Base64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
 
 
 
@@ -98,7 +104,7 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
  */
 
 int
-NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     char       *script = NULL;
     int         global = (int)NS_FALSE, result = TCL_OK;
@@ -129,7 +135,7 @@ NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
         (void) Tcl_CreateHashEntry((global != (int)NS_FALSE) ? &runTable :
                                    &itPtr->servPtr->tcl.runTable, script, &isNew);
         Ns_MasterUnlock();
-        
+
         if (isNew != 0) {
             result = Tcl_Eval(interp, script);
         }
@@ -161,7 +167,7 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
 {
     const NsInterp *itPtr = NsGetInterpData(interp);
     const char     *errorInfo, *const*logHeaders;
-    Ns_DString      ds;
+    Tcl_DString     ds;
 
     if (extraInfo != NULL) {
         Tcl_AddObjErrorInfo(interp, extraInfo, -1);
@@ -172,25 +178,25 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
     }
     if (itPtr != NULL && itPtr->conn != NULL) {
         const Ns_Conn *conn = itPtr->conn;
-        
+
         Ns_DStringInit(&ds);
         if (conn->request.method != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request.method, " ", (char *)0);
+            Ns_DStringVarAppend(&ds, conn->request.method, " ", (char *)0L);
         }
         if (conn->request.url != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request.url, ", ", (char *)0);
+            Ns_DStringVarAppend(&ds, conn->request.url, ", ", (char *)0L);
         }
-        Ns_DStringVarAppend(&ds, "PeerAddress: ", Ns_ConnPeer(conn), (char *)0);
+        Ns_DStringVarAppend(&ds, "PeerAddress: ", Ns_ConnPeerAddr(conn), (char *)0L);
 
         logHeaders = itPtr->servPtr->tcl.errorLogHeaders;
         if (logHeaders != NULL) {
-	    const char  *const*hdr;
+            const char *const *hdr;
 
             for (hdr = logHeaders; *hdr != NULL; hdr++) {
-	        const char *value = Ns_SetIGet(conn->headers, *hdr);
+                const char *value = Ns_SetIGet(conn->headers, *hdr);
 
                 if (value != NULL) {
-                    Ns_DStringVarAppend(&ds, ", ", *hdr, ": ", value, (char *)0);
+                    Ns_DStringVarAppend(&ds, ", ", *hdr, ": ", value, (char *)0L);
                 }
             }
         }
@@ -255,7 +261,7 @@ Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *UNUSED(conn))
  *
  * Ns_LogDeprecated --
  *
- *      Report that a C-implmented Tcl command is deprecated.
+ *      Report that a C-implemented Tcl command is deprecated.
  *
  * Results:
  *      None.
@@ -267,7 +273,7 @@ Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *UNUSED(conn))
  */
 
 void
-Ns_LogDeprecated(Tcl_Obj *CONST* objv, int objc, const char *alternative, const char *explanation)
+Ns_LogDeprecated(Tcl_Obj *const* objv, int objc, const char *alternative, const char *explanation)
 {
     Tcl_DString ds;
     int i;
@@ -275,21 +281,21 @@ Ns_LogDeprecated(Tcl_Obj *CONST* objv, int objc, const char *alternative, const 
     Tcl_DStringInit(&ds);
     Tcl_DStringAppend(&ds, "'", 1);
     for (i = 0; i < objc; i++) {
-	const char *s;
-	int len;
+        const char *s;
+        int len;
 
-	s = Tcl_GetStringFromObj(objv[i], &len);
-	Tcl_DStringAppend(&ds, s, len);
-	Tcl_DStringAppend(&ds, " ", 1);
+        s = Tcl_GetStringFromObj(objv[i], &len);
+        Tcl_DStringAppend(&ds, s, len);
+        Tcl_DStringAppend(&ds, " ", 1);
     }
     Tcl_DStringAppend(&ds, "' is deprecated. ", -1);
     if (alternative != NULL) {
-	Tcl_DStringAppend(&ds, "Use '", -1);
-	Tcl_DStringAppend(&ds, alternative, -1);
-	Tcl_DStringAppend(&ds, "' instead. ", -1);
+        Tcl_DStringAppend(&ds, "Use '", -1);
+        Tcl_DStringAppend(&ds, alternative, -1);
+        Tcl_DStringAppend(&ds, "' instead. ", -1);
     }
     if (explanation != NULL) {
-	Tcl_DStringAppend(&ds, explanation, -1);
+        Tcl_DStringAppend(&ds, explanation, -1);
     }
     Ns_Log(Notice, "%s", Tcl_DStringValue(&ds));
     Tcl_DStringFree(&ds);
@@ -301,14 +307,14 @@ Ns_LogDeprecated(Tcl_Obj *CONST* objv, int objc, const char *alternative, const 
  *
  * Ns_SetNamedVar --
  *
- *	Set a variable by denoted by a name.  Convenience routine for
- *	tcl-commands, when var names are passed in (e.g ns_http).
+ *      Set a variable by denoted by a name.  Convenience routine for
+ *      tcl-commands, when var names are passed in (e.g ns_http).
  *
  * Results:
- *	NS_TRUE on success, NS_FALSE otherwise.
+ *      NS_TRUE on success, NS_FALSE otherwise.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -322,6 +328,182 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
     errPtr = Tcl_ObjSetVar2(interp, varPtr, NULL, valPtr, TCL_LEAVE_ERR_MSG);
     Tcl_DecrRefCount(valPtr);
     return (errPtr != NULL ? NS_TRUE : NS_FALSE);
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclReflowTextObjCmd --
+ *
+ *      Reflow a text to the specified length.
+ *      Implementation of ns_reflow_text.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void
+InsertFreshNewline(Tcl_DString *dsPtr, const char *prefixString, size_t prefixLength, size_t *outputPosPtr)
+{
+    if (prefixLength == 0) {
+        dsPtr->string[*outputPosPtr] = '\n';
+        (*outputPosPtr)++;
+    } else {
+        Tcl_DStringSetLength(dsPtr, dsPtr->length + (int)prefixLength);
+        dsPtr->string[*outputPosPtr] = '\n';
+        (*outputPosPtr)++;
+        memcpy(&dsPtr->string[*outputPosPtr], prefixString, prefixLength);
+        (*outputPosPtr) += prefixLength;
+    }
+}
+
+
+int
+NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int          result = TCL_OK, lineWidth = 80, offset = 0;
+    char        *textString = NULL, *prefixString = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-width",  Ns_ObjvInt,     &lineWidth,    NULL},
+        {"-offset", Ns_ObjvInt,     &offset,       NULL},
+        {"-prefix", Ns_ObjvString,  &prefixString, NULL},
+        {"--",      Ns_ObjvBreak,    NULL,         NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    Ns_ObjvSpec  args[] = {
+        {"text", Ns_ObjvString,  &textString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_DString ds, *dsPtr = &ds;
+        size_t      k, inputPos, outputPos, textLength, prefixLength, currentWidth, nrPrefixes, nrNewLines = 1u;
+        bool        done = NS_FALSE;
+
+        textLength   = strlen(textString);
+        prefixLength = (prefixString == NULL ? 0u : strlen(prefixString));
+        Tcl_DStringInit(dsPtr);
+
+        for (k = 0u; k < textLength; k++) {
+            if (textString[k] == '\n') {
+                nrNewLines++;
+            }
+        }
+
+        inputPos = 0u;
+        if (offset == 0 && prefixLength > 0u) {
+            /*
+             * When we have an offset (in an incremental operation) adding a
+             * prefix automatically makes little sense. When needed, the
+             * prefix could be easily done on the client side.
+             */
+            memcpy(dsPtr->string, prefixString, prefixLength);
+            outputPos = prefixLength;
+            nrPrefixes = nrNewLines;
+        } else {
+            outputPos = 0u;
+            nrPrefixes = ((nrNewLines > 0u) ? (nrNewLines - 1) : 0u);
+        }
+
+        /*
+         * Set the length of the Tcl_DString to the same size as the input
+         * string plus for every linebreak+1 the prefixString.
+         */
+        Tcl_DStringSetLength(dsPtr, (int)(textLength + nrPrefixes * prefixLength));
+
+        while (inputPos < textLength && !done) {
+            size_t processedPos;
+
+            /*
+             * Copy the input string until lineWidth is reached
+             */
+            processedPos = inputPos;
+            for (currentWidth = (size_t)offset; (int)currentWidth < lineWidth; currentWidth++)  {
+
+                if ( inputPos < textLength) {
+                    dsPtr->string[outputPos] = textString[inputPos];
+
+                    /*
+                     * In case there are newlines in the text, insert it with
+                     * the prefix and reset the currentWidth. The size for of
+                     * the prefix is already included in the allocated space of
+                     * the string.
+                     */
+                    outputPos++;
+                    if ( textString[inputPos] == '\n' ) {
+                        memcpy(&dsPtr->string[outputPos], prefixString, prefixLength);
+                        outputPos += prefixLength;
+                        currentWidth = 0u;
+                        processedPos = inputPos;
+                    }
+                    inputPos++;
+                } else {
+                    /*
+                     * We reached the end of the inputString and we are done.
+                     */
+                    done = NS_TRUE;
+                    break;
+                }
+            }
+            offset = 0;
+
+            if (!done) {
+                bool   whitesspaceFound = NS_FALSE;
+                size_t origOutputPos = outputPos;
+                /*
+                 * Search for the last whitespace in the input from the end
+                 */
+                for ( k = inputPos; k > processedPos; k--, outputPos--) {
+                    if ( CHARTYPE(space, textString[k]) != 0) {
+                        whitesspaceFound = NS_TRUE;
+                        /*
+                         * Replace the whitespace by a "\n" followed by the
+                         * prefix string; we have to make sure that the dsPtr
+                         * can held the additional prefix as well.
+                         */
+                        InsertFreshNewline(dsPtr, prefixString, prefixLength, &outputPos);
+                        /*
+                         * Reset the inputPositon
+                         */
+                        inputPos = k + 1u;
+                        break;
+                    }
+                }
+                if (!whitesspaceFound) {
+                    /*
+                     * The last chunk did not include a whitespace. This
+                     * happens when we find overflowing elements. In this
+                     * case, let the line overflow (read forward until we
+                     * find a space, and continue as usual.
+                     */
+                    outputPos = origOutputPos;
+                    for (k = inputPos; k < textLength; k++) {
+                        if ( CHARTYPE(space, textString[k]) != 0) {
+                            InsertFreshNewline(dsPtr, prefixString, prefixLength, &outputPos);
+                            inputPos++;
+                            break;
+                        } else {
+                            dsPtr->string[outputPos] = textString[inputPos];
+                            outputPos++;
+                            inputPos++;
+                        }
+                    }
+                }
+            }
+        }
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
 }
 
 
@@ -342,7 +524,7 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
  */
 
 int
-NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *htmlString = NULL;
@@ -353,69 +535,354 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-        
+
     } else {
         bool        intag;     /* flag to see if are we inside a tag */
-        bool        inentity;   /* flag to see if we are inside a special char */
+        bool        inentity;  /* flag to see if we are inside a special char */
+        bool        incomment; /* flag to see if we are inside a comment */
         char       *inString;  /* copy of input string */
         char       *outPtr;    /* moving pointer to output string */
         const char *inPtr;     /* moving pointer to input string */
+        bool        needEncode;
 
         /*
          * Make a copy of the input and point the moving and output ptrs to it.
          */
         assert(htmlString != NULL);
-        
-        inString = ns_strdup(htmlString);
-        inPtr    = inString;
-        outPtr   = inString;
-        intag    = NS_FALSE;
-        inentity = NS_FALSE;
+
+        inString   = ns_strdup(htmlString);
+        inPtr      = inString;
+        outPtr     = inString;
+        intag      = NS_FALSE;
+        inentity   = NS_FALSE;
+        incomment  = NS_FALSE;
+        needEncode = NS_FALSE;
 
         while (*inPtr != '\0') {
 
             if (*inPtr == '<') {
                 intag = NS_TRUE;
-
+                if ((*(inPtr + 1) == '!')
+                    && (*(inPtr + 2) == '-')
+                    && (*(inPtr + 3) == '-')) {
+                    incomment = NS_TRUE;
+                }
+            } else if (incomment) {
+                if ((*(inPtr) == '-')
+                    && (*(inPtr + 1) == '-')
+                    && (*(inPtr + 2) == '>')) {
+                    incomment  = NS_FALSE;
+                }
             } else if (intag && (*inPtr == '>')) {
-                /* 
-                 * Inside a tag that closes 
+                /*
+                 * Inside a tag that closes
                  */
                 intag = NS_FALSE;
 
             } else if (inentity && (*inPtr == ';')) {
-                /* 
+                /*
                  * Inside an entity that closes.
                  */
                 inentity = NS_FALSE;
 
             } else if ((!intag) && (!inentity)) {
-                /* 
-                 * Regular text 
+                /*
+                 * Regular text
                  */
 
                 if (*inPtr == '&') {
+                    size_t length = 0u;
+
                     /*
                      * Starting an entity.
                      */
-                    inentity = WordEndsInSemi(inPtr);
+                    inentity = WordEndsInSemi(inPtr, &length);
                     /*
                      * Interprete numeric entities between 33 and 255.
                      */
-                    if (inentity && CHARTYPE(digit, *(inPtr + 1u)) != 0) {
-                        long value = strtol(inPtr + 1u, NULL, 10);
+                    if (inentity) {
+                        if (CHARTYPE(digit, *(inPtr + 1u)) != 0) {
+                            long value = strtol(inPtr + 1u, NULL, 10);
 
-                        if (value > 32 && value < 256) {
-                            *outPtr++ = (char) value;
+                            if (value > 32 && value < 256) {
+                                *outPtr++ = (char) value;
+                                if (value > 127) {
+                                    needEncode = NS_TRUE;
+                                }
+                            } else {
+                                Ns_Log(Notice, "ns_striphtml: ignore numeric entity with value %ld", value);
+                            }
                         } else {
-                            Ns_Log(Notice, "ns_striphtml: ignore numeric entity with value %ld", value);
+                            size_t i;
+                            typedef struct entity {
+                                const char *name;
+                                size_t length;
+                                const char *value;
+                                size_t outputLength;
+                            } entity;
+
+                            entity entities[] = {
+                                {"AElig",   5, "Æ", 2},
+                                {"Aacute",  6, "Á", 2},
+                                {"Acirc",   5, "Â", 2},
+                                {"Agrave",  6, "À", 2},
+                                {"Alpha",   5, "Α", 2},
+                                {"Aring",   5, "Å", 2},
+                                {"Atilde",  6, "Ã", 2},
+                                {"Auml",    4, "Ä", 2},
+                                {"Beta",    4, "Β", 2},
+                                {"Ccedil",  6, "Ç", 2},
+                                {"Chi",     3, "Χ", 2},
+                                {"Delta",   5, "Δ", 2},
+                                {"ETH",     3, "Ð", 2},
+                                {"Eacute",  6, "É", 2},
+                                {"Ecirc",   5, "Ê", 2},
+                                {"Egrave",  6, "È", 2},
+                                {"Epsilon", 7, "Ε", 2},
+                                {"Eta",     3, "Η", 2},
+                                {"Euml",    4, "Ë", 2},
+                                {"Gamma",   5, "Γ", 2},
+                                {"Iacute",  6, "Í", 2},
+                                {"Icirc",   5, "Î", 2},
+                                {"Igrave",  6, "Ì", 2},
+                                {"Iota",    4, "Ι", 2},
+                                {"Iuml",    4, "Ï", 2},
+                                {"Kappa",   5, "Κ", 2},
+                                {"Lambda",  6, "Λ", 2},
+                                {"Mu",      2, "Μ", 2},
+                                {"Ntilde",  6, "Ñ", 2},
+                                {"Nu",      2, "Ν", 2},
+                                {"Oacute",  6, "Ó", 2},
+                                {"Ocirc",   5, "Ô", 2},
+                                {"Ograve",  6, "Ò", 2},
+                                {"Omega",   5, "Ω", 2},
+                                {"Omicron", 7, "Ο", 2},
+                                {"Oslash",  6, "Ø", 2},
+                                {"Otilde",  6, "Õ", 2},
+                                {"Ouml",    4, "Ö", 2},
+                                {"Phi",     3, "Φ", 2},
+                                {"Pi",      2, "Π", 2},
+                                {"Prime",   5, "″", 3},
+                                {"Psi",     3, "Ψ", 2},
+                                {"Rho",     3, "Ρ", 2},
+                                {"Sigma",   5, "Σ", 2},
+                                {"THORN",   5, "Þ", 2},
+                                {"Tau",     3, "Τ", 2},
+                                {"Theta",   5, "Θ", 2},
+                                {"Uacute",  6, "Ú", 2},
+                                {"Ucirc",   5, "Û", 2},
+                                {"Ugrave",  6, "Ù", 2},
+                                {"Upsilon", 7, "Υ", 2},
+                                {"Uuml",    4, "Ü", 2},
+                                {"Xi",      2, "Ξ", 2},
+                                {"Yacute",  6, "Ý", 2},
+                                {"Zeta",    4, "Ζ", 2},
+                                {"aacute",  6, "á", 2},
+                                {"acirc",   5, "â", 2},
+                                {"acute",   5, "´", 2},
+                                {"aelig",   5, "æ", 2},
+                                {"agrave",  6, "à", 2},
+                                {"alefsym", 7, "ℵ", 3},
+                                {"alpha",   5, "α", 2},
+                                {"amp",     3, "&", 1},
+                                {"and",     3, "∧", 3},
+                                {"ang",     3, "∠", 3},
+                                {"aring",   5, "å", 2},
+                                {"asymp",   5, "≈", 3},
+                                {"atilde",  6, "ã", 2},
+                                {"auml",    4, "ä", 2},
+                                {"beta",    4, "β", 2},
+                                {"brvbar",  6, "¦", 2},
+                                {"bull",    4, "•", 3},
+                                {"cap",     3, "∩", 3},
+                                {"ccedil",  6, "ç", 2},
+                                {"cedil",   5, "¸", 2},
+                                {"cent",    4, "¢", 2},
+                                {"chi",     3, "χ", 2},
+                                {"clubs",   5, "♣", 3},
+                                {"cong",    4, "≅", 3},
+                                {"copy",    4, "©", 2},
+                                {"crarr",   5, "↵", 3},
+                                {"cup",     3, "∪", 3},
+                                {"curren",  6, "¤", 2},
+                                {"dArr",    4, "⇓", 3},
+                                {"darr",    4, "↓", 3},
+                                {"deg",     3, "°", 2},
+                                {"delta",   5, "δ", 2},
+                                {"diams",   5, "♦", 3},
+                                {"divide",  6, "÷", 2},
+                                {"eacute",  6, "é", 2},
+                                {"ecirc",   5, "ê", 2},
+                                {"egrave",  6, "è", 2},
+                                {"empty",   5, "∅", 3},
+                                {"epsilon", 7, "ε", 2},
+                                {"equiv",   5, "≡", 3},
+                                {"eta",     3, "η", 2},
+                                {"eth",     3, "ð", 2},
+                                {"euml",    4, "ë", 2},
+                                {"euro",    4, "€", 3},
+                                {"exist",   5, "∃", 3},
+                                {"fnof",    4, "ƒ", 2},
+                                {"forall",  6, "∀", 3},
+                                {"frac12",  6, "½", 2},
+                                {"frac14",  6, "¼", 2},
+                                {"frac34",  6, "¾", 2},
+                                {"frasl",   5, "⁄", 3},
+                                {"gamma",   5, "γ", 2},
+                                {"ge",      2, "≥", 3},
+                                {"gt",      2, ">", 1},
+                                {"hArr",    4, "⇔", 3},
+                                {"harr",    4, "↔", 3},
+                                {"hearts",  6, "♥", 3},
+                                {"hellip",  6, "…", 3},
+                                {"iacute",  6, "í", 2},
+                                {"icirc",   5, "î", 2},
+                                {"iexcl",   5, "¡", 2},
+                                {"igrave",  6, "ì", 2},
+                                {"image",   5, "ℑ", 3},
+                                {"infin",   5, "∞", 3},
+                                {"int",     3, "∫", 3},
+                                {"iota",    4, "ι", 2},
+                                {"iquest",  6, "¿", 2},
+                                {"isin",    4, "∈", 3},
+                                {"iuml",    4, "ï", 2},
+                                {"kappa",   5, "κ", 2},
+                                {"lArr",    4, "⇐", 3},
+                                {"lambda",  6, "λ", 2},
+                                {"lang",    4, "〈", 3},
+                                {"laquo",   5, "«", 2},
+                                {"larr",    4, "←", 3},
+                                {"lceil",   5, "⌈", 3},
+                                {"le",      2, "≤", 3},
+                                {"lfloor",  6, "⌊", 3},
+                                {"lowast",  6, "∗", 3},
+                                {"loz",     3, "◊", 3},
+                                {"lt",      2, "<", 1},
+                                {"macr",    4, "¯", 2},
+                                {"micro",   5, "µ", 2},
+                                {"middot",  6, "·", 2},
+                                {"minus",   5, "−", 3},
+                                {"mu",      2, "μ", 2},
+                                {"nabla",   5, "∇", 3},
+                                {"nbsp",    4, " ", 1},
+                                {"ne",      2, "≠", 3},
+                                {"ni",      2, "∋", 3},
+                                {"not",     3, "¬", 2},
+                                {"notin",   5, "∉", 3},
+                                {"nsub",    4, "⊄", 3},
+                                {"ntilde",  6, "ñ", 2},
+                                {"nu",      2, "ν", 2},
+                                {"oacute",  6, "ó", 2},
+                                {"ocirc",   5, "ô", 2},
+                                {"ograve",  6, "ò", 2},
+                                {"oline",   5, "‾", 3},
+                                {"omega",   5, "ω", 2},
+                                {"omicron", 7, "ο", 2},
+                                {"oplus",   5, "⊕", 3},
+                                {"or",      2, "∨", 3},
+                                {"ordf",    4, "ª", 2},
+                                {"ordm",    4, "º", 2},
+                                {"oslash",  6, "ø", 2},
+                                {"otilde",  6, "õ", 2},
+                                {"otimes",  6, "⊗", 3},
+                                {"ouml",    4, "ö", 2},
+                                {"para",    4, "¶", 2},
+                                {"part",    4, "∂", 3},
+                                {"perp",    4, "⊥", 3},
+                                {"phi",     3, "φ", 2},
+                                {"pi",      2, "π", 2},
+                                {"piv",     3, "ϖ", 2},
+                                {"plusmn",  6, "±", 2},
+                                {"pound",   5, "£", 2},
+                                {"prime",   5, "′", 3},
+                                {"prod",    4, "∏", 3},
+                                {"prop",    4, "∝", 3},
+                                {"psi",     3, "ψ", 2},
+                                {"rArr",    4, "⇒", 3},
+                                {"radic",   5, "√", 3},
+                                {"rang",    4, "〉", 3},
+                                {"raquo",   5, "»", 2},
+                                {"rarr",    4, "→", 3},
+                                {"rceil",   5, "⌉", 3},
+                                {"real",    4, "ℜ", 3},
+                                {"reg",     3, "®", 2},
+                                {"rfloor",  6, "⌋", 3},
+                                {"rho",     3, "ρ", 2},
+                                {"sdot",    4, "⋅", 3},
+                                {"sect",    4, "§", 2},
+                                {"shy",     3, "­", 2},
+                                {"sigma",   5, "σ", 2},
+                                {"sigmaf",  6, "ς", 2},
+                                {"sim",     3, "∼", 3},
+                                {"spades",  6, "♠", 3},
+                                {"sub",     3, "⊂", 3},
+                                {"sube",    4, "⊆", 3},
+                                {"sum",     3, "∑", 3},
+                                {"sup",     3, "⊃", 3},
+                                {"sup1",    4, "¹", 2},
+                                {"sup2",    4, "²", 2},
+                                {"sup3",    4, "³", 2},
+                                {"supe",    4, "⊇", 3},
+                                {"szlig",   5, "ß", 2},
+                                {"tau",     3, "τ", 2},
+                                {"there4",  6, "∴", 3},
+                                {"theta",   5, "θ", 2},
+                                {"thetasym",8, "ϑ", 2},
+                                {"thorn",   5, "þ", 2},
+                                {"times",   5, "×", 2},
+                                {"trade",   5, "™", 3},
+                                {"uArr",    4, "⇑", 3},
+                                {"uacute",  6, "ú", 2},
+                                {"uarr",    4, "↑", 3},
+                                {"ucirc",   5, "û", 2},
+                                {"ugrave",  6, "ù", 2},
+                                {"uml",     3, "¨", 2},
+                                {"upsih",   5, "ϒ", 2},
+                                {"upsilon", 7, "υ", 2},
+                                {"uuml",    4, "ü", 2},
+                                {"weierp",  6, "℘", 3},
+                                {"xi",      2, "ξ", 2},
+                                {"yacute",  6, "ý", 2},
+                                {"yen",     3, "¥", 2},
+                                {"yuml",    4, "ÿ", 2},
+                                {"zeta",    4, "ζ", 2},
+                                {NULL,      0, "", 0}
+                            };
+
+                            inPtr ++;
+                            for (i = 0; entities[i].name != NULL; i++) {
+                                char firstChar = *entities[i].name;
+
+                                if (firstChar == *inPtr
+                                    && length == entities[i].length
+                                    && strncmp(inPtr, entities[i].name, length) == 0) {
+
+                                    /*if (strlen(entities[i].value) != entities[i].outputLength) {
+                                        fprintf(stderr, "--> name %s found l = %lu\n",
+                                                entities[i].name, strlen(entities[i].value));
+                                                }*/
+                                    if (entities[i].outputLength > 1) {
+
+                                        memcpy(outPtr, entities[i].value, entities[i].outputLength);
+                                        outPtr += entities[i].outputLength;
+                                        needEncode = NS_TRUE;
+                                    } else {
+                                        *outPtr++ = *entities[i].value;
+                                    }
+                                    break;
+                                }
+
+                                if (firstChar >  *inPtr) {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
 
                 if (!inentity) {
-                    /* 
-                     * incr pointer only if we're not in something htmlish.
+                    /*
+                     * incr pointer only if we're not in something HTMLish.
                      */
                     *outPtr++ = *inPtr;
                 }
@@ -423,51 +890,25 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
             ++inPtr;
         }
 
-        /* 
+        /*
          * Terminate output string.
          */
         *outPtr = '\0';
 
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(inString, -1));
+        if (needEncode) {
+            Tcl_DString ds;
+            (void)Tcl_ExternalToUtfDString(Ns_GetCharsetEncoding("utf-8"), inString, (int)strlen(inString),
+                                           &ds);
+            Tcl_DStringResult(interp, &ds);
+        } else {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(inString, -1));
+        }
         ns_free(inString);
     }
     return result;
 }
 
-
-/*
- *----------------------------------------------------------------------
- *
- * NsTclCryptObjCmd --
- *
- *      Implements ns_crypt as ObjCommand.
- *
- * Results:
- *      Tcl result.
- *
- * Side effects:
- *      See docs.
- *
- *----------------------------------------------------------------------
- */
 
-int
-NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
-{
-    int  result = TCL_OK;
-
-    if (objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "key salt");
-        result = TCL_ERROR;
-    } else {
-        char buf[NS_ENCRYPT_BUFSIZE];
-
-        Tcl_SetResult(interp,
-                      Ns_Encrypt(Tcl_GetString(objv[1]),
-                                 Tcl_GetString(objv[2]), buf), TCL_VOLATILE);
-    }
-    return result;
-}
 
 
 /*
@@ -487,7 +928,7 @@ NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  */
 
 int
-NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *htmlString = NULL;
@@ -505,7 +946,7 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         Tcl_Obj    *listObj = Tcl_NewListObj(0, NULL);
 
         assert(htmlString != NULL);
-        
+
         p = htmlString;
         while (((s = strchr(p, INTCHAR('<'))) != NULL) && ((e = strchr(s, INTCHAR('>'))) != NULL)) {
             ++s;
@@ -523,7 +964,7 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
                         }
                         if (*s == '=') {
                             char save, *he;
-                            
+
                             ++s;
                             while (*s != '\0' && CHARTYPE(space, *s) != 0) {
                                 ++s;
@@ -572,9 +1013,10 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 /*
  *----------------------------------------------------------------------
  *
- * NsTclHTUUEncodeObjCmd --
+ * Base64EncodeObjCmd --
  *
- *      Implements ns_uuencode as obj command.
+ *      Worker for ns_uuencode, ns_base64encode, and ns_base64urlencode obj
+ *      commands.
  *
  * Results:
  *      Tcl result.
@@ -585,10 +1027,21 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *----------------------------------------------------------------------
  */
 
-int
-NsTclHTUUEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+#if 0
+static void hexPrint(const char *msg, unsigned char *octects, size_t octectLength)
 {
+    size_t i;
+    fprintf(stderr, "%s octectLength %zu:", msg, octectLength);
+    for (i=0; i<octectLength; i++) {
+        fprintf(stderr, "%.2x ",octects[i] & 0xff);
+    }
+    fprintf(stderr, "\n");
+}
+#endif
 
+static int
+Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding)
+{
     int result = TCL_OK;
 
     if (objc != 2) {
@@ -598,23 +1051,42 @@ NsTclHTUUEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
         char                *buffer;
         size_t               size;
         int                  nbytes = 0;
-        const unsigned char *bytes = Tcl_GetByteArrayFromObj(objv[1], &nbytes);
+        Tcl_DString          ds;
+        const unsigned char *bytes;
+        // const unsigned char *bytes = Tcl_GetByteArrayFromObj(objv[1], &nbytes);
+
+        Tcl_DStringInit(&ds);
+        bytes = (const unsigned char*)Ns_GetBinaryString(objv[1], &nbytes, &ds);
+        //hexPrint("source ", bytes, nbytes);
 
         size = (size_t)nbytes;
         buffer = ns_malloc(1u + (4u * MAX(size,2u)) / 2u);
-        (void)Ns_HtuuEncode(bytes, size, buffer);
+        (void)Ns_HtuuEncode2(bytes, size, buffer, encoding);
         Tcl_SetResult(interp, buffer, (Tcl_FreeProc *) ns_free);
+        Tcl_DStringFree(&ds);
     }
     return result;
+}
+
+int
+NsTclBase64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    return Base64EncodeObjCmd(clientData, interp, objc, objv, 0);
+}
+int
+NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    return Base64EncodeObjCmd(clientData, interp, objc, objv, 1);
 }
 
 
 /*
  *----------------------------------------------------------------------
  *
- * HTUUDecodeObjcmd --
+ * Base64DecodeObjCmd --
  *
- *      Implements ns_uudecode as obj command.
+ *      Worker for ns_uudecode, ns_base64decode, and ns_base64urldecode obj
+ *      command.
  *
  * Results:
  *      Tcl result.
@@ -625,8 +1097,8 @@ NsTclHTUUEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *----------------------------------------------------------------------
  */
 
-int
-NsTclHTUUDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+static int
+Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding)
 {
     int result = TCL_OK;
 
@@ -641,7 +1113,8 @@ NsTclHTUUDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
         size = (size_t)len + 3u;
         decoded = (unsigned char *)ns_malloc(size);
-        size = Ns_HtuuDecode(chars, decoded, size);
+        size = Ns_HtuuDecode2(chars, decoded, size, encoding);
+        //hexPrint("decoded", decoded, size);
         decoded[size] = UCHAR('\0');
         Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (int)size));
         ns_free(decoded);
@@ -649,6 +1122,17 @@ NsTclHTUUDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
     return result;
 }
+int
+NsTclBase64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    return Base64DecodeObjCmd(clientData, interp, objc, objv, 0);
+}
+int
+NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    return Base64DecodeObjCmd(clientData, interp, objc, objv, 1);
+}
+
 
 
 /*
@@ -669,7 +1153,7 @@ NsTclHTUUDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
 int
 NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
-                 int UNUSED(argc), Tcl_Obj *CONST* UNUSED(objv))
+                 int UNUSED(argc), Tcl_Obj *const* UNUSED(objv))
 {
     char *death;
 
@@ -688,7 +1172,7 @@ NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
  *      Does this word end in a semicolon or a space?
  *
  * Results:
- *      1 if semi, 0 if space.
+ *      Returns true if the word endes with a semicolon.
  *
  * Side effects:
  *      Undefined behavior if string does not end in null
@@ -697,22 +1181,60 @@ NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
  */
 
 static bool
-WordEndsInSemi(const char *ip)
+WordEndsInSemi(const char *word, size_t *lengthPtr)
 {
-    NS_NONNULL_ASSERT(ip != NULL);
-    
-    /* advance past the first '&' so we can check for a second
-       (i.e. to handle "ben&jerry&nbsp;")
-    */
-    if (*ip == '&') {
-        ip++;
+    const char *start;
+    NS_NONNULL_ASSERT(word != NULL);
+
+    /*
+     * Advance past the first '&' so we can check for a second
+     *  (i.e. to handle "ben&jerry&nbsp;")
+     */
+    if (*word == '&') {
+        word++;
     }
-    while((*ip != '\0') && (*ip != ' ') && (*ip != ';') && (*ip != '&')) {
-        ip++;
+    start = word;
+    while((*word != '\0') && (*word != ' ') && (*word != ';') && (*word != '&')) {
+        word++;
     }
-    return (*ip == ';');
+    *lengthPtr = (size_t)(word - start);
+    return (*word == ';');
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclCryptObjCmd --
+ *
+ *      Implements ns_crypt as ObjCommand.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      See docs.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int  result = TCL_OK;
+
+    if (objc != 3) {
+        Tcl_WrongNumArgs(interp, 1, objv, "key salt");
+        result = TCL_ERROR;
+    } else {
+        char buf[NS_ENCRYPT_BUFSIZE];
+
+        Tcl_SetResult(interp,
+                      Ns_Encrypt(Tcl_GetString(objv[1]),
+                                 Tcl_GetString(objv[2]), buf), TCL_VOLATILE);
+    }
+    return result;
+}
 /*
  *  The SHA1 routines are borrowed from libmd:
  *
@@ -758,7 +1280,7 @@ SHAByteSwap(uint32_t *dest, const uint8_t *src, unsigned int words)
 {
     do {
        *dest++ = (uint32_t) ((unsigned) src[0] << 8 | src[1]) << 16 |
-	         ((unsigned) src[2] << 8 | src[3]);
+                 ((unsigned) src[2] << 8 | src[3]);
        src += 4;
     } while (--words > 0u);
 }
@@ -796,16 +1318,16 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
 #define f3(x,y,z) ( ((x) & (y)) + ((z) & ((x) ^ (y)) ) )	/* Rounds 40-59 */
 #define f4(x,y,z) ( (x) ^ (y) ^ (z) )			/* Rounds 60-79 */
 
-/* 
- * The SHA Mysterious Constants. 
+/*
+ * The SHA Mysterious Constants.
  */
 #define K2  (0x5A827999u)	/* Rounds 0 -19 - floor(sqrt(2)  * 2^30) */
 #define K3  (0x6ED9EBA1u)	/* Rounds 20-39 - floor(sqrt(3)  * 2^30) */
 #define K5  (0x8F1BBCDCu)	/* Rounds 40-59 - floor(sqrt(5)  * 2^30) */
 #define K10 (0xCA62C1D6u)	/* Rounds 60-79 - floor(sqrt(10) * 2^30) */
 
-/* 
- * 32-bit rotate left - kludged with shifts 
+/*
+ * 32-bit rotate left - kludged with shifts
  */
 #define ROTL(n,X) ( ((X) << (n)) | ((X) >> (32-(n))) )
 
@@ -826,7 +1348,7 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
 #if SHA_VERSION			/* FIPS 180.1 */
 
 #define expandx(W,i) (t = W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u], \
-			ROTL(1, t))
+                        ROTL(1, t))
 #define expand(W,i) (W[(i)&15u] = expandx(W,(i)))
 
 #else /* Old FIPS 180 */
@@ -859,7 +1381,7 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
  *  Perform the SHA transformation. Note that this code, like MD5, seems to
  *  break some optimizing compilers due to the complexity of the expressions
  *  and the size of the basic block. It may be necessary to split it into
- *  sections, e.g. based on the four subrounds
+ *  sections, e.g. based on the four sub-rounds
  *
  *  Note that this corrupts the sha->key area.
  */
@@ -869,13 +1391,13 @@ SHATransform(Ns_CtxSHA1 *sha)
 {
     register uint32_t A, B, C, D, E;
 #if SHA_VERSION
-    register uint32_t t = 0u;
+    register uint32_t t;
 #endif
 
     NS_NONNULL_ASSERT(sha != NULL);
 
-    /* 
-     * Set up first buffer 
+    /*
+     * Set up first buffer
      */
     A = sha->iv[0];
     B = sha->iv[1];
@@ -883,8 +1405,8 @@ SHATransform(Ns_CtxSHA1 *sha)
     D = sha->iv[3];
     E = sha->iv[4];
 
-    /* 
-     * Heavy mangling, in 4 sub-rounds of 20 interations each. 
+    /*
+     * Heavy mangling, in 4 sub-rounds of 20 interactions each.
      */
     subRound (A, B, C, D, E, f1, K2, sha->key[0]);
     subRound (E, A, B, C, D, f1, K2, sha->key[1]);
@@ -970,8 +1492,8 @@ SHATransform(Ns_CtxSHA1 *sha)
     subRound (C, D, E, A, B, f4, K10, expandx (sha->key, 78u));
     subRound (B, C, D, E, A, f4, K10, expandx (sha->key, 79u));
 
-    /* 
-     * Build message digest 
+    /*
+     * Build message digest
      */
     sha->iv[0] += A;
     sha->iv[1] += B;
@@ -980,8 +1502,8 @@ SHATransform(Ns_CtxSHA1 *sha)
     sha->iv[4] += E;
 }
 
-/* 
- * Update SHA for a block of data. 
+/*
+ * Update SHA for a block of data.
  */
 void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
 {
@@ -990,8 +1512,8 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
     NS_NONNULL_ASSERT(ctx != NULL);
     NS_NONNULL_ASSERT(buf != NULL);
 
-    /* 
-     * Update bitcount 
+    /*
+     * Update bit count
      */
 
 #if defined(HAVE_64BIT)
@@ -1008,8 +1530,8 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
     }
 #endif
 
-    /* 
-     * i is always less than SHA_BLOCKBYTES. 
+    /*
+     * i is always less than SHA_BLOCKBYTES.
      */
     if (SHA_BLOCKBYTES - i > len) {
         memcpy(ctx->key + i, buf, len);
@@ -1039,7 +1561,7 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
 }
 
 /*
- * Final wrapup - pad to 64-byte boundary with the bit pattern
+ * Final wrap-up - pad to 64-byte boundary with the bit pattern
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
@@ -1051,13 +1573,13 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
 #endif
     uint8_t *p = (uint8_t *) ctx->key + i;	/* First unused byte */
 
-    /* 
-     * Set the first char of padding to 0x80. There is always room. 
+    /*
+     * Set the first char of padding to 0x80. There is always room.
      */
     *p++ = (uint8_t)0x80u;
 
-    /* 
-     * Bytes of padding needed to make 64 bytes (0..63) 
+    /*
+     * Bytes of padding needed to make 64 bytes (0..63)
      */
     i = (SHA_BLOCKBYTES - 1u) - i;
 
@@ -1071,8 +1593,8 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
     memset(p, 0, i - 8u);
     SHAByteSwap(ctx->key, (const uint8_t *) ctx->key, 14u);
 
-    /* 
-     * Append length in bits and transform 
+    /*
+     * Append length in bits and transform
      */
 #if defined(HAVE_64BIT)
     ctx->key[14] = (uint32_t) (ctx->bytes >> 29);
@@ -1083,14 +1605,14 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
 #endif
     SHATransform (ctx);
 
-    /* 
+    /*
      * The following memcpy() does not seem to be correct and is most likely
      * not needed, since the loop sets all elements of "digetst".
      */
     /*memcpy(digest, ctx->iv, sizeof(digest));*/
 
     for (i = 0u; i < SHA_HASHWORDS; i++) {
-	uint32_t t = ctx->iv[i];
+        uint32_t t = ctx->iv[i];
 
         digest[i * 4u     ] = (uint8_t) (t >> 24);
         digest[i * 4u + 1u] = (uint8_t) (t >> 16);
@@ -1098,7 +1620,7 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
         digest[i * 4u + 3u] = (uint8_t) t;
     }
 
-    memset(ctx, 0, sizeof(Ns_CtxSHA1)); 			/* In case it's sensitive */
+    memset(ctx, 0, sizeof(Ns_CtxSHA1));                         /* In case it's sensitive */
 }
 
 /*
@@ -1122,7 +1644,7 @@ char *Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUppe
     int i;
     static const char hexCharsUpper[] = "0123456789ABCDEF";
     static const char hexCharsLower[] = "0123456789abcdef";
-    
+
     if (isUpper) {
         for (i = 0; i < size; ++i) {
             buf[i * 2] = hexCharsUpper[digest[i] >> 4];
@@ -1149,38 +1671,42 @@ char *Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUppe
  *      hash of the first argument.
  *
  * Results:
- *	NS_OK
+ *      NS_OK
  *
  * Side effects:
- *	Tcl result is set to a string value.
+ *      Tcl result is set to a string value.
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc != 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "string");
         result = TCL_ERROR;
-        
+
     } else {
         unsigned char  digest[20];
         char           digestChars[41];
         Ns_CtxSHA1     ctx;
         int            length;
-        const char    *str = Ns_GetBinaryString(objv[1], &length);
+        const char    *str;
+        Tcl_DString    ds;
 
+        Tcl_DStringInit(&ds);
+        str = Ns_GetBinaryString(objv[1], &length, &ds);
         Ns_CtxSHAInit(&ctx);
         Ns_CtxSHAUpdate(&ctx, (const unsigned char *) str, (size_t) length);
         Ns_CtxSHAFinal(&ctx, digest);
 
         Ns_HexString(digest, digestChars, 20, NS_TRUE);
         Tcl_SetObjResult(interp, Tcl_NewStringObj(digestChars, 40));
+        Tcl_DStringFree(&ds);
     }
-    
+
     return result;
 }
 
@@ -1196,16 +1722,16 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *      and file stat is the most used command
  *
  * Results:
- *	NS_OK
+ *      NS_OK
  *
  * Side effects:
- *	Tcl result is set to a string value.
+ *      Tcl result is set to a string value.
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     struct stat st;
@@ -1219,7 +1745,7 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     } else {
         if (objc > 2) {
             const char *name = Tcl_GetString(objv[2]);
-        
+
             (void)Tcl_SetVar2Ex(interp, name, "dev",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_dev), 0);
             (void)Tcl_SetVar2Ex(interp, name, "ino",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_ino), 0);
             (void)Tcl_SetVar2Ex(interp, name, "nlink", Tcl_NewWideIntObj((Tcl_WideInt)st.st_nlink), 0);
@@ -1286,13 +1812,13 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 static void byteReverse(unsigned char *buf, unsigned longs)
 {
     do {
-	uint32_t t;
+        uint32_t t;
 
-	t = (uint32_t) 
-	    ((unsigned) buf[3] << 8 | buf[2]) << 16 |
-	    ((unsigned) buf[1] << 8 | buf[0]);
-	*(uint32_t *) buf = t;
-	buf += 4;
+        t = (uint32_t)
+            ((unsigned) buf[3] << 8 | buf[2]) << 16 |
+            ((unsigned) buf[1] << 8 | buf[0]);
+        *(uint32_t *) buf = t;
+        buf += 4;
     } while (--longs);
 }
 #endif
@@ -1323,55 +1849,55 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, const unsigned char *buf, size_t len)
     NS_NONNULL_ASSERT(ctx != NULL);
     NS_NONNULL_ASSERT(buf != NULL);
 
-    /* Update bitcount */
+    /* Update bit count */
 
     t = ctx->bits[0];
     ctx->bits[0] = t + ((uint32_t) len << 3);
     if (ctx->bits[0] < t) {
-	ctx->bits[1]++;		/* Carry from low to high */
+        ctx->bits[1]++;		/* Carry from low to high */
     }
     ctx->bits[1] += (uint32_t)(len >> 29);
 
     t = (t >> 3) & 0x3Fu;	/* Bytes already in shsInfo->data */
 
-    /* 
-     * Handle any leading odd-sized chunks 
+    /*
+     * Handle any leading odd-sized chunks
      */
 
     if (t != 0u) {
-	unsigned char *p = ctx->in + t;
+        unsigned char *p = ctx->in + t;
 
-	t = 64u - t;
-	if (len < t) {
-	    memcpy(p, buf, len);
-	    return;
-	}
-	memcpy(p, buf, t);
-	byteReverse(ctx->in, 16);
-	MD5Transform(ctx->buf, (uint8_t *) ctx->in);
-	buf += t;
-	len -= t;
+        t = 64u - t;
+        if (len < t) {
+            memcpy(p, buf, len);
+            return;
+        }
+        memcpy(p, buf, t);
+        byteReverse(ctx->in, 16);
+        MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+        buf += t;
+        len -= t;
     }
-    
-    /* 
-     * Process data in 64-byte chunks 
+
+    /*
+     * Process data in 64-byte chunks
      */
     while (len >= 64u) {
-	memcpy(ctx->in, buf, 64u);
-	byteReverse(ctx->in, 16);
-	MD5Transform(ctx->buf, (uint8_t *) ctx->in);
-	buf += 64;
-	len -= 64u;
+        memcpy(ctx->in, buf, 64u);
+        byteReverse(ctx->in, 16);
+        MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+        buf += 64;
+        len -= 64u;
     }
 
-    /* 
-     * Handle any remaining bytes of data. 
+    /*
+     * Handle any remaining bytes of data.
      */
     memcpy(ctx->in, buf, len);
 }
 
 /*
- * Final wrapup - pad to 64-byte boundary with the bit pattern
+ * Final wrap-up - pad to 64-byte boundary with the bit pattern
  * 1 0* (64-bit count of bits processed, MSB-first)
  */
 void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
@@ -1384,49 +1910,49 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
     NS_NONNULL_ASSERT(digest != NULL);
 
     words = (uint32_t *)ctx->in;
-    
-    /* 
-     * Compute number of bytes mod 64 
+
+    /*
+     * Compute number of bytes mod 64
      */
     count = (ctx->bits[0] >> 3) & 0x3Fu;
 
-    /* 
+    /*
      * Set the first char of padding to 0x80.  This is safe since there is
      * always at least one byte free
      */
     p = ctx->in + count;
     *p++ = (uint8_t)0x80u;
-    
-    /* 
-     * Bytes of padding needed to make 64 bytes 
+
+    /*
+     * Bytes of padding needed to make 64 bytes
      */
     count = (64u - 1u) - count;
 
-    /* 
-     * Pad out to 56 mod 64 
+    /*
+     * Pad out to 56 mod 64
      */
     if (count < 8u) {
-	/* 
-         * Two lots of padding:  Pad the first block to 64 bytes 
+        /*
+         * Two lots of padding:  Pad the first block to 64 bytes
          */
-	memset(p, 0, count);
-	byteReverse(ctx->in, 16);
-	MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+        memset(p, 0, count);
+        byteReverse(ctx->in, 16);
+        MD5Transform(ctx->buf, (uint8_t *) ctx->in);
 
-	/* 
-         * Now fill the next block with 56 bytes 
+        /*
+         * Now fill the next block with 56 bytes
          */
-	memset(ctx->in, 0, 56u);
+        memset(ctx->in, 0, 56u);
     } else {
-	/* 
-         * Pad block to 56 bytes 
+        /*
+         * Pad block to 56 bytes
          */
-	memset(p, 0, count - 8u);
+        memset(p, 0, count - 8u);
     }
     byteReverse(ctx->in, 14);
 
-    /* 
-     * Append length in bits and transform 
+    /*
+     * Append length in bits and transform
      */
     words[14] = ctx->bits[0];
     words[15] = ctx->bits[1];
@@ -1437,14 +1963,14 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
     /*
      * This memset should not be needed, since this is performed at the end of
      * the operation. In case, it would be needed, it should be necessary at
-     * the initilization of the structure.
+     * the initialization of the structure.
      *
      *     memset(ctx, 0, sizeof(Ns_CtxMD5));
      */
 }
 
-/* 
- * The four core functions - F1 is optimized somewhat 
+/*
+ * The four core functions - F1 is optimized somewhat
  */
 
 /* #define F1(x, y, z) (x & y | ~x & z) */
@@ -1453,8 +1979,8 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
 #define F3(x, y, z) ((x) ^ (y) ^ (z))
 #define F4(x, y, z) ((y) ^ ((x) | ~(z)))
 
-/* 
- * This is the central step in the MD5 algorithm. 
+/*
+ * This is the central step in the MD5 algorithm.
  */
 #define MD5STEP(f, w, x, y, z, data, s) \
     ( (w) += f((x), (y), (z)) + (data),  (w) = (w)<<(s) | (w)>>(32-(s)),  (w) += (x) )
@@ -1472,7 +1998,7 @@ static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
     const uint32_t *in = (const uint32_t *)block;
 #else
     uint32_t in[16];
-    
+
     memcpy(in, block, sizeof(in));
 
     for (a = 0; a < 16; a++) {
@@ -1486,7 +2012,7 @@ static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
 
     NS_NONNULL_ASSERT(buf != NULL);
     NS_NONNULL_ASSERT(block != NULL);
-    
+
     a = buf[0];
     b = buf[1];
     c = buf[2];
@@ -1575,16 +2101,16 @@ static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
  *      hash of the first argument.
  *
  * Results:
- *	NS_OK
+ *      NS_OK
  *
  * Side effects:
- *	Tcl result is set to a string value.
+ *      Tcl result is set to a string value.
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int            result = TCL_OK;
 
@@ -1597,16 +2123,20 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
         unsigned char  digest[16];
         char           digestChars[33];
         int            length;
-        const char    *str = Ns_GetBinaryString(objv[1], &length);
-        
+        Tcl_DString    ds;
+        const char    *str;
+
+        Tcl_DStringInit(&ds);
+        str = Ns_GetBinaryString(objv[1], &length, &ds);
         Ns_CtxMD5Init(&ctx);
         Ns_CtxMD5Update(&ctx, (const unsigned char *) str, (size_t)length);
         Ns_CtxMD5Final(&ctx, digest);
-        
+
         Ns_HexString(digest, digestChars, 16, NS_TRUE);
         Tcl_SetObjResult(interp, Tcl_NewStringObj(digestChars, 32));
+        Tcl_DStringFree(&ds);
     }
-    
+
     return result;
 }
 
@@ -1627,23 +2157,23 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  */
 
 int
-NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
-    
+
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "user");
         result = TCL_ERROR;
-        
+
     } else {
         Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_SetUser(Tcl_GetString(objv[1]))));
     }
-    
+
     return result;
 }
 
 int
-NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -1667,10 +2197,10 @@ NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *      Get single resource limit in form of a Tcl_Obj
  *
  * Results:
- *	Tcl_Obj
+ *      Tcl_Obj
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1678,7 +2208,7 @@ static Tcl_Obj *
 GetLimitObj(rlim_t value)
 {
     Tcl_Obj *obj;
-    
+
     if (value == RLIM_INFINITY) {
         obj = Tcl_NewStringObj("unlimited", -1);
     } else {
@@ -1697,17 +2227,21 @@ GetLimitObj(rlim_t value)
  *      Get or Set resource limit in the operating system.
  *
  * Results:
- *	pair of actual value and maximum value
+ *      pair of actual value and maximum value
  *
  * Side effects:
- *	Change resource limiat with called with a value.
+ *      Change resource limit with called with a value.
  *
  *----------------------------------------------------------------------
  */
 int
-NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
 #ifndef _WIN32
+# ifndef RLIMIT_AS
+#  define RLIMIT_AS RLIMIT_DATA
+# endif
+
     int            opt, result = TCL_OK, rc;
     struct rlimit  rlimit;
 
@@ -1715,7 +2249,7 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
         "coresize",
         "datasize",
         "files",
-        "filesize",        
+        "filesize",
         "vmsize",
         NULL
     };
@@ -1729,17 +2263,17 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
     enum {
         CCoresizeIdx,
         CDatasizeIdx,
-        CFIlesizeIdx,        
+        CFIlesizeIdx,
         CFilesIdx,
         CVmsizeIdx,
-        
+
     };
 
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "command ?args?");
         return TCL_ERROR;
     }
-    if (Tcl_GetIndexFromObj(interp, objv[1], opts, 
+    if (Tcl_GetIndexFromObj(interp, objv[1], opts,
                             "option", 0, &opt) != TCL_OK) {
         return TCL_ERROR;
     }
@@ -1756,7 +2290,7 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
         result = Tcl_GetWideIntFromObj(interp, objv[2], &value);
         if (result != TCL_OK) {
             char *valueString = Tcl_GetString(objv[2]);
-            
+
             if (strcmp(valueString, "unlimited") == 0) {
                 value = (Tcl_WideInt)RLIM_INFINITY;
                 result = TCL_OK;
@@ -1770,29 +2304,94 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
             }
             if (rc == -1) {
                 Ns_TclPrintfResult(interp, "could not set limit");
-                result = TCL_ERROR;                
+                result = TCL_ERROR;
             }
         }
     } else {
         Ns_TclPrintfResult(interp, "wrong # of arguments");
-        result = TCL_ERROR;                
+        result = TCL_ERROR;
     }
 
     if (result == TCL_OK) {
         Tcl_Obj *listPtr = Tcl_NewListObj(0, NULL);
-        
+
         Tcl_ListObjAppendElement(interp, listPtr, GetLimitObj(rlimit.rlim_cur));
         Tcl_ListObjAppendElement(interp, listPtr, GetLimitObj(rlimit.rlim_max));
         Tcl_SetObjResult(interp, listPtr);
         result = TCL_OK;
     }
-    
+
     return result;
 #else
     return TCL_OK;
 #endif
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclHashObjCmd --
+ *
+ *      Produce a numeric hash value from a given string.  This function uses
+ *      the Tcl built-in hash function which is commented in Tcl as follows:
+ *
+ *          I tried a zillion different hash functions and asked many other
+ *          people for advice. Many people had their own favorite functions,
+ *          all different, but no-one had much idea why they were good ones. I
+ *          chose the one below (multiply by 9 and add new character) because
+ *          of the following reasons:
+ *
+ *          1. Multiplying by 10 is perfect for keys that are decimal strings, and
+ *             multiplying by 9 is just about as good.
+ *          2. Times-9 is (shift-left-3) plus (old). This means that each
+ *             character's bits hang around in the low-order bits of the hash value
+ *             for ever, plus they spread fairly rapidly up to the high-order bits
+ *             to fill out the hash value. This seems works well both for decimal
+ *             and non-decimal strings, but isn't strong against maliciously-chosen
+ *             keys.
+ *
+ *          Note that this function is very weak against malicious strings;
+ *          it's very easy to generate multiple keys that have the same
+ *          hashcode. On the other hand, that hardly ever actually occurs and
+ *          this function *is* very cheap, even by comparison with
+ *          industry-standard hashes like FNV.
+ *
+ * Results:
+ *      Numeric hash value.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int          result = TCL_OK;
+    char        *inputString;
+    Ns_ObjvSpec  args[] = {
+        {"string", Ns_ObjvString,  &inputString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        unsigned int hashValue;
+
+        if ((hashValue = UCHAR(*inputString)) != 0) {
+            char c;
+
+            while ((c = *++inputString) != 0) {
+                hashValue += (hashValue << 3) + UCHAR(c);
+            }
+        }
+        Tcl_SetObjResult(interp, Tcl_NewLongObj(hashValue));
+    }
+    return result;
+
+}
 
 
 /*

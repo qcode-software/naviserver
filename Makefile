@@ -66,8 +66,8 @@ help:
 	@echo 'Example for a system-wide installation under /usr/local/ns:'
 	@echo '  make all && su -c "make install"'
 	@echo
-	@echo 'Example for running a single test in the test suite, under the debugger:'
-	@echo '  make gdbtest TESTFLAGS="-file tclconnio.test -match tclconnio-1.1"'
+	@echo 'Example for running selected test in the test suite, under the debugger:'
+	@echo '  make gdbtest TESTFLAGS="-verbose start -file cookies.test -match cookie-2.*"'
 	@echo
 
 install: install-dirs install-include install-tcl install-modules \
@@ -189,6 +189,7 @@ build-doc:
 	           find $$srcdir -name '*.man' -exec $(CP) "{}" doc/tmp/`basename $$srcdir` ";"; \
 		fi; \
 	done
+	$(CP) doc/images/manual/*.png doc/tmp/manual/
 	@cd doc/tmp; \
 	for srcdir in `ls`; do \
 	    echo $$srcdir; \
@@ -249,6 +250,10 @@ cppcheck:
 	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
+clang-tidy:
+	clang-tidy-mp-devel nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c -- \
+		-I./include -I/usr/include $(DEFS)
+
 checkexports: all
 	@for i in $(dirs); do \
 		nm -p $$i/*${LIBEXT} | awk '$$2 ~ /[TDB]/ { print $$3 }' | sort -n | uniq | grep -v '^[Nn]s\|^TclX\|^_'; \
@@ -274,6 +279,7 @@ dist: clean
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/include/{config.h,Makefile.global,Makefile.module,stamp-h1}
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/*/*-{debug,gn}
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/*/*~
+	$(RM) naviserver-$(NS_PATCH_LEVEL)/tests/testserver/access.log
 	hg log --style=changelog > naviserver-$(NS_PATCH_LEVEL)/ChangeLog
 	find naviserver-$(NS_PATCH_LEVEL) -name '.[a-zA-Z_]*' -exec rm \{} \;
 	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)

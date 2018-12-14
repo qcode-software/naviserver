@@ -42,14 +42,14 @@ ns_mutex lock acquires the specified mutual exclusion lock.
 
 [call [cmd  ns_mutex] [cmd eval] [arg mutexid] [arg script]]
 
-A conveniance function to lock the specified mutex, run the 
+A convenience function to lock the specified mutex, run the 
 [arg script] and unlock the mutex finally. The result and error condition of
 the [arg script] are returned by the command.
 
 [call [cmd  ns_mutex] [cmd trylock] [arg mutexid]]
 
 ns_mutex trylock tries to acquire the specified mutual exclusion lock. If the mutex is locked
-successfully, return value of 0 is returned. non-zero return value indicates that the mutex is
+successfully, return value of 0 is returned. Non-zero return value indicates that the mutex is
 already locked by someone else.
 
 [call [cmd  ns_mutex] [cmd unlock] [arg mutexid]]
@@ -106,6 +106,8 @@ one can destroy the mutex (not strictly necessary).
    nsv_unset mutex foo
 
 [example_end]
+
+[keywords "server built-in" mutex thread]
 
 [manpage_end]
 

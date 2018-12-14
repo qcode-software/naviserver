@@ -54,7 +54,7 @@ The latest development version is available online:
 ---------------------------
 
 The server is known to compile and run on FreeBSD, Linux, Solaris, 
-Mac OS/X 10.2+ and Windows. To compile and install:
+macOS 10.2+ and Windows. To compile and install:
 
 
 3a. Download, configure, build and install Tcl 8.5 or better
@@ -68,8 +68,8 @@ Mac OS/X 10.2+ and Windows. To compile and install:
     directory you intend to install the server (e.g., /usr/local/ns) or
     in some other location. The following should work:
 
-    $ gunzip < tcl8.5.18-src.tar.gz | tar xvf -
-    $ cd tcl8.5.18/unix
+    $ gunzip < tcl8.6.8-src.tar.gz | tar xvf -
+    $ cd tcl8.6.8/unix
     $ ./configure --prefix=/usr/local/ns --enable-threads --enable-symbols
     $ make install
 
@@ -92,8 +92,8 @@ Mac OS/X 10.2+ and Windows. To compile and install:
 
     The following should work for official releases:
 
-        $ gunzip < naviserver-4.99.15.tar.gz | tar xvf -
-        $ cd naviserver-4.99.15
+        $ gunzip < naviserver-4.99.17.tar.gz | tar xvf -
+        $ cd naviserver-4.99.17
         $ ./configure --prefix=/usr/local/ns --with-tcl=/usr/local/ns/lib --enable-symbols
         $ make
         $ su -c 'make install'
@@ -105,7 +105,7 @@ Mac OS/X 10.2+ and Windows. To compile and install:
         Path to library installation directory of Tcl where
         configure can find the tclConfig.sh script.  Without
         this option, configure will search around for
-        tclConfig.sh, perhaps finding it in ../tcl8.5.18/unix.
+        tclConfig.sh, perhaps finding it in ../tcl8.6.8/unix.
 
     --with-zlib=/usr
 
@@ -132,13 +132,13 @@ Mac OS/X 10.2+ and Windows. To compile and install:
  
         make PURIFY="purify -cache-dir=/home/joe/my-cache-dir" install
 
-    Alternatively, NaviServer can be installed directly from bitbucket
+    Alternatively, NaviServer can be installed directly from Bitbucket
     via the mercurial version control system installed.  Mercurial is
     included in most Linux distributions: e.g. yum install
-    mercurial. For Windows and Mac OSX see:
+    mercurial. For Windows and macOS see:
     http://www.selenic.com/mercurial
 
-    If you checked out the source directly from bitbucket, replace
+    If you checked out the source directly from Bitbucket, replace
     "./configure" in the example above with "./autogen.sh" to get the
     initial makefiles created.
 
@@ -184,12 +184,12 @@ Mac OS/X 10.2+ and Windows. To compile and install:
     named "nsfoo", get it from the modules tar file and install it
     like sketched below:
 
-        $ gunzip < naviserver-4.99.15-modules.tar.gz | tar xvf -
+        $ gunzip < naviserver-4.99.17-modules.tar.gz | tar xvf -
         $ cd modules/nsfoo
         $ make install NAVISERVER=/usr/local/ns
 
     Alternatively, modules can be obtained from the code repository at
-    bitbucket via mercurial.
+    Bitbucket via mercurial.
 
     To get a module "nsfoo" via mercurial
 
@@ -224,7 +224,7 @@ Mac OS/X 10.2+ and Windows. To compile and install:
         c:>cd msys
         c:\msys> msys.bat
 
-        $ cd /c/naviserver-4.99.15
+        $ cd /c/naviserver-4.99.17
         $ ./configure --prefix=c:/naviserver --with-tcl=c:/naviserver/lib
         $ make install
 

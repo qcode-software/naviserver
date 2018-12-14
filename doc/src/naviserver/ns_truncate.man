@@ -5,13 +5,13 @@
 [titledesc {Truncate file in size}]
 
 [description]
-This commans will truncate given file to the given length
+This commands will truncate given file to the given length
 
 [section {COMMANDS}]
 
 [list_begin definitions]
 
-[call [cmd ns_truncate] [arg file] [arg ?length?]]
+[call [cmd ns_truncate] [arg file] [opt [arg length]]]
 
 [para]
 [arg file]
@@ -24,6 +24,6 @@ If specified, truncate up to this length otherwise make file 0 size
 [list_end]
 
 [see_also nsd]
-[keywords NaviServer]
+[keywords "global built-in" NaviServer]
 [manpage_end]
 

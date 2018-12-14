@@ -76,9 +76,9 @@ static const struct {
     const char  *name;
 } builtinExt[] = {
     {".txt",    "ascii"},
-    {".htm",    "iso8859-1"},
-    {".html",   "iso8859-1"},
-    {".adp",    "iso8859-1"},
+    {".htm",    "utf-8"},
+    {".html",   "utf-8"},
+    {".adp",    "utf-8"},
     {NULL, NULL}
 };
 
@@ -166,10 +166,10 @@ static const struct {
  *      Configure charset aliases and file extension mappings.
  *
  * Results:
- *      None. 
+ *      None.
  *
  * Side effects:
- *      None. 
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -223,7 +223,7 @@ ConfigServerEncodings(const char *server)
     if (unlikely(servPtr == NULL)) {
         Ns_Log(Warning, "Could not set encoding, server '%s' unknown", server);
         result = NS_ERROR;
-        
+
     } else {
         const char *path;
 
@@ -231,7 +231,7 @@ ConfigServerEncodings(const char *server)
          * Configure the encoding used in the request URL.
          */
 
-        path = Ns_ConfigGetPath(server, NULL, (char *)0);
+        path = Ns_ConfigGetPath(server, NULL, (char *)0L);
 
         servPtr->encoding.urlCharset =
             Ns_ConfigString(path, "urlCharset", "utf-8");
@@ -304,7 +304,7 @@ Ns_GetFileEncoding(const char *file)
         const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&extensions, ext);
 
         if (hPtr != NULL) {
-	    const char *name = Tcl_GetHashValue(hPtr);
+            const char *name = Tcl_GetHashValue(hPtr);
             encoding = Ns_GetCharsetEncoding(name);
         }
     }
@@ -506,8 +506,8 @@ NsFindCharset(const char *mimetype, size_t *lenPtr)
  */
 
 int
-NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, 
-		    int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
+NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
+                    int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
 {
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
@@ -544,7 +544,7 @@ NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  */
 
 int
-NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -560,7 +560,7 @@ NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetEncodingName(encoding), -1));
         }
     }
-    
+
     return result;
 }
 
@@ -621,7 +621,7 @@ LoadEncoding(const char *name)
             Ns_CondWait(&cond, &lock);
         }
     } else {
-	Tcl_SetHashValue(hPtr, INT2PTR(EncodingLocked));
+        Tcl_SetHashValue(hPtr, INT2PTR(EncodingLocked));
         Ns_MutexUnlock(&lock);
         encoding = Tcl_GetEncoding(NULL, name);
         if (encoding == NULL) {

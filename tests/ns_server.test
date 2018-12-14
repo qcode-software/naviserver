@@ -110,7 +110,7 @@ test ns_server-2.3.1 {set minthreads} -body {
     ns_server minthreads 1
 } -match exact -result 1
 
-test ns_server-2.3.2 {query modfied minthreads} -body {
+test ns_server-2.3.2 {query modified minthreads} -body {
     ns_server minthreads
 } -match exact -result 1
 
@@ -175,7 +175,7 @@ test ns_server-2.7 {basic operation} -body {
 
 test ns_server-2.8 {register filter and query} -setup {
     proc _filter_do_nothing {args} {
-	return filter_ok
+        return filter_ok
     }
     ns_register_filter preauth GET /ns_server-2.8 _filter_do_nothing
 } -body {
@@ -221,25 +221,25 @@ test ns_server-2.13.4 {basic operation} -body {
 # Initially, the mapping of the "emergency" pool should be empty.
 
 test ns_server-2.14.1 {basic operation} -body {
-    ns_server -pool emergency map 
+    ns_server -pool emergency map
 } -result {}
 
 test ns_server-2.14.1a {basic operation with invalid pool} -body {
-    ns_server -pool emergencyx map 
+    ns_server -pool emergencyx map
 } -returnCodes error -result {no such pool 'emergencyx' for server 'test'}
 
 test ns_server-2.14.1b {basic operation with invalid mapspec} -body {
     ns_server -pool emergency map "XXX"
-} -returnCodes error -result {invalid mapspec 'XXX'; must be 2-element list containing http method and URL}
+} -returnCodes error -result {invalid mapspec 'XXX'; must be 2-element list containing HTTP method and URL}
 
 
 #
 # Map some GET request, query the mapping, and unmap the GET requests
 #
-test ns_server-2.14.2 {mapping and unmapping of requsts} -setup {
+test ns_server-2.14.2 {mapping and unmapping of requests} -setup {
     ns_server -pool emergency map "GET /foo"
 } -body {
-    ns_server -pool emergency map 
+    ns_server -pool emergency map
 } -cleanup {
     ns_server -pool emergency unmap "GET /foo"
 } -result {{GET /foo * inherit}}
@@ -248,13 +248,13 @@ test ns_server-2.14.2 {mapping and unmapping of requsts} -setup {
 # After cleanup, the map should be empty again.
 #
 test ns_server-2.14.3 {check, if cleanup of last test was successful} -body {
-    ns_server -pool emergency map 
+    ns_server -pool emergency map
 } -result {}
 
 #
 # Map some GET request, query the mapping, and unmap the GET requests
 #
-test ns_server-2.14.4 {mapping and unmapping of requsts, return mapping} -setup {
+test ns_server-2.14.4 {mapping and unmapping of requests, return mapping} -setup {
     ns_server -pool emergency map "GET /foo"
 } -body {
     ns_server mapped "GET /foo"
@@ -265,7 +265,7 @@ test ns_server-2.14.4 {mapping and unmapping of requsts, return mapping} -setup 
 #
 # Map some GET request, query the mapping, and unmap the GET requests
 #
-test ns_server-2.14.5 {mapping and unmapping of requsts, return mapping with inheritance} -setup {
+test ns_server-2.14.5 {mapping and unmapping of requests, return mapping with inheritance} -setup {
     ns_server -pool emergency map "GET /foo/*.png"
 } -body {
     return [list [ns_server mapped "GET /foo"] [ns_server mapped "GET /foo/1.png"] [ns_server mapped "GET /foo/bar/2.png"]]
@@ -274,3 +274,9 @@ test ns_server-2.14.5 {mapping and unmapping of requsts, return mapping with inh
 } -result {{} emergency emergency}
 
 cleanupTests
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

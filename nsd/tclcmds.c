@@ -52,7 +52,6 @@ typedef struct Cmd {
  */
 
 static const Cmd basicCmds[] = {
-    {"env",                      NULL, NsTclEnvObjCmd},
     {"keyldel",                  NULL, TclX_KeyldelObjCmd},
     {"keylget",                  NULL, TclX_KeylgetObjCmd},
     {"keylkeys",                 NULL, TclX_KeylkeysObjCmd},
@@ -65,8 +64,10 @@ static const Cmd basicCmds[] = {
     {"ns_atshutdown",            NULL, NsTclAtShutdownObjCmd},
     {"ns_atsignal",              NULL, NsTclAtSignalObjCmd},
     {"ns_atstartup",             NULL, NsTclAtStartupObjCmd},
-    {"ns_base64decode",          NULL, NsTclHTUUDecodeObjCmd},
-    {"ns_base64encode",          NULL, NsTclHTUUEncodeObjCmd},
+    {"ns_base64decode",          NULL, NsTclBase64DecodeObjCmd},
+    {"ns_base64encode",          NULL, NsTclBase64EncodeObjCmd},
+    {"ns_base64urldecode",       NULL, NsTclBase64UrlDecodeObjCmd},
+    {"ns_base64urlencode",       NULL, NsTclBase64UrlEncodeObjCmd},
     {"ns_cancel",                NULL, NsTclCancelObjCmd},
     {"ns_charsets",              NULL, NsTclCharsetsObjCmd},
     {"ns_config",                NULL, NsTclConfigObjCmd},
@@ -74,8 +75,12 @@ static const Cmd basicCmds[] = {
     {"ns_configsections",        NULL, NsTclConfigSectionsObjCmd},
     {"ns_crash",                 NULL, NsTclCrashObjCmd},
     {"ns_crypt",                 NULL, NsTclCryptObjCmd},
+    {"ns_crypto::aead::decrypt", NULL, NsTclCryptoAeadDecryptObjCmd},
+    {"ns_crypto::aead::encrypt", NULL, NsTclCryptoAeadEncryptObjCmd},
+    {"ns_crypto::eckey",         NULL, NsTclCryptoEckeyObjCmd},
     {"ns_crypto::hmac",          NULL, NsTclCryptoHmacObjCmd},
     {"ns_crypto::md",            NULL, NsTclCryptoMdObjCmd},
+    {"ns_crypto::randombytes",   NULL, NsTclCryptoRandomBytesObjCmd},
     {"ns_encodingforcharset",    NULL, NsTclEncodingForCharsetObjCmd},
     {"ns_env",                   NULL, NsTclEnvObjCmd},
     {"ns_fastpath_cache_stats",  NULL, NsTclFastPathCacheStatsObjCmd},
@@ -86,6 +91,7 @@ static const Cmd basicCmds[] = {
     {"ns_gmtime",                NULL, NsTclGmTimeObjCmd},
     {"ns_guesstype",             NULL, NsTclGuessTypeObjCmd},
     {"ns_hashpath",              NULL, NsTclHashPathObjCmd},
+    {"ns_hash",                  NULL, NsTclHashObjCmd},
     {"ns_hostbyaddr",            NULL, NsTclGetHostObjCmd},
     {"ns_hrefs",                 NULL, NsTclHrefsObjCmd},
     {"ns_http",                  NULL, NsTclHttpObjCmd},
@@ -149,8 +155,8 @@ static const Cmd basicCmds[] = {
     {"ns_unschedule_proc",       NULL, NsTclUnscheduleObjCmd},
     {"ns_urldecode",             NULL, NsTclUrlDecodeObjCmd},
     {"ns_urlencode",             NULL, NsTclUrlEncodeObjCmd},
-    {"ns_uudecode",              NULL, NsTclHTUUDecodeObjCmd},
-    {"ns_uuencode",              NULL, NsTclHTUUEncodeObjCmd},
+    {"ns_uudecode",              NULL, NsTclBase64DecodeObjCmd},
+    {"ns_uuencode",              NULL, NsTclBase64EncodeObjCmd},
     {"ns_writefp",               NULL, NsTclWriteFpObjCmd},
 
     /*
@@ -178,7 +184,6 @@ static const Cmd servCmds[] = {
     {"ns_adp_debug",             NULL, NsTclAdpDebugObjCmd},
     {"ns_adp_dir",               NULL, NsTclAdpDirObjCmd},
     {"ns_adp_dump",              NULL, NsTclAdpDumpObjCmd},
-    {"ns_adp_eval",              NULL, NsTclAdpEvalObjCmd},
     {"ns_adp_exception",         NULL, NsTclAdpExceptionObjCmd},
     {"ns_adp_flush",             NULL, NsTclAdpFlushObjCmd},
     {"ns_adp_info",              NULL, NsTclAdpInfoObjCmd},
@@ -191,7 +196,6 @@ static const Cmd servCmds[] = {
     {"ns_adp_registerscript",    NULL, NsTclAdpRegisterScriptObjCmd},
     {"ns_adp_registertag",       NULL, NsTclAdpRegisterTagObjCmd},
     {"ns_adp_return",            NULL, NsTclAdpReturnObjCmd},
-    {"ns_adp_safeeval",          NULL, NsTclAdpSafeEvalObjCmd},
     {"ns_adp_stats",             NULL, NsTclAdpStatsObjCmd},
     {"ns_adp_tell",              NULL, NsTclAdpTellObjCmd},
     {"ns_adp_trunc",             NULL, NsTclAdpTruncObjCmd},
@@ -235,7 +239,7 @@ static const Cmd servCmds[] = {
     {"ns_moduleload",            NULL, NsTclModuleLoadObjCmd},
     {"ns_mutex",                 NULL, NsTclMutexObjCmd},
     {"ns_normalizepath",         NULL, NsTclNormalizePathObjCmd},
-    {"ns_puts",                  NULL, NsTclAdpPutsObjCmd},
+    {"ns_reflow_text",           NULL, NsTclReflowTextObjCmd},
     {"ns_register_adp",          NULL, NsTclRegisterAdpObjCmd},
     {"ns_register_adptag",       NULL, NsTclAdpRegisterAdptagObjCmd},
     {"ns_register_fastpath",     NULL, NsTclRegisterFastPathObjCmd},
@@ -249,7 +253,6 @@ static const Cmd servCmds[] = {
     {"ns_requestauthorize",      NULL, NsTclRequestAuthorizeObjCmd},
     {"ns_respond",               NULL, NsTclRespondObjCmd},
     {"ns_return",                NULL, NsTclReturnObjCmd},
-    {"ns_returnadminnotice",     NULL, NsTclReturnNoticeObjCmd},
     {"ns_returnbadrequest",      NULL, NsTclReturnBadRequestObjCmd},
     {"ns_returnerror",           NULL, NsTclReturnErrorObjCmd},
     {"ns_returnfile",            NULL, NsTclReturnFileObjCmd},
@@ -295,7 +298,7 @@ static const Cmd servCmds[] = {
     {NULL, NULL, NULL}
 };
 
-/* 
+/*
  * Locally defined functions.
  */
 static void AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
@@ -308,7 +311,7 @@ static void AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
  * AddCmds --
  *
  *      Add an array of commands or objCommands to the passed
- *      interpreter.  The array is terminated by an entry with 
+ *      interpreter.  The array is terminated by an entry with
  *      name == NULL.
  *
  * Results:
@@ -327,13 +330,13 @@ AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
     NS_NONNULL_ASSERT(itPtr != NULL);
 
     while (cmdPtr->name != NULL) {
-	/*
-	 * One has to provide wither an objProc or a proc.
-	 */
+        /*
+         * One has to provide wither an objProc or a proc.
+         */
         if (cmdPtr->objProc != NULL) {
-	    (void)Tcl_CreateObjCommand(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);
+            (void)Tcl_CreateObjCommand(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);
         } else {
-	    assert(cmdPtr->proc != NULL);
+            assert(cmdPtr->proc != NULL);
             (void)Tcl_CreateCommand(itPtr->interp, cmdPtr->name, cmdPtr->proc, itPtr, NULL);
         }
         ++cmdPtr;
@@ -360,7 +363,7 @@ void
 NsTclAddBasicCmds(NsInterp *itPtr)
 {
     NS_NONNULL_ASSERT(itPtr != NULL);
-    
+
     AddCmds(basicCmds, itPtr);
 }
 
@@ -368,7 +371,7 @@ void
 NsTclAddServerCmds(NsInterp *itPtr)
 {
     NS_NONNULL_ASSERT(itPtr != NULL);
-    
+
     AddCmds(servCmds, itPtr);
 }
 

@@ -30,7 +30,7 @@
 /*
  * mutex.c --
  *
- *	Mutex locks with metering.
+ *      Mutex locks with metering.
  */
 
 #include "thread.h"
@@ -65,7 +65,7 @@ bool NS_mutexlocktrace = NS_FALSE;
  */
 
 typedef struct Mutex {
-    void	    *lock;
+    void            *lock;
     struct Mutex    *nextPtr;
     uintptr_t        id;
     unsigned long    nlock;
@@ -74,7 +74,7 @@ typedef struct Mutex {
     Ns_Time          total_waiting_time;
     Ns_Time          max_waiting_time;
     Ns_Time          total_lock_time;
-    char	     name[NS_THREAD_NAMESIZE+1];
+    char             name[NS_THREAD_NAMESIZE+1];
 } Mutex;
 
 #define GETMUTEX(mutex) (*(mutex) != NULL ? ((Mutex *)*(mutex)) : GetMutex((mutex)))
@@ -88,14 +88,14 @@ static Mutex *firstMutexPtr;
 
  * Ns_MutexInit --
  *
- *	Mutex initialization, often called the first time a mutex
- *	is locked.
+ *      Mutex initialization, often called the first time a mutex
+ *      is locked.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -130,13 +130,15 @@ Ns_MutexInit(Ns_Mutex *mutex)
  *
  * Ns_MutexSetName, Ns_MutexSetName2 --
  *
- *	Update the string name of a mutex.
+ *      Update the string name of a mutex.  Ns_MutexSetName2 produces a name
+ *      based on the two string components and concatenates these with a colon
+ *      (":").
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -162,28 +164,28 @@ Ns_MutexSetName2(Ns_Mutex *mutex, const char *prefix, const char *name)
 
     prefixLength = strlen(prefix);
     if (prefixLength > NS_THREAD_NAMESIZE - 1) {
-	prefixLength = NS_THREAD_NAMESIZE - 1;
-	nameLength = 0u;
+        prefixLength = NS_THREAD_NAMESIZE - 1;
+        nameLength = 0u;
     } else if (name != NULL) {
-	nameLength = strlen(name);
-	if ((nameLength + prefixLength + 1) > NS_THREAD_NAMESIZE) {
-	    nameLength = NS_THREAD_NAMESIZE - prefixLength - 1;
-	}
+        nameLength = strlen(name);
+        if ((nameLength + prefixLength + 1) > NS_THREAD_NAMESIZE) {
+            nameLength = NS_THREAD_NAMESIZE - prefixLength - 1;
+        }
     } else {
         nameLength = 0u;
     }
 
     mutexPtr = GETMUTEX(mutex);
     assert(mutexPtr != NULL);
-    
+
     Ns_MasterLock();
     p = mutexPtr->name;
     memcpy(p, prefix, prefixLength + 1u);
     if (name != NULL) {
         p += prefixLength;
-	*p++ = ':';
-	assert(name != NULL);
-	memcpy(p, name, nameLength + 1u);
+        *p++ = ':';
+        assert(name != NULL);
+        memcpy(p, name, nameLength + 1u);
     }
     Ns_MasterUnlock();
     //fprintf(stderr, "=== renaming mutex %ld to %s\n", mutexPtr->id, mutexPtr->name);
@@ -195,14 +197,14 @@ Ns_MutexSetName2(Ns_Mutex *mutex, const char *prefix, const char *name)
  *
  * Ns_MutexDestroy --
  *
- *	Mutex destroy.  Note this routine is not used very often
- *	as mutexes normally exists in memory until the process exits.
+ *      Mutex destroy.  Note this routine is not used very often
+ *      as mutexes normally exists in memory until the process exits.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -210,21 +212,21 @@ Ns_MutexSetName2(Ns_Mutex *mutex, const char *prefix, const char *name)
 void
 Ns_MutexDestroy(Ns_Mutex *mutex)
 {
-    Mutex	 *mutexPtr = (Mutex *) *mutex;
+    Mutex        *mutexPtr = (Mutex *) *mutex;
 
     if (mutexPtr != NULL) {
         Mutex  **mutexPtrPtr;
 
-	NsLockFree(mutexPtr->lock);
-    	Ns_MasterLock();
-    	mutexPtrPtr = &firstMutexPtr;
-    	while ((*mutexPtrPtr) != mutexPtr) {
-	    mutexPtrPtr = &(*mutexPtrPtr)->nextPtr;
-    	}
-    	*mutexPtrPtr = mutexPtr->nextPtr;
-    	Ns_MasterUnlock();
-    	ns_free(mutexPtr);
-	*mutex = NULL;
+        NsLockFree(mutexPtr->lock);
+        Ns_MasterLock();
+        mutexPtrPtr = &firstMutexPtr;
+        while ((*mutexPtrPtr) != mutexPtr) {
+            mutexPtrPtr = &(*mutexPtrPtr)->nextPtr;
+        }
+        *mutexPtrPtr = mutexPtr->nextPtr;
+        Ns_MasterUnlock();
+        ns_free(mutexPtr);
+        *mutex = NULL;
     }
 }
 
@@ -234,14 +236,14 @@ Ns_MutexDestroy(Ns_Mutex *mutex)
  *
  * Ns_MutexLock --
  *
- *	Lock a mutex, tracking the number of locks and the number of
- *	which were not acquired immediately.
+ *      Lock a mutex, tracking the number of locks and the number of
+ *      which were not acquired immediately.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Thread may be suspended if the lock is held.
+ *      Thread may be suspended if the lock is held.
  *
  *----------------------------------------------------------------------
  */
@@ -261,32 +263,32 @@ Ns_MutexLock(Ns_Mutex *mutex)
     mutexPtr = GETMUTEX(mutex);
     assert(mutexPtr != NULL);
     if (unlikely(!NsLockTry(mutexPtr->lock))) {
-	NsLockSet(mutexPtr->lock);
-	++mutexPtr->nbusy;
+        NsLockSet(mutexPtr->lock);
+        ++mutexPtr->nbusy;
 
 #ifndef NS_NO_MUTEX_TIMING
         /*
          * Measure total and max waiting time for busy mutex locks.
          */
-	Ns_GetTime(&end);
+        Ns_GetTime(&end);
         Ns_DiffTime(&end, &startTime, &diff);
-	Ns_IncrTime(&mutexPtr->total_waiting_time, diff.sec, diff.usec);
+        Ns_IncrTime(&mutexPtr->total_waiting_time, diff.sec, diff.usec);
 
-	if (NS_mutexlocktrace && (diff.sec > 1 || diff.usec > 100000)) {
-	    fprintf(stderr, "[%lx] Mutex lock %s: wait duration %" PRIu64 ".%06ld\n",
-                    (long)NS_THREAD_ID, mutexPtr->name, (int64_t)diff.sec, diff.usec);
-	}
+        if (NS_mutexlocktrace && (diff.sec > 1 || diff.usec > 100000)) {
+            fprintf(stderr, "[%s] Mutex lock %s: wait duration %" PRId64 ".%06ld\n",
+                    Ns_ThreadGetName(), mutexPtr->name, (int64_t)diff.sec, diff.usec);
+        }
 
         /*
          * Keep max waiting time since server start. It might be a
-	 * good idea to either provide a call to reset the max-time,
-	 * or to report wait times above a certain threshold (as an
-	 * extra value in the statistics, or in the log file).
+         * good idea to either provide a call to reset the max-time,
+         * or to report wait times above a certain threshold (as an
+         * extra value in the statistics, or in the log file).
          */
         if (Ns_DiffTime(&mutexPtr->max_waiting_time, &diff, NULL) < 0) {
             mutexPtr->max_waiting_time = diff;
-            /*fprintf(stderr, "Mutex %s max time %" PRIu64 ".%06ld\n",
-	      mutexPtr->name, (int64_t)diff.sec, diff.usec);*/
+            /*fprintf(stderr, "Mutex %s max time %" PRId64 ".%06ld\n",
+              mutexPtr->name, (int64_t)diff.sec, diff.usec);*/
         }
 #endif
     }
@@ -303,13 +305,13 @@ Ns_MutexLock(Ns_Mutex *mutex)
  *
  * Ns_MutexTryLock --
  *
- *	Attempt to lock a mutex.
+ *      Attempt to lock a mutex.
  *
  * Results:
- *	NS_OK if locked, NS_TIMEOUT if lock already held.
+ *      NS_OK if locked, NS_TIMEOUT if lock already held.
  *
  * Side effects:
- * 	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -323,7 +325,7 @@ Ns_MutexTryLock(Ns_Mutex *mutex)
 
     mutexPtr = GETMUTEX(mutex);
     if (!NsLockTry(mutexPtr->lock)) {
-    	return NS_TIMEOUT;
+        return NS_TIMEOUT;
     }
     ++mutexPtr->nlock;
     return NS_OK;
@@ -335,13 +337,13 @@ Ns_MutexTryLock(Ns_Mutex *mutex)
  *
  * Ns_MutexUnlock --
  *
- *	Unlock a mutex.
+ *      Unlock a mutex.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Other waiting thread, if any, is resumed.
+ *      Other waiting thread, if any, is resumed.
  *
  *----------------------------------------------------------------------
  */
@@ -362,9 +364,27 @@ Ns_MutexUnlock(Ns_Mutex *mutex)
     NsLockUnset(mutexPtr->lock);
 
     if (NS_mutexlocktrace && (diff.sec > 1 || diff.usec > 100000)) {
-        fprintf(stderr, "[%lx] Mutex unlock %s: lock duration %" PRIu64 ".%06ld\n",
-                (long)NS_THREAD_ID, mutexPtr->name, (int64_t)diff.sec, diff.usec);
+        fprintf(stderr, "[%s] Mutex unlock %s: lock duration %" PRId64 ".%06ld\n",
+                Ns_ThreadGetName(), mutexPtr->name, (int64_t)diff.sec, diff.usec);
     }
+
+#ifdef NS_MUTEX_NAME_DEBUG
+    /*
+     * In case we find a mutex with the name starting with 'mu[0-9]', produce
+     * a crash.  We assume here, that the user does not name mutexes like
+     * this. However, this should NOT be active in production environments.
+     */
+    if (mutexPtr->name[0] == 'm'
+        && mutexPtr->name[1] == 'u'
+        && mutexPtr->name[2] >= '0'
+        && mutexPtr->name[2] <= '9'
+        ) {
+        char *p = NULL;
+
+        fprintf(stderr, "anonymous mutex: with id %ld name %s\n", mutexPtr->id, mutexPtr->name);
+        *p = 'a';
+    }
+#endif
 
 }
 
@@ -374,13 +394,13 @@ Ns_MutexUnlock(Ns_Mutex *mutex)
  *
  * Ns_MutexList --
  *
- *	Append info on each lock.
+ *      Append info on each lock.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -397,12 +417,12 @@ Ns_MutexList(Tcl_DString *dsPtr)
         Tcl_DStringAppendElement(dsPtr, mutexPtr->name);
         Tcl_DStringAppendElement(dsPtr, ""); /* unused? */
         snprintf(buf, (int)sizeof(buf),
-                 " %" PRIuPTR " %lu %lu %" PRIu64 ".%06ld %" PRIu64 ".%06ld %" PRIu64 ".%06ld",
+                 " %" PRIuPTR " %lu %lu %" PRId64 ".%06ld %" PRId64 ".%06ld %" PRId64 ".%06ld",
                  mutexPtr->id, mutexPtr->nlock, mutexPtr->nbusy,
                  (int64_t)mutexPtr->total_waiting_time.sec, mutexPtr->total_waiting_time.usec,
                  (int64_t)mutexPtr->max_waiting_time.sec, mutexPtr->max_waiting_time.usec,
                  (int64_t)mutexPtr->total_lock_time.sec, mutexPtr->total_lock_time.usec
-		 );
+                 );
         Tcl_DStringAppend(dsPtr, buf, -1);
         Tcl_DStringEndSublist(dsPtr);
     }
@@ -415,13 +435,13 @@ Ns_MutexList(Tcl_DString *dsPtr)
  *
  * NsMutexInitNext --
  *
- *	Initialize and name the next internal mutex.
+ *      Initialize and name the next internal mutex.
  *
  * Results:
- *	None.
+ *      None.
  *
  * Side effects:
- *	Given counter is updated.
+ *      Given counter is updated.
  *
  *----------------------------------------------------------------------
  */
@@ -451,13 +471,13 @@ NsMutexInitNext(Ns_Mutex *mutex, const char *prefix, uintptr_t *nextPtr)
  *
  * NsGetLock --
  *
- *	Return the private lock pointer for a Ns_Mutex.
+ *      Return the private lock pointer for a Ns_Mutex.
  *
  * Results:
- *	Pointer to lock.
+ *      Pointer to lock.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -471,7 +491,7 @@ NsGetLock(Ns_Mutex *mutex)
 
     mutexPtr = GETMUTEX(mutex);
     assert(mutexPtr != NULL);
-    
+
     return mutexPtr->lock;
 }
 
@@ -481,13 +501,13 @@ NsGetLock(Ns_Mutex *mutex)
  *
  * GetMutex --
  *
- *	Cast a Ns_Mutex to a Mutex, initializing if needed.
+ *      Cast a Ns_Mutex to a Mutex, initializing if needed.
  *
  * Results:
- *	Pointer to Mutex.
+ *      Pointer to Mutex.
  *
  * Side effects:
- *	Mutex is initialized the first time.
+ *      Mutex is initialized the first time.
  *
  *----------------------------------------------------------------------
  */
@@ -499,7 +519,7 @@ GetMutex(Ns_Mutex *mutex)
 
     Ns_MasterLock();
     if (*mutex == NULL) {
-	Ns_MutexInit(mutex);
+        Ns_MutexInit(mutex);
     }
     Ns_MasterUnlock();
     return (Mutex *) *mutex;
@@ -510,13 +530,13 @@ GetMutex(Ns_Mutex *mutex)
  *
  * Ns_MutexGetName --
  *
- *	Obtain the name of a mutex.
+ *      Obtain the name of a mutex.
  *
  * Results:
- *	String name of the mutex.
+ *      String name of the mutex.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */

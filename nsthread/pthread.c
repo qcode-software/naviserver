@@ -345,7 +345,7 @@ NsLockUnset(void *lock)
  */
 
 void
-NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *resultPtr)
+NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *threadPtr)
 {
     static const char *func = "NsCreateThread";
     pthread_attr_t     attr;
@@ -393,9 +393,9 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *resultPtr)
     }
 
     /*
-     * In case, there is no resultPtr given, create a detached thread.
+     * In case, there is no threadPtr given, create a detached thread.
      */
-    if (resultPtr == NULL) {
+    if (threadPtr == NULL) {
         err = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         if (err != 0 && err != ENOTSUP) {
             NsThreadFatal(func, "pthread_setdetachstate", err);
@@ -408,8 +408,8 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *resultPtr)
     err = pthread_create(&thr, &attr, ThreadMain, arg);
     if (err != 0) {
         NsThreadFatal(func, "pthread_create", err);
-    } else if (resultPtr != NULL) {
-        *resultPtr = (Ns_Thread) thr;
+    } else if (threadPtr != NULL) {
+        *threadPtr = (Ns_Thread)(uintptr_t) thr;
     }
 
     /*
@@ -443,7 +443,7 @@ NsThreadExit(void *arg)
 {
    /*
     * Exit the thread really. This will invoke all of the
-    * registerd TLS cleanup callbacks again (no harm).
+    * registered TLS cleanup callbacks again (no harm).
     */
 
     pthread_exit(arg);
@@ -473,7 +473,7 @@ Ns_ThreadJoin(Ns_Thread *thread, void **argPtr)
 
     NS_NONNULL_ASSERT(thread != NULL);
 
-    err = pthread_join((pthread_t)*thread, argPtr);
+    err = pthread_join((pthread_t)(uintptr_t)*thread, argPtr);
     if (err != 0) {
         NsThreadFatal("Ns_ThreadJoin", "pthread_join", err);
     }
@@ -485,7 +485,7 @@ Ns_ThreadJoin(Ns_Thread *thread, void **argPtr)
  *
  * Ns_ThreadYield --
  *
- *      Yield the cpu to another thread.
+ *      Yield the CPU to another thread.
  *
  * Results:
  *      None.
@@ -547,7 +547,7 @@ Ns_ThreadSelf(Ns_Thread *threadPtr)
 {
     NS_NONNULL_ASSERT(threadPtr != NULL);
 
-    *threadPtr = (Ns_Thread) pthread_self();
+    *threadPtr = (Ns_Thread) (uintptr_t)pthread_self();
 }
 
 
@@ -558,7 +558,7 @@ Ns_ThreadSelf(Ns_Thread *threadPtr)
  *
  *      Pthread condition variable initialization.  Note this routine
  *      isn't used directly very often as static condition variables
- *      are now self initialized when first used.
+ *      are now self-initialized when first used.
  *
  * Results:
  *      None.
@@ -671,7 +671,7 @@ Ns_CondSignal(Ns_Cond *cond)
 void
 Ns_CondBroadcast(Ns_Cond *cond)
 {
-    int             err;
+    int err;
 
     NS_NONNULL_ASSERT(cond != NULL);
 
@@ -838,7 +838,7 @@ ThreadMain(void *arg)
  *
  *      Pthread TLS cleanup.  This routine is called during thread
  *      exit.  This routine could be called more than once if some
- *      other pthread cleanup requires nsthreads TLS.
+ *      other pthread cleanup requires nsthread's TLS.
  *
  * Results:
  *      None.

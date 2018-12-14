@@ -81,7 +81,7 @@ spec.
 [para]
 [arg cache]
 Query or set the cache option. When disabled, all requests
-to cache executed ADP blocks via the ns_adp_include [arg -cache] directive are
+to cache executed ADP blocks via the ns_adp_include [option -cache] directive are
 ignored, resulting in normal execution of all code.
 
 [para]
@@ -137,7 +137,7 @@ the end of a <% ns_adp_include myfile.adp %> ending up in the output stream.
 	ns_adp ns_adp_mimetype  ns_adp_abort ns_adp_break ns_adp_close \
 	ns_adp_ctl ns_adp_dump \
 	ns_adp_flush ns_adp_return ns_adp_stream]
-[keywords ADP]
+[keywords "server built-in" ADP]
 [manpage_end]
 
 

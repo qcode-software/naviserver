@@ -36,11 +36,15 @@
 
 #include "nsd.h"
 
+/*
+ * Static functions defined in this file.
+ */
+
 static int GetChan(Tcl_Interp *interp, const char *id, Tcl_Channel *chanPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static int GetIndices(Tcl_Interp *interp, const Conn *connPtr,
-                      Tcl_Obj *CONST* objv, int *offPtr, int *lenPtr)
+                      Tcl_Obj *const* objv, int *offPtr, int *lenPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static Tcl_Channel MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
@@ -331,7 +335,7 @@ Ns_ConnServer(const Ns_Conn *conn)
  *      An integer response code (e.g., 200 for OK).
  *
  * Side effects:
- *      NB: Status 200 is the default and can not be set manualy.
+ *      NB: Status 200 is the default and can not be set manually.
  *
  *----------------------------------------------------------------------
  */
@@ -433,9 +437,119 @@ Ns_ConnResponseLength(const Ns_Conn *conn)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConnPeer --
+ * Ns_ConnPeerAddr --
  *
  *      Get the peer's internet address
+ *
+ * Results:
+ *      A string IP address
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+
+const char *
+Ns_ConnPeerAddr(const Ns_Conn *conn)
+{
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    return ((const Conn *)conn)->reqPtr->peer;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConnCurrentAddr --
+ *
+ *      Get the local IP address of the current connection
+ *
+ * Results:
+ *      A string IP address or NULL
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_ConnCurrentAddr(const Ns_Conn *conn)
+{
+    const char *result;
+    const Conn *connPtr;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    connPtr = (Conn *)conn;
+    if (connPtr->sockPtr != NULL) {
+        struct NS_SOCKADDR_STORAGE sa;
+        socklen_t len = (socklen_t)sizeof(sa);
+        int retVal = getsockname(connPtr->sockPtr->sock, (struct sockaddr *) &sa, &len);
+
+        if (retVal == -1) {
+            result = NULL;
+        } else {
+            result = ns_inet_ntoa((struct sockaddr *)&sa);
+        }
+    } else {
+        result = NULL;
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConnCurrentPort --
+ *
+ *      Get the local port of the current connection
+ *
+ * Results:
+ *      port or 0 when operation fails
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+unsigned short
+Ns_ConnCurrentPort(const Ns_Conn *conn)
+{
+    unsigned short result;
+    const Conn    *connPtr;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    connPtr = (const Conn *)conn;
+    if (connPtr->sockPtr != NULL) {
+        struct NS_SOCKADDR_STORAGE sa;
+        socklen_t len = (socklen_t)sizeof(sa);
+        int       retVal = getsockname(connPtr->sockPtr->sock, (struct sockaddr *) &sa, &len);
+
+        if (retVal == -1) {
+            result = 0u;
+        } else {
+            result = Ns_SockaddrGetPort((struct sockaddr *)&sa);
+        }
+    } else {
+        result = 0u;
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConnPeer --
+ *
+ *      Get the peer's internet address, deprecated version of
+ *      Ns_ConnPeerAddr().
+ *
+ *      Deprecated: Use Ns_ConnPeerAddr() for naming symmetry with
+ *      the variants without "Peer" in the name.
  *
  * Results:
  *      A string IP address
@@ -451,7 +565,7 @@ Ns_ConnPeer(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
 
-    return ((const Conn *)conn)->reqPtr->peer;
+    return Ns_ConnPeerAddr(conn);
 }
 
 /*
@@ -685,7 +799,7 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
             /*
              * We have here no port and no default port
              */
-            location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0, 0);
+            location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0u, 0u);
         }
 
     }
@@ -832,14 +946,16 @@ Ns_ConnSockPtr(const Ns_Conn *conn)
 Ns_DString *
 Ns_ConnSockContent(const Ns_Conn *conn)
 {
-    const Conn *connPtr;
-    Ns_DString *result = NULL;
+    Request    *reqPtr;
+    Ns_DString *result;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    connPtr = ((const Conn *)conn);
-    if (likely(connPtr->reqPtr != NULL)) {
-        result = &connPtr->reqPtr->buffer;
+    reqPtr = ((const Conn *)conn)->reqPtr;
+    if (likely(reqPtr != NULL)) {
+        result = &(reqPtr->buffer);
+    } else {
+        result = NULL;
     }
     return result;
 }
@@ -1278,8 +1394,9 @@ Ns_ConnSetUrlEncoding(Ns_Conn *conn, Tcl_Encoding encoding)
  *
  * Ns_ConnGetCompression, Ns_ConnSetCompression
  *
- *      Enable/disable compression wth the specified level.
- *      Output will be compressed if client advertises support.
+ *      Get configured compression level (*Get*) or enable/disable compression
+ *      with the specified level (*Set*).  Output will only be compressed if
+ *      client advertises support.
  *
  *      Level 1 is 'on' i.e. default compression from config.
  *
@@ -1330,7 +1447,7 @@ Ns_ConnSetCompression(Ns_Conn *conn, int level)
  */
 
 int
-NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     NsInterp            *itPtr = clientData;
     Ns_Conn             *conn = itPtr->conn;
@@ -1344,9 +1461,10 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     const char          *setName;
 
     static const char *const opts[] = {
-        "auth", "authpassword", "authuser",
+        "acceptedcompression", "auth", "authpassword", "authuser",
         "channel", "clientdata", "close", "compress", "content",
         "contentfile", "contentlength", "contentsentlength", "copy",
+        "currentaddr", "currentport",
         "driver",
         "encoding",
         "fileheaders", "filelength", "fileoffset", "files", "flags", "form",
@@ -1367,9 +1485,10 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         NULL
     };
     enum ISubCmdIdx {
-        CAuthIdx, CAuthPasswordIdx, CAuthUserIdx,
+        CAacceptedcompressionIdx, CAuthIdx, CAuthPasswordIdx, CAuthUserIdx,
         CChannelIdx, CClientdataIdx, CCloseIdx, CCompressIdx, CContentIdx,
         CContentFileIdx, CContentLengthIdx, CContentSentLenIdx, CCopyIdx,
+        CCurrentAddrIdx, CCurrentPortIdx,
         CDriverIdx,
         CEncodingIdx,
         CFileHdrIdx, CFileLenIdx, CFileOffIdx, CFilesIdx, CFlagsIdx, CFormIdx,
@@ -1407,8 +1526,8 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
             /*
              * Handle "isconnected" subcommand here.
              */
-            Tcl_SetObjResult(interp,
-                             Tcl_NewBooleanObj((connPtr != NULL) ? 1 : 0));
+            bool connected = ((connPtr != NULL) ? ((connPtr->flags & NS_CONN_CLOSED) == 0u) : NS_FALSE);
+            Tcl_SetObjResult(interp, Tcl_NewBooleanObj(connected));
         } else if (unlikely(connPtr == NULL)) {
             /*
              * Other subcommands require connPtr
@@ -1432,7 +1551,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     case CIsConnectedIdx:
         /*
          * This case is handled above. We keep this entry to keep static
-         * checkers happy about case enumeration.
+         * checkers happy about completeness of case enumeration.
          */
         break;
 
@@ -1486,6 +1605,23 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         }
         break;
 
+    case CCurrentAddrIdx:
+        {
+            const char *addr = Ns_ConnCurrentAddr(conn);
+
+            Tcl_SetObjResult(interp, Tcl_NewStringObj((addr != NULL ? addr : ""), -1));
+        }
+        break;
+
+    case CCurrentPortIdx:
+        {
+            unsigned short port = Ns_ConnCurrentPort(conn);
+
+            Tcl_SetObjResult(interp, Tcl_NewIntObj((int)port));
+        }
+        break;
+
+
     case CAuthIdx:
         if ((itPtr->nsconn.flags & CONN_TCLAUTH) != 0u) {
             Tcl_SetResult(interp, itPtr->nsconn.auth, TCL_STATIC);
@@ -1518,8 +1654,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
 
     case CContentIdx:
         {
-            bool        binary = NS_FALSE;
-            int         offset = 0, length = -1, requiredLength;
+            int         binary = (int)NS_FALSE, offset = 0, length = -1, requiredLength;
             Tcl_DString encDs;
 
             Ns_ObjvSpec lopts[] = {
@@ -1678,7 +1813,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case CPeerAddrIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnPeer(conn), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnPeerAddr(conn), -1));
         break;
 
     case CPeerPortIdx:
@@ -1962,6 +2097,21 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj((connPtr->flags & NS_CONN_ZIPACCEPTED) != 0u));
         break;
 
+    case CAacceptedcompressionIdx:
+        {
+            Tcl_Obj *listObj = Tcl_NewListObj(0, NULL);
+
+            if ((connPtr->flags & NS_CONN_BROTLIACCEPTED) != 0u) {
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("brotli", 6));
+            }
+            if ((connPtr->flags & NS_CONN_ZIPACCEPTED) != 0u) {
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("gzip", 4));
+            }
+
+            Tcl_SetObjResult(interp, listObj);
+        }
+        break;
+
     default:
         /* unexpected value */
         assert(opt && 0);
@@ -1990,7 +2140,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
  */
 
 int
-NsTclLocationProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclLocationProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsServer *servPtr = NsGetInitServer();
     int             result = TCL_OK;
@@ -2031,7 +2181,7 @@ NsTclLocationProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
  */
 
 int
-NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     int             toCopy = 0, result = TCL_OK;
@@ -2060,7 +2210,10 @@ NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
         result = TCL_ERROR;
 
     } else if (Tcl_Flush(chan) != TCL_OK) {
-        Ns_TclPrintfResult(interp, "flush returned error: %s", strerror(Tcl_GetErrno()));
+        const char *errorMsg = Tcl_ErrnoMsg(Tcl_GetErrno());
+
+        Ns_TclPrintfResult(interp, "flush returned error: %s", errorMsg);
+        Tcl_SetErrorCode(interp, "POSIX", Tcl_ErrnoId(), errorMsg, (char *)0L);
         result = TCL_ERROR;
 
     } else {
@@ -2102,7 +2255,7 @@ NsTclConnLocation(Ns_Conn *conn, Ns_DString *dest, const void *arg)
     Tcl_Interp           *interp = Ns_GetConnInterp(conn);
     char                 *result;
 
-    if (Ns_TclEvalCallback(interp, cbPtr, dest, (char *)0) != TCL_OK) {
+    if (Ns_TclEvalCallback(interp, cbPtr, dest, (char *)0L) != TCL_OK) {
         (void) Ns_TclLogErrorInfo(interp, "\n(context: location callback)");
         result =  NULL;
     } else {
@@ -2173,7 +2326,7 @@ GetChan(Tcl_Interp *interp, const char *id, Tcl_Channel *chanPtr)
  */
 
 static int
-GetIndices(Tcl_Interp *interp, const Conn *connPtr, Tcl_Obj *CONST* objv, int *offPtr,
+GetIndices(Tcl_Interp *interp, const Conn *connPtr, Tcl_Obj *const* objv, int *offPtr,
            int *lenPtr)
 {
     int off, len, result = TCL_OK;
@@ -2289,8 +2442,8 @@ MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
  * NsConnRequire --
  *
  *      Return the conn for the given interp. In case that interp is not
- *      connected, return NS_ERROR. If connPtr is given, it sets the conn to
- *      that address on success.
+ *      connected, or when the connection is already closed, return NS_ERROR.
+ *      If connPtr is given, it sets the conn to that address on success.
  *
  * Results:
  *      NaviServer result code
@@ -2313,6 +2466,11 @@ NsConnRequire(Tcl_Interp *interp, Ns_Conn **connPtr)
     if (conn == NULL) {
         Tcl_SetObjResult(interp, Tcl_NewStringObj("no connection", -1));
         status = NS_ERROR;
+
+    } else if ((conn->flags & NS_CONN_CLOSED) != 0u && nsconf.reject_already_closed_connection) {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj("connection already closed", -1));
+        status = NS_ERROR;
+
     } else {
         if (connPtr != NULL) {
             *connPtr = conn;

@@ -151,7 +151,7 @@
  */
 
 /*
- * There is still room for improvements. a simple lookup for
+ * There is still room for improvements. A simple lookup for
  * "/a/c/a.html" takes 10 strlen operations and 14 strcmp
  * operations. One could alter the static function MkSeq() to produce
  * a more intelligent structure, to calculate strlen operations once,
@@ -197,7 +197,7 @@ static int NS_strcmp(const char *a, const char *b) {
 
 /*
  * This structure defines a Node. It is the lowest-level structure in
- * urlspace and contains the data the the user puts in. It holds data
+ * urlspace and contains the data the user puts in. It holds data
  * whose scope is a set of URLs, such as /foo/bar/ *.html.
  * Data/cleanup functions are kept separately for inheriting and non-
  * inheriting URLs, as there could be overlap.
@@ -354,7 +354,7 @@ static int CmpKeyWithChannelAsStrings(const char *key, const Channel *const*chan
 
 
 /*
- * Juntion functions
+ * Junction functions
  */
 
 static Junction *JunctionGet(NsServer *servPtr, int id)
@@ -510,7 +510,7 @@ void *
 Ns_UrlSpecificGetFast(const char *server, const char *method, const char *url, int id)
 {
    /*
-    * Depreacated Function. Use Ns_UrlSpecificGet()
+    * Deprecated Function. Use Ns_UrlSpecificGet()
     */
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -750,7 +750,7 @@ WalkTrie(const Trie *triePtr, Ns_ArgProc func,
 
 #if 0
         {char buffer[100];
-            sprintf(buffer, "%p:", (void*)nodePtr);
+            snprintf(buffer, 100, "%p:", (void*)nodePtr);
             Tcl_DStringAppend(&subDs, buffer, -1);
         }
 #endif
@@ -761,7 +761,7 @@ WalkTrie(const Trie *triePtr, Ns_ArgProc func,
 
             Tcl_DStringInit(&elementDs);
             while (stack[depth] != NULL) {
-                Ns_DStringVarAppend(&elementDs, "/", stack[depth], (char *)0);
+                Ns_DStringVarAppend(&elementDs, "/", stack[depth], (char *)0L);
                 depth++;
             }
             Tcl_DStringAppendElement(&subDs, elementDs.string);
@@ -769,7 +769,7 @@ WalkTrie(const Trie *triePtr, Ns_ArgProc func,
 
         }
 
-        Ns_DStringVarAppend(&subDs, " ", filter, " ", (char *)0);
+        Ns_DStringVarAppend(&subDs, " ", filter, " ", (char *)0L);
 
         /*
          * Append a sublist for each type of proc.
@@ -1167,7 +1167,7 @@ TrieDestroy(Trie *triePtr)
          */
 
         for (i = 0u; i < n; i++) {
-	    Branch *branchPtr = Ns_IndexEl(&triePtr->branches, i);
+            Branch *branchPtr = Ns_IndexEl(&triePtr->branches, i);
             BranchDestroy(branchPtr);
         }
         Ns_IndexDestroy(&triePtr->branches);
@@ -1302,7 +1302,7 @@ TrieFindExact(const Trie *triePtr, char *seq, unsigned int flags)
          * non-inheriting data, otherwise return the inheriting data.
          */
 
-	if ((flags & NS_OP_NOINHERIT) != 0u) {
+        if ((flags & NS_OP_NOINHERIT) != 0u) {
             data = nodePtr->dataNoInherit;
         } else {
             data = nodePtr->dataInherit;
@@ -1318,10 +1318,10 @@ TrieFindExact(const Trie *triePtr, char *seq, unsigned int flags)
  *
  * TrieDelete --
  *
- *      Delete a url, defined by a sequence, from a trie.
+ *      Delete a URL, defined by a sequence, from a trie.
  *
  *      The NS_OP_NOINHERIT bit may be set in flags to use
- *      noninheriting data; NS_OP_NODELETE may be set to
+ *      non-inheriting data; NS_OP_NODELETE may be set to
  *      skip calling the delete function.
  *
  * Results:
@@ -1360,7 +1360,7 @@ TrieDelete(const Trie *triePtr, char *seq, unsigned int flags)
 
         /*
          * We've reached the end of the sequence; if a node exists for
-         * this ID then delete the inheriting/noninheriting data (as
+         * this ID then delete the inheriting/non-inheriting data (as
          * specified in flags) and call the delete func if requested.
          * The data will be set to null either way.
          */
@@ -1400,7 +1400,7 @@ TrieDelete(const Trie *triePtr, char *seq, unsigned int flags)
  *
  * Results:
  *      0: Not the case that one contains the other OR they both
- *      contain each other; 1: left contains right; -1: right contans
+ *      contain each other; 1: left contains right; -1: right contains
  *      left.
  *
  * Side effects:
@@ -1433,7 +1433,7 @@ CmpChannels(const Channel *const*leftPtrPtr, const Channel *const*rightPtrPtr)
     } else if (rcontainsl != 0) {
         result = -1;
     } else {
-	result = 0;
+        result = 0;
     }
 
     return result;
@@ -1478,7 +1478,7 @@ CmpKeyWithChannel(const char *key, const Channel *const*channelPtrPtr)
     } else if (rcontainsl != 0) {
         result = -1;
     } else {
-	result = 0;
+        result = 0;
     }
     return result;
 }
@@ -1648,7 +1648,7 @@ JunctionTruncBranch(const Junction *juncPtr, char *seq)
  *      node, to a junction.
  *
  *      Flags may be a bit-combination of NS_OP_NOINHERIT,
- *      NS_OP_NODELETE.  NOINHERIT sets the data as noninheriting, so
+ *      NS_OP_NODELETE.  NOINHERIT sets the data as non-inheriting, so
  *      only an exact sequence will match in the future; NODELETE
  *      means that if a node already exists with this sequence/ID it
  *      will not be deleted but replaced.
@@ -1782,7 +1782,7 @@ JunctionFind(const Junction *juncPtr, char *seq)
      */
 
     for (p = seq; p[l = NS_strlen(p) + 1u] != '\0'; p += l) {
-	;
+        ;
     }
 
     /*
@@ -1918,7 +1918,7 @@ JunctionFindExact(const Junction *juncPtr, char *seq, unsigned int flags)
      */
 
     for (p = seq; p[l = NS_strlen(p) + 1u] != '\0'; p += l) {
-	;
+        ;
     }
 
     /*
@@ -2099,7 +2099,7 @@ MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
         if (*url != '/') {
             p = strchr(url, INTCHAR('/'));
             if (p != NULL) {
-		l = (size_t)(p - url);
+                l = (size_t)(p - url);
             } else {
                 l = NS_strlen(url);
                 done = 1;
@@ -2258,7 +2258,7 @@ CheckTclUrlSpaceId(Tcl_Interp *interp, NsServer *servPtr, int *idPtr)
  *    None.
  *
  * Side effects:
- *    Appends client data string to provided DString
+ *    Appends client data string to provided NS_DString
  *
  *----------------------------------------------------------------------
  */
@@ -2288,7 +2288,7 @@ WalkCallback(Ns_DString *dsPtr, const void *arg)
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2364,7 +2364,7 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2411,11 +2411,11 @@ UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
-    int             result = TCL_OK;
+    int             result;
 
     if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
         result = TCL_ERROR;
@@ -2451,7 +2451,7 @@ UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2513,7 +2513,7 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2583,7 +2583,7 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclUrlSpaceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclUrlSpaceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"get",   UrlSpaceGetObjCmd},

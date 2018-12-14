@@ -36,6 +36,9 @@
 
 #include "nsd.h"
 
+#define COLOR_BUFFER_SIZE 255u
+#define TIME_BUFFER_SIZE 100u
+
 /*
  * The following define available flags bits.
  */
@@ -86,8 +89,8 @@ typedef struct LogCache {
     int         count;        /* Number of entries held in the cache */
     time_t      gtime;        /* For GMT time calculation */
     time_t      ltime;        /* For local time calculations */
-    char        gbuf[100];    /* Buffer for GMT time string rep */
-    char        lbuf[100];    /* Buffer for local time string rep */
+    char        gbuf[TIME_BUFFER_SIZE];    /* Buffer for GMT time string rep */
+    char        lbuf[TIME_BUFFER_SIZE];    /* Buffer for local time string rep */
     size_t      gbufSize;
     size_t      lbufSize;
     LogEntry   *firstEntry;   /* First in the list of log entries */
@@ -126,7 +129,8 @@ static char* LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
 
 static Tcl_Obj *LogStats(void);
 
-static char *LogSeverityColor(char *buffer, Ns_LogSeverity severity) NS_GNUC_NONNULL(1);
+static char *LogSeverityColor(char *buffer, Ns_LogSeverity severity)
+    NS_GNUC_NONNULL(1);
 
 static int ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int *idxPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
@@ -315,7 +319,7 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
     NS_NONNULL_ASSERT(param != NULL);
     NS_NONNULL_ASSERT(tablePtr != NULL);
     NS_NONNULL_ASSERT(idxPtr != NULL);
-    
+
     valueString = Ns_ConfigString(path, param, "");
 
     len = strlen(valueString);
@@ -409,15 +413,15 @@ NsConfigLog(void)
     file = Ns_ConfigString(path, "serverlog", "nsd.log");
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
         Ns_DStringInit(&ds);
-        if (Ns_HomePathExists("logs", (char *)0)) {
-            Ns_HomePath(&ds, "logs", file, (char *)0);
+        if (Ns_HomePathExists("logs", (char *)0L)) {
+            Ns_HomePath(&ds, "logs", file, (char *)0L);
         } else {
-            Ns_HomePath(&ds, file, (char *)0);
+            Ns_HomePath(&ds, file, (char *)0L);
         }
         file = Ns_DStringExport(&ds);
-	Ns_SetUpdate(set, "serverlog", file);
+        Ns_SetUpdate(set, "serverlog", file);
     }
-    
+
     rollfmt = Ns_ConfigString(path, "logrollfmt", "");
 
 }
@@ -458,7 +462,7 @@ Ns_InfoErrorLog(void)
  *      The severity.
  *
  * Side effects:
- *      Sever will exit if max severities exceeded.
+ *      Server will exit if max severities exceeded.
  *
  *----------------------------------------------------------------------
  */
@@ -497,7 +501,7 @@ Ns_CreateLogSeverity(const char *name)
             severityConfig[severity].intensity = COLOR_NORMAL;
         }
     } else {
-	severity = PTR2INT(Tcl_GetHashValue(hPtr));
+        severity = PTR2INT(Tcl_GetHashValue(hPtr));
     }
     Ns_MutexUnlock(&lock);
 
@@ -525,7 +529,7 @@ const char *
 Ns_LogSeverityName(Ns_LogSeverity severity)
 {
     const char *result;
-    
+
     if (severity < severityMaxCount) {
         result = severityConfig[severity].label;
     } else {
@@ -555,11 +559,11 @@ static char *
 LogSeverityColor(char *buffer, Ns_LogSeverity severity)
 {
     if (severity < severityMaxCount) {
-        sprintf(buffer, "%s%d;%dm", LOG_COLORSTART,
+        snprintf(buffer, COLOR_BUFFER_SIZE, "%s%d;%dm", LOG_COLORSTART,
                 severityConfig[severity].intensity,
                 severityConfig[severity].color);
     } else {
-        sprintf(buffer, "%s0m", LOG_COLORSTART);
+        snprintf(buffer, COLOR_BUFFER_SIZE, "%s0m", LOG_COLORSTART);
     }
     return buffer;
 }
@@ -708,7 +712,6 @@ void
 Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
 {
     LogCache *cachePtr;
-    LogEntry *entryPtr = NULL;
 
     NS_NONNULL_ASSERT(fmt != NULL);
 
@@ -719,7 +722,7 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
 
     if (Ns_LogSeverityEnabled(severity)) {
         size_t    length, offset;
-        
+        LogEntry *entryPtr;
         /*
          * Track usage to provide statistics.
          */
@@ -904,7 +907,7 @@ Ns_Fatal(const char *fmt, ...)
             ;
         }
     }
-        
+
     _exit(1);
 }
 
@@ -1010,7 +1013,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
         bp = cachePtr->lbuf;
         sizePtr = &cachePtr->lbufSize;
     }
-    
+
     /*
      * LogTime has a granularity of seconds. For frequent updates the
      * print string is therefore cached. Check if the value for
@@ -1019,12 +1022,12 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
      */
     if (*tp != timePtr->sec) {
         size_t           n;
-	time_t           secs;
-	const struct tm *ptm;
+        time_t           secs;
+        const struct tm *ptm;
 
         *tp = timePtr->sec;
 
-	secs = timePtr->sec;
+        secs = timePtr->sec;
         ptm = ns_localtime(&secs);
 
         n = strftime(bp, 32u, "[%d/%b/%Y:%H:%M:%S", ptm);
@@ -1032,7 +1035,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
             bp[n++] = ']';
             bp[n] = '\0';
         } else {
- 	    long gmtoff;
+            long gmtoff;
             char sign;
 #ifdef HAVE_TM_GMTOFF
             gmtoff = ptm->tm_gmtoff / 60;
@@ -1048,7 +1051,8 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
             } else {
                 sign = '+';
             }
-            n += (size_t)sprintf(bp + n, " %c%02ld%02ld]", sign, gmtoff/60, gmtoff%60);
+            n += (size_t)snprintf(bp + n, TIME_BUFFER_SIZE - n, " %c%02ld%02ld]",
+                                  sign, gmtoff/60, gmtoff%60);
         }
         *sizePtr = n;
     }
@@ -1074,7 +1078,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
  */
 
 int
-NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     void *addrPtr;
     int   result = TCL_OK;
@@ -1096,7 +1100,7 @@ NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
             Ns_DStringInit(&ds);
             for (i = 2; i < objc; ++i) {
                 Ns_DStringVarAppend(&ds, Tcl_GetString(objv[i]),
-                                    i < (objc-1) ? " " : (char *)0, (char *)0);
+                                    i < (objc-1) ? " " : (char *)0, (char *)0L);
             }
             Ns_Log(severity, "%s", Ns_DStringValue(&ds));
             Ns_DStringFree(&ds);
@@ -1123,7 +1127,7 @@ NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  */
 
 static int
-NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     Ns_LogSeverity    severity = 0; /* default value for the error cases */
     void             *addrPtr = NULL;
@@ -1176,7 +1180,7 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
         assert(severity < severityMaxCount);
 
         /*
-         * Don't allow to deactivate Fatal.
+         * Don't allow one to deactivate Fatal.
          */
         if (givenEnabled != -1 && severity != Fatal) {
             enabled = severityConfig[severity].enabled;
@@ -1222,7 +1226,7 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  */
 
 int
-NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int             result = TCL_OK, count, opt, i;
     Ns_DString      ds;
@@ -1314,8 +1318,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
         case CReleaseIdx:
             cachePtr->hold = 0;
-            /* FALLTHROUGH */
-
+            /* fall through */
         case CFlushIdx:
             LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
             break;
@@ -1340,7 +1343,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
         case CSeveritiesIdx:
             /*
-             * Return all registered severites in a list
+             * Return all registered severities in a list
              */
             objPtr = Tcl_GetObjResult(interp);
             for (i = 0; i < severityIdx; i++) {
@@ -1358,7 +1361,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             break;
 
         default:
-            /* 
+            /*
              * Unexpected value, raise an exception in development mode.
              */
             assert(opt && 0);
@@ -1387,7 +1390,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
 int
 NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-		   int UNUSED(objc), Tcl_Obj *CONST* UNUSED(objv))
+                   int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
 {
     if (Ns_LogRoll() != NS_OK) {
         Ns_TclPrintfResult(interp, "could not roll server log");
@@ -1424,12 +1427,12 @@ Ns_LogRoll(void)
 
     if (file != NULL && logOpenCalled) {
         Tcl_Obj      *pathObj;
-        
+
         /*
          * We are already logging to some file
          */
 
-	NsAsyncWriterQueueDisable(NS_FALSE);
+        NsAsyncWriterQueueDisable(NS_FALSE);
 
         pathObj = Tcl_NewStringObj(file, -1);
         Tcl_IncrRefCount(pathObj);
@@ -1523,7 +1526,7 @@ LogOpen(void)
 
     fd = ns_open(file, (int)oflags, 0644);
     if (fd == NS_INVALID_FD) {
-    	Ns_Log(Error, "log: failed to re-open log file '%s': '%s'",
+        Ns_Log(Error, "log: failed to re-open log file '%s': '%s'",
                file, strerror(errno));
         status = NS_ERROR;
     } else {
@@ -1589,7 +1592,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
         if (locked) {
             Ns_MutexLock(&lock);
         }
-        
+
         /*
          * Since listPtr is never NULL, a repeat-unil loop is
          * sufficient to guarantee that the initial cPtr is not NULL
@@ -1626,7 +1629,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
             }
             cPtr = cPtr->prevPtr;
         } while (cPtr != NULL);
-        
+
         if (locked) {
             Ns_MutexUnlock(&lock);
         }
@@ -1639,25 +1642,25 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
 
     if (trunc) {
         if (count > 0) {
-	    size_t length = (ePtr != NULL) ? (ePtr->offset + ePtr->length) : 0u;
+            size_t length = (ePtr != NULL) ? (ePtr->offset + ePtr->length) : 0u;
             cachePtr->count = (length != 0u) ? nentry : 0;
             cachePtr->currEntry = ePtr;
             Ns_DStringSetLength(&cachePtr->buffer, (int)length);
         } else {
-	    LogEntry *entryPtr, *tmpPtr;
+            LogEntry *entryPtr, *tmpPtr;
 
-	    /*
-	     * The cache is reset (count <= 0). If there are log
-	     * entries in the cache, flush these before setting the
-	     * pointers to zero.
-	     */
-	    for (entryPtr = cachePtr->firstEntry; entryPtr != NULL; entryPtr = tmpPtr) {
-	        tmpPtr = entryPtr->nextPtr;
-	        ns_free(entryPtr);
-	    }
+            /*
+             * The cache is reset (count <= 0). If there are log
+             * entries in the cache, flush these before setting the
+             * pointers to zero.
+             */
+            for (entryPtr = cachePtr->firstEntry; entryPtr != NULL; entryPtr = tmpPtr) {
+                tmpPtr = entryPtr->nextPtr;
+                ns_free(entryPtr);
+            }
             cachePtr->count = 0;
             cachePtr->currEntry = NULL;
-	    cachePtr->firstEntry = NULL;
+            cachePtr->firstEntry = NULL;
             Ns_DStringSetLength(&cachePtr->buffer, 0);
         }
     }
@@ -1688,7 +1691,7 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     LogCache   *cachePtr = GetCache();
     const char *timeString;
     size_t      timeStringLength;
-    char        buffer[255];
+    char        buffer[COLOR_BUFFER_SIZE];
 
     NS_NONNULL_ASSERT(arg != NULL);
     NS_NONNULL_ASSERT(stamp != NULL);
@@ -1837,7 +1840,7 @@ LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
 
         /*
          * Try to obtain an interpreter:
-         */ 
+         */
         interp = Ns_TclAllocateInterp(cbPtr->server);
         if (interp == NULL) {
             (void)LogToFile(logfile, Error, stamp,
@@ -1858,7 +1861,7 @@ LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
              * string instead of as list element.  Other arguments are
              * appended to it as elements.
              */
-            Ns_DStringVarAppend(&ds, cbPtr->script, " ", Ns_LogSeverityName(severity), (char *)0);
+            Ns_DStringVarAppend(&ds, cbPtr->script, " ", Ns_LogSeverityName(severity), (char *)0L);
             Ns_DStringAppendElement(&ds, Tcl_GetString(stampObj));
             Tcl_DecrRefCount(stampObj);
 
@@ -1990,7 +1993,7 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
     NS_NONNULL_ASSERT(addrPtrPtr != NULL);
 
     if (Ns_TclGetOpaqueFromObj(objPtr, severityType, addrPtrPtr) != TCL_OK) {
-	const Tcl_HashEntry *hPtr;
+        const Tcl_HashEntry *hPtr;
 
         Ns_MutexLock(&lock);
         hPtr = Tcl_FindHashEntry(&severityTable, Tcl_GetString(objPtr));
@@ -2004,8 +2007,8 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
              * Check for a legacy integer severity.
              */
             if (Tcl_GetIntFromObj(NULL, objPtr, &i) == TCL_OK
-		&& i < severityMaxCount) {
-		*addrPtrPtr = INT2PTR(i);
+                && i < severityMaxCount) {
+                *addrPtrPtr = INT2PTR(i);
             } else {
                 Tcl_DString ds;
 
@@ -2017,7 +2020,7 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
                     Ns_DStringNAppend(&ds, " ", 1);
                 }
                 Tcl_DStringResult(interp, &ds);
-                result = TCL_ERROR;                
+                result = TCL_ERROR;
             }
         }
         if (result == TCL_OK) {

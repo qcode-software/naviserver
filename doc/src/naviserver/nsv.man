@@ -18,17 +18,17 @@ facility.
 [list_begin definitions]
 
 
-[call [cmd nsv_array] [arg get] [arg array] [opt [arg pattern]]]
+[call [cmd "nsv_array get"] [arg array] [opt [arg pattern]]]
 
-[call [cmd nsv_array] [arg set] [arg array] [arg value-list]]
+[call [cmd "nsv_array set"] [arg array] [arg value-list]]
 
-[call [cmd nsv_array] [arg reset] [arg array] [arg value-list]]
+[call [cmd "nsv_array reset"] [arg array] [arg value-list]]
 
-[call [cmd nsv_array] [arg exists] [arg array]]
+[call [cmd "nsv_array exists"] [arg array]]
 
-[call [cmd nsv_array] [arg size] [arg array]]
+[call [cmd "nsv_array size"] [arg array]]
 
-[call [cmd nsv_array] [arg names] [arg array] [opt [arg pattern]]]
+[call [cmd "nsv_array names"] [arg array] [opt [arg pattern]]]
 
 Commands for the most part mirror the corresponding Tcl command for
 ordinary variables.
@@ -90,7 +90,7 @@ Test whether a key exists in the nsv array.
 	[opt [arg varName]]]
 
 
-Get the value for the key from the nsv array.  If the the optional
+Get the value for the key from the nsv array.  If the optional
 [arg varName] is provided, the function returns on success 1 and on
 failure 0. On success, it binds the variable [arg varName]. If the
 variable name is not provided, it returns on success the value and
@@ -167,10 +167,10 @@ Set the value for a key in an nsv array. Returns the value the key is set to.
 [example_end]
 
 
-[call [cmd nsv_unset] [opt [arg -nocomplain]] [opt --] [arg array] [opt [arg key]]]
+[call [cmd nsv_unset] [opt [option -nocomplain]] [opt --] [arg array] [opt [arg key]]]
 
 Unset an array or a single key from an array. If successful returns an
-empty string. When [arg -nocomplain] is specified the command does not
+empty string. When [option -nocomplain] is specified the command does not
 complain when the specified array or key does not exist.
 
 [example_begin]
@@ -384,6 +384,10 @@ eliminating the need for the explicit lock.
 
 [section {Configuration}]
 
+All accesses to shared variables are protected by a mutex. Attention
+should be taken for array operations which have to iterate over
+many shared variables to return the result, since this will lead
+to reduced scalability due too long lasting locks.
 
 The nsv system uses a common multithreading technique to reduce the
 potential for lock contention which is to split the locks to achieve
@@ -393,10 +397,11 @@ The number of buckets to be used can be configured by setting the
 [const nsvbuckets] Tcl parameters, e.g.:
 
 [example_begin]
-    ns_section      "ns/server/${servername}/tcl"
+    ns_section  ns/server/${servername}/tcl {
  
        # Number of buckets in Tcl hash table for nsv vars
        ns_param        nsvbuckets              16
+    }
 [example_end]
 
 
@@ -408,7 +413,7 @@ many lock attempts which did not succeeded immediately, try increasing
 nsvbuckets.
 
 [see_also nsd ns_cache ns_urlspace]
-[keywords nsv shared variables]
+[keywords "server built-in" nsv shared variables mutex]
 
 [manpage_end]
 

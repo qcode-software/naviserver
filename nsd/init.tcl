@@ -11,7 +11,7 @@
 #
 # The Original Code is AOLserver Code and related documentation
 # distributed by AOL.
-# 
+#
 # The Initial Developer of the Original Code is America Online,
 # Inc. Portions created by AOL are Copyright (C) 1999 America Online,
 # Inc. All Rights Reserved.
@@ -34,7 +34,7 @@
 #
 #   Core script to initialize a virtual server at startup.
 #   It runs once for each server.
-#   
+#
 #
 
 
@@ -46,7 +46,7 @@
 #
 
 ns_log notice "nsd/init.tcl\[[ns_info server]\]: booting virtual server: " \
-    "tcl system encoding: \"[encoding system]\""
+    "Tcl system encoding: \"[encoding system]\""
 
 
 package require Tcl 8.4
@@ -81,10 +81,9 @@ proc __ns_sourcefile {file} {
 #
 
 proc __ns_sourcelibs {{modname ""}} {
-
     set sharedlib  [ns_library shared  $modname]
     set privatelib [ns_library private $modname]
-    
+
     set files ""
 
     #
@@ -140,9 +139,9 @@ proc __ns_sourcemodule {modname} {
 
 
 #
-# See how to replicate state of the startup interpreter 
+# See how to replicate state of the startup interpreter
 # to newly created interpreters in connection and other
-# threads. 
+# threads.
 #
 # At the moment there are two choices:
 #
@@ -153,8 +152,8 @@ proc __ns_sourcemodule {modname} {
 #     in any new interpreter.
 #
 #     This results in a potentially very large/complex
-#     script which takes long time to run, effectively 
-#     slowing down thread creation. Also, it consumes 
+#     script which takes long time to run, effectively
+#     slowing down thread creation. Also, it consumes
 #     much more memory as all "things" are always loaded
 #     in the Tcl interp, needed or not.
 #
@@ -163,7 +162,7 @@ proc __ns_sourcemodule {modname} {
 #
 #  b. Register introspection traces on selected set of
 #     Tcl commands and capture the state in thread-shared
-#     variables. Then synthetize new Tcl script with 
+#     variables. Then synthetize new Tcl script with
 #     overloaded Tcl [unknown] command to load referenced
 #     items (procs, packages etc) on as-needed basis out
 #     of the captured state.
@@ -172,9 +171,9 @@ proc __ns_sourcemodule {modname} {
 #     to load and consume far less memory as "things" are
 #     loaded on as-needed basis by the Tcl [unknown] command.
 #     However this mode may pose compatibility problems by
-#     some init scripts doing "weird" things during the 
+#     some init scripts doing "weird" things during the
 #     interp initialization.
-# 
+#
 #     This mode is defined by setting the config option
 #     ns/server/[ns_info server]/tcl/lazyloader to true.
 #
@@ -207,13 +206,13 @@ if {$use_trace_inits} {
 #
 
 proc ns_init {} {
-    ns_ictl update;  # Run the initialisation script
+    ns_ictl update       ;# Run the initialization script
 }
 
 ns_ictl trace allocate ns_init
 
 #
-# How to cleanup the interp, performing garbage 
+# How to cleanup the interp, performing garbage
 # collection tasks.
 #
 
@@ -225,7 +224,8 @@ proc ns_cleanup {} {
     ns_cleanupvars       ;# Destroy global variables
     ns_set  cleanup      ;# Destroy non-shared sets
     ns_http cleanup      ;# Abort any http requests
-    ns_ictl cleanup      ; # Run depreciated 1-shot Ns_TclRegisterDefer's.
+    ns_ictl cleanup      ;# Run deprecated 1-shot Ns_TclRegisterDefer's.
+    ns_ictl update
 }
 
 #
@@ -273,8 +273,8 @@ proc ns_cleanupvars {} {
 #
 # ns_reinit --
 #
-#   Cleanup and initialize an interp. This is used for 
-#   long running detached threads to avoid resource 
+#   Cleanup and initialize an interp. This is used for
+#   long running detached threads to avoid resource
 #   leaks and/or missed state changes, e.g.:
 #
 #   ns_thread begin {
@@ -294,7 +294,7 @@ proc ns_reinit {} {
 #
 # ns_module --
 #
-#   Set or return information about the currently initializing 
+#   Set or return information about the currently initializing
 #   module (useful only from within startup files).
 #
 
@@ -339,7 +339,7 @@ proc _ns_load_server_modules {{network 0}} {
             if {$network != [ns_module network $module]} continue
             ns_ictl addmodule $module
             if {[string tolower $file] eq "tcl" || $file eq ""} continue
-            ns_moduleload $module $file 
+            ns_moduleload $module $file
         }
     }
 }
@@ -376,27 +376,14 @@ ns_runonce -global {ns_atprestartup _ns_load_global_modules 1}
 # defined. A driver might be installed globally (for all servers) or
 # for a single server. If the driver is not installed, return empty
 #
+
 proc ns_driversection {args} {
-    set driver ""
     set server [ns_info server]
-    set l [llength $args]
-    if {$l > 1} {
-        array set vars {-driver driver -server server}
-        for {set i 0} {$i < $l} {incr i} {
-            set opt [lindex $args $i]
-            switch -exact -- $opt {
-                -driver -
-                -server {
-                    incr i
-                    if {$i < $l} {
-                        set $vars($opt) [lindex $args $i]
-                        continue
-                    }
-                }
-            }
-            error "usage: ns_driversection ?-driver drv? ?-server s?"
-        }
-    }
+    ns_parseargs {
+        {-server}
+        {-driver ""}
+    } $args
+
     if {$driver eq ""} {
         if {[ns_conn isconnected]} {
             set driver [ns_conn driver]
@@ -427,7 +414,7 @@ if {$use_trace_inits} {
     #
     # ns_eval --
     #
-    # Used to eval Tcl code which is then 
+    # Used to eval Tcl code which is then
     # known in all threads.
     #
 
@@ -467,6 +454,15 @@ if {$use_trace_inits} {
     }
 
     #
+    # If "initcmds" are specified in the "tcl" section of the config
+    # file, evaluate these after all other initializations.
+    #
+    set initcmds [ns_config ns/server/[ns_info server]/tcl initcmds ""]
+    if {$initcmds ne ""} {
+        eval $initcmds
+    }
+
+    #
     # Disable tracing and generate compact
     # script for later interp inits.
     #
@@ -479,7 +475,7 @@ if {$use_trace_inits} {
     #
     # Create a job queue for ns_eval processing
     # This queue must be a single-server queue;
-    # we don't want to be processing multiple 
+    # we don't want to be processing multiple
     # ns_eval requests simultaneously.
     #
 
@@ -499,7 +495,7 @@ if {$use_trace_inits} {
     #
     #   If this ever gets moved to a namespace,
     #   the eval will need to be modified to
-    #   ensure that the procs aren't defined 
+    #   ensure that the procs aren't defined
     #   in that namespace.
     #
 
@@ -569,7 +565,7 @@ if {$use_trace_inits} {
             if {$th_code} {
                 return -code $th_code $th_result
             }
-            
+
         } elseif {$code == 1} {
             ns_ictl markfordelete
         }
@@ -595,7 +591,7 @@ if {$use_trace_inits} {
             return
         } elseif {$len == 1} {
             set args [lindex $args 0]
-        }        
+        }
         set code [catch {uplevel 1 _ns_helper_eval $args} result]
         if {$code == 1} {
             # TCL_ERROR: Dump this interp to avoid proc pollution.
@@ -655,6 +651,15 @@ if {$use_trace_inits} {
 
     foreach module [ns_ictl getmodules] {
         __ns_sourcemodule $module
+    }
+
+    #
+    # If "initcmds" are specified in the "tcl" section of the config
+    # file, evaluate these after all other initializations.
+    #
+    set initcmds [ns_config ns/server/[ns_info server]/tcl initcmds ""]
+    if {$initcmds ne ""} {
+        eval $initcmds
     }
 
     #

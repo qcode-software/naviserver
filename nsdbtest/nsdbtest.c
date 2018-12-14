@@ -235,7 +235,7 @@ Exec(const Ns_DbHandle *handle, char *sql)
  *      NS_OK, NS_END_DATA or NS_ERROR.
  *
  * Side effects:
- *      Current tupple updated.
+ *      Current tuple updated.
  *
  *----------------------------------------------------------------------
  */
@@ -245,7 +245,7 @@ GetRow(Ns_DbHandle *UNUSED(handle), const Ns_Set *row)
 {
     Ns_SetPutValue(row, 0u, "ok");
 
-    return NS_END_DATA;
+    return (int)NS_END_DATA;
 }
 
 

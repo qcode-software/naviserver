@@ -43,7 +43,7 @@
  * Static functions defined in this file.
  */
 
-static void **GetSlot(const Ns_Sls *slsPtr, Ns_Sock *sock);
+static void **GetSlot(const Ns_Sls *slsPtr, Ns_Sock *sock) NS_GNUC_PURE;
 static Ns_Callback CleanupKeyed;
 
 /* 
@@ -331,7 +331,7 @@ Ns_SlsUnsetKeyed(Ns_Sock *sock, const char *key)
  */
 
 int
-NsTclSlsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclSlsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const Ns_Conn *conn;
     Ns_Sock       *sock = NULL;

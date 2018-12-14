@@ -49,8 +49,13 @@
 set 	homedir			@NAVISERVER@
 
 # Log directories (access log, error log, pidfile)
-#set	logdir 			${homedir}/log
-set	logdir 			${homedir}/../var/log/ns
+set	logdir 			${homedir}/logs
+
+# You might prefer to keep the log-files in /var/log, so you could use
+# a line like the following to place the log-files into a directory
+# named /var/log/ns.  But don't forget to create the directory first.
+
+#set	logdir 			${homedir}/../var/log/ns
 
 # Name/description of the virtual server
 set	servername		"server1"
@@ -122,7 +127,7 @@ ns_section	"ns/parameters"
    # Min size of the uploaded file to enable progress tracking
    ns_param	progressminsize		0
 
-   # How many Tcl jobs to run in any job thread before thread exit, this will alow
+   # How many Tcl jobs to run in any job thread before thread exit, this will allow
    # to reclaim thread memory back to the system if memory allocator supports it
    ns_param	jobsperthread		0
 
@@ -130,10 +135,13 @@ ns_section	"ns/parameters"
    ns_param	schedsperthread		0
 
    # Write asynchronously to log files (access log and error log)
-   ns_param	asynlogcwriter		true ;# default: false
+   ns_param	asynlogcwriter		true  ;# default: false
 
    # Print duractions of long mutex calls to stderr
-   ns_param    mutexlocktrace           true ;# default false
+   ns_param    mutexlocktrace           true  ;# default: false
+
+   # Reject output operations on already closed connections (e.g. subsequent ns_return statements)
+   #ns_param    rejectalreadyclosedconn  false ;# default: true
 
    #
    # I18N Parameters
@@ -141,15 +149,15 @@ ns_section	"ns/parameters"
 
    # Automatic adjustment of response content-type header to include charset
    # This defaults to True.
-   ns_param	hackcontenttype		true
+   #ns_param	hackcontenttype		true
 
    # Default output charset.  When none specified, no character encoding of
-   # output is performed.
-   ns_param	outputcharset		iso8859-1
+   # output is performed. (default: utf-8)
+   #ns_param	outputcharset		utf-8
 
    # Default Charset for Url Encode/Decode. When none specified, no character
-   # set encoding is performed.
-   ns_param	urlcharset		iso8859-1
+   # set encoding is performed. (default: utf-8)
+   #ns_param	urlcharset		utf-8
 
    # This parameter supports output encoding arbitration.
    ns_param	preferredcharsets	{ utf-8 iso8859-1 }
@@ -158,7 +166,7 @@ ns_section	"ns/parameters"
 ########################################################################
 # MIME types.
 #
-#  Note: naviserver already has an exhaustive list of MIME types, but in
+#  Note: NaviServer already has an exhaustive list of MIME types, but in
 #  case something is missing you can add it here.
 ########################################################################
 
@@ -259,13 +267,24 @@ ns_section 	"ns/server/${servername}"
    ns_param	connsperthread  10000   ;# Number of connections (requests) handled per thread
    ns_param	threadtimeout   120     ;# Timeout for idle threads
 
+   # Connection thread lifetime management
+   ns_param	connsperthread  10000   ;# Number of connections (requests) handled per thread.
+                                        ;# Setting connsperthread to > 0 will cause the thread to
+                                        ;# graceously exit, after processing that many
+                                        ;# requests, thus initiating kind-of Tcl-level
+                                        ;# garbage collection.
+
+   ns_param	threadtimeout   120     ;# Timeout for idle threads. In case, minthreads < maxthreads,
+                                        ;# threads are shutdown after this idle time until
+                                        ;# minthreads are reached
+
    # Connection thread creation eagerness
    #ns_param	lowwatermark	10      ;# 10; create additional threads above this queue-full percentage
    #ns_param	highwatermark	100     ;# 80; allow concurrent creates above this queue-is percentage
                                         ;# 100 means to disable concurrent creates
 
    # Compress response character data: ns_return, ADP etc.
-   ns_param	compressenable		off     ;# Default; use ns_conn compress to overide
+   ns_param	compressenable		off     ;# Default; use ns_conn compress to override
    ns_param	compresslevel		4       ;# 1-9 where 9 is high compression, high overhead
    ns_param	compressminsize		512     ;# Compress responses larger than this
    # ns_param  	compresspreinit  	true	;# false; if true then initialize and allocate buffers at startup
@@ -440,46 +459,52 @@ ns_section 	"ns/server/${servername}/module/nssock"
 ########################################################################
 
 ns_section 	"ns/server/${servername}/module/nslog"
-
-   # Name to the log file
+   # Name to the log file (default: access.log)
    ns_param   	file            	${logdir}/access-${servername}.log
 
-   # If true then use common log format
+   # If true then use common log format (default: true)
    ns_param   	formattedtime   	true
 
-   # If true then use NCSA combined format
+   # If true then use NCSA combined format (default: true)
    ns_param   	logcombined     	true
 
-   # Put in the log request elapsed time
+   # Put in the log request elapsed time  (default: false)
    ns_param	logreqtime		false
 
-   # Include high-res start time and partial request durations (accept, queue, filter, run)
+   # Include high-res start time and partial request durations (accept, queue, filter, run; default: false)
    ns_param	logpartialtimes		false
 
-   # Max # of lines in the buffer, 0 ni limit
+   # Include thread name as second token in the log entires (default: false)
+   ns_param	logthreadname		false
+
+   # Max # of lines in the buffer, 0 == no limit (default: 0)
    ns_param   	maxbuffer       	0
 
-   # Max # of files to keep when rolling
+   # Max # of files to keep when rolling (default: 100)
    ns_param   	maxbackup       	100
 
-   # Time to roll log
+   # Time to roll log (default: 0)
    ns_param   	rollhour        	0
 
-   # If true then do the log rolling
+   # If true then do the log rolling (default: true)
    ns_param   	rolllog         	true
 
-   # If true then roll the log on SIGHUP
+   # If true then roll the log on SIGHUP (default: false)
    ns_param	rollonsignal    	false
 
-   # If true then don't show query string in the log
+   # If true then don't show query string in the log (default: false)
    ns_param	suppressquery   	false
 
-   # If true ten check for X-Forwarded-For header
+   # If true ten check for X-Forwarded-For header (default: false)
    ns_param   	checkforproxy   	false
 
    # List of additional headers to put in the log
    #ns_param   	extendedheaders 	"Referer X-Forwarded-For"
 
+   # Mask IP address in log file for GDPR (like anonip IP anonymizer; default: false)
+   ns_param	masklogaddr         true
+   ns_param	maskipv4            255.255.255.0  ;# mask for IPv4 addresses
+   ns_param	maskipv6            ff:ff:ff:ff::  ;# mask for IPv6 addresses
 
 ########################################################################
 # CGI interface -- nscgi
@@ -494,6 +519,21 @@ ns_section 	"ns/server/${servername}/module/nscgi"
 
    # CGI script file dir (POST).
    ns_param   	map 			"POST /cgi-bin /usr/local/cgi"
+
+   # Allow to serve static resources from cgi directories
+   #ns_param        allowstaticresources true    ;# default false;
+
+   # Definition of script file interpreters
+   ns_param     interps              CGIinterps
+
+#
+# Define which Perl should be used for files with the ".pl" extension
+# in the cgi-bin directory. Same for shell scripts with extension
+# ".sh".
+#
+ns_section "ns/interps/CGIinterps"
+   ns_param	.pl		    "/opt/local/bin/perl"
+   ns_param	.sh		    "/bin/bash"
 
 
 ########################################################################
@@ -561,7 +601,7 @@ ns_section 	"ns/module/nssock"
    ns_param   	defaultserver   	$servername
 
 ns_section 	"ns/module/nssock/servers"
-   ns_param   	$servername         	$hostname:$port
+   ns_param   	$servername         	$hostname
 
 
 ########################################################################
@@ -637,7 +677,7 @@ ns_section 	"ns/server/server1/pool/fast"
 # Below is the list of all supported configuration options
 # for the nsproxy module filled in with their default values.
 # This list of default values is also compiled in the code
-# in case you ommit the ns_param lines.
+# in case you omit the ns_param lines.
 ########################################################################
 
 ns_section  "ns/server/${servername}/module/nsproxy"

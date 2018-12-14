@@ -22,7 +22,7 @@ returns: /dog
 
 
 [see_also nsd]
-[keywords {Tcl file normalize}]
+[keywords "global built-in" {Tcl file normalize}]
 
 
 [manpage_end]

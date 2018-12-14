@@ -11,7 +11,7 @@
  *
  * The Original Code is AOLserver Code and related documentation
  * distributed by AOL.
- * 
+ *
  * The Initial Developer of the Original Code is America Online,
  * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
  * Inc. All Rights Reserved.
@@ -31,7 +31,7 @@
 /*
  * modload.c --
  *
- *      Load module files into the server and initialize them. 
+ *      Load module files into the server and initialize them.
  */
 
 #include "nsd.h"
@@ -83,7 +83,7 @@ Ns_RegisterModule(const char *name, Ns_ModuleInitProc *proc)
     modPtr->nextPtr = NULL;
     nextPtrPtr = &firstPtr;
     while (*nextPtrPtr != NULL) {
-        nextPtrPtr = &((*nextPtrPtr)->nextPtr); 
+        nextPtrPtr = &((*nextPtrPtr)->nextPtr);
     }
     *nextPtrPtr = modPtr;
 }
@@ -116,12 +116,12 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
     NS_NONNULL_ASSERT(module != NULL);
     NS_NONNULL_ASSERT(file != NULL);
     NS_NONNULL_ASSERT(init != NULL);
-    
+
     Ns_Log(Notice, "modload: loading module %s from file %s", module, file);
 
     Ns_DStringInit(&ds);
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
-        file = Ns_HomePath(&ds, "bin", file, (char *)0);
+        file = Ns_HomePath(&ds, "bin", file, (char *)0L);
     }
     pathObj = Tcl_NewStringObj(file, -1);
 
@@ -154,14 +154,14 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
                             &tclInitProc, &moduleVersionAddr, &lh, &uPtr);
 
         Tcl_DecrRefCount(pathObj);
-    
+
         if (rc != TCL_OK) {
             Ns_Log(Error, "modload: %s: %s", file, Tcl_GetStringResult(interp));
             if (privateInterp) {
                 Tcl_DeleteInterp(interp);
             }
             status = NS_ERROR;
-        
+
         } else {
             if (privateInterp) {
                 Tcl_DeleteInterp(interp);
@@ -173,17 +173,17 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
             }
             if (moduleVersionAddr == NULL) {
                 Ns_Log(Error, "modload: %s: %s: symbol not found", file, "Ns_ModuleVersion");
-                status = NS_ERROR;        
+                status = NS_ERROR;
             }
             if (status == NS_OK) {
                 Ns_ModuleInitProc *initProc   = (Ns_ModuleInitProc *) tclInitProc;
                 const int         *versionPtr = (const int *) moduleVersionAddr;
-            
+
                 /*
                  * Calling Ns_ModuleInit()
                  */
                 status = (*initProc)(server, module);
-            
+
                 if (*versionPtr < 1) {
                     status = NS_OK;
                 } else if (status != NS_OK) {
@@ -203,7 +203,7 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
  *
  * NsTclModuleLoadObjCmd --
  *
- *      Implements ns_moduleload.  Load and initilize a binary module.
+ *      Implements ns_moduleload.  Load and initialize a binary module.
  *
  * Results:
  *      Tcl result.
@@ -216,12 +216,12 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
  */
 
 int
-NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     char         *module, *file, *init = (char *)"Ns_ModuleInit";
     int           global = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec   opts[] = {
-	{"-global", Ns_ObjvBool,   &global, INT2PTR(NS_TRUE)},
+        {"-global", Ns_ObjvBool,   &global, INT2PTR(NS_TRUE)},
         {"-init",   Ns_ObjvString, &init,   NULL},
         {"--",      Ns_ObjvBreak,  NULL,    NULL},
         {NULL, NULL, NULL, NULL}
@@ -231,7 +231,7 @@ NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
         {"file",    Ns_ObjvString, &file,   NULL},
         {NULL, NULL, NULL, NULL}
     };
-    
+
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
@@ -242,7 +242,7 @@ NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
     } else {
         const NsInterp *itPtr = clientData;
         const char     *server;
-        
+
         if (global == (int)NS_TRUE) {
             server = NULL;
         } else {
@@ -276,7 +276,7 @@ NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 
-void 
+void
 NsInitStaticModules(const char *server)
 {
     Module *modPtr, *nextPtr;

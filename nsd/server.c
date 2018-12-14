@@ -84,10 +84,10 @@ NsServer *
 NsGetServer(const char *server)
 {
     NsServer *result = NULL;
-    
+
     if (server != NULL) {
         const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
-        
+
         if (hPtr != NULL) {
             result = Tcl_GetHashValue(hPtr);
         }
@@ -251,7 +251,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     }
 
     Ns_DStringInit(&ds);
-    path = Ns_ConfigGetPath(server, NULL, (char *)0);
+    path = Ns_ConfigGetPath(server, NULL, (char *)0L);
 
     /*
      * Set some server options.
@@ -294,19 +294,22 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
 
     Ns_MutexInit(&servPtr->pools.lock);
     Ns_MutexSetName2(&servPtr->pools.lock, "nsd:pools", server);
-    
+
     Ns_MutexInit(&servPtr->filter.lock);
     Ns_MutexSetName2(&servPtr->filter.lock, "nsd:filter", server);
 
     Ns_MutexInit(&servPtr->tcl.synch.lock);
     Ns_MutexSetName2(&servPtr->tcl.synch.lock, "nsd:tcl:synch", server);
-    
+
+    Ns_MutexInit(&servPtr->urlspace.lock);
+    Ns_MutexSetName2(&servPtr->urlspace.lock, "nsd:urlspace", server);
+
     /*
      * Load modules and initialize Tcl.  The order is significant.
      */
 
     CreatePool(servPtr, "");
-    path = Ns_ConfigGetPath(server, NULL, "pools", (char *)0);
+    path = Ns_ConfigGetPath(server, NULL, "pools", (char *)0L);
     set = Ns_ConfigGetSection(path);
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
@@ -386,16 +389,16 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->servPtr = servPtr;
     if (*pool == '\0') {
         /* NB: Default options from pre-4.0 ns/server/server1 section. */
-	path = Ns_ConfigGetPath(servPtr->server, NULL, (char *)0);
+        path = Ns_ConfigGetPath(servPtr->server, NULL, (char *)0L);
         servPtr->pools.defaultPtr = poolPtr;
     } else {
-	const Ns_Set *set;
-	size_t        i;
+        const Ns_Set *set;
+        size_t        i;
         /*
          * Map requested method/URL's to this pool.
          */
 
-        path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, (char *)0);
+        path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, (char *)0L);
         set = Ns_ConfigGetSection(path);
         for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
             if (strcasecmp(Ns_SetKey(set, i), "map") == 0) {
@@ -412,23 +415,23 @@ CreatePool(NsServer *servPtr, const char *pool)
      * to repeatedly allocate and free them at run time and to ensure there
      * is a per-set maximum number of simultaneous connections to handle
      * before NsQueueConn begins to return NS_ERROR.
-     * 
-     * If compression is enabled for this server and the "compresspreinit" 
-     * parameter is set for this pool, also initialize the compression 
+     *
+     * If compression is enabled for this server and the "compresspreinit"
+     * parameter is set for this pool, also initialize the compression
      * stream buffers.  This allocates a fair chunk of memory per connection,
-     * so skip it if not needed.  The streams will be initialized later 
+     * so skip it if not needed.  The streams will be initialized later
      * if necessary.
      */
 
     maxconns = Ns_ConfigIntRange(path, "maxconnections", 100, 1, INT_MAX);
     poolPtr->wqueue.maxconns = maxconns;
     connBufPtr = ns_calloc((size_t) maxconns, sizeof(Conn));
-    
+
     for (n = 0; n < maxconns - 1; ++n) {
         connPtr = &connBufPtr[n];
         connPtr->nextPtr = &connBufPtr[n+1];
         if (servPtr->compress.enable
-	    && servPtr->compress.preinit) {
+            && servPtr->compress.preinit) {
             (void) Ns_CompressInit(&connPtr->cStream);
         }
     }
@@ -457,46 +460,52 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->wqueue.highwatermark = (queueLength * highwatermark) / 100;
     poolPtr->wqueue.lowwatermark  = (queueLength * lowwatermark) / 100;
 
-    Ns_Log(Notice, "pool %s: queueLength %d low water %d high water %d",  
-	   *pool == '\0' ? "default" : pool, 
-	   queueLength, poolPtr->wqueue.lowwatermark, 
-	   poolPtr->wqueue.highwatermark);
+    Ns_Log(Notice, "pool %s: queueLength %d low water %d high water %d",
+           *pool == '\0' ? "default" : pool,
+           queueLength, poolPtr->wqueue.lowwatermark,
+           poolPtr->wqueue.highwatermark);
 
-    /* 
-     * To allow to vary maxthreads at runtime, allow potentially
+    /*
+     * To allow one to vary maxthreads at runtime, allow potentially
      * maxconns threads to be created. Otherwise, maxthreads would be
      * sufficient.
      */
     poolPtr->tqueue.args = ns_calloc((size_t)maxconns, sizeof(ConnThreadArg));
 
     /*
-     * The Pools are never freed before exit, so there is apparently no
-     * need to free connBufPtr or threadQueue.args explicitely.
+     * The Pools are never freed before exit, so there is apparently no need
+     * to free connBufPtr, threadQueue.args explicitly, or the connPtr in the
+     * pool.
      */
     {
-	char name[128] = "nsd:";
-	int  j;
-	
-	if (*pool == '\0') {
-	    pool = "default";
-	}
-	strncat(name + 4, pool, 120u);
-	
-	for (j = 0; j < maxconns; j++) {
-	    char buffer[64];
-	    
-	    sprintf(buffer, "connthread:%d", j);
-	    Ns_MutexInit(&poolPtr->tqueue.args[j].lock);
-	    Ns_MutexSetName2(&poolPtr->tqueue.args[j].lock, name, buffer);
-	}
-	Ns_MutexInit(&poolPtr->tqueue.lock);
-	Ns_MutexSetName2(&poolPtr->tqueue.lock, name, "tqueue");
-	
-	Ns_MutexInit(&poolPtr->wqueue.lock);
-	Ns_MutexSetName2(&poolPtr->wqueue.lock, name, "wqueue");
+        Tcl_DString ds;
+        int         j;
 
-	Ns_MutexInit(&poolPtr->threads.lock);
-	Ns_MutexSetName2(&poolPtr->threads.lock, name, "threads");
+        if (*pool == '\0') {
+            pool = "default";
+        }
+        Tcl_DStringInit(&ds);
+        Tcl_DStringAppend(&ds, "nsd:", 4);
+        Tcl_DStringAppend(&ds, servPtr->server, -1);
+        Tcl_DStringAppend(&ds, ":", 1);
+        Tcl_DStringAppend(&ds, pool, -1);
+
+        for (j = 0; j < maxconns; j++) {
+            char suffix[64];
+
+            snprintf(suffix, 64u, "connthread:%d", j);
+            Ns_MutexInit(&poolPtr->tqueue.args[j].lock);
+            Ns_MutexSetName2(&poolPtr->tqueue.args[j].lock, ds.string, suffix);
+        }
+        Ns_MutexInit(&poolPtr->tqueue.lock);
+        Ns_MutexSetName2(&poolPtr->tqueue.lock, ds.string, "tqueue");
+
+        Ns_MutexInit(&poolPtr->wqueue.lock);
+        Ns_MutexSetName2(&poolPtr->wqueue.lock, ds.string, "wqueue");
+
+        Ns_MutexInit(&poolPtr->threads.lock);
+        Ns_MutexSetName2(&poolPtr->threads.lock, ds.string, "threads");
+        Tcl_DStringFree(&ds);
     }
 }
 

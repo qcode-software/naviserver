@@ -83,7 +83,7 @@ proc ns_dbquotename {name} {
 #        "" is translated into NULL.
 #        All values of any numeric type are left alone.
 #        All other values are surrounded by single quotes and any
-#        single quotes included in the value are escaped (ie. translated
+#        single quotes included in the value are escaped (i.e. translated
 #        into 2 single quotes). 
 
 proc ns_dbquotevalue {value {type text}} {
@@ -112,6 +112,10 @@ proc ns_dbquotevalue {value {type text}} {
 #
 #    Return an SQL string for the current time.
 #
+#    The implementation below is equivalent to
+#        clock format [clock seconds] -format "%Y-%m-%d %H:%M:%S"
+#    but surprinsingly, it is neary twice as fast.
+#
 
 proc ns_localsqltimestamp {} {
     set time [ns_localtime]
@@ -128,14 +132,14 @@ proc ns_localsqltimestamp {} {
 #
 # ns_parsesqldate -
 #
-#    Parse and SQL date string fro month, day, or year.
+#    Parse an SQL date string for month, day, or year.
 #
 
 proc ns_parsesqldate {opt sqldate} {
     scan $sqldate "%04d-%02d-%02d" year month day
 
     switch -- $opt {
-        month {return [lindex [nsv_get _nsdb months] [expr {$month - 1}]]}
+        month {return [lindex [nsv_get _nsdb months] $month-1]}
         day {return $day}
         year {return $year}
         default {error "Unknown option \"$opt\": should be year, month or day"}

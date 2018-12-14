@@ -525,19 +525,19 @@ Ns_InfoSSL(void)
  */
 
 int
-NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int             opt, result = TCL_OK;
-    bool            done = NS_TRUE; 
+    bool            done = NS_TRUE;
     const NsInterp *itPtr = clientData;
     Tcl_DString     ds;
 
     static const char *const opts[] = {
         "address", "argv0", "boottime", "builddate", "callbacks",
         "config", "home", "hostname", "ipv6", "locks", "log",
-        "major", "minor", "mimetypes", "name", "nsd", "pagedir", 
-	"pageroot", "patchlevel", "pid", "platform", "pools", 
-	"scheduled", "server", "servers",
+        "major", "minor", "mimetypes", "name", "nsd", "pagedir",
+        "pageroot", "patchlevel", "pid", "platform", "pools",
+        "scheduled", "server", "servers",
         "sockcallbacks", "ssl", "tag", "tcllib", "threads", "uptime",
         "version", "winnt", "filters", "traces", "requestprocs",
         "url2file", "shutdownpending", "started", NULL
@@ -546,10 +546,10 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     enum {
         IAddressIdx, IArgv0Idx, IBoottimeIdx, IBuilddateIdx, ICallbacksIdx,
         IConfigIdx, IHomeIdx, IHostNameIdx, IIpv6Idx, ILocksIdx, ILogIdx,
-        IMajorIdx, IMinorIdx, IMimeIdx, INameIdx, INsdIdx, 
-	IPageDirIdx, IPageRootIdx, IPatchLevelIdx,
-        IPidIdx, IPlatformIdx, IPoolsIdx, 
-	IScheduledIdx, IServerIdx, IServersIdx,
+        IMajorIdx, IMinorIdx, IMimeIdx, INameIdx, INsdIdx,
+        IPageDirIdx, IPageRootIdx, IPatchLevelIdx,
+        IPidIdx, IPlatformIdx, IPoolsIdx,
+        IScheduledIdx, IServerIdx, IServersIdx,
         ISockCallbacksIdx, ISSLIdx, ITagIdx, ITclLibIdx, IThreadsIdx, IUptimeIdx,
         IVersionIdx, IWinntIdx, IFiltersIdx, ITracesIdx, IRequestProcsIdx,
         IUrl2FileIdx, IShutdownPendingIdx, IStartedIdx
@@ -560,7 +560,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         return TCL_ERROR;
     }
     if (unlikely(Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
-				     &opt) != TCL_OK)) {
+                                     &opt) != TCL_OK)) {
         return TCL_ERROR;
     }
 
@@ -574,7 +574,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     case IStartedIdx:
         Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoStarted() ? 1 : 0));
         break;
-        
+
     case IShutdownPendingIdx:
         Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_InfoShutdownPending() ? 1 : 0));
         break;
@@ -588,7 +588,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case IConfigIdx:
-	Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoConfigFile(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoConfigFile(), -1));
         break;
 
     case ICallbacksIdx:
@@ -631,7 +631,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case IPlatformIdx:
-	Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
+        Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
         Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoPlatform(), -1));
         break;
 
@@ -642,13 +642,13 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
     case IIpv6Idx:
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj(Ns_InfoIPv6()));
         break;
-        
+
     case IAddressIdx:
         Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoAddress(), -1));
         break;
 
     case IUptimeIdx:
-	Tcl_SetObjResult(interp, Tcl_NewLongObj(Ns_InfoUptime()));
+        Tcl_SetObjResult(interp, Tcl_NewLongObj(Ns_InfoUptime()));
         break;
 
     case IBoottimeIdx:
@@ -656,7 +656,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case IPidIdx:
-	Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)Ns_InfoPid()));
+        Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)Ns_InfoPid()));
         break;
 
     case IMajorIdx:
@@ -681,11 +681,11 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         break;
 
     case IHomeIdx:
-	Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHomePath(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHomePath(), -1));
         break;
 
     case IWinntIdx:
-	Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
+        Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
 #ifdef _WIN32
         Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
 #else
@@ -722,7 +722,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
         /*
          * The following subcommands require a virtual server.
          */
-        
+
         if (unlikely(itPtr->servPtr == NULL)) {
             Tcl_SetObjResult(interp, Tcl_NewStringObj("no server", -1));
             result = TCL_ERROR;
@@ -740,7 +740,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
                 /*
                  * All following cases are deprecated.
                  */
-                
+
             case IPageDirIdx: /* fall through */
             case IPageRootIdx:
                 Ns_LogDeprecated(objv, 2, "ns_server ?-server s? pagedir", NULL);
@@ -805,7 +805,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CO
  */
 
 int
-NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST* objv)
+NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *kindString, *moduleString = NULL;
@@ -819,22 +819,22 @@ NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-        
+
     } else if (STREQ(kindString, "private")) {
         lib = itPtr->servPtr->tcl.library;
     } else if (STREQ(kindString, "shared")) {
         lib = nsconf.tcl.sharedlibrary;
     } else {
-	Ns_TclPrintfResult(interp, "unknown library \"%s\":"
+        Ns_TclPrintfResult(interp, "unknown library \"%s\":"
                            " should be private or shared", kindString);
-	result = TCL_ERROR;
+        result = TCL_ERROR;
     }
 
     if (result == TCL_OK) {
         Ns_DString ds;
 
         Ns_DStringInit(&ds);
-        Ns_MakePath(&ds, lib, moduleString, (char *)0);
+        Ns_MakePath(&ds, lib, moduleString, (char *)0L);
         Tcl_DStringResult(interp, &ds);
     }
     return result;

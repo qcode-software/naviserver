@@ -683,7 +683,7 @@ Ns_GetUrlEncoding(const char *charset)
                Unfortunately, the general default for encoding opens a
                door for a path traversal attack with (invalid)
                UTF-8 characters.  For example, ".." can be encoded via
-               UTF-8 in an URL as "%c0%ae%c0%ae" or
+               UTF-8 in a URL as "%c0%ae%c0%ae" or
                "%e0%80%ae%e0%80%ae" and many more forms, so the
                literal checks against path traversal based on
                character data (here in Ns_NormalizePath()) fail. As a
@@ -920,11 +920,10 @@ Ns_DecodeUrlCharset(Ns_DString *dsPtr, const char *urlSegment,
 
 int
 NsTclUrlEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *CONST* objv)
+                     int objc, Tcl_Obj *const* objv)
 {
-    int          nargs, upperCase = 0, result = TCL_OK;
+    int          nargs, upperCase = 0, result = TCL_OK, part = INTCHAR('q');
     char        *charset = NULL;
-    char         part = 'q';
     Ns_ObjvTable parts[] = {
         {"query",  UCHAR('q')},
         {"path",   UCHAR('p')},
@@ -955,7 +954,7 @@ NsTclUrlEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         }
         Ns_DStringInit(&ds);
         for (i = objc - nargs; i < objc; ++i) {
-            (void)UrlEncode(&ds, Tcl_GetString(objv[i]), encoding, part,
+            (void)UrlEncode(&ds, Tcl_GetString(objv[i]), encoding, (char)part,
                             (upperCase == 1));
             if (i + 1 < objc) {
                 if (part == 'q') {
@@ -991,11 +990,10 @@ NsTclUrlEncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclUrlDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *CONST* objv)
+                     int objc, Tcl_Obj *const* objv)
 {
-    int          result = TCL_OK;
+    int          result = TCL_OK, part = INTCHAR('q');
     char        *charset = NULL, *chars = NULL;
-    char         part = 'q';
     Ns_ObjvTable parts[] = {
         {"query",    UCHAR('q')},
         {"path",     UCHAR('p')},
@@ -1017,7 +1015,7 @@ NsTclUrlDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         result = TCL_ERROR;
     } else {
         Ns_DString    ds;
-        Tcl_Encoding  encoding = NULL;
+        Tcl_Encoding  encoding;
 
         assert(chars != NULL);
 
@@ -1028,7 +1026,7 @@ NsTclUrlDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             encoding = Ns_GetUrlEncoding(NULL);
         }
 
-        (void)UrlDecode(&ds, chars, encoding, part);
+        (void)UrlDecode(&ds, chars, encoding, (char)part);
         Tcl_DStringResult(interp, &ds);
     }
     return result;
@@ -1139,7 +1137,7 @@ UrlEncode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
  *      Number of decoded characters.
  *
  * Side effects:
- *	None.
+ *      None.
  *
  *----------------------------------------------------------------------
  */

@@ -51,11 +51,11 @@ Four links: <a href=/link/0.htm>Link 0</a><br>
 [example_end]
 
 ADP processing normally occurs in the context of an HTTP transaction when
-an URL request is mapped to an ADP file in the
+a URL request is mapped to an ADP file in the
 server's page root. (see  ADP CONFIGURATION
 below for details on configuring this mapping). The ADP
 request processing code allocates a Tcl interpreter and
-includes the cooresponding ADP file. Output generated during
+includes the corresponding ADP file. Output generated during
 execution of the ADP is sent as a normal HTTP response,
 using default status code of "200 OK" and the mime
 type which corresponds to the ADP file extensions, normally
@@ -75,7 +75,7 @@ new call frames and then accessed with commands such as
  ns_adp_argv . When necessary, commands such as
  ns_adp_abort  provide limited support to interrupt
 and/or return from within an ADP, unwinding the ADP call
-stack to the underyling C-level request processing code.
+stack to the underlying C-level request processing code.
 
 [para]
 
@@ -114,7 +114,7 @@ subdirectory.
 By default, errors within an ADP script block are reported in the server log
 and interrupt execution of the current block only;
 subsequent text and script blocks continue to be processed
-and and no error message is included in the output. This
+and no error message is included in the output. This
 approach is highly defensive and has the benefit of
 generating a valid, if partial, responses after minor
 errors. A negative aspect of this approach is that, without
@@ -193,7 +193,7 @@ content length. The content may optionally be gzip
 compressed first.
 
 [para]
-Alternatively, an incremental response can be be generated either
+Alternatively, an incremental response can be generated either
 in response to calling the  ns_adp_stream  or  ns_adp_flush
 commands or automatically due to buffer overflow. In this
 case, an HTTP response will be generated on the first flush
@@ -218,7 +218,7 @@ enabled to support compression of ADP output.
 [example_end]
 
 The ADP interface uses the server's mimetype configuration
-to map file extensions to charsets and cooresponding encoding. This
+to map file extensions to charsets and corresponding encoding. This
 configuration is necessary to ensure the file text and
 script blocks are properly converted to UTF-8 for use
 internally. This mimetype is also used to set the character

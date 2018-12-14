@@ -13,7 +13,7 @@ altered) by computing a cryptographic checksum.
 incremental interface, where the latter one can be used to
 e.g. incrementally compute a message digest reading data from a
 file. This is especially important for computing message digest on
-content which is to large to be kept in memory.
+content which is too large to be kept in memory.
 
 [para] The listed commands are available in installations when
 NaviServer is compiled with OpenSSL support and where the nsf package
@@ -31,7 +31,7 @@ set of cryptogrphic algorithms and provides the incremental interface.
 
 [para]
 [arg message]
-is the text from which the message digest is to be computed.
+is the text from which the message digest is computed.
 
 
 [call [cmd "ns_md file"] \
@@ -51,7 +51,7 @@ Create and return a new MD object for incremental operations.
 [call [arg \$md_object] [cmd "add"] [arg data]]
 
 Method to add [arg data] incrementally to the MD object, which was created
-previously  with [cmd "ns_md new"].
+previously with [cmd "ns_md new"].
 
 
 [call [arg \$md_object] [cmd "get"]]
@@ -71,11 +71,13 @@ Method to delete the MD object (used for incremental operations).
 [list_begin options]
 
 [opt_def -digest [arg digest]]
-Digest algorithm for the checksum computation. The available algorithms
-are implemented in OpenSSL. The current versions of OpenSSL supports
-the following message digest algorithms: "dsa dsa-sha ecdsa-with-sha1
-md4 md5 mdc2 ripemd160 sha sha1 sha224 sha256 sha384 sha512
-whirlpool".  The default value is "sha256"
+
+Digest algorithm for the checksum computation. The available
+algorithms are implemented in OpenSSL. The current versions of OpenSSL
+supports the following message digest algorithms: "blake2b512
+blake2s256 md4 md5 md5-sha1 mdc2 ripemd160 sha1 sha224 sha256 sha3-224
+sha3-256 sha3-384 sha3-512 sha384 sha512 sha512-224 sha512-256
+shake128 shake256 sm3 whirlpool".  The default value is "sha256"
 
 [list_end]
 
@@ -86,7 +88,7 @@ whirlpool".  The default value is "sha256"
 
 [example_end]
 
-[see_also nsd ns_hmac ns_crypt ns_md5 ns_rand ns_sha1 ns_sha]
+[see_also nsd ns_hmac ns_crypt ns_crypto ns_md5 ns_rand ns_sha1 ns_sha]
 [keywords encoding crypt MD nsf]
 
 [manpage_end]

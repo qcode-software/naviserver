@@ -44,7 +44,7 @@
  */
 
 static Ns_ServerInitProc ConfigServerRedirects;
-static bool ReturnRedirect(Ns_Conn *conn, int status, Ns_ReturnCode *resultPtr)
+static bool ReturnRedirect(Ns_Conn *conn, int httpStatus, Ns_ReturnCode *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 
@@ -55,13 +55,13 @@ static bool ReturnRedirect(Ns_Conn *conn, int status, Ns_ReturnCode *resultPtr)
  *
  *      Associate a URL with a status. Rather than return the
  *      default error page for this status, an internal redirect
- *      will be issued to the url.
+ *      will be issued to the URL.
  *
  * Results:
  *      Status code (always NS_OK).
  *
  * Side effects:
- *      Previous registration is deleted if url is NULL.
+ *      Previous registration is deleted if the URL is NULL.
  *
  *----------------------------------------------------------------------
  */
@@ -82,12 +82,12 @@ ConfigServerRedirects(const char *server)
 
     Tcl_InitHashTable(&servPtr->request.redirect, TCL_ONE_WORD_KEYS);
 
-    path = Ns_ConfigGetPath(server, NULL, "redirects", (char *)0);
+    path = Ns_ConfigGetPath(server, NULL, "redirects", (char *)0L);
     set = Ns_ConfigGetSection(path);
 
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         const char *key, *map;
-	int statusCode;
+        int statusCode;
 
         key = Ns_SetKey(set, i);
         map = Ns_SetValue(set, i);
@@ -111,7 +111,7 @@ ConfigServerRedirects(const char *server)
  *
  *      Associate a URL with a status. Rather than return the
  *      default error page for this status, an internal redirect
- *      will be issued to the url.
+ *      will be issued to the URL.
  *
  * Results:
  *      None.
@@ -131,7 +131,7 @@ Ns_RegisterReturn(int status, const char *url)
     servPtr = NsGetInitServer();
     if (servPtr != NULL) {
         Tcl_HashEntry *hPtr = Tcl_CreateHashEntry(&servPtr->request.redirect,
-						  INT2PTR(status), &isNew);
+                                                  INT2PTR(status), &isNew);
         if (isNew == 0) {
             ns_free(Tcl_GetHashValue(hPtr));
         }
@@ -161,14 +161,14 @@ Ns_RegisterReturn(int status, const char *url)
  */
 
 Ns_ReturnCode
-Ns_ConnReturnStatus(Ns_Conn *conn, int status)
+Ns_ConnReturnStatus(Ns_Conn *conn, int httpStatus)
 {
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
-    
-    if (!ReturnRedirect(conn, status, &result)) {
-        Ns_ConnSetResponseStatus(conn, status);
+
+    if (!ReturnRedirect(conn, httpStatus, &result)) {
+        Ns_ConnSetResponseStatus(conn, httpStatus);
         result = Ns_ConnWriteVData(conn, NULL, 0, 0u);
     }
     return result;
@@ -195,7 +195,7 @@ Ns_ReturnCode
 Ns_ConnReturnOk(Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
-    
+
     return Ns_ConnReturnStatus(conn, 200);
 }
 
@@ -205,8 +205,8 @@ Ns_ConnReturnOk(Ns_Conn *conn)
  *
  * Ns_ConnReturnMoved --
  *
- *      Return a 301 Redirection to the client, or 204 No Content if
- *      url is null.
+ *      Return a 301 "Redirection" to the client, or 204 "No Content" if
+ *      URL is null.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -226,7 +226,7 @@ Ns_ConnReturnMoved(Ns_Conn *conn, const char *url)
 
     if (url != NULL) {
         Ns_DString urlDs, msgDs;
-        
+
         Ns_DStringInit(&urlDs);
         Ns_DStringInit(&msgDs);
 
@@ -235,13 +235,13 @@ Ns_ConnReturnMoved(Ns_Conn *conn, const char *url)
         }
         Ns_DStringAppend(&urlDs, url);
         Ns_ConnSetHeaders(conn, "Location", urlDs.string);
-        
+
         Ns_DStringAppend(&msgDs, "<a href=\"");
         Ns_QuoteHtml(&msgDs, urlDs.string);
         Ns_DStringAppend(&msgDs, "\">The requested URL has moved permanently here.</a>");
-                            
+
         result = Ns_ConnReturnNotice(conn, 301, "Redirection", msgDs.string);
-        
+
         Ns_DStringFree(&msgDs);
         Ns_DStringFree(&urlDs);
     } else {
@@ -271,7 +271,7 @@ Ns_ReturnCode
 Ns_ConnReturnNoResponse(Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
-    
+
     return Ns_ConnReturnStatus(conn, 204);
 }
 
@@ -281,8 +281,8 @@ Ns_ConnReturnNoResponse(Ns_Conn *conn)
  *
  * Ns_ConnReturnRedirect --
  *
- *      Return a 302 Redirection to the client, or 204 No Content if
- *      url is null.
+ *      Return a 302 Redirection to the client, or 204 "No Content" if
+ *      URL is null.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -302,7 +302,7 @@ Ns_ConnReturnRedirect(Ns_Conn *conn, const char *url)
 
     if (url != NULL) {
         Ns_DString urlDs, msgDs;
-        
+
         Ns_DStringInit(&urlDs);
         Ns_DStringInit(&msgDs);
 
@@ -310,16 +310,16 @@ Ns_ConnReturnRedirect(Ns_Conn *conn, const char *url)
             (void) Ns_ConnLocationAppend(conn, &urlDs);
         }
         Ns_DStringAppend(&urlDs, url);
-        
+
         Ns_UrlEncodingWarnUnencoded("header field location", urlDs.string);
         Ns_ConnSetHeaders(conn, "Location", urlDs.string);
-        
+
         Ns_DStringAppend(&msgDs, "<a href=\"");
         Ns_QuoteHtml(&msgDs, urlDs.string);
         Ns_DStringAppend(&msgDs, "\">The requested URL has moved here.</a>");
-                            
+
         result = Ns_ConnReturnNotice(conn, 302, "Redirection", msgDs.string);
-        
+
         Ns_DStringFree(&msgDs);
         Ns_DStringFree(&urlDs);
 
@@ -336,7 +336,7 @@ Ns_ConnReturnRedirect(Ns_Conn *conn, const char *url)
  *
  * Ns_ConnReturnBadRequest --
  *
- *      Return an 'invalid request' HTTP status line with an error
+ *      Return an "invalid request" HTTP status line with an error
  *      message.
  *
  * Results:
@@ -362,7 +362,7 @@ Ns_ConnReturnBadRequest(Ns_Conn *conn, const char *reason)
         Ns_DStringAppend(&ds,
                          "<p>The HTTP request presented by your browser is invalid.");
         if (reason != NULL) {
-            Ns_DStringVarAppend(&ds, "<p>\n", reason, (char *)0);
+            Ns_DStringVarAppend(&ds, "<p>\n", reason, (char *)0L);
         }
         result = Ns_ConnReturnNotice(conn, 400, "Invalid Request", ds.string);
         Ns_DStringFree(&ds);
@@ -377,7 +377,7 @@ Ns_ConnReturnBadRequest(Ns_Conn *conn, const char *reason)
  *
  * Ns_ConnReturnUnauthorized --
  *
- *      Return a 401 Unauthorized response, which will prompt the
+ *      Return a 401 "Unauthorized" response, which will prompt the
  *      user for a Basic authentication username/password.
  *
  * Results:
@@ -401,7 +401,7 @@ Ns_ConnReturnUnauthorized(Ns_Conn *conn)
     if (Ns_SetIGet(conn->outputheaders, "WWW-Authenticate") == NULL) {
         Ns_DStringInit(&ds);
         Ns_DStringVarAppend(&ds, "Basic realm=\"",
-                            connPtr->poolPtr->servPtr->opts.realm, "\"", (char *)0);
+                            connPtr->poolPtr->servPtr->opts.realm, "\"", (char *)0L);
         Ns_ConnSetHeaders(conn, "WWW-Authenticate", ds.string);
         Ns_DStringFree(&ds);
     }
@@ -419,7 +419,7 @@ Ns_ConnReturnUnauthorized(Ns_Conn *conn)
  *
  * Ns_ConnReturnForbidden --
  *
- *      Return a 403 Forbidden response.
+ *      Return a 403 "Forbidden" response.
  *
  * Results:
  *      NS_OK/NS_ERROR.
@@ -452,7 +452,7 @@ Ns_ConnReturnForbidden(Ns_Conn *conn)
  *
  * Ns_ConnReturnNotFound --
  *
- *      Return a 404 Not Found response.
+ *      Return a 404 "Not Found" response.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -469,7 +469,7 @@ Ns_ConnReturnNotFound(Ns_Conn *conn)
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
-    
+
     if (!ReturnRedirect(conn, 404, &result)) {
         result = Ns_ConnReturnNotice(conn, 404, "Not Found",
                                      "The requested URL was not found on this server.");
@@ -501,7 +501,7 @@ Ns_ConnReturnInvalidMethod(Ns_Conn *conn)
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
-    
+
     if (!ReturnRedirect(conn, 405, &result)) {
         result = Ns_ConnReturnNotice(conn, 405, "Method Not Allowed",
                                      "The requested method is not allowed on this server.");
@@ -515,7 +515,7 @@ Ns_ConnReturnInvalidMethod(Ns_Conn *conn)
  *
  * Ns_ConnReturnNotModified --
  *
- *      Return a 304 Not Modified response.
+ *      Return a 304 "Not Modified" response.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -538,13 +538,13 @@ Ns_ConnReturnNotModified(Ns_Conn *conn)
  *
  * Ns_ConnReturnEntityTooLarge --
  *
- *      Return a 413 Request Entity to large response.
+ *      Return a 413 "Request Entity too large" response.
  *
  * Results:
- *      NS_OK/NS_ERROR 
+ *      NS_OK/NS_ERROR
  *
  * Side effects:
- *      Will close the connection. 
+ *      Will close the connection.
  *
  *----------------------------------------------------------------------
  */
@@ -567,13 +567,13 @@ Ns_ConnReturnEntityTooLarge(Ns_Conn *conn)
  *
  * Ns_ConnReturnRequestURITooLong --
  *
- *      Return a 414 Request URI to long.
+ *      Return a 414 "Request URI too long".
  *
  * Results:
- *      NS_OK/NS_ERROR 
+ *      NS_OK/NS_ERROR
  *
  * Side effects:
- *      Will close the connection. 
+ *      Will close the connection.
  *
  *----------------------------------------------------------------------
  */
@@ -598,13 +598,13 @@ Ns_ConnReturnRequestURITooLong(Ns_Conn *conn)
  *
  * Ns_ConnReturnHeaderLineTooLong --
  *
- *      Return a 431 Request Header Line to long.
+ *      Return a 431 "Request Header Fields Too Large".
  *
  * Results:
- *      NS_OK/NS_ERROR 
+ *      NS_OK/NS_ERROR
  *
  * Side effects:
- *      Will close the connection. 
+ *      Will close the connection.
  *
  *----------------------------------------------------------------------
  */
@@ -629,7 +629,7 @@ Ns_ConnReturnHeaderLineTooLong(Ns_Conn *conn)
  *
  * Ns_ConnReturnNotImplemented --
  *
- *      Return a 501 Not Implemented response.
+ *      Return a 501 "Not Implemented" response.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -661,7 +661,7 @@ Ns_ConnReturnNotImplemented(Ns_Conn *conn)
  *
  * Ns_ConnReturnInternalError --
  *
- *      Return a 500 Internal Error response.
+ *      Return a 500 "Internal Error" response.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -694,7 +694,7 @@ Ns_ConnReturnInternalError(Ns_Conn *conn)
  *
  * Ns_ConnReturnUnavailable --
  *
- *      Return a 503 busy/unavailable response.
+ *      Return a 503 "Service Unavailable" response.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -740,29 +740,36 @@ Ns_ConnReturnUnavailable(Ns_Conn *conn)
  */
 
 static bool
-ReturnRedirect(Ns_Conn *conn, int status, Ns_ReturnCode *resultPtr)
+ReturnRedirect(Ns_Conn *conn, int httpStatus, Ns_ReturnCode *resultPtr)
 {
-    const Tcl_HashEntry *hPtr;
-    Conn                *connPtr;
-    NsServer            *servPtr;
-    bool                 result = NS_FALSE;
+    Conn *connPtr;
+    bool  result = NS_FALSE;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(resultPtr != NULL);
-    connPtr = (Conn *) conn;
- 
-    servPtr = connPtr->poolPtr->servPtr;
-    assert(servPtr != NULL);
 
-    hPtr = Tcl_FindHashEntry(&servPtr->request.redirect, INT2PTR(status));
-    if (hPtr != NULL) {
-        if (++connPtr->recursionCount > MAX_RECURSION) {
-            Ns_Log(Error, "return: failed to redirect '%d': "
-                   "exceeded recursion limit of %d", status, MAX_RECURSION);
-        } else {
-            connPtr->responseStatus = status;
-            *resultPtr = Ns_ConnRedirect(conn, Tcl_GetHashValue(hPtr));
-            result = NS_TRUE;
+    connPtr = (Conn *) conn;
+    if ((connPtr->flags & NS_CONN_CLOSED) != 0u) {
+        Ns_Log(Warning, "redirect status %d: connection already closed", httpStatus);
+        *resultPtr = NS_ERROR;
+
+    } else {
+        const Tcl_HashEntry *hPtr;
+        NsServer            *servPtr;
+
+        servPtr = connPtr->poolPtr->servPtr;
+        assert(servPtr != NULL);
+
+        hPtr = Tcl_FindHashEntry(&servPtr->request.redirect, INT2PTR(httpStatus));
+        if (hPtr != NULL) {
+            if (++connPtr->recursionCount > MAX_RECURSION) {
+                Ns_Log(Error, "return: failed to redirect '%d': "
+                       "exceeded recursion limit of %d", httpStatus, MAX_RECURSION);
+            } else {
+                connPtr->responseStatus = httpStatus;
+                *resultPtr = Ns_ConnRedirect(conn, Tcl_GetHashValue(hPtr));
+                result = NS_TRUE;
+            }
         }
     }
     return result;

@@ -160,6 +160,7 @@ struct nsconf {
     char        address[NS_IPADDR_SIZE];
     long        shutdowntimeout;  /* same type as seconds in Ns_Time */
     int         backlog;
+    bool        reject_already_closed_connection;
 
     /*
      * Slot IDs for socket local storage.
@@ -424,7 +425,7 @@ typedef struct Driver {
     void        *arg;                   /* Driver callback data */
     const char  *server;                /* Virtual server name */
     const char  *type;                  /* Type of driver, e.g. "nssock" */
-    const char  *moduleName;            /* Module name, e.g. "nssock1" */    
+    const char  *moduleName;            /* Module name, e.g. "nssock1" */
     const char  *threadName;            /* Thread name, e.g. "nssock1:1" */
     const char  *location;              /* Location, e.g, "http://foo:9090" */
     const char  *address;               /* Address in location, e.g. "foo" */
@@ -509,11 +510,11 @@ typedef struct Sock {
     /*
      * Visible in Ns_Sock.
      */
-    NS_SOCKET                  sock;    
+    NS_SOCKET                  sock;
     struct Driver             *drvPtr;
     void                      *arg;        /* Driver context. */
     struct NS_SOCKADDR_STORAGE sa;         /* Actual peer address */
-    
+
     /*
      * Private to Sock.
      */
@@ -534,7 +535,7 @@ typedef struct Sock {
     char               *tfile;           /* name of regular temporary file */
     int                 tfd;             /* file descriptor with request contents */
     bool                keep;
-    
+
     void               *sls[1];          /* Slots for sls storage */
 
 } Sock;
@@ -707,7 +708,7 @@ typedef struct ConnPool {
         struct {
             Conn *firstPtr;
             Conn *lastPtr;
-            int   num;            
+            int   num;
         } wait;
 
         Ns_Cond  cond;
@@ -987,7 +988,7 @@ typedef struct NsInterp {
     NsServer   *servPtr;
     int         epoch;         /* Run the update script if != to server epoch */
     int         refcnt;        /* Counts recursive allocations of cached interp */
-    
+
     /*
      * The following pointer maintains the first in
      * a FIFO list of callbacks to invoke at interp
@@ -1063,7 +1064,9 @@ typedef struct NsInterp {
     Tcl_HashTable httpRequests;
 
     Ns_CacheTransactionStack cacheTransactionStack;
-    bool          deleteInterp;  /* Interp should be deleted on next deallocation */
+
+    Ns_TclTraceType currentTrace;
+    bool deleteInterp;  /* Interp should be deleted on next deallocation */
 
 } NsInterp;
 
@@ -1110,6 +1113,10 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclAtShutdownObjCmd,
     NsTclAtSignalObjCmd,
     NsTclAtStartupObjCmd,
+    NsTclBase64DecodeObjCmd,
+    NsTclBase64EncodeObjCmd,
+    NsTclBase64UrlDecodeObjCmd,
+    NsTclBase64UrlEncodeObjCmd,
     NsTclCacheAppendObjCmd,
     NsTclCacheConfigureObjCmd,
     NsTclCacheCreateObjCmd,
@@ -1138,8 +1145,12 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclCrashObjCmd,
     NsTclCritSecObjCmd,
     NsTclCryptObjCmd,
+    NsTclCryptoAeadDecryptObjCmd,
+    NsTclCryptoAeadEncryptObjCmd,
+    NsTclCryptoEckeyObjCmd,
     NsTclCryptoHmacObjCmd,
     NsTclCryptoMdObjCmd,
+    NsTclCryptoRandomBytesObjCmd,
     NsTclDeleteCookieObjCmd,
     NsTclDriverObjCmd,
     NsTclEncodingForCharsetObjCmd,
@@ -1155,13 +1166,12 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclGifSizeObjCmd,
     NsTclGmTimeObjCmd,
     NsTclGuessTypeObjCmd,
-    NsTclHTUUDecodeObjCmd,
-    NsTclHTUUEncodeObjCmd,
+    NsTclHashObjCmd,
     NsTclHashPathObjCmd,
     NsTclHeadersObjCmd,
+    NsTclHrefsObjCmd,
     NsTclHttpObjCmd,
     NsTclHttpTimeObjCmd,
-    NsTclHrefsObjCmd,
     NsTclICtlObjCmd,
     NsTclImgMimeObjCmd,
     NsTclImgSizeObjCmd,
@@ -1207,6 +1217,7 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclQuoteHtmlObjCmd,
     NsTclRWLockObjCmd,
     NsTclRandObjCmd,
+    NsTclReflowTextObjCmd,
     NsTclRegisterAdpObjCmd,
     NsTclRegisterFastPathObjCmd,
     NsTclRegisterFastUrl2FileObjCmd,
@@ -1282,12 +1293,12 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclWriteFpObjCmd,
     NsTclWriteObjCmd,
     NsTclWriterObjCmd,
-    TclX_KeylgetObjCmd,
     TclX_KeyldelObjCmd,
+    TclX_KeylgetObjCmd,
     TclX_KeylkeysObjCmd,
     TclX_KeylsetObjCmd;
 
-NS_EXTERN Ns_LogSeverity Ns_LogRequestDebug; 
+NS_EXTERN Ns_LogSeverity Ns_LogRequestDebug;
 NS_EXTERN Ns_LogSeverity Ns_LogConnchanDebug;
 
 /*
@@ -1309,7 +1320,10 @@ NS_EXTERN void NsInitRequests(void);
 NS_EXTERN void NsInitSched(void);
 NS_EXTERN void NsInitServers(void);
 NS_EXTERN void NsInitSls(void);
+NS_EXTERN void NsInitSockCallback(void);
+NS_EXTERN void NsInitTask(void);
 NS_EXTERN void NsInitTcl(void);
+NS_EXTERN void NsInitTclEnv(void);
 NS_EXTERN void NsInitUrl2File(void);
 
 NS_EXTERN void NsConfigAdp(void);
@@ -1393,10 +1407,16 @@ NS_EXTERN void NsWriterUnlock(void);
 NS_EXTERN void NsWriterFinish(WriterSock *wrSockPtr)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN Ns_ReturnCode NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan,
-                                      FILE *fp, int fd, struct iovec *bufs, int nbufs,
-                                      int everysize)
-    NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode NsWriterQueue(
+    Ns_Conn *conn,
+    size_t nsend,
+    Tcl_Channel chan,
+    FILE *fp,
+    int fd,
+    struct iovec *bufs,
+    int nbufs,
+    bool everysize
+) NS_GNUC_NONNULL(1);
 
 /*
  * External callback functions.
@@ -1521,7 +1541,7 @@ NS_EXTERN int NsConnParseRange(Ns_Conn *conn, const char *type,
  * conn.c
  */
 NS_EXTERN const char * NsConnIdStr(const Ns_Conn *conn)
-    NS_GNUC_NONNULL(1);
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 
 NS_EXTERN void NsConnTimeStatsUpdate(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
@@ -1535,8 +1555,8 @@ NS_EXTERN Ns_ReturnCode NsConnRequire(Tcl_Interp *interp, Ns_Conn **connPtr)
 /*
  * request parsing
  */
-NS_EXTERN bool NsParseAcceptEncoding(double version, const char *hdr)
-    NS_GNUC_NONNULL(2);
+NS_EXTERN void NsParseAcceptEncoding(double version, const char *hdr, bool *gzipAcceptPtr, bool *brotliAcceptPtr)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 /*
  * encoding.c
@@ -1545,7 +1565,8 @@ NS_EXTERN bool NsParseAcceptEncoding(double version, const char *hdr)
 NS_EXTERN const char *NsFindCharset(const char *mimetype, size_t *lenPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN bool NsEncodingIsUtf8(const Tcl_Encoding encoding);
+NS_EXTERN bool NsEncodingIsUtf8(const Tcl_Encoding encoding)
+    NS_GNUC_PURE;
 
 
 /*
@@ -1561,13 +1582,13 @@ NS_EXTERN int NsAdpFlush(NsInterp *itPtr, bool doStream)
 NS_EXTERN int NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *procs)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int NsAdpEval(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
+NS_EXTERN int NsAdpEval(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int NsAdpSource(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv, const char *resvar)
+NS_EXTERN int NsAdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int NsAdpInclude(NsInterp *itPtr, int objc, Tcl_Obj *CONST* objv,
+NS_EXTERN int NsAdpInclude(NsInterp *itPtr, int objc, Tcl_Obj *const* objv,
                            const char *file, const Ns_Time *expiresPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
@@ -1641,7 +1662,10 @@ NS_EXTERN void NsParseAuth(Conn *connPtr, char *auth)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN bool NsTclObjIsByteArray(const Tcl_Obj *objPtr)
-    NS_GNUC_NONNULL(1);
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
+
+NS_EXTERN bool NsTclObjIsEncodedByteArray(const Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 
 NS_EXTERN bool NsTclTimeoutException(Tcl_Interp *interp)
     NS_GNUC_NONNULL(1);
