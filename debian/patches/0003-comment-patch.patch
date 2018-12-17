@@ -1,0 +1,21 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Mon, 17 Dec 2018 10:53:48 +0000
+Subject: comment patch
+
+---
+ include/nsconfig.h.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/nsconfig.h.in b/include/nsconfig.h.in
+index 5640b9e..253487a 100644
+--- a/include/nsconfig.h.in
++++ b/include/nsconfig.h.in
+@@ -358,7 +358,7 @@
+ # endif
+ #endif
+ 
+-/* Enable large inode numbers on macOS 10.5.  */
++/* Enable large inode numbers on Mac OS X 10.5.  */
+ #ifndef _DARWIN_USE_64_BIT_INODE
+ # define _DARWIN_USE_64_BIT_INODE 1
+ #endif
