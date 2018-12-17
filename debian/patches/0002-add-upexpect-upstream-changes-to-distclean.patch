@@ -1,0 +1,23 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Mon, 17 Dec 2018 10:16:12 +0000
+Subject: add upexpect upstream changes to distclean
+
+---
+ Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 055540b..a94b075 100644
+--- a/Makefile
++++ b/Makefile
+@@ -270,8 +270,8 @@ clean-bak: clean
+ 
+ distclean: clean
+ 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
+-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
++	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1,nsconfig.h,nsversion.h} \
++	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl naviserver.rdf version_include.man
+ 
+ dist: clean
+ 	$(RM) naviserver-$(NS_PATCH_LEVEL)
