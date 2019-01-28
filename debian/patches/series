@@ -1,3 +1,4 @@
 0001-specify-bash-in-Makefile.patch
 0002-add-upexpect-upstream-changes-to-distclean.patch
 0003-comment-patch.patch
+0004-exclude-tcl-namespaces.patch
