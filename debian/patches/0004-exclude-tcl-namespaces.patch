@@ -17,7 +17,7 @@ index 9bfbc41..8e12c4a 100644
 -                if {$orig ne [namespace which -command $pn]} {
 +                if {
 +		   $orig ne [namespace which -command $pn]
-+		   && ![string match "::tcl::*" $orig
++		   && ![string match "::tcl::*" $orig]
 +		} {
                      append import "namespace import -force [list $orig]" \n
                  } else {
