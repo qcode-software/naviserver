@@ -1,3 +1,9 @@
+naviserver (4.99.17-1+deb9u3) stretch; urgency=medium
+
+  * Backout previous patch
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 31 Jan 2019 10:44:05 +0000
+
 naviserver (4.99.17-1+deb9u2) stretch; urgency=medium
 
   * Patch to exclude tcl namespaces
