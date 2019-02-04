@@ -1,3 +1,9 @@
+naviserver (4.99.18~20190204-1+deb9u1) stretch; urgency=medium
+
+  * Build from tip 4.99.18~20190204
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 04 Feb 2019 15:47:09 +0000
+
 naviserver (4.99.17-1+deb9u3) stretch; urgency=medium
 
   * Backout previous patch
