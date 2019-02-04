@@ -9,8 +9,14 @@
 ns_log notice "nsd.tcl: starting to read config file..."
 
 #---------------------------------------------------------------------
-# change to 80 and 443 for production use
+# Change the HTTP and HTTPS port to e.g. 80 and 443 for production use.
 set httpport		8000
+
+#
+# Setting the HTTPS port to 0 means to active the https driver for
+# ns_http, but do not listen on this port.
+#
+#set httpsport		0
 #set httpsport		8443
 
 # The hostname and address should be set to actual values.
@@ -430,7 +436,7 @@ foreach address $addresses suffix $suffixes {
     # ns_param	sendwait	30	;# 30, timeout in seconds for send operations
     # ns_param	closewait	2	;# 2, timeout in seconds for close on socket
     # ns_param	keepwait	2	;# 5, timeout in seconds for keep-alive
-    # ns_param	nodelay		true	;# false; activate TCP_NODELAY if not activated per default on your OS
+    # ns_param  nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted 
     # ns_param	keepalivemaxuploadsize	  500000  ;# 0, don't allow keep-alive for upload content larger than this
     # ns_param	keepalivemaxdownloadsize  1000000 ;# 0, don't allow keep-alive for download content larger than this
     # ns_param	spoolerthreads	1	;# 0, number of upload spooler threads
@@ -532,12 +538,13 @@ if {[info exists httpsport]} {
 	    ns_param		port		$httpsport
 	    ns_param		hostname	$hostname
 	    ns_param		ciphers		"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
-	    ns_param		protocols	"!SSLv2"
+	    ns_param		protocols	"!SSLv2:!SSLv3"
 	    ns_param		certificate	$serverroot/etc/certfile.pem
 	    ns_param		verify		0
 	    ns_param		writerthreads	2
 	    ns_param		writersize	1024
 	    ns_param		writerbufsize	16384	;# 8192, buffer size for writer threads
+	    #ns_param   nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted 
 	    #ns_param	writerstreaming	true	;# false
 	    #ns_param	deferaccept	true    ;# false, Performance optimization
 	    ns_param		maxinput	[expr {$max_file_upload_mb * 1024*1024}] ;# Maximum File Size for uploads in bytes
@@ -556,9 +563,9 @@ if {[info exists httpsport]} {
 ns_section "ns/db/drivers" {
 
     if { $database eq "oracle" } {
-	ns_param	ora8           ${bindir}/ora8.so
+	ns_param	ora8           ${bindir}/ora8
     } else {
-	ns_param	postgres       ${bindir}/nsdbpg.so
+	ns_param	postgres       ${bindir}/nsdbpg
 	#
 	ns_logctl severity "Debug(sql)" -color blue $verboseSQL
     }
@@ -666,23 +673,23 @@ ns_section ns/db/pool/pool3 {
 # don't uncomment modules unless they have been installed.
 
 ns_section ns/server/${server}/modules {
-    ns_param	nslog		${bindir}/nslog.so
-    ns_param	nsdb		${bindir}/nsdb.so
-    ns_param	nsproxy		${bindir}/nsproxy.so
+    ns_param	nslog		${bindir}/nslog
+    ns_param	nsdb		${bindir}/nsdb
+    ns_param	nsproxy		${bindir}/nsproxy
 
     #
     # Load networking modules depending on existence of Tcl variables
     # address_v* and httpsport
     #
-    if {[info exists address_v4]} { ns_param nssock_v4 ${bindir}/nssock.so }
-    if {[info exists address_v6]} { ns_param nssock_v6 ${bindir}/nssock.so }
-    if {[info exists address_v4] && [info exists httpsport]} { ns_param nsssl_v4 ${bindir}/nsssl.so }
-    if {[info exists address_v6] && [info exists httpsport]} { ns_param nsssl_v6 ${bindir}/nsssl.so }
+    if {[info exists address_v4]} { ns_param nssock_v4 ${bindir}/nssock }
+    if {[info exists address_v6]} { ns_param nssock_v6 ${bindir}/nssock }
+    if {[info exists address_v4] && [info exists httpsport]} { ns_param nsssl_v4 ${bindir}/nsssl }
+    if {[info exists address_v6] && [info exists httpsport]} { ns_param nsssl_v6 ${bindir}/nsssl }
 
     #
     # Determine, if libthread is installed
     #
-    set libthread [lindex [glob -nocomplain $homedir/lib/thread*/libthread*[info sharedlibextension]] end]
+    set libthread [lindex [lsort [glob -nocomplain $homedir/lib/thread*/libthread*[info sharedlibextension]]] end]
     if {$libthread eq ""} {
 	ns_log notice "No Tcl thread library installed in $homedir/lib/"
     } else {
@@ -691,17 +698,17 @@ ns_section ns/server/${server}/modules {
     }
 
     # authorize-gateway package requires dqd_utils
-    # ns_param	dqd_utils dqd_utils[expr {int($tcl_version)}].so
+    # ns_param	dqd_utils dqd_utils[expr {int($tcl_version)}]
 
     # PAM authentication
-    # ns_param	nspam              ${bindir}/nspam.so
+    # ns_param	nspam              ${bindir}/nspam
 
     # LDAP authentication
-    # ns_param	nsldap             ${bindir}/nsldap.so
+    # ns_param	nsldap             ${bindir}/nsldap
 
     # These modules aren't used in standard OpenACS installs
-    # ns_param	nsperm             ${bindir}/nsperm.so
-    # ns_param	nscgi              ${bindir}/nscgi.so
+    # ns_param	nsperm             ${bindir}/nsperm
+    # ns_param	nscgi              ${bindir}/nscgi
 }
 
 
@@ -713,8 +720,8 @@ ns_section ns/server/${server}/module/nsproxy {
     # ns_param	maxslaves          8
     # ns_param	sendtimeout        5000
     # ns_param	recvtimeout        5000
-    # ns_param	waittimeout        1000
-    # ns_param	idletimeout        300000
+    # ns_param	waittimeout        100
+    # ns_param	idletimeout        3000000
 }
 
 #

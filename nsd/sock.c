@@ -36,10 +36,6 @@
 
 #include "nsd.h"
 
-#ifndef INADDR_NONE
-#define INADDR_NONE -1
-#endif
-
 /*
  * TCP_FASTOPEN was introduced in Linux 3.7.0. At the time of this
  * writing, TCP_FASTOPEN is just defined in linux/tcp.h, which we
@@ -360,8 +356,9 @@ Ns_SockSend(NS_SOCKET sock, const void *buffer, size_t length, const Ns_Time *ti
 
     nwrote = ns_send(sock, buffer, length, 0);
     if (nwrote == -1
-        && ns_sockerrno == NS_EWOULDBLOCK
-        && Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_WRITE, timeoutPtr) == NS_OK) {
+        && (ns_sockerrno == NS_EWOULDBLOCK)
+        && (Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_WRITE, timeoutPtr) == NS_OK)
+        ) {
         nwrote = ns_send(sock, buffer, length, 0);
     }
 
@@ -564,7 +561,7 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
     NS_NONNULL_ASSERT(saPtr != NULL);
     Ns_LogSockaddr(Debug, "Ns_SockBind called with", (const struct sockaddr *) saPtr);
 
-    sock = (NS_SOCKET)socket((int)saPtr->sa_family, SOCK_STREAM, 0);
+    sock = (NS_SOCKET)socket((int)saPtr->sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
     if (sock != NS_INVALID_SOCKET) {
 
@@ -1276,7 +1273,7 @@ SockConnect(const char *host, unsigned short port, const char *lhost, unsigned s
                 break;
             }
 
-            Ns_Log(Debug, "SockConnect to %s: try address <%s>", host, address);
+            Ns_Log(Debug, "SockConnect to %s: try address <%s> async %d", host, address, async);
 
             result = Ns_GetSockAddr(saPtr, address, port);
             if (result == NS_OK) {
@@ -1299,20 +1296,20 @@ SockConnect(const char *host, unsigned short port, const char *lhost, unsigned s
                 if (connect(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) != 0) {
                     ns_sockerrno_t err = ns_sockerrno;
 
-                    if (err != NS_EINPROGRESS && err != NS_EWOULDBLOCK) {
+                    if ((err != NS_EINPROGRESS) && (err != NS_EWOULDBLOCK)) {
                         Ns_Log(Notice, "connect on sock %d async %d err %d <%s>",
                                sock, async, err, ns_sockstrerror(err));
                     }
 
-                    if (async && (err == NS_EINPROGRESS || err == NS_EWOULDBLOCK)) {
+                    if (async && ((err == NS_EINPROGRESS) || (err == NS_EWOULDBLOCK))) {
                         /*
                          * The code below is implemented also in later
                          * calls. However in the async case, it is hard to
                          * recover and retry in these cases. Therefore, if we
                          * have multiple IP addresses, and async handling, we
-                         * wait for the writable state here. We might loose
-                         * some concurreny, but the handling is this way much
-                         * easier.
+                         * wait for the writable state, and pereform finally a
+                         * getsockopt() here. We might loose some concurrency,
+                         * but the handling is this way much easier.
                          */
                         if (multipleIPs) {
                             struct pollfd sockfd;
@@ -1328,8 +1325,21 @@ SockConnect(const char *host, unsigned short port, const char *lhost, unsigned s
                             sockfd.events = POLLOUT;
                             sockfd.revents = 0;
                             sockfd.fd = sock;
+                            /*
+                             * Wait for max 100ms for the socket to become
+                             * writable, otherwise use the next offered IP
+                             * address. TODO: The waiting timespan should be
+                             * probably configurable.
+                             */
                             (void) ns_poll(&sockfd, 1, 100);
 
+                            /*
+                             * poll() finished - either with a timeout or
+                             * success. Actually we don't care, since the
+                             * getsockopt() for returning out the error helps
+                             * us to decide, whether to continiue with this IP
+                             * address or not.
+                             */
                             len = sizeof(errno);
                             getsockopt(sock, SOL_SOCKET, SO_ERROR, &errno, &len);
 
@@ -1341,6 +1351,9 @@ SockConnect(const char *host, unsigned short port, const char *lhost, unsigned s
                                 ns_sockclose(sock);
                                 sock = NS_INVALID_SOCKET;
                                 continue;
+                            } else {
+                                Ns_Log(Debug, "async connect multipleIPs INPROGRESS sock %d continue", sock);
+                                break;
                             }
 
                         }

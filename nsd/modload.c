@@ -123,6 +123,25 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
         file = Ns_HomePath(&ds, "bin", file, (char *)0L);
     }
+    if (access(file, F_OK) != 0) {
+        const char *defaultExtension =
+#ifdef _WIN32
+            ".dll"
+#else
+            ".so"
+#endif
+            ;
+        /*
+         * The specified module name does not exist.  Try appending the
+         * defaultExtension, but first make sure, we have the filename in the
+         * Tcl_DString.
+         */
+        if (ds.length == 0) {
+            Tcl_DStringAppend(&ds, file, -1);
+        }
+        Tcl_DStringAppend(&ds, defaultExtension, -1);
+        file = ds.string;
+    }
     pathObj = Tcl_NewStringObj(file, -1);
 
     Tcl_IncrRefCount(pathObj);

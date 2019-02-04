@@ -2420,7 +2420,7 @@ RequestFree(Sock *sockPtr)
             reqPtr->buffer.string[0] = reqPtr->savedChar;
         }
         Tcl_DStringSetLength(&reqPtr->buffer, (int)leftover);
-        LogBuffer(DriverDebug, "KEEP BUFFER", reqPtr->buffer.string, leftover); /* TODO: change to DriverDebug */
+        LogBuffer(DriverDebug, "KEEP BUFFER", reqPtr->buffer.string, leftover);
         reqPtr->leftover = leftover;
     } else {
         /*
@@ -4986,7 +4986,8 @@ NsWriterQueue(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd,
                  * Create a new temporary spool file.
                  */
                 first = NS_TRUE;
-                fd = connPtr->fd = Ns_GetTemp();
+                fd = Ns_GetTemp();
+                connPtr->fd = fd;
 
                 Ns_Log(DriverDebug, "NsWriterQueue: new tmp file has fd %d", fd);
 

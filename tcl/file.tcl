@@ -76,6 +76,10 @@ proc ns_tcl_abort {} {
 #   and source it. Uses tricks to cache Tcl bytecodes
 #   and hope to gain some percent of speed that way.
 #
+#   After 4.99.17, "ns_sourceproc" is deprecated. One should use
+#      ns_register_tcl $method /*.tcl
+#   instead of
+#      ns_register_proc $method /*.tcl ns_sourceproc"
 #
 # Results:
 #   None.
@@ -86,6 +90,8 @@ proc ns_tcl_abort {} {
 
 proc ns_sourceproc {args} {
 
+    #ns_deprecated "ns_register_tcl" "Use ns_register_tcl ... instead of ns_register_proc ... ns_sourceproc"
+
     set path [ns_url2file [ns_conn url]]
     if {![ns_filestat $path stat]} {
         ns_returnnotfound
@@ -94,24 +100,25 @@ proc ns_sourceproc {args} {
 
     set code [catch {
 
-      # Tcl file signature
-      set cookie0 $stat(mtime):$stat(ino):$stat(dev)
-      set proc0 [info procs ns:tclcache.$path]
+        # Tcl file signature
+        set cookie0 $stat(mtime):$stat(ino):$stat(dev)
+        set proc0 [info commands ns:tclcache.$path]
 
-      # Verify file modification time
-      if {$proc0 eq "" || [$proc0] ne $cookie0} {
-          set code [ns_fileread $path]
-          proc ns:tclcache_$path {} "$code"
-          proc ns:tclcache.$path {} "return $cookie0"
-      }
-      # Run the proc
-      ns:tclcache_$path
+        # Verify file modification time
+        if {$proc0 eq "" || [$proc0] ne $cookie0} {
+            proc ns:tclcache_$path {} [ns_fileread $path]
+            proc ns:tclcache.$path {} "return $cookie0"
+        }
+        # Run the proc
+        ns:tclcache_$path
 
     } errmsg]
 
     if {$code == 1 && $::errorCode ne "NS_TCL_ABORT"} {
+
         # Invalidate proc
-        proc ns:tclcache_$path {} {}
+        rename ns:tclcache_$path ""
+        rename ns:tclcache.$path ""
 
         # Show custom errropage if defined
         set errp [nsv_get ns:tclfile errorpage]

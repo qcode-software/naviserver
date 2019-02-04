@@ -96,10 +96,10 @@ ns_section "ns/server/default" {
 }
 
 ns_section "ns/server/default/modules" {
-    ns_param    nscp                nscp.so
-    ns_param    nssock              nssock.so
-    ns_param    nslog               nslog.so
-    ns_param    nscgi               nscgi.so
+    ns_param    nscp                nscp
+    ns_param    nssock              nssock
+    ns_param    nslog               nslog
+    ns_param    nscgi               nscgi
 }
 
 ns_section "ns/server/default/fastpath" {
@@ -181,6 +181,10 @@ ns_section "ns/server/default/module/nssock" {
     ns_param    keepwait	         5	         ;# 5, timeout in seconds for keep-alive
     ns_param    keepalivemaxuploadsize	 500000	 ;# 0, don't allow keep-alive for upload content larger than this
     ns_param    keepalivemaxdownloadsize 1000000 ;# 0, don't allow keep-alive for download content larger than this
+    #
+    # TCP tuning
+    #
+    #ns_param  nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted 
     #
     # Spooling Threads
     #

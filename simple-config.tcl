@@ -12,9 +12,9 @@ ns_section      "ns/servers"
 ns_param         default         NaviServer
 
 ns_section      "ns/server/default/modules"
-ns_param         nscp            nscp.so
-ns_param         nssock          nssock.so
-ns_param         nslog           nslog.so
+ns_param         nscp            nscp
+ns_param         nssock          nssock
+ns_param         nslog           nslog
 
 ns_section     "ns/server/default/adp"
 ns_param        map              /*.adp
