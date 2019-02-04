@@ -1727,6 +1727,7 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
                          (int)Ns_InfoPid(), Ns_ThreadId(), Ns_ThreadGetName(),
                          Ns_LogSeverityName(severity));
     }
+
     if ((flags & LOG_EXPAND) != 0u) {
         Ns_DStringNAppend(dsPtr, "\n    ", 5);
     }

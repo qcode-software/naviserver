@@ -53,26 +53,26 @@ MSDK    = C:\Program Files\Microsoft SDKs\Windows\v7.1
 # with Visual Studio while SetEnv.Cmd ships with the Microsoft SDK.
 
 smash_lib_include = 0
-!if (1 != $(smash_lib_include))
-!message Appending to LIB and INCLUDE.
-# If your call to SetEnv.Cmd is working correctly, you should only
-# need to append to LIB and INCLUDE like this:
-LIB     = $(LIB);$(TCLPATH)\lib
-INCLUDE = $(INCLUDE);$(TCLPATH)\include
-
-# But for reference and to help debugging, these are the full LIB and
+# For reference and to help debugging, these are the full LIB and
 # INCLUDE environment variable settings I need when set from scratch,
 # smashing over any values set by SetEnv.Cmd:
-!elseif "x86" == "$(TARGET_CPU)"
+!if (1 == $(smash_lib_include))
+!if "x86" == "$(TARGET_CPU)"
 !message Smashing over LIB and INCLUDE, for x86 cpu.
-LIB     = $(MSDK)\Lib;$(VC)\Lib;$(TCLPATH)\lib
-INCLUDE = $(MSDK)\Include;$(VC)\include;$(TCLPATH)\include
-
+LIB     = $(MSDK)\Lib;$(VC)\Lib
+INCLUDE = $(MSDK)\Include;$(VC)\include
 !else
 !message Smashing over LIB and INCLUDE, for x64 cpu.
-LIB     = $(MSDK)\Lib\X64;$(VC)\Lib\amd64;$(TCLPATH)\lib
-INCLUDE = $(MSDK)\Include;$(VC)\include;$(TCLPATH)\include
+LIB     = $(MSDK)\Lib\X64;$(VC)\Lib\amd64
+INCLUDE = $(MSDK)\Include;$(VC)\include
 !endif
+!endif
+
+# If your call to SetEnv.Cmd is working correctly, you should only
+# need to append to LIB and INCLUDE like this:
+!message Appending to LIB and INCLUDE.
+LIB     = $(LIB);$(TCLPATH)\lib
+INCLUDE = $(INCLUDE);$(TCLPATH)\include
 
 
 # include/Makefile.win32 uses this DEBUG flag.  For now default it to
@@ -127,16 +127,16 @@ NMAKE	= nmake /nologo TCLPATH="$(TCLPATH)" TCLLIB="$(TCLLIB)" LIB="$(LIB)" DEBUG
 # module/Makefile.win32 files.
 # --atp@piskorski.com, 2014/10/10 17:25 EDT
 
-core_targets = _nsthread _nsd _nscgi _nscp _nsdb _nssock _nslog _nsperm
-module_targets = _nsssl
+core_targets = _nsthread _nsd _nscgi _nscp _nsdb _nssock _nslog _nsperm _nsssl
+module_targets = _NONE-YET
 
 tgts_core_clean = $(core_targets:_=C)
 tgts_modl_clean = $(module_targets:_=C)
 tgts_core_inst  = $(core_targets:_=I)
 tgts_modl_inst  = $(module_targets:_=I)
 
-all: all-core all-mod
-clean: clean-core clean-mod
+all: all-core
+clean: clean-core
 install: install-core install-mod
 
 all-core: $(core_targets)
@@ -152,12 +152,16 @@ install-mod:  $(tgts_modl_inst)
 # Why, I have no idea.  --atp@piskorski.com, 2014/10/11 05:54 EDT
 
 $(core_targets):
-	pushd $(@:_=) & $(NMAKE) & popd
+	if exist "$(@:_=)\Makefile.win32" ( \
+	pushd $(@:_=) & $(NMAKE) -f Makefile.win32 & popd ) else ( \
+	pushd $(@:_=) & $(NMAKE) & popd )
 $(module_targets):
 	if not exist "..\$(@:_=)" (echo No such directory:  ..\$(@:_=)) else ( \
 	pushd "..\$(@:_=)" & $(NMAKE) -f Makefile.win32 & popd )
 $(tgts_core_clean):
-	pushd $(@:C=) & $(NMAKE) clean & popd
+	if exist "$(@:C=)\Makefile.win32" ( \
+	pushd $(@:C=) & $(NMAKE) -f Makefile.win32 clean & popd ) else ( \
+	pushd $(@:C=) & $(NMAKE) clean & popd )
 $(tgts_modl_clean):
 	@if not exist "..\$(@:C=)" (echo No such directory:  ..\$(@:C=)) else ( \
 	pushd "..\$(@:C=)" & $(NMAKE) -f Makefile.win32 clean & popd )

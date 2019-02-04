@@ -452,9 +452,6 @@ typedef int ns_sockerrno_t;
 #  endif
 # endif
 
-# define O_TEXT                     (0)
-# define O_BINARY                   (0)
-
 # define SOCKET_ERROR               (-1)
 
 # define NS_SIGHUP                  (SIGHUP)
@@ -524,6 +521,24 @@ typedef int ns_sockerrno_t;
 #include <stdarg.h>
 #include <assert.h>
 #include <sys/stat.h>
+
+#ifndef O_TEXT
+# define O_TEXT    (0)
+#endif
+#ifndef O_BINARY
+# define O_BINARY  (0)
+#endif
+#ifndef O_CLOEXEC
+# define O_CLOEXEC (0)
+#endif
+#ifndef SOCK_CLOEXEC
+# define SOCK_CLOEXEC (0)
+#endif
+
+#if TCL_MAJOR_VERSION<8 && TCL_MINOR_VERSION<5
+# define NS_TCL_PRE85
+#endif
+
 
 #if !defined(NS_POLL_NFDS_TYPE)
 # define NS_POLL_NFDS_TYPE unsigned int
@@ -740,11 +755,15 @@ typedef int bool;
 /* We assume, HAVE_64BIT implies __WORDSIZE == 64 */
 #if !defined(SCNxPTR)
 # if !defined __PRIPTR_PREFIX
-#  if defined(HAVE_64BIT)
-#   define __PRIPTR_PREFIX  "l"
-#  else
-#   define __PRIPTR_PREFIX  "ll"
-#  endif
+#   if defined(_WIN64)
+#     define __PRIPTR_PREFIX  "I64"
+#   elif defined(_WIN32)
+#     define __PRIPTR_PREFIX  "I32"
+#   elif defined(HAVE_64BIT)
+#     define __PRIPTR_PREFIX  "l"
+#   else
+#     define __PRIPTR_PREFIX  "ll"
+#   endif
 # endif
 # define SCNxPTR      __PRIPTR_PREFIX "x"
 #endif
