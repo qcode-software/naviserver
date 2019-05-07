@@ -1,3 +1,9 @@
+naviserver (4.99.19~20190507-1+deb9u1) stretch; urgency=medium
+
+  * Update from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 07 May 2019 15:41:52 +0100
+
 naviserver (4.99.18~20190204-1+deb9u2) stretch; urgency=medium
 
   * Use Tcl8.6
