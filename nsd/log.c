@@ -43,10 +43,11 @@
  * The following define available flags bits.
  */
 
-#define LOG_ROLL     0x01u
-#define LOG_EXPAND   0x02u
-#define LOG_USEC     0x04u
-#define LOG_COLORIZE 0x08u
+#define LOG_ROLL      0x01u
+#define LOG_EXPAND    0x02u
+#define LOG_USEC      0x04u
+#define LOG_COLORIZE  0x08u
+#define LOG_USEC_DIFF 0x10u
 
 /*
  * The following struct represents a log entry header as stored in the
@@ -320,7 +321,8 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
     NS_NONNULL_ASSERT(tablePtr != NULL);
     NS_NONNULL_ASSERT(idxPtr != NULL);
 
-    valueString = Ns_ConfigString(path, param, "");
+    valueString = Ns_ConfigString(path, param, NS_EMPTY_STRING);
+    assert(valueString != NULL);
 
     len = strlen(valueString);
     if (len > 0u) {
@@ -389,6 +391,9 @@ NsConfigLog(void)
     if (Ns_ConfigBool(path, "logusec", NS_FALSE) == NS_TRUE) {
         flags |= LOG_USEC;
     }
+    if (Ns_ConfigBool(path, "logusecdiff", NS_FALSE) == NS_TRUE) {
+        flags |= LOG_USEC_DIFF;
+    }
     if (Ns_ConfigBool(path, "logexpanded", NS_FALSE) == NS_TRUE) {
         flags |= LOG_EXPAND;
     }
@@ -422,7 +427,7 @@ NsConfigLog(void)
         Ns_SetUpdate(set, "serverlog", file);
     }
 
-    rollfmt = Ns_ConfigString(path, "logrollfmt", "");
+    rollfmt = Ns_ConfigString(path, "logrollfmt", NS_EMPTY_STRING);
 
 }
 
@@ -687,7 +692,7 @@ Ns_Log(Ns_LogSeverity severity, const char *fmt, ...)
     NS_NONNULL_ASSERT(fmt != NULL);
 
     va_start(ap, fmt);
-    Ns_VALog(severity, fmt, &ap);
+    Ns_VALog(severity, fmt, ap);
     va_end(ap);
 }
 
@@ -709,7 +714,7 @@ Ns_Log(Ns_LogSeverity severity, const char *fmt, ...)
  */
 
 void
-Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
+Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
 {
     LogCache *cachePtr;
 
@@ -751,7 +756,7 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list *const vaPtr)
         cachePtr->count++;
 
         offset = (size_t)Ns_DStringLength(&cachePtr->buffer);
-        Ns_DStringVPrintf(&cachePtr->buffer, fmt, *vaPtr);
+        Ns_DStringVPrintf(&cachePtr->buffer, fmt, apSrc);
         length = (size_t)Ns_DStringLength(&cachePtr->buffer) - offset;
 
         entryPtr->severity = severity;
@@ -891,7 +896,7 @@ Ns_Fatal(const char *fmt, ...)
     NS_NONNULL_ASSERT(fmt != NULL);
 
     va_start(ap, fmt);
-    Ns_VALog(Fatal, fmt, &ap);
+    Ns_VALog(Fatal, fmt, ap);
     va_end(ap);
 
     if (nsconf.state.pipefd[1] != 0) {
@@ -917,7 +922,7 @@ Panic(const char *fmt, ...)
     va_list ap;
 
     va_start(ap, fmt);
-    Ns_VALog(Fatal, fmt, &ap);
+    Ns_VALog(Fatal, fmt, ap);
     va_end(ap);
 
     abort();
@@ -1283,7 +1288,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
                 Tcl_WrongNumArgs(interp, 2, objv, "script ?arg?");
                 result = TCL_ERROR;
             } else {
-                cbPtr = Ns_TclNewCallback(interp, Ns_TclCallbackProc,
+                cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)Ns_TclCallbackProc,
                                           objv[2], objc - 3, objv + 3);
                 Ns_AddLogFilter(LogToTcl, cbPtr, Ns_TclFreeCallback);
                 Ns_TclSetAddrObj(Tcl_GetObjResult(interp), filterType, cbPtr);
@@ -1433,6 +1438,12 @@ Ns_LogRoll(void)
          */
 
         NsAsyncWriterQueueDisable(NS_FALSE);
+#ifdef _WIN32
+        /* On Windows you MUST close stdout and stderr now, or
+           Tcl_FSRenameFile() will fail with "Permission denied". */
+        ns_close(STDOUT_FILENO);
+        ns_close(STDERR_FILENO);
+#endif
 
         pathObj = Tcl_NewStringObj(file, -1);
         Tcl_IncrRefCount(pathObj);
@@ -1447,8 +1458,10 @@ Ns_LogRoll(void)
         }
         Tcl_DecrRefCount(pathObj);
 
-        Ns_Log(Notice, "log: re-opening log file '%s'", file);
         status = LogOpen();
+        /* On Windows, calling Ns_Log() BEFORE LogOpen() crashes the server
+           with a Microsoft assertion failure:  (_osfile(fh) & FOPEN) */
+        Ns_Log(Notice, "log: re-opening log file '%s'", file);
 
         NsAsyncWriterQueueEnable();
     }
@@ -1487,7 +1500,8 @@ NsLogOpen(void)
                  file, strerror(errno));
     }
     if ((flags & LOG_ROLL) != 0u) {
-        (void) Ns_RegisterAtSignal((Ns_Callback *) Ns_LogRoll, NULL);
+        Ns_Callback *proc = (Ns_Callback *)(ns_funcptr_t)Ns_LogRoll;
+        (void) Ns_RegisterAtSignal(proc, NULL);
     }
     logOpenCalled = NS_TRUE;
 }
@@ -1715,6 +1729,33 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     if ((flags & LOG_USEC) != 0u) {
         Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
         Ns_DStringPrintf(dsPtr, ".%06ld]", stamp->usec);
+    }
+    if ((flags & LOG_USEC_DIFF) != 0u) {
+        Ns_Time        now;
+        static Ns_Time last = {0, 0};
+
+        Ns_GetTime(&now);
+        /*
+         * Initialize if needed.
+         */
+        if (last.sec == 0) {
+            last.sec = now.sec;
+            last.usec = now.usec;
+        }
+        /*
+         * Skip last char.
+         */
+        Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
+        /*
+         * Handle change in seconds.
+         */
+        if (last.sec < now.sec) {
+            last.sec = now.sec;
+            Ns_DStringPrintf(dsPtr, "-%.6ld]", now.usec + (1000000 - last.usec));
+        } else {
+            Ns_DStringPrintf(dsPtr, "-%.6ld]", now.usec-last.usec);
+        }
+        last.usec = now.usec;
     }
     if ((flags & LOG_COLORIZE) != 0u) {
         Ns_DStringPrintf(dsPtr, "[%d.%" PRIxPTR "][%s] %s%s%s: ",

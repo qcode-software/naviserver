@@ -6,10 +6,10 @@
 
 [description]
 
-These commands are used to construct a complete HTTP response and return
-it to the requesting client. The response may be transcoded into a different
-encoding, compressed and/or sent in chunks as automatically negotiated by
-the client and server settings.
+These are the lower elevel commands are used to construct a complete
+HTTP response and return it to the requesting client. The response may
+be transcoded into a different encoding, compressed and/or sent in
+chunks as automatically negotiated by the client and server settings.
 
 [para]
 Unless otherwise noted, these commands return [const true] if the command
@@ -23,6 +23,9 @@ by the [const fastpath] settings, that define, how static files are
 served. The fastpath settings are described in the [sectref CONFIGURATION]
 section at the end of this page.
 
+[para] Note that there are additional higher level commands are
+designed to ease consistent behavior in common succes, redirect or
+error situations (see [cmd returnstatus-cmds]).
 
 [section {COMMANDS}]
 [list_begin definitions]
@@ -221,11 +224,11 @@ Use the NaviServer file cache for file deliveries
 
 [def cachemaxentry]
 Maximum size of a single entry, when parameter [const cache] is true
-(integer, defaults to 8192)
+(integer, defaults to 8kB)
 
 [def cachemaxsize]
-Size of the cache, when parameter [const cache] is true
-(integer, defaults to 10240000)
+Size of the cache, when parameter [const cache] is true;
+(integer, defaults to 10MB)
 
 [def mmap]
 Use mmap for file deliveries (and cache is false)
@@ -314,7 +317,7 @@ Example setting: "/usr/bin/yui-compressor --type js".  (string, defaults to "")
 [list_begin definitions]
 
 [def directoryadp]
-Name of an adp page to use to display directory listings.
+Name of an ADP page to use to display directory listings.
 One can either specify [const directoryadp],
 or [const directoryproc], but not both.
 (string, defaults to "")
@@ -355,5 +358,6 @@ Defines absolute path to server's home directory.
 	ns_register ns_adp_puts ns_conn ns_writer]
 
 [keywords "server built-in" return response status charset encoding configuration \
-	fastpath mmap cache gzip brotli serverdir pagedir writer minify]
+	fastpath mmap cache gzip brotli serverdir pagedir writer \
+	minify]
 [manpage_end]

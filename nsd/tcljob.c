@@ -580,7 +580,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         assert(queue != NULL);
 
         /*
-         * Create a new job and add to the Thread Pool's list of jobs.
+         * Create a new job and add it to the Thread Pool's list of jobs.
          */
 
         jobPtr = NewJob((itPtr->servPtr != NULL) ? itPtr->servPtr->server : NULL,
@@ -590,7 +590,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             || queue->req == QUEUE_REQ_DELETE) {
             Ns_TclPrintfResult(interp,
                                "The specified queue is being deleted or "
-                             "the system is stopping.");
+                               "the system is stopping.");
             FreeJob(jobPtr);
             result = TCL_ERROR;
             goto releaseQueue;
@@ -1115,7 +1115,7 @@ JobQueuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 static int
 JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    Queue        *queue;
+    Queue        *queue = NULL;
     int           result = TCL_OK;
     Ns_ObjvSpec   args[] = {
         {"queueId", ObjvQueue, &queue,   NULL},
@@ -1130,6 +1130,7 @@ JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         const Tcl_HashEntry  *hPtr;
         Tcl_HashSearch        search;
 
+        assert(queue != NULL);
         /*
          * Create a Tcl List to hold the list of jobs.
          */

@@ -267,6 +267,8 @@ ConfigServerTcl(const char *server)
         int         n;
         Ns_Set     *set;
 
+        Ns_ThreadSetName("-main:%s-", server);
+
         path = Ns_ConfigGetPath(server, NULL, "tcl", (char *)0L);
         set = Ns_ConfigCreateSection(path);
 
@@ -632,7 +634,7 @@ Ns_TclDestroyInterp(Tcl_Interp *interp)
 
     itPtr = NsGetInterpData(interp);
     /*
-     * If this is an NaviServer interp, clean it up
+     * If this is a NaviServer interp, clean it up
      */
 
     if (itPtr != NULL) {
@@ -1064,7 +1066,7 @@ ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const
             if (when == NS_TCL_TRACE_NONE) {
                 when  = (Ns_TclTraceType)flags;
             }
-            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclTraceProc,
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclTraceProc,
                                       scriptObj, remain, objv + (objc - remain));
             if (Ns_TclRegisterTrace(servPtr->server, NsTclTraceProc, cbPtr, when) != NS_OK) {
                 result = TCL_ERROR;
@@ -1478,7 +1480,7 @@ ICtlGetTracesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
              (tracePtr != NULL);
              tracePtr = tracePtr->nextPtr) {
             if (tracePtr->when == when) {
-                Ns_GetProcInfo(&ds, (Ns_Callback *)tracePtr->proc, tracePtr->arg);
+                Ns_GetProcInfo(&ds, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
             }
         }
         Tcl_DStringResult(interp, &ds);
@@ -1604,7 +1606,7 @@ NsTclAtCloseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
         Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
         result = TCL_ERROR;
 
-    } else if (NsConnRequire(interp, NULL) != NS_OK) {
+    } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
@@ -1690,6 +1692,7 @@ NsTclInitServer(const char *server)
         }
         Ns_TclDeAllocateInterp(interp);
     }
+    Ns_ThreadSetName("-main-");
 }
 
 /*
@@ -2108,6 +2111,7 @@ NewInterpData(Tcl_Interp *interp, NsServer *servPtr)
             NsTclInitQueueType();
             NsTclInitAddrType();
             NsTclInitTimeType();
+            NsTclInitMemUnitType();
             NsTclInitKeylistType();
             initialized = NS_TRUE;
         }
@@ -2178,7 +2182,7 @@ UpdateInterp(NsInterp *itPtr)
      * rare and likley expensive to evaluate if the virtual server
      * contains significant state.
      *
-     * In the codeblock blelow, we want to avoid running the blueprint update
+     * In the codeblock below, we want to avoid running the blueprint update
      * under the lock. Therefore we copy the blueprint script with ns_strdup.
      */
     Ns_RWLockRdLock(&servPtr->tcl.lock);
@@ -2298,7 +2302,7 @@ LogTrace(const NsInterp *itPtr, const TclTrace *tracePtr, Ns_TclTraceType why)
         Ns_DStringInit(&ds);
         Ns_DStringNAppend(&ds, GetTraceLabel(why), -1);
         Ns_DStringNAppend(&ds, " ", 1);
-        Ns_GetProcInfo(&ds, (Ns_Callback *)tracePtr->proc, tracePtr->arg);
+        Ns_GetProcInfo(&ds, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
         Ns_Log(Debug, "ns:interptrace[%s]: %s",
                itPtr->servPtr->server, Ns_DStringValue(&ds));
         Ns_DStringFree(&ds);

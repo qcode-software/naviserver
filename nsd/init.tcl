@@ -84,6 +84,14 @@ proc __ns_sourcelibs {{modname ""}} {
     set sharedlib  [ns_library shared  $modname]
     set privatelib [ns_library private $modname]
 
+    foreach name {sharedlib privatelib} {
+        set lib [set $name]
+        if {![file isdirectory $lib] || ![file readable $lib]} {
+            set level [expr {$modname eq "" ? "warning" : "notice"}]
+            ns_log $level "$lib is not a readable directory (ignored)"
+        }
+    }
+
     set files ""
 
     #

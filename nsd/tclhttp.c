@@ -43,6 +43,10 @@
  */
 #define CHUNK_SIZE 16384
 
+static const char *contentEncodingString  = "Content-Encoding";
+static const char *contentTypeString      = "Content-Type";
+static const char *errorCodeTimeoutString = "NS_TIMEOUT";
+
 /*
  * Local functions defined in this file
  */
@@ -172,12 +176,6 @@ static Tcl_ObjCmdProc HttpQueueObjCmd;
 static Tcl_ObjCmdProc HttpRunObjCmd;
 static Tcl_ObjCmdProc HttpWaitObjCmd;
 
-
-/*
- * Static variables defined in this file.
- */
-static Ns_TaskQueue *session_queue;
-
 
 /*
  *----------------------------------------------------------------------
@@ -278,7 +276,7 @@ GetResultObj(
         bool binary = NS_TRUE;
 
         if (httpPtr->replyHeaders != NULL) {
-            const char *contentEncoding = Ns_SetIGet(httpPtr->replyHeaders, "Content-Encoding");
+            const char *contentEncoding = Ns_SetIGet(httpPtr->replyHeaders, contentEncodingString);
 
             /*
              * Is the content gzipped encoded? If so, it is binary. If not
@@ -286,7 +284,7 @@ GetResultObj(
              */
 
             if (contentEncoding == NULL || strncmp(contentEncoding, "gzip", 4u) != 0) {
-                const char *contentType = Ns_SetIGet(httpPtr->replyHeaders, "Content-Type");
+                const char *contentType = Ns_SetIGet(httpPtr->replyHeaders, contentTypeString);
 
                 if (contentType != NULL) {
                     /*
@@ -450,18 +448,19 @@ HttpWaitObjCmd(
     char        *id = NULL,
                 *outputFileName = NULL;
     Ns_HttpTask *httpPtr = NULL;
-    int          result, spoolLimit = -1, decompress = 0;
+    int          result, decompress = 0;
+    Tcl_WideInt  spoolLimit = -1;
 
     Ns_ObjvSpec opts[] = {
-        {"-timeout",    Ns_ObjvTime,   &timeoutPtr,      NULL},
-        {"-headers",    Ns_ObjvObj,    &replyHeadersObj, NULL},
-        {"-elapsed",    Ns_ObjvObj,    &elapsedVarPtr,   NULL},
-        {"-result",     Ns_ObjvObj,    &resultVarPtr,    NULL},
-        {"-status",     Ns_ObjvObj,    &statusVarPtr,    NULL},
-        {"-file",       Ns_ObjvObj,    &fileVarPtr,      NULL},
-        {"-outputfile", Ns_ObjvString, &outputFileName,  NULL},
-        {"-spoolsize",  Ns_ObjvInt,    &spoolLimit,      NULL},
-        {"-decompress", Ns_ObjvBool,   &decompress,      INT2PTR(NS_TRUE)},
+        {"-timeout",    Ns_ObjvTime,    &timeoutPtr,      NULL},
+        {"-headers",    Ns_ObjvObj,     &replyHeadersObj, NULL},
+        {"-elapsed",    Ns_ObjvObj,     &elapsedVarPtr,   NULL},
+        {"-result",     Ns_ObjvObj,     &resultVarPtr,    NULL},
+        {"-status",     Ns_ObjvObj,     &statusVarPtr,    NULL},
+        {"-file",       Ns_ObjvObj,     &fileVarPtr,      NULL},
+        {"-outputfile", Ns_ObjvString,  &outputFileName,  NULL},
+        {"-spoolsize",  Ns_ObjvMemUnit, &spoolLimit,      NULL},
+        {"-decompress", Ns_ObjvBool,    &decompress,      INT2PTR(NS_TRUE)},
         {NULL, NULL,  NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -507,7 +506,7 @@ HttpWaitObjCmd(
 
         assert(httpPtr->replyHeaders != NULL);
 
-        httpPtr->spoolLimit = spoolLimit;
+        httpPtr->spoolLimit = (int)spoolLimit;
 
         /*
          * When the outputFileName is given store it in the task structure. It
@@ -533,11 +532,11 @@ HttpWaitObjCmd(
              */
             if (status == NS_TIMEOUT) {
                 Ns_TclPrintfResult(interp, "timeout waiting for task");
-                Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+                Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
             } else {
                 Ns_TclPrintfResult(interp, "error during task: %s", httpPtr->error);
             }
-            Ns_Log(Ns_LogTaskDebug, "calling HttpCancel, since Ns_TaskWait returned an timeout");
+            Ns_Log(Ns_LogTaskDebug, "calling HttpCancel, since Ns_TaskWait returned a timeout");
             HttpCancel(httpPtr);
             result = TCL_ERROR;
 
@@ -554,7 +553,7 @@ HttpWaitObjCmd(
             if (httpPtr->error != NULL) {
                 Ns_TclPrintfResult(interp, "ns_http failed: %s", httpPtr->error);
                 if (httpPtr->finalSockState == NS_SOCK_TIMEOUT) {
-                    Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+                    Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
                 }
                 result = TCL_ERROR;
             } else {
@@ -870,24 +869,25 @@ HttpQueueCmd(
     Ns_Set        *requestHdrPtr = NULL;
     Tcl_Obj       *bodyPtr = NULL;
     Ns_Time       *timeoutPtr = NULL;
-    int            keepInt = 0, decompress = 0, spoolLimit = -1;
+    int            keepInt = 0, decompress = 0;
+    Tcl_WideInt    spoolLimit = -1;
 
     Ns_ObjvSpec opts[] = {
-        {"-body",             Ns_ObjvObj,    &bodyPtr,        NULL},
-        {"-body_file",        Ns_ObjvString, &bodyFileName,   NULL},
-        {"-cafile",           Ns_ObjvString, &caFile,         NULL},
-        {"-capath",           Ns_ObjvString, &caPath,         NULL},
-        {"-cert",             Ns_ObjvString, &cert,           NULL},
-        {"-decompress",       Ns_ObjvBool,   &decompress,     INT2PTR(NS_TRUE)},
-        {"-donecallback",     Ns_ObjvString, &doneCallback,   NULL},
-        {"-headers",          Ns_ObjvSet,    &requestHdrPtr,  NULL},
-        {"-hostname",         Ns_ObjvString, &sni_hostname,   NULL},
-        {"-keep_host_header", Ns_ObjvBool,   &keepInt,        INT2PTR(NS_TRUE)},
-        {"-method",           Ns_ObjvString, &method,         NULL},
-        {"-outputfile",       Ns_ObjvString, &outputFileName, NULL},
-        {"-spoolsize",        Ns_ObjvInt,    &spoolLimit,      NULL},
-        {"-timeout",          Ns_ObjvTime,   &timeoutPtr,     NULL},
-        {"-verify",           Ns_ObjvBool,   &verifyInt,      NULL},
+        {"-body",             Ns_ObjvObj,     &bodyPtr,        NULL},
+        {"-body_file",        Ns_ObjvString,  &bodyFileName,   NULL},
+        {"-cafile",           Ns_ObjvString,  &caFile,         NULL},
+        {"-capath",           Ns_ObjvString,  &caPath,         NULL},
+        {"-cert",             Ns_ObjvString,  &cert,           NULL},
+        {"-decompress",       Ns_ObjvBool,    &decompress,     INT2PTR(NS_TRUE)},
+        {"-donecallback",     Ns_ObjvString,  &doneCallback,   NULL},
+        {"-headers",          Ns_ObjvSet,     &requestHdrPtr,  NULL},
+        {"-hostname",         Ns_ObjvString,  &sni_hostname,   NULL},
+        {"-keep_host_header", Ns_ObjvBool,    &keepInt,        INT2PTR(NS_TRUE)},
+        {"-method",           Ns_ObjvString,  &method,         NULL},
+        {"-outputfile",       Ns_ObjvString,  &outputFileName, NULL},
+        {"-spoolsize",        Ns_ObjvMemUnit, &spoolLimit,      NULL},
+        {"-timeout",          Ns_ObjvTime,    &timeoutPtr,     NULL},
+        {"-verify",           Ns_ObjvBool,    &verifyInt,      NULL},
         {NULL, NULL,  NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -930,7 +930,7 @@ HttpQueueCmd(
         if (decompress != 0) {
             httpPtr->flags |= NS_HTTP_FLAG_DECOMPRESS;
         }
-        httpPtr->spoolLimit = spoolLimit;
+        httpPtr->spoolLimit = (int)spoolLimit;
 
         if ((run || httpPtr->doneCallback != NULL)
             && CheckReplyHeaders(interp, httpPtr) != NS_OK) {
@@ -965,7 +965,7 @@ HttpQueueCmd(
             if (httpPtr->error != NULL) {
                 Ns_TclPrintfResult(interp, "ns_http failed: %s", httpPtr->error);
                 if (httpPtr->finalSockState == NS_SOCK_TIMEOUT) {
-                    Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+                    Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
                 }
                 result = TCL_ERROR;
             } else {
@@ -991,6 +991,7 @@ HttpQueueCmd(
             HttpClose(httpPtr);
 
         } else {
+            static Ns_TaskQueue *session_queue = NULL;
 
             /*
              * Enqueue the task and return the id of the queued item.
@@ -1162,7 +1163,7 @@ ProcessReplyHeaderFields(
 
     Ns_Log(Ns_LogTaskDebug, "ProcessReplyHeaderFields %p", (void *)httpPtr->replyHeaders);
 
-    encString = Ns_SetIGet(httpPtr->replyHeaders, "Content-Encoding");
+    encString = Ns_SetIGet(httpPtr->replyHeaders, contentEncodingString);
 
     if (encString != NULL && strncmp("gzip", encString, 4u) == 0) {
       httpPtr->flags |= NS_HTTP_FLAG_GZIP_ENCODING;
@@ -1334,7 +1335,7 @@ Ns_HttpCheckSpool(
                      *   than the spool limit.
                      */
                     if (httpPtr->spoolFileName != NULL) {
-                        fd = ns_open(httpPtr->spoolFileName, O_WRONLY|O_CREAT, 0644);
+                        fd = ns_open(httpPtr->spoolFileName, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
                     } else {
                         /*
                          * Create a temporary spool file and remember its fd
@@ -1604,7 +1605,7 @@ WaitState(
           pollfd.fd = sock;
 
           for (;;) {
-              int pollto = 1000;
+              int pollTimeout = 1000;
               /* fprintf(stderr, "##### WaitState: timeout %p events %.4x\n", (void*)timeout, pollfd.events);*/
 
               if (timeout != NULL) {
@@ -1617,12 +1618,12 @@ WaitState(
                   Ns_GetTime(&now);
 
                   if (Ns_DiffTime(timeout, &now, &diff) > 0) {
-                      pollto = (int)(diff.sec * 1000 + diff.usec / 1000 + 1);
+                      pollTimeout = (int)(diff.sec * 1000 + diff.usec / 1000 + 1);
                   }
-                  //fprintf(stderr, "##### WaitState: pollto %d events %.4x\n", pollto, pollfd.events);
-                  retval = ns_poll(&pollfd, 1, pollto);
-                  /*fprintf(stderr, "##### call poll on %d %" PRId64 ".%06ld events %.4x pollto %d => %d revents %.4x\n",
-                    sock, (int64_t) timeout->sec, timeout->usec, pollfd.events, pollto, retval, pollfd.revents);*/
+                  //fprintf(stderr, "##### WaitState: pollTimeout %d events %.4x\n", pollTimeout, pollfd.events);
+                  retval = ns_poll(&pollfd, 1, pollTimeout);
+                  /*fprintf(stderr, "##### call poll on %d %" PRId64 ".%06ld events %.4x pollTimeout %d => %d revents %.4x\n",
+                    sock, (int64_t) timeout->sec, timeout->usec, pollfd.events, pollTimeout, retval, pollfd.revents);*/
                   // ns_http run http://naviserver.sourceforge.net/n/naviserver/files/commandlist.htmlx
                   // ns_http run https://naviserver.sourceforge.net/n/naviserver/files/commandlist.html
                   // ns_http run https://naviserver.sourceforge.io/n/naviserver/files/commandlist.html
@@ -1636,7 +1637,7 @@ WaitState(
                    * No timeout is specified. Retry, until we run into an
                    * error or success.
                    */
-                  retval = ns_poll(&pollfd, 1, pollto);
+                  retval = ns_poll(&pollfd, 1, pollTimeout);
                   if (retval != 0) {
                       break;
                   }
@@ -1685,7 +1686,7 @@ EnsureWritable(
     if (rc != NS_OK) {
         if (rc == NS_TIMEOUT) {
             Ns_TclPrintfResult(interp, "ns_http failed: timeout");
-            Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+            Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
         } else {
             Ns_TclPrintfResult(interp, "connect to \"%s\" failed: %s",
                                url, ns_sockstrerror(ns_sockerrno));
@@ -1735,7 +1736,7 @@ HttpConnect(
     int              result, uaFlag = -1, bodyFileFd = 0;
     off_t            bodyFileSize = 0;
     unsigned short   defaultPort, portNr;
-    char            *url2, *protocol, *host, *portString, *path, *tail;
+    char            *url2, *protocol, *host, *portString = (char*)NS_EMPTY_STRING, *path, *tail;
     const char      *contentType = NULL;
     Tcl_DString     *dsPtr;
     static uint64_t  httpClientRequestCount = 0u;
@@ -1835,7 +1836,7 @@ HttpConnect(
         }
 
         if (hdrPtr != NULL) {
-            contentType = Ns_SetIGet(hdrPtr, "Content-Type");
+            contentType = Ns_SetIGet(hdrPtr, contentTypeString);
         }
         if (contentType == NULL) {
             /*
@@ -1866,7 +1867,7 @@ HttpConnect(
             }
             bodyFileSize = bodyStat.st_size;
 
-            bodyFileFd = ns_open(bodyFileName, O_RDONLY, 0);
+            bodyFileFd = ns_open(bodyFileName, O_RDONLY | O_CLOEXEC, 0);
             if (unlikely(bodyFileFd == NS_INVALID_FD)) {
                 Ns_TclPrintfResult(interp, "cannot open file %s", bodyFileName);
                 goto fail;
@@ -2564,7 +2565,7 @@ CallDoneCallback(
 
     if (httpPtr->finalSockState == NS_SOCK_TIMEOUT) {
         Ns_Log(Ns_LogTaskDebug, "CallDoneCallback -> NS_SOCK_TIMEOUT (error <%s>)", httpPtr->error);
-        Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+        Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
         resultObj = Tcl_NewStringObj(httpPtr->error, -1);
         result = TCL_ERROR;
     } else {

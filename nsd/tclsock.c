@@ -331,9 +331,9 @@ NsTclSockNReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 int
 NsTclSockListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char          *addr;
+    char          *addr = (char*)NS_EMPTY_STRING;
     int            result;
-    unsigned short port;
+    unsigned short port = 0u;
     Ns_ObjvSpec    args[] = {
         {"address", Ns_ObjvString, &addr, NULL},
         {"port",    Ns_ObjvUShort, &port, NULL},
@@ -485,8 +485,8 @@ NsTclSockCheckObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 int
 NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char          *lhost = NULL, *host;
-    unsigned short lport = 0u, port;
+    char          *lhost = NULL, *host = (char*)NS_EMPTY_STRING;
+    unsigned short lport = 0u, port = 0u;
     int            nonblock = 0, async = 0, msec = -1, result;
     Ns_Time       *timeoutPtr = NULL;
 
@@ -788,7 +788,7 @@ NsTclSocketPairObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int UNU
 int
 NsTclSockCallbackObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char           *script, *sockId, *whenString;
+    char           *script, *sockId, *whenString = (char*)NS_EMPTY_STRING;
     NS_SOCKET       sock;
     int             result = TCL_OK;
     size_t          scriptLength;
@@ -900,8 +900,8 @@ NsTclSockCallbackObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 int
 NsTclSockListenCallbackObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char           *addr, *script;
-    unsigned short  port;
+    char           *addr =  (char*)NS_EMPTY_STRING, *script = (char*)NS_EMPTY_STRING;
+    unsigned short  port = 0u;
     int             result = TCL_OK;
     Ns_ObjvSpec     args[] = {
         {"address", Ns_ObjvString, &addr, NULL},
@@ -1060,7 +1060,6 @@ GetSet(Tcl_Interp *interp, const char *flist, int write, fd_set **setPtrPtr,
        fd_set *setPtr, int *const maxPtr)
 {
     int          fargc, result;
-    NS_SOCKET    sock;
     const char **fargv = NULL;
 
     NS_NONNULL_ASSERT(interp != NULL);
@@ -1089,6 +1088,8 @@ GetSet(Tcl_Interp *interp, const char *flist, int write, fd_set **setPtrPtr,
          */
 
         while (fargc-- > 0) {
+            NS_SOCKET sock = NS_INVALID_SOCKET;
+
             if (Ns_TclGetOpenFd(interp, fargv[fargc],
                                 write, (int *) &sock) != TCL_OK) {
                 result = TCL_ERROR;
@@ -1100,6 +1101,8 @@ GetSet(Tcl_Interp *interp, const char *flist, int write, fd_set **setPtrPtr,
                 *maxPtr = sock;
             }
 #endif
+            assert(sock != NS_INVALID_SOCKET);
+
             FD_SET(sock, setPtr);
         }
         Tcl_Free((char *) fargv);

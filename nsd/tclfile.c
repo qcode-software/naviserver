@@ -250,7 +250,7 @@ int
 NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
-    char        *templateString = NULL;
+    char        *templateString = (char *)NS_EMPTY_STRING;
     Ns_ObjvSpec  args[] = {
         {"?template", Ns_ObjvString, &templateString, NULL},
         {NULL, NULL, NULL, NULL}
@@ -295,7 +295,7 @@ NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
 int
 NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int         pid, sig, nocomplain = (int)NS_FALSE, result = TCL_OK;
+    int         pid = 0, sig = 0, nocomplain = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-nocomplain", Ns_ObjvBool,  &nocomplain, INT2PTR(NS_TRUE)},
         {NULL, NULL,  NULL, NULL}
@@ -396,7 +396,7 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
     };
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK
-        || NsConnRequire(interp, NULL) != NS_OK) {
+        || NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
         result = TCL_ERROR;
 
     } else if (Ns_TclGetOpenChannel(interp, fileidString, 0, NS_TRUE, &chan) != TCL_OK) {

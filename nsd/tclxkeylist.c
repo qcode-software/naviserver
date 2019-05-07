@@ -78,7 +78,7 @@ TclX_WrongArgs(Tcl_Interp *interp, Tcl_Obj *commandNameObj, const char *msg)
 
     Ns_TclPrintfResult(interp, "wrong # args: %s %s",
                        commandName,
-                       (*msg != '\0') ? msg : "");
+                       (*msg != '\0') ? msg : NS_EMPTY_STRING);
     return TCL_ERROR;
 }
 
@@ -419,7 +419,7 @@ typedef struct {
 #define KEYEDLIST_ARRAY_INCR_SIZE 16
 
 /*
- * Macros to validate an keyed list object or internal representation
+ * Macros to validate a keyed list object or internal representation
  */
 #ifdef TCLX_DEBUG
 #   define KEYL_OBJ_ASSERT(keylAPtr) {\

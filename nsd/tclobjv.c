@@ -59,9 +59,16 @@ static int GetOptIndexObjvSpec(Tcl_Obj *obj, Ns_ObjvSpec *tablePtr, int *idxPtr)
 static int GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const Ns_SubCmdSpec *tablePtr, int *idxPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
+static void UpdateStringOfMemUnit(Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1);
+
+static int SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 /*
  * Static variables defined in this file.
  */
+static const Tcl_ObjType *intTypePtr;
 
 static Tcl_ObjType specType = {
     "ns:spec",
@@ -69,6 +76,14 @@ static Tcl_ObjType specType = {
     DupSpec,
     UpdateStringOfSpec,
     SetSpecFromAny
+};
+
+static Tcl_ObjType memUnitType = {
+    "ns:mem_unit",
+    NULL,
+    NULL,
+    UpdateStringOfMemUnit,
+    SetMemUnitFromAny
 };
 
 
@@ -626,6 +641,166 @@ Ns_ObjvTime(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
         Ns_Time **dest = spec->dest;
 
         result = Ns_TclGetTimePtrFromObj(interp, objv[0], dest);
+        if (likely(result == TCL_OK)) {
+            *objcPtr -= 1;
+        }
+    } else {
+        result = TCL_ERROR;
+    }
+
+    return result;
+}
+
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TclGetTimeFromObj --
+ *
+ *      Return the internal value of an Ns_Time Tcl_Obj.  If the value is
+ *      specified as integer, the value is interpreted as seconds.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR if not a valid Ns_Time.
+ *
+ * Side effects:
+ *      Object is converted to Ns_Time type if necessary.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+NsTclInitMemUnitType(void)
+{
+    intTypePtr = Tcl_GetObjType("int");
+    if (intTypePtr == NULL) {
+        Tcl_Panic("NsTclInitObjs: no int type");
+    }
+    Tcl_RegisterObjType(&memUnitType);
+}
+
+static void
+UpdateStringOfMemUnit(Tcl_Obj *objPtr)
+{
+    long     memUnit;
+    int      len;
+    char     buf[(TCL_INTEGER_SPACE) + 1];
+
+    NS_NONNULL_ASSERT(objPtr != NULL);
+
+    memUnit = PTR2INT((void *) &objPtr->internalRep);
+    len = ns_uint64toa(buf, (uint64_t)memUnit);
+    Ns_TclSetStringRep(objPtr, buf, len);
+}
+
+static int
+SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
+{
+    Tcl_WideInt memUnit = 0;
+    int         result = TCL_OK;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+
+    if (objPtr->typePtr == intTypePtr) {
+        long longValue;
+        /*
+         * When the type is "int", usec is 0.
+         */
+        if (Tcl_GetLongFromObj(interp, objPtr, &longValue) != TCL_OK) {
+            result = TCL_ERROR;
+        } else {
+            memUnit = longValue;
+        }
+    } else {
+        Ns_ReturnCode status;
+
+        status = Ns_StrToMemUnit(Tcl_GetString(objPtr), &memUnit);
+        if (status == NS_ERROR) {
+            result = TCL_ERROR;
+        }
+    }
+
+    if (result == TCL_OK) {
+        Ns_TclSetTwoPtrValue(objPtr, &memUnitType, INT2PTR(memUnit), NULL);
+    }
+
+    return result;
+}
+
+static int
+Ns_TclGetMemUnitFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Tcl_WideInt *memUnitPtr)
+{
+    int  result = TCL_OK;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+    NS_NONNULL_ASSERT(memUnitPtr != NULL);
+
+    /*
+     * Many values come in already as int values. No need to convert
+     * these to memUnitType.
+     */
+    if (objPtr->typePtr == intTypePtr) {
+        int intValue;
+
+        if (likely(Tcl_GetIntFromObj(interp, objPtr, &intValue) != TCL_OK)) {
+            result = TCL_ERROR;
+        } else {
+            *memUnitPtr = (Tcl_WideInt)intValue;
+        }
+    } else {
+        /*
+         * When the values are already in memUnitType, get the value
+         * directly, otherwise convert.
+         */
+        if (objPtr->typePtr != &memUnitType) {
+            if (unlikely(Tcl_ConvertToType(interp, objPtr, &memUnitType) != TCL_OK)) {
+                Ns_TclPrintfResult(interp, "invalid memory unit '%s'; "
+                                   "valid units kB, MB, GBB, KiB, MiB, and GiB",
+                                   Tcl_GetString(objPtr));
+                result = TCL_ERROR;
+            }
+        }
+        if (likely(objPtr->typePtr == &memUnitType)) {
+            *memUnitPtr =  (Tcl_WideInt)objPtr->internalRep.twoPtrValue.ptr1;
+        }
+    }
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ObjvMemUnit --
+ *
+ *      Consume exactly one argument, returning a pointer to the
+ *      memUnit (Tcl_WideInt) into *spec->dest.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR.
+ *
+ * Side effects:
+ *          None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+Ns_ObjvMemUnit(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
+            Tcl_Obj *const* objv)
+{
+    int result;
+
+    NS_NONNULL_ASSERT(spec != NULL);
+
+    if (likely(*objcPtr > 0)) {
+        Tcl_WideInt *dest = spec->dest;
+
+        result = Ns_TclGetMemUnitFromObj(interp, objv[0], dest);
         if (likely(result == TCL_OK)) {
             *objcPtr -= 1;
         }
@@ -1449,7 +1624,7 @@ WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *inter
     if (argSpec != NULL) {
         for (specPtr = argSpec; specPtr->key != NULL; ++specPtr) {
             Ns_DStringPrintf(&ds, "%s%s ", specPtr->key,
-                             (*specPtr->key == '?') ? "?" : "");
+                             (*specPtr->key == '?') ? "?" : NS_EMPTY_STRING);
         }
     }
     if (ds.length > 0) {
@@ -1588,7 +1763,7 @@ GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const N
             entryPtr++;
             while (entryPtr->key != NULL) {
                 if ((entryPtr+1)->key == NULL) {
-                    Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : ""),
+                    Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : NS_EMPTY_STRING),
                                            " or ", entryPtr->key, (char *)0L);
                 } else if (entryPtr->key != NULL) {
                     Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, (char *)0L);

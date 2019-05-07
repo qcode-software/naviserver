@@ -41,17 +41,12 @@ NaviServer is reasonably portable and known to compile and run on the following 
 
 It's likely NaviServer can compile on other systems and/or higher or  lower
 numbered versions but this has not been extensively tested.  The primary
-development platforms for NaviServer at AOL are IRIX 6.4  and Solaris 7.
-We also use HP/UX 10.20/11.0, Solaris 2.6, and VA Linux 6.2.1 (Linux 2.2).
+development platforms for NaviServer is Linux.
 
-
-[para]
-
-
-You will need a [emph {C compiler}].  The best one to use is GNU GCC from
-[uri http://www.gnu.org] and its mirrors.  The versions
-we use are 2.95.2.  NaviServer (and the  included Tcl libraries) are written
-entirely in ANSI standard C.
+[para] You will need a [emph {C compiler}].  The best one to use is
+GNU GCC from [uri http://www.gnu.org] and its mirrors or clang.
+NaviServer (and the included Tcl libraries) are written entirely in
+ANSI standard C.
 
 [para]
 
@@ -165,39 +160,53 @@ file for any additional information.
 
 [section {Configuring}]
 
-The installation directory contains several config files under /usr/local/ns/conf installation directory.
-This configuration will:
+The installation directory contains several configuration files under
+/usr/local/ns/conf installation directory.
+A simple configuration to start with is nsd-config.tcl, which is used
+below. A more complete reference of the available parameter is
+sample-config, a very short configuration file is simple-config.tcl.
 
+The most basic configuration parameters are the port and listening
+addresses, which are set in nsd-config.tcl as follows:
 
 [list_begin enum]
 
-  [enum]Listen for HTTP connections on your computer's  primary interface at port 8080.  To use another port  and/or
-        select interfaces, you can set the "post" and "address" parameters.
+  [enum] Listen for HTTP connections on your computer's primary
+        interface at port 8080.  To use another port and/or select
+        interfaces, you can set the [term port] and [term address]
+        parameters. For details how to configure the networking setup
+	of NaviServer, see [term nssock] (for HTTP) and [term nsssl]
+        (for HTTPS).
 
-  [enum]Check security settings for [term nscp] (Control Port module) and listen on localhost:2080 if they are set.
-
+  [enum] Check security settings for [term nscp] (Control Port module)
+  and listen on localhost:4080 if they are set.
 
 [list_end]
 
 [para]
 
 
-Note: Some modules have been disabled in the sample nsd.tcl  for security
-reasons. They are [emph {nscp}] and [emph {nsperm}].  They aren't required  to run a
-server unless you want to use  the Control Port and/or the Permissions
-module, respectively.  Before using  them, change the passwords and
-default permissions  by following the instructions  in the NaviServer
-documentation.
+Note: Some modules can be disabled in the sample nsd.tcl for security
+reasons. They are [emph {nscp}] and [emph {nsperm}]. These modules can
+be disables by e.g. commenting out the respective lines in the
+"ns/server/default/modules" section.  These modules are not required
+to run a server unless you want to use the Control Port and/or the
+Permissions module, respectively.  Before using them in a production
+environment, change the passwords and default permissions by following
+the instructions in the NaviServer documentation.
 
 
 [para]
 
-Although  you must be root to start NaviServer on port 80,  the server itself must
-change to a  regular user shortly after initialization.   You either
-need to start the  server as a non-root user (in which case you  will
-not be able to listen  for connections on privileged ports such as port
-80)  or you must include a [emph {-u user}] command line flag to which the
-server will  setuid(2) after startup.
+Although you must be root to start NaviServer on port 80, the server
+itself must change to a regular user shortly after initialization.
+You either need to start the server as a non-root user (in which case
+you will not be able to listen for connections on privileged ports
+such as port 80) or you must include a [emph {-u user}] command line
+flag to which the server will setuid(2) after startup. We assume in
+the following sections that a user [emph nsadmin] and a group
+[emph nsadmin] were already created on the system, where NaviServer
+is installed.
 
 [para]
 
@@ -212,7 +221,7 @@ and it will be started in the background listening on port 8080.
 
 You may either specify a Unix username or numeric uid, e.g.:
 [example_begin]
-  bin/nsd -t conf/nsd-config.tcl -u user
+  bin/nsd -t conf/nsd-config.tcl -u [emph nsadmin]
 [example_end]
 
 [para]
@@ -224,7 +233,7 @@ For the mode  of operation, there are four choices:
 
 [item] Foreground mode:
 [example_begin]
-  bin/nsd  -f -t conf/nsd-config.tcl -u user -g group
+  bin/nsd  -f -t conf/nsd-config.tcl -u [emph nsadmin]-g [emph nsadmin]
 [example_end]
 
 [para]
@@ -241,7 +250,7 @@ initiate shutdown.
 [item] Background mode:
 
 [example_begin]
-  bin/nsd -t conf/nsd-config.tcl -u user -g group
+  bin/nsd -t conf/nsd-config.tcl -u [emph nsadmin]-g [emph nsadmin]
 [example_end]
 
 [para]
@@ -259,7 +268,7 @@ file, send the signal and wait for shutdown, e.g.:
 [item] Background mode with built-in watchdog:
 
 [example_begin]
- /usr/local/ns/bin/nsd  -w -t /usr/local/ns/nsd-config.tcl -u user -g group
+ /usr/local/ns/bin/nsd  -w -t /usr/local/ns/nsd-config.tcl -u [emph nsadmin] -g [emph nsadmin]
 [example_end]
 
 [para]
@@ -272,13 +281,13 @@ it crashes independent from the respawn support from the operating system.
 [para]
 
 [example_begin]
-  w1:23:respawn:/usr/local/ns/bin/nsd  -i -t /usr/local/ns/nsd-config.tcl -u user -g group
+  w1:23:respawn:/usr/local/ns/bin/nsd  -i -t /usr/local/ns/nsd-config.tcl -u [emph nsadmin] -g [emph nsadmin]
 [example_end]
 
 [para]
 In [emph {Inittab}] mode, the server runs in the foreground  but opens the
 log file as with background mode.  This mode is used  when the server is
-started from an entry in the /etc/inittab file.   The benefit of this mode
+started from an entry in the "/etc/inittab" file.   The benefit of this mode
 is that init will restart the server automatically.
 
 [para]
@@ -288,15 +297,16 @@ NaviServer is started via launchd (controlled via launchctl).
 
 [list_end]
 
-[emph Note]:  While running NaviServer on some Unix platforms (e.g., Linux,  SGI),
-you'll notice multiple nsd  processes.  This is normal and represents the
-individual threads.  The main  process id can be determined  by checking
-the log/nsd.pid file or looking  at the last few entries  of the server
-log, each of which will include the process  id and thread  id in the form
-[lb]pid.tid[rb].  You can also telnet to the control port and type "ns_info pid".
+[emph Note]: While running NaviServer on some Unix platforms (e.g.,
+Linux, SGI), you'll notice multiple nsd processes.  This is normal and
+represents the individual threads.  The main process id can be
+determined by checking the log/nsd.pid file or looking at the last few
+entries of the server log (per default "logs/error.log", each of which
+will include the process id and thread id in the form [lb]pid.tid[rb].
+You can also telnet to the control port and type "ns_info pid".
 
 [see_also admin-maintenance]
 
-[keywords nsd command-line-options]
+[keywords nsd command-line-options nscp nssock nsssl]
 
 [manpage_end]

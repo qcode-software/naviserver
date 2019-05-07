@@ -248,7 +248,7 @@ NsTclThreadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
         case TNameIdx:
             if (objc > 2) {
-                Ns_ThreadSetName(Tcl_GetString(objv[2]));
+                Ns_ThreadSetName("%s", Tcl_GetString(objv[2]));
             }
             Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ThreadGetName(), -1));
             break;
@@ -873,7 +873,7 @@ NsTclThread(void *arg)
     (void) Ns_TclEval(dsPtr, argPtr->server, argPtr->script);
 
     /*
-     * No matter if the Tcl eval was successul or not, return in the
+     * No matter if the Tcl eval was successful or not, return in the
      * non-detached case the dstring result, since some other thread
      * might be waiting for a result. In the detached case, there is
      * no dstring content.

@@ -126,7 +126,7 @@ Ns_TclGetSet(Tcl_Interp *interp, const char *setId)
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(setId != NULL);
-    
+
     if (LookupInterpSet(interp, setId, NS_FALSE, &set) != TCL_OK) {
         set = NULL;
     }
@@ -202,6 +202,63 @@ Ns_TclFreeSet(Tcl_Interp *interp, const char *setId)
 /*
  *----------------------------------------------------------------------
  *
+ * Ns_SetCreateFromDict --
+ *
+ *      Create a set based on the data provided in form of a Tcl dict (flat
+ *      list of attribute value pairs).
+ *
+ * Results:
+ *      Created set or NULL on errors
+ *
+ * Side effects:
+ *      When an interpreter is provided and an error occurs, the error message
+ *      is set in the interpreter.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_Set *
+Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
+{
+    int       result, objc;
+    Tcl_Obj **objv;
+    Ns_Set   *setPtr;
+
+    NS_NONNULL_ASSERT(listObj != NULL);
+
+    result = Tcl_ListObjGetElements(interp, listObj, &objc, &objv);
+
+    if (result != TCL_OK) {
+        /*
+         * Assume, that Tcl has provided an error msg.
+         */
+        setPtr = NULL;
+
+    } else if (objc % 2 != 0) {
+        /*
+         * Set an error, if we can.
+         */
+        if (interp != NULL) {
+            Ns_TclPrintfResult(interp, "list '%s' has to consist of an even number of elements",
+                               Tcl_GetString(listObj));
+        }
+        setPtr = NULL;
+
+    } else {
+        int i;
+
+        setPtr = Ns_SetCreate(name);
+        for (i = 0; i < objc; i += 2) {
+            Ns_SetPut(setPtr, Tcl_GetString(objv[i]), Tcl_GetString(objv[i+1]));
+        }
+    }
+
+    return setPtr;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
  * NsTclSetObjCmd --
  *
  *      Implements ns_set.
@@ -228,17 +285,18 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
     int                  opt, result = TCL_OK;
 
     static const char *const opts[] = {
-        "array", "cleanup", "copy", "cput", "create", "delete",
-        "delkey", "find", "free", "get", "icput",
-        "idelkey", "ifind", "iget", "isnull", "iunique", "key",
-        "list", "merge", "move", "name", "new", "print",
-        "put", "size", "split", "truncate", "unique", "update",
+        "array", "cleanup", "copy", "cput", "create",
+        "delete", "delkey", "find", "free", "get",
+        "icput", "idelkey", "ifind", "iget", "imerge",
+        "isnull", "iunique", "key", "list", "merge",
+        "move", "name", "new", "print", "put",
+        "size", "split", "truncate", "unique", "update",
         "value", NULL,
     };
     enum {
         SArrayIdx, SCleanupIdx, SCopyIdx, SCPutIdx, SCreateidx,
         SDeleteIdx, SDelkeyIdx, SFindIdx, SFreeIdx, SGetIdx,
-        SICPutIdx, SIDelkeyIdx, SIFindIdx, SIGetIdx,
+        SICPutIdx, SIDelkeyIdx, SIFindIdx, SIGetIdx, SIMergeIdx,
         SIsNullIdx, SIUniqueIdx, SKeyIdx, SListIdx, SMergeIdx,
         SMoveIdx, sINameIdx, SNewIdx, SPrintIdx, SPutIdx,
         SSizeIdx, SSplitIdx, STruncateIdx, SUniqueIdx, SUpdateIdx,
@@ -289,8 +347,8 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         }
         break;
 
-    case SNewIdx:
-    case SCopyIdx:
+    case SNewIdx:   /* fall through */
+    case SCopyIdx:  /* fall through */
     case SSplitIdx: {
         int           offset = 2;
         const char   *name;
@@ -372,10 +430,10 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             Tcl_Obj *objPtr;
 
             switch (opt) {
-            case SArrayIdx:
-            case SSizeIdx:
-            case sINameIdx:
-            case SPrintIdx:
+            case SArrayIdx:  /* fall through */
+            case SSizeIdx:   /* fall through */
+            case sINameIdx:  /* fall through */
+            case SPrintIdx:  /* fall through */
             case SFreeIdx:
                 /*
                  * These commands require only the set.
@@ -390,13 +448,8 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                     switch (opt) {
                     case SArrayIdx:
                         {
-                            size_t i;
-
                             Tcl_DStringInit(&ds);
-                            for (i = 0u; i < Ns_SetSize(set); ++i) {
-                                Tcl_DStringAppendElement(&ds, Ns_SetKey(set, i));
-                                Tcl_DStringAppendElement(&ds, Ns_SetValue(set, i));
-                            }
+                            Ns_DStringAppendSet(&ds, set);
                             Tcl_DStringResult(interp, &ds);
                             break;
                         }
@@ -426,7 +479,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SGetIdx:
+            case SGetIdx:  /* fall through */
             case SIGetIdx:
                 if (unlikely(objc < 4)) {
                     Tcl_WrongNumArgs(interp, 2, objv, "setId key ?default?");
@@ -453,11 +506,11 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SFindIdx:
-            case SIFindIdx:
-            case SDelkeyIdx:
-            case SIDelkeyIdx:
-            case SUniqueIdx:
+            case SFindIdx:    /* fall through */
+            case SIFindIdx:   /* fall through */
+            case SDelkeyIdx:  /* fall through */
+            case SIDelkeyIdx: /* fall through */
+            case SUniqueIdx:  /* fall through */
             case SIUniqueIdx:
                 /*
                  * These commands require a set and string key.
@@ -507,10 +560,10 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SValueIdx:
-            case SIsNullIdx:
-            case SKeyIdx:
-            case SDeleteIdx:
+            case SValueIdx:   /* fall through */
+            case SIsNullIdx:  /* fall through */
+            case SKeyIdx:     /* fall through */
+            case SDeleteIdx:  /* fall through */
             case STruncateIdx: {
                 /*
                  * These commands require a set and key/value index.
@@ -567,9 +620,9 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 break;
             }
 
-            case SPutIdx:
-            case SUpdateIdx:
-            case SCPutIdx:
+            case SPutIdx:     /* fall through */
+            case SUpdateIdx:  /* fall through */
+            case SCPutIdx:    /* fall through */
             case SICPutIdx:
                 /*
                  * These commands require a set, key, and value.
@@ -619,7 +672,8 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SMergeIdx:
+            case SIMergeIdx: /* fall through */
+            case SMergeIdx:  /* fall through */
             case SMoveIdx:
                 /*
                  * These commands require two sets.
@@ -635,7 +689,9 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                         result = TCL_ERROR;
                     } else {
                         assert (set2Ptr != NULL);
-                        if (opt == SMergeIdx) {
+                        if (opt == SIMergeIdx) {
+                            Ns_SetIMerge(set, set2Ptr);
+                        } else if (opt == SMergeIdx) {
                             Ns_SetMerge(set, set2Ptr);
                         } else {
                             Ns_SetMove(set, set2Ptr);
@@ -652,10 +708,10 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             }
         }
     }
-    
+
     return result;
 }
-    
+
 
 /*
  *----------------------------------------------------------------------
@@ -681,7 +737,9 @@ NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
     int          result = TCL_OK;
     Ns_Set      *set = NULL;
     Ns_HeaderCaseDisposition disp = Preserve;
-    char        *setString, *headerString, *dispositionString;
+    char        *setString = (char *)NS_EMPTY_STRING,
+                *headerString = (char *)NS_EMPTY_STRING,
+                *dispositionString = NULL;
     Ns_ObjvSpec  args[] = {
         {"set", Ns_ObjvString, &setString, NULL},
         {"header", Ns_ObjvString, &headerString, NULL},
@@ -699,16 +757,20 @@ NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
 
     } else if (objc < 4) {
         disp = ToLower;
-    } else if (STREQ(dispositionString, "toupper")) {
-        disp = ToUpper;
-    } else if (STREQ(dispositionString, "tolower")) {
-        disp = ToLower;
-    } else if (STREQ(dispositionString, "preserve")) {
-        disp = Preserve;
+    } else if (dispositionString != NULL) {
+        if (STREQ(dispositionString, "toupper")) {
+            disp = ToUpper;
+        } else if (STREQ(dispositionString, "tolower")) {
+            disp = ToLower;
+        } else if (STREQ(dispositionString, "preserve")) {
+            disp = Preserve;
+        } else {
+            Ns_TclPrintfResult(interp, "invalid disposition \"%s\": should be toupper, tolower, or preserve",
+                               dispositionString);
+            result = TCL_ERROR;
+        }
     } else {
-        Ns_TclPrintfResult(interp, "invalid disposition \"%s\": should be toupper, tolower, or preserve",
-                           dispositionString);
-        result = TCL_ERROR;
+        Ns_Fatal("error in argument parser: dispositionString should never be NULL");
     }
 
     if (result == TCL_OK) {
@@ -758,7 +820,7 @@ EnterSet(NsInterp *itPtr, Ns_Set *set, Ns_TclSetType type)
      * Allocate a new set IDs until we find an unused one.
      */
     for (next = (uint32_t)tablePtr->numEntries; ; ++ next) {
-        len = ns_uint32toa(buf+1, next); 
+        len = ns_uint32toa(buf+1, next);
         hPtr = Tcl_CreateHashEntry(tablePtr, buf, &isNew);
         if (isNew != 0) {
             break;

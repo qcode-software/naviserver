@@ -20,7 +20,7 @@ set httpport		8000
 #set httpsport		8443
 
 # The hostname and address should be set to actual values.
-# setting the address to 0.0.0.0 means AOLserver listens on all interfaces
+# setting the address to 0.0.0.0 means NaviServer listens on all interfaces
 set hostname		localhost
 set address_v4		127.0.0.1  ;# listen on loopback via IPv4
 #set address_v4		0.0.0.0    ;# listen on all IPv4 addresses
@@ -75,7 +75,8 @@ set env(HOME) $homedir
 set env(LANG) en_US.UTF-8
 
 #---------------------------------------------------------------------
-# Set headers that should be included in every reply from the server
+# Set headers that should be included in every response from the
+# server.
 #
 set nssock_extraheaders {
     X-Frame-Options            "SAMEORIGIN"
@@ -101,9 +102,13 @@ append nsssl_extraheaders $nssock_extraheaders
 ns_logctl severity "Debug(ns:driver)" $debug
 
 set addresses {}
-set suffixes {}
-if {[info exists address_v4]} {lappend addresses $address_v4; lappend suffixes v4}
-if {[info exists address_v6]} {lappend addresses $address_v6; lappend suffixes v6}
+if {[info exists address_v4]} {lappend addresses $address_v4}
+if {[info exists address_v6]} {lappend addresses $address_v6}
+
+if {[llength $addresses] == 0} {
+    ns_log error "Either an IPv4 or IPv6 address must be specified"
+    exit
+}
 
 #---------------------------------------------------------------------
 #
@@ -131,13 +136,24 @@ ns_section ns/parameters {
     # ns_param        tmpdir          c:/tmp
 
     #
-    # ns_param	logroll		on
-    ns_param	logmaxbackup	100  ;# 10 is default
-    ns_param	logdebug	$debug
-    ns_param	logdev		$dev
-    ns_param	logcolorize	true
-    ns_param	logprefixcolor	green
+    # Configuration of error.log
+    #
+    # Rolling of logfile:
+    ns_param	logroll		on
+    ns_param	logmaxbackup	100      ;# 10 is default
     ns_param	logrollfmt	%Y-%m-%d ;# format appended to serverlog file name when rolled
+    #
+    # Format of log entries:
+    # ns_param  logusec         true     ;# add timestamps in microsecond (usec) resolution (default: false)
+    # ns_param  logusecdiff     true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
+    ns_param	logcolorize	true     ;# colorize log file with ANSI colors (default: false)
+    ns_param	logprefixcolor	green    ;# black, red, green, yellow, blue, magenta, cyan, gray, default
+    # ns_param  logprefixintensity normal;# bright or normal
+    #
+    # Severities to be logged (can be controlled at runtime via ns_logctl)
+    ns_param	logdebug	$debug    ;# debug messages
+    ns_param	logdev		$dev      ;# development message
+    ns_param    lognotice       true      ;# informational messages
 
     # ns_param	mailhost	localhost
     # ns_param	jobsperthread	0
@@ -178,15 +194,143 @@ ns_section ns/parameters {
     ns_param	OutputCharset	utf-8
     # ns_param	URLCharset	utf-8
 
+    #
+    # DNS configuration parameters
+    #
+    ns_param dnscache true          ;# default: true
+    ns_param dnswaittimeout 5       ;# time for waiting for a DNS reply in seconds; default: 5
+    ns_param keepwaittimeout 60     ;# time to keep entries in cache in minutes; default: 60
+    ns_param dnscachemaxsize 500kB  ;# max size of DNS cache in memory units; default: 500kB
+
     # Running behind proxy? Used by OpenACS...
-    ns_param	ReverseProxyMode	$proxy_mode
+    ns_param ReverseProxyMode	$proxy_mode
 }
+
+#---------------------------------------------------------------------
+# Definition of NaviServer servers (add more, when true NaviServer
+# virtual hosting should be used).
+#---------------------------------------------------------------------
+ns_section ns/servers {
+    ns_param $server $servername
+}
+
+
+#---------------------------------------------------------------------
+# Global server modules
+#---------------------------------------------------------------------
+ns_section "ns/modules" {
+    #
+    # Load networking modules named "nssock" and/or "nsssl" depending
+    # on existence of Tcl variables "httpport" and "httpsport".
+    #
+    if {[info exists httpport]}  { ns_param nssock ${bindir}/nssock }
+    if {[info exists httpsport]} { ns_param nsssl  ${bindir}/nsssl }
+}
+
+#---------------------------------------------------------------------
+# Configuration for plain HTTP interface  -- module nssock
+#---------------------------------------------------------------------
+if {[info exists httpport]} {
+    #
+    # We have an "httpport" configured, so configure this module.
+    #
+    ns_section ns/module/nssock {
+	ns_param	defaultserver	$server
+	ns_param	address		$addresses
+	ns_param	hostname	$hostname
+	ns_param	port		$httpport                ;# default 80
+	ns_param	maxinput	${max_file_upload_mb}MB  ;# 1MB, maximum size for inputs (uploads)
+	ns_param	recvwait	[expr {$max_file_upload_min * 60}] ;# 30, timeout for receive operations
+	# ns_param	maxline		8192	;# 8192, max size of a header line
+	# ns_param	maxheaders	128	;# 128, max number of header lines
+	# ns_param	uploadpath	/tmp	;# directory for uploads
+	# ns_param	backlog		256	;# 256, backlog for listen operations
+	# ns_param	maxqueuesize	256	;# 1024, maximum size of the queue
+	# ns_param	acceptsize	10	;# Maximum number of requests accepted at once.
+	# ns_param	deferaccept     true    ;# false, Performance optimization, may cause recvwait to be ignored
+	# ns_param	bufsize		16kB	;# 16kB, buffersize
+	# ns_param	readahead	16kB	;# value of bufsize, size of readahead for requests
+	# ns_param	sendwait	30	;# 30, timeout in seconds for send operations
+	# ns_param	closewait	2	;# 2, timeout in seconds for close on socket
+	# ns_param	keepwait	2	;# 5, timeout in seconds for keep-alive
+	# ns_param	nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
+	# ns_param	keepalivemaxuploadsize	  500kB  ;# 0, don't allow keep-alive for upload content larger than this
+	# ns_param	keepalivemaxdownloadsize  1MB    ;# 0, don't allow keep-alive for download content larger than this
+	# ns_param	spoolerthreads	1	;# 0, number of upload spooler threads
+	ns_param	maxupload	100kB	;# 0, when specified, spool uploads larger than this value to a temp file
+	ns_param	writerthreads	2	;# 0, number of writer threads
+	ns_param	writersize	1kB	;# 1MB, use writer threads for files larger than this value
+	# ns_param	writerbufsize	8kB	;# 8kB, buffer size for writer threads
+	# ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
+
+	#
+	# Options for port reuse (see https://lwn.net/Articles/542629/)
+	# These options require proper OS support.
+	#
+	# ns_param  reuseport       true    ;# false;  normally not needed to be set, set by driverthreads when necessary
+	# ns_param	driverthreads	2	;# 1; use multiple driver threads; activates "reuseport"
+
+	#
+	# Extra driver-specific response headers fields to be added for
+	# every request.
+	#
+	ns_param    extraheaders    $nssock_extraheaders
+    }
+    #
+    # Define, which "host" (as supplied by the "host:" header
+    # field) accepted over this driver should be associated with
+    # which server.
+    #
+    ns_section ns/module/nssock/servers {
+	ns_param $server $hostname
+	ns_param $server $address
+    }
+}
+
+#---------------------------------------------------------------------
+# Configuration for HTTPS interface (SSL/TLS) -- module nsssl
+#---------------------------------------------------------------------
+
+if {[info exists httpsport]} {
+    #
+    # We have an "httpsport" configured, so configure this module.
+    #
+    ns_section ns/module/nsssl {
+	ns_param defaultserver	$server
+	ns_param address	$addresses
+	ns_param port		$httpsport
+	ns_param hostname	$hostname
+	ns_param ciphers	"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
+	ns_param protocols	"!SSLv2:!SSLv3"
+	ns_param certificate	$serverroot/etc/certfile.pem
+	ns_param verify		0
+	ns_param writerthreads	2
+	ns_param writersize	1kB
+	ns_param writerbufsize	16kB	;# 8kB, buffer size for writer threads
+	#ns_param nodelay	false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
+	#ns_param writerstreaming	true	;# false
+	#ns_param deferaccept	true    ;# false, Performance optimization
+	ns_param maxinput	${max_file_upload_mb}MB   ;# Maximum file size for uploads in bytes
+	ns_param extraheaders	$nsssl_extraheaders
+    }
+    #
+    # Define, which "host" (as supplied by the "host:" header
+    # field) accepted over this driver should be associated with
+    # which server.
+    #
+    ns_section ns/module/nsssl/servers {
+	ns_param $server $hostname
+	ns_param $server $address
+    }
+}
+
+
 
 #---------------------------------------------------------------------
 # Thread library (nsthread) parameters
 #---------------------------------------------------------------------
 ns_section ns/threads {
-    ns_param	stacksize	[expr {128 * 8192}]
+    ns_param	stacksize	1MB
 }
 #---------------------------------------------------------------------
 # Extra mime types
@@ -207,8 +351,8 @@ ns_section ns/mimetypes {
 #---------------------------------------------------------------------
 ns_section      "ns/fastpath" {
     #ns_param        cache               true       ;# default: false
-    #ns_param        cachemaxsize        10240000   ;# default: 1024*10000
-    #ns_param        cachemaxentry       100000     ;# default: 8192
+    #ns_param        cachemaxsize        10MB       ;# default: 10MB
+    #ns_param        cachemaxentry       100kB      ;# default: 8kB
     #ns_param        mmap                true       ;# default: false
     #ns_param        gzip_static         true       ;# check for static gzip; default: false
     #ns_param        gzip_refresh        true       ;# refresh stale .gz files on the fly using ::ns_gzipfile
@@ -230,10 +374,6 @@ ns_section      "ns/fastpath" {
 #  Other host-specific values are set up above as Tcl variables, too.
 #
 #---------------------------------------------------------------------
-ns_section ns/servers {
-    ns_param $server		$servername
-}
-
 #
 # Server parameters
 #
@@ -267,14 +407,23 @@ ns_section ns/server/${server} {
     # ns_param	compressminsize	512	;# Compress responses larger than this
     # ns_param	compresspreinit true	;# false, if true then initialize and allocate buffers at startup
 
+    # Enable nicer directory listing (as handled by the OpenACS request processor)
+    # ns_param	directorylisting	fancy	;# Can be simple or fancy
+
     #
     # Configuration of replies
     #
     # ns_param	realm		yourrealm	;# Default realm for Basic authentication
-    # ns_param	noticedetail	false	;# true, return detail information in server reply
-    # ns_param	errorminsize	0	;# 514, fill-up reply to at least specified bytes (for ?early? MSIE)
-    # ns_param	headercase	preserve;# preserve, might be "tolower" or "toupper"
+    # ns_param	noticedetail	false		;# true, return detail information in server reply
+    # ns_param	errorminsize	0		;# 514, fill-up reply to at least specified bytes (for ?early? MSIE)
+    # ns_param	headercase	preserve	;# preserve, might be "tolower" or "toupper"
     # ns_param	checkmodifiedsince	false	;# true, check modified-since before returning files from cache. Disable for speedup
+
+    #
+    # Extra server-specific response headers fields to be added for
+    # every response on this server
+    #
+    #ns_param    extraheaders    {...}
 }
 
 #---------------------------------------------------------------------
@@ -296,12 +445,11 @@ ns_section ns/server/${server}/adp {
     # ns_param	map		"/*.html"	;# Any extension can be mapped
     #
     # ns_param	cache		true		;# false, enable ADP caching
-    # ns_param	cachesize	10000*1025	;# 5000*1024, size of cache
+    # ns_param	cachesize	10MB		;# 5MB, size of ADP cache
+    # ns_param	bufsize		5MB		;# 1MB, size of ADP buffer
     #
     # ns_param	trace		true		;# false, trace execution of adp scripts
     # ns_param	tracesize	100		;# 40, max number of entries in trace
-    #
-    # ns_param	bufsize		5*1024*1000	;# 1*1024*1000, size of ADP buffer
     #
     # ns_param	stream		true		;# false, enable ADP streaming
     # ns_param	enableexpire	true		;# false, set "Expires: now" on all ADP's
@@ -328,7 +476,6 @@ ns_section ns/server/${server}/adp/parsers {
 #
 ns_section ns/server/${server}/tcl {
     ns_param	library		${serverroot}/tcl
-    ns_param	autoclose	on
     ns_param	debug		$debug
     # ns_param	nsvbuckets	16       ;# default: 8
 }
@@ -392,9 +539,9 @@ ns_section ns/server/${server}/acs/acs-api-browser {
 # WebDAV Support (optional, requires oacs-dav package to be installed
 #---------------------------------------------------------------------
 ns_section ns/server/${server}/tdav {
-    ns_param	propdir		${serverroot}/data/dav/properties
-    ns_param	lockdir		${serverroot}/data/dav/locks
-    ns_param	defaultlocktimeout	300
+    ns_param	propdir		   ${serverroot}/data/dav/properties
+    ns_param	lockdir		   ${serverroot}/data/dav/locks
+    ns_param	defaultlocktimeout 300
 }
 
 ns_section ns/server/${server}/tdav/shares {
@@ -413,51 +560,6 @@ ns_section ns/server/${server}/tdav/share/share1 {
 # read-only WebDAV options
 # ns_param options "OPTIONS COPY GET HEAD MKCOL POST PROPFIND PROPPATCH"
 #}
-
-#---------------------------------------------------------------------
-# Socket driver module (HTTP)  -- nssock
-#---------------------------------------------------------------------
-foreach address $addresses suffix $suffixes {
-    ns_section ns/server/${server}/module/nssock_$suffix
-    ns_param	address		$address
-    ns_param	hostname	$hostname
-    ns_param	port		$httpport	;# 80 or 443
-    ns_param	maxinput	[expr {$max_file_upload_mb * 1024 * 1024}] ;# 1024*1024, maximum size for inputs
-    ns_param	recvwait	[expr {$max_file_upload_min * 60}] ;# 30, timeout for receive operations
-    # ns_param	maxline		8192	;# 8192, max size of a header line
-    # ns_param	maxheaders	128	;# 128, max number of header lines
-    # ns_param	uploadpath	/tmp	;# directory for uploads
-    # ns_param	backlog		256	;# 256, backlog for listen operations
-    # ns_param	maxqueuesize	256	;# 1024, maximum size of the queue
-    # ns_param	acceptsize	10	;# Maximum number of requests accepted at once.
-    # ns_param	deferaccept     true    ;# false, Performance optimization, may cause recvwait to be ignored
-    # ns_param	bufsize		16384	;# 16384, buffersize
-    # ns_param	readahead	16384	;# value of bufsize, size of readahead for requests
-    # ns_param	sendwait	30	;# 30, timeout in seconds for send operations
-    # ns_param	closewait	2	;# 2, timeout in seconds for close on socket
-    # ns_param	keepwait	2	;# 5, timeout in seconds for keep-alive
-    # ns_param  nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted 
-    # ns_param	keepalivemaxuploadsize	  500000  ;# 0, don't allow keep-alive for upload content larger than this
-    # ns_param	keepalivemaxdownloadsize  1000000 ;# 0, don't allow keep-alive for download content larger than this
-    # ns_param	spoolerthreads	1	;# 0, number of upload spooler threads
-    ns_param	maxupload	100000	;# 0, when specified, spool uploads larger than this value to a temp file
-    ns_param	writerthreads	2	;# 0, number of writer threads
-    ns_param	writersize	1024	;# 1024*1024, use writer threads for files larger than this value
-    # ns_param	writerbufsize	8192	;# 8192, buffer size for writer threads
-    # ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
-
-    #
-    # Options for port reuse (see https://lwn.net/Articles/542629/)
-    # These options require proper OS support.
-    #
-    # ns_param  reuseport       true    ;# false;  normally not needed to be set, set by driverthreads when necessary
-    # ns_param	driverthreads	2	;# 1; use multiple driver threads; activates "reuseport"
-
-    #
-    # Extra request headers fields to be added for every request.
-    #
-    ns_param    extraheaders    $nssock_extraheaders
-}
 
 
 #---------------------------------------------------------------------
@@ -528,36 +630,11 @@ ns_section ns/server/${server}/module/nspam {
     ns_param	PamDomain          "pam_domain"
 }
 
-if {[info exists httpsport]} {
-    #---------------------------------------------------------------------
-    # SSL/TLS
-    #---------------------------------------------------------------------
-    foreach address $addresses suffix $suffixes {
-	ns_section    "ns/server/${server}/module/nsssl_$suffix" {
-	    ns_param		address		$address
-	    ns_param		port		$httpsport
-	    ns_param		hostname	$hostname
-	    ns_param		ciphers		"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
-	    ns_param		protocols	"!SSLv2:!SSLv3"
-	    ns_param		certificate	$serverroot/etc/certfile.pem
-	    ns_param		verify		0
-	    ns_param		writerthreads	2
-	    ns_param		writersize	1024
-	    ns_param		writerbufsize	16384	;# 8192, buffer size for writer threads
-	    #ns_param   nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted 
-	    #ns_param	writerstreaming	true	;# false
-	    #ns_param	deferaccept	true    ;# false, Performance optimization
-	    ns_param		maxinput	[expr {$max_file_upload_mb * 1024*1024}] ;# Maximum File Size for uploads in bytes
-	    ns_param         extraheaders    $nsssl_extraheaders
-	}
-    }
-}
-
 #---------------------------------------------------------------------
 #
 # Database drivers
 # The database driver is specified here.
-# Make sure you have the driver compiled and put it in {aolserverdir}/bin
+# Make sure you have the driver compiled and put it in $bindir.
 #
 #---------------------------------------------------------------------
 ns_section "ns/db/drivers" {
@@ -667,24 +744,15 @@ ns_section ns/db/pool/pool3 {
 }
 
 
-
 #---------------------------------------------------------------------
-# Which modules should be loaded?  Missing modules break the server, so
-# don't uncomment modules unless they have been installed.
+# Which modules should be loaded for $server?  Missing modules break
+# the server, so don't uncomment modules unless they have been
+# installed.
 
 ns_section ns/server/${server}/modules {
     ns_param	nslog		${bindir}/nslog
     ns_param	nsdb		${bindir}/nsdb
     ns_param	nsproxy		${bindir}/nsproxy
-
-    #
-    # Load networking modules depending on existence of Tcl variables
-    # address_v* and httpsport
-    #
-    if {[info exists address_v4]} { ns_param nssock_v4 ${bindir}/nssock }
-    if {[info exists address_v6]} { ns_param nssock_v6 ${bindir}/nssock }
-    if {[info exists address_v4] && [info exists httpsport]} { ns_param nsssl_v4 ${bindir}/nsssl }
-    if {[info exists address_v6] && [info exists httpsport]} { ns_param nsssl_v6 ${bindir}/nsssl }
 
     #
     # Determine, if libthread is installed

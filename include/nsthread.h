@@ -46,6 +46,7 @@
 #endif
 
 #include <nscheck.h>
+#include <fcntl.h>
 
 #define UCHAR(c)                   ((unsigned char)(c))
 #define INTCHAR(c)                 ((int)UCHAR((c)))
@@ -169,8 +170,9 @@ MSVC++ 9.0  _MSC_VER == 1500 (Visual Studio 2008)
 MSVC++ 10.0 _MSC_VER == 1600 (Visual Studio 2010)
 MSVC++ 11.0 _MSC_VER == 1700 (Visual Studio 2012)
 MSVC++ 12.0 _MSC_VER == 1800 (Visual Studio 2013)
-MSVC++ 14.0 _MSC_VER == 1900 (Visual Studio 2015)
-MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
+MSVC++ 14.0 _MSC_VER == 1900 (Visual Studio 2015 version 14.0)
+MSVC++ 14.1 _MSC_VER == 1910 (Visual Studio 2017 version 15.0)
+MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 */
 
 /* 
@@ -187,6 +189,8 @@ MSVC++ 15.0 _MSC_VER == 1910 (Visual Studio 2017)
 #  define access                      _access
 #  define chsize                      _chsize
 #  define close                       _close
+#  define dup                         _dup
+#  define dup2                        _dup2
 #  define fileno                      _fileno
 #  define mktemp                      _mktemp
 #  define open                        _open
@@ -347,30 +351,30 @@ typedef struct DIR_ *DIR;
  * mostly Unix style OSes, including macOS
  *
  ***************************************************************/
-#include <sys/types.h>
-#include <dirent.h>
-#include <sys/time.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <sys/uio.h>
-#include <poll.h>
-#include <sys/resource.h>
-#include <sys/wait.h>
-#include <sys/ioctl.h>
-#include <ctype.h>
-#include <grp.h>
-#include <pthread.h>
-#include <sys/mman.h>
-#include <poll.h>
+# include <sys/types.h>
+# include <dirent.h>
+# include <sys/time.h>
+# include <netinet/in.h>
+# include <arpa/inet.h>
+# include <string.h>
+# include <unistd.h>
+# include <sys/socket.h>
+# include <netdb.h>
+# include <sys/uio.h>
+# include <poll.h>
+# include <sys/resource.h>
+# include <sys/wait.h>
+# include <sys/ioctl.h>
+# include <ctype.h>
+# include <grp.h>
+# include <pthread.h>
+# include <sys/mman.h>
+# include <poll.h>
 
-#define NS_SOCKET	      int
-#define NS_INVALID_SOCKET     (-1)
-#define NS_INVALID_PID        (-1)
-#define NS_INVALID_FD         (-1)
+# define NS_SOCKET	      int
+# define NS_INVALID_SOCKET     (-1)
+# define NS_INVALID_PID        (-1)
+# define NS_INVALID_FD         (-1)
 
 /*
  * Many modules use SOCKET and not NS_SOCKET; don't force updates for
@@ -470,7 +474,7 @@ typedef int ns_sockerrno_t;
 # define ns_recv                    recv
 # define ns_send                    send
 # define ns_sockclose               close
-# define ns_sockdup                 dup
+# define ns_sockdup(fd)             ns_dup((fd))
 # define ns_sockerrno               errno
 # define ns_sockioctl               ioctl
 # define ns_socknbclose             close
@@ -480,8 +484,6 @@ typedef int ns_sockerrno_t;
 # define ns_close		    close
 # define ns_read                    read
 # define ns_write                   write
-# define ns_dup		    	    dup
-# define ns_dup2	    	    dup2
 # define ns_lseek		    lseek
 
 # if __GNUC__
@@ -512,7 +514,6 @@ typedef int ns_sockerrno_t;
 #include <tcl.h>
 #include <limits.h>
 #include <time.h>
-#include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
 #include <ctype.h>
@@ -873,6 +874,14 @@ typedef int bool;
 # define NSSOCK2PTR(p) INT2PTR(p)
 #endif
 
+
+#if defined(F_DUPFD_CLOEXEC)
+# define ns_dup(fd)	    	    fcntl((fd), F_DUPFD_CLOEXEC, 0)
+#else
+# define ns_dup(fd)	    	    dup((fd))
+#endif
+# define ns_dup2	    	    dup2
+
 #ifdef __cplusplus
 # define NS_EXTERN                   extern "C" NS_STORAGE_CLASS
 #else
@@ -1051,7 +1060,7 @@ NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, ssize_t stackSize
 NS_EXTERN void Ns_ThreadExit(void *arg);
 NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadYield(void);
-NS_EXTERN void Ns_ThreadSetName(const char *name, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 0);
+NS_EXTERN void Ns_ThreadSetName(const char *name, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 2);
 NS_EXTERN uintptr_t Ns_ThreadId(void);
 NS_EXTERN void Ns_ThreadSelf(Ns_Thread *threadPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN const char *Ns_ThreadGetName(void)       NS_GNUC_RETURNS_NONNULL;
@@ -1106,8 +1115,6 @@ NS_EXTERN int     ns_close(int fildes);
 NS_EXTERN ssize_t ns_write(int fildes, const void *buf, size_t nbyte);
 NS_EXTERN ssize_t ns_read(int fildes, void *buf, size_t nbyte);
 NS_EXTERN off_t   ns_lseek(int fildes, off_t offset, int whence);
-NS_EXTERN int     ns_dup(int fildes);
-NS_EXTERN int     ns_dup2(int fildes, int fildes2);
 NS_EXTERN ssize_t ns_recv(NS_SOCKET socket, void *buffer, size_t length, int flags);
 NS_EXTERN ssize_t ns_send(NS_SOCKET socket, const void *buffer, size_t length, int flags);
 NS_EXTERN int     ns_snprintf(char *buf, size_t len, const char *fmt, ...);

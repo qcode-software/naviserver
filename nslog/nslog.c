@@ -78,7 +78,7 @@ typedef struct {
  * Local functions defined in this file
  */
 
-static Ns_Callback     LogRollCallback;
+static Ns_SchedProc    LogRollCallback;
 static Ns_ShutdownProc LogCloseCallback;
 static Ns_TraceProc    LogTrace;
 static Ns_ArgProc      LogArg;
@@ -121,11 +121,20 @@ Ns_ModuleInit(const char *server, const char *module)
 {
     const char   *path, *file;
     Log          *logPtr;
-    Tcl_DString    ds;
+    Tcl_DString   ds;
     static bool   first = NS_TRUE;
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(module != NULL);
+
+    /*
+     * Sanity check to provide a meaningful error instead of a
+     * crash. Currently, we do not allow one to register this module globally.
+     */
+    if (server == NULL) {
+        Ns_Fatal("Module %s: requires a concrete server (cannot be used as a global module)",
+                 module);
+    }
 
     /*
      * Register the info callbacks just once. This assumes we are
@@ -134,10 +143,10 @@ Ns_ModuleInit(const char *server, const char *module)
 
     if (first) {
         first = NS_FALSE;
-        Ns_RegisterProcInfo((Ns_Callback *)LogRollCallback, "nslog:roll", LogArg);
-        Ns_RegisterProcInfo((Ns_Callback *)LogCloseCallback, "nslog:close", LogArg);
-        Ns_RegisterProcInfo((Ns_Callback *)LogTrace, "nslog:conntrace", LogArg);
-        Ns_RegisterProcInfo((Ns_Callback *)AddCmds, "nslog:initinterp", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)LogRollCallback, "nslog:roll", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)LogCloseCallback, "nslog:close", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)LogTrace, "nslog:conntrace", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)AddCmds, "nslog:initinterp", LogArg);
     }
 
     Tcl_DStringInit(&ds);
@@ -255,11 +264,11 @@ Ns_ModuleInit(const char *server, const char *module)
 
     if (Ns_ConfigBool(path, "rolllog", NS_TRUE)) {
         int hour = Ns_ConfigIntRange(path, "rollhour", 0, 0, 23);
-        Ns_ScheduleDaily((Ns_SchedProc *) LogRollCallback, logPtr,
+        Ns_ScheduleDaily(LogRollCallback, logPtr,
                          0, hour, 0, NULL);
     }
     if (Ns_ConfigBool(path, "rollonsignal", NS_FALSE)) {
-        Ns_RegisterAtSignal(LogRollCallback, logPtr);
+        Ns_RegisterAtSignal((Ns_Callback *)(ns_funcptr_t)LogRollCallback, logPtr);
     }
 
     /*
@@ -833,13 +842,13 @@ LogTrace(void *arg, Ns_Conn *conn)
         Tcl_DStringAppend(dsPtr, "\"", 1);
     }
 
-    for (i = 0; i < ds.length; i++) {
+    for (i = 0; i < dsPtr->length; i++) {
         /*
          * Quick fix to disallow terminal escape characters in the log
          * file. See e.g. http://www.securityfocus.com/bid/37712/info
          */
-        if (unlikely(ds.string[i] == 0x1b)) {
-            ds.string[i] = 7; /* bell */
+        if (unlikely(dsPtr->string[i] == 0x1b)) {
+            dsPtr->string[i] = 7; /* bell */
         }
     }
 
@@ -851,18 +860,18 @@ LogTrace(void *arg, Ns_Conn *conn)
     Tcl_DStringAppend(dsPtr, "\n", 1);
 
     if (logPtr->maxlines == 0) {
-        bufferSize = (size_t)ds.length;
+        bufferSize = (size_t)dsPtr->length;
         if (bufferSize < PIPE_BUF) {
           /*
            * Only ns_write() operations < PIPE_BUF are guaranteed to be atomic
            */
-            bufferPtr = ds.string;
+            bufferPtr = dsPtr->string;
             status = NS_OK;
         } else {
             status = LogFlush(logPtr, dsPtr);
         }
     } else {
-        Tcl_DStringAppend(&logPtr->buffer, ds.string, ds.length);
+        Tcl_DStringAppend(&logPtr->buffer, dsPtr->string, dsPtr->length);
         if (++logPtr->curlines > logPtr->maxlines) {
             bufferSize = (size_t)logPtr->buffer.length;
             if (bufferSize < PIPE_BUF) {
@@ -916,7 +925,7 @@ LogOpen(Log *logPtr)
 {
     int fd;
 
-    fd = ns_open(logPtr->file, O_APPEND|O_WRONLY|O_CREAT, 0644);
+    fd = ns_open(logPtr->file, O_APPEND | O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
     if (fd == NS_INVALID_FD) {
         Ns_Log(Error, "nslog: error '%s' opening '%s'",
                strerror(errno), logPtr->file);
@@ -1097,7 +1106,7 @@ LogCloseCallback(const Ns_Time *toPtr, void *arg)
 }
 
 static void
-LogRollCallback(void *arg)
+LogRollCallback(void *arg, int UNUSED(id))
 {
     LogCallback(LogRoll, arg, "roll");
 }

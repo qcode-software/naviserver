@@ -39,6 +39,8 @@
 #define NS_CONFIG_PARAMETERS           "ns/parameters"
 #define NS_CONFIG_THREADS              "ns/threads"
 
+NS_EXTERN const char *NS_EMPTY_STRING;
+
 /*
  * Various ADP option bits.
  */
@@ -85,6 +87,8 @@ typedef enum {
 } NsWriterStreamState;
 
 #define MAX_URLSPACES                  16
+#define MAX_LISTEN_ADDR_PER_DRIVER     16
+
 #define NS_SET_SIZE                    ((unsigned)TCL_INTEGER_SPACE + 2u)
 #define NS_MAX_RANGES                  32
 
@@ -93,6 +97,14 @@ typedef enum {
 #define CONN_TCLOUTHDRS                0x04u  /* Output headers set is registered for interp */
 #define CONN_TCLAUTH                   0x08u  /* 'auth' headers set is registered for interp */
 #define CONN_TCLHTTP                   0x10u  /* HTTP headers requested by ns_headers */
+
+/*
+ * Flags for 2nd arg of NsConnRequire()
+ */
+#define NS_CONN_REQUIRE_CONNECTED   0x0001u
+#define NS_CONN_REQUIRE_OPEN        0x0002u
+#define NS_CONN_REQUIRE_CONFIGURED  0x0004u
+#define NS_CONN_REQUIRE_ALL         0x0007u
 
 /*
  * The following is the default text/html content type
@@ -416,6 +428,15 @@ typedef struct {
     NsWriterStreamState doStream;       /* Activate writer for HTML streaming */
 } DrvWriter;
 
+/*
+ * ServerMap maintains Host header to server mappings, but is upaque for nsd.h
+ */
+struct ServerMap;
+
+/*
+ * Driver data structure
+ */
+
 typedef struct Driver {
 
     /*
@@ -428,12 +449,12 @@ typedef struct Driver {
     const char  *moduleName;            /* Module name, e.g. "nssock1" */
     const char  *threadName;            /* Thread name, e.g. "nssock1:1" */
     const char  *location;              /* Location, e.g, "http://foo:9090" */
-    const char  *address;               /* Address in location, e.g. "foo" */
+    const char  *address;               /* Tcl list of IP addresses to bind to */
     const char  *protocol;              /* Protocol in location, e.g, "http" */
     long         sendwait;              /* send() I/O timeout */
     long         recvwait;              /* recv() I/O timeout */
     size_t       bufsize;               /* Conn bufsize (0 for SSL) */
-    const char  *extraHeaders;          /* Extra header fields added for every request */
+    const Ns_Set *extraHeaders;         /* Extra header fields added for every request */
 
     /*
      * Private to Driver.
@@ -452,14 +473,15 @@ typedef struct Driver {
     Ns_DriverClientInitProc *clientInitProc; /* Optional - initialization of client connections */
 
     const char *defserver;              /* default server, might be NULL */
+    Tcl_HashTable hosts;                /* Virtual hosts mapping to server */
+    const struct ServerMap *defMapPtr;  /* Default for virtual host entry */
     long closewait;                     /* Graceful close timeout */
     long keepwait;                      /* Keepalive timeout */
     size_t keepmaxdownloadsize;         /* When set, allow keepalive only for download requests up to this size */
     size_t keepmaxuploadsize;           /* When set, allow keepalive only for upload requests up to this size */
     Ns_Mutex lock;                      /* Lock to protect lists below. */
-    NS_SOCKET sock;                     /* Listening socket */
-    NS_POLL_NFDS_TYPE pidx;             /* poll() index */
-    const char *bindaddr;               /* Numerical listen address */
+    NS_SOCKET listenfd[MAX_LISTEN_ADDR_PER_DRIVER];  /* Listening sockets */
+    NS_POLL_NFDS_TYPE pidx[MAX_LISTEN_ADDR_PER_DRIVER]; /* poll() index */
     unsigned int opts;                  /* NS_DRIVER_* options */
     int backlog;                        /* listen() backlog */
     Tcl_WideInt maxinput;               /* Maximum request bytes to read */
@@ -797,6 +819,7 @@ typedef struct NsServer {
 
     struct {
         const char *realm;
+        const Ns_Set *extraHeaders;
         int  errorminsize;
         Ns_HeaderCaseDisposition hdrcase;
         bool flushcontent;
@@ -842,7 +865,7 @@ typedef struct NsServer {
         Ns_ServerRootProc   *serverRootProc;
         void                *serverRootArg;
         Ns_ConnLocationProc *connLocationProc;
-        void                *connLocationArg;
+        Ns_TclCallback      *connLocationArg;
         Ns_LocationProc     *locationProc; /* Depreciated */
         bool                 enabled;
     } vhost;
@@ -876,6 +899,7 @@ typedef struct NsServer {
     struct {
         struct Junction *junction[MAX_URLSPACES];
         Ns_Mutex lock;
+        Ns_Mutex idlocks[MAX_URLSPACES];
     } urlspace;
 
     /*
@@ -1344,7 +1368,7 @@ NS_EXTERN void NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     NS_GNUC_NONNULL(1);
 NS_EXTERN void NsRegisterServerInit(Ns_ServerInitProc *proc)
     NS_GNUC_NONNULL(1);
-NS_EXTERN NsServer *NsGetInitServer(void);
+NS_EXTERN NsServer *NsGetInitServer(void) NS_GNUC_PURE;
 NS_EXTERN NsServer *NsGetServer(const char *server);
 NS_EXTERN void NsStartServers(void);
 NS_EXTERN void NsStopServers(const Ns_Time *toPtr) NS_GNUC_NONNULL(1);
@@ -1368,7 +1392,7 @@ NS_EXTERN void *NsUrlSpecificGet(NsServer *servPtr, const char *method,
 NS_EXTERN ssize_t NsDriverSend(Sock *sockPtr, const struct iovec *bufs, int nbufs, unsigned int flags)
     NS_GNUC_NONNULL(1);
 NS_EXTERN ssize_t NsDriverSendFile(Sock *sockPtr, Ns_FileVec *bufs, int nbufs, unsigned int flags)
-    NS_GNUC_NONNULL(1);
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN int NSDriverClientOpen(Tcl_Interp *interp, const char *driverName,
                                  const char *url, const char *httpMethod, const char *version,
                                  const Ns_Time *timeoutPtr, Sock **sockPtrPtr)
@@ -1378,11 +1402,6 @@ NS_EXTERN int NSDriverSockNew(Tcl_Interp *interp, NS_SOCKET sock,
                               const char *protocol, const char *driverName, const char *methodName,
                               Sock **sockPtrPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6);
-
-NS_EXTERN ssize_t NsSockSendFileBufsIndirect(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs,
-                                             const Ns_Time *timeoutPtr, unsigned int flags,
-                                             Ns_DriverSendProc *sendProc)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(6);
 
 NS_EXTERN bool NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -1432,7 +1451,7 @@ NS_EXTERN Ns_ArgProc NsTclSockArgProc;
 NS_EXTERN Ns_ThreadProc NsConnThread;
 NS_EXTERN Ns_ArgProc NsConnArgProc;
 NS_EXTERN Ns_FilterProc NsTclFilterProc;
-NS_EXTERN Ns_FilterProc NsShortcutFilterProc;
+NS_EXTERN Ns_FilterProc NsShortcutFilterProc NS_GNUC_PURE;
 NS_EXTERN Ns_OpProc NsTclRequestProc;
 NS_EXTERN Ns_OpProc NsAdpPageProc;
 NS_EXTERN Ns_ArgProc NsAdpPageArgProc;
@@ -1549,7 +1568,7 @@ NS_EXTERN void NsConnTimeStatsUpdate(Ns_Conn *conn)
 NS_EXTERN void NsConnTimeStatsFinalize(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN Ns_ReturnCode NsConnRequire(Tcl_Interp *interp, Ns_Conn **connPtr)
+NS_EXTERN Ns_ReturnCode NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -1620,6 +1639,7 @@ NS_EXTERN void NsTclInitAddrType(void);
 NS_EXTERN void NsTclInitTimeType(void);
 NS_EXTERN void NsTclInitKeylistType(void);
 NS_EXTERN void NsTclInitSpecType(void);
+NS_EXTERN void NsTclInitMemUnitType(void);
 
 /*
  * Callback routines.

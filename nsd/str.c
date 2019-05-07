@@ -248,16 +248,19 @@ Ns_StrToInt(const char *chars, int *intPtr)
  *
  * Ns_StrToWideInt --
  *
- *      Attempt to convert the string value to an wide integer.
+ *      Attempt to convert the string value to a wide integer.
+ *
+ *      The string may begin with an arbitrary amount of white space (as
+ *      determined by isspace(3)) followed by a single optional `+' or `-'
+ *      sign.  If string starts with `0x' prefix, the number will be read in
+ *      base 16, otherwise the number will be treated as decimal.
  *
  * Results:
  *      NS_OK and *intPtr updated, NS_ERROR if the number cannot be
  *      parsed or overflows.
  *
  * Side effects:
- *      The string may begin with an arbitrary amount of white space (as determined by
- *      isspace(3)) followed by a  single  optional `+' or `-' sign.  If string starts with `0x' prefix,
- *      the number will be read in base 16, otherwise the number will be treated as decimal
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -278,6 +281,134 @@ Ns_StrToWideInt(const char *chars, Tcl_WideInt *intPtr)
             status = NS_ERROR;
         } else {
             *intPtr = (Tcl_WideInt) lval;
+        }
+    }
+
+    return status;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_StrToMemUnit --
+ *
+ *      Attempt to convert the string value to a memory unit value
+ *      (an integer followed by kB, MB, GB, KiB, MiB, GiB).
+ *
+ *      The string may begin an integer followed by an arbitrary amount of
+ *      white space (as determined by isspace(3)) followed by a single
+ *      optional `.' and integer fraction part.  If the reminder is one of the
+ *      accepted mem unit strings above, multiply the value with the
+ *      corresponding multiplier.
+ *
+ * Results:
+ *      NS_OK and *intPtr updated, NS_ERROR if the number cannot be
+ *      parsed or overflows.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
+{
+    Ns_ReturnCode status = NS_OK;
+
+    if (chars[0] == '\0') {
+        *intPtr = (Tcl_WideInt) 0;
+
+    } else {
+        Tcl_WideInt lval;
+        char       *endPtr;
+
+        /*
+         * Parse the first part of the number.
+         */
+        errno = 0;
+        lval = strtoll(chars, &endPtr, 10);
+        if (unlikely(errno == ERANGE && (lval == LLONG_MAX || lval == LLONG_MIN))) {
+            /*
+             * strtoll() parsing failed.
+             */
+            status = NS_ERROR;
+        } else {
+            int    multiplier = 1;
+            double fraction = 0.0;
+
+            if (*endPtr != '\0') {
+                /*
+                 * We are not at the end of the string, check for decimal
+                 * digits.
+                 */
+                if (*endPtr == '.') {
+                    long   decimal, i, digits, divisor = 1;
+                    char  *ep;
+
+                    endPtr++;
+                    decimal = strtoll(endPtr, &ep, 10);
+                    digits = ep-endPtr;
+                    for (i = 0; i < digits; i++) {
+                        divisor *= 10;
+                    }
+                    fraction = (double)decimal / (double)divisor;
+                    endPtr = ep;
+                }
+                /*
+                 * Skip whitespace
+                 */
+                while (CHARTYPE(space, *endPtr) != 0) {
+                    endPtr++;
+                }
+                /*
+                 * Parse units.
+                 *
+                 * The International System of Units (SI) defines
+                 *    kB, MB, GB as 1000, 1000^2, 1000^3 bytes,
+                 * and IEC defines
+                 *    KiB, MiB and GiB as 1024, 1024^2, 1024^3 bytes.
+                 *
+                 * For effective memory usage, multiple of 1024 are
+                 * better. Therefore we follow the PostgreSQL conventions and
+                 * use 1024 as multiplier, but we allow as well the IEC
+                 * abbreviations.
+                 */
+                if (*endPtr == 'M' && *(endPtr+1) == 'B') {
+                    multiplier = 1024 * 1024;
+                } else if ((*endPtr == 'K' || *endPtr == 'k') && *(endPtr+1) == 'B') {
+                    multiplier = 1024;
+                } else if (*endPtr == 'G' && *(endPtr+1) == 'B') {
+                    multiplier = 1024 * 1024 * 1024;
+
+                } else if (*endPtr == 'M' && *(endPtr+1) == 'i' && *(endPtr+2) == 'B') {
+                    multiplier = 1024 * 1024;
+                } else if ((*endPtr == 'K') && *(endPtr+1) == 'i' && *(endPtr+2) == 'B') {
+                    multiplier = 1024;
+                } else if (*endPtr == 'G' && *(endPtr+1) == 'i' && *(endPtr+2) == 'B') {
+                    multiplier = 1024 * 1024 * 1024;
+                } else {
+                    status = NS_ERROR;
+                }
+            }
+            if (status == NS_OK) {
+                /*
+                 * The mem unit value was parsed correctly.
+                 */
+                if (fraction > 0.0) {
+                    /*
+                     * We have a fraction (e.g. 1.5MB). Compute the value as
+                     * floating point value and covert the result to integer.
+                     */
+                    double r = (double)(lval * multiplier) + fraction * multiplier;
+
+                    *intPtr = (Tcl_WideInt)r;
+                } else {
+                    /*
+                     * No need to compute with floating point values.
+                     */
+                    *intPtr = (Tcl_WideInt) lval * multiplier;
+                }
+            }
         }
     }
 
@@ -462,49 +593,13 @@ Ns_GetBinaryString(Tcl_Obj *obj, int *lengthPtr, Tcl_DString *dsPtr)
     NS_NONNULL_ASSERT(obj != NULL);
     NS_NONNULL_ASSERT(lengthPtr != NULL);
 
-#if 0
-    /*
-     * In earlier versions of Tcl 8.7, we had to do the following stunt.
-     * maybe, this was a bug in these Tcl versions...
-     */
-
-    if (NsTclObjIsByteArray(obj)) {
-        result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
-
-    } else if (NsTclObjIsEncodedByteArray(obj)) {
-        /*
-         * This branch should be taken seldom, and is the only one, that
-         * requires the dsPtr. The need for dsPtr buffer is due to byte
-         * arrays, which have to be converted into external strings. This
-         * becomes necessary, when some code computes the string
-         * representation of a bytearray, which is then converted into the Tcl
-         * internal UCS-2 notation. In order to get a proper byte array back,
-         * we need the Tcl_DString as a temporary buffer.
-         *
-         * In most cases, the calls to Tcl_DStringInit() and Tcl_DStringFree()
-         * framing Ns_GetBinaryString() are dummy operations.
-         */
-# if (TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION < 7)
-        result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
-# else
-        result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
-        char *bytes = Tcl_GetStringFromObj(obj, lengthPtr);
-
-        Tcl_UtfToExternalDString(NULL, bytes, *lengthPtr, dsPtr);
-        result = dsPtr->string;
-        *lengthPtr = dsPtr->length;
-# endif
-    } else {
-        result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
-    }
-#else
     /*
      * Just reference dsPtr for the time being, we should wait, until Tcl 8.7
-     * is released an then maybe get tid of dsPtr.
+     * is released and then maybe get tid of dsPtr.
      */
     (void)dsPtr;
+
     result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
-#endif
 
     return result;
 }

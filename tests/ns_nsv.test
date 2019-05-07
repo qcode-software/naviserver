@@ -25,7 +25,7 @@ test ns_nsv-1.5 {basic syntax nsv_lappend} -body {
 
 test ns_nsv-1.6 {basic syntax nsv_incr} -body {
     nsv_incr
-} -returnCodes error -result {wrong # args: should be "nsv_incr array key ?count?"}
+} -returnCodes error -result {wrong # args: should be "nsv_incr array key ?increment?"}
 
 test ns_nsv-1.7 {basic syntax nsv_unset} -body {
     nsv_unset
@@ -124,9 +124,18 @@ test ns_nsv-2.12 {"nsv_set -default" with pre-existing value} -body {
     nsv_unset -nocomplain a
 } -result {123 1}
 
+test ns_nsv_2.13 {"nsv_set a b" no key nor array} -body {
+    catch {nsv_set a b} _errMsg
+    set _errMsg
+} -match exact -result {no such array: a}
 
-
-
+test ns_nsv_2.14 {"nsv_set a b" array present but no key} -body {
+    nsv_set a foo bar
+    catch {nsv_set a b} _errMsg
+    set _errMsg
+} -cleanup {
+    nsv_unset -nocomplain a
+} -match exact -result {no such key: b}
 
 test ns_nsv-3.1 {nsv_unset too many args} -body {
     nsv_unset a k v x

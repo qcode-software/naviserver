@@ -45,7 +45,7 @@ static Ns_ReturnCode ReturnOpen(Ns_Conn *conn, int status, const char *mimeType,
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 static Ns_ReturnCode ReturnRange(Ns_Conn *conn, const char *mimeType,
-                                 int fd, const void *data, size_t len)
+                                 int fd, const void *data, size_t dataLength)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
@@ -434,9 +434,8 @@ void
 Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
 {
     const Conn    *connPtr = (const Conn *) conn;
-    const Ns_Sock *sockPtr;
     size_t         i;
-    const char    *reason, *value;
+    const char    *reason;
 
     /*
      * Construct the HTTP response status line.
@@ -469,7 +468,8 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
      * specification.
      *
      * For full backwards compatibility, a MIME-Version header could be added
-     * for a site via nssocket/nsssl driver parameter "extraheaders".
+     * via configuration parameter "extraheaders" (from network driver or
+     * server config).
      */
 
     Ns_DStringVarAppend(dsPtr,
@@ -479,60 +479,88 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
     Ns_DStringNAppend(dsPtr, "\r\n", 2);
 
     /*
-     * Add extra headers from config file, if available.
+     * Header processing. Merge possibly the output headers as provided by the
+     * application with the extra headers (per-server and per-drivet) from the
+     * configuration file.
      */
-    sockPtr = Ns_ConnSockPtr(conn);
-    if (sockPtr != NULL) {
-        value = sockPtr->driver->extraHeaders;
-        if (value != NULL) {
-            Ns_DStringNAppend(dsPtr, value, -1);
+    {
+        const Ns_Sock *sockPtr;
+        const Ns_Set  *outputHeaders;
+        Ns_Set        *headers = conn->outputheaders;
+
+        /*
+         * We have always output headers, this is assured by ConnRun().
+         */
+        assert(conn->outputheaders != NULL);
+
+        sockPtr = Ns_ConnSockPtr(conn);
+        if (sockPtr != NULL) {
+            NsServer *servPtr = ((Sock *)sockPtr)->servPtr;
+
+            if (servPtr->opts.extraHeaders != NULL) {
+                /*
+                 * We have server-specific extra headers. Merge these into the
+                 * output headers. Output headers have the higher priority: if
+                 * there is already shuch a header field, it is kept.
+                 */
+                Ns_SetIMerge(headers, servPtr->opts.extraHeaders);
+            }
+
+            if (sockPtr->driver->extraHeaders != NULL) {
+                /*
+                 * We have driver-specific output headers. Fields already in
+                 * the output headers have the higher priority.
+                 */
+                Ns_SetIMerge(headers, sockPtr->driver->extraHeaders);
+            }
         }
-    }
+        outputHeaders = headers;
 
-    /*
-     * Output any extra headers.
-     */
+        /*
+         * Add the (potentially merged) header set in a sanitized form into
+         * the resulting DString (dsPtr).
+         */
+        if (outputHeaders != NULL) {
+            for (i = 0u; i < Ns_SetSize(outputHeaders); i++) {
+                const char *key, *value;
 
-    if (conn->outputheaders != NULL) {
-        for (i = 0u; i < Ns_SetSize(conn->outputheaders); i++) {
-            const char *key;
+                key = Ns_SetKey(outputHeaders, i);
+                value = Ns_SetValue(outputHeaders, i);
+                if (key != NULL && value != NULL) {
+                    const char *lineBreak = strchr(value, INTCHAR('\n'));
 
-            key = Ns_SetKey(conn->outputheaders, i);
-            value = Ns_SetValue(conn->outputheaders, i);
-            if (key != NULL && value != NULL) {
-                const char *lineBreak = strchr(value, INTCHAR('\n'));
+                    if (lineBreak == NULL) {
+                        Ns_DStringVarAppend(dsPtr, key, ": ", value, "\r\n", (char *)0L);
+                    } else {
+                        Ns_DString sanitize, *sanitizePtr = &sanitize;
+                        /*
+                         * We have to sanititize the header field to avoid
+                         * a HTTP response splitting attack. After each
+                         * newline in the value, we insert a TAB character
+                         * (see Section 4.2 in RFC 2616)
+                         */
 
-                if (lineBreak == NULL) {
-                    Ns_DStringVarAppend(dsPtr, key, ": ", value, "\r\n", (char *)0L);
-                } else {
-                    Ns_DString sanitize, *sanitizePtr = &sanitize;
-                    /*
-                     * We have to sanititize the header field to avoid
-                     * a HTTP response splitting attack. After each
-                     * newline in the value, we insert a TAB character
-                     * (see Section 4.2 in RFC 2616)
-                     */
+                        Ns_DStringInit(&sanitize);
 
-                    Ns_DStringInit(&sanitize);
+                        do {
+                            size_t offset = (size_t)(lineBreak - value);
 
-                    do {
-                        size_t offset = (size_t)(lineBreak - value);
+                            if (offset > 0u) {
+                                Tcl_DStringAppend(sanitizePtr, value, (int)offset);
+                            }
+                            Tcl_DStringAppend(sanitizePtr, "\n\t", 2);
 
-                        if (offset > 0u) {
-                            Tcl_DStringAppend(sanitizePtr, value, (int)offset);
-                        }
-                        Tcl_DStringAppend(sanitizePtr, "\n\t", 2);
+                            offset ++;
+                            value += offset;
+                            lineBreak = strchr(value, INTCHAR('\n'));
 
-                        offset ++;
-                        value += offset;
-                        lineBreak = strchr(value, INTCHAR('\n'));
+                        } while (lineBreak != NULL);
 
-                    } while (lineBreak != NULL);
+                        Tcl_DStringAppend(sanitizePtr, value, -1);
 
-                    Tcl_DStringAppend(sanitizePtr, value, -1);
-
-                    Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sanitizePtr), "\r\n", (char *)0L);
-                    Ns_DStringFree(sanitizePtr);
+                        Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sanitizePtr), "\r\n", (char *)0L);
+                        Ns_DStringFree(sanitizePtr);
+                    }
                 }
             }
         }
@@ -927,95 +955,119 @@ ReturnOpen(Ns_Conn *conn, int status, const char *mimeType, Tcl_Channel chan,
  * Side effects:
  *      May send various HTTP error responses.
  *
- *      Will close the connection.
- *
  *----------------------------------------------------------------------
  */
 
 static Ns_ReturnCode
 ReturnRange(Ns_Conn *conn, const char *mimeType,
-            int fd, const void *data, size_t len)
+            int fd, const void *data, size_t dataLength)
 {
     Ns_DString    ds;
-    Ns_FileVec    bufs[NS_MAX_RANGES];
-    int           nbufs = NS_MAX_RANGES, rangeCount;
-    Ns_ReturnCode result = NS_ERROR;
+    Ns_FileVec    bufs[NS_MAX_RANGES * 2 + 1];
+    int           nbufs = NS_MAX_RANGES * 2, rangeCount;
+    Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(mimeType != NULL);
 
     Ns_DStringInit(&ds);
-    rangeCount = NsConnParseRange(conn, mimeType, fd, data, len,
-                                  bufs, &nbufs, &ds);
 
     /*
-     * Don't use writer when only headers are returned
+     * NsConnParseRange() returns in the provided bufs the content plus the
+     * separating (chunked) multipart headers and the multipart trailer. For
+     * this, it needs (NS_MAX_RANGES * 2 + 1) bufs.
      */
+    rangeCount = NsConnParseRange(conn, mimeType, fd, data, dataLength,
+                                  bufs, &nbufs, &ds);
+
+    if (rangeCount == -1) {
+        Ns_DStringFree(&ds);
+        return NS_ERROR;
+    }
+
+    /*
+     * Don't use writer thread when only headers are returned.
+     */
+
     if ((conn->flags & NS_CONN_SKIPBODY) == 0u) {
 
         /*
+         * Return range based content.
+         *
          * We are able to handle the following cases via writer:
-         * - iovec based requests: all range request up to 32 ranges.
-         * - fd based requests: 0 or 1 range requests
+         *
+         * - iovec based requests: up to NS_MAX_RANGES ranges
+         * - fd based requests: 0 (= whole file) or 1 range(s)
+         *
+         * All other cases: default to the Ns_ConnSendFileVec().
          */
-        if (fd == NS_INVALID_FD) {
-            int nvbufs;
-            struct iovec vbuf[32];
+
+        if (fd == NS_INVALID_FD && rangeCount < NS_MAX_RANGES) {
+            struct iovec vbuf[NS_MAX_RANGES *2 + 1];
 
             if (rangeCount == 0) {
-                nvbufs = 1;
+                nbufs = 1;
                 vbuf[0].iov_base = (void *)data;
-                vbuf[0].iov_len  = len;
+                vbuf[0].iov_len  = dataLength;
             } else {
                 int i;
 
-                nvbufs = rangeCount;
-                len = 0u;
-                for (i = 0; i < rangeCount; i++) {
+                dataLength = 0u;
+                for (i = 0; i < nbufs; i++) {
                     vbuf[i].iov_base = INT2PTR(bufs[i].offset);
                     vbuf[i].iov_len  = bufs[i].length;
-                    len += bufs[i].length;
+                    dataLength += bufs[i].length;
                 }
             }
-
-            if (NsWriterQueue(conn, len, NULL, NULL, fd, &vbuf[0], nvbufs, NS_FALSE) == NS_OK) {
+            if (NsWriterQueue(conn, dataLength, NULL, NULL, NS_INVALID_FD,
+                              vbuf, nbufs, NS_FALSE) == NS_OK) {
                 Ns_DStringFree(&ds);
                 return NS_OK;
+
             }
-        } else if (rangeCount < 2) {
+        } else if (fd != NS_INVALID_FD && rangeCount < 2) {
             if (rangeCount == 1) {
                 if (ns_lseek(fd, bufs[0].offset, SEEK_SET) == -1) {
-                    Ns_Log(Warning, "seek operation with offset %" PROTd " failed: %s",
-                           bufs[0].offset, strerror(errno));
+
+                    /*
+                     * TODO:
+                     * What is with error string on Windows?
+                     */
+
+                    Ns_Log(Warning, "seek operation with offset %" PROTd
+                           " failed: %s", bufs[0].offset, strerror(errno));
+                    Ns_DStringFree(&ds);
+                    return NS_ERROR;
                 }
-                len = bufs[0].length;
+                dataLength = bufs[0].length;
             }
-            if (NsWriterQueue(conn, len, NULL, NULL, fd, NULL, 0, NS_FALSE) == NS_OK) {
+            if (NsWriterQueue(conn, dataLength, NULL, NULL, fd, NULL, 0,
+                              NS_FALSE) == NS_OK) {
                 Ns_DStringFree(&ds);
                 return NS_OK;
             }
         }
     }
 
-    if (rangeCount >= 0) {
-        if (rangeCount == 0) {
-            Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
-
-            if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
-              len = 0u;
-            }
-
-            (void) Ns_SetFileVec(bufs, 0, fd, data, 0, len);
-            nbufs = 1;
+    if (rangeCount == 0) {
+        Ns_ConnSetLengthHeader(conn, dataLength, NS_FALSE);
+        if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
+            dataLength = 0u;
         }
-        /*
-         * Flush Headers and send file contents.
-         */
-        result = Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM);
-        if (result == NS_OK) {
-            result = Ns_ConnSendFileVec(conn, bufs, nbufs);
-        }
+        (void) Ns_SetFileVec(bufs, 0, fd, data, 0, dataLength);
+        nbufs = 1;
     }
+
+    /*
+     * Flush Headers and send file contents.
+     */
+
+    result = Ns_ConnWriteVData(conn, NULL, 0, NS_CONN_STREAM);
+
+    if (result == NS_OK) {
+        result = Ns_ConnSendFileVec(conn, bufs, nbufs);
+    }
+
     Ns_DStringFree(&ds);
 
     return result;

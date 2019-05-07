@@ -178,8 +178,10 @@ ConfigServerAdp(const char *server)
     servPtr->adp.startpage = Ns_ConfigString(path, "startpage", NULL);
     servPtr->adp.debuginit = Ns_ConfigString(path, "debuginit", "ns_adp_debuginit");
     servPtr->adp.tracesize = Ns_ConfigInt(path, "tracesize", 40);
-    servPtr->adp.cachesize = (size_t)Ns_ConfigInt(path, "cachesize", 5000 * 1024);
-    servPtr->adp.bufsize   = (size_t)Ns_ConfigInt(path, "bufsize",   1 * 1024 * 1000);
+    servPtr->adp.cachesize = (size_t)Ns_ConfigMemUnitRange(path, "cachesize", 5000 * 1024,
+                                                           1000 * 1024, INT_MAX);
+    servPtr->adp.bufsize   = (size_t)Ns_ConfigMemUnitRange(path, "bufsize",   1024 * 1000,
+                                                           100 * 1024, INT_MAX);
     servPtr->adp.defaultExtension = Ns_ConfigString(path, "defaultextension", NULL);
 
     servPtr->adp.flags = 0u;
@@ -741,9 +743,9 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
         itPtr->deleteInterp = NS_TRUE;
         Tcl_DStringInit(&ds);
         Tcl_DStringAppendElement(&ds, itPtr->servPtr->adp.debuginit);
-        Tcl_DStringAppendElement(&ds, (procs != NULL) ? procs : "");
-        Tcl_DStringAppendElement(&ds, (host  != NULL) ? host : "");
-        Tcl_DStringAppendElement(&ds, (port  != NULL) ? port : "");
+        Tcl_DStringAppendElement(&ds, (procs != NULL) ? procs : NS_EMPTY_STRING);
+        Tcl_DStringAppendElement(&ds, (host  != NULL) ? host : NS_EMPTY_STRING);
+        Tcl_DStringAppendElement(&ds, (port  != NULL) ? port : NS_EMPTY_STRING);
         result = Tcl_EvalEx(interp, ds.string, ds.length, 0);
         Tcl_DStringFree(&ds);
         if (result != TCL_OK) {
@@ -857,7 +859,7 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
 
     interp = itPtr->interp;
 
-    fd = ns_open(file, O_RDONLY | O_BINARY, 0);
+    fd = ns_open(file, O_RDONLY | O_BINARY | O_CLOEXEC, 0);
     if (fd < 0) {
         Ns_TclPrintfResult(interp, "could not open \"%s\": %s",
                            file, Tcl_PosixError(interp));
@@ -981,7 +983,7 @@ NsAdpLogError(NsInterp *itPtr)
         Ns_DStringPrintf(&ds, "\n    at line %d of ",
                          (int)framePtr->line + Tcl_GetErrorLine(interp));
     }
-    inc = "";
+    inc = NS_EMPTY_STRING;
     while (framePtr != NULL) {
         if (framePtr->file != NULL) {
             Ns_DStringPrintf(&ds, "%sadp file \"%s\"", inc, framePtr->file);
@@ -990,7 +992,7 @@ NsAdpLogError(NsInterp *itPtr)
             }
         } else {
             adp = Tcl_GetStringFromObj(framePtr->objv[0], &len);
-            dot = "";
+            dot = NS_EMPTY_STRING;
             if (len > 150) {
                 len = 150;
                 dot = "...";
@@ -1010,7 +1012,7 @@ NsAdpLogError(NsInterp *itPtr)
         size_t i;
 
         Ns_DStringPrintf(&ds, "\n    while processing connection %s:\n%8s%s",
-                         NsConnIdStr(conn), "",
+                         NsConnIdStr(conn), NS_EMPTY_STRING,
                          conn->request.line);
         for (i = 0u; i < Ns_SetSize(conn->headers); ++i) {
             Ns_DStringPrintf(&ds, "\n        %s: %s",
@@ -1259,7 +1261,7 @@ AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
              level, nscript);
     fd = ns_mkstemp(debugfile);
     if (fd < 0) {
-        Ns_TclPrintfResult(interp, "could not create adp debug file");
+        Ns_TclPrintfResult(interp, "could not create ADP debug file");
         result = TCL_ERROR;
     } else {
         if (ns_write(fd, ds.string, (size_t)ds.length) < 0) {

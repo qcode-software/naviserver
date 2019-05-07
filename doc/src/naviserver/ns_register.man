@@ -28,7 +28,7 @@ matching requests. Otherwise, the [term ADP] page will be located at request
 time using [cmd ns_url2file].
 
 [para]
-This commands works similar as [cmd ns_register_tcl], but registers an
+This command works similar as [cmd ns_register_tcl], but registers an
 ADP file instead of a Tcl script.
 
 [para]
@@ -57,7 +57,7 @@ The argument [arg method] is restricted to GET, POST or HEAD
 	[opt [arg args]]]
 
 [term ns_register_filter] registers a Tcl filter script for the specified method/URL combination
-on a virtual server. When [option -first] ist used, it is added to the
+on a virtual server. When [option -first] is used, it is added to the
 front of the filter list, otherwise to the end.
 
 [para] The [term when] argument specifies, when the filter script is
@@ -142,7 +142,8 @@ will be called.
 [para]
 Be aware that executing the same [term ns_register_filter] statement more than once (as
 you might do when re-initializing Tcl) will add the filter more than once! You
-may want to have a shared variable set so that you don't do this.
+may want to have a shared variable set to avoid multiple
+registrations. Filters can be shortcutted via [cmd ns_shortcut_filter].
 
 
 
@@ -499,7 +500,7 @@ This example shows how to expire all HTML files after an hour:
 currently registered procs.
 
 
-[see_also ns_adp ns_conn ns_info]
+[see_also ns_adp ns_conn ns_info ns_shortcut_filter]
 [keywords "server built-in" ADP filter request callback fastpath]
 [manpage_end]
 
