@@ -46,11 +46,24 @@ if {[ns_config test listenport]} {
 
 
 
-test byteranges-1.1 {Simple range, beginning} -constraints serverListen -body {
+test byteranges-1.1a {Simple range, beginning, no fd, no writer} -constraints serverListen -body {
     nstest::http -getbody 1 -setheaders {Range bytes=0-4} \
-        -getheaders {Content-length Content-range} \
+        -getheaders {Content-length Content-range Content-Type} \
         GET /10bytes
-} -result {206 5 {bytes 0-4/10} 01234}
+} -result {206 5 {bytes 0-4/10} */* 01234}
+
+test byteranges-1.1b {Simple range, beginning, no fd, writer} -constraints serverListen -body {
+    nstest::http -getbody 0 -setheaders {Range bytes=0-1500} \
+        -getheaders {Content-length Content-range Content-Type} \
+        GET /2048bytes
+} -result {206 1501 {bytes 0-1500/2048} */*}
+
+test byteranges-1.1c {Simple range, beginning, fd, writer} -constraints serverListen -body {
+    nstest::http -getbody 0 -setheaders {Range bytes=0-4} \
+        -getheaders {Content-length Content-range Content-Type} \
+        GET /16480bytes
+} -result {206 5 {bytes 0-4/16480} */*}
+
 
 test byteranges-1.2 {Simple range, end} -constraints serverListen -body {
     nstest::http -getbody 1 -setheaders {Range bytes=5-9} \
@@ -408,7 +421,7 @@ test byteranges-5.2.6 {ns_writer range reply - wrong file} \
 
 
 #
-# Range requests on adp files are currently ignored
+# Range requests on ADP files are currently ignored
 #
 test byteranges-6.0 {ADP + byte range} \
     -constraints serverListen -setup {
@@ -417,6 +430,79 @@ test byteranges-6.0 {ADP + byte range} \
         nstest::http -getbody 1 -setheaders {Range bytes 2-3} \
             GET /dejavu
     } -result {200 {Hello World!}}
+
+
+test byteranges-7.0 {Many contiguous ranges} \
+    -constraints {serverListen} -body {
+        nstest::http -setheaders {Range bytes=0-1,2-3,3-4} \
+            -getheaders {Content-length Content-range} \
+            GET /16480bytes
+    } -result {206 5 {bytes 0-4/16480}}
+
+test byteranges-7.1 {Many contiguous ranges} \
+    -constraints {serverListen} -body {
+        nstest::http -setheaders {Range bytes=0-1,1-2,2-3} \
+            -getheaders {Content-length Content-range} \
+            GET /16480bytes
+    } -result {206 4 {bytes 0-3/16480}}
+
+test byteranges-7.2 {Many contiguous ranges} \
+    -constraints {serverListen} -body {
+        for {set i 0} {$i < 60} {incr i} {
+            lappend ranges $i-$i
+        }
+        nstest::http -setheaders [list Range bytes=[join $ranges ,]] \
+            -getheaders {Content-length Content-range} \
+            GET /16480bytes
+    } -result {206 60 {bytes 0-59/16480}}
+
+test byteranges-7.3 {Many non-contiguous ranges} \
+    -constraints {serverListen} -body {
+        set ranges {}
+        for {set i 0} {$i < 32} {incr i} {
+            set j [expr {$i*2}]
+            lappend ranges $j-$j
+        }
+
+        nstest::http -setheaders [list Range bytes=[join $ranges ,]] \
+            -getbody 0 \
+            -getheaders {Content-length Content-range} \
+            GET /16480bytes
+    } -result {206 2970 {}}
+
+test byteranges-7.4 {Too Many non-contiguous ranges (more than NS_MAX_RANGES)} \
+    -constraints {serverListen} -body {
+        set ranges {}
+        for {set i 0} {$i < 60} {incr i} {
+            set j [expr {$i*2}]
+            lappend ranges $j-$j
+        }
+        nstest::http -setheaders [list Range bytes=[join $ranges ,]] \
+            -getbody 0 \
+            -getheaders {Content-length Content-range} \
+            GET /16480bytes
+    } -result {206 2970 {}}
+
+#
+# The question whether or not the fd is used internally depends on
+# the config file. Make sure that caching is activated, and the
+# cachemaxentry is larger than 2048.
+#
+test byteranges-7.5a {larger byte ranges, no fd, writer} -constraints serverListen -body {
+    nstest::http -getbody 0 -setheaders {Range bytes=0-100,200-300,400-1300,1600-1699} \
+        -getheaders {Content-length Content-range Content-Type} \
+        GET /2048bytes
+} -result {206 1608 {} {multipart/byteranges; boundary=NaviServerNaviServerNaviServer}}
+
+#
+# The following test returns 4 bytes more than byteranges-7.5a, since
+# the total lengths in the chunked headers is different as well.
+#
+test byteranges-7.5b {larger byte ranges, fd, writer} -constraints serverListen -body {
+    nstest::http -getbody 0 -setheaders {Range bytes=0-100,200-300,400-1300,1600-1699} \
+        -getheaders {Content-length Content-range Content-Type} \
+        GET /16480bytes
+} -result {206 1612 {} {multipart/byteranges; boundary=NaviServerNaviServerNaviServer}}
 
 
 cleanupTests

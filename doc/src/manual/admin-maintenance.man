@@ -58,7 +58,7 @@ Options:
 necessary when starting the server with a privileged port running with
 a non-root user-id.  Typically, the addresses are of the form
 ipaddr:port, where the IP address can be either an IPv4 address in the
-dottet notation or an IPv6 address between square brackets (IP-literal
+dotted notation or an IPv6 address between square brackets (IP-literal
 notation). When the IP address is followed by "#" and a positive
 number, the server binds the specified number of sockets to the same
 address. This is necessary, when multiple driver threads listen to the
@@ -113,7 +113,7 @@ To restart the server from the shell you can send the server the SIGINT.
 
 [list_begin itemized]
 
-[item] Builtin feature. No need to setup something else.
+[item] Built-in feature. No need to setup something else.
 [item] Ability to restart from within your application.
 
 [list_end]
@@ -188,7 +188,7 @@ and init does the job of restarting the server if it crashes.
 [list_begin itemized]
 
 [item] Very easy to configure.
-[item] Some kind of built in feature of your OS.
+[item] Some kind of built-in feature of your OS.
 
 [list_end]
 
@@ -275,7 +275,7 @@ Daemontools is a collection of software to control other processes.
 [emph {PLEASE NOTE THAT THIS IS NOT RECOMMENDED FOR WEBSERVER USAGE.}]
 
 The situations where you might want to run NaviServer as user root are rare to none.
-But NaviServer as a tool is so flexible that it can not only be used as webserver.
+But NaviServer as a tool is so flexible that it cannot only be used as webserver.
 It's possible (and has been done) to use it as some kind of application where serving
 webpages is not the primary target.
 
@@ -293,7 +293,7 @@ You can see the result in the security info:
 
 [example_begin]
    ...
-   [lb]-main-[rb] Notice: nsmain: NaviServer/4.99.15 starting
+   [lb]-main-[rb] Notice: nsmain: NaviServer/4.99.18 starting
    [lb]-main-[rb] Notice: nsmain: security info: uid=0, euid=0, gid=8, egid=8
    ...
 [example_end]
@@ -347,7 +347,7 @@ Use Novell AppArmor (http://www.novell.com/products/apparmor/) and create a Prof
 
 [subsection {Command (interactive) mode}]
 
-Usually you start the server and it waits for signals. With testing in mind a new mode was
+Usually you start the server and it waits for signals. With testing in mind, a new mode was
 added for developers: The interactive 'Command mode'.
 
 [para]
@@ -378,7 +378,7 @@ and [cmd "ns_server requestprocs"].
 [example_begin]
    buckel@tulpe:/usr/local/ns/bin> ./nsd -c -u nsadmin -g www -t ../sample-config.tcl
    [lb]-main-[rb] Notice: encoding: loaded: iso8859-1
-   [lb]-main-[rb] Notice: nsmain: NaviServer/4.99.15 starting
+   [lb]-main-[rb] Notice: nsmain: NaviServer/4.99.18 starting
    [lb]-main-[rb] Notice: nsmain: security info: uid=500, euid=500, gid=100, egid=100
    [lb]-main-[rb] Notice: nsmain: max files: FD_SETSIZE = 1024, rl_cur = 1024, rl_max = 1024
    [lb]-main-[rb] Notice: adp[lb]server1[rb]: mapped /*.adp
@@ -392,10 +392,12 @@ and [cmd "ns_server requestprocs"].
    [lb]-main-[rb] Notice: nssock: listening on 10.0.0.100:8000
    [lb]-driver-[rb] Notice: starting
    [lb]-driver-[rb] Notice: driver: accepting connections
+   
    % ns_info threads
    {-driver- -main- 1084140464 0 1119862183 p:0x40037cfb a:0x0}
    {-sched- -main- 1082039216 0 1119862183 p:0x4004a09a a:0x0}
    {-main- {} 1076887680 1 1119862183 p:0x0 a:0x0}
+   
    % ns_server requestprocs
    {GET / * inherit ns:fastget a:0x0} {HEAD / * inherit ns:fastget a:0x0} {POST / * inherit ns:fastget a:0x0}
    %
@@ -499,14 +501,14 @@ access log for each virtual server is in the
 
 
 The access log can be configured to limit the number of old logs
-maintained (with the MaxBackup parameter). This sets an upper limit on
-the amount of disk space the access logs take. However, because old
-logs beyond the limit configured to be saved by the NaviServer are
-deleted automatically, you must back up old logs if you require a
-complete history of access to your site. For example, if the MaxBackup
-parameter in the configuration file is set to 5, only five old access
-log files will remain on disk. When a sixth log file needs to be
-opened, the oldest log is removed.
+maintained (with the MaxBackup parameter). This parameter sets an
+upper limit on the amount of disk space the access logs take. However,
+because old logs beyond the limit configured to be saved by the
+NaviServer are deleted automatically, you must back up old logs if you
+require a complete history of access to your site. For example, if the
+MaxBackup parameter in the configuration file is set to 5, only five
+old access log files will remain on disk. When a sixth log file needs
+to be opened, the oldest log is removed.
 
 
 [para]
@@ -640,7 +642,7 @@ Files:
 
 [para]
 Contains directories for each configured module that operates across
-servers, such as the "tcl" or "nsperm" module.
+servers, such as the "tcl" or "nsperm" folders.
 
 
 [subsection {/modules/nsperm}]
@@ -665,7 +667,7 @@ Files: .tcl files
 [subsection {/pages}]
 
 [para] Default directory where pages and images for the server are
-stored.  Users define typically variaious subdirectories of this
+stored.  Users define typically various subdirectories of this
 directory.
 
 [para]
@@ -676,7 +678,7 @@ Files: typically, .htm, .html, .shtml, and .adp files
 
 [para] Default directory for shared Tcl script library. Also contains
 subdirectories containing Tcl examples and Tcl scripts for various
-modules. The toplevel files of this directory are loaded into
+modules. The top-level files of this directory are loaded into
 NaviServer during startup.
 
 [para]
@@ -744,8 +746,8 @@ Users" section.
 [para]
 
 
-It is more secure to avoid using the nsperm module and use file-level
-security for ADPs. If you must use the nsperm module, set appropriate
+It is more secure to avoid using the [term nsperm] module and use file-level
+security for ADPs. If you must use the [term nsperm] module, set appropriate
 permissions records as follows:
 
 
@@ -825,7 +827,7 @@ NaviServer.
      because NaviServer opens and reads the configuration file before
      running chroot().
 
-[item] The nscp module, which allows connections only from localhost,
+[item] The [term nscp] module, which allows connections only from localhost,
      provides a secure control port interface that allows ad hoc Tcl
      evaluation and other server administration features. For more
      information about the control port interface, see the "NaviServer's
@@ -907,11 +909,9 @@ Command Line" section.
 [subsection {Restricted Content}]
 
 
-Determine whether any of the content available to an NaviServer in a
+Determine whether any of the content available to a NaviServer in a
 chroot() environment would be restricted. In general, NaviServer should
-be read-only and everything it can read should be world-readable. This
-allows the NaviServer administrator to ignore the nsperm module
-altogether.
+be read-only and everything it can read should be world-readable. 
 
 
 [para]
@@ -919,7 +919,7 @@ altogether.
 
 If any of the content available to NaviServer is restricted, the
 NaviServer administrator needs to define the appropriate permissions
-with the nsperm module. The administrator should be very clear which
+with the [term nsperm] module. The administrator should be very clear which
 areas are blocked off and know both the URL and METHOD for the
 restricted areas.
 
@@ -987,30 +987,31 @@ This code example disables the open command:
 [example_end]
 
 
-[subsection {Stacksize}]
+[subsection {Stack Size}]
 
-Apart from the specific details of integration of your favored language you may have to take a look at
-the stacksize parameter of your config file.
+Apart from the specific details of integration of your favored
+language you may have to take a look at the [term stacksize] parameter of
+your config file.
 
 [para]
-As a rule of thumb the default stacksize (in bytes)
+As a rule of thumb the default stack size (in bytes)
 
 [example_begin]
    #
    # Thread library (nsthread) parameters
    #
    ns_section "ns/threads"
-   ns_param   stacksize [expr 64*1024] ;# Per-thread stack size.
+   ns_param   stacksize 64kB   ;# Per-thread stack size.
 [example_end]
 
-is almost always not enough. Use multiples of 1024 and increase to 1 Megabyte for the start:
+is almost always not enough. Use e.g. 512kB for the start:
 
 [example_begin]
    #
    # Thread library (nsthread) parameters
    #
    ns_section "ns/threads"
-   ns_param   stacksize [expr 1024*1024] ;# Per-thread stack size.
+   ns_param   stacksize 512kB  ;# Per-thread stack size.
 [example_end]
 
 If the size of the stack is not enough you may encounter crashes without real explanation.
@@ -1020,26 +1021,15 @@ If the size of the stack is not enough you may encounter crashes without real ex
 Database access should be restricted with read-only logins to the
 server and queries through stored procedures.
 
-
-[para]
-
-
-For more information about the Tcl functions for stored procedures,
-see the [term ns_db] section of the NaviServer Tcl Developer's Guide. For
-more information about the C functions for stored procedures, see the
-"Stored Procedure Functions" section of the NaviServer C Developer's
-Guide.
-
-
 [para]
 
 
 [subsection {Control Port Interface}]
 
-The control port interface should not be used unless absolutely
-necessary. Although it is more secure than the /NS/Admin interface
-from earlier NaviServer versions because it only allows connections
-from localhost, it still poses a risk potential.
+The control port interface (module [term nscp]) should not be used unless absolutely
+necessary. A user connected to his interface can issue arbitrary
+commands. When the module is activated, it is recommended to accept
+only commands via the loopback interface.
 
 
 [para]
@@ -1049,6 +1039,6 @@ documentation of the [term nscp] ("NaviServer's Control Port") module.
 
 [see_also admin-install ns_server commandlist]
 
-[keywords nsd command-line-options nscp ns_db prebind]
+[keywords nsd command-line-options nscp nsdb nsperm prebind]
 
 [manpage_end]

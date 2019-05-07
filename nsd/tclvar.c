@@ -370,21 +370,28 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         result = TCL_ERROR;
 
     } else {
-        const Tcl_HashEntry *hPtr;
 
         /*
          * This is the undocumented but used (e.g. in nstrace.tcl) variant of
          * "ns_set" behaving like "nsv_get".
          */
+
         arrayPtr = LockArrayObj(interp, objv[1], NS_FALSE);
-        hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, NULL);
-        if (likely(hPtr != NULL)) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
-        } else {
-            Ns_TclPrintfResult(interp, "no such key: %s", key);
+        if (arrayPtr == NULL) {
             result = TCL_ERROR;
+        } else {
+            const Tcl_HashEntry *hPtr = NULL;
+
+            hPtr = Tcl_FindHashEntry(&arrayPtr->vars, key);
+            if (likely(hPtr != NULL)) {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+            }
+            UnlockArray(arrayPtr);
+            if (hPtr == NULL) {
+                Ns_TclPrintfResult(interp, "no such key: %s", key);
+                result = TCL_ERROR;
+            }
         }
-        UnlockArray(arrayPtr);
     }
 
     return result;
@@ -414,7 +421,7 @@ NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     int  result, count = 1;
 
     if (unlikely(objc != 3 && objc != 4)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "array key ?count?");
+        Tcl_WrongNumArgs(interp, 1, objv, "array key ?increment?");
         result = TCL_ERROR;
 
     } else if (unlikely(objc == 4 && Tcl_GetIntFromObj(interp, objv[3], &count) != TCL_OK)) {
@@ -1094,13 +1101,22 @@ Ns_VarUnset(const char *server, const char *array, const char *key)
     Ns_ReturnCode   status = NS_ERROR;
 
     NS_NONNULL_ASSERT(array != NULL);
-    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
         Array  *arrayPtr = LockArray(servPtr, array, NS_FALSE);
-        if (likely(arrayPtr != NULL)) {
+        if (unlikely(arrayPtr == NULL)) {
+            /* Error */
+        } else {
             status = Unset(arrayPtr, key);
+            if (status != NS_OK && key != NULL) {
+                /* Error, no such key. */
+            } else if (status == NS_OK && key == NULL) {
+                /* Finish deleting the entire array, same as in NsTclNsvUnsetObjCmd(). */
+                Tcl_DeleteHashTable(&arrayPtr->vars);
+                Tcl_DeleteHashEntry(arrayPtr->entryPtr);
+            }
             UnlockArray(arrayPtr);
         }
     }
@@ -1463,11 +1479,14 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
         const NsInterp *itPtr = NsGetInterpData(interp);
 
         arrayPtr = LockArray(itPtr->servPtr, arrayName, create);
-        if (likely(arrayPtr != NULL)) {
+        if (arrayPtr != NULL) {
             Ns_TclSetOpaqueObj(arrayObj, arrayType, arrayPtr->bucketPtr);
         }
     }
 
+    /*
+     * Both, GetArray() and LockArray() can return NULL.
+     */
     if (arrayPtr == NULL && !create) {
         Ns_TclPrintfResult(interp, "no such array: %s", arrayName);
     }

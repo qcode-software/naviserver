@@ -213,12 +213,10 @@ void
 NsThreadMain(void *arg)
 {
     Thread  *thrPtr = (Thread *) arg;
-    char     name[NS_THREAD_NAMESIZE];
 
     thrPtr->tid = Ns_ThreadId();
     Ns_TlsSet(&key, thrPtr);
-    snprintf(name, sizeof(name), "-thread:%" PRIxPTR "-", thrPtr->tid);
-    Ns_ThreadSetName(name);
+    Ns_ThreadSetName("-thread:%" PRIxPTR "-", thrPtr->tid);
     SetBottomOfStack(&thrPtr);
 
 #ifdef HAVE_GETTID
@@ -359,6 +357,7 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
             Tcl_DStringAppend(dsPtr, buf, written);
             if (proc != NULL) {
                 (*proc)(dsPtr, thrPtr->proc, thrPtr->arg);
+                Tcl_DStringAppend(dsPtr, " ", 1);
             } else {
                 unsigned char addrBuffer[sizeof(thrPtr->proc)];
                 int i;
@@ -372,11 +371,10 @@ Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc)
                     written = snprintf(buf, sizeof(buf), "%02x", addrBuffer[i]);
                     Tcl_DStringAppend(dsPtr, buf, written);
                 }
-                written = snprintf(buf, sizeof(buf), " %p", thrPtr->arg);
+                written = snprintf(buf, sizeof(buf), " %p ", thrPtr->arg);
                 Tcl_DStringAppend(dsPtr, buf, written);
             }
 
-            Tcl_DStringAppend(dsPtr, " ", 1);
             written = ns_uint32toa(buf, (uint32_t)thrPtr->ostid);
             Tcl_DStringAppend(dsPtr, buf, written);
 

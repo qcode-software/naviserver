@@ -169,7 +169,7 @@ NsInitSched(void)
  */
 
 int
-Ns_After(int delay, Ns_SchedProc *proc, void *arg, Ns_SchedProc *deleteProc)
+Ns_After(int delay, Ns_SchedProc *proc, void *arg, ns_funcptr_t deleteProc)
 {
     int result;
 
@@ -178,7 +178,7 @@ Ns_After(int delay, Ns_SchedProc *proc, void *arg, Ns_SchedProc *deleteProc)
     if (delay < 0) {
         result = (int)NS_ERROR;
     } else {
-        result = Ns_ScheduleProcEx(proc, arg, NS_SCHED_ONCE, delay, deleteProc);
+        result = Ns_ScheduleProcEx(proc, arg, NS_SCHED_ONCE, delay, (Ns_SchedProc *)deleteProc);
     }
     return result;
 }
@@ -550,7 +550,7 @@ NsWaitSchedShutdown(const Ns_Time *toPtr)
  *  None.
  *
  * Side effects:
- *  SchedThread() may be created and/or signalled.
+ *  SchedThread() may be created and/or signaled.
  *
  *----------------------------------------------------------------------
  */
@@ -686,13 +686,15 @@ DeQueueEvent(int qid)
 static void
 EventThread(void *arg)
 {
-    time_t now;
-    Event *ePtr;
-    int jpt, njobs;
+    time_t    now;
+    Event    *ePtr;
+    int       jpt, njobs;
+    uintptr_t jobId;
 
     jpt = njobs = nsconf.sched.jobsperthread;
+    jobId = 0u;
 
-    Ns_ThreadSetName("-sched:idle%" PRIdPTR "-", arg);
+    Ns_ThreadSetName("-sched:idle%" PRIuPTR "-", (uintptr_t)arg);
     Ns_Log(Notice, "starting");
 
     Ns_MutexLock(&lock);
@@ -711,9 +713,9 @@ EventThread(void *arg)
         --nIdleThreads;
         Ns_MutexUnlock(&lock);
 
-        Ns_ThreadSetName("-sched:%d-", ePtr->id);
+        Ns_ThreadSetName("-sched:%" PRIuPTR ":%" PRIuPTR ":%d-", (uintptr_t)arg, ++jobId, ePtr->id);
         (*ePtr->proc) (ePtr->arg, ePtr->id);
-        Ns_ThreadSetName("-sched:idle%" PRIdPTR "-", arg);
+        Ns_ThreadSetName("-sched:idle%" PRIuPTR "-", (uintptr_t)arg);
         time(&now);
 
         Ns_MutexLock(&lock);
@@ -929,7 +931,7 @@ NsGetScheduled(Tcl_DString *dsPtr)
             ePtr->id, ePtr->flags, ePtr->interval,
             (int64_t) ePtr->nextqueue, (int64_t) ePtr->lastqueue,
             (int64_t) ePtr->laststart, (int64_t) ePtr->lastend);
-        Ns_GetProcInfo(dsPtr, (Ns_Callback *)ePtr->proc, ePtr->arg);
+        Ns_GetProcInfo(dsPtr, (ns_funcptr_t)ePtr->proc, ePtr->arg);
         Tcl_DStringEndSublist(dsPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }

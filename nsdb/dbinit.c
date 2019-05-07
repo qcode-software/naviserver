@@ -112,6 +112,8 @@ typedef struct ServData {
     const char *allowed;
 } ServData;
 
+const char *NS_EMPTY_STRING = "";
+
 /*
  * Local functions defined in this file
  */
@@ -131,7 +133,7 @@ static ServData *GetServer(const char *server)                NS_GNUC_NONNULL(1)
  */
 
 static Ns_TlsCleanup FreeTable;
-static Ns_Callback CheckPool;
+static Ns_SchedProc CheckPool;
 static Ns_ArgProc CheckArgProc;
 
 static Tcl_HashTable poolsTable;
@@ -469,7 +471,7 @@ Ns_DbPoolTimedGetMultipleHandles(Ns_DbHandle **handles, const char *pool,
     if (ngot > 0) {
         Ns_Log(Error, "dbinit: db handle limit exceeded: "
                "thread already owns %d handle%s from pool '%s'",
-               ngot, ngot == 1 ? "" : "s", pool);
+               ngot, ngot == 1 ? NS_EMPTY_STRING : "s", pool);
         (void) IncrCount("Ns_DbPoolTimedGetMultipleHandles fail", poolPtr, -nwant);
         return NS_ERROR;
     }
@@ -598,7 +600,7 @@ Ns_DbBouncePool(const char *pool)
             handlePtr = handlePtr->nextPtr;
         }
         Ns_MutexUnlock(&poolPtr->lock);
-        CheckPool(poolPtr);
+        CheckPool(poolPtr, 0);
     }
     return status;
 }
@@ -651,6 +653,7 @@ NsDbInitPools(void)
         const char    *pool = Ns_SetKey(pools, i);
         Tcl_HashEntry *hPtr = Tcl_CreateHashEntry(&poolsTable, pool, &isNew);
 
+        Ns_Log(Ns_LogSqlDebug, "nsdb: Add DB pool: %s", pool);
         if (isNew == 0) {
             Ns_Log(Error, "dbinit: duplicate pool: %s", pool);
             continue;
@@ -664,7 +667,7 @@ NsDbInitPools(void)
             Tcl_SetHashValue(hPtr, poolPtr);
         }
     }
-    Ns_RegisterProcInfo(CheckPool, "nsdb:check", CheckArgProc);
+    Ns_RegisterProcInfo((ns_funcptr_t)CheckPool, "nsdb:check", CheckArgProc);
 }
 
 
@@ -706,7 +709,7 @@ Ns_DbPoolStats(Tcl_Interp *interp)
         } else {
             const Handle  *handlePtr;
             Tcl_Obj       *valuesObj;
-            int            unused = 0, len;
+            int            unused = 0, connected = 0, len;
             char           buf[100];
 
             /*
@@ -719,6 +722,9 @@ Ns_DbPoolStats(Tcl_Interp *interp)
             for (handlePtr = poolPtr->firstPtr; handlePtr != NULL; handlePtr = handlePtr->nextPtr) {
                 if (!handlePtr->used) {
                     unused ++;
+                }
+                if (handlePtr->connected) {
+                    connected ++;
                 }
             }
             Ns_MutexUnlock(&poolPtr->lock);
@@ -741,9 +747,16 @@ Ns_DbPoolStats(Tcl_Interp *interp)
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewIntObj(poolPtr->nhandles));
             }
             if (likely(result == TCL_OK)) {
+                result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj("connected", 9));
+            }
+            if (likely(result == TCL_OK)) {
+                result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewIntObj(connected));
+            }
+            if (likely(result == TCL_OK)) {
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj("used", 4));
             }
             if (likely(result == TCL_OK)) {
+                fprintf(stderr, "pool %s nhandles %d unused %d used %d\n",poolPtr->name, poolPtr->nhandles, unused, poolPtr->nhandles - unused);
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewIntObj(poolPtr->nhandles - unused));
             }
             if (likely(result == TCL_OK)) {
@@ -831,7 +844,7 @@ NsDbInitServer(const char *server)
      * Construct the allowed list and call the server-specific init.
      */
 
-    sdataPtr->allowed = "";
+    sdataPtr->allowed = NS_EMPTY_STRING;
     pool = Ns_ConfigGetValue(path, "pools");
     if (pool != NULL && poolsTable.numEntries > 0) {
         const Pool *poolPtr;
@@ -895,8 +908,11 @@ NsDbInitServer(const char *server)
 void
 NsDbDisconnect(Ns_DbHandle *handle)
 {
-    Handle *handlePtr = (Handle *) handle;
+    Handle *handlePtr;
 
+    NS_NONNULL_ASSERT(handle != NULL);
+
+    handlePtr = (Handle *) handle;
     (void)NsDbClose(handle);
 
     handlePtr->connected = NS_FALSE;
@@ -1204,15 +1220,10 @@ CheckArgProc(Tcl_DString *dsPtr, const void *arg)
  */
 
 static void
-CheckPool(void *arg)
+CheckPool(void *arg, int UNUSED(id))
 {
     Pool         *poolPtr = arg;
-    Handle       *handlePtr, *nextPtr;
-    Handle       *checkedPtr;
-    time_t        now;
-
-    time(&now);
-    checkedPtr = NULL;
+    Handle       *handlePtr;
 
     /*
      * Grab the entire list of handles from the pool.
@@ -1230,8 +1241,14 @@ CheckPool(void *arg)
      */
 
     if (handlePtr != NULL) {
+        Handle *checkedPtr = NULL;
+        time_t  now;
+
+        time(&now);
+
         while (handlePtr != NULL) {
-            nextPtr = handlePtr->nextPtr;
+            Handle *nextPtr = handlePtr->nextPtr;
+
             if (IsStale(handlePtr, now) == NS_TRUE) {
                 NsDbDisconnect((Ns_DbHandle *) handlePtr);
             }
@@ -1243,7 +1260,8 @@ CheckPool(void *arg)
         Ns_MutexLock(&poolPtr->lock);
         handlePtr = checkedPtr;
         while (handlePtr != NULL) {
-            nextPtr = handlePtr->nextPtr;
+            Handle *nextPtr = handlePtr->nextPtr;
+
             ReturnHandle(handlePtr);
             handlePtr = nextPtr;
         }
@@ -1368,7 +1386,7 @@ CreatePool(const char *pool, const char *path, const char *driver)
             handlePtr->poolname = pool;
             ReturnHandle(handlePtr);
         }
-        (void) Ns_ScheduleProc((Ns_SchedProc*)CheckPool, poolPtr, 0,
+        (void) Ns_ScheduleProc(CheckPool, poolPtr, 0,
                                Ns_ConfigIntRange(path, "checkinterval", 600, 0, INT_MAX));
     }
     return poolPtr;

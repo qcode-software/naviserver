@@ -79,9 +79,9 @@ NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 
     } else {
         int             id;
-        Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclSchedProc,
+        Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
                                                   objv[2], objc - 3, objv + 3);
-        id = Ns_After(seconds, NsTclSchedProc, cbPtr, (Ns_SchedProc*)Ns_TclFreeCallback);
+        id = Ns_After(seconds, NsTclSchedProc, cbPtr, (ns_funcptr_t)Ns_TclFreeCallback);
         result = ReturnValidId(interp, id, cbPtr);
     }
 
@@ -122,8 +122,11 @@ SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
         bool ok;
 
         switch (cmd) {
-        case 'u':
         case 'c':
+            Ns_LogDeprecated(objv, 1, "ns_unschedule_proc ...", NULL);
+            ok = Ns_Cancel(id);            
+            break;
+        case 'u':
             ok = Ns_Cancel(id);
             break;
         case 'p':
@@ -191,8 +194,7 @@ int
 NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj        *scriptObj;
-    int             hour, minute, result;
-    int             remain = 0, once = 0, thread = 0;
+    int             hour = 0, minute = 0, remain = 0, once = 0, thread = 0, result;
 
     Ns_ObjvSpec opts[] = {
         {"-once",   Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
@@ -229,7 +231,7 @@ NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
             int             id;
             Ns_TclCallback *cbPtr;
 
-            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *) NsTclSchedProc,
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
                                       scriptObj, remain, objv + (objc - remain));
             id = Ns_ScheduleDaily(NsTclSchedProc, cbPtr, flags, hour, minute,
                                   FreeSched);
@@ -261,7 +263,7 @@ int
 NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj        *scriptObj;
-    int             day, hour, minute, result, remain = 0, once = 0, thread = 0;
+    int             day = 0, hour = 0, minute = 0, remain = 0, once = 0, thread = 0, result;
 
     Ns_ObjvSpec opts[] = {
         {"-once",   Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
@@ -302,7 +304,7 @@ NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
             Ns_TclCallback *cbPtr;
             int             id;
 
-            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *) NsTclSchedProc,
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
                                       scriptObj, remain, objv + (objc - remain));
             id = Ns_ScheduleWeekly(NsTclSchedProc, cbPtr, flags, day, hour, minute,
                                    FreeSched);
@@ -335,7 +337,7 @@ int
 NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj        *scriptObj;
-    int             interval, remain = 0, once = 0, thread = 0, result;
+    int             interval = 0, remain = 0, once = 0, thread = 0, result;
     Ns_ObjvSpec opts[] = {
         {"-once",    Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
         {"-thread",  Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
@@ -368,7 +370,7 @@ NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
             Ns_TclCallback *cbPtr;
             int             id;
 
-            cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *) NsTclSchedProc,
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
                                       scriptObj, remain, objv + (objc - remain));
             id = Ns_ScheduleProcEx(NsTclSchedProc, cbPtr, flags, interval, FreeSched);
 

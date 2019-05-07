@@ -148,4 +148,17 @@
  */
 #define NS_NONNULL_ASSERT(assertion) assert((assertion))
 
+/*
+ * We include here limits.h, since this file includes <features.h>,
+ * which should not be included directly by applications, but which is
+ * needed for the *GLIBC* macros.
+ */
+#include <limits.h>
+
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+# if (__GLIBC__ > 2) || ((__GLIBC__ == 2) && (__GLIBC_MINOR__ >= 6))
+#  define NS_FOPEN_SUPPORTS_MODE_E 1
+# endif
+#endif
+
 #endif /* NSCHECK_H */

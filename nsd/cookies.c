@@ -486,6 +486,13 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value,
         Ns_DStringAppend(&cookie, "; HttpOnly");
     }
 
+    if ((flags & NS_COOKIE_SAMESITE_STRICT) != 0u) {
+        Ns_DStringAppend(&cookie, "; SameSite=Strict");
+    } else if ((flags & NS_COOKIE_SAMESITE_LAX) != 0u) {
+        Ns_DStringAppend(&cookie, "; SameSite=Lax");
+    }
+
+
     Ns_ConnSetHeaders(conn, "Set-Cookie", cookie.string);
     Ns_DStringFree(&cookie);
 }
@@ -606,15 +613,23 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     Ns_Conn       *conn;
     char          *name, *data, *domain = NULL, *path = NULL;
     int            secure = 0, scriptable = 0, discard = 0, replace = 0, result;
+    int            samesite = INTCHAR('n');
     Ns_Time       *expiresPtr = NULL;
+    Ns_ObjvTable   samesiteValues[] = {
+        {"strict", UCHAR('s')},
+        {"lax",    UCHAR('l')},
+        {"none",   UCHAR('n')},
+        {NULL,    0u}
+    };
     Ns_ObjvSpec    opts[] = {
         {"-discard",    Ns_ObjvBool,   &discard,    NULL},
-        {"-replace",    Ns_ObjvBool,   &replace,    NULL},
-        {"-secure",     Ns_ObjvBool,   &secure,     NULL},
-        {"-scriptable", Ns_ObjvBool,   &scriptable, NULL},
         {"-domain",     Ns_ObjvString, &domain,     NULL},
-        {"-path",       Ns_ObjvString, &path,       NULL},
         {"-expires",    Ns_ObjvTime,   &expiresPtr, NULL},
+        {"-path",       Ns_ObjvString, &path,       NULL},
+        {"-replace",    Ns_ObjvBool,   &replace,    NULL},
+        {"-samesite",   Ns_ObjvIndex,  &samesite,   samesiteValues},
+        {"-scriptable", Ns_ObjvBool,   &scriptable, NULL},
+        {"-secure",     Ns_ObjvBool,   &secure,     NULL},
         {"--",          Ns_ObjvBreak,  NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -625,7 +640,7 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK
-        || NsConnRequire(interp, &conn) != NS_OK) {
+        || NsConnRequire(interp, NS_CONN_REQUIRE_CONFIGURED, &conn) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
@@ -643,6 +658,11 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         }
         if (replace != 0) {
             flags |= NS_COOKIE_REPLACE;
+        }
+        if (samesite == INTCHAR('s')) {
+            flags |= NS_COOKIE_SAMESITE_STRICT;
+        } else if (samesite == INTCHAR('l')) {
+            flags |= NS_COOKIE_SAMESITE_LAX;
         }
 
         /*
@@ -715,7 +735,7 @@ NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK
-        || NsConnRequire(interp, &conn) != NS_OK) {
+        || NsConnRequire(interp, NS_CONN_REQUIRE_CONFIGURED, &conn) != NS_OK) {
         status = TCL_ERROR;
 
     } else if (withSetCookies == (int)NS_TRUE && withAll == (int)NS_TRUE) {
@@ -795,7 +815,7 @@ NsTclDeleteCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK
-        || NsConnRequire(interp, &conn) != NS_OK) {
+        || NsConnRequire(interp, NS_CONN_REQUIRE_CONFIGURED, &conn) != NS_OK) {
         result = TCL_ERROR;
 
     } else {

@@ -212,7 +212,6 @@ void
 NsInitServer(const char *server, Ns_ServerInitProc *initProc)
 {
     Tcl_HashEntry     *hPtr;
-    Ns_DString         ds;
     NsServer          *servPtr;
     const ServerInit  *initPtr;
     const char        *path, *p;
@@ -250,7 +249,6 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
         initPtr = initPtr->nextPtr;
     }
 
-    Ns_DStringInit(&ds);
     path = Ns_ConfigGetPath(server, NULL, (char *)0L);
 
     /*
@@ -260,7 +258,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     servPtr->opts.realm = Ns_ConfigString(path, "realm", server);
     servPtr->opts.modsince = Ns_ConfigBool(path, "checkmodifiedsince", NS_TRUE);
     servPtr->opts.noticedetail = Ns_ConfigBool(path, "noticedetail", NS_TRUE);
-    servPtr->opts.errorminsize = Ns_ConfigInt(path, "errorminsize", 514);
+    servPtr->opts.errorminsize = (int)Ns_ConfigMemUnitRange(path, "errorminsize", 514, 0, INT_MAX);
 
     servPtr->opts.hdrcase = Preserve;
     p = Ns_ConfigString(path, "headercase", "preserve");
@@ -271,12 +269,16 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     }
 
     /*
+     * Add server specific extra headers.
+     */
+    servPtr->opts.extraHeaders = Ns_ConfigSet(path, "extraheaders");
+
+    /*
      * Initialize on-the-fly compression support.
      */
-
     servPtr->compress.enable = Ns_ConfigBool(path, "compressenable", NS_FALSE);
     servPtr->compress.level = Ns_ConfigIntRange(path, "compresslevel", 4, 1, 9);
-    servPtr->compress.minsize = Ns_ConfigIntRange(path, "compressminsize", 512, 0, INT_MAX);
+    servPtr->compress.minsize = (int)Ns_ConfigMemUnitRange(path, "compressminsize", 512, 0, INT_MAX);
     servPtr->compress.preinit = Ns_ConfigBool(path, "compresspreinit", NS_FALSE);
 
     /*
@@ -308,7 +310,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      * Load modules and initialize Tcl.  The order is significant.
      */
 
-    CreatePool(servPtr, "");
+    CreatePool(servPtr, NS_EMPTY_STRING);
     path = Ns_ConfigGetPath(server, NULL, "pools", (char *)0L);
     set = Ns_ConfigGetSection(path);
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
