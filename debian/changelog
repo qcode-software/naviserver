@@ -1,3 +1,9 @@
+naviserver (4.99.19-1+deb10u1) buster; urgency=medium
+
+  * Import 4.99.19 on buster
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 06 Jul 2020 17:06:38 +0100
+
 naviserver (4.99.18~20190204-1+deb9u2) stretch; urgency=medium
 
   * Use Tcl8.6
