@@ -28,9 +28,6 @@
  */
 
 #include "ns.h"
-#include <sys/stat.h>
-#include <ctype.h>
-#include <stdlib.h>	/* environ */
 
 #define BUFSIZE          4096
 #define NDSTRINGS        5
@@ -108,8 +105,12 @@ typedef struct Map {
 static int devNull;
 static Ns_LogSeverity Ns_LogCGIDebug;
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
+
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
+
+static const char *NS_EMPTY_STRING = "";
 
 /*
  * Functions defined in this file.
@@ -169,14 +170,14 @@ Ns_ModuleInit(const char *server, const char *module)
      */
 
     if (!initialized) {
-        devNull = ns_open(DEVNULL, O_RDONLY, 0);
+        devNull = ns_open(DEVNULL, O_RDONLY | O_CLOEXEC, 0);
         if (devNull < 0) {
             Ns_Log(Error, "nscgi: ns_open(%s) failed: %s",
                    DEVNULL, strerror(errno));
             return NS_ERROR;
         }
         (void)Ns_DupHigh(&devNull);
-        (void) Ns_CloseOnExec(devNull);
+        (void)Ns_CloseOnExec(devNull);
 
         Ns_LogCGIDebug = Ns_CreateLogSeverity("Debug(cgi)");
 
@@ -193,7 +194,7 @@ Ns_ModuleInit(const char *server, const char *module)
     modPtr->server = server;
     Ns_MutexInit(&modPtr->lock);
     Ns_MutexSetName2(&modPtr->lock, "nscgi", server);
-    modPtr->maxInput = Ns_ConfigInt(path, "maxinput", 1024000);
+    modPtr->maxInput = (int)Ns_ConfigMemUnitRange(path, "maxinput", 1024*1024, 0, LLONG_MAX);
     modPtr->maxCgi = Ns_ConfigInt(path, "limit", 0);
     modPtr->maxWait = Ns_ConfigInt(path, "maxwait", 30);
     if (Ns_ConfigBool(path, "gethostbyaddr", NS_FALSE)) {
@@ -272,7 +273,7 @@ CgiRequest(const void *arg, Ns_Conn *conn)
     const Map      *mapPtr;
     Mod            *modPtr;
     Cgi             cgi;
-    Ns_ReturnCode   status;
+    Ns_ReturnCode   status = NS_OK;
 
     mapPtr = arg;
     modPtr = mapPtr->modPtr;
@@ -314,7 +315,7 @@ CgiRequest(const void *arg, Ns_Conn *conn)
         if ((cgi.flags & CGI_ECONTENT) != 0u) {
             status = Ns_ConnReturnBadRequest(conn, "Insufficient Content");
         } else {
-            status = Ns_ConnReturnInternalError(conn);
+            Ns_ConnTryReturnInternalError(conn, NS_ERROR, "nscgi: cannot spool data");
         }
         goto done;
     }
@@ -347,8 +348,9 @@ CgiRequest(const void *arg, Ns_Conn *conn)
      * Execute the CGI and copy output.
      */
 
-    if (CgiExec(&cgi, conn) != NS_OK) {
-        status = Ns_ConnReturnInternalError(conn);
+    status = CgiExec(&cgi, conn);
+    if (status != NS_OK) {
+        status = Ns_ConnTryReturnInternalError(conn, status, "nscgi: cgi exec failed");
     } else {
         status = CgiCopy(&cgi, conn);
     }
@@ -424,7 +426,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
 
     ulen = strlen(url);
     plen = strlen(mapPtr->url);
-    if ((strncmp(mapPtr->url, url, (size_t)plen) == 0) &&
+    if ((strncmp(mapPtr->url, url, plen) == 0) &&
         (ulen == plen || url[plen] == '/')) {
 
         if (mapPtr->path == NULL) {
@@ -474,7 +476,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
             cgiPtr->path = Ns_DStringVarAppend(CgiDs(cgiPtr),
                                               mapPtr->path, "/", s, (char *)0L);
             if (e == NULL) {
-                cgiPtr->pathinfo = "";
+                cgiPtr->pathinfo = NS_EMPTY_STRING;
             } else {
                 *e = '/';
                 cgiPtr->pathinfo = e;
@@ -829,7 +831,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
         Ns_DStringFree(&tmp);
         Ns_DStringSetLength(dsPtr, 0);
     } else {
-         Ns_SetUpdate(cgiPtr->env, "PATH_INFO", "");
+         Ns_SetUpdate(cgiPtr->env, "PATH_INFO", NS_EMPTY_STRING);
     }
     Ns_SetUpdate(cgiPtr->env, "GATEWAY_INTERFACE", "CGI/1.1");
     Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), (char *)0L);
@@ -901,13 +903,13 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
         if (STREQ("POST", conn->request.method)) {
             value = "application/x-www-form-urlencoded";
         } else {
-            value = "";
+            value = NS_EMPTY_STRING;
         }
     }
     Ns_SetUpdate(cgiPtr->env, "CONTENT_TYPE", value);
 
     if (conn->contentLength == 0u) {
-        Ns_SetUpdate(cgiPtr->env, "CONTENT_LENGTH", "");
+        Ns_SetUpdate(cgiPtr->env, "CONTENT_LENGTH", NS_EMPTY_STRING);
     } else {
         Ns_DStringPrintf(dsPtr, "%u", (unsigned) conn->contentLength);
         Ns_SetUpdate(cgiPtr->env, "CONTENT_LENGTH", dsPtr->string);
@@ -963,14 +965,14 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
                     *e = '\0';
                 }
                 (void) Ns_UrlQueryDecode(dsPtr, s, NULL);
-                Ns_DStringNAppend(dsPtr, "", 1);
+                Ns_DStringNAppend(dsPtr, NS_EMPTY_STRING, 1);
                 if (e != NULL) {
                     *e++ = '+';
                 }
                 s = e;
             } while (s != NULL);
         }
-        Ns_DStringNAppend(dsPtr, "", 1);
+        Ns_DStringNAppend(dsPtr, NS_EMPTY_STRING, 1);
     }
 
     /*
@@ -1135,15 +1137,24 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     hdrs = conn->outputheaders;
     while ((n = CgiReadLine(cgiPtr, &ds)) > 0) {
 
-        if (CHARTYPE(space, *ds.string) != 0) {   /* NB: Continued header. */
+        if (CHARTYPE(space, *ds.string) != 0) {
+            /*
+             * Continued header.
+             */
             if (last == -1) {
-                continue;	/* NB: Silently ignore bad header. */
+                /*
+                 * Silently ignore bad header.
+                 */
+                continue;
             }
             SetAppend(hdrs, last, "\n", ds.string);
         } else {
             value = strchr(ds.string, INTCHAR(':'));
             if (value == NULL) {
-                continue;	/* NB: Silently ignore bad header. */
+                /*
+                 * Silently ignore bad header.
+                 */
+                continue;
             }
             *value++ = '\0';
             while (CHARTYPE(space, *value) != 0) {
@@ -1170,7 +1181,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     }
     Ns_DStringFree(&ds);
     if (n < 0) {
-        status = Ns_ConnReturnInternalError(conn);
+        status = Ns_ConnTryReturnInternalError(conn, NS_ERROR, "nscgi: reading client data failed");
     } else {
 
         /*
@@ -1289,8 +1300,8 @@ CgiRegister(Mod *modPtr, const char *map)
     mapPtr->url = ns_strdup(url);
     mapPtr->path = ns_strcopy(path);
     Ns_Log(Notice, "nscgi: %s %s%s%s", method, url,
-           (path != NULL) ? " -> " : "",
-           (path != NULL) ? path : "");
+           (path != NULL) ? " -> " : NS_EMPTY_STRING,
+           (path != NULL) ? path : NS_EMPTY_STRING);
     Ns_RegisterRequest(modPtr->server, method, url,
                        CgiRequest, CgiFreeMap, mapPtr, 0u);
 

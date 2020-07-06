@@ -93,8 +93,8 @@ listening, might be e.g. "0.0.0.0"
 is "30".
 [item] [term recvwait] timeout for receive operations in seconds, default
 is "30".
-[item] [term extraheaders] are the configured value of header fields
-return on every request.
+[item] [term extraheaders] are the extra response header fields to be returned
+on every request via this driver.
 [list_end]
 
 
@@ -115,8 +115,8 @@ number of errors.
 
 [list_end]
 
-[see_also ns_info ns_server nssock]
-[keywords "server built-in" address socket driver configuration SO_REUSEPORT]
+[see_also ns_info ns_server ]
+[keywords "server built-in" address nssock socket driver configuration SO_REUSEPORT]
 
 [manpage_end]
 

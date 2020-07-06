@@ -1,5 +1,6 @@
 [include version_include.man]
 [manpage_begin {nscp} n [vset version]]
+[moddesc   {NaviServer Modules}]
 
 [titledesc {NaviServer Control Port Guide}]
 
@@ -55,20 +56,24 @@ control port.
 #
 # Control port -- nscp
 #
-ns_section "ns/server/${servername}/module/nscp"
-ns_param   port            9999        ;# Control port listens on port 9999
-ns_param   address         "127.0.0.1" ;# For security, use 127.0.0.1 only
-
+ns_section "ns/server/${servername}/module/nscp" {
+    ns_param   port            9999        ;# Control port listens on port 9999
+    ns_param   address         "127.0.0.1" ;# For security, use 127.0.0.1 only
+}
+ 
 # Control port users
-ns_section "ns/server/${servername}/module/nscp/users"
-# The default password for nsadmin is "x". You should change it.
-# type "ns_crypt newpassword salt" and put the encrypted string below.
-ns_param user "nsadmin:t2GqvvaiIUbF2:" ;# sample user="nsadmin", pw="x".
-
+ns_section "ns/server/${servername}/module/nscp/users" {
+    #
+    # The default password for nsadmin is "x". You should change it.
+    # type "ns_crypt newpassword salt" and put the encrypted string
+    # below.
+    
+    ns_param user "nsadmin:t2GqvvaiIUbF2:" ;# sample user="nsadmin", pw="x".
+}
+ 
 ns_section "ns/server/${servername}/modules"
 # ...
-ns_param   nscp               nscp.so
-
+ns_param nscp nscp.so
 [example_end]
 
 
@@ -135,8 +140,9 @@ To use the control port interface, follow these steps:
 
 [para]
 
-
+[example_begin]
      telnet localhost 9999
+[example_end]
 
 
 [para]
@@ -146,12 +152,10 @@ To use the control port interface, follow these steps:
 
 
 [example_begin]
-
      Trying 127.0.0.1...
      Connected to localhost.
      Escape character is '^]'.
      login:
-
 [example_end]
 
 
@@ -202,7 +206,7 @@ To use the control port interface, follow these steps:
 [example_begin]
 
      Welcome to servername running at /usr/local/ns/bin/nsd (pid 22413)
-     NaviServer/4.99.5 for linux built on May 25 2013 at 18:38:59
+     NaviServer/4.99.18 for linux built on Feb 25 2019 at 18:38:59
 
      servername:nscp 1>
 
@@ -234,9 +238,9 @@ To use the control port interface, follow these steps:
 
 Type "lsort [lb]info commands[rb]" for a complete list of commands available
 to you.  You can type nearly any Tcl command available to NaviServer
-Tcl libraries and ADPs.  This includes the complete Tcl core and
-nearly any ns_* command.  Type "lsort [lb]info commands ns*[rb]" for a
-sorted list of NaviServer Tcl commands.
+Tcl libraries and ADPs, including the complete Tcl core and
+nearly any ns_* commands.  Type "lsort [lb]info commands ns*[rb]" for a
+sorted list of available NaviServer Tcl commands.
 
 
 [para]

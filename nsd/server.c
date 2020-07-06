@@ -58,8 +58,7 @@ static void CreatePool(NsServer *servPtr, const char *pool)
  * Static variables defined in this file.
  */
 
-static NsServer   *initServPtr;  /* Currently initializing server. */
-
+static NsServer         *initServPtr;  /* Currently initializing server. */
 static const ServerInit *firstInitPtr; /* First in list of server config callbacks. */
 static ServerInit       *lastInitPtr;  /* Last in list of server config callbacks. */
 
@@ -212,7 +211,6 @@ void
 NsInitServer(const char *server, Ns_ServerInitProc *initProc)
 {
     Tcl_HashEntry     *hPtr;
-    Ns_DString         ds;
     NsServer          *servPtr;
     const ServerInit  *initPtr;
     const char        *path, *p;
@@ -250,7 +248,6 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
         initPtr = initPtr->nextPtr;
     }
 
-    Ns_DStringInit(&ds);
     path = Ns_ConfigGetPath(server, NULL, (char *)0L);
 
     /*
@@ -260,7 +257,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     servPtr->opts.realm = Ns_ConfigString(path, "realm", server);
     servPtr->opts.modsince = Ns_ConfigBool(path, "checkmodifiedsince", NS_TRUE);
     servPtr->opts.noticedetail = Ns_ConfigBool(path, "noticedetail", NS_TRUE);
-    servPtr->opts.errorminsize = Ns_ConfigInt(path, "errorminsize", 514);
+    servPtr->opts.errorminsize = (int)Ns_ConfigMemUnitRange(path, "errorminsize", 514, 0, INT_MAX);
 
     servPtr->opts.hdrcase = Preserve;
     p = Ns_ConfigString(path, "headercase", "preserve");
@@ -271,12 +268,20 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     }
 
     /*
+     * Add server specific extra headers.
+     */
+    servPtr->opts.extraHeaders = Ns_ConfigSet(path, "extraheaders");
+
+    /*
      * Initialize on-the-fly compression support.
      */
-
     servPtr->compress.enable = Ns_ConfigBool(path, "compressenable", NS_FALSE);
+#ifndef HAVE_ZLIB_H
+    Ns_Log(Warning, "init server %s: compress is enabled, but no zlib support built in",
+           server);
+#endif
     servPtr->compress.level = Ns_ConfigIntRange(path, "compresslevel", 4, 1, 9);
-    servPtr->compress.minsize = Ns_ConfigIntRange(path, "compressminsize", 512, 0, INT_MAX);
+    servPtr->compress.minsize = (int)Ns_ConfigMemUnitRange(path, "compressminsize", 512, 0, INT_MAX);
     servPtr->compress.preinit = Ns_ConfigBool(path, "compresspreinit", NS_FALSE);
 
     /*
@@ -308,7 +313,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      * Load modules and initialize Tcl.  The order is significant.
      */
 
-    CreatePool(servPtr, "");
+    CreatePool(servPtr, NS_EMPTY_STRING);
     path = Ns_ConfigGetPath(server, NULL, "pools", (char *)0L);
     set = Ns_ConfigGetSection(path);
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
@@ -427,17 +432,6 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->wqueue.maxconns = maxconns;
     connBufPtr = ns_calloc((size_t) maxconns, sizeof(Conn));
 
-    for (n = 0; n < maxconns - 1; ++n) {
-        connPtr = &connBufPtr[n];
-        connPtr->nextPtr = &connBufPtr[n+1];
-        if (servPtr->compress.enable
-            && servPtr->compress.preinit) {
-            (void) Ns_CompressInit(&connPtr->cStream);
-        }
-    }
-    connBufPtr[n].nextPtr = NULL;
-    poolPtr->wqueue.freePtr = &connBufPtr[0];
-
     /*
      * Setting connsperthread to > 0 will cause the thread to graceously exit,
      * after processing that many requests, thus initiating kind-of Tcl-level
@@ -452,6 +446,26 @@ CreatePool(NsServer *servPtr, const char *pool)
         Ns_ConfigIntRange(path, "minthreads", 1, 1, poolPtr->threads.max);
     poolPtr->threads.timeout =
         Ns_ConfigIntRange(path, "threadtimeout", 120, 0, INT_MAX);
+    poolPtr->rate.defaultConnectionLimit =
+        Ns_ConfigIntRange(path, "connectionratelimit", -1, -1, INT_MAX);
+    poolPtr->rate.poolLimit =
+        Ns_ConfigIntRange(path, "poolratelimit", -1, -1, INT_MAX);
+
+    if (poolPtr->rate.poolLimit != -1) {
+        NsWriterBandwidthManagement = NS_TRUE;
+    }
+    for (n = 0; n < maxconns - 1; ++n) {
+        connPtr = &connBufPtr[n];
+        connPtr->nextPtr = &connBufPtr[n+1];
+        if (servPtr->compress.enable
+            && servPtr->compress.preinit) {
+            (void) Ns_CompressInit(&connPtr->cStream);
+        }
+        connPtr->rateLimit = poolPtr->rate.defaultConnectionLimit;
+    }
+
+    connBufPtr[n].nextPtr = NULL;
+    poolPtr->wqueue.freePtr = &connBufPtr[0];
 
     queueLength = maxconns - poolPtr->threads.max;
 
@@ -461,7 +475,7 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->wqueue.lowwatermark  = (queueLength * lowwatermark) / 100;
 
     Ns_Log(Notice, "pool %s: queueLength %d low water %d high water %d",
-           *pool == '\0' ? "default" : pool,
+           NsPoolName(pool),
            queueLength, poolPtr->wqueue.lowwatermark,
            poolPtr->wqueue.highwatermark);
 
@@ -472,6 +486,8 @@ CreatePool(NsServer *servPtr, const char *pool)
      */
     poolPtr->tqueue.args = ns_calloc((size_t)maxconns, sizeof(ConnThreadArg));
 
+    Ns_DListInit(&(poolPtr->rate.writerRates));
+
     /*
      * The Pools are never freed before exit, so there is apparently no need
      * to free connBufPtr, threadQueue.args explicitly, or the connPtr in the
@@ -481,14 +497,11 @@ CreatePool(NsServer *servPtr, const char *pool)
         Tcl_DString ds;
         int         j;
 
-        if (*pool == '\0') {
-            pool = "default";
-        }
         Tcl_DStringInit(&ds);
         Tcl_DStringAppend(&ds, "nsd:", 4);
         Tcl_DStringAppend(&ds, servPtr->server, -1);
         Tcl_DStringAppend(&ds, ":", 1);
-        Tcl_DStringAppend(&ds, pool, -1);
+        Tcl_DStringAppend(&ds, NsPoolName(pool), -1);
 
         for (j = 0; j < maxconns; j++) {
             char suffix[64];
@@ -505,6 +518,10 @@ CreatePool(NsServer *servPtr, const char *pool)
 
         Ns_MutexInit(&poolPtr->threads.lock);
         Ns_MutexSetName2(&poolPtr->threads.lock, ds.string, "threads");
+
+        Ns_MutexInit(&poolPtr->rate.lock);
+        Ns_MutexSetName2(&poolPtr->rate.lock, ds.string, "ratelimit");
+
         Tcl_DStringFree(&ds);
     }
 }

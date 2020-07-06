@@ -1,0 +1,516 @@
+'\"
+'\" Generated from file 'ns_info\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_info" n 4\&.99\&.19 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_info \- Return information about various aspects of the running NaviServer
+.SH SYNOPSIS
+\fBns_info\fR \fIoption\fR ?\fIarg arg \&.\&.\&.\fR?
+.sp
+\fBns_info address\fR
+.sp
+\fBns_info argv0\fR
+.sp
+\fBns_info boottime\fR
+.sp
+\fBns_info builddate\fR
+.sp
+\fBns_info callbacks\fR
+.sp
+\fBns_info config\fR
+.sp
+\fBns_info home\fR
+.sp
+\fBns_info hostname\fR
+.sp
+\fBns_info ipv6\fR
+.sp
+\fBns_info locks\fR
+.sp
+\fBns_info log\fR
+.sp
+\fBns_info major\fR
+.sp
+\fBns_info minor\fR
+.sp
+\fBns_info mimetypes\fR
+.sp
+\fBns_info name\fR
+.sp
+\fBns_info nsd\fR
+.sp
+\fBns_info patchlevel\fR
+.sp
+\fBns_info pid\fR
+.sp
+\fBns_info pools\fR
+.sp
+\fBns_info scheduled\fR
+.sp
+\fBns_info server\fR
+.sp
+\fBns_info servers\fR
+.sp
+\fBns_info shutdownpending\fR
+.sp
+\fBns_info sockcallbacks\fR
+.sp
+\fBns_info ssl\fR
+.sp
+\fBns_info started\fR
+.sp
+\fBns_info tag\fR
+.sp
+\fBns_info threads\fR
+.sp
+\fBns_info uptime\fR
+.sp
+\fBns_info version\fR
+.sp
+\fBns_info winnt\fR
+.sp
+.BE
+.SH DESCRIPTION
+This command provides information about the current state of the running NaviServer\&.
+.SH COMMANDS
+.TP
+\fBns_info\fR \fIoption\fR ?\fIarg arg \&.\&.\&.\fR?
+.PP
+.TP
+\fBns_info address\fR
+Returns the primary IP address of the hostname of this machine, or
+the unspecified IP address (for IPv4 "0\&.0\&.0\&.0", for IPv6 "::") if
+unable to determine\&.
+.TP
+\fBns_info argv0\fR
+Returns file path to executable binary
+.TP
+\fBns_info boottime\fR
+Returns the time in epoch seconds since the current server was started
+.TP
+\fBns_info builddate\fR
+Returns the date and time at which the current server was compiled, e\&.g\&.: "Jul 20 2004 at 14:57:20"
+.TP
+\fBns_info callbacks\fR
+Returns all registered startup/exit/shutdown callbacks
+.TP
+\fBns_info config\fR
+Returns the absolute path to the config file used to start the server
+.TP
+\fBns_info home\fR
+Returns the current working directory of the server
+.TP
+\fBns_info hostname\fR
+Returns the value of gethostname(), or "localhost" if that fails
+.TP
+\fBns_info ipv6\fR
+Returns information if the binary was compiled with IPv6 support\&.
+.TP
+\fBns_info locks\fR
+Lists the mutexes that currently exist\&.  A 5-element list is returned
+for each mutex: : mutex name, {}, unique id, lock counter, busy counter\&.
+.TP
+\fBns_info log\fR
+Returns the name of the error log file\&. The name is specified by the
+"serverlog" parameter in the "ns/parameters" section\&.
+.TP
+\fBns_info major\fR
+Returns the major version number\&.
+.TP
+\fBns_info minor\fR
+Returns the minor version number\&.
+.TP
+\fBns_info mimetypes\fR
+Returns the current mime-type mappings\&.
+.TP
+\fBns_info name\fR
+Returns the name of the server implementation, i\&.e\&. "NaviServer"\&.
+.TP
+\fBns_info nsd\fR
+Returns absolute  path and name of the nsd binary, which is currently
+executed\&.
+.TP
+\fBns_info patchlevel\fR
+Returns the full version number of the server (including patch level)\&.
+.TP
+\fBns_info pid\fR
+Returns the process id of the running nsd process\&.
+.TP
+\fBns_info pools\fR
+Returns usage info from the memory pools (returned by
+Tcl_GetMemoryInfo() if configured)\&.
+.TP
+\fBns_info scheduled\fR
+Returns the list of the scheduled procedures in the current process
+(all virtual servers)\&. Each list element is itself a 9-element list of
+{id, flags, interval, nextqueue, lastqueue, laststart, lastend,
+procname, arg}:
+.RS
+.IP \(bu
+id - unique id returned by the scheduling command
+.IP \(bu
+flags  -  Bitmap of one or more of:
+.RS
+.IP \(bu
+1 -- NS_SCHED_THREAD
+.IP \(bu
+2 -- NS_SCHED_ONCE
+.IP \(bu
+4 -- NS_SCHED_DAILY
+.IP \(bu
+8 -- NS_SCHED_WEEKLY
+.IP \(bu
+16 - NS_SCHED_PAUSED
+.IP \(bu
+32 - NS_SCHED_RUNNING
+.RE
+.IP \(bu
+interval - interval specification (i\&.e\&. seconds from
+midnight for daily schedule)
+.IP \(bu
+nextqueue - Next time to queue for run
+.IP \(bu
+lastqueue - Last time queued for run
+.IP \(bu
+laststart - Last time run started
+.IP \(bu
+lastend - Last time run finished
+.IP \(bu
+procname - for tasks scheduled with ns_schedule_proc this
+will be ns:tclschedproc and arg will be the actual scheduled Tcl
+script\&.
+.IP \(bu
+arg - client data
+.RE
+.TP
+\fBns_info server\fR
+Returns the name of the current virtual server\&.
+.TP
+\fBns_info servers\fR
+Returns the names of all virtual servers in the current nsd process\&.
+.TP
+\fBns_info shutdownpending\fR
+Returns 1 if shutdown is pending, 0 otherwise\&.
+.TP
+\fBns_info sockcallbacks\fR
+Returns returns a list of all socket callbacks such as the socket
+listening callback for the nscp module\&. Each list element is itself a
+4-element list like this:
+.CS
+
+
+ {11 {read exit} nscp {127\&.0\&.0\&.1 9999} 0}
+
+.CE
+.TP
+\fBns_info ssl\fR
+Returns information if the binary was compiled with OpenSSL support\&.
+.TP
+\fBns_info started\fR
+Returns 1 if the server is fully started, 0 otherwise\&.
+.TP
+\fBns_info tag\fR
+Returns the most detailed revision info, which might be shipped with
+the tar file or obtained from mercurial\&.
+.TP
+\fBns_info threads\fR
+Returns a list of all threads in the current process (all virtual
+servers)\&. Each list element is itself a 7-element list of {name,
+parent, id, flag, ctime, procname, arg}:
+.RS
+.IP \(bu
+name - current name of the thread
+.IP \(bu
+parent - parent thread name
+.IP \(bu
+id - id of the thread
+.IP \(bu
+flag - 1 if this is a detached thread, 0 otherwise
+.IP \(bu
+ctime - Thread creation time
+.IP \(bu
+procname - for conn threads this will be ns:connthread
+.IP \(bu
+arg - client data - for a running conn thread arg will be a 7-element list in the format returned by ns_server all - {conn id, peeraddr, state, method, url, running time, bytes sent}, where state is either "running" or "queued": {cns25 127\&.0\&.0\&.1 running POST /ds/shell 0\&.5158 0}
+.RE
+.TP
+\fBns_info uptime\fR
+Returns the number of seconds since the nsd process started\&.
+.TP
+\fBns_info version\fR
+Returns the version number of the server (major and minor version
+number combined with a dot)\&.
+.TP
+\fBns_info winnt\fR
+Returns boolean whether running under windows NT\&.
+.PP
+.SH KEYWORDS
+global built-in, introspection

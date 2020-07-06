@@ -11,7 +11,7 @@
  *
  * The Original Code is AOLserver Code and related documentation
  * distributed by AOL.
- * 
+ *
  * The Initial Developer of the Original Code is America Online,
  * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
  * Inc. All Rights Reserved.
@@ -29,7 +29,7 @@
 
 /*
  * nscheck.h --
- *      
+ *
  *      Stronger compile time error checking when using GCC.
  *
  */
@@ -143,9 +143,55 @@
  * here as a reference in case other compilers take similar roads.
  *
  * #if __GNUC_PREREQ(6, 0)
- * # define NS_NONNULL_ASSERT(assertion) 
+ * # define NS_NONNULL_ASSERT(assertion)
  * #endif
  */
 #define NS_NONNULL_ASSERT(assertion) assert((assertion))
+
+#if __GNUC_PREREQ(7, 0)
+# define NS_FALL_THROUGH __attribute__((fallthrough))
+#else
+# define NS_FALL_THROUGH ((void)0)
+#endif
+
+/*
+ * We include here limits.h, since this file includes <features.h>,
+ * which should not be included directly by applications, but which is
+ * needed for the *GLIBC* macros.
+ */
+#include <limits.h>
+
+/*
+ * On Solaris, the above might have defined _STRICT_STDC
+ * but this makes problems with <signal.h> which does not
+ * define "struct sigaction" any more. Quick and dirty
+ * "solution" is simply to undef this thing. I do not know
+ * what side-effects this brings and I do not care.
+ */
+
+#if defined(__sun__) && defined(_STRICT_STDC)
+# undef _STRICT_STDC
+#endif
+
+#if defined(__GLIBC__) && defined(__GLIBC_MINOR__)
+# if (__GLIBC__ > 2) || ((__GLIBC__ == 2) && (__GLIBC_MINOR__ >= 6))
+#  define NS_FOPEN_SUPPORTS_MODE_E 1
+# endif
+#endif
+
+
+#ifdef _MSC_VER
+# define NS_INLINE __forceinline
+# define NS_THREAD_LOCAL __declspec(thread)
+#else
+# define NS_INLINE inline
+#endif
+
+#if defined(__GNUC__) && !defined(__OpenBSD__)
+# define NS_THREAD_LOCAL __thread
+#elif defined NS_HAVE_C11
+# include <threads.h>
+# define NS_THREAD_LOCAL thread_local
+#endif
 
 #endif /* NSCHECK_H */

@@ -81,7 +81,7 @@ static void LogError(char *func, int h_errnop);
 
 static Ns_Cache *hostCache;
 static Ns_Cache *addrCache;
-static int       ttl;       /* Time in senconds each entry can live in the cache. */
+static int       ttl;       /* Time in seconds each entry can live in the cache. */
 static int       timeout;   /* Time in seconds to wait for concurrent update.  */
 
 
@@ -108,17 +108,17 @@ NsConfigDNS(void)
     const char *path = NS_CONFIG_PARAMETERS;
 
     if (Ns_ConfigBool(path, "dnscache", NS_TRUE) == NS_TRUE) {
-        int maxValue = Ns_ConfigIntRange(path, "dnscachemaxsize", 1024*500, 0, INT_MAX);
-
-        if (maxValue > 0) {
+        size_t maxSize = (size_t)Ns_ConfigMemUnitRange(path, "dnscachemaxsize", 1024 * 500,
+                                                       0, INT_MAX);
+        if (maxSize > 0u) {
             timeout = Ns_ConfigIntRange(path, "dnswaittimeout",  5, 0, INT_MAX);
             ttl = Ns_ConfigIntRange(path, "dnscachetimeout", 60, 0, INT_MAX);
             ttl *= 60; /* NB: Config specifies minutes, seconds used internally. */
 
             hostCache = Ns_CacheCreateSz("ns:dnshost", TCL_STRING_KEYS,
-                                         (size_t) maxValue, ns_free);
+                                         maxSize, ns_free);
             addrCache = Ns_CacheCreateSz("ns:dnsaddr", TCL_STRING_KEYS,
-                                         (size_t) maxValue, ns_free);
+                                         maxSize, ns_free);
         }
     }
 }
@@ -293,7 +293,24 @@ GetHost(Ns_DString *dsPtr, const char *addr)
                           buf, sizeof(buf),
                           NULL, 0, NI_NAMEREQD);
         if (err != 0) {
-            Ns_Log(Notice, "dns: getnameinfo failed for addr <%s>: %s", addr, gai_strerror(err));
+            switch (err) {
+#if defined(EAI_SYSTEM)
+            case EAI_SYSTEM:
+                Ns_Log(Warning, "dns: getnameinfo failed for addr <%s>: %s", addr,
+                       strerror(errno));
+                break;
+#endif
+            case EAI_NONAME:
+                    /*
+                     * EAI_NONAME: The name does not resolve for the
+                     * supplied arguments. No need to report this as
+                     * an error.
+                     */
+                break;
+            default:
+                Ns_Log(Warning, "dns: getnameinfo failed for addr <%s>: %s", addr,
+                       gai_strerror(err));
+            }
         } else {
             Ns_DStringAppend(dsPtr, buf);
             success = NS_TRUE;
@@ -318,7 +335,8 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     hints.ai_socktype = SOCK_STREAM;
 
     result = getaddrinfo(host, NULL, &hints, &res);
-    if (result == 0) {
+    switch (result) {
+    case 0:
         ptr = res;
         while (ptr != NULL) {
 
@@ -347,10 +365,24 @@ GetAddr(Ns_DString *dsPtr, const char *host)
             }
         }
         freeaddrinfo(res);
+        break;
 
-    } else if (result != EAI_NONAME) {
-        Ns_Log(Error, "dns: getaddrinfo failed for %s: %s", host,
+#if defined(EAI_SYSTEM)
+        case EAI_SYSTEM:
+            Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
+                   strerror(errno));
+            break;
+#endif
+    case EAI_NONAME:
+        /*
+         * EAI_NONAME: The name does not resolve for the supplied arguments
+         */
+        break;
+
+    default:
+        Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
                gai_strerror(result));
+        break;
     }
 
     return success;
@@ -408,8 +440,12 @@ GetHost(Ns_DString *dsPtr, const char *addr)
     if (result == 0) {
         Ns_DStringAppend(dsPtr, buf);
         status = NS_TRUE;
+    } else if (result == EAI_SYSTEM) {
+        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)",
+               strerror(errno), addr);
     } else if (result != EAI_NONAME) {
-        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)", gai_strerror(result), addr);
+        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)",
+               gai_strerror(result), addr);
     } else {
         /*
          * EAI_NONAME: The name does not resolve for the supplied arguments
@@ -516,8 +552,11 @@ GetAddr(Ns_DString *dsPtr, const char *host)
             ptr = ptr->ai_next;
         }
         freeaddrinfo(res);
+    } else if (result == EAI_SYSTEM) {
+        Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
+               strerror(errno));
     } else if (result != EAI_NONAME) {
-        Ns_Log(Error, "dns: getaddrinfo failed for %s: %s", host,
+        Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
                gai_strerror(result));
     } else {
         /*
@@ -691,7 +730,7 @@ LogError(char *func, int h_errnop)
         h = buf;
     }
 
-    Ns_Log(Error, "dns: %s failed: %s%s", func, h, (e != 0) ? e : "");
+    Ns_Log(Error, "dns: %s failed: %s%s", func, h, (e != 0) ? e : NS_EMPTY_STRING);
 }
 
 #endif

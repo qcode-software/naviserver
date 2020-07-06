@@ -47,6 +47,8 @@
 
 #include "nsproxy.h"
 
+static const char * NS_EMPTY_STRING = "";
+
 #ifdef _WIN32
 # define SIGKILL 9
 # define SIGTERM 15
@@ -285,7 +287,7 @@ static const char *errCode[] = {
     NULL
 };
 
-Ns_LogSeverity Ns_LogNsProxyDebug = 0;
+static Ns_LogSeverity Ns_LogNsProxyDebug = 0;
 
 
 /*
@@ -364,7 +366,7 @@ static Tcl_Obj* StringObj(const char* chars);
 
 static Tcl_HashTable pools;     /* Tracks proxy pools */
 
-ReaperState reaperState = Stopped;
+static ReaperState reaperState = Stopped;
 
 static Ns_Cond  pcond = NULL;          /* Those are used to control access to */
 static Ns_Mutex plock = NULL;          /* the list of Slave structures of slave */
@@ -407,7 +409,7 @@ Nsproxy_LibInit(void)
         Tcl_InitHashTable(&pools, TCL_STRING_KEYS);
 
         Ns_RegisterAtShutdown(Shutdown, NULL);
-        Ns_RegisterProcInfo((Ns_Callback *)Shutdown, "nsproxy:shutdown", NULL);
+        Ns_RegisterProcInfo((ns_funcptr_t)Shutdown, "nsproxy:shutdown", NULL);
 
         Ns_LogNsProxyDebug = Ns_CreateLogSeverity("Debug(nsproxy)");
     }
@@ -524,7 +526,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
         Ns_Fatal("nsproxy: dup: %s", strerror(errno));
     }
     ns_close(0);
-    if (ns_open("/dev/null", O_RDONLY, 0) != 0) {
+    if (ns_open("/dev/null", O_RDONLY | O_CLOEXEC, 0) != 0) {
         Ns_Fatal("nsproxy: open: %s", strerror(errno));
     }
     ns_close(1);
@@ -593,13 +595,15 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     Tcl_DStringInit(&out);
 
     while (RecvBuf(&proc, -1, &in) == NS_TRUE) {
-        Req *reqPtr;
+        Req      req, *reqPtr = &req;
         uint32_t len;
 
         if (Tcl_DStringLength(&in) < (int)sizeof(Req)) {
             break;
         }
-        reqPtr = (Req *) Tcl_DStringValue(&in);
+
+        memcpy(&req, in.string, sizeof(req));
+
         if (reqPtr->major != major || reqPtr->minor != minor) {
             Ns_Fatal("nsproxy: version mismatch");
         }
@@ -612,7 +616,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
                 int n = (int)len;
 
                 if (n < max) {
-                    dots = "";
+                    dots = NS_EMPTY_STRING;
                 } else {
                     dots = " ...";
                     n = max;
@@ -692,7 +696,7 @@ Ns_ProxyCleanup(Tcl_Interp *interp, const void *UNUSED(arg))
  */
 
 void
-Shutdown(const Ns_Time *toutPtr, void *UNUSED(arg))
+Shutdown(const Ns_Time *timeoutPtr, void *UNUSED(arg))
 {
     Pool           *poolPtr;
     Proxy          *proxyPtr, *tmpPtr;
@@ -708,7 +712,7 @@ Shutdown(const Ns_Time *toutPtr, void *UNUSED(arg))
      * the whole pool will be left un-freed).
      */
 
-    if (toutPtr == NULL) {
+    if (timeoutPtr == NULL) {
         Tcl_HashEntry *hPtr;
 
         Ns_MutexLock(&plock);
@@ -762,7 +766,7 @@ Shutdown(const Ns_Time *toutPtr, void *UNUSED(arg))
     status = NS_OK;
     Ns_CondSignal(&pcond);
     while (reaperState != Stopped && status == NS_OK) {
-        status = Ns_CondTimedWait(&pcond, &plock, toutPtr);
+        status = Ns_CondTimedWait(&pcond, &plock, timeoutPtr);
         if (status != NS_OK) {
             Ns_Log(Warning, "nsproxy: timeout waiting for reaper exit");
         }
@@ -1141,7 +1145,7 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
 
     if (err != ENone) {
         Ns_TclPrintfResult(interp, "could not send script \"%s\" to proxy \"%s\": %s",
-                           script == NULL ? "" : script,
+                           script == NULL ? NS_EMPTY_STRING : script,
                            proxyPtr->id, errMsg[err]);
         ProxyError(interp, err);
     }
@@ -1345,7 +1349,7 @@ SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
 static bool
 RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
 {
-    uint32       ulen;
+    uint32       ulen = 0u;
     ssize_t      n;
     size_t       avail;
     struct iovec iov[2];
@@ -1607,9 +1611,11 @@ Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr)
         result = TCL_ERROR;
 
     } else {
-        Res        *resPtr = (Res *) dsPtr->string;
+        Res         res, *resPtr = &res;
         const char *str    = dsPtr->string + sizeof(Res);
         size_t      rlen, clen, ilen;
+
+        memcpy(&res, dsPtr->string, sizeof(Res));
 
         clen = ntohl(resPtr->clen);
         ilen = ntohl(resPtr->ilen);
@@ -1850,7 +1856,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
     Pool          *poolPtr;
     Proxy         *proxyPtr;
     Err            err;
-    int            ms, opt, result = TCL_OK;
+    int            opt, result = TCL_OK;
     const char    *proxyId;
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
@@ -1937,14 +1943,14 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
             Tcl_WrongNumArgs(interp, 2, objv, "handle ?timeout?");
             result = TCL_ERROR;
         } else {
+            int ms = -1;
+
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
                 Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
                 result = TCL_ERROR;
-            } else if (objc == 3) {
-                ms = -1;
-            } else if (Tcl_GetIntFromObj(interp, objv[3], &ms) != TCL_OK) {
+            } else if (objc > 3 && Tcl_GetIntFromObj(interp, objv[3], &ms) != TCL_OK) {
                 result = TCL_ERROR;
             }
             if (result == TCL_OK) {
@@ -1979,14 +1985,14 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
             Tcl_WrongNumArgs(interp, 2, objv, "handle script");
             result = TCL_ERROR;
         } else {
+            int ms = -1;
+
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
                 Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
                 result = TCL_ERROR;
-            } else if (objc == 4) {
-                ms = -1;
-            } else if (Tcl_GetIntFromObj(interp, objv[4], &ms) != TCL_OK) {
+            } else if (objc > 4 && Tcl_GetIntFromObj(interp, objv[4], &ms) != TCL_OK) {
                 result = TCL_ERROR;
             }
             if (result == TCL_OK) {
@@ -2104,7 +2110,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
     InterpData *idataPtr = data;
     Pool       *poolPtr;
     Proxy      *proxyPtr;
-    int         flag, n, result = TCL_OK, reap = 0;
+    int         flag = 0, n, result = TCL_OK, reap = 0;
 
     static const char *flags[] = {
         "-init", "-reinit", "-maxslaves", "-exec", "-env",
@@ -2160,7 +2166,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
                     result = TCL_ERROR;
                     goto err;
                 }
-                switch ((int) flag) {
+                switch (flag) {
                 case CGetIdx:
                     poolPtr->conf.tget = n;
                     break;
@@ -2533,20 +2539,20 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
     Proxy        *proxyPtr;
     Err           err;
     Ns_ReturnCode status = NS_OK;
-    Ns_Time       tout;
+    Ns_Time       waitTimeout;
 
     NS_NONNULL_ASSERT(poolPtr != NULL);
     NS_NONNULL_ASSERT(proxyPtrPtr != NULL);
 
     if (ms > 0) {
-        Ns_GetTime(&tout);
-        Ns_IncrTime(&tout, ms/1000, (ms/1000) * 1000);
+        Ns_GetTime(&waitTimeout);
+        Ns_IncrTime(&waitTimeout, ms/1000, (ms/1000) * 1000);
     }
 
     Ns_MutexLock(&poolPtr->lock);
     while (status == NS_OK && poolPtr->waiting > 0) {
         if (ms > 0) {
-            status = Ns_CondTimedWait(&poolPtr->cond, &poolPtr->lock, &tout);
+            status = Ns_CondTimedWait(&poolPtr->cond, &poolPtr->lock, &waitTimeout);
         } else {
             Ns_CondWait(&poolPtr->cond, &poolPtr->lock);
         }
@@ -2559,7 +2565,7 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
                && poolPtr->nfree < nwant && poolPtr->maxslaves >= nwant) {
             if (ms > 0) {
                 status = Ns_CondTimedWait(&poolPtr->cond, &poolPtr->lock,
-                                          &tout);
+                                          &waitTimeout);
             } else {
                 Ns_CondWait(&poolPtr->cond, &poolPtr->lock);
             }
@@ -2973,7 +2979,7 @@ CloseSlave(Slave *slavePtr, int ms)
      * Set the time to kill the slave. Reaper thread will
      * use passed time to wait for the slave to exit gracefully.
      * Otherwise, it will start attempts to stop the slave
-     * by sending singnals to it (polite and unpolite).
+     * by sending signals to it (polite and unpolite).
      */
 
     SetExpire(slavePtr, ms);
@@ -3072,7 +3078,7 @@ ReaperThread(void *UNUSED(arg))
     Proxy          *proxyPtr, *prevPtr, *nextPtr;
     Pool           *poolPtr;
     Slave           *slavePtr, *tmpSlavePtr;
-    Ns_Time         tout, now, diff;
+    Ns_Time         timeout, now, diff;
     int             ms, ntotal;
 
     Ns_ThreadSetName("-nsproxy:reap-");
@@ -3089,8 +3095,8 @@ ReaperThread(void *UNUSED(arg))
 
         Ns_GetTime(&now);
 
-        tout.sec  = TIME_T_MAX;
-        tout.usec = 0;
+        timeout.sec  = TIME_T_MAX;
+        timeout.usec = 0;
 
         Ns_Log(Ns_LogNsProxyDebug, "reaper run");
 
@@ -3117,10 +3123,10 @@ ReaperThread(void *UNUSED(arg))
                 diff = now;
                 ms = poolPtr->conf.tidle;
                 Ns_IncrTime(&diff, ms/1000, (ms%1000) * 1000);
-                if (Ns_DiffTime(&diff, &tout, NULL) < 0) {
-                    tout = diff;
+                if (Ns_DiffTime(&diff, &timeout, NULL) < 0) {
+                    timeout = diff;
                     Ns_Log(Ns_LogNsProxyDebug, "reaper sets timeout based on idle diff %ld.%06ld of pool %s",
-                           tout.sec, tout.usec, poolPtr->name);
+                           timeout.sec, timeout.usec, poolPtr->name);
                 }
             }
 
@@ -3142,10 +3148,10 @@ ReaperThread(void *UNUSED(arg))
                     Ns_Log(Ns_LogNsProxyDebug, "pool %s slave %ld expired %d",
                            poolPtr->name, (long)slavePtr->pid, expired);
 
-                    if (!expired && Ns_DiffTime(&slavePtr->expire, &tout, NULL) <= 0) {
-                        tout = slavePtr->expire;
+                    if (!expired && Ns_DiffTime(&slavePtr->expire, &timeout, NULL) <= 0) {
+                        timeout = slavePtr->expire;
                         Ns_Log(Ns_LogNsProxyDebug, "reaper sets timeout based on expire %ld.%06ld pool %s slave %ld",
-                               tout.sec, tout.usec, poolPtr->name, (long)slavePtr->pid);
+                               timeout.sec, timeout.usec, poolPtr->name, (long)slavePtr->pid);
                     }
                 } else {
                     expired = NS_FALSE;
@@ -3276,10 +3282,10 @@ ReaperThread(void *UNUSED(arg))
                  * this one again.
                  */
 
-                if (Ns_DiffTime(&slavePtr->expire, &tout, NULL) < 0) {
+                if (Ns_DiffTime(&slavePtr->expire, &timeout, NULL) < 0) {
                     Ns_Log(Ns_LogNsProxyDebug, "reaper shortens timeout to %ld.%06ld based on expire in pool %s slave %ld kill %d",
-                           tout.sec, tout.usec, slavePtr->poolPtr->name, (long)slavePtr->pid, slavePtr->signal);
-                    tout = slavePtr->expire;
+                           timeout.sec, timeout.usec, slavePtr->poolPtr->name, (long)slavePtr->pid, slavePtr->signal);
+                    timeout = slavePtr->expire;
                 }
                 if (slavePtr->signal != slavePtr->sigsent) {
                     Ns_Log(Warning, "[%s]: pid %ld won't die, send signal %d",
@@ -3297,21 +3303,21 @@ ReaperThread(void *UNUSED(arg))
         }
 
         /*
-         * Here we wait until signalled, or at most the
+         * Here we wait until signaled, or at most the
          * time we need to expire next slave or kill
          * some of them found on the close list.
          */
 
-        if (Ns_DiffTime(&tout, &now, &diff) > 0) {
+        if (Ns_DiffTime(&timeout, &now, &diff) > 0) {
             reaperState = Sleeping;
             Ns_CondBroadcast(&pcond);
-            if (tout.sec == TIME_T_MAX && tout.usec == 0) {
+            if (timeout.sec == TIME_T_MAX && timeout.usec == 0) {
                 Ns_Log(Ns_LogNsProxyDebug, "reaper waits unlimited for cond");
                 Ns_CondWait(&pcond, &plock);
             } else {
                 Ns_Log(Ns_LogNsProxyDebug, "reaper waits for cond with timeout %ld.%06ld",
-                       tout.sec, tout.usec);
-                (void) Ns_CondTimedWait(&pcond, &plock, &tout);
+                       timeout.sec, timeout.usec);
+                (void) Ns_CondTimedWait(&pcond, &plock, &timeout);
             }
             if (reaperState == Stopping) {
                 break;
@@ -3721,7 +3727,7 @@ ReapProxies(void)
  *
  *      Returns time difference in milliseconds between current time
  *      and time given in passed structure. If the current time is
- *      later then the passed time, the result is negative.
+ *      later than the passed time, the result is negative.
  *
  * Results:
  *      Number of milliseconds (may be negative!)

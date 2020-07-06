@@ -235,11 +235,11 @@ static bool   AnyDone(Queue *queue)
 static void   SetupJobDefaults(void);
 
 static const char* GetJobCodeStr(int code);
-static const char* GetJobStateStr(JobStates state);
-static const char* GetJobTypeStr(JobTypes type);
-static const char* GetJobReqStr(JobRequests req);
-static const char* GetQueueReqStr(QueueRequests req);
-static const char* GetTpReqStr(ThreadPoolRequests req);
+static const char* GetJobStateStr(JobStates state) NS_GNUC_PURE;
+static const char* GetJobTypeStr(JobTypes type) NS_GNUC_PURE;
+static const char* GetJobReqStr(JobRequests req) NS_GNUC_PURE;
+static const char* GetQueueReqStr(QueueRequests req) NS_GNUC_PURE;
+static const char* GetTpReqStr(ThreadPoolRequests req) NS_GNUC_PURE;
 
 static int AppendField(Tcl_Interp *interp, Tcl_Obj *list,
                        const char *name, const char *value)
@@ -391,11 +391,12 @@ NsWaitJobsShutdown(const Ns_Time *toPtr)
 static int
 JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int            result = TCL_OK;
-    int            jpt = -1;
-    Ns_Time       *timeoutPtr = NULL;
+    int               result = TCL_OK;
+    int               jpt = -1;
+    Ns_Time          *timeoutPtr = NULL;
+    Ns_ObjvValueRange jptRange = {0, INT_MAX};
     Ns_ObjvSpec    lopts[] = {
-        {"-jobsperthread",  Ns_ObjvInt,  &jpt,        NULL},
+        {"-jobsperthread",  Ns_ObjvInt,  &jpt,        &jptRange},
         {"-timeout",        Ns_ObjvTime, &timeoutPtr, NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -440,16 +441,17 @@ JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 static int
 JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int          result = TCL_OK, maxThreads = NS_JOB_DEFAULT_MAXTHREADS;
-    Tcl_Obj     *queueIdObj;
-    char        *descString  = (char *)"";
-    Ns_ObjvSpec  lopts[] = {
+    int               result = TCL_OK, maxThreads = NS_JOB_DEFAULT_MAXTHREADS;
+    Tcl_Obj          *queueIdObj;
+    char             *descString  = (char *)"";
+    Ns_ObjvValueRange maxThreadsRange = {1, INT_MAX};
+    Ns_ObjvSpec       lopts[] = {
         {"-desc",   Ns_ObjvString,   &descString,   NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
         {"queueId",     Ns_ObjvObj,  &queueIdObj,  NULL},
-        {"?maxThreads", Ns_ObjvInt,  &maxThreads,  NULL},
+        {"?maxThreads", Ns_ObjvInt,  &maxThreads,  &maxThreadsRange},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -580,7 +582,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         assert(queue != NULL);
 
         /*
-         * Create a new job and add to the Thread Pool's list of jobs.
+         * Create a new job and add it to the Thread Pool's list of jobs.
          */
 
         jobPtr = NewJob((itPtr->servPtr != NULL) ? itPtr->servPtr->server : NULL,
@@ -590,7 +592,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             || queue->req == QUEUE_REQ_DELETE) {
             Ns_TclPrintfResult(interp,
                                "The specified queue is being deleted or "
-                             "the system is stopping.");
+                               "the system is stopping.");
             FreeJob(jobPtr);
             result = TCL_ERROR;
             goto releaseQueue;
@@ -1115,7 +1117,7 @@ JobQueuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 static int
 JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    Queue        *queue;
+    Queue        *queue = NULL;
     int           result = TCL_OK;
     Ns_ObjvSpec   args[] = {
         {"queueId", ObjvQueue, &queue,   NULL},
@@ -1130,6 +1132,7 @@ JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         const Tcl_HashEntry  *hPtr;
         Tcl_HashSearch        search;
 
+        assert(queue != NULL);
         /*
          * Create a Tcl List to hold the list of jobs.
          */

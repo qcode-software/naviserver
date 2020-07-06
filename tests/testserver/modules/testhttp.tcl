@@ -35,7 +35,7 @@
 
 namespace eval ::nstest {
 
-    proc http {args} {
+    proc http-0.9 {args} {
         ns_parseargs {
             {-encoding "utf-8"}
             {-http 1.0}
@@ -68,7 +68,7 @@ namespace eval ::nstest {
         }
 
         #
-        # Force network line ending symantics.
+        # Force network line ending semantics.
         #
 
         fconfigure $rfd -translation crlf -blocking 0
@@ -397,7 +397,7 @@ namespace eval ::nstest {
 return
 #
 # Below is an implementation of nstest::http based on "ns_http"
-# instead of the low level socket commands above. The only difference
+# instead of the low-level socket commands above. The only difference
 # is that the version below does not support modified encodings for
 # sending an http requests (the importance is questionable).
 #

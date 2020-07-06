@@ -28,7 +28,7 @@ matching requests. Otherwise, the [term ADP] page will be located at request
 time using [cmd ns_url2file].
 
 [para]
-This commands works similar as [cmd ns_register_tcl], but registers an
+This command works similar as [cmd ns_register_tcl], but registers an
 ADP file instead of a Tcl script.
 
 [para]
@@ -41,7 +41,7 @@ Use [cmd ns_unregister_op] to unregister an ADP request.
 	[arg URL]]
 
 This command register given [arg URL] to be processed by fast path subsystem, i.e.
-all requestes that match will be served by corresponding .adp files if resolved. This
+all requests that match will be served by corresponding .adp files if resolved. This
 can be used when there is no global fast path handler installed.
 
 [para]
@@ -57,7 +57,7 @@ The argument [arg method] is restricted to GET, POST or HEAD
 	[opt [arg args]]]
 
 [term ns_register_filter] registers a Tcl filter script for the specified method/URL combination
-on a virtual server. When [option -first] ist used, it is added to the
+on a virtual server. When [option -first] is used, it is added to the
 front of the filter list, otherwise to the end.
 
 [para] The [term when] argument specifies, when the filter script is
@@ -131,18 +131,22 @@ the connection has been totally processed and closed. If the procedure returns:
 
 [list_end]
 
-[term ns_register_filter] and [term ns_register_proc] are similar, but significantly different.
-With [term ns_register_proc], the specified URL is used to match that URL and any URL below
-it in the hierarchy. Wildcards such as "*" are meaningful only for the final part of
-the URL, such as /scripts/*.tcl. With [term ns_register_filter], the URL is used to
-match URLs as a string with standard string-matching characters. [term ns_register_proc]
-results in a single match, whereas multiple [term ns_register_filters] can be matched and
-will be called.
+[term ns_register_filter]/[term ns_register_trace] and
+[term ns_register_proc] are similar, but significantly different.  With
+[term ns_register_proc], the specified URL is used to match that URL
+and any URL below it in the hierarchy. Wildcards such as "*" are
+meaningful only for the final part of the URL, such as
+/scripts/*.tcl. With [term ns_register_filter], the URL is used to
+match URLs as a string with standard string-matching characters.
+[term ns_register_proc] results in a single match, whereas multiple
+[term ns_register_filters]/[term ns_register_trace] can be matched
+and will be called.
 
 [para]
 Be aware that executing the same [term ns_register_filter] statement more than once (as
 you might do when re-initializing Tcl) will add the filter more than once! You
-may want to have a shared variable set so that you don't do this.
+may want to have a shared variable set to avoid multiple
+registrations. Filters can be shortcutted via [cmd ns_shortcut_filter].
 
 
 
@@ -272,11 +276,18 @@ Use [cmd ns_unregister_op] to unregister a Tcl request handler.
 	[arg script] \
 	[opt [arg args]]]
 
-[term ns_register_trace] registers a Tcl script as a trace for the
+[term ns_register_trace] registers a Tcl script as a special filter for the
 specified method/URL combination. After the server handles the request
 for the specified method on a URL that matches the URL, it calls the
 trace script with the connection id and any arguments (args)
 specified.
+
+[term ns_register_trace] is very similar to
+[term "ns_register_filter trace"] (known internally as void_traces).
+The script registered by this command fires after the scripts
+registered by [term "ns_register_filter trace"] and differ by the fact
+that they only execute if a response was successfully sent to the
+client (i.e. not a Server Error). In addition, their return value is ignored.
 
 [para]
 
@@ -499,7 +510,7 @@ This example shows how to expire all HTML files after an hour:
 currently registered procs.
 
 
-[see_also ns_adp ns_conn ns_info]
+[see_also ns_adp ns_conn ns_info ns_shortcut_filter]
 [keywords "server built-in" ADP filter request callback fastpath]
 [manpage_end]
 

@@ -59,9 +59,19 @@ static int GetOptIndexObjvSpec(Tcl_Obj *obj, Ns_ObjvSpec *tablePtr, int *idxPtr)
 static int GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const Ns_SubCmdSpec *tablePtr, int *idxPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
+static void UpdateStringOfMemUnit(Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1);
+
+static int SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void AppendRange(Ns_DString *dsPtr, Ns_ObjvValueRange *r)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 /*
  * Static variables defined in this file.
  */
+static const Tcl_ObjType *intTypePtr;
 
 static Tcl_ObjType specType = {
     "ns:spec",
@@ -69,6 +79,14 @@ static Tcl_ObjType specType = {
     DupSpec,
     UpdateStringOfSpec,
     SetSpecFromAny
+};
+
+static Tcl_ObjType memUnitType = {
+    "ns:mem_unit",
+    NULL,
+    NULL,
+    UpdateStringOfMemUnit,
+    SetMemUnitFromAny
 };
 
 
@@ -184,9 +202,34 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
              int offset, int objc, Tcl_Obj *const* objv)
 {
     Ns_ObjvSpec  *specPtr;
-    int           optIndex, remain = (objc - offset);
+    int           optIndex, requiredArgs = 0, remain = (objc - offset);
 
     NS_NONNULL_ASSERT(interp != NULL);
+
+    /*
+     * In case, the number of actual arguments is equal to the number
+     * of required arguments, skip option processing and use the
+     * provided argument for the required arguments. This way,
+     * e.g. "ns_md5 --" will compute the checksum of "--" instead of
+     * spitting out an error message about a missing input string.
+     */
+    if (likely(argSpec != NULL) && likely(optSpec != NULL)) {
+        /*
+         * Count required args.
+         */
+        for (specPtr = argSpec; specPtr != NULL && specPtr->key != NULL; specPtr++) {
+            if (unlikely(specPtr->key[0] == '?')) {
+                break;
+            }
+            requiredArgs++;
+        }
+        if (requiredArgs+offset == objc) {
+            /*
+             * No need to process optional parameters.
+             */
+            optSpec = NULL;
+        }
+    }
 
     if (likely(optSpec != NULL) && likely(optSpec->key != NULL)) {
 
@@ -194,6 +237,22 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
             Tcl_Obj *obj = objv[objc - remain];
             int      result;
 
+#ifdef NS_TCL_PRE87
+            /*
+             * In case a Tcl_Obj has no stringrep (e.g. a pure/proper
+             * byte array), it is assumed that this cannot be an
+             * option flag (starting with a '-'). Since
+             * GetOptIndexObjvSpec() and Tcl_GetIndexFromObjStruct()
+             * create on demand string representations, the "pure"
+             * property will be lost and Tcl cannot distinguish later
+             * whether it can use the string representation as byte
+             * array or not. Fortuantely, this dangerous fragility is
+             * gone in Tcl 8.7.
+             */
+            if (obj->bytes == NULL) {
+                break;
+            }
+#endif
             result = Tcl_IsShared(obj) ?
                 GetOptIndexObjvSpec(obj, optSpec, &optIndex) :
                 Tcl_GetIndexFromObjStruct(NULL, obj, optSpec,
@@ -222,6 +281,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
         }
         return NS_OK;
     }
+
     for (specPtr = argSpec; specPtr != NULL && specPtr->key != NULL; specPtr++) {
         if (unlikely(remain == 0)) {
             if (unlikely(specPtr->key[0] != '?')) {
@@ -245,6 +305,49 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
 /*
  *----------------------------------------------------------------------
  *
+ * Ns_CheckWideRange --
+ *
+ *      Helper function for range checking based on Tcl_WideInt specification.
+ *      In error cases, the function leaves an error message in the interpreter.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR;
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_CheckWideRange(Tcl_Interp *interp, const char *name, Ns_ObjvValueRange *r, Tcl_WideInt value)
+{
+    int result;
+
+    if (r == NULL || (value >= r->minValue && value <= r->maxValue)) {
+        /*
+         * No range or valid range.
+         */
+        result = TCL_OK;
+    } else {
+        /*
+         * Invalid range.
+         */
+        Tcl_DString ds, *dsPtr = &ds;
+
+        Tcl_DStringInit(dsPtr);
+        Tcl_DStringAppend(dsPtr, "expected integer in range ", 26);
+        AppendRange(dsPtr, r);
+        Ns_DStringPrintf(dsPtr, " for '%s', but got %" TCL_LL_MODIFIER "d", name, value);
+        Tcl_DStringResult(interp, dsPtr);
+
+        result = TCL_ERROR;
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * Ns_ObjvInt,
  * Ns_ObjvUShort,
  * Ns_ObjvLong,
@@ -262,7 +365,6 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
  *
  *----------------------------------------------------------------------
  */
-
 int
 Ns_ObjvInt(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
            Tcl_Obj *const* objv)
@@ -276,9 +378,14 @@ Ns_ObjvInt(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 
         result = Tcl_GetIntFromObj(interp, objv[0], dest);
         if (likely(result == TCL_OK)) {
-            *objcPtr -= 1;
+            if (Ns_CheckWideRange(interp, spec->key, spec->arg, (Tcl_WideInt)*dest) == TCL_OK) {
+                *objcPtr -= 1;
+            } else {
+                result = TCL_ERROR;
+            }
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -312,13 +419,12 @@ Ns_ObjvUShort(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
             }
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
     return result;
 }
-
-
 
 int
 Ns_ObjvLong(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
@@ -332,10 +438,15 @@ Ns_ObjvLong(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
         long *dest = spec->dest;
 
         result = Tcl_GetLongFromObj(interp, objv[0], dest);
-        if (result == TCL_OK) {
-            *objcPtr -= 1;
+        if (likely(result == TCL_OK)) {
+            if (Ns_CheckWideRange(interp, spec->key, spec->arg, (Tcl_WideInt)*dest) == TCL_OK) {
+                *objcPtr -= 1;
+            } else {
+                result = TCL_ERROR;
+            }
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -355,9 +466,14 @@ Ns_ObjvWideInt(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 
         result = Tcl_GetWideIntFromObj(interp, objv[0], dest);
         if (likely(result == TCL_OK)) {
-            *objcPtr -= 1;
+            if (Ns_CheckWideRange(interp, spec->key, spec->arg, *dest) == TCL_OK) {
+                *objcPtr -= 1;
+            } else {
+                result = TCL_ERROR;
+            }
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -393,7 +509,7 @@ Ns_ObjvDouble(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
  *
  * Ns_ObjvBool --
  *
- *      If spec->arg is 0 consume exactly one argument and attempt
+ *      If spec->arg is NULL consume exactly one argument and attempt
  *      conversion to a boolean value.  Otherwise, spec->arg is
  *      treated as an int and placed into spec->dest with zero args
  *      consumed.
@@ -426,6 +542,7 @@ Ns_ObjvBool(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *const*
                 *objcPtr -= 1;
             }
         } else {
+            Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
             result = TCL_ERROR;
         }
     }
@@ -454,7 +571,7 @@ Ns_ObjvBool(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *const*
  */
 
 int
-Ns_ObjvString(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
+Ns_ObjvString(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
               Tcl_Obj *const* objv)
 {
     int result;
@@ -468,6 +585,7 @@ Ns_ObjvString(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
         *objcPtr -= 1;
         result = TCL_OK;
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -511,6 +629,7 @@ Ns_ObjvEval(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
             *objcPtr -= 1;
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
     return result;
@@ -538,7 +657,7 @@ Ns_ObjvEval(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
  */
 
 int
-Ns_ObjvByteArray(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
+Ns_ObjvByteArray(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
               Tcl_Obj *const* objv)
 {
     int result;
@@ -552,6 +671,7 @@ Ns_ObjvByteArray(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
         *objcPtr -= 1;
         result = TCL_OK;
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
     return result;
@@ -576,7 +696,7 @@ Ns_ObjvByteArray(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
  */
 
 int
-Ns_ObjvObj(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
+Ns_ObjvObj(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
            Tcl_Obj *const* objv)
 {
     int result;
@@ -590,6 +710,7 @@ Ns_ObjvObj(Ns_ObjvSpec *spec, Tcl_Interp *UNUSED(interp), int *objcPtr,
         *objcPtr -= 1;
         result = TCL_OK;
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -630,6 +751,191 @@ Ns_ObjvTime(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
             *objcPtr -= 1;
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
+        result = TCL_ERROR;
+    }
+
+    return result;
+}
+
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TclGetTimeFromObj --
+ *
+ *      Return the internal value of an Ns_Time Tcl_Obj.  If the value is
+ *      specified as integer, the value is interpreted as seconds.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR if not a valid Ns_Time.
+ *
+ * Side effects:
+ *      Object is converted to Ns_Time type if necessary.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+NsTclInitMemUnitType(void)
+{
+    intTypePtr = Tcl_GetObjType("int");
+    if (intTypePtr == NULL) {
+        Tcl_Panic("NsTclInitObjs: no int type");
+    }
+    Tcl_RegisterObjType(&memUnitType);
+}
+
+static void
+UpdateStringOfMemUnit(Tcl_Obj *objPtr)
+{
+    long     memUnit;
+    int      len;
+    char     buf[(TCL_INTEGER_SPACE) + 1];
+
+    NS_NONNULL_ASSERT(objPtr != NULL);
+
+    memUnit = PTR2INT((void *) &objPtr->internalRep);
+    len = ns_uint64toa(buf, (uint64_t)memUnit);
+    Ns_TclSetStringRep(objPtr, buf, len);
+}
+
+static int
+SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
+{
+    Tcl_WideInt memUnit = 0;
+    int         result = TCL_OK;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+
+    if (objPtr->typePtr == intTypePtr) {
+        long longValue;
+        /*
+         * When the type is "int", usec is 0.
+         */
+        if (Tcl_GetLongFromObj(interp, objPtr, &longValue) != TCL_OK) {
+            result = TCL_ERROR;
+        } else {
+            memUnit = longValue;
+        }
+    } else {
+        Ns_ReturnCode status;
+
+        status = Ns_StrToMemUnit(Tcl_GetString(objPtr), &memUnit);
+        if (status == NS_ERROR) {
+            result = TCL_ERROR;
+        }
+    }
+
+    if (result == TCL_OK) {
+        Ns_TclSetTwoPtrValue(objPtr, &memUnitType, INT2PTR(memUnit), NULL);
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TclGetMemUnitFromObj --
+ *
+ *      Convert a tcl obj with a string value of a memory unit into a Tcl_WideInt.
+ *      It has the same interface as e.g. Tcl_GetWideIntFromObj().
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR if not a valid memory unit string.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+Ns_TclGetMemUnitFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Tcl_WideInt *memUnitPtr)
+{
+    int  result = TCL_OK;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objPtr != NULL);
+    NS_NONNULL_ASSERT(memUnitPtr != NULL);
+
+    /*
+     * Many values come in already as int values. No need to convert
+     * these to memUnitType.
+     */
+    if (objPtr->typePtr == intTypePtr) {
+        int intValue;
+
+        if (likely(Tcl_GetIntFromObj(interp, objPtr, &intValue) != TCL_OK)) {
+            result = TCL_ERROR;
+        } else {
+            *memUnitPtr = (Tcl_WideInt)intValue;
+        }
+    } else {
+        /*
+         * When the values are already in memUnitType, get the value
+         * directly, otherwise convert.
+         */
+        if (objPtr->typePtr != &memUnitType) {
+
+            if (unlikely(Tcl_ConvertToType(interp, objPtr, &memUnitType) != TCL_OK)) {
+                Ns_TclPrintfResult(interp, "invalid memory unit '%s'; "
+                                   "valid units kB, MB, GB, KiB, MiB, and GiB",
+                                   Tcl_GetString(objPtr));
+                result = TCL_ERROR;
+            }
+        }
+        if (likely(objPtr->typePtr == &memUnitType)) {
+            *memUnitPtr =  (Tcl_WideInt)objPtr->internalRep.twoPtrValue.ptr1;
+        }
+    }
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ObjvMemUnit --
+ *
+ *      Consume exactly one argument, returning a pointer to the
+ *      memUnit (Tcl_WideInt) into *spec->dest.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR.
+ *
+ * Side effects:
+ *          None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+Ns_ObjvMemUnit(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
+            Tcl_Obj *const* objv)
+{
+    int result;
+
+    NS_NONNULL_ASSERT(spec != NULL);
+
+    if (likely(*objcPtr > 0)) {
+        Tcl_WideInt *dest = spec->dest;
+
+        result = Ns_TclGetMemUnitFromObj(interp, objv[0], dest);
+
+        if (likely(result == TCL_OK)) {
+            if (Ns_CheckWideRange(interp, spec->key, spec->arg, (Tcl_WideInt)*dest) == TCL_OK) {
+                *objcPtr -= 1;
+            } else {
+                result = TCL_ERROR;
+            }
+        }
+    } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -670,6 +976,7 @@ Ns_ObjvSet(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
             *objcPtr -= 1;
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -717,6 +1024,7 @@ Ns_ObjvIndex(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
             *objcPtr -= 1;
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -1301,6 +1609,7 @@ ObjvTcl(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *const* obj
             spec->dest = VALUE_SUPPLIED;
         }
     } else {
+        Ns_TclPrintfResult(interp, "missing argument to %s", spec->key);
         result = TCL_ERROR;
     }
 
@@ -1424,8 +1733,24 @@ SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
  *----------------------------------------------------------------------
  */
 
+static void AppendRange(Ns_DString *dsPtr, Ns_ObjvValueRange *r)
+{
+    if (r->minValue == LLONG_MIN) {
+        Tcl_DStringAppend(dsPtr, "[MIN,", 5);
+    } else {
+        Ns_DStringPrintf(dsPtr, "[%" TCL_LL_MODIFIER "d,", r->minValue);
+    }
+
+    if (r->maxValue == LLONG_MAX) {
+        Tcl_DStringAppend(dsPtr, "MAX]", 4);
+    } else {
+        Ns_DStringPrintf(dsPtr, "%" TCL_LL_MODIFIER "d]", r->maxValue);
+    }
+}
+
 static void
-WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
+             int objc, Tcl_Obj *const* objv)
 {
     const Ns_ObjvSpec *specPtr;
     Ns_DString         ds;
@@ -1442,14 +1767,32 @@ WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *inter
                 if (*specPtr->key == '-') {
                     ++p;
                 }
-                Ns_DStringPrintf(&ds, "?%s %s? ", specPtr->key, p);
+                Ns_DStringPrintf(&ds, "?%s %s", specPtr->key, p);
+
+                if ((specPtr->proc == Ns_ObjvInt
+                     || specPtr->proc == Ns_ObjvLong
+                     || specPtr->proc == Ns_ObjvWideInt
+                     ) && specPtr->arg != NULL) {
+                    AppendRange(&ds, specPtr->arg);
+                }
+                Tcl_DStringAppend(&ds, "? ", 2);
             }
         }
     }
     if (argSpec != NULL) {
         for (specPtr = argSpec; specPtr->key != NULL; ++specPtr) {
-            Ns_DStringPrintf(&ds, "%s%s ", specPtr->key,
-                             (*specPtr->key == '?') ? "?" : "");
+            Tcl_DStringAppend(&ds, specPtr->key, -1);
+
+            if ((specPtr->proc == Ns_ObjvInt
+                 || specPtr->proc == Ns_ObjvLong
+                 || specPtr->proc == Ns_ObjvWideInt
+                 ) && specPtr->arg != NULL) {
+                AppendRange(&ds, specPtr->arg);
+            }
+            if (*specPtr->key == '?') {
+                Tcl_DStringAppend(&ds, "?", 1);
+            }
+            Tcl_DStringAppend(&ds, " ", 1);
         }
     }
     if (ds.length > 0) {
@@ -1588,7 +1931,7 @@ GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const N
             entryPtr++;
             while (entryPtr->key != NULL) {
                 if ((entryPtr+1)->key == NULL) {
-                    Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : ""),
+                    Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : NS_EMPTY_STRING),
                                            " or ", entryPtr->key, (char *)0L);
                 } else if (entryPtr->key != NULL) {
                     Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, (char *)0L);

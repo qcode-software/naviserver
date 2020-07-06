@@ -1,0 +1,429 @@
+'\"
+'\" Generated from file 'ns_adp_ctl\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_adp_ctl" n 4\&.99\&.19 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_adp_ctl \- ADP control command
+.SH SYNOPSIS
+\fBns_adp_ctl autoabort\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl bufsize\fR ?\fIsize\fR?
+.sp
+\fBns_adp_ctl cache\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl channel\fR ?\fIchan\fR?
+.sp
+\fBns_adp_ctl detailerror\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl displayerror\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl expire\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl safe\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl singlescript\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl stream\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl stricterror\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl trace\fR ?\fIbool\fR?
+.sp
+\fBns_adp_ctl trimspace\fR ?\fIbool\fR?
+.sp
+.BE
+.SH DESCRIPTION
+This command enables control of the current ADP execution environment\&.
+Aside from the bufsize and chan subcommands,
+they all return a boolean value for a given ADP option\&. If
+the bool argument is given, the option is set to the
+given value and the previous value is returned\&.
+.SH COMMANDS
+.TP
+\fBns_adp_ctl autoabort\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl bufsize\fR ?\fIsize\fR?
+.TP
+\fBns_adp_ctl cache\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl channel\fR ?\fIchan\fR?
+.TP
+\fBns_adp_ctl detailerror\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl displayerror\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl expire\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl safe\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl singlescript\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl stream\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl stricterror\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl trace\fR ?\fIbool\fR?
+.TP
+\fBns_adp_ctl trimspace\fR ?\fIbool\fR?
+.sp
+\fIbufsize\fR
+This command returns the currently
+ADP output buffer size, setting it to a new value if the
+optionial size argument is specified\&.
+.sp
+\fIchannel\fR
+This command is used to specify an
+open file channel to receive output when the buffer is
+flushed\&. If channel is the null string, the output
+channel is cleared\&. This capability can be useful for
+specialized uses of ADP outside the context of an HTTP
+connection, e\&.g\&., for debugging or testing\&. Use an empty argument to
+reset the channel\&.
+.sp
+\fIautoabort\fR
+Query or set the autoabort option\&. When enabled, failure to flush a
+buffer (normally the result of a closed HTTP connection)
+generates an ADP exception, unwinding the ADP call
+stack\&.
+.sp
+\fIdetailerror\fR
+Query or set the detailerror option\&. When enabled, errors in ADP pages
+are formatted with information about the context of the HTTP
+request\&. This can be very helpful in debugging ADP errors
+but potentially a security risk if the HTTP context (e\&.g\&.,
+cookie headers) contains personal or sensitive data\&. Errors
+are logged to the server log and, if \fIdisplayerror\fR is
+enabled, appended to the output buffer\&.
+.sp
+\fIdisplayerror\fR
+Query or set the displayerror option\&. When enabled, errors in ADP
+pages are formatted and appended to the output stream,
+normally visible to a user's browser\&. This option
+should generally be enabled in development and disabled in
+production\&.
+.sp
+\fIexpire\fR
+Query or set the expire option\&. When enabled, the ADP request
+processing code adds an "Expires: now" header in the response buffer to
+disable any caching\&. In practice, more thoughtful cache
+control mechanisms should be used based on the HTTP/1\&.1
+spec\&.
+.sp
+\fIcache\fR
+Query or set the cache option\&. When disabled, all requests
+to cache executed ADP blocks via the ns_adp_include \fB-cache\fR directive are
+ignored, resulting in normal execution of all code\&.
+.sp
+\fIsafe\fR
+Query or set the safe option\&.
+When enabled, all code is executed in \fIsafe\fR  mode,
+disabling and ignoring any code within registered
+tags\&.
+.sp
+\fIsinglescript\fR
+Query or set the singlescript option\&. When enabled, ADP pages are
+converted from independent text-script blocks into a single
+script, which text blocks replaced with a call to
+ns_adp_append with the given text\&. Functionally the
+output is the same however an error anywhere on the page
+will result in the entire ADP page returning instead of
+skipping to the next block which is the normal behavior\&. In
+practice, singlescript is useful in development while
+in production leaving it disabled provides a more defensive
+execution environment where minor errors in one ADP do not
+inhibit execution of the overall page\&.
+.sp
+\fIstream\fR
+Query or set the streaming option\&.
+When enabled, partial adp-outputs are returned to the user as soon as
+possible via chunked encoding\&.
+.sp
+\fIstricterror\fR
+Query or set the stricterror option\&. When enabled, the result is
+similar to that of singlescript in that an error in a
+particular block will return the entire page instead of
+continuing to the next text or script block\&.
+.sp
+\fItrace\fR
+Query or set the \fItrace\fR option which currently does nothing\&.
+.sp
+\fItrimspace\fR
+Query or set the trimspace option\&. When enabled, any white space at
+the start of the output buffer is eliminated\&. White space
+can show up in the output as a result of ADP pages which do
+nothing but include other ADPs in a way to reuse code
+with the unfortunate side effect of the training newline at
+the end of a <% ns_adp_include myfile\&.adp %> ending up in the output stream\&.
+.PP
+.SH "SEE ALSO"
+ns_adp, ns_adp_abort, ns_adp_break, ns_adp_close, ns_adp_ctl, ns_adp_dump, ns_adp_flush, ns_adp_mimetype, ns_adp_return, ns_adp_stream, ns_conn
+.SH KEYWORDS
+ADP, server built-in

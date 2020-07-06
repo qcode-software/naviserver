@@ -96,29 +96,21 @@ static void GenSeeds(unsigned long seeds[], int nseeds);
 int
 NsTclRandObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int result = TCL_OK;
+    int               maxValue = -1, result = TCL_OK;
+    Ns_ObjvValueRange range = {1, INT_MAX};
+    Ns_ObjvSpec       args[] = {
+        {"?maximum", Ns_ObjvInt, &maxValue, &range},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc > 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "?maximum?");
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
         double d = Ns_DRand();
 
-        if (objc == 2) {
-            int maxValue;
-
-            if (Tcl_GetIntFromObj(interp, objv[1], &maxValue) != TCL_OK) {
-                result = TCL_ERROR;
-
-            } else if (maxValue <= 0) {
-                Ns_TclPrintfResult(interp, "invalid max \"%s\": "
-                                   "must be > 0", Tcl_GetString(objv[1]));
-                result = TCL_ERROR;
-
-            } else {
-                Tcl_SetObjResult(interp, Tcl_NewIntObj((int) (d * (double)maxValue)));
-            }
+        if (maxValue != -1) {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj((int) (d * (double)maxValue)));
         }  else {
             Tcl_SetObjResult(interp, Tcl_NewDoubleObj(d));
         }
@@ -198,7 +190,7 @@ GenSeeds(unsigned long seeds[], int nseeds)
     Ns_Thread thr;
 
     Ns_Log(Notice, "random: generating %d seed%s", nseeds,
-        nseeds == 1 ? "" : "s");
+        nseeds == 1 ? NS_EMPTY_STRING : "s");
     Ns_CsEnter(&lock);
     Ns_SemaInit(&sema, 0);
     fRun = NS_TRUE;

@@ -1,0 +1,67 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_getcontent - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_getcontent.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_getcontent.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_getcontent(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_getcontent - Return the message body of a received request</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDs</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_getcontent</b> <span class="opt">?<b class="option">-as_file</b> <i class="arg">bool</i>?</span> <span class="opt">?<b class="option">-binary</b> <i class="arg">bool</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command returns the content of a request as file or as string, no matter,
+whether it was spooled during upload into a file or not. The user
+can specify, whether the result should treated as binary or not.
+the default is &quot;-as_file true&quot;, since this will not run into
+memory problems on huge files.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDs</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_getcontent</b> <span class="opt">?<b class="option">-as_file</b> <i class="arg">bool</i>?</span> <span class="opt">?<b class="option">-binary</b> <i class="arg">bool</i>?</span></a></dt>
+<dd><p>Returns as result the file name of the tmp file (when spooled to a file, default) or the
+content of the file (when as_file is false).
+When <b class="option">-binary</b> is true (default) the result is returned
+literally, otherwise the content is translated to the active charset.</p>
+<p>Typically this command is used on POST, PUT, PROPFIND or similar requests.</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_conn.html">ns_conn</a>, <a href="ns_getform.html">ns_getform</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key39">form</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

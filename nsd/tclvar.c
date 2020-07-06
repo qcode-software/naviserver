@@ -38,7 +38,7 @@
 /*
  * The following structure defines a collection of arrays.
  * Only the arrays within a given bucket share a lock,
- * allowing for more concurency in nsv.
+ * allowing for more concurrency in nsv.
  */
 
 typedef struct Bucket {
@@ -328,6 +328,7 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                  */
                 if (didExist) {
                     returnNewValue = NS_FALSE;
+                    setArrayValue = NS_FALSE;
                 } else {
                     /*
                      * It is a new array element, so set it.
@@ -345,7 +346,6 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         UnlockArray(arrayPtr);
 
         if (returnNewValue) {
-            //fprintf(stderr, "Setting new value <%s>\n", Tcl_GetString(valueObj));
             Tcl_SetObjResult(interp, valueObj);
         }
 
@@ -370,21 +370,28 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         result = TCL_ERROR;
 
     } else {
-        const Tcl_HashEntry *hPtr;
 
         /*
          * This is the undocumented but used (e.g. in nstrace.tcl) variant of
          * "ns_set" behaving like "nsv_get".
          */
+
         arrayPtr = LockArrayObj(interp, objv[1], NS_FALSE);
-        hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, NULL);
-        if (likely(hPtr != NULL)) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
-        } else {
-            Ns_TclPrintfResult(interp, "no such key: %s", key);
+        if (arrayPtr == NULL) {
             result = TCL_ERROR;
+        } else {
+            const Tcl_HashEntry *hPtr = NULL;
+
+            hPtr = Tcl_FindHashEntry(&arrayPtr->vars, key);
+            if (likely(hPtr != NULL)) {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+            }
+            UnlockArray(arrayPtr);
+            if (hPtr == NULL) {
+                Ns_TclPrintfResult(interp, "no such key: %s", key);
+                result = TCL_ERROR;
+            }
         }
-        UnlockArray(arrayPtr);
     }
 
     return result;
@@ -414,7 +421,7 @@ NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     int  result, count = 1;
 
     if (unlikely(objc != 3 && objc != 4)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "array key ?count?");
+        Tcl_WrongNumArgs(interp, 1, objv, "array key ?increment?");
         result = TCL_ERROR;
 
     } else if (unlikely(objc == 4 && Tcl_GetIntFromObj(interp, objv[3], &count) != TCL_OK)) {
@@ -744,7 +751,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         Tcl_Obj  **lobjv;
 
         switch (opt) {
-        case CSetIdx:   /* fall through */
+        case CSetIdx:   NS_FALL_THROUGH; /* fall through */
         case CResetIdx:
             if (objc != 4) {
                 Tcl_WrongNumArgs(interp, 2, objv, "array valueList");
@@ -809,7 +816,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             }
             break;
 
-        case CGetIdx:   /* fall through */
+        case CGetIdx:   NS_FALL_THROUGH; /* fall through */
         case CNamesIdx:
             if (objc != 3 && objc != 4) {
                 Tcl_WrongNumArgs(interp, 2, objv, "array ?pattern?");
@@ -901,7 +908,7 @@ Ns_VarGet(const char *server, const char *array, const char *key, Ns_DString *ds
  *
  * Ns_VarExists
  *
- *      Return 1 if the key exists int the given array.
+ *      Return 1 if the key exists in the given array.
  *
  * Results:
  *      NS_TRUE or NS_FALSE.
@@ -1094,13 +1101,22 @@ Ns_VarUnset(const char *server, const char *array, const char *key)
     Ns_ReturnCode   status = NS_ERROR;
 
     NS_NONNULL_ASSERT(array != NULL);
-    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(array != NULL);
 
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
         Array  *arrayPtr = LockArray(servPtr, array, NS_FALSE);
-        if (likely(arrayPtr != NULL)) {
+        if (unlikely(arrayPtr == NULL)) {
+            /* Error */
+        } else {
             status = Unset(arrayPtr, key);
+            if (status != NS_OK && key != NULL) {
+                /* Error, no such key. */
+            } else if (status == NS_OK && key == NULL) {
+                /* Finish deleting the entire array, same as in NsTclNsvUnsetObjCmd(). */
+                Tcl_DeleteHashTable(&arrayPtr->vars);
+                Tcl_DeleteHashEntry(arrayPtr->entryPtr);
+            }
             UnlockArray(arrayPtr);
         }
     }
@@ -1463,11 +1479,14 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
         const NsInterp *itPtr = NsGetInterpData(interp);
 
         arrayPtr = LockArray(itPtr->servPtr, arrayName, create);
-        if (likely(arrayPtr != NULL)) {
+        if (arrayPtr != NULL) {
             Ns_TclSetOpaqueObj(arrayObj, arrayType, arrayPtr->bucketPtr);
         }
     }
 
+    /*
+     * Both, GetArray() and LockArray() can return NULL.
+     */
     if (arrayPtr == NULL && !create) {
         Ns_TclPrintfResult(interp, "no such array: %s", arrayName);
     }
@@ -1488,6 +1507,8 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
  *      with no arguments, it returns a list of every bucket (list of
  *      lists).
  *
+ *      Implementation of nsv_bucket.
+ *
  * Results:
  *      Tcl result code
  *
@@ -1500,26 +1521,25 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create)
 int
 NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    const NsInterp *itPtr = clientData;
-    const NsServer *servPtr = itPtr->servPtr;
-    int             bucketNr = -1, i, result = TCL_OK;
+    const NsInterp   *itPtr = clientData;
+    const NsServer   *servPtr = itPtr->servPtr;
+    int               bucketNr = -1, result = TCL_OK;
+    Ns_ObjvValueRange bucketRange = {0, servPtr->nsv.nbuckets};
+    Ns_ObjvSpec       args[] = {
+        {"?bucket-number", Ns_ObjvInt,  &bucketNr, &bucketRange},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc > 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "?bucket-number?");
-        result = TCL_ERROR;
-
-    } else if (objc == 2 &&
-        (Tcl_GetIntFromObj(interp, objv[1], &bucketNr) != TCL_OK
-         || bucketNr < 0
-         || bucketNr >= servPtr->nsv.nbuckets
-         )) {
-        Ns_TclPrintfResult(interp, "bucket number is not a valid integer");
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
         Tcl_Obj *resultObj;
+        int      i;
 
-        /* LOCK for servPtr->nsv ? */
+        /*
+         * LOCK for servPtr->nsv ?
+         */
         resultObj = Tcl_GetObjResult(interp);
         for (i = 0; i < servPtr->nsv.nbuckets; i++) {
             const Tcl_HashEntry *hPtr;

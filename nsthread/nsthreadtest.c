@@ -73,6 +73,9 @@ static void MemThread(void *arg);
 static void Msg(const char *fmt,...)
     NS_GNUC_PRINTF(1, 2);
 
+static void CheckStackThread(void *UNUSED(arg)) NS_GNUC_NORETURN;
+static void WorkThread(void *arg)               NS_GNUC_NORETURN;
+
 /*
  * Msg -
  *
@@ -157,10 +160,8 @@ WorkThread(void *arg)
     intptr_t       *ip;
     time_t          now;
     Ns_Thread       self;
-    char            name[32];
 
-    snprintf(name, 32u, "-work:%" PRIdPTR "-", i);
-    Ns_ThreadSetName(name);
+    Ns_ThreadSetName("-work:%" PRIdPTR "-", i);
 
     if (i == 2) {
         Ns_RWLockWrLock(&rwlock);
@@ -235,11 +236,11 @@ AtExit(void)
  */
 
 #define NA 10000
-#define BS 1024*16
+#define BS (1024*16)
 
-int nthreads = 10;
-int memstart;
-int nrunning;
+static int nthreads = 10;
+static int memstart;
+static int nrunning;
 
 static void
 MemThread(void *arg)
@@ -333,7 +334,7 @@ DumperThread(void *UNUSED(arg))
     Tcl_DString     ds;
 
     Tcl_DStringInit(&ds);
-    Ns_ThreadSetName("-dumper-");
+    Ns_ThreadSetName("%s", "-dumper-");
     Ns_MutexLock(&block);
     Ns_MutexLock(&dlock);
     while (dstop == 0) {
@@ -371,7 +372,9 @@ static void
 PthreadTlsCleanup(void *arg)
 {
     intptr_t i = (intptr_t) arg;
-    printf("pthread[%" PRIxPTR "]: log: %" PRIdPTR"\n", (uintptr_t) pthread_self(), i);
+    pthread_t self = pthread_self();
+
+    printf("pthread[%" PRIxPTR "]: log: %" PRIdPTR"\n", (uintptr_t)self, i);
 }
 
 static void *
@@ -429,7 +432,7 @@ int main(int argc, char *argv[])
     Tcl_FindExecutable(argv[0]);
     Nsthreads_LibInit();
 
-    Ns_ThreadSetName("-main-");
+    Ns_ThreadSetName("%s", "-main-");
 
     /*
      * Jump directly to memory test if requested.
@@ -443,7 +446,6 @@ int main(int argc, char *argv[])
             case 'm':
                 nthreads = (int)strtol(p + 1, NULL, 10);
                 goto mem;
-                break;
         }
     }
 

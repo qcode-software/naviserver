@@ -1,0 +1,594 @@
+'\"
+'\" Generated from file 'ns_crypto\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_crypto" n 4\&.99\&.19 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_crypto \- Low level cryptographic functions based on the OpenSSL crypto library
+.SH SYNOPSIS
+\fBns_crypto::aead::encrypt string\fR ?\fB-binary\fR? ?\fB-aad \fIaad\fR\fR? ?\fB-cipher \fIcipher\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-iv \fIiv\fR\fR? ?\fB-key \fIkey\fR\fR? \fIinput\fR
+.sp
+\fBns_crypto::aead::decrypt string\fR ?\fB-binary\fR? ?\fB-aad \fIaad\fR\fR? ?\fB-cipher \fIcipher\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-iv \fIiv\fR\fR? ?\fB-key \fIkey\fR\fR? ?\fB-tag \fItag\fR\fR? \fIinput\fR
+.sp
+\fBns_crypto::eckey generate\fR ?\fB-name \fIname\fR\fR? ?\fB-pem \fIpem\fR\fR?
+.sp
+\fBns_crypto::eckey import\fR ?\fB-binary\fR? ?\fB-string \fIstring\fR\fR? ?\fB-encoding \fIencoding\fR\fR?
+.sp
+\fBns_crypto::eckey priv\fR ?\fB-encoding \fIencoding\fR\fR? ?\fB-pem \fIpem\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR?
+.sp
+\fBns_crypto::eckey sharedsecret\fR ?\fB-binary\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-pem \fIpem\fR\fR? \fIpubkey\fR
+.sp
+\fBns_crypto::eckey pub\fR ?\fB-pem \fIpem\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-encoding \fIencoding\fR\fR?
+.sp
+\fBns_crypto::hmac string\fR ?\fB-binary\fR? ?\fB-digest \fIdigest\fR\fR? ?\fB-encoding \fIencoding\fR\fR? \fIkey\fR \fImessage\fR
+.sp
+\fBns_crypto::md string\fR ?\fB-digest \fIdigest\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-sign \fIpemfile\fR\fR? ?\fB-signature \fIsignatureString\fR\fR? ?\fB-verify \fIpemfile\fR\fR? ?\fB-binary\fR? \fImessage\fR
+.sp
+\fBns_crypto::md hkdf\fR ?\fB-binary\fR? ?\fB-digest \fIdigest\fR\fR? ?\fB-salt \fIsalt\fR\fR? ?\fB-secret \fIsecret\fR\fR? ?\fB-info \fIinfo\fR\fR? ?\fB-encoding \fIencoding\fR\fR? \fIlength\fR
+.sp
+\fBns_crypto::md vapidsign\fR ?\fB-digest \fIdigest\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-pem \fIpem\fR\fR? ?\fB-binary\fR? \fImessage\fR
+.sp
+\fBns_crypto::randombytes\fR ?\fB-encoding \fIencoding\fR\fR? \fInrbytes\fR
+.sp
+\fBns_crypto::scrypt\fR ?\fB-binary\fR? ?\fB-secret \fIsecret\fR\fR? ?\fB-salt \fIsalt\fR\fR? ?\fB-n \fIn\fR\fR? ?\fB-n \fIr\fR\fR? ?\fB-n \fIp\fR\fR? ?\fB-encoding \fIencoding\fR\fR? \fInrbytes\fR
+.sp
+.BE
+.SH DESCRIPTION
+These functions perform low-level cryptographic functions based on the
+OpenSSL crypto library\&. These commands are only implemented when
+NaviServer was compiled with OpenSSL support\&. The level of support
+depends on the version of OpenSSL\&. Versions earlier than OpenSSL 1\&.0
+are not supported\&.
+.PP
+For some higher level
+functions (e\&.g\&. performing e\&.g\&. digest or HMAC operations of huge
+amounts of data) see e\&.g\&.\fBns_md\fR and \fBns_hmac\fR\&.
+.PP
+Note: some common options are described in a separate section below\&.
+.SH COMMANDS
+.TP
+\fBns_crypto::aead::encrypt string\fR ?\fB-binary\fR? ?\fB-aad \fIaad\fR\fR? ?\fB-cipher \fIcipher\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-iv \fIiv\fR\fR? ?\fB-key \fIkey\fR\fR? \fIinput\fR
+.sp
+encrypt data following the Authenticated Encryption with
+Associated Data (AEAD) scheme, which provides confidentiality,
+integrity, and authenticity\&. Currently, only GCM mode (Galois/Counter
+Mode) is supported\&. For details about AEAD in GCM mode, see
+e\&.g\&. https://nvlpubs\&.nist\&.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d\&.pdf
+.sp
+The function returns a dict consisting of \fIbytes\fR and the
+authentication \fItag\fR used for decryption\&.
+.sp
+The option \fB-aad\fR can be used to specify
+Additional Authenticated Data (AAD),which is data handled by
+encryption, which is sent in clear text\&. The encryption still provides
+authenticity for AAD\&. AAD can be used e\&.g\&. for addresses, ports,
+sequence numbers, protocol version numbers\&.
+.sp
+The option \fB-cipher\fR can be used to
+specify the used cipher such as e\&.g\&. \fIaes-128-gcm\fR (default) or
+\fIaes-256-gcm\fR\&. Possible values are defined by OpenSSL\&.
+.sp
+The option \fB-iv\fR specifies the
+initialization vector (IV) for encryption\&. IV is essentially a nonce
+value, a value that is unique within the specified context (see the
+NIST publication for details)\&.
+.sp
+The option \fB-key\fR specifies the key for the
+encryption\&.
+.sp
+The argument \fIinput\fR is the data to be encrypted\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fB-key\fR, \fB-aad\fR, \fB-iv\fR, \fIinput\fR,
+.CS
+
+
+% ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 -key secret "hello world"
+bytes fa260f97eae35e3e3df0b7 tag 93654f78fd189b559c091acb410a0040
+
+.CE
+.TP
+\fBns_crypto::aead::decrypt string\fR ?\fB-binary\fR? ?\fB-aad \fIaad\fR\fR? ?\fB-cipher \fIcipher\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-iv \fIiv\fR\fR? ?\fB-key \fIkey\fR\fR? ?\fB-tag \fItag\fR\fR? \fIinput\fR
+This function implements the inverse function of
+\fBns_crypto::aead::encrypt string\fR\&. Note that the resulting
+\fItag\fR of the encryption result is used as an input for decryption\&.
+The result is a byte string of the decrypted input (no dict)\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fB-key\fR, \fB-aad\fR, \fB-iv\fR, \fB-tag\fR, \fIinput\fR,
+.CS
+
+
+% set d [ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 \\
+    -key secret -encoding binary \\
+    "hello world"]
+% ns_crypto::aead::decrypt string -cipher aes-128-gcm -iv 123456789 \\
+    -key secret -tag [dict get $d tag] \\
+    -encoding binary [dict get $d bytes]
+
+.CE
+.TP
+\fBns_crypto::eckey generate\fR ?\fB-name \fIname\fR\fR? ?\fB-pem \fIpem\fR\fR?
+Generate an EC pemfile without the need of an external command\&.
+.sp
+This function requires OpenSSL compiled with EC support enabled\&.
+.TP
+\fBns_crypto::eckey import\fR ?\fB-binary\fR? ?\fB-string \fIstring\fR\fR? ?\fB-encoding \fIencoding\fR\fR?
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fB-string\fR\&.
+.sp
+This function requires OpenSSL compiled with EC support enabled\&.
+.TP
+\fBns_crypto::eckey priv\fR ?\fB-encoding \fIencoding\fR\fR? ?\fB-pem \fIpem\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR?
+Obtain the private key in various encodings from an elliptic curves
+PEM file\&. When the \&.pem-file is secured by a passphrase, this has
+to be provided via \fB-passphrase\fR\&.
+.sp
+This function requires OpenSSL compiled with EC support
+enabled\&.
+.TP
+\fBns_crypto::eckey sharedsecret\fR ?\fB-binary\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-pem \fIpem\fR\fR? \fIpubkey\fR
+Generate a shared secret based on the private key from the \&.pem file
+and the provided public key\&. When the \&.pem file is secured by a
+passphrase, this has to be provided via \fB-passphrase\fR\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fIpubkey\fR\&.
+.sp
+This function requires OpenSSL 1\&.1 or newer, compiled with EC
+support enabled\&.
+.TP
+\fBns_crypto::eckey pub\fR ?\fB-pem \fIpem\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-encoding \fIencoding\fR\fR?
+Obtain the public key in various encodings from an elliptic curves PEM
+file\&. When the \&.pem file is secured by a passphrase, this has to be
+provided via \fB-passphrase\fR\&.
+.sp
+This function requires OpenSSL compiled with EC support enabled\&.
+.TP
+\fBns_crypto::hmac string\fR ?\fB-binary\fR? ?\fB-digest \fIdigest\fR\fR? ?\fB-encoding \fIencoding\fR\fR? \fIkey\fR \fImessage\fR
+Return a keyed-hash message authentication code (HMAC) for the
+specified \fIkey\fR and \fImessage\fR using the specified message
+digest algorithm and return it in the specified encoding\&. An HMAC is
+a message authentication code of a key (secret) with a message\&. It may
+be used to simultaneously verify both the data integrity and the
+authentication of a message\&. For details of HMAC, consult RFC 4231\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fIkey\fR and \fImessage\fR\&.
+.CS
+
+
+% ns_hmac string -digest sha256 "Jefe" "what do ya want for nothing?"
+5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+
+.CE
+.sp
+This low-level function operates just on an input string (which has to
+be in memory)\&. In order to compute HMACs on large data, use
+\fBns_hmac\fR\&.
+.TP
+\fBns_crypto::md string\fR ?\fB-digest \fIdigest\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-sign \fIpemfile\fR\fR? ?\fB-signature \fIsignatureString\fR\fR? ?\fB-verify \fIpemfile\fR\fR? ?\fB-binary\fR? \fImessage\fR
+.sp
+Return a message digest for the provided \fImessage\fR and
+return it in the specified encoding\&. Optionally, this function can
+return a signature based on the provided private key, or it can
+verify such an signature\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fImessage\fR\&.
+.CS
+
+
+% ns_crypto::md string -digest sha256 "what do ya want for nothing?"
+b381e7fec653fc3ab9b178272366b8ac87fed8d31cb25ed1d0e1f3318644c89c
+
+.CE
+.sp
+This low-level function operates just on an input string (which
+has to be in memory)\&. In order to compute digests on large data (such
+as from files), use \fBns_md\fR\&.
+.sp
+The \fBns_crypto::md string\fR interface can be as well used
+for digital signing and verification of the signature, when the
+respective keys are passed in as PEM files\&. When the PEM file is secured
+by a passphrase, the option \fB-passphrase \fI\&.\&.\&.\fR\fR has
+to be used to decipher the key\&.
+.sp
+The option \fB-sign \fIpemfile\fR\fR is used to sign
+the given message\&.
+.sp
+The options \fB-verify \fIpemfile\fR\fR and
+\fB-signature \fIsignatureString\fR\fR can be used to
+verify a signature using the private key from provided PEM file\&.
+The \fIsignatureString\fR is required to be a binary string,
+therefore, produced with the output option \fB-encoding binary\fR
+in the example below:
+.CS
+
+
+% set sig [::ns_crypto::md string \\
+	     -digest sha1 \\
+	     -encoding binary \\
+	     -sign /usr/local/src/naviserver/myprivate\&.pem \\
+	     "abcdefghijklmnopqrstuxvwxyz\\n"]
+
+% set vfy [::ns_crypto::md string \\
+	     -digest sha1 \\
+	     -verify /usr/local/src/naviserver/myprivate\&.pem \\
+	     -signature $sig \\
+	     "abcdefghijklmnopqrstuxvwxyz\\n"]
+1
+
+.CE
+.sp
+The PEM files provided to \fB-sign\fR and
+\fB-verify\fR are private keys that can have
+the following key types: CMAC, DSA, ECDSA, HMAC and RSA\&.
+.TP
+\fBns_crypto::md hkdf\fR ?\fB-binary\fR? ?\fB-digest \fIdigest\fR\fR? ?\fB-salt \fIsalt\fR\fR? ?\fB-secret \fIsecret\fR\fR? ?\fB-info \fIinfo\fR\fR? ?\fB-encoding \fIencoding\fR\fR? \fIlength\fR
+Derive keys based on message digests\&.
+See: RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
+https://tools\&.ietf\&.org/html/rfc5869
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fImessage\fR\&.
+.sp
+This function requires OpenSSL 1\&.1\&.0\&.
+.TP
+\fBns_crypto::md vapidsign\fR ?\fB-digest \fIdigest\fR\fR? ?\fB-encoding \fIencoding\fR\fR? ?\fB-passphrase \fIpassphrase\fR\fR? ?\fB-pem \fIpem\fR\fR? ?\fB-binary\fR? \fImessage\fR
+Sign a message according to the Voluntary Application Server
+Identification (VAPID) for Web Push
+https://tools\&.ietf\&.org/id/draft-ietf-webpush-vapid-03\&.html
+.sp
+Essentially, this is a special form of a signed message
+digest based on elliptic curve cryptography\&.
+See also: Generic Event Delivery Using HTTP Push
+https://tools\&.ietf\&.org/html/rfc8030
+.sp
+The signing key is taken from the provided \&.pem file\&.
+When the \&.pem file is secured by a passphrase, this has to be
+provided via \fB-passphrase\fR\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fImessage\fR\&.
+.sp
+This function requires OpenSSL compiled with EC support enabled\&.
+.TP
+\fBns_crypto::randombytes\fR ?\fB-encoding \fIencoding\fR\fR? \fInrbytes\fR
+Return the specified number of random bytes in the specified encoding
+(default hex)\&.
+.CS
+
+
+% ns_crypto::randombytes 20
+3191eb4360a3dc9b5ef667641b264d43aa1019aa
+
+.CE
+.TP
+\fBns_crypto::scrypt\fR ?\fB-binary\fR? ?\fB-secret \fIsecret\fR\fR? ?\fB-salt \fIsalt\fR\fR? ?\fB-n \fIn\fR\fR? ?\fB-n \fIr\fR\fR? ?\fB-n \fIp\fR\fR? ?\fB-encoding \fIencoding\fR\fR? \fInrbytes\fR
+Compute a password has based on the scrypt Password-Based Key
+Derivation Function (RFC 7914) and return the specified number of
+random bytes in the specified encoding (default hex)\&.
+.sp
+The scrypt function is a modern replacement for crypt and bcrypt and
+derives more secret keys from a secret string\&.  It is based on memory-hard
+functions, which offer added protection against attacks using custom hardware
+and GPU arrays\&. The functions requires the compilation of NaviServer against
+OpenSSL 3\&.0 or newer\&.
+.sp
+The scrypt function is as well used in many cryptocurrencies as a
+proof-of-work algorithm\&.
+.sp
+Colin Percival\&. 2009\&. Stronger key derivation via
+sequential memory-hard functions\&. In BSDCan ’09: The Technical BSD
+Conference\&.
+.sp
+When the option \fB-binary\fR is specified, it applies to
+\fB-salt\fR and \fB-secret\fR\&.
+.CS
+
+
+% ns_crypto::randombytes 20
+3191eb4360a3dc9b5ef667641b264d43aa1019aa
+
+.CE
+.PP
+.SH OPTIONS
+.TP
+\fB-digest\fR \fIdigest\fR
+.sp
+Digest algorithm for the checksum computation\&. The available
+algorithms are implemented in OpenSSL\&. The current versions of OpenSSL
+supports the following message digest algorithms: "blake2b512
+blake2s256 md4 md5 md5-sha1 mdc2 ripemd160 sha1 sha224 sha256 sha3-224
+sha3-256 sha3-384 sha3-512 sha384 sha512 sha512-224 sha512-256
+shake128 shake256 sm3 whirlpool"\&.  The default value is "sha256"
+.TP
+\fB-encoding\fR \fIencoding\fR
+.sp
+The option \fB-encoding \fIencoding\fR\fR specifies the
+output encoding used for the resulting values of the dict\&.
+Possible encodings are \fIhex\fR, \fIbase64url\fR,
+\fIbase64\fR, or \fIbinary\fR\&. Default is \fIhex\fR\&.
+.TP
+\fB-binary\fR
+.sp
+When the option \fB-binary\fR is used, the mentioned input
+arguments are treated as binary\&. The Tcl byte array value
+of the provided input argument is used and no UTF-8 interpretation
+is performed\&. When the type of the Tcl value is clearly a binary type
+(pure/proper byte array) then it is not necessary to use
+\fB-binary\fR explicitly\&.
+.PP
+.SH "SEE ALSO"
+ns_hmac, ns_md, nsd
+.SH KEYWORDS
+AEAD, HKDF, HMAC, crypto, random

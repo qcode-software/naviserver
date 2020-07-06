@@ -59,6 +59,7 @@ static const Cmd basicCmds[] = {
     {"ns_absoluteurl",           NULL, NsTclAbsoluteUrlObjCmd},
     {"ns_addrbyhost",            NULL, NsTclGetAddrObjCmd},
     {"ns_after",                 NULL, NsTclAfterObjCmd},
+    {"ns_asynclogfile",          NULL, NsTclAsyncLogfileObjCmd},
     {"ns_atexit",                NULL, NsTclAtExitObjCmd},
     {"ns_atprestartup",          NULL, NsTclAtPreStartupObjCmd},
     {"ns_atshutdown",            NULL, NsTclAtShutdownObjCmd},
@@ -81,6 +82,7 @@ static const Cmd basicCmds[] = {
     {"ns_crypto::hmac",          NULL, NsTclCryptoHmacObjCmd},
     {"ns_crypto::md",            NULL, NsTclCryptoMdObjCmd},
     {"ns_crypto::randombytes",   NULL, NsTclCryptoRandomBytesObjCmd},
+    {"ns_crypto::scrypt",        NULL, NsCryptoScryptObjCmd},
     {"ns_encodingforcharset",    NULL, NsTclEncodingForCharsetObjCmd},
     {"ns_env",                   NULL, NsTclEnvObjCmd},
     {"ns_fastpath_cache_stats",  NULL, NsTclFastPathCacheStatsObjCmd},
@@ -114,6 +116,7 @@ static const Cmd basicCmds[] = {
     {"ns_normalizepath",         NULL, NsTclNormalizePathObjCmd},
     {"ns_pagepath",              NULL, NsTclPagePathObjCmd},
     {"ns_parseargs",             NULL, NsTclParseArgsObjCmd},
+    {"ns_parsefieldvalue",       NULL, NsTclParseFieldvalue},
     {"ns_parseheader",           NULL, NsTclParseHeaderObjCmd},
     {"ns_parsehttptime",         NULL, NsTclParseHttpTimeObjCmd},
     {"ns_parsequery",            NULL, NsTclParseQueryObjCmd},
@@ -331,7 +334,7 @@ AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
 
     while (cmdPtr->name != NULL) {
         /*
-         * One has to provide wither an objProc or a proc.
+         * One has to provide either an objProc or a proc.
          */
         if (cmdPtr->objProc != NULL) {
             (void)Tcl_CreateObjCommand(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);

@@ -1,0 +1,94 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_adp_parse - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_adp_parse.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_adp_parse.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_adp_parse(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_adp_parse - Parse an ADP file or string and return its output</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_adp_parse</b> <span class="opt">?<b class="option">-cwd path</b>?</span> <span class="opt">?<b class="option">-file</b>?</span> <span class="opt">?<b class="option">-safe</b>?</span> <span class="opt">?<b class="option">-string</b>?</span> <span class="opt">?<b class="option">-tcl</b>?</span> <span class="opt">?args ...?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This function processes the specified ADP file or string and returns
+the result as a string. Processing a second ADP from inside an ADP
+is normally best done with ns_adp_include as that command
+resolves relative pathnames passed to it.  Also note that
+ns_adp_parse will ignore any directives to turn on streaming.
+Tcl_Eval is used to evaluate the Tcl commands in the ADP.</p>
+<p>Although the &lt;% ... %&gt; syntax is allowed in the string,
+if you have this embedded in an ADP, you have to be careful in
+constructing the string that you do not prematurely terminate an
+enclosing script.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_adp_parse</b> <span class="opt">?<b class="option">-cwd path</b>?</span> <span class="opt">?<b class="option">-file</b>?</span> <span class="opt">?<b class="option">-safe</b>?</span> <span class="opt">?<b class="option">-string</b>?</span> <span class="opt">?<b class="option">-tcl</b>?</span> <span class="opt">?args ...?</span></a></dt>
+<dd></dd>
+</dl>
+<p>The option <span class="opt">?<b class="option">-cwd</b>?</span> can be used to set the current working directory
+for this ADP parse operation</p>
+<p>The option  <span class="opt">?<b class="option">-file</b>?</span> can be used to parse ADP contained in
+the given file.  This use is similar to that of
+<b class="cmd"><a href="ns_adp_include.html">ns_adp_include</a></b> except the result is returned by the command instead of automatically
+being appended to the output stream.</p>
+<p>The option <span class="opt">?<b class="option">-safe</b>?</span> can be used to set the ADP safe flag.</p>
+<p>The option <span class="opt">?<b class="option">-string</b>?</span> is provided for backwards compatibility, but
+does nothing since string mode is the default mode.</p>
+<p>The option <span class="opt">?<b class="option">-tcl</b>?</span> can be provided to process a Tcl file.</p>
+<p>Additional arguments can be provided, which are passed to the
+ADP evaluation.  The arguments can be accessed within the ADP using
+the <b class="cmd"><a href="ns_adp_argc.html">ns_adp_argc</a></b>, <b class="cmd"><a href="ns_adp_argv.html">ns_adp_argv</a></b>, and <b class="cmd"><a href="ns_adp_bind_args.html">ns_adp_bind_args</a></b>
+commands.</p>
+<p>If this call is a nested ADP evaluation (where one ADP calls another), an error will
+be thrown if the depth exceeds 256, the maximum number of nested ADP evaluations.</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+   % ns_adp_parse {2 + 2 = &lt;%= [expr 2 + 2] %&gt; !!!}
+   2 + 2 = 4 !!!
+</pre>
+<pre class="doctools_example">
+   % ns_adp_parse -file foo.tcl
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_adp.html">ns_adp</a>, <a href="ns_adp_argc.html">ns_adp_argc</a>, <a href="ns_adp_argv.html">ns_adp_argv</a>, <a href="ns_adp_bind_args.html">ns_adp_bind_args</a>, <a href="ns_adp_include.html">ns_adp_include</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key33">ADP</a>, <a href="../../index.html#key34">server built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

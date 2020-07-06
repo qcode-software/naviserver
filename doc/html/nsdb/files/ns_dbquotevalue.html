@@ -1,0 +1,95 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_dbquotevalue - NaviServer Module Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_dbquotevalue.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_dbquotevalue.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_dbquotevalue(n) 4.99.19 nsdb &quot;NaviServer Module Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_dbquotevalue - Quote database names and values</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_dbquotevalue</b> <i class="arg">value</i> <span class="opt">?<i class="arg">type</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_dbquotename</b> <i class="arg">name</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>These commands are used to construct SQL statements, making sure that Tcl values
+are properly quoted depending on position: names or values.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_dbquotevalue</b> <i class="arg">value</i> <span class="opt">?<i class="arg">type</i>?</span></a></dt>
+<dd><p>Prepare the string <i class="arg">value</i> for inclusion in an SQL statement. If <i class="arg">value</i>
+is &quot;&quot;, ns_dbquotevalue will return the string &quot;NULL&quot;. If <i class="arg">value</i> is not &quot;&quot;,
+the returned value depends on <i class="arg">type</i>.</p>
+<p>If type is one of: bigint, bit, decimal, double, float, int, integer, numeric,
+real, smallint, or tinyint, then value will be returned without modification.
+When type is any other string, or if type is omitted, value will be surrounded
+by single quotes, and any single quotes that it contains will be escaped by
+translation into two single quotes.</p></dd>
+<dt><a name="2"><b class="cmd">ns_dbquotename</b> <i class="arg">name</i></a></dt>
+<dd><p>Surround <i class="arg">name</i> with double quotes if it contains a space. The resulting
+name can then be used in SQL statements for names of database objects such as
+tables or columns.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+   % ns_dbquotevalue &quot;&quot;
+   NULL
+</pre>
+<pre class="doctools_example">
+   % ns_dbquotevalue 45.3 float
+   45.3
+</pre>
+<pre class="doctools_example">
+   % ns_dbquotevalue &quot;John's Car&quot;
+   'John''s Car'
+</pre>
+<pre class="doctools_example">
+   % set company &quot;John's Cheese Factory&quot;
+   % ns_db dml $db &quot;INSERT INTO companies (name) VALUES ([ns_dbquotevalue $company])&quot;
+</pre>
+<pre class="doctools_example">
+   % ns_dbquotevalue &quot;Column Name&quot;
+   'Column Name'
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_db.html">ns_db</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key155">SQL</a>, <a href="../../index.html#key157">database</a>, <a href="../../index.html#key156">escape</a>, <a href="../../index.html#key158">quote</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

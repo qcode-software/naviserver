@@ -1,0 +1,81 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_httppost - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_httppost.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_httppost.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_httppost(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_httppost - Open an HTTP connection and posts data to the server</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_httppost</b> <i class="arg">url</i> <span class="opt">?<i class="arg">rqset</i>?</span> <span class="opt">?<i class="arg">qsset</i>?</span> <span class="opt">?<i class="arg">type</i>?</span> <span class="opt">?<i class="arg">timeout</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command is deprecated; use <b class="cmd"><a href="ns_http.html">ns_http</a></b> instead.</p>
+<p>ns_httppost is a wrapper around ns_httpopen to send data using HTTP
+POST method.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_httppost</b> <i class="arg">url</i> <span class="opt">?<i class="arg">rqset</i>?</span> <span class="opt">?<i class="arg">qsset</i>?</span> <span class="opt">?<i class="arg">type</i>?</span> <span class="opt">?<i class="arg">timeout</i>?</span></a></dt>
+<dd><p><i class="arg">url</i>
+Url where to send data.</p>
+<p><i class="arg">rqset</i>
+This is ns_set with headers, if none specified, default minimum number of HTTP
+headers will be provided.</p>
+<p><i class="arg">qsset</i>
+This is ns_set with form data, key values pair which will be formatted into
+query format as if browser sends it.</p>
+<p><i class="arg">type</i>
+Content type, default is application/x-www-form-urlencoded which submitted form format.</p>
+<p><i class="arg">timeout</i>
+Timeout for opening the connection (the default is 30 seconds) or retrieving data.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+set form [ns_set new]
+ns_set put $data Name John
+ns_set put $data Action Add
+set page [ns_httppost http://www.aolserver.com] &quot;&quot; $data
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_http.html">ns_http</a>, <a href="ns_httpget.html">ns_httpget</a>, <a href="ns_httpopen.html">ns_httpopen</a>, <a href="ns_httptime.html">ns_httptime</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key36">http-client</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

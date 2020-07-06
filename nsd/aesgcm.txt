@@ -1,0 +1,185 @@
+
+===============================================================================
+const char* p256dh = "BDwwYm4O5dZG9SO6Vaz168iDLGWMmitkj5LFvunvMfgmI2fZdAEaiHT"
+                      "DfKR0fvr0D3V56cSGSeUwP0xNdrXho5k";
+const char* auth = "xcmQLthL5H2pJNuxrZO-qQ";
+const void* plaintext = "I'm just like my country, I'm young, scrappy, and "
+                        "hungry, and I'm not throwing away my shot.";
+
+#define ECE_WEBPUSH_DEFAULT_RS        4096
+#define ECE_WEBPUSH_PUBLIC_KEY_LENGTH   65
+#define ECE_SALT_LENGTH                 16
+#define ECE_TAG_LENGTH                  16
+
+size_t ciphertextLen = ece_aesgcm_ciphertext_max_length(
+    ECE_WEBPUSH_DEFAULT_RS, padLen, plaintextLen);
+
+size_t padLen = 0;
+
+rawRecvPubKeyLen= base64url_decode(p256dh, &rawRecvPubKey)
+authSecretLen = base64url_decode(auth, &authSecret)
+
+ece_webpush_aesgcm_encrypt(
+    rawRecvPubKey, rawRecvPubKeyLen,
+    authSecret, authSecretLen,
+    ECE_WEBPUSH_DEFAULT_RS, padLen,
+    plaintext, plaintextLen,
+    &salt, ECE_SALT_LENGTH,
+    &rawSenderPubKey, ECE_WEBPUSH_PUBLIC_KEY_LENGTH,
+    &ciphertext
+    );
+===============================================================================
+
+
+exec -ignorestderr openssl ec -in prime256v1_key.pem -pubout -outform DER | tail -c 65 | base64 | tr -d '=' | tr '/+' '_-' > public_key.txt
+exec -ignorestderr openssl ec -in prime256v1_key.pem -outform DER | tail -c +8 | head -c 32 | base64 | tr -d '=' | tr '/+' '_-' > private_key.txt
+
+crypto::ec_key pub -pem *.pem -encoding base64url
+crypto::ec_key priv -pem *.pem -encoding base64url
+crypto::ec_key import -string STRING -encoding base64url
+
+===============================================================================src/encrypt.c 
+
+ece_webpush_aesgcm_encrypt(
+    const uint8_t* rawRecvPubKey, size_t rawRecvPubKeyLen,
+    const uint8_t* authSecret, size_t authSecretLen,
+    uint32_t rs, size_t padLen,
+    const uint8_t* plaintext, size_t plaintextLen,
+			   
+    uint8_t* salt, size_t saltLen,
+    uint8_t* rawSenderPubKey, size_t rawSenderPubKeyLen,
+    uint8_t* ciphertext, size_t* ciphertextLen) {
+    
+  EC_KEY* recvPubKey = NULL;
+  EC_KEY* senderPrivKey = NULL;
+
+  rs = ece_aesgcm_rs(rs);   // sanity-check of rs (size), rs =+ ECE_TAG_LENGTH
+
+  // Import the receiver public key.
+  recvPubKey = ece_import_public_key(rawRecvPubKey, rawRecvPubKeyLen);
+  if (!recvPubKey) {
+    err = ECE_ERROR_INVALID_PUBLIC_KEY;
+    goto end;
+  }
+
+  // Generate the sender ECDH key pair.
+  senderPrivKey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+  if (!senderPrivKey) {
+    err = ECE_ERROR_OUT_OF_MEMORY;
+    goto end;
+  }
+  if (EC_KEY_generate_key(senderPrivKey) != 1) {
+    err = ECE_ERROR_INVALID_PRIVATE_KEY;
+    goto end;
+  }
+
+  if (!EC_POINT_point2oct(EC_KEY_get0_group(senderPrivKey),
+                          EC_KEY_get0_public_key(senderPrivKey),
+                          POINT_CONVERSION_UNCOMPRESSED, rawSenderPubKey,
+                          rawSenderPubKeyLen, NULL)) {
+    err = ECE_ERROR_ENCODE_PUBLIC_KEY;
+    goto end;
+  }
+
+  err = ece_webpush_encrypt_plaintext(
+    senderPrivKey, recvPubKey, authSecret, authSecretLen, salt, saltLen, rs,
+    ECE_AESGCM_PAD_SIZE, padLen, plaintext, plaintextLen,
+    &ece_webpush_aesgcm_derive_key_and_nonce, &ece_aesgcm_min_block_pad_length,
+    &ece_aesgcm_encrypt_block, &ece_aesgcm_needs_trailer, ciphertext,
+    ciphertextLen);
+}
+
+ece_webpush_encrypt_plaintext() {
+  ...
+  err = deriveKeyAndNonce(ECE_MODE_ENCRYPT, senderPrivKey, recvPubKey,
+                          authSecret, ECE_WEBPUSH_AUTH_SECRET_LENGTH, salt,
+                          ECE_SALT_LENGTH, key, nonce);
+}
+
+
+ece_webpush_aesgcm_derive_key_and_nonce(ece_mode_t mode, EC_KEY* localKey,
+                                        EC_KEY* remoteKey,
+                                        const uint8_t* authSecret,
+                                        size_t authSecretLen,
+                                        const uint8_t* salt, size_t saltLen,
+                                        uint8_t* key, uint8_t* nonce) {
+  remoteKey == recvPubKey;
+  ...;
+  err = ece_webpush_aesgcm_generate_info(
+					 remoteKey, localKey, ECE_WEBPUSH_AESGCM_KEY_INFO_PREFIX,
+					 ECE_WEBPUSH_AESGCM_KEY_INFO_PREFIX_LENGTH, keyInfo);
+  err = ece_webpush_aesgcm_generate_info(
+					 remoteKey, localKey, ECE_WEBPUSH_AESGCM_NONCE_INFO_PREFIX,
+					 ECE_WEBPUSH_AESGCM_NONCE_INFO_PREFIX_LENGTH, nonceInfo);
+  ...;
+  err = ece_hkdf_sha256(salt, saltLen, ikm, ECE_WEBPUSH_IKM_LENGTH, keyInfo,
+			ECE_WEBPUSH_AESGCM_KEY_INFO_LENGTH, key,
+			ECE_AES_KEY_LENGTH);
+  err = ece_hkdf_sha256(salt, saltLen, ikm, ECE_WEBPUSH_IKM_LENGTH, nonceInfo,
+                        ECE_WEBPUSH_AESGCM_NONCE_INFO_LENGTH, nonce,
+                        ECE_NONCE_LENGTH);
+}
+
+
+
+
+ece_webpush_aesgcm_generate_info(EC_KEY* recvKey, EC_KEY* senderKey,
+                                 const char* prefix, size_t prefixLen,
+                                 uint8_t* info) {
+  size_t offset = 0;
+
+  // Copy the prefix.
+  memcpy(info, prefix, prefixLen);
+  offset += prefixLen;
+
+  // Copy the length-prefixed receiver public key.
+  ece_write_uint16_be(&info[offset], ECE_WEBPUSH_PUBLIC_KEY_LENGTH);
+  offset += 2;
+  const EC_GROUP* recvGrp = EC_KEY_get0_group(recvKey);
+  const EC_POINT* recvPubKeyPt = EC_KEY_get0_public_key(recvKey);
+  size_t recvPubKeyLen =
+    EC_POINT_point2oct(recvGrp, recvPubKeyPt, POINT_CONVERSION_UNCOMPRESSED,
+                       &info[offset], ECE_WEBPUSH_PUBLIC_KEY_LENGTH, NULL);
+  if (!recvPubKeyLen) {
+    return ECE_ERROR_ENCODE_PUBLIC_KEY;
+  }
+  offset += recvPubKeyLen;
+
+  // Copy the length-prefixed sender public key.
+  ece_write_uint16_be(&info[offset], ECE_WEBPUSH_PUBLIC_KEY_LENGTH);
+  offset += 2;
+  const EC_GROUP* senderGrp = EC_KEY_get0_group(senderKey);
+  const EC_POINT* senderPubKeyPt = EC_KEY_get0_public_key(senderKey);
+  size_t senderPubKeyLen =
+    EC_POINT_point2oct(senderGrp, senderPubKeyPt, POINT_CONVERSION_UNCOMPRESSED,
+                       &info[offset], ECE_WEBPUSH_PUBLIC_KEY_LENGTH, NULL);
+  if (!senderPubKeyLen) {
+    return ECE_ERROR_ENCODE_PUBLIC_KEY;
+  }
+
+  return ECE_OK;
+}
+
+
+EC_KEY*
+ece_import_public_key(const uint8_t* rawKey, size_t rawKeyLen) {
+  EC_KEY* key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+  if (!key) {
+    return NULL;
+  }
+  if (EC_KEY_oct2key(key, rawKey, rawKeyLen, NULL) != 1) {
+    EC_KEY_free(key);
+    return NULL;
+  }
+  return key;
+}
+
+
+===============================================================================src/keys.c
+ece_webpush_aesgcm_derive_key_and_nonce(ece_mode_t mode, EC_KEY* localKey,
+                                        EC_KEY* remoteKey,
+                                        const uint8_t* authSecret,
+                                        size_t authSecretLen,
+                                        const uint8_t* salt, size_t saltLen,
+                                        uint8_t* key, uint8_t* nonce) {
+===============================================================================

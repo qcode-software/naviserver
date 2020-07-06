@@ -1025,7 +1025,7 @@ GetServiceName(Ns_DString *dsPtr, char *service)
  *      None.
  *
  * Side effects:
- *      Thread is created or signalled to stop and joined.
+ *      Thread is created or signaled to stop and joined.
  *
  *----------------------------------------------------------------------
  */
@@ -1280,13 +1280,13 @@ ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, long timo)
         }
     }
 
-    return rc;
+    return (rc != SOCKET_ERROR) ? rc : -1;
 }
 
 /*
  *----------------------------------------------------------------------
  *
- * ns_open, ns_close, ns_write, ns_read, ns_lseek, ns_dup, ns_dup2  --
+ * ns_open, ns_close, ns_write, ns_read, ns_lseek  --
  *
  *      Elementary operations on file descriptors. The interfaces are the same
  *      as in a Unix environment.
@@ -1333,18 +1333,6 @@ off_t
 ns_lseek(int fildes, off_t offset, int whence)
 {
     return (off_t)_lseek(fildes, (long)offset, whence);
-}
-
-int
-ns_dup(int fildes)
-{
-    return _dup(fildes);
-}
-
-int
-ns_dup2(int fildes, int fildes2)
-{
-    return _dup2(fildes, fildes2);
 }
 
 /*

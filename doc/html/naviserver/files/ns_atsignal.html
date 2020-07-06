@@ -1,0 +1,97 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_atsignal - NaviServer Built-In Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_atsignal.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_atsignal.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_atsignal(n) 4.99.19 naviserver &quot;NaviServer Built-In Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_atsignal - Server callbacks</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_atprestartup</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_atstartup</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></li>
+<li><a href="#3"><b class="cmd">ns_atsignal</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></li>
+<li><a href="#4"><b class="cmd">ns_atshutdown</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></li>
+<li><a href="#5"><b class="cmd">ns_atexit</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>These commands provide hooks for you to register your own procedures to
+be called during the different stages of the server processes lifetime.</p>
+<p>You can find out which callbacks are already registered with the
+<b class="cmd">ns_info callbacks</b> command. Further callbacks can be registered
+via <b class="cmd">ns_ictl trace</b>.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_atprestartup</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></dt>
+<dd><p>Pre-startup procs are called in FIFO order after the configuration file has been
+parsed and all modules loaded, but before the driver starts listening for and
+processing connections.</p></dd>
+<dt><a name="2"><b class="cmd">ns_atstartup</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></dt>
+<dd><p>Startup procs are called in FIFO order just after the server is fully
+initialized and is listening for and processing connections.</p></dd>
+<dt><a name="3"><b class="cmd">ns_atsignal</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></dt>
+<dd><p>Signal procs are called in FIFO order whenever a <i class="term">HUP</i> signal is received
+by the server process.</p>
+<p>The following example shows how to log the accumulated cache
+statistics and reset whenever the server is signaled.</p>
+<pre class="doctools_example">
+<b class="cmd">ns_atsignal</b> {
+    foreach cache [ns_cache_names] {
+        ns_log notice &quot;cache\[$cache\]: [ns_cache_stats -reset -- $cache]&quot;
+    }
+}
+</pre>
+</dd>
+<dt><a name="4"><b class="cmd">ns_atshutdown</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></dt>
+<dd><p>At-shutdown procs are called in LIFO order when the server performs a controlled
+shutdown after all other subsystem have been stopped.</p>
+<p>Orderly shutdown is attempted within <i class="term">shutdowntimeout</i> seconds, as
+specified in the configuration file. Tcl shutdown procs are called before C
+shutdown tasks are waited on, so should be well-behaved.</p>
+<p>Do not attempt to use other sub-systems for shutdown jobs, such
+as the <b class="cmd"><a href="ns_job.html">ns_job</a></b> command.</p></dd>
+<dt><a name="5"><b class="cmd">ns_atexit</b> <i class="arg">script</i> <span class="opt">?<i class="arg">args</i>?</span></a></dt>
+<dd><p>At-exit procs are called in LIFO order after all <i class="term"><a href="../../index.html#key110">shutdown</a></i> procs have been
+called and the server process is ready to exit.  The <i class="term">atexit</i> procs are
+basically the last code to run.</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_atclose.html">ns_atclose</a>, <a href="ns_ictl.html">ns_ictl</a>, <a href="ns_info.html">ns_info</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key31">callback</a>, <a href="../../index.html#key111">exit</a>, <a href="../../index.html#key24">global built-in</a>, <a href="../../index.html#key110">shutdown</a>, <a href="../../index.html#key112">signal</a>, <a href="../../index.html#key71">startup</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

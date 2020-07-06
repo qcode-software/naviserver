@@ -112,6 +112,7 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
     Ns_DString            ds;
     Ns_ReturnCode         status = NS_OK;
     Tcl_Obj              *pathObj;
+    bool                  hasExtension;
 
     NS_NONNULL_ASSERT(module != NULL);
     NS_NONNULL_ASSERT(file != NULL);
@@ -123,7 +124,13 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
         file = Ns_HomePath(&ds, "bin", file, (char *)0L);
     }
-    if (access(file, F_OK) != 0) {
+    /*
+     * In the case of the nsproxy module, we have an "nsproxy" binary and an
+     * "nsproxy.so" module. So the module file needs to have an extension.
+     */
+    hasExtension = (strrchr(file, INTCHAR('.')) != NULL);
+
+    if (access(file, F_OK) != 0 || !hasExtension) {
         const char *defaultExtension =
 #ifdef _WIN32
             ".dll"
@@ -131,6 +138,8 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
             ".so"
 #endif
             ;
+        int extLength = (int)strlen(defaultExtension);
+
         /*
          * The specified module name does not exist.  Try appending the
          * defaultExtension, but first make sure, we have the filename in the
@@ -139,8 +148,16 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
         if (ds.length == 0) {
             Tcl_DStringAppend(&ds, file, -1);
         }
-        Tcl_DStringAppend(&ds, defaultExtension, -1);
-        file = ds.string;
+
+        /*
+         * Avoid to append the extension twice.
+         */
+        if (ds.length > extLength
+            && strncmp(defaultExtension, &ds.string[ds.length-extLength], (size_t)extLength) != 0
+            ) {
+            Tcl_DStringAppend(&ds, defaultExtension, extLength);
+            file = ds.string;
+        }
     }
     pathObj = Tcl_NewStringObj(file, -1);
 
@@ -195,17 +212,34 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
                 status = NS_ERROR;
             }
             if (status == NS_OK) {
-                Ns_ModuleInitProc *initProc   = (Ns_ModuleInitProc *) tclInitProc;
-                const int         *versionPtr = (const int *) moduleVersionAddr;
+                Ns_ModuleInitProc *initProc = (Ns_ModuleInitProc *)(ns_funcptr_t)tclInitProc;
 
                 /*
                  * Calling Ns_ModuleInit()
                  */
                 status = (*initProc)(server, module);
+#if 0
+                /*
+                 * All modules of the NaviServer modules family have
+                 * Ns_ModuleVersion == 1. The way, how AOLserver performed the
+                 * version checking (via casting a function pointer to an
+                 * integer pointer) does not conform with ISO C which forbids
+                 * conversions of function pointers to object pointer
+                 * types. The intention was probably to allow results from the
+                 * initProc != NS_OK for modules with versions < 1.
+                 *
+                 * Since the test is practically useless und unclean, we
+                 * deactivate it here.
+                 */
+                {
+                    const int *versionPtr = (const int *) moduleVersionAddr;
 
-                if (*versionPtr < 1) {
-                    status = NS_OK;
-                } else if (status != NS_OK) {
+                    if (*versionPtr < 1) {
+                        status = NS_OK;
+                    }
+                }
+#endif
+                if (status != NS_OK) {
                     Ns_Log(Error, "modload: %s: %s returned: %d", file, init, status);
                 }
             }
