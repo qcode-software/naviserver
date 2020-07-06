@@ -1,0 +1,538 @@
+'\"
+'\" Generated from file 'tcl-libraries\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "tcl-libraries" n 4\&.99\&.19 manual "NaviServer Manual"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+tcl-libraries \- NaviServer Tcl Libraries
+.SH DESCRIPTION
+.SH "WHAT ARE TCL LIBRARIES?"
+A Tcl library is simply a directory containing Tcl scripts that are
+sourced at startup by a virtual server\&. You can create private
+libraries for individual virtual servers and public libraries that
+affect all or some of an installation's virtual servers\&.
+.PP
+Each Tcl file in a library often contains one or more calls to
+ns_register_proc, ns_schedule_proc, or ns_register_filter to bind a
+script to a specific URL or URL hierarchy, plus the Tcl scripts that
+will handle the URL(s)\&. This example shows the ns_register_proc
+function being used to bind the Tcl procedure \fIhello\fR to handle a GET
+request for /example/hello, plus the \fIhello\fR procedure itself:
+.CS
+
+
+
+ ns_register_proc GET /example/hello hello
+
+ proc hello {} {
+   ns_return 200 text/plain "Hello World"
+ }
+
+
+.CE
+After the function is loaded (typically from a Tcl library directory)
+and the server is started, one can test the function by visiting the URL
+.CS
+
+
+ http://yourserver/example/hello
+
+.CE
+When NaviServer processes a method/URL request, it checks to see if
+there is a Tcl script in the virtual server's private or shared
+library to handle the method and URL\&. A private Tcl script registered
+to handle a URL overrides a shared Tcl script registered to handle the
+same URL\&.
+.PP
+Tcl libraries can also be created that contain no registration
+functions; they may just contain Tcl functions that are called from
+ADPs or from scheduled procedures\&.
+.SH "WHEN TO USE TCL LIBRARIES"
+The alternative to embedding Tcl scripts in HTML pages using ADPs (see
+Chapter 2), is to store Tcl scripts in Tcl libraries\&. The situations
+listed below are well-suited to the Tcl libraries approach\&.
+.TP
+Inheritance:
+If you want one Tcl script to handle a URL and all
+of its sub-URLs, it's better to store the script in a Tcl library
+and register it using ns_register_proc to handle a URL hierarchy\&.
+For example, you may want to manage a server domain name change by
+redirecting every response to the corresponding domain name on
+another server\&.
+.TP
+Special Extensions:
+If you want one Tcl script to handle all files
+with a specific extension, like /*\&.csv, you would register the
+script with ns_register_proc to handle those files\&.
+.TP
+Scheduled Procedures:
+If you want a Tcl script to be run at
+specific intervals, you can use the ns_schedule_* functions to run
+a script from the Tcl library at scheduled intervals\&. These
+procedures do not normally involve returning HTML pages and so are
+not well suited to ADPs\&.
+.TP
+Filters:
+If you want a Tcl script to be called at
+pre-authorization, post-authorization, or trace time for a group
+of URLs, you would register a filter using the ns_register_filter
+function\&.
+.TP
+Re-using Tcl Scripts:
+If there are Tcl scripts that you want to
+use in multiple situations, you can store them in a Tcl library
+and invoke them from within any ADP or Tcl script\&.
+.PP
+.SH "TCL LIBRARIES"
+Tcl libraries contain Tcl files, which are loaded at startup time\&. The
+functions defined in these Tcl files are available at runtime without
+any function loading overhead\&.
+NaviServer distinguishes between global (shared) and per-server
+(private) library directories\&.
+.IP \(bu
+The \fIglobal (shared)\fR Tcl library directory is specified by the
+parameter \fItcllibrary\fR in the \fIns/parameters\fR section and it
+defaults to \fItcl\fR under NaviServer \fIhome\fR directory\&.
+.CS
+
+
+ #
+ # Global parameters
+ #
+ ns_section  ns/parameters {
+     ns_param home        /usr/local/ns   ;# usual place
+     ns_param tcllibrary  tcl             ;# default, full path: /usr/local/ns/tcl
+ }
+
+.CE
+.IP \(bu
+The \fIper-server (private)\fR Tcl library directory is
+specified by the parameter \fIlibrary\fR in the
+\fIns/server/$servername/tcl\fR section\&.  It defaults to
+\fImodules/tcl\fR
+under NaviServer \fIhome\fR\&.  One can specify a
+different Tcl library directory for each server\&.
+.CS
+
+
+ #
+ # Global parameters
+ #
+ ns_section  ns/parameters {
+     ns_param home        /usr/local/ns   ;# usual place
+ }
+
+ #
+ # Parameters of the "tcl" section of the server "myserver"
+ #
+ ns_section ns/server/myserver/tcl {
+     ns_param library     modules/tcl     ;# default, full path: /usr/local/ns/modules/tcl
+ }
+
+.CE
+.PP
+Note that the specified directories need not reside under \fIhome\fR
+(the NaviServer installation directory)\&. Using a different directory
+tree allows you to keep site-specific scripts physically separate from
+the system-specific scripts supplied by NaviServer\&. For example,
+OpenACS uses the per-server library directory to start the server with
+the OpenACS specific packages and request/templating processing\&.
+.SH "TCL SCRIPT ORDER OF EVALUATION"
+In general, the global (shared) Tcl libraries are loaded before the
+per-server (private) libraries\&. This is true for the Tcl files placed
+directly in the library directories as for the Tcl modules (more
+details follow)\&.
+The Tcl library directories are a flat structure, from which all
+contained Tcl files are loaded\&. Sometimes several Tcl files should be
+handled together and might not be necessary for all managed
+servers\&. For these purpose, Tcl-only modules can be used\&.
+.PP
+At server startup time, NaviServer initializes first the Tcl library
+directories and then the specified Tcl-only modules:
+.IP [1]
+For the specified Tcl library directories, the \fIinit\&.tcl\fR file in
+that directory is sourced first (if it exists), and then all the
+remaining \&.tcl files are sourced in an alphabetical order\&.
+.IP [2]
+For each module (including any Tcl-only modules) in the server:
+If a private Tcl directory is specified, the \fIinit\&.tcl\fR file in the
+module-name subdirectory of the private directory is sourced first
+(if it exists), and then all the remaining \&.tcl files are sourced
+alphabetically\&.
+.PP
+If the \fItcl\fR section of the server configuration contains the
+parameter \fIinitcmds\fR then these commands are executed after the
+initialization of the Tcl-only modules\&. This feature is useful e\&.g\&.
+for simple server configurations, where the full code of the
+server-initialization can be put into the config file\&. So only one
+file has to be maintained
+.CS
+
+
+ #
+ # Parameters of the "tcl" section of the server "myserver"
+ #
+ ns_section ns/server/myserver/tcl {
+     ns_param initcmds {
+         ns_log notice "=== Hello World === server: [ns_info server]"
+     }
+ }
+
+.CE
+.SH "TCL-ONLY MODULES"
+NaviServer supports C-based modules and Tcl-only modules\&. Tcl-only
+modules are directories, containing potentially multiple Tcl source
+files\&. When a Tcl-only module \fImymodule\fR is configured to be
+loaded, during starutp NaviServer searches in the subdirectory of the
+global (shared) library directory, and if not found the per-server
+(privated) library directory for a directory with that name\&.  When it
+is found the subdirectory \fImymodule\fR is initialized (as described
+above)\&.
+To load a Tcl-only module named \fImymodule\fR, add the following
+line to the per-server modules section in the configuration file:
+.CS
+
+
+ #
+ # Parameters of the "modules" section of the server "myserver"
+ #
+ ns_section ns/server/myserver/modules {
+     ns_param mymodule Tcl
+ }
+
+.CE
+Note that when Tcl modules are specified, only the named
+subdirectories of the Tcl library directory are initialized (loaded)\&.
+Otherwise, all subdirectories of the Tcl library directories are
+ignored\&. For example, if a server named \fImyserver\fR has a Tcl
+library directory defined as \fI/home/mydir/tcl/myserver-lib\fR, and
+the modules \fIfoo\fR and \fIbar\fR are loaded,
+.CS
+
+
+ #
+ # Parameters of the "tcl" section of the server "myserver"
+ #
+ ns_section ns/server/myserver/tcl {
+     ns_param library /home/mydir/tcl/myserver-lib
+ }
+
+ #
+ # Parameters of the "modules" section of the server "myserver"
+ #
+ ns_section ns/server/myserver/modules {
+     ns_param foo tcl
+     ns_param bar tcl
+ }
+
+.CE
+\&.\&.\&. then the following
+directories will be initialized as server start-up:
+.CS
+
+
+  /home/mydir/tcl/myserver-lib
+  /home/mydir/tcl/myserver-lib/foo
+  /home/mydir/tcl/myserver-lib/bar
+
+.CE
+Assume the library directory for module \fIfoo\fR contains these
+files:
+.CS
+
+
+  init\&.tcl
+  aa\&.tcl
+  zz\&.tcl
+
+.CE
+The Tcl files will be sourced in this order:
+.CS
+
+
+  /home/mydir/tcl/myserver-lib/\&.\&.\&.
+  /home/mydir/tcl/myserver-lib/foo/init\&.tcl
+  /home/mydir/tcl/myserver-lib/foo/aa\&.tcl
+  /home/mydir/tcl/myserver-lib/foo/zz\&.tcl
+
+.CE
+For a loaded Tcl-only module \fIfoo\fR the paths of the actual files
+can by queried via \fIns_library\fR as shown in the following example\&.
+.CS
+
+
+   set shared [ns_library shared foo]
+   set priv [ns_library private foo]
+
+.CE
+.SH "SEE ALSO"
+ns_config, ns_library
+.SH KEYWORDS
+configuration, paths, resolution

@@ -98,24 +98,24 @@ test adp-3.1 {ns_adp_ctl} -body {
 } -result {1 0}
 
 test adp-3.2 {ns_adp_ctl bufsize} -body {
-        set orig [ns_adp_ctl bufsize 666]
+        set orig [ns_adp_ctl bufsize 1666]
         ns_adp_ctl bufsize $orig
 } -cleanup {
         unset -nocomplain orig
-} -result {666}
+} -result {1666}
 
 
 
 test adp-4.1 {ns_adp_append} -body {
-        ns_adp_eval {<% ns_adp_append adp-4.1 %>}
+        ns_adp_parse {<% ns_adp_append adp-4.1 %>}
 } -result {adp-4.1}
 
 test adp-4.2 {ns_adp_puts} -body {
-        ns_adp_eval {<% ns_adp_puts adp-4.2 %>}
+        ns_adp_parse {<% ns_adp_puts adp-4.2 %>}
 } -result "adp-4.2\n"
 
 test adp-4.3 {ns_adp_puts} -body {
-        ns_adp_eval {<% ns_adp_puts -nonewline adp-4.3 %>}
+        ns_adp_parse {<% ns_adp_puts -nonewline adp-4.3 %>}
 } -result {adp-4.3}
 
 test adp-4.4 {ns_adp_dir (unset)} -body {

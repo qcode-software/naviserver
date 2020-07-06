@@ -95,13 +95,16 @@ Nsthreads_LibInit(void)
 #ifdef __linux
         {
             size_t n;
+
             n = confstr(_CS_GNU_LIBPTHREAD_VERSION, NULL, 0);
             if (n > 0) {
-                char *buf = alloca(n);
+                char *buf = ns_malloc(n);
+
                 confstr(_CS_GNU_LIBPTHREAD_VERSION, buf, n);
                 if (!strstr (buf, "NPTL")) {
                     Tcl_Panic("Linux \"NPTL\" thread library required. Found: \"%s\"", buf);
                 }
+                ns_free(buf);
             }
         }
 #endif
@@ -522,7 +525,9 @@ Ns_ThreadYield(void)
 uintptr_t
 Ns_ThreadId(void)
 {
-    return (uintptr_t) pthread_self();
+    pthread_t result = pthread_self();
+
+    return (uintptr_t) result;
 }
 
 
@@ -545,9 +550,11 @@ Ns_ThreadId(void)
 void
 Ns_ThreadSelf(Ns_Thread *threadPtr)
 {
+    pthread_t result = pthread_self();
+
     NS_NONNULL_ASSERT(threadPtr != NULL);
 
-    *threadPtr = (Ns_Thread) (uintptr_t)pthread_self();
+    *threadPtr = (Ns_Thread)result;
 }
 
 

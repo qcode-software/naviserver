@@ -69,6 +69,7 @@ static Tcl_ObjType timeType = {
 };
 
 static const Tcl_ObjType *intTypePtr;
+static Ns_ObjvValueRange poslongRange0 = {0, LONG_MAX};
 
 
 
@@ -306,8 +307,8 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     case TMakeIdx:
         {
             Ns_ObjvSpec   largs[] = {
-                {"sec",   Ns_ObjvLong, &resultTime.sec, NULL},
-                {"?usec", Ns_ObjvLong, &resultTime.usec, NULL},
+                {"sec",   Ns_ObjvLong, &resultTime.sec,  &poslongRange0},
+                {"?usec", Ns_ObjvLong, &resultTime.usec, &poslongRange0},
                 {NULL, NULL, NULL, NULL}
             };
 
@@ -325,8 +326,8 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
             Ns_Time       *tPtr;
             Ns_ObjvSpec    largs[] = {
                 {"time",  Ns_ObjvTime, &tPtr,  NULL},
-                {"sec",   Ns_ObjvLong, &t2.sec,  NULL},
-                {"?usec", Ns_ObjvLong, &t2.usec, NULL},
+                {"sec",   Ns_ObjvLong, &t2.sec,  &poslongRange0},
+                {"?usec", Ns_ObjvLong, &t2.usec, &poslongRange0},
                 {NULL, NULL, NULL, NULL}
             };
 
@@ -450,7 +451,7 @@ TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
     NS_NONNULL_ASSERT(interp != NULL);
 
     if (objc != 1) {
-        Tcl_WrongNumArgs(interp, 1, objv, "");
+        Tcl_WrongNumArgs(interp, 1, objv, NS_EMPTY_STRING);
         rc = TCL_ERROR;
     } else {
         time_t           now;
@@ -555,38 +556,36 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 int
 NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    long        sec;
-    int         rc = TCL_OK;
+    int               result = TCL_OK;
+    long              sec;
+    char             *fmt = (char *)"%c";
+    Ns_ObjvValueRange range = {0, LONG_MAX};
+    Ns_ObjvSpec  args[] = {
+        {"time", Ns_ObjvLong,   &sec, &range},
+        {"?fmt", Ns_ObjvString, &fmt, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 2 && objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "time ?fmt?");
-        rc = TCL_ERROR;
-    } else if (Tcl_GetLongFromObj(interp, objv[1], &sec) != TCL_OK) {
-        rc = TCL_ERROR;
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
     } else {
-        const char *fmt;
         char        buf[200];
         size_t      bufLength;
         time_t      t;
 
         t = sec;
-        if (objc > 2) {
-            fmt = Tcl_GetString(objv[2]);
-        } else {
-            fmt = "%c";
-        }
-
         bufLength = strftime(buf, sizeof(buf), fmt, ns_localtime(&t));
         if (unlikely(bufLength == 0u)) {
             Tcl_AppendStringsToObj(Tcl_GetObjResult(interp), "invalid time: ",
                                    Tcl_GetString(objv[1]), (char *)0L);
-            rc = TCL_ERROR;
+            result = TCL_ERROR;
         } else {
             Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, (int)bufLength));
         }
     }
 
-    return rc;
+    return result;
 }
 
 
@@ -637,7 +636,7 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
  * GetTimeFromString --
  *
  *      Try to fill ns_Time struct from a string based on a specified
- *      separator (':' or '.'). The colon separater is for the classical
+ *      separator (':' or '.'). The colon separator is for the classical
  *      NaviServer time format "sec:usec", whereas the dot is used for the
  *      floating point format.
  *
@@ -790,7 +789,7 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
  * Ns_GetTimeFromString --
  *
  *      Convert string to time structure.  Check, if the string contains the
- *      classical NaviServer separator for sec:usec and interprete the string
+ *      classical NaviServer separator for sec:usec and interpret the string
  *      in this format.  If not, check if this has a "." as separator, and use
  *      a floating point notation.
  *
@@ -821,7 +820,7 @@ Ns_GetTimeFromString(Tcl_Interp *interp, const char *str, Ns_Time *tPtr)
         long sec;
 
         /*
-         * No separator found, so try to interprete the string as integer
+         * No separator found, so try to interpret the string as integer
          */
         sec = strtol(str, &ptr, 10);
 

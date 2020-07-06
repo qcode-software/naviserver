@@ -78,7 +78,7 @@ TclX_WrongArgs(Tcl_Interp *interp, Tcl_Obj *commandNameObj, const char *msg)
 
     Ns_TclPrintfResult(interp, "wrong # args: %s %s",
                        commandName,
-                       (*msg != '\0') ? msg : "");
+                       (*msg != '\0') ? msg : NS_EMPTY_STRING);
     return TCL_ERROR;
 }
 
@@ -245,7 +245,7 @@ Tcl_GetKeyedListKeys(Tcl_Interp *interp, const char *subFieldName, const char *k
  * Parameters:
  *  - interp (I/O) - Error message will be return in result if there
  *    is an error.
- *  - fieldName (I) - The name of the field to extract.  Will recusively
+ *  - fieldName (I) - The name of the field to extract.  Will recursively
  *    process sub-field names separated by `.'.
  *  - keyedList (I) - The list to search for the field.
  *  - fieldValuePtr (O) - If the field is found, a pointer to a dynamically
@@ -302,7 +302,7 @@ Tcl_GetKeyedListField(Tcl_Interp *interp, const char *fieldName,
  *  - interp (I/O) - Error message will be return in result if there
  *    is an error.
  *  - fieldName (I) - The name of the field to extract.  Will
- *    recusively process sub-field names separated by `.'.
+ *    recursively process sub-field names separated by `.'.
  *  - fieldValue (I) - The value to set for the field.
  *  - keyedList (I) - The keyed list to set a field value in, may be
  *    an NULL or an empty list to create a new keyed list.
@@ -349,7 +349,7 @@ Tcl_SetKeyedListField(Tcl_Interp *interp, const char *fieldName,
  * Parameters:
  *   - interp (I/O) - Error message will be return in result if there
  *     is an error.
- *   - fieldName (I) - The name of the field to extract.  Will recusively
+ *   - fieldName (I) - The name of the field to extract.  Will recursively
  *     process sub-field names separated by `.'.
  *   - fieldValue (I) - The value to set for the field.
  *   - keyedList (I) - The keyed list to delete the field from.
@@ -419,7 +419,7 @@ typedef struct {
 #define KEYEDLIST_ARRAY_INCR_SIZE 16
 
 /*
- * Macros to validate an keyed list object or internal representation
+ * Macros to validate a keyed list object or internal representation
  */
 #ifdef TCLX_DEBUG
 #   define KEYL_OBJ_ASSERT(keylAPtr) {\
@@ -976,7 +976,7 @@ TclX_NewKeyedListObj(void)
  * Parameters:
  *   o interp - Error message will be return in result if there is an error.
  *   o keylPtr - Keyed list object to get key from.
- *   o key - The name of the key to extract.  Will recusively process sub-keys
+ *   o key - The name of the key to extract.  Will recursively process sub-keys
  *     separated by `.'.
  *   o valueObjPtrPtr - If the key is found, a pointer to the key object
  *     is returned here.  NULL is returned if the key is not present.
@@ -1035,7 +1035,7 @@ TclX_KeyedListGet(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj
  * Parameters:
  *   o interp - Error message will be return in result object.
  *   o keylPtr - Keyed list object to update.
- *   o key - The name of the key to extract.  Will recusively process
+ *   o key - The name of the key to extract.  Will recursively process
  *     sub-key separated by `.'.
  *   o valueObjPtr - The value to set for the key.
  * Returns:
@@ -1133,7 +1133,7 @@ TclX_KeyedListSet(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl_Obj
  * Parameters:
  *   o interp - Error message will be return in result if there is an error.
  *   o keylPtr - Keyed list object to update.
- *   o key - The name of the key to extract.  Will recusively process
+ *   o key - The name of the key to extract.  Will recursively process
  *     sub-key separated by `.'.
  * Returns:
  *   o TCL_OK - If the key was deleted.

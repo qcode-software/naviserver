@@ -1,0 +1,231 @@
+
+<!DOCTYPE html><html><head>
+<title>admin-tuning - NaviServer Manual</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'admin-tuning.man' by tcllib/doctools with format 'html'
+   -->
+<!-- admin-tuning.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">admin-tuning(n) 4.99.19 manual &quot;NaviServer Manual&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>admin-tuning - NaviServer Tuning and Scaling Guide</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection1">Only load modules you need</a></li>
+<li class="doctools_subsection"><a href="#subsection2">Turn off DNS lookups wherever possible</a></li>
+<li class="doctools_subsection"><a href="#subsection3">Experiment with the ADP cache</a></li>
+<li class="doctools_subsection"><a href="#subsection4">Experiment with the FastPath cache</a></li>
+<li class="doctools_subsection"><a href="#subsection5">Disable CheckModifiedSince</a></li>
+<li class="doctools_subsection"><a href="#subsection6">Tune the Connection Threads</a></li>
+<li class="doctools_subsection"><a href="#subsection7">Monitor the Memory</a></li>
+<li class="doctools_subsection"><a href="#subsection8">Beware the Database</a></li>
+<li class="doctools_subsection"><a href="#subsection9">Collect metrics and use them</a></li>
+<li class="doctools_subsection"><a href="#subsection10">Further parameters for tuning</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>NaviServer is immensely scalable because it has to be. It is based on the web server
+for the most heavily-used production environment in the world --
+AOL. The sections below refer to various configuration parameters.
+For a complete reference, see the sample config files sample-config.tcl.</p>
+<div id="subsection1" class="doctools_subsection"><h3><a name="subsection1">Only load modules you need</a></h3>
+<p>Modules like <i class="term"><a href="../../index.html#key4">nsperm</a></i> register extra requests that are checked on each connection,
+for example. Other modules like nscgi and nscp do not need to be loaded
+if you're not actually using CGI or the control port, respectively.</p>
+</div>
+<div id="subsection2" class="doctools_subsection"><h3><a name="subsection2">Turn off DNS lookups wherever possible</a></h3>
+<p>The nslog module has these turned off by default, but it helps to see if
+it your configuration has it turned off. Also, the nsperm module uses DNS
+lookups for access control -- turn this off if you don't use host access
+control rules with nsperm. The nscgi module also can use DNS but, again,
+it's off by default (gethostbyaddr setting). If you must use DNS, NaviServer
+has a DNS cache that can be tweaked -- see <i class="term">dnscache</i> and
+<i class="term">dnscachetimeout</i> in the config reference.</p>
+</div>
+<div id="subsection3" class="doctools_subsection"><h3><a name="subsection3">Experiment with the ADP cache</a></h3>
+<p>In the ns/server/servername/adp section, the parameters are
+<i class="term">cache</i>, <i class="term">cachesize</i>, and <i class="term">threadcache</i>.
+Use the appropriate <i class="term">servername</i>
+for you installation (maybe the name <i class="term">default</i>).
+NaviServer defaults to a 10 MB ADP cache. This cache
+is used to store parsed ADP pages -- as a consequence such ADP scripts are only
+parsed once and every subsequent time they are run directly out of memory.
+This means, though, that you should have a fair amount of core memory on
+your system to accommodate the cache if you decide to make it very large.</p>
+</div>
+<div id="subsection4" class="doctools_subsection"><h3><a name="subsection4">Experiment with the FastPath cache</a></h3>
+<p>This is a separate cache used to store static HTML pages. The section is
+ns/server/servername/fastpath, and the options are
+<i class="term">cache</i>, <i class="term">cachemaxentry</i>, and <i class="term">cachemaxsize</i>.
+The default is 10 MB.
+On some systems enabling the <i class="term">mmap</i> parameter can make it work even faster.</p>
+</div>
+<div id="subsection5" class="doctools_subsection"><h3><a name="subsection5">Disable CheckModifiedSince</a></h3>
+<p>Is your site updated rarely or often? On some slower systems, setting
+<i class="term">checkmodifiedsince</i>
+to false in the
+<i class="term">ns/server/servername</i> section can speed up things considerably
+as NaviServer reads all scripts and data directly from the in-memory cache
+without checking to see if the file has changed each time a cache entry
+is hit.</p>
+</div>
+<div id="subsection6" class="doctools_subsection"><h3><a name="subsection6">Tune the Connection Threads</a></h3>
+<p>Thread settings are sometimes helpful, sometimes not. If one is
+running a small configuration (e.g. 100K requests per day), the
+default settings provided by the sample config files are typically
+sufficient.
+For larger or very constraint setups the paramamter for the
+connection theads can and should be tuned. The following parameters can be
+altered in the section &quot;ns/server/servername&quot;
+(for a server named &quot;servername&quot;):
+<i class="term">connsperthread</i>,
+<i class="term">highwatermark</i>, 
+<i class="term">lowwatermark</i>, 
+<i class="term">maxconnections</i>,
+<i class="term">maxthreads</i>,
+<i class="term">minthreads</i>,
+<i class="term">poolratelimit</i>,
+<i class="term">connectionratelimit</i> and
+<i class="term">threadtimeout</i>. See also
+<i class="term"><a href="../../index.html#key19">connection thread pools</a></i>.</p>
+<p>As mentioned, in most cases the defaults are fine, with the exception of
+<i class="term">minthreads</i> and
+<i class="term">maxthreads</i> which should be
+carefully adjusted based on your load. Along with
+<i class="term">maxthreads</i>, the
+<i class="term">maxconnections</i> setting can be tricky, since making it too large can
+cause your system to thrash.</p>
+<p>On busy machines, one can define multiple connection thread
+pools and use the configuration option <i class="term">map</i> to map HTTP method,
+URL and context filter patterns to certain pools (for details about
+the mapping specs, the documentation of
+<i class="term"><a href="../../index.html#key19">connection thread pools</a></i> and the command
+<b class="cmd">ns_server</b>.
+By default, the settings are for the default connection threads
+pool. Additional connection thread pools can be created via
+<i class="term">pools</i>.</p>
+<pre class="doctools_example">
+   ns_section &quot;ns/server/servername/pools&quot; {
+     #
+     # To activate connection thread pools, uncomment one of the
+     # following lines and/or add other pools.
+     
+     ns_param   monitor	&quot;Monitoring actions to check heathiness of the system&quot;
+     ns_param   fast	&quot;Fast requests, e.g. less than 10ms&quot;
+   }
+   
+   ns_section &quot;ns/server/servername/pool/monitor&quot; {
+     ns_param   minthreads 2
+     ns_param   maxthreads 2
+     
+     ns_param   map &quot;GET /admin/nsstats&quot;
+     ns_param   map &quot;GET /SYSTEM&quot;
+     ns_param   map &quot;GET /ds&quot;
+     ns_param   map &quot;POST /ds&quot;
+     ns_param   map &quot;GET /request-monitor&quot;
+   }
+   ns_section &quot;ns/server/servername/pool/fast&quot; {
+     ns_param   minthreads 2
+     ns_param   maxthreads 2
+     
+     ns_param   map &quot;GET /*.png&quot;
+     ns_param   map &quot;GET /*.PNG&quot;
+     ns_param   map &quot;GET /*.jpg&quot;
+     ns_param   map &quot;GET /*.pdf&quot;
+     ns_param   map &quot;GET /*.gif&quot;
+     ns_param   map &quot;GET /*.mp4&quot;
+     ns_param   map &quot;GET /*.ts&quot;
+     ns_param   map &quot;GET /*.m3u8&quot;
+   }
+   
+   ns_section &quot;ns/server/servername/pool/bots&quot; {
+     ns_param   map &quot;GET  /* {user-agent *bot*}&quot;
+     ns_param   map &quot;GET  /* {user-agent *rawl*}&quot;
+     ns_param   map &quot;GET  /* {user-agent *pider*}&quot;
+     ns_param   map &quot;GET  /* {user-agent *baidu*}&quot;
+     ns_param   map &quot;GET  /* {user-agent *Knowledge*}&quot;
+     ns_param   minthreads 2
+     ns_param   maxthreads 2
+     ns_param   poolratelimit 1000    ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
+   }
+</pre>
+<p>Different pools can be configured with different parameters. It is for
+example possible to specify the maximum outgoing traffic rate per for
+every connection of the pool, or for the total of currently running
+connections of a pool.</p>
+</div>
+<div id="subsection7" class="doctools_subsection"><h3><a name="subsection7">Monitor the Memory</a></h3>
+<p>Memory considerations are paramount on heavily-used servers. Use the &quot;ps
+-leaf&quot; on most systems to look at the &quot;nsd&quot; processes. Nearly all the memory
+used by nsd should be in RSS (resident set size). If the RSS size of
+the nsd process
+is less than 2/3 its SZ, then it's a good chance that your operating system
+is thrashing, meaning it's spending more time managing memory than allowing
+the system to work to its capacity. Some operating systems actually limit
+the total RSS used by any one process. That 1-gigabyte machine might only 
+allow NaviServer to use 500 megabytes of core at any one time -- this is 
+especially the case with SGI servers.</p>
+</div>
+<div id="subsection8" class="doctools_subsection"><h3><a name="subsection8">Beware the Database</a></h3>
+<p>Databases are a bottleneck. Do you use lots of simple queries that return
+a hoard of data? Investigate using stored procedures or finely-tuned queries
+so that you get only the data you actually want and make the database do
+the work it was designed to do. Don't make your system spend its time putting
+together those ns_getrow structures.</p>
+</div>
+<div id="subsection9" class="doctools_subsection"><h3><a name="subsection9">Collect metrics and use them</a></h3>
+<p>NaviServer has a built-in statistics-gathering system that collects data on
+the caches, Tcl interps, threads, and other interesting data. We use these
+at AOL to gather an immense amount of data on how the systems are working
+and where they need to be improved (more cache, less cache, more memory,
+more threads, etc).  The module <i class="term">nsstats</i> can be dropped into any
+running server to get a snapshot of how it's doing. The module is available
+in the modules repository.</p>
+</div>
+<div id="subsection10" class="doctools_subsection"><h3><a name="subsection10">Further parameters for tuning</a></h3>
+<p>A few further parameters might be used for tuning the performance of
+NaviServer in a certain application specific context.</p>
+<p>Administrators might consider allowing concurrent Tcl
+interpreter create operations.  Versions of Tcl up to at least 8.5 are
+known to crash in case two threads create interpreters at the same
+time. These crashes were hard to reproduce, but serializing
+interpreter creation helped. Probably it is possible to allow
+concurrent interpreter create operations in Tcl 8.6.</p>
+<pre class="doctools_example">
+   ns_section ns/parameters {
+      ns_param concurrentinterpcreate false   ; default false
+   }
+</pre>
+<p>Sample documented configuration files:</p>
+<ul class="doctools_itemized">
+<li><p><a href="https://bitbucket.org/naviserver/naviserver/raw/default/nsd-config.tcl">nsd-config.tcl</a></p></li>
+<li><p><a href="https://bitbucket.org/naviserver/naviserver/raw/default/simple-config.tcl">simple-config.tcl</a></p></li>
+<li><p><a href="https://bitbucket.org/naviserver/naviserver/raw/default/openacs-config.tcl">openacs-config.tcl</a></p></li>
+</ul>
+</div>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key17">SO_REUSEPORT</a>, <a href="../../index.html#key22">TCP</a>, <a href="../../index.html#key21">TCP_FASTOPEN</a>, <a href="../../index.html#key11">configuration</a>, <a href="../../index.html#key19">connection thread pools</a>, <a href="../../index.html#key18">driver</a>, <a href="../../index.html#key20">module</a>, <a href="../../index.html#key12">nssock</a>, <a href="../../index.html#key13">nsssl</a>, <a href="../../index.html#key14">pagedir</a>, <a href="../../index.html#key16">performance</a>, <a href="../../index.html#key2">prebind</a>, <a href="../../index.html#key15">tuning</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

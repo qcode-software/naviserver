@@ -1,0 +1,83 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_rand - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_rand.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_rand.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_rand(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_rand - Generate a random number</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_rand</b> <span class="opt">?<i class="arg">maximum</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command generates a cryptographically secure random number. 
+If maximum is not specified, the random number returned is a 
+floating-point value n such that 0.0 &lt;= n &lt; 1.0.  If maximum
+is specified, it must be a positive integer between 1 and 2147483647,
+in which case ns_rand will return an integer value n such that 0 &lt;= n &lt;= max - 1.
+Internally ns_rand is implemented with the drand48() and lrand48() standard
+library functions.  An internal random seed is generated the first time 
+ns_rand is called after the server starts.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+ 
+<dt><a name="1"><b class="cmd">ns_rand</b> <span class="opt">?<i class="arg">maximum</i>?</span></a></dt>
+<dd></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+   % ns_rand
+   0.39938485692
+</pre>
+<pre class="doctools_example">
+   % ns_rand 10
+   7
+</pre>
+<p>CAVEAT
+ [ns_rand 1] will always produce the result 0. [ns_rand 2]
+ will produce the desired &quot;coin flip&quot; outcome of 0 or 1. This is
+ standard with Java's java.util.Random implementation of nextInt and
+ most other random number libraries.</p>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_crypto.html">ns_crypto</a>, <a href="../../index.html#key6">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key24">global built-in</a>, <a href="../../index.html#key81">random</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

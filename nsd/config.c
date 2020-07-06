@@ -53,7 +53,12 @@ static const char* ConfigGet(const char *section, const char *key, bool exact, c
 static bool ToBool(const char *value, bool *valuePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-
+static Tcl_WideInt
+ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+                   Tcl_WideInt minValue, Tcl_WideInt maxValue,
+                   Ns_ReturnCode (converter)(const char *chars, Tcl_WideInt *intPtr),
+                   const char *kind)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(6) NS_GNUC_NONNULL(7);
 
 
 /*
@@ -83,10 +88,54 @@ Ns_ConfigString(const char *section, const char *key, const char *defaultValue)
     value = ConfigGet(section, key, NS_FALSE, defaultValue);
     Ns_Log(Dev, "config: %s:%s value=\"%s\" default=\"%s\" (string)",
            section, key,
-           (value != NULL) ? value : "",
-           (defaultValue != NULL) ? defaultValue : "");
+           (value != NULL) ? value : NS_EMPTY_STRING,
+           (defaultValue != NULL) ? defaultValue : NS_EMPTY_STRING);
 
     return (value != NULL) ? value : defaultValue;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConfigSet --
+ *
+ *      Return an Ns_Set *from a config value specified as Tcl list. The list
+ *      has to be a flat list with attributes and valus (also a Tcl dict).
+ *
+ * Results:
+ *      Ns_set or NULL, of the config value does not exist.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const Ns_Set *
+Ns_ConfigSet(const char *section, const char *key)
+{
+    const char *value;
+    Ns_Set     *setPtr;
+
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+
+    value = ConfigGet(section, key, NS_FALSE, NULL);
+    Ns_Log(Dev, "config: %s:%s value=\"%s\" default=\"%s\" (string)",
+           section, key,
+           (value != NULL) ? value : NS_EMPTY_STRING,
+           NS_EMPTY_STRING);
+
+    if (value != NULL) {
+        Tcl_Obj *valueObj = Tcl_NewStringObj(value, -1);
+
+        setPtr = Ns_SetCreateFromDict(NULL, "key", valueObj);
+        Tcl_DecrRefCount(valueObj);
+    } else {
+        setPtr = NULL;
+    }
+
+    return setPtr;
 }
 
 
@@ -245,7 +294,7 @@ Ns_ConfigIntRange(const char *section, const char *key, int defaultValue,
  *
  * Ns_Configwide, Ns_ConfigWideRange --
  *
- *      Return an wide integer config file value, or the default if not
+ *      Return a wide integer config file value, or the default if not
  *      found. The returned value will be between the given minValue and maxValue.
  *
  * Results:
@@ -274,6 +323,22 @@ Tcl_WideInt
 Ns_ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValue,
                       Tcl_WideInt minValue, Tcl_WideInt maxValue)
 {
+    return ConfigWideIntRange(section, key, defaultValue, minValue, maxValue, Ns_StrToWideInt, "integer");
+}
+
+Tcl_WideInt
+Ns_ConfigMemUnitRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+                      Tcl_WideInt minValue, Tcl_WideInt maxValue)
+{
+    return ConfigWideIntRange(section, key, defaultValue, minValue, maxValue, Ns_StrToMemUnit, "memory unit");
+}
+
+static Tcl_WideInt
+ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+                   Tcl_WideInt minValue, Tcl_WideInt maxValue,
+                   Ns_ReturnCode (converter)(const char *chars, Tcl_WideInt *intPtr),
+                   const char *kind)
+{
     const char *s;
     char defstr[TCL_INTEGER_SPACE];
     Tcl_WideInt value;
@@ -283,11 +348,25 @@ Ns_ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultV
 
     snprintf(defstr, sizeof(defstr), "%" TCL_LL_MODIFIER "d", defaultValue);
     s = ConfigGet(section, key, NS_FALSE, defstr);
-    if (s != NULL && Ns_StrToWideInt(s, &value) == NS_OK) {
+    if (s != NULL && converter(s, &value) == NS_OK) {
+        /*
+         * Found and parsed parameter.
+         */
         Ns_Log(Dev, "config: %s:%s value=%" TCL_LL_MODIFIER "d min=%" TCL_LL_MODIFIER
                "d max=%" TCL_LL_MODIFIER "d default=%" TCL_LL_MODIFIER "d (wide int)",
                section, key, value, minValue, maxValue, defaultValue);
+    } else if (s != NULL) {
+        /*
+         * Parse of parameter failed.
+         */
+        Ns_Log(Warning,
+               "config parameter %s:%s: cannot parse '%s' as %s; fall back to default %" TCL_LL_MODIFIER "d",
+               section, key, s, kind, defaultValue);
+        value = defaultValue;
     } else {
+        /*
+         * No such parameter.
+         */
         Ns_Log(Dev, "config: %s:%s value=(null) min=%" TCL_LL_MODIFIER "d max=%" TCL_LL_MODIFIER
                "d default=%" TCL_LL_MODIFIER "d (wide int)",
                section, key, minValue, maxValue, defaultValue);
@@ -333,7 +412,7 @@ Ns_ConfigGetValue(const char *section, const char *key)
 
     value = ConfigGet(section, key, NS_FALSE, NULL);
     Ns_Log(Dev, "config: %s:%s value=%s (string)",
-           section, key, (value != NULL) ? value : "");
+           section, key, (value != NULL) ? value : NS_EMPTY_STRING);
 
     return value;
 }
@@ -366,7 +445,7 @@ Ns_ConfigGetValueExact(const char *section, const char *key)
     value = ConfigGet(section, key, NS_TRUE, NULL);
     Ns_Log(Dev, "config: %s:%s value=%s (string, exact match)",
            section, key,
-           (value != NULL) ? value : "");
+           (value != NULL) ? value : NS_EMPTY_STRING);
 
     return value;
 }
@@ -797,7 +876,7 @@ static int
 ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
-    char       *paramName = NULL, *paramValue = NULL;
+    char       *paramName = (char *)NS_EMPTY_STRING, *paramValue = (char *)NS_EMPTY_STRING;
     Ns_ObjvSpec args[] = {
         {"name",  Ns_ObjvString,  &paramName, NULL},
         {"value", Ns_ObjvString,  &paramValue, NULL},

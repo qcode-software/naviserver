@@ -1,0 +1,59 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_checkurl - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_checkurl.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_checkurl.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_checkurl(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_checkurl - Checks url for authorization</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_checkurl</b> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">authuser</i> <i class="arg">authpasswd</i> <span class="opt">?<i class="arg">ipaddr</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>User supplied routine is expected to return OK if authorization
+is allowed, UNAUTHORIZED if a correct username/passwd could
+allow authorization, FORBIDDEN if no username/passwd would ever
+allow access, or ERROR on error.</p>
+<p>ns_perm module registers such routine to perform basich HTTP authorization</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_checkurl</b> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">authuser</i> <i class="arg">authpasswd</i> <span class="opt">?<i class="arg">ipaddr</i>?</span></a></dt>
+<dd></dd>
+</dl>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key124">ns_perm</a>, <a href="../../index.html#key125">ns_requestauthorize</a>, <a href="../../index.html#key34">server built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

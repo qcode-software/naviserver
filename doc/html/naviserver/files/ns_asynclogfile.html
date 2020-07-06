@@ -1,0 +1,99 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_asynclogfile - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_asynclogfile.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_asynclogfile.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_asynclogfile(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_asynclogfile - Manage connection channels.</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_asynclogfile open</b> <i class="arg">filename</i> <span class="opt">?<i class="arg">mode</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_asynclogfile write</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">-sanitize sanitize</b>?</span> <i class="arg">handle</i> <i class="arg">line</i></a></li>
+<li><a href="#3"><b class="cmd">ns_asynclogfile close</b> <i class="arg">handle</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The command <b class="cmd">ns_asynclogfile</b> can be used to write
+ application specific log file entries in an asynchronous fashion. It
+ is based on the same infrastructure as the systemlog
+ (see <b class="cmd"><a href="ns_log.html">ns_log</a></b>) or the access log (see <b class="cmd">ns_accesslog</b>).
+ This command is designed for small write operations in a
+ multi-threaded environment, where potentially
+ multiple writers perform concurrent operations.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_asynclogfile open</b> <i class="arg">filename</i> <span class="opt">?<i class="arg">mode</i>?</span></a></dt>
+<dd><p>The command <b class="cmd">ns_asynclogfile open</b> opens a write-only log file
+ and returns a thread-shareable handle (actually a numeric file
+ descriptor) which can be used in subsequent
+ <b class="cmd">ns_asynclogfile write</b> or
+ <b class="cmd">ns_asynclogfile close</b> operations.</p>
+<p>The specified <i class="arg">filename</i> names the file to be opened, the
+ optional <i class="arg">mode</i> is a list of entries limited to 
+ <i class="term">APPEND</i>, <i class="term">EXCL</i>,  <i class="term">DSYNC</i>,
+ <i class="term">SYNC</i>,  <i class="term">TRUNC</i>. The modes <i class="term">DSYNC</i> and
+ <i class="term">SYNC</i> are only allowed, when supported by the
+ used operating systems. For details on the meaning of these
+ flags, consult the <i class="term">open</i> manual page of section (2)
+ of standard Unix manuals.</p></dd>
+<dt><a name="2"><b class="cmd">ns_asynclogfile write</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">-sanitize sanitize</b>?</span> <i class="arg">handle</i> <i class="arg">line</i></a></dt>
+<dd><p>Write the provided <i class="arg">line</i> to an opened logfile denoted by the
+<i class="arg">handle</i>. If the line should be terminated by a new-line
+character, the caller has to provide this character.
+The option <b class="option">-binary</b> should be provided for binary data.
+The optional parameter <b class="option">-sanitize</b> can be used to sanitize the
+input. The default is taken from the global parameter
+<i class="term">sanitizelogfiles</i>.</p>
+<ul class="doctools_itemized">
+<li><p>The value of <i class="term">0</i> means that no sanitize should happen.</p></li>
+<li><p>The value <i class="term">1</i> means that full sanitizing is in place,
+which means that non-printable characters are written as hex values.</p></li>
+<li><p>The a sanitize value of <i class="term">2</i> means that sanitizing happens
+in a human friendly fashion: newlines are preserved, but sanitizing
+makes sure that multiline content cannot not confused with different
+log file entries. After a new-line character a continuation character
+starts the new line followed by 4 spaces.</p></li>
+</ul></dd>
+<dt><a name="3"><b class="cmd">ns_asynclogfile close</b> <i class="arg">handle</i></a></dt>
+<dd><p>Close the logfile.</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p>ns_accesslog, <a href="ns_log.html">ns_log</a>, <a href="ns_write.html">ns_write</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key87">log</a>, <a href="../../index.html#key34">server built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

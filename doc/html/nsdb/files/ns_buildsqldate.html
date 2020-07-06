@@ -1,0 +1,95 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_buildsqldate - NaviServer Module Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_buildsqldate.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_buildsqldate.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_buildsqldate(n) 4.99.19 nsdb &quot;NaviServer Module Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_buildsqldate - SQL date and time manipulation commands</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_buildsqldate</b> <i class="arg">month</i> <i class="arg">day</i> <i class="arg">year</i></a></li>
+<li><a href="#2"><b class="cmd">ns_localsqltimestamp</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The following commands build SQL dates and timestamps for inclusion in
+SQL queries.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_buildsqldate</b> <i class="arg">month</i> <i class="arg">day</i> <i class="arg">year</i></a></dt>
+<dd><p>This command builds a SQL date string out of the specified <i class="arg">month</i>,
+<i class="arg">day</i>, and <i class="arg">year</i>. The month can be the month number (1 - 12) or
+the full, capitalized month name (January, February, ..., December). The
+day must be a number from 1 - 31, and the year must be a 4-digit year
+(e.g., 1957). An error is returned if any of the argument values are
+invalid. The resulting string can be used in an SQL statement.</p></dd>
+<dt><a name="2"><b class="cmd">ns_localsqltimestamp</b></a></dt>
+<dd><p>This command returns a timestamp value that encodes the local time in ANSI SQL
+format (YYYY-MM-DD hh24:mm:ss).</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+% ns_buildsqldate &quot;01&quot; &quot;15&quot; &quot;1929&quot;
+1929-01-15
+</pre>
+<pre class="doctools_example">
+% ns_buildsqldate &quot;13&quot; &quot;31&quot; &quot;2000&quot;
+Invalid date: 13 31 2000
+while executing ...
+</pre>
+<pre class="doctools_example">
+% set thedate
+</pre>
+<pre class="doctools_example">
+% ns_localsqltimestamp
+2004-06-22 23:00:27
+</pre>
+<p>This command is equivalent to the following:</p>
+<pre class="doctools_example">
+% ns_fmttime ns_time &quot;%Y-%m-%d %H:%M:%S&quot;
+</pre>
+<pre class="doctools_example">
+% clock format ns_time -format &quot;%Y-%m-%d %H:%M:%S&quot;
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_db.html">ns_db</a>, <a href="../../naviserver/files/ns_fmttime.html">ns_fmttime</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key155">SQL</a>, <a href="../../index.html#key157">database</a>, <a href="../../index.html#key159">date</a>, <a href="../../index.html#key51">time</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

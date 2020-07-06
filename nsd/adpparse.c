@@ -49,7 +49,7 @@
 #define LENSZ       ((int)(sizeof(int)))
 
 /*
- * The following structure maintains proc and adp registered tags.
+ * The following structure maintains proc and ADP registered tags.
  * String bytes directly follow the Tag struct in the same allocated
  * block.
  */
@@ -109,7 +109,7 @@ static void AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flag
  * NsTclAdpRegisterAdpObjCmd, NsTclAdpRegisterProcObjCmd,
  * NsTclAdpRegisterScriptObjCmd --
  *
- *      Register an proc, script, are ADP string tag.
+ *      Register a proc, script, are ADP string tag.
  *
  *
  * Results:
@@ -312,7 +312,7 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
     unsigned int         scriptFlags;
     const Tcl_HashEntry *hPtr;
     const Tag           *tagPtr = NULL;
-    const char          *script = "", *ae = "";
+    const char          *script = NS_EMPTY_STRING, *ae = NS_EMPTY_STRING;
     char                *s, *e, *n, *a, *text, null = '\0', *as = &null;
     Tcl_DString          tag;
     bool                 scriptStreamDone;
@@ -492,10 +492,6 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
                 }
             }
             break;
-
-        default:
-            /* should not happen */
-            assert(0);
         }
 
         /*
@@ -939,7 +935,7 @@ AppendTag(Parse *parsePtr, const Tag *tagPtr, char *as, const char *ae, char *se
         /*
          * String will be an ADP fragment to evaluate.
          */
-        Tcl_DStringAppend(&script, "ns_adp_eval ", -1);
+        Tcl_DStringAppend(&script, "ns_adp_parse -- ", -1);
     }
     Tcl_DStringAppendElement(&script, tagPtr->content);
     if (tagPtr->type == TAG_PROC) {

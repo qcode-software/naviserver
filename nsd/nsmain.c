@@ -63,8 +63,8 @@ typedef enum {
 
 static Ns_ThreadProc CmdThread;
 
-static void UsageError(const char *msg, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 2);
-static void UsageMsg(int exitCode);
+static void UsageError(const char *msg, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 2) NS_GNUC_NORETURN;
+static void UsageMsg(int exitCode)           NS_GNUC_NORETURN;
 static void StatusMsg(runState state);
 static void LogTclVersion(void);
 static const char *MakePath(const char *file) NS_GNUC_NONNULL(1);
@@ -74,6 +74,8 @@ static const char *SetCwd(const char *path) NS_GNUC_NONNULL(1);
 extern void NsthreadsInit();
 extern void NsdInit();
 #endif
+
+const char *NS_EMPTY_STRING = "";
 
 
 /*
@@ -170,7 +172,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         switch (argv[optionIndex][1]) {
         case 'h':
             UsageMsg(0);
-            break;
+
         case 'c':
         case 'f':
         case 'V':
@@ -259,7 +261,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 #endif
         default:
             UsageError("invalid option: -%c", argv[optionIndex][1]);
-            break;
         }
     }
     if (mode == 'V') {
@@ -359,7 +360,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
                 /*
                  * Read the status from the child process. We expect as result
-                 * either 'O' (when initialzation went OK) or 'F' (for Fatal).
+                 * either 'O' (when initialization went OK) or 'F' (for Fatal).
                  */
                 nread = ns_read(nsconf.state.pipefd[0], &buf, 1);
                 if (nread < 0) {
@@ -405,9 +406,9 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * For watchdog mode, start the watchdog/server process pair.
      * The watchdog will monitor and restart the server unless the
      * server exits gracefully, either by calling exit(0) or get
-     * signalled by the SIGTERM signal.
+     * signaled by the SIGTERM signal.
      * The watchdog itself will exit when the server exits gracefully,
-     * or, when get signalled by the SIGTERM signal. In the latter
+     * or, when get signaled by the SIGTERM signal. In the latter
      * case, watchdog will pass the SIGTERM to the server, so both of
      * them will gracefully exit.
      */
@@ -653,6 +654,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     nsconf.home = SetCwd(nsconf.home);
     nsconf.reject_already_closed_connection =
         Ns_ConfigBool(NS_CONFIG_PARAMETERS, "rejectalreadyclosedconn", NS_TRUE);
+    nsconf.sanitize_logfiles =
+        Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 2);
 
     /*
      * Make the result queryable.
@@ -1016,14 +1019,15 @@ NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 {
     int         sig = NS_SIGTERM, result = TCL_OK;
     long        timeout = 0;
+    Ns_ObjvValueRange timeoutRange = {0, LONG_MAX};
     Ns_ObjvSpec opts[] = {
         {"-restart", Ns_ObjvBool,  &sig, INT2PTR(NS_SIGINT)},
         {"--",       Ns_ObjvBreak, NULL, NULL},
         {NULL,       NULL,         NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"?timeout", Ns_ObjvLong, &timeout, NULL},
-        {NULL,       NULL,       NULL,     NULL}
+        {"?timeout", Ns_ObjvLong, &timeout, &timeoutRange},
+        {NULL,       NULL,        NULL,     NULL}
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
@@ -1065,23 +1069,24 @@ NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 static void
 StatusMsg(runState state)
 {
-    const char *what;
+    const char *what = ""; /* Just to make compiler silent, we have a complete enumeration of switch values */
 
     switch (state) {
+
     case starting:
         what = "starting";
         break;
+
     case running:
         what = "running";
         break;
+
     case stopping:
         what = "stopping";
         break;
+
     case exiting:
         what = "exiting";
-        break;
-    default:
-        what = "unknown";
         break;
     }
     Ns_Log(Notice, "nsmain: %s/%s (%s) %s",
@@ -1239,7 +1244,7 @@ MakePath(const char *file)
              * If file name was given, check if the file exists
              */
             if (path != NULL && *file != '\0' && access(path, F_OK) != 0) {
-                ns_free((void *)path);
+                ckfree((void *)path);
                 path = NULL;
             }
             result = path;

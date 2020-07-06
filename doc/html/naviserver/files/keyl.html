@@ -1,0 +1,113 @@
+
+<!DOCTYPE html><html><head>
+<title>keyl - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'keyl.man' by tcllib/doctools with format 'html'
+   -->
+<!-- keyl.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">keyl(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>keyl - Keyed Lists</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">keylget</b> <i class="arg">listvar</i> <span class="opt">?<i class="arg">key</i>?</span> <span class="opt">?<i class="arg">retvar</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">keyldel</b> <i class="arg">listvar</i> <i class="arg">key</i></a></li>
+<li><a href="#3"><b class="cmd">keylset</b> <i class="arg">listvar</i> <i class="arg">key</i> <i class="arg">value</i> <span class="opt">?<i class="arg">key value...</i>?</span></a></li>
+<li><a href="#4"><b class="cmd">keylkeys</b> <i class="arg">listvar</i> <span class="opt">?<i class="arg">key</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>Keyed lists are an extension of Tcl provided by the TclX package.  They are an alternative to using 
+ns_set, but we highly recommend using ns_set instead of keyed lists where possible.
+The commands provided by NaviServer were taken directly from a 1995 version of the TclX package.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">keylget</b> <i class="arg">listvar</i> <span class="opt">?<i class="arg">key</i>?</span> <span class="opt">?<i class="arg">retvar</i>?</span></a></dt>
+<dd><p>This command returns the value associated with key from the keyed list in the variable listvar.   
+If retvar is not specified, then the value will be returned as the result of the command.  In this
+case, if key is not found in the list, an error will result.</p>
+<p>If retvar is specified and key is in the list, then the value is returned in the variable retvar
+and the command returns 1.  Otherwise, the command will return 0, and retvar will be left unchanged.</p>
+<p>If retvar is an empty string, the value is not returned, allowing the Tcl programmer to determine
+if a key is present in a keyed list without setting a variable as a side-effect.
+If key is omitted, then a list of all the keys in the keyed list is returned similar to</p></dd>
+<dt><a name="2"><b class="cmd">keyldel</b> <i class="arg">listvar</i> <i class="arg">key</i></a></dt>
+<dd><p>Delete key and value from keyed list</p>
+<p>This command deletes the key specified by key from the keyed list in listvar.  It removes 
+both the key and the value from the keyed list.</p>
+<p>Keyed lists are an extension of Tcl provided by the TclX package.  They are an alternative to 
+using ns_set, but we highly recommend using ns_set instead of keyed lists.  The commands provided
+by NaviServer were taken directly from a 1995 version of the TclX package.</p></dd>
+<dt><a name="3"><b class="cmd">keylset</b> <i class="arg">listvar</i> <i class="arg">key</i> <i class="arg">value</i> <span class="opt">?<i class="arg">key value...</i>?</span></a></dt>
+<dd><p>Set a key-value pair in a keyed list</p>
+<p>This command sets one or more key-value pairs in the keyed list listvar.</p></dd>
+<dt><a name="4"><b class="cmd">keylkeys</b> <i class="arg">listvar</i> <span class="opt">?<i class="arg">key</i>?</span></a></dt>
+<dd><p>Return the keys for a keyed list.</p>
+<p>This command returns a list of keys for the keyed list listvar.  If key is specified, 
+the values for that key are returned instead.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+   % keylset mylist a b c d e f
+</pre>
+<pre class="doctools_example">
+   % keylkeys mylist
+   a c e
+</pre>
+<pre class="doctools_example">
+   % keyldel mylist c
+</pre>
+<pre class="doctools_example">
+   % keylkeys mylist
+   a e
+</pre>
+<pre class="doctools_example">
+   % keylset mylist a 1 {b c} 2
+</pre>
+<pre class="doctools_example">
+   % keylkeys mylist
+   a {b c}
+</pre>
+<pre class="doctools_example">
+   % keylkeys mylist a
+   1
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_set.html">ns_set</a>, <a href="../../index.html#key6">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key63">TclX</a>, <a href="../../index.html#key24">global built-in</a>, <a href="../../index.html#key62">keyed-list</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

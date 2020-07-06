@@ -1,0 +1,432 @@
+'\"
+'\" Generated from file 'ns_writer\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_writer" n 4\&.99\&.19 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_writer \- Manage files with writer thread
+.SH SYNOPSIS
+\fBns_writer list\fR ?\fB-server s\fR?
+.sp
+\fBns_writer submit\fR \fIdata\fR
+.sp
+\fBns_writer submitfile\fR ?\fB-headers\fR? ?\fB-offset offset\fR? ?\fB-size size\fR? \fIfilename\fR
+.sp
+\fBns_writer submitfiles\fR ?\fB-headers\fR? \fIfilespecs\fR
+.sp
+\fBns_writer size\fR ?\fB-driver driver\fR? ?\fIsize\fR?
+.sp
+\fBns_writer streaming\fR ?\fB-driver driver\fR? ?\fIvalue\fR?
+.sp
+.BE
+.SH DESCRIPTION
+This command allows one to submit data or file to be returned to the
+client connection using writer thread instead of current connection
+thread\&. Writer thread processes multiple sockets using async socket
+operations which consumes less resources than returning multiple files
+to the slow clients in separate thread\&.
+.SH COMMANDS
+.TP
+\fBns_writer list\fR ?\fB-server s\fR?
+.sp
+Returns list of all currently submitted files\&. Every list entry
+contains the following elements:
+.RS
+.IP [1]
+start time of the initiating request,
+.IP [2]
+name of the thread,
+.IP [3]
+driver,
+.IP [4]
+pool,
+.IP [5]
+IP address of the requestor,
+.IP [6]
+file descriptor,
+.IP [7]
+remaining size,
+.IP [8]
+bytes already sent,
+.IP [9]
+current transfer rate
+.IP [10]
+rate limit, and
+.IP [11]
+the client data as provided via [ns_conn clientdata]\&.
+.RE
+.IP
+If \fB-server\fR is
+specified, only the submitted file entries from the specified server
+are returned\&.
+.TP
+\fBns_writer submit\fR \fIdata\fR
+.sp
+Submit arbitrary data to be returned via writer thread, data can be
+binary\&. On success the function returns 1, otherwise 0\&.
+.TP
+\fBns_writer submitfile\fR ?\fB-headers\fR? ?\fB-offset offset\fR? ?\fB-size size\fR? \fIfilename\fR
+.sp
+Submits file to be returned via writer thread\&. For partial requests,
+ns_writer does NOT change status code or sets content-range\&. On
+success the function returns 1, otherwise 0\&.
+Optionally the following arguments can be used:
+.sp
+\fB-headers\fR
+Tells the writer to provide required HTTP headers, like content size,
+type and status\&. When this option is not used, make sure that the
+headers are provided (e\&.g\&. via \fBns_headers\fR) from your application\&.
+.sp
+\fB-offset\fR
+If specified, file will be returned starting with this offset\&.
+The value can be specified in memory units (kB, MB, GB, KiB, MiB, GiB)\&.
+.sp
+\fB-size\fR
+If not specified, the whole file will be returned, otherwise only given
+part\&. Can be combined with \fB-offset\fR\&.
+The value can be specified in memory units (kB, MB, GB, KiB, MiB, GiB)\&.
+.TP
+\fBns_writer submitfiles\fR ?\fB-headers\fR? \fIfilespecs\fR
+.sp
+Submits multiple files to be submitted in a single chunk\&. This call is
+quite similar to \fBns_writer submitfile\fR, butit accepts a list of
+dicts as argument\&. Every dict element has to contain a \fIfilename\fR
+element and optionally an \fI-offset\fR element and/or a \fI-size\fR
+element\&.
+.sp
+This function is e\&.g\&. useful for video streaming applications,
+where multiple video file chunks should be transferred (sometimes)
+concatenated in a single chunk\&. Therefore, this function avoids the
+necessity to concatenate these files in advance (causing increased
+latency and disk usage)\&.
+.CS
+
+
+ns_writer submitfiles {{filename /tmp/f1} {filename /tmp/f2 -offset 10}}
+
+.CE
+.TP
+\fBns_writer size\fR ?\fB-driver driver\fR? ?\fIsize\fR?
+.sp
+Query or set configuration parameter \fIwritersize\fR of the
+writer(s) of the current or specified driver\&. When \fB-driver\fR
+is not specified the driver of the current connection thread is used\&.
+When the \fIsize\fR is not provided, the actual setting is returned\&.
+When the \fIsize\fR is provided, it can be specified in memory units
+(kB, MB, GB, KiB, MiB, GiB)\&.
+.TP
+\fBns_writer streaming\fR ?\fB-driver driver\fR? ?\fIvalue\fR?
+.sp
+Query or set configuration parameter \fIwriterstreaming\fR of the
+writer(s) of the current or specified driver\&.  When \fB-driver\fR
+is not specified the driver of the current connection thread is used\&.
+When the value is specified, it has to be of the form of a valid
+Boolean value\&.
+.PP
+.SH CONFIGURATION
+.PP
+\fIBasic configuration options:\fR
+.CS
+
+
+ns_section "ns/server/default/module/nssock" {
+    ns_param writerthreads 1
+    ns_param writersize 4kB
+    ns_param writerstreaming true
+}
+
+.CE
+.PP
+\fIwriterthreads\fR parameter specified how many writer
+threads will be used, multiple threads will be rotated to spread the
+load across all threads
+.PP
+\fIwritersize\fR specifies the minimal size of the file to be
+considered for writer thread, this parameter is used by connection
+thread when returning file and if size exceeds configured value, file
+will be returned via writer thread and connection thread will be
+released to handle other requests\&.
+.PP
+\fIwriterstreaming\fR specifies whether or not streaming HTML
+output (e\&.g\&. sent via \fBns_write\fR) should be sent via the writer\&.
+When sending server responses over slow connections, this option
+reduces the blocking time of the connection threads and can therefore
+reduce the damage of slow-read attacks\&.
+.SH EXAMPLES
+.CS
+
+
+ns_writer submitfile /tmp/biglist\&.txt
+
+.CE
+.SH "SEE ALSO"
+ns_conn, ns_headers, ns_returnfile, ns_write
+.SH KEYWORDS
+configuration, server built-in, writer

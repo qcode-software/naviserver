@@ -111,14 +111,13 @@ NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             result = TCL_ERROR;
 
         } else {
-            const char  *type;
+            const char  *type = "unknown"; /* Just to make compiler silent, we have a complete enumeration of switch values */
 
             switch (GetImageType(chan)) {
             case jpeg:    type = "jpeg";    break;
             case png:     type = "png";     break;
             case gif:     type = "gif";     break;
             case unknown: type = "unknown"; break;
-            default: /*should not happen */ assert(0); type = "unknown"; break;
             }
             result = Tcl_Close(interp, chan);
             Tcl_SetObjResult(interp, Tcl_NewStringObj(type, -1));
@@ -162,14 +161,13 @@ NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         if (chan == NULL) {
             result = TCL_ERROR;
         } else {
-            const char  *mime;
+            const char  *mime = "image/unknown"; /* Just to make compiler silent, we have a complete enumeration of switch values */
 
             switch (GetImageType(chan)) {
             case jpeg:    mime = "image/jpeg";    break;
             case png:     mime = "image/png";     break;
             case gif:     mime = "image/gif";     break;
             case unknown: mime = "image/unknown"; break;
-            default: /*should not happen */ assert(0); mime = "image/unknown"; break;
             }
 
             result = Tcl_Close(interp, chan);
@@ -200,7 +198,7 @@ int
 NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
-    int         result;
+    int         result = TCL_OK;
     Ns_ObjvSpec args[] = {
         {"file",  Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
@@ -222,7 +220,6 @@ NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             case png:     result = PngSize (chan, &w, &h); break;
             case gif:     result = GifSize (chan, &w, &h); break;
             case unknown: result = TCL_ERROR; break;
-            default: /*should not happen */ result = TCL_ERROR; assert(0); break;
             }
 
             if (Tcl_Close(interp, chan) != TCL_OK) {

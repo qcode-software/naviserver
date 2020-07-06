@@ -616,7 +616,7 @@ Ns_SockBindUnix(const char *path, int socktype, unsigned short mode)
     pathLength = strlen(path);
 
     if (pathLength >= sizeof(addr.sun_path)) {
-        Ns_Log(Error, "provided path exeeds maximum length: %s\n", path);
+        Ns_Log(Error, "provided path exceeds maximum length: %s\n", path);
         return NS_INVALID_SOCKET;
     }
 
@@ -669,7 +669,6 @@ Ns_SockBindRaw(int proto)
     if (sock == NS_INVALID_SOCKET) {
         ns_sockerrno_t err = ns_sockerrno;
 
-        ns_sockclose(sock);
         Ns_SetSockErrno(err);
     }
 
@@ -735,7 +734,7 @@ NsPreBind(const char *args, const char *file)
 
     /*
      * Check, if the bind options were provided via file. If so, parse
-     * and interprete it.
+     * and interpret it.
      */
     if (status == NS_OK && file != NULL) {
         Tcl_Channel chan = Tcl_OpenFileChannel(NULL, file, "r", 0);
@@ -870,12 +869,14 @@ NsClosePreBound(void)
  *          0/icmp[/count]
  *          /path[|mode]
  *
+ *       mode: mode bits as used by "chmod" specified as octal value
+ *
  * Results:
  *      None.
  *
  * Side effects:
  *      Sockets are left in bound state for later listen
- *      in Ns_SockListenXXX.
+ *      in Ns_SockListen*().
  *
  *----------------------------------------------------------------------
  */
@@ -889,7 +890,7 @@ PrebindSockets(const char *spec)
     char                  *next, *str, *line, *lines;
     long                   l;
     Ns_ReturnCode          status = NS_OK;
-    struct NS_SOCKADDR_STORAGE  sa;
+    struct NS_SOCKADDR_STORAGE sa;
     struct sockaddr       *saPtr = (struct sockaddr *)&sa;
 
     NS_NONNULL_ASSERT(spec != NULL);
@@ -941,6 +942,7 @@ PrebindSockets(const char *spec)
             l = strtol(str, NULL, 10);
             line = str;
         } else {
+            assert(addr != NULL);
             l = strtol(addr, NULL, 10);
             addr = (char *)NS_IP_UNSPECIFIED;
         }
@@ -950,7 +952,7 @@ PrebindSockets(const char *spec)
          * Parse protocol; a line starting with a '/' means: path, which
          * implies a unix-domain socket.
          */
-        if (*line != '/' && (str = strchr(line, INTCHAR('/')))) {
+        if (*line != '/' && (str = strchr(line, INTCHAR('/'))) != NULL) {
             *str++ = '\0';
             proto = str;
         }
@@ -1045,12 +1047,14 @@ PrebindSockets(const char *spec)
             unsigned short mode = 0u;
             /* Parse mode */
 
-            str = strchr(str, INTCHAR('|'));
+            str = strchr(line, INTCHAR('|'));
             if (str != NULL) {
                 *(str++) = '\0';
-                l = strtol(str, NULL, 10);
+                l = strtol(str, NULL, 8);
                 if (l > 0) {
                     mode = (unsigned short)l;
+                } else {
+                    Ns_Log(Error, "prebind: unix: ignore invalid mode value: %s",line);
                 }
             }
             hPtr = Tcl_CreateHashEntry(&preboundUnix, (char *) line, &isNew);
@@ -1103,7 +1107,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
 {
     NS_SOCKET     sock = NS_INVALID_SOCKET;
 #ifndef _WIN32
-    ns_sockerrno_t err;
+    ns_sockerrno_t err = 0;
     ssize_t       n;
     char          data[NS_IPADDR_SIZE];
     struct msghdr msg;
@@ -1129,7 +1133,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = iov;
     msg.msg_iovlen = 4;
-    n = sendmsg(binderRequest[1], (struct msghdr *) &msg, 0);
+    n = sendmsg(binderRequest[1], &msg, 0);
     if (n != REQUEST_SIZE) {
         Ns_Log(Error, "Ns_SockBinderListen: sendmsg() failed: sent %" PRIdz " bytes, '%s'",
                n, strerror(errno));
@@ -1137,7 +1141,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     }
 
     /*
-     * Reveive reply.
+     * Revive reply.
      */
     iov[0].iov_base = (void*) &err;
     iov[0].iov_len = sizeof(int);
@@ -1151,7 +1155,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     msg.msg_accrights = (void*) &sock;
     msg.msg_accrightslen = sizeof(sock);
 #endif
-    n = recvmsg(binderResponse[0], (struct msghdr *) &msg, 0);
+    n = recvmsg(binderResponse[0], &msg, 0);
     if (n != RESPONSE_SIZE) {
         Ns_Log(Error, "Ns_SockBinderListen: recvmsg() failed: recv %" PRIdz " bytes, '%s'",
                n, strerror(errno));
@@ -1162,7 +1166,11 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     {
       struct cmsghdr *c = CMSG_FIRSTHDR(&msg);
       if ((c != NULL) && c->cmsg_type == SCM_RIGHTS) {
-          int *ptr = (int*)CMSG_DATA(c);
+          int *ptr;
+          /*
+           * Use memcpy to avoid alignment problems.
+           */
+          memcpy(&ptr, CMSG_DATA(c), sizeof(int*));
           sock = *ptr;
       }
     }
@@ -1345,10 +1353,12 @@ Binder(void)
         memset(&msg, 0, sizeof(msg));
         msg.msg_iov = iov;
         msg.msg_iovlen = 4;
+        options = 0;
+        port = 0u;
         type = '\0';
         err = 0;
         do {
-            n = recvmsg(binderRequest[0], (struct msghdr *) &msg, 0);
+            n = recvmsg(binderRequest[0], &msg, 0);
         } while (n == -1 && errno == NS_EINTR);
         if (n == 0) {
             break;
@@ -1400,7 +1410,11 @@ Binder(void)
             c = CMSG_FIRSTHDR(&msg);
             c->cmsg_level = SOL_SOCKET;
             c->cmsg_type  = SCM_RIGHTS;
-            pfd = (int*)CMSG_DATA(c);
+            /*
+             * Use memcpy to avoid alignment problems.
+             */
+            memcpy(&pfd, CMSG_DATA(c), sizeof(int*));
+
             *pfd = sock;
             c->cmsg_len = CMSG_LEN(sizeof(int));
             msg.msg_controllen = c->cmsg_len;
@@ -1411,7 +1425,7 @@ Binder(void)
         }
 
         do {
-            n = sendmsg(binderResponse[1], (struct msghdr *) &msg, 0);
+            n = sendmsg(binderResponse[1], &msg, 0);
         } while (n == -1 && errno == NS_EINTR);
         if (n != RESPONSE_SIZE) {
             Ns_Fatal("binder: sendmsg() failed: sent %" PRIdz " bytes, '%s'", n, strerror(errno));

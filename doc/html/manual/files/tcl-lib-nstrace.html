@@ -1,0 +1,122 @@
+
+<!DOCTYPE html><html><head>
+<title>tcl-lib-nstrace - NaviServer Manual</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'tcl-lib-nstrace.man' by tcllib/doctools with format 'html'
+   -->
+<!-- tcl-lib-nstrace.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">tcl-lib-nstrace(n) 4.99.19 manual &quot;NaviServer Manual&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>tcl-lib-nstrace - Managing Tcl interpreter initialization</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">Summary of commands</a></li>
+<li class="doctools_section"><a href="#section3">Limitations</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This file implements set of commands and utilities to manage Tcl interpreter
+initialization for NaviServer. What all this stuff does is simple: synthetize
+a Tcl script used to initialize new Tcl interpreters.</p>
+<p>There are basically two strategies:</p>
+<ul class="doctools_itemized">
+<li><p>A Run an introspective script against an initialized startup interpreter
+         and collect definitions of some &quot;known&quot; things: loaded packages, created 
+         Tcl procs, namespaces and namespaced variables. Then stuff all this data
+         in a (potentially large) script and run this script against virgin Tcl
+         interp. This script is obtained by the [nstrace::statescript] command (see below).</p></li>
+<li><p>B Register traces on selected Tcl commands and get state they create in a set of
+         shared variables (the epoch). Then start bootstraping the interp. This will
+         trigger trace callbacks and they will start filling the epoch. After the
+         bootstrapping is done, synthetize a script containing minimal fixed state
+         (variables, modules) and a definition of [unknown] command which will
+         on-demand load procedure definitions out of the epoch state. This script
+         is obtained by the [nstrace::tracescript] command (see below).</p></li>
+</ul>
+<p>Which one of the above 2 strategies is currently used by the server, is controlled by
+the <em>lazyloader</em> parameter of the Tcl library, as defined in the server configuration
+file. The A Strategy is selected by setting the parameter to false. The B Strategy is
+selected by setting the parameter to true.</p>
+<p>In order to influence script generation, users can add their own tracing implementations.
+Tracers and other supporting callbacks for the following Tcl commands are provided per default:</p>
+<pre class="doctools_example">
+    load, namespace, variable, proc, rename
+</pre>
+<p>For the information of how to add new tracers please look into the source code of already provided callbacks.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">Summary of commands</a></h2>
+<dl class="doctools_definitions">
+<dt>nstrace::enabletrace   activates registered Tcl command traces</dt>
+<dd></dd>
+<dt>nstrace::disabletrace  terminates tracing of Tcl commands</dt>
+<dd></dd>
+<dt>nstrace::tracescript   returns a script for initializing interps</dt>
+<dd></dd>
+<dt>nstrace::enablestate   activates generation of the state script</dt>
+<dd></dd>
+<dt>nstrace::disablestate  terminates generation of the state script</dt>
+<dd></dd>
+<dt>nstrace::statescript   returns a script for initializing interps</dt>
+<dd></dd>
+<dt>nstrace::isactive      returns true if tracing Tcl commands is on</dt>
+<dd></dd>
+<dt>nstrace::config        setup some configuration options</dt>
+<dd></dd>
+<dt>nstrace::excludensp    skip serializing the given namespace</dt>
+<dd></dd>
+<dt>nstrace::namespaces    returns list of namespaces for the given parent</dt>
+<dd></dd>
+<dt>nstrace::addtrace      registers custom tracer callback</dt>
+<dd></dd>
+<dt>nstrace::addscript     registers custom script generator</dt>
+<dd></dd>
+<dt>nstrace::addresolver   registers custom command resolver</dt>
+<dd></dd>
+<dt>nstrace::enablecode    returns signal about start of tracing</dt>
+<dd></dd>
+<dt>nstrace::disablecode   returns signal about stop of tracing</dt>
+<dd></dd>
+<dt>nstrace::addentry      adds one entry into the named trace store</dt>
+<dd></dd>
+<dt>nstrace::getentry      returns the entry value from the named store</dt>
+<dd></dd>
+<dt>nstrace::delentry      removes the entry from the named store</dt>
+<dd></dd>
+<dt>nstrace::getentries    returns all entries from the named store</dt>
+<dd></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Limitations</a></h2>
+<ol class="doctools_enumerated">
+<li><p>[namespace forget] is still not implemented</p></li>
+<li><p>[namespace origin cmd] breaks if cmd is not already defined</p></li>
+<li><p>[info procs] does not return list of all cached procedures</p></li>
+</ol>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../index.html#key6">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key8">NaviServer</a>, <a href="../../index.html#key7">nstrace</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

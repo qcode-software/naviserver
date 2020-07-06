@@ -51,7 +51,11 @@ typedef enum {
 static int Pipe(int *fds, int sockpair)
     NS_GNUC_NONNULL(1);
 
-static void Abort(int signal);
+static void Abort(int signal)
+#ifndef NS_TCL_PRE86
+    NS_GNUC_NORETURN
+#endif
+    ;
 
 static bool GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, char **freePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5);
@@ -298,7 +302,7 @@ NsSendSignal(int sig)
  * NsMemMap --
  *
  *      Maps a file to memory. The file will be mapped as shared
- *      and read or write, depeding on the passed mode.
+ *      and read or write, depending on the passed mode.
  *
  * Results:
  *      NS_OK - file was mapped OK; details of the mapped address
@@ -323,10 +327,10 @@ NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
      */
     switch (mode) {
     case NS_MMAP_WRITE:
-        mapPtr->handle = ns_open(path, O_BINARY | O_RDWR, 0);
+        mapPtr->handle = ns_open(path, O_BINARY | O_RDWR | O_CLOEXEC, 0);
         break;
     case NS_MMAP_READ:
-        mapPtr->handle = ns_open(path, O_BINARY | O_RDONLY, 0);
+        mapPtr->handle = ns_open(path, O_BINARY | O_RDONLY | O_CLOEXEC, 0);
         break;
     default:
         return NS_ERROR;
@@ -462,7 +466,7 @@ ns_sock_set_blocking(NS_SOCKET sock, bool blocking)
         result = fcntl(sock, F_SETFL, flags|O_NONBLOCK);
     }
 
-    if (result == -1 && errno != EAGAIN && errno != NS_EWOULDBLOCK) {
+    if (result == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
         Ns_Log(Notice, "ns_sock_set_blocking on sock %d blocking %d err %d <%s>",
                sock, blocking, errno, ns_sockstrerror(errno));
     }
@@ -798,7 +802,7 @@ Ns_GetUid(const char *user)
     if (ptr != NULL) {
         ns_free(ptr);
     }
-    return (long)retcode;
+    return retcode;
 }
 
 

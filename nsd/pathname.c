@@ -46,16 +46,19 @@
  */
 
 static Ns_ServerInitProc ConfigServerVhost;
-static int ConfigServerVhost(const char *server)
-    NS_GNUC_NONNULL(1);
 
 static int PathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
     NS_GNUC_NONNULL(2);
+
 static char *MakePath(Ns_DString *dest, va_list *pap)
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
+
 static const char *ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2)
     NS_GNUC_RETURNS_NONNULL;
+
+static char *NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
 
 
 
@@ -165,9 +168,12 @@ Ns_PathIsAbsolute(const char *path)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_NormalizePath --
+ * Ns_NormalizePath, Ns_NormalizeUrl --
  *
- *  Remove "..", "." from paths.
+ *  Remove "..", ".", multiple consecutive slashes from paths.
+ *  While Ns_NormalizePath is designed for file system paths
+ *  including special treatment for windows, the latter is defined
+ *  for normalizing URLs.
  *
  * Results:
  *  dsPtr->string
@@ -177,9 +183,20 @@ Ns_PathIsAbsolute(const char *path)
  *
  *----------------------------------------------------------------------
  */
-
 char *
 Ns_NormalizePath(Ns_DString *dsPtr, const char *path)
+{
+    return NormalizePath(dsPtr, path, NS_FALSE);
+}
+
+char *
+Ns_NormalizeUrl(Ns_DString *dsPtr, const char *path)
+{
+    return NormalizePath(dsPtr, path, NS_TRUE);
+}
+
+char *
+NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
 {
     char                 end;
     register char       *src;
@@ -191,24 +208,27 @@ Ns_NormalizePath(Ns_DString *dsPtr, const char *path)
 
     Ns_DStringInit(&tmp);
     src = Ns_DStringAppend(&tmp, path);
+
+    if (!url) {
 #ifdef _WIN32
-    if (CHARTYPE(alpha, *src) != 0 && src[1] == ':') {
-        if (CHARTYPE(upper, *src) != 0) {
-          *src = CHARCONV(lower, *src);
+        if (CHARTYPE(alpha, *src) != 0 && src[1] == ':') {
+            if (CHARTYPE(upper, *src) != 0) {
+                *src = CHARCONV(lower, *src);
+            }
+            Ns_DStringNAppend(dsPtr, src, 2);
+            src += 2;
+        } else if (ISSLASH(src[0]) && ISSLASH(src[1])) {
+            /*
+             * We have TWO leading slashes as in the Windows pathname
+             * "//machine/foo/bar".  The code further below will write 1
+             * slash, so here, add just 1 slash so that we will end up
+             * with 2 total: --atp@piskorski.com, 2005/03/14 06:34 EST
+             */
+            Ns_DStringNAppend(dsPtr, src, 1);
+            src += 2;
         }
-        Ns_DStringNAppend(dsPtr, src, 2);
-        src += 2;
-    } else if (ISSLASH(src[0]) && ISSLASH(src[1])) {
-        /*
-         * We have TWO leading slashes as in the Windows pathname
-         * "//machine/foo/bar".  The code further below will write 1
-         * slash, so here, add just 1 slash so that we will end up
-         * with 2 total: --atp@piskorski.com, 2005/03/14 06:34 EST
-         */
-        Ns_DStringNAppend(dsPtr, src, 1);
-        src += 2;
-    }
 #endif
+    }
 
     /*
      * Move past leading slash(es)
@@ -713,21 +733,23 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
 int
 NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    Ns_DString  path;
-    int         levels, result = TCL_OK;
+    int               levels, result = TCL_OK;
+    char             *inputString;
+    Ns_ObjvValueRange range = {1, INT_MAX};
+    Ns_ObjvSpec       args[] = {
+        {"string", Ns_ObjvString, &inputString, NULL},
+        {"levels", Ns_ObjvInt,    &levels,     &range},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "string levels");
-        result = TCL_ERROR;
-
-    } else if (Tcl_GetIntFromObj(interp, objv[2], &levels) != TCL_OK
-        || levels <= 0) {
-        Ns_TclPrintfResult(interp, "levels must be an integer greater than zero");
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
+        Ns_DString  path;
+
         Ns_DStringInit(&path);
-        Ns_HashPath(&path, Tcl_GetString(objv[1]), levels);
+        Ns_HashPath(&path, inputString, levels);
         Tcl_DStringResult(interp, &path);
     }
     return result;
@@ -814,9 +836,8 @@ NsTclPagePathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 static int
 PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
 {
-    char *host = NULL;
-    int   npaths = 0, result = TCL_OK;
-
+    char       *host = NULL;
+    int         npaths = 0, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-host", Ns_ObjvString, &host, NULL},
         {"--",    Ns_ObjvBreak,  NULL,  NULL},
@@ -897,7 +918,7 @@ NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
     } else {
         Ns_TclCallback *cbPtr;
 
-        cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)NsTclServerRoot, objv[1],
+        cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclServerRoot, objv[1],
                                   objc - 2, objv + 2);
         if (unlikely(Ns_SetServerRootProc(NsTclServerRoot, cbPtr) != NS_OK)) {
             result = TCL_ERROR;

@@ -1,0 +1,177 @@
+
+<!DOCTYPE html><html><head>
+<title>returnstatus-cmds - NaviServer Built-In Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'returnstatus-cmds.man' by tcllib/doctools with format 'html'
+   -->
+<!-- returnstatus-cmds.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">returnstatus-cmds(n) 4.99.19 naviserver &quot;NaviServer Built-In Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>returnstatus-cmds - Return a complete HTTP status message</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">CONFIGURATION</a></li>
+<li class="doctools_section"><a href="#section4">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_returnok</b></a></li>
+<li><a href="#2"><b class="cmd">ns_returnmoved</b> <i class="arg">url</i></a></li>
+<li><a href="#3"><b class="cmd">ns_returnredirect</b> <i class="arg">url</i></a></li>
+<li><a href="#4"><b class="cmd">ns_returnbadrequest</b> <i class="arg">reason</i></a></li>
+<li><a href="#5"><b class="cmd">ns_returnunauthorized</b></a></li>
+<li><a href="#6"><b class="cmd">ns_returnforbidden</b></a></li>
+<li><a href="#7"><b class="cmd">ns_returnnotfound</b></a></li>
+<li><a href="#8"><b class="cmd">ns_returnunavailable</b></a></li>
+<li><a href="#9"><b class="cmd">ns_returnerror</b> <i class="arg">status</i> <i class="arg">message</i></a></li>
+<li><a href="#10"><b class="cmd">ns_returnnotice</b> <i class="arg">status</i> <i class="arg">title</i> <i class="arg">message</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>These commands return a complete response to the client using a variety of
+different HTTP status codes. On contrary to the lower level commands
+like <b class="cmd"><a href="ns_return.html">ns_return</a></b> these commands are designed to ease consistent
+behavior in common success, redirect or error situations.
+Like with <b class="cmd"><a href="ns_return.html">ns_return</a></b> all queued headers, such as those set by
+<b class="cmd">ns_setcookie</b> (see <b class="cmd"><a href="ns_cookie.html">ns_cookie</a></b>) or via <b class="cmd"><a href="ns_conn.html">ns_conn</a></b> <b class="cmd">outputheaders</b> and 
+<b class="cmd">ns_set put</b>, are added to the default headers and sent in the response.</p>
+<p>These commands return 0 (zero) if the response was successfully
+sent to the client and 1 if the write to the connection failed.
+They will raise an error if no connection is available, e.g. they are called from
+a non-connection thread or the response has already been sent and the connection
+closed.</p>
+<p>After the command returns the connection is returned to the driver thread to be
+closed or monitored for keep-alive. The calling connection thread can then
+continue to execute code, e.g. to cleanup resources or for logging.</p>
+<p>Custom error pages may be specified in the server configuration file to
+override the default HTML message which is returned, for those commands which
+return one.</p>
+<p>NOTE: The script does not end at the time these commands are invoked.
+When used in an ADP page, <b class="cmd"><a href="ns_adp_abort.html">ns_adp_abort</a></b> or <b class="cmd"><a href="ns_adp_return.html">ns_adp_return</a></b>
+should be called to end script processing after ns_returnredirect.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_returnok</b></a></dt>
+<dd><p>Return a response with status code <i class="term">200</i>, <i class="term">OK</i>. No body content is
+sent.</p></dd>
+<dt><a name="2"><b class="cmd">ns_returnmoved</b> <i class="arg">url</i></a></dt>
+<dd><p>Return a response with status code <i class="term">301</i>, <i class="term">Moved</i>. A <i class="term">Location</i>
+header will be set with the given <i class="arg">url</i>.</p>
+<p>Use this response to signal that the resource identified by the requested URL
+has permanently moved to a new location. The client should request the new URL
+instead of the old one in the future.</p></dd>
+<dt><a name="3"><b class="cmd">ns_returnredirect</b> <i class="arg">url</i></a></dt>
+<dd><p>Return a response with status code <i class="term">302</i>, <i class="term">Found</i>. The <i class="term">Location</i>
+header will be set to the <i class="arg">url</i> if given. For non-fully qualified
+target addresses, the URL is completed with either the location
+configured via <b class="cmd"><a href="ns_locationproc.html">ns_locationproc</a></b> or via the <i class="term">location</i> configured in the
+network driver module (see <b class="cmd"><a href="../../index.html#key12">nssock</a></b>).</p>
+<p>Use this response to signal that the resource identified by the requested URL has
+temporarily moved to a new location. The client should continue to request the
+old URL.</p></dd>
+<dt><a name="4"><b class="cmd">ns_returnbadrequest</b> <i class="arg">reason</i></a></dt>
+<dd><p>Return a response with status code <i class="term">400</i>, <i class="term">Bad Request</i> using the
+given <i class="arg">reason</i> in the HTML message.</p>
+<p>Use this response to signal that the client sent a malformed request and should
+not try again without modifications.</p></dd>
+<dt><a name="5"><b class="cmd">ns_returnunauthorized</b></a></dt>
+<dd><p>Return a response with status code <i class="term">401</i>, <i class="term">Access Denied</i>. A
+<i class="term">WWW-Authenticate</i> header will be set using the <i class="term">realm</i> specified
+in the configuration file option <i class="term">ns/server:realm</i>.</p>
+<p>Use this response to signal that the user is not authorized to access the URL,
+and to trigger <i class="term">HTTP basic</i> authorization. The client may present
+a pop-up window for the user to enter their <i class="term">username</i> and <i class="term">password</i>.</p>
+<p>NB: The username and password will be sent in plain text.</p></dd>
+<dt><a name="6"><b class="cmd">ns_returnforbidden</b></a></dt>
+<dd><p>Return a response with status code <i class="term">403</i>, <i class="term">Forbidden</i>.</p>
+<p>Use this response to signal that the authentication information the client
+supplied are insufficient to grant them access to the requested URL.</p></dd>
+<dt><a name="7"><b class="cmd">ns_returnnotfound</b></a></dt>
+<dd><p>Return a response with status code <i class="term">404</i>, <i class="term">Not Found</i>.</p>
+<p>Use this response to signal that the content the client requested could not be
+located given the URL that was requested.</p></dd>
+<dt><a name="8"><b class="cmd">ns_returnunavailable</b></a></dt>
+<dd><p>Return a response with status code <i class="term">503</i>, <i class="term">Unavailable</i>.</p>
+<p>Use this response to signal that the server is too busy to deliver the requested
+resource or is undergoing maintenance.</p></dd>
+<dt><a name="9"><b class="cmd">ns_returnerror</b> <i class="arg">status</i> <i class="arg">message</i></a></dt>
+<dd><p>Return a response with the given <i class="arg">status</i> code and the error <i class="arg">message</i>
+wrapped in HTML.</p>
+<p>Use this command to return a HTTP status response to the client which is not
+covered by the above commands, or to customize the HTML message.</p></dd>
+<dt><a name="10"><b class="cmd">ns_returnnotice</b> <i class="arg">status</i> <i class="arg">title</i> <i class="arg">message</i></a></dt>
+<dd><p>Return a response with the given <i class="arg">status</i> code and an HTML message with the
+given <i class="arg">title</i> and <i class="arg">message</i>.</p>
+<p>Use this command to return an arbitrary response to the client. Some HTTP
+responses are expected not to return body content. Check RFC 2616 for details.</p>
+<p>NB: You should be careful what you put in the <i class="arg">title</i> and <i class="arg">message</i>.
+It may be tempting to use data which the client has sent you such as a form
+variable, but it may not be what you expect.</p></dd>
+</dl>
+<p>Note: The script does not end at the time this command is
+invoked. <b class="cmd"><a href="ns_adp_abort.html">ns_adp_abort</a></b> or ]cmd ns_adp_return] should be called to
+end script processing after ns_returnforbidden.</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">CONFIGURATION</a></h2>
+<p>The body of the response which is returned for a variety of status codes can be
+customized by registering a new resource which should be returned in it's place.
+The new resource may be a static, Tcl or ADP page, or a registered procedure
+or ADP.</p>
+<pre class="doctools_example">
+<b class="cmd">ns_section</b> &quot;ns/server/server1/redirects&quot;
+<b class="cmd">ns_param</b>   404    /notfound.adp
+<b class="cmd">ns_param</b>   503    /busy.html
+</pre>
+<p>The realm used for HTTP Basic authentication is set server-wide:</p>
+<pre class="doctools_example">
+<b class="cmd">ns_section</b> &quot;ns/server&quot;
+<b class="cmd">ns_param</b>   realm  &quot;Example&quot;
+</pre>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">EXAMPLES</a></h2>
+<p>Use a custom error message to notify users when the hamsters which turn the
+wheels that run the server are on lunch break:</p>
+<pre class="doctools_example">
+ns_register_proc GET /service {
+    set hour [clock format [clock seconds] -format %H]
+    if {$hour &gt;= 12 &amp;&amp; $hour &lt;= 13} {
+        ns_returnerror 503 &quot;Gone for lunch. Back at 2pm.&quot;
+        return
+    }
+    <b class="cmd">ns_returnok</b>
+}
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_conn.html">ns_conn</a>, <a href="ns_cookie.html">ns_cookie</a>, <a href="ns_internalredirect.html">ns_internalredirect</a>, <a href="ns_locationproc.html">ns_locationproc</a>, <a href="ns_return.html">ns_return</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key11">configuration</a>, <a href="../../index.html#key12">nssock</a>, <a href="../../index.html#key96">redirect</a>, <a href="../../index.html#key57">response</a>, <a href="../../index.html#key50">return</a>, <a href="../../index.html#key34">server built-in</a>, <a href="../../index.html#key55">status</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

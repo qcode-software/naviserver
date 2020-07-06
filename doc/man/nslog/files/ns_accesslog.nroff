@@ -1,0 +1,510 @@
+'\"
+'\" Generated from file 'ns_accesslog\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_accesslog" n 4\&.99\&.19 nslog "NaviServer Module Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_accesslog \- Query and control access log parameters
+.SH SYNOPSIS
+\fBns_accesslog file\fR ?\fInew-path\fR?
+.sp
+\fBns_accesslog roll\fR ?\fInew-path\fR?
+.sp
+\fBns_accesslog rollfmt\fR ?\fItime-format\fR?
+.sp
+\fBns_accesslog maxbackup\fR ?\fIkeep\fR?
+.sp
+\fBns_accesslog flags\fR ?\fIflags\fR?
+.sp
+\fBns_accesslog extendedheaders\fR ?\fInew-headers\fR?
+.sp
+\fBns_accesslog maxbuffer\fR ?\fIlines\fR?
+.sp
+.BE
+.SH DESCRIPTION
+This command controls and configures the access log\&. It can change
+settings at run-time\&.
+.SH COMMANDS
+.TP
+\fBns_accesslog file\fR ?\fInew-path\fR?
+Returns the path of the access log for the current virtual server\&.
+.sp
+If ?\fInew-path\fR? is given then the old log is closed and the log
+re-opened at the new location\&. All the components of ?\fInew-path\fR? must
+exist\&. If an error occurs logging will be disabled\&.
+.TP
+\fBns_accesslog roll\fR ?\fInew-path\fR?
+Roll the access log (see \fBns_rollfile\fR for details)\&. Keep \fImaxbackup\fR
+old log files around\&.  If ?\fInew-path\fR? is given then it overrides the
+configuration parameter 'file' as the new log file\&.
+.TP
+\fBns_accesslog rollfmt\fR ?\fItime-format\fR?
+Get the ?\fItime-format\fR? which is appended to the log file name when
+rolling\&. The format string is as understood by the Tcl \fBclock\fR command\&.
+If ?\fItime-format\fR? is given then it replaces any existing value\&.
+.TP
+\fBns_accesslog maxbackup\fR ?\fIkeep\fR?
+Get the number of backup files which will be kept when log rolling is
+enabled\&. If ?\fIkeep\fR? is given it replaces any existing value\&.
+.TP
+\fBns_accesslog flags\fR ?\fIflags\fR?
+Return a list of the enabled logging options, or reset the list if a
+new set of flags is given\&. Valid flags are: logcombined,
+formattedtime, logpartialtimes, logreqtime, checkforproxy, and
+suppressquery\&. They have the same meaning as the similarly named
+configuration parameters\&.
+.TP
+\fBns_accesslog extendedheaders\fR ?\fInew-headers\fR?
+Return a list of the HTTP header fields which will be appended to each entry in the
+access log\&. If ?\fInew-headers\fR? is given it replaces the existing
+setting\&.
+.sp
+By default, all specified header fields are request header
+fields (like e\&.g\&. "Referer X-Forwarded-For")\&. Optionally one can
+specify the request header fields with a prefix "request:" or "response"
+to denote request or response header fields\&. The prefix can be
+abbreviated to 3 characters (example: "req:Host response:Content-Type")\&.
+Note that always the request header fields are reported before the
+response header fields\&. Caveat: certain response header fields (e\&.g\&. "Date"
+or "Server" are not accessible this way)\&.
+.TP
+\fBns_accesslog maxbuffer\fR ?\fIlines\fR?
+Set or get the maximum number of lines to buffer before being flushed to the
+log file\&.
+.PP
+.SH CONFIGURATION
+The nslog module is loaded per-server\&.
+.CS
+
+
+ns_section "ns/server/server1/modules" {
+    ns_param   nslog   nslog\&.so
+}
+ns_section "ns/server/server1/module/nslog" {
+    ns_param   \&.\&.\&.
+}
+
+.CE
+The following are valid configuration parameters:
+.TP
+checkforproxy
+If true then the value of the X-Forwarded-For HTTP header is logged as the IP
+address of the client\&. Otherwise, the TCP peer address is logged\&. Only enable
+this if you run your own, trusted proxy server\&. Default: false\&.
+.TP
+driver
+Name of the driver initiating the requests\&. This option can be used
+to produce different access logs for requests submitted via
+different drivers to sort out e\&.g\&. local server talk\&.  Per default,
+every request is logged\&. When a value is provided, only requests are
+logged in this log file when the request comes from a driver matching
+the provided glob pattern\&.
+.TP
+file
+String: path to the log file\&. Default: access\&.log
+.TP
+extendedheaders
+A space separated list of additional HTTP headers whos value should be logged\&.
+Default: no extra headers are logged\&.
+.TP
+formattedtime
+If true, log the time in common-log-format\&. Otherwise log seconds since the
+epoch\&. Default: true\&.
+.TP
+logcombined
+If true, log the referrer and user-agent HTTP headers (NCSA combined
+format)\&. Default: true\&.
+.TP
+logpartialtimes
+If true then include the high-resolution start time of the request
+together with partial request durations (accept, queue, filter,
+run) in the access log\&.
+Default: false\&.
+.TP
+logreqtime
+If true then log the total amount of time the request took to run in seconds and
+milliseconds\&.  Default: false\&.
+.TP
+masklogaddr
+Mask IP address in log file for GDPR (similar to the "anonip" IP anonymizer of the
+Swiss privacy foundation)\&. When this parameter is set, all IP
+addresses are masked in the log file, such that the host-specific (=
+person-specific) information is masked out and the IP address does not
+match a particular individual anymore\&.  Still, with the masking turned
+on, reverse DNS lookup and/or geolocation is possible\&. Default: false\&.
+.TP
+maskipv4
+Mask to be used for IPv4 addresses, when \fImasklogaddr\fR is true\&.
+Default: 255\&.255\&.255\&.0
+.TP
+maskipv6
+Mask to be used for IPv6 addresses, when \fImasklogaddr\fR is true\&.
+Default: ff:ff:ff:ff::
+.TP
+maxbuffer
+The number of log entries to buffer before flushing to the log file\&. Default: 0\&.
+.TP
+rolllog
+If true then the log file will be rolled\&. Default: true\&.
+.TP
+rollhour
+The hour of the day (0-23) to roll the log file if log rolling is enabled\&.
+Default: 0 (midnight)\&.
+.TP
+maxbackup
+Number of old log files to keep when log rolling is enabled\&. Default: 100\&.
+.TP
+rollonsignal
+If true then the log file will be rolled when the serve receives a SIGHUP
+signal\&. Default: false\&.
+.TP
+suppressquery
+If true then the query (everything after the ? in the URL) is not logged\&.
+Default: false\&.
+.PP
+.SH EXAMPLES
+The path of the active access log\&.
+.CS
+
+
+nscp:1> \fBns_accesslog\fR file
+/home/ns/servers/server1/modules/nslog/access\&.log
+
+nscp:2> \fBns_modulepath\fR server1 nslog access\&.log
+/home/ns/servers/server1/modules/nslog/access\&.log
+
+.CE
+The access log can be rolled manually\&.
+.CS
+
+
+nscp:1> ns_accesslog roll
+
+.CE
+Extended logging options can be configured at run-time\&.
+.CS
+
+
+nscp:1> \fBns_accesslog\fR flags
+logCombined formattedTime
+
+nscp:2> \fBns_accesslog\fR flags {logcombined formattedtime checkforproxy}
+logcombined formattedtime checkforproxy
+
+nscp:3> \fBns_accesslog\fR extendedheaders
+
+nscp:4> \fBns_accesslog\fR extendedheaders {Cookie Accept}
+Cookie Accept
+
+.CE
+Example for writing multiple access logs per driver for a single
+server: In this example, the loopback traffic is written to a separate
+log file\&.
+.CS
+
+
+#
+# Configure extra nssock driver for loopback traffic
+#
+ns_section "ns/modules" {
+    ns_param loopback  ${bindir}/nssock
+}
+
+ns_section ns/module/loopback {
+    ns_param	defaultserver	$server
+    ns_param	address		127\&.0\&.0\&.1
+    ns_param	port		8888
+}
+
+#
+# Load nslog modules twice with different names
+#
+ns_section ns/server/${server}/modules {
+    ns_param	nslog		${bindir}/nslog
+    ns_param	nslog2		${bindir}/nslog
+}
+
+#
+# Configure driver patterns (default "*")
+#
+ns_section ns/server/${server}/module/nslog2 {
+    ns_param	file	  ${logroot}/access-loopback\&.log
+    ns_param	driver 	  "loopback"
+}
+ns_section ns/server/${server}/module/nslog {
+    ns_param	file	  ${logroot}/access\&.log
+    ns_param	driver 	  "ns*"
+}
+
+.CE
+.SH "SEE ALSO"
+ns_log, ns_rollfile
+.SH KEYWORDS
+ipaddress, log, module, nslog, path, proxy, server built-in

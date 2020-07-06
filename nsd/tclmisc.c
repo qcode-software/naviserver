@@ -46,7 +46,7 @@ static void SHAByteSwap(uint32_t *dest, const uint8_t *src, unsigned int words)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static void SHATransform(Ns_CtxSHA1 *sha)
     NS_GNUC_NONNULL(1);
-static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
+static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
@@ -174,7 +174,7 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
     }
     errorInfo = Tcl_GetVar(interp, "errorInfo", TCL_GLOBAL_ONLY);
     if (errorInfo == NULL) {
-        errorInfo = "";
+        errorInfo = NS_EMPTY_STRING;
     }
     if (itPtr != NULL && itPtr->conn != NULL) {
         const Ns_Conn *conn = itPtr->conn;
@@ -308,7 +308,7 @@ Ns_LogDeprecated(Tcl_Obj *const* objv, int objc, const char *alternative, const 
  * Ns_SetNamedVar --
  *
  *      Set a variable by denoted by a name.  Convenience routine for
- *      tcl-commands, when var names are passed in (e.g ns_http).
+ *      tcl-commands, when var names are passed in (e.g. ns_http).
  *
  * Results:
  *      NS_TRUE on success, NS_FALSE otherwise.
@@ -367,11 +367,13 @@ InsertFreshNewline(Tcl_DString *dsPtr, const char *prefixString, size_t prefixLe
 int
 NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int          result = TCL_OK, lineWidth = 80, offset = 0;
-    char        *textString = NULL, *prefixString = NULL;
-    Ns_ObjvSpec opts[] = {
-        {"-width",  Ns_ObjvInt,     &lineWidth,    NULL},
-        {"-offset", Ns_ObjvInt,     &offset,       NULL},
+    int               result = TCL_OK, lineWidth = 80, offset = 0;
+    char             *textString = (char *)NS_EMPTY_STRING, *prefixString = NULL;
+    Ns_ObjvValueRange widthRange = {5, INT_MAX};
+    Ns_ObjvValueRange offsetRange = {0, INT_MAX};
+    Ns_ObjvSpec       opts[] = {
+        {"-width",  Ns_ObjvInt,     &lineWidth,    &widthRange},
+        {"-offset", Ns_ObjvInt,     &offset,       &offsetRange},
         {"-prefix", Ns_ObjvString,  &prefixString, NULL},
         {"--",      Ns_ObjvBreak,    NULL,         NULL},
         {NULL, NULL, NULL, NULL}
@@ -440,9 +442,11 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
                      * the string.
                      */
                     outputPos++;
-                    if ( textString[inputPos] == '\n' ) {
-                        memcpy(&dsPtr->string[outputPos], prefixString, prefixLength);
-                        outputPos += prefixLength;
+                    if ( textString[inputPos] == '\n') {
+                        if (prefixLength > 0u) {
+                            memcpy(&dsPtr->string[outputPos], prefixString, prefixLength);
+                            outputPos += prefixLength;
+                        }
                         currentWidth = 0u;
                         processedPos = inputPos;
                     }
@@ -527,7 +531,7 @@ int
 NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
-    char        *htmlString = NULL;
+    char        *htmlString = (char *)NS_EMPTY_STRING;
     Ns_ObjvSpec  args[] = {
         {"html", Ns_ObjvString,  &htmlString, NULL},
         {NULL, NULL, NULL, NULL}
@@ -548,8 +552,6 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         /*
          * Make a copy of the input and point the moving and output ptrs to it.
          */
-        assert(htmlString != NULL);
-
         inString   = ns_strdup(htmlString);
         inPtr      = inString;
         outPtr     = inString;
@@ -598,7 +600,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                      */
                     inentity = WordEndsInSemi(inPtr, &length);
                     /*
-                     * Interprete numeric entities between 33 and 255.
+                     * Handle numeric entities between 33 and 255.
                      */
                     if (inentity) {
                         if (CHARTYPE(digit, *(inPtr + 1u)) != 0) {
@@ -621,7 +623,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                                 size_t outputLength;
                             } entity;
 
-                            const static entity entities[] = {
+                            static const entity entities[] = {
                                 {"AElig",    5, "\xc3\x86",     2},    /* "Æ" */
                                 {"Aacute",   6, "\xc3\x81",     2},    /* "Á" */
                                 {"Acirc",    5, "\xc3\x82",     2},    /* "Â" */
@@ -846,7 +848,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                                 {"yen",      3, "\xc2\xa5",     2},    /* "¥" */
                                 {"yuml",     4, "\xc3\xbf",     2},    /* "ÿ" */
                                 {"zeta",     4, "\xce\xb6",     2},    /* "ζ" */
-                                {NULL,       0, "", 0}
+                                {NULL,       0, "",             0}
                             };
 
                             inPtr ++;
@@ -931,7 +933,7 @@ int
 NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
-    char        *htmlString = NULL;
+    char        *htmlString = (char *)NS_EMPTY_STRING;
     Ns_ObjvSpec  args[] = {
         {"html", Ns_ObjvString,  &htmlString, NULL},
         {NULL, NULL, NULL, NULL}
@@ -944,8 +946,6 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         char       *s, *e;
         const char *p;
         Tcl_Obj    *listObj = Tcl_NewListObj(0, NULL);
-
-        assert(htmlString != NULL);
 
         p = htmlString;
         while (((s = strchr(p, INTCHAR('<'))) != NULL) && ((e = strchr(s, INTCHAR('>'))) != NULL)) {
@@ -1028,7 +1028,7 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  */
 
 #if 0
-static void hexPrint(const char *msg, unsigned char *octects, size_t octectLength)
+static void hexPrint(const char *msg, const unsigned char *octects, size_t octectLength)
 {
     size_t i;
     fprintf(stderr, "%s octectLength %zu:", msg, octectLength);
@@ -1040,28 +1040,39 @@ static void hexPrint(const char *msg, unsigned char *octects, size_t octectLengt
 #endif
 
 static int
-Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding)
+Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+                   int encoding)
 {
-    int result = TCL_OK;
+    int         result = TCL_OK, isBinary = 0;
+    Tcl_Obj    *charsObj;
+    Ns_ObjvSpec opts[] = {
+        {"-binary", Ns_ObjvBool, &isBinary, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"string", Ns_ObjvObj, &charsObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "string");
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
+
     } else {
         char                *buffer;
         size_t               size;
         int                  nbytes = 0;
         Tcl_DString          ds;
         const unsigned char *bytes;
-        // const unsigned char *bytes = Tcl_GetByteArrayFromObj(objv[1], &nbytes);
 
         Tcl_DStringInit(&ds);
-        bytes = (const unsigned char*)Ns_GetBinaryString(objv[1], &nbytes, &ds);
-        //hexPrint("source ", bytes, nbytes);
+        bytes = (const unsigned char*)Ns_GetBinaryString(charsObj, isBinary == 1, &nbytes, &ds);
+        //hexPrint("source ", bytes,  (size_t)nbytes);
 
         size = (size_t)nbytes;
         buffer = ns_malloc(1u + (4u * MAX(size,2u)) / 2u);
         (void)Ns_HtuuEncode2(bytes, size, buffer, encoding);
+
         Tcl_SetResult(interp, buffer, (Tcl_FreeProc *) ns_free);
         Tcl_DStringFree(&ds);
     }
@@ -1098,25 +1109,46 @@ NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
  */
 
 static int
-Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding)
+Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+                   int encoding)
 {
-    int result = TCL_OK;
+    int      result = TCL_OK, isBinary = 0;
+    Tcl_Obj *charsObj;
+    Ns_ObjvSpec opts[] = {
+        {"-binary", Ns_ObjvBool, &isBinary, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"string", Ns_ObjvObj, &charsObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "string");
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
+
     } else {
         int            len;
         size_t         size;
-        const char    *chars = Tcl_GetStringFromObj(objv[1], &len);
         unsigned char *decoded;
+        const char    *chars = Tcl_GetStringFromObj(charsObj, &len);
 
         size = (size_t)len + 3u;
         decoded = (unsigned char *)ns_malloc(size);
         size = Ns_HtuuDecode2(chars, decoded, size, encoding);
-        //hexPrint("decoded", decoded, size);
-        decoded[size] = UCHAR('\0');
-        Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (int)size));
+        // hexPrint("decoded", decoded, size);
+
+        if (isBinary) {
+
+            Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (int)size));
+        } else {
+            Tcl_DString ds, *dsPtr = &ds;
+
+            Tcl_DStringInit(dsPtr);
+            Tcl_ExternalToUtfDString(NULL, (char *)decoded, (int)size, dsPtr);
+            Tcl_DStringResult(interp, dsPtr);
+        }
+
         ns_free(decoded);
     }
 
@@ -1682,24 +1714,35 @@ char *Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUppe
 int
 NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int result = TCL_OK;
+    int         result = TCL_OK, isBinary = 0;
+    Tcl_Obj    *charsObj;
+    Ns_ObjvSpec opts[] = {
+        {"-binary", Ns_ObjvBool, &isBinary, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"string", Ns_ObjvObj, &charsObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "string");
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
         unsigned char  digest[20];
         char           digestChars[41];
         Ns_CtxSHA1     ctx;
-        int            length;
-        const char    *str;
+        int            nbytes;
+        const unsigned char *bytes;
         Tcl_DString    ds;
 
         Tcl_DStringInit(&ds);
-        str = Ns_GetBinaryString(objv[1], &length, &ds);
+        bytes = (const unsigned char *)Ns_GetBinaryString(charsObj, isBinary == 1, &nbytes, &ds);
+        //hexPrint("source ", bytes, (size_t)nbytes);
+
         Ns_CtxSHAInit(&ctx);
-        Ns_CtxSHAUpdate(&ctx, (const unsigned char *) str, (size_t) length);
+        Ns_CtxSHAUpdate(&ctx, bytes, (size_t) nbytes);
         Ns_CtxSHAFinal(&ctx, digest);
 
         Ns_HexString(digest, digestChars, 20, NS_TRUE);
@@ -1774,7 +1817,7 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 #ifdef S_ISSOCK
                                   S_ISSOCK(st.st_mode) ? "socket" :
 #endif
-                   ""), -1), 0);
+                   NS_EMPTY_STRING), -1), 0);
         }
         Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
     }
@@ -1874,7 +1917,7 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, const unsigned char *buf, size_t len)
         }
         memcpy(p, buf, t);
         byteReverse(ctx->in, 16);
-        MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+        MD5Transform(ctx->buf, (uint32_t *) ctx->in);
         buf += t;
         len -= t;
     }
@@ -1885,7 +1928,7 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, const unsigned char *buf, size_t len)
     while (len >= 64u) {
         memcpy(ctx->in, buf, 64u);
         byteReverse(ctx->in, 16);
-        MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+        MD5Transform(ctx->buf, (uint32_t *) ctx->in);
         buf += 64;
         len -= 64u;
     }
@@ -1937,7 +1980,7 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
          */
         memset(p, 0, count);
         byteReverse(ctx->in, 16);
-        MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+        MD5Transform(ctx->buf, (uint32_t *) ctx->in);
 
         /*
          * Now fill the next block with 56 bytes
@@ -1957,7 +2000,7 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
     words[14] = ctx->bits[0];
     words[15] = ctx->bits[1];
 
-    MD5Transform(ctx->buf, (uint8_t *) ctx->in);
+    MD5Transform(ctx->buf, (uint32_t *) ctx->in);
     byteReverse((unsigned char *) ctx->buf, 4);
     memcpy(digest, ctx->buf, 16u);
     /*
@@ -1990,12 +2033,12 @@ void Ns_CtxMD5Final(Ns_CtxMD5 *ctx, unsigned char digest[16])
  * the addition of 16 32-bit words (64 bytes) of new data.  MD5Update blocks the
  * data and converts bytes into longwords for this routine.
  */
-static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
+static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
 {
     register uint32_t a, b, c, d;
 
 #ifndef HIGHFIRST
-    const uint32_t *in = (const uint32_t *)block;
+    const uint32_t *in = block;
 #else
     uint32_t in[16];
 
@@ -2112,10 +2155,19 @@ static void MD5Transform(uint32_t buf[4], const uint8_t block[64])
 int
 NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int            result = TCL_OK;
+    int         result = TCL_OK, isBinary = 0;
+    Tcl_Obj    *charsObj;
+    Ns_ObjvSpec opts[] = {
+        {"-binary", Ns_ObjvBool, &isBinary, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"string", Ns_ObjvObj, &charsObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "string");
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
@@ -2127,7 +2179,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
         const char    *str;
 
         Tcl_DStringInit(&ds);
-        str = Ns_GetBinaryString(objv[1], &length, &ds);
+        str = Ns_GetBinaryString(charsObj, isBinary == 1, &length, &ds);
         Ns_CtxMD5Init(&ctx);
         Ns_CtxMD5Update(&ctx, (const unsigned char *) str, (size_t)length);
         Ns_CtxMD5Final(&ctx, digest);
@@ -2369,7 +2421,7 @@ int
 NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
-    char        *inputString;
+    char        *inputString = (char*)"";
     Ns_ObjvSpec  args[] = {
         {"string", Ns_ObjvString,  &inputString, NULL},
         {NULL, NULL, NULL, NULL}

@@ -388,11 +388,12 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
         break;
 
     case GETHANDLE: {
-        int            nhandles = 1;
-        Ns_Time       *timeoutPtr = NULL;
-        Ns_DbHandle  **handlesPtrPtr;
-        Ns_ReturnCode  status;
-        char          *poolString = NULL;
+        int               nhandles = 1;
+        Ns_Time          *timeoutPtr = NULL;
+        Ns_DbHandle     **handlesPtrPtr;
+        Ns_ReturnCode     status;
+        char             *poolString = NULL;
+        Ns_ObjvValueRange handlesRange = {1, INT_MAX};
         Ns_ObjvSpec    opts[] = {
             {"-timeout", Ns_ObjvTime,  &timeoutPtr, NULL},
             {"--",       Ns_ObjvBreak,  NULL,       NULL},
@@ -400,7 +401,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
         };
         Ns_ObjvSpec    args[] = {
             {"?pool",       Ns_ObjvString, &poolString, NULL},
-            {"?nhandles",   Ns_ObjvInt,    &nhandles,  NULL},
+            {"?nhandles",   Ns_ObjvInt,    &nhandles,  &handlesRange},
             {NULL, NULL, NULL, NULL}
         };
 
@@ -425,10 +426,6 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
 
         if (Ns_DbPoolAllowable(idataPtr->server, pool) == NS_FALSE) {
             Ns_TclPrintfResult(interp, "no access to pool: \"%s\"", pool);
-            return TCL_ERROR;
-        }
-        if (nhandles <= 0) {
-            Ns_TclPrintfResult(interp, "invalid nhandles %d: should be greater than 0.", nhandles);
             return TCL_ERROR;
         }
 
@@ -467,7 +464,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
           Ns_TclPrintfResult(interp,
                              "could not allocate %d handle%s from pool \"%s\"",
                              nhandles,
-                             nhandles > 1 ? "s" : "",
+                             nhandles > 1 ? "s" : NS_EMPTY_STRING,
                              pool);
           result = TCL_ERROR;
         }
@@ -559,7 +556,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
         }
         break;
 
-    case STATS: {
+    case STATS:
         if (objc != 2) {
             Tcl_WrongNumArgs(interp, 2, objv, NULL);
             result = TCL_ERROR;
@@ -567,24 +564,23 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
             result = TCL_ERROR;
         }
         break;
-    }
 
-    case POOLNAME:       /* fall through */
-    case PASSWORD:       /* fall through */
-    case USER:           /* fall through */
-    case DATASOURCE:     /* fall through */
-    case DISCONNECT:     /* fall through */
-    case DBTYPE:         /* fall through */
-    case DRIVER:         /* fall through */
-    case CANCEL:         /* fall through */
-    case BINDROW:        /* fall through */
-    case FLUSH:          /* fall through */
-    case RELEASEHANDLE:  /* fall through */
-    case RESETHANDLE:    /* fall through */
-    case CONNECTED:      /* fall through */
-    case SP_EXEC:        /* fall through */
-    case SP_GETPARAMS:   /* fall through */
-    case SP_RETURNCODE:  /* fall through */
+    case POOLNAME:       NS_FALL_THROUGH; /* fall through */
+    case PASSWORD:       NS_FALL_THROUGH; /* fall through */
+    case USER:           NS_FALL_THROUGH; /* fall through */
+    case DATASOURCE:     NS_FALL_THROUGH; /* fall through */
+    case DISCONNECT:     NS_FALL_THROUGH; /* fall through */
+    case DBTYPE:         NS_FALL_THROUGH; /* fall through */
+    case DRIVER:         NS_FALL_THROUGH; /* fall through */
+    case CANCEL:         NS_FALL_THROUGH; /* fall through */
+    case BINDROW:        NS_FALL_THROUGH; /* fall through */
+    case FLUSH:          NS_FALL_THROUGH; /* fall through */
+    case RELEASEHANDLE:  NS_FALL_THROUGH; /* fall through */
+    case RESETHANDLE:    NS_FALL_THROUGH; /* fall through */
+    case CONNECTED:      NS_FALL_THROUGH; /* fall through */
+    case SP_EXEC:        NS_FALL_THROUGH; /* fall through */
+    case SP_GETPARAMS:   NS_FALL_THROUGH; /* fall through */
+    case SP_RETURNCODE:  NS_FALL_THROUGH; /* fall through */
     case SESSIONID:
 
         if (objc < 3) {
@@ -721,13 +717,13 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
         }
         break;
 
-    case DML:
-    case GETROW:
-    case ONE_ROW:
-    case ZERO_OR_ONE_ROW:
-    case EXEC:
-    case SELECT:
-    case SP_START:
+    case DML:               NS_FALL_THROUGH; /* fall through */
+    case GETROW:            NS_FALL_THROUGH; /* fall through */
+    case ONE_ROW:           NS_FALL_THROUGH; /* fall through */
+    case ZERO_OR_ONE_ROW:   NS_FALL_THROUGH; /* fall through */
+    case EXEC:              NS_FALL_THROUGH; /* fall through */
+    case SELECT:            NS_FALL_THROUGH; /* fall through */
+    case SP_START:          NS_FALL_THROUGH; /* fall through */
     case INTERPRETSQLFILE:
 
         /*

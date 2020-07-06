@@ -35,7 +35,9 @@
 
 #include "db.h"
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
+
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
 
@@ -73,8 +75,8 @@ Ns_ModuleInit(const char *server, const char *UNUSED(module))
                                NS_TCL_TRACE_DEALLOCATE) != NS_OK) {
         status = NS_ERROR;
     } else {
-        Ns_RegisterProcInfo((Ns_Callback *)NsDbAddCmds, "nsdb:initinterp", NULL);
-        Ns_RegisterProcInfo((Ns_Callback *)NsDbReleaseHandles, "nsdb:releasehandles", NULL);
+        Ns_RegisterProcInfo((ns_funcptr_t)NsDbAddCmds, "nsdb:initinterp", NULL);
+        Ns_RegisterProcInfo((ns_funcptr_t)NsDbReleaseHandles, "nsdb:releasehandles", NULL);
     }
     return status;
 }

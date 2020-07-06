@@ -35,7 +35,9 @@
  */
 
 #include "ns.h"
-NS_EXPORT int Ns_ModuleVersion = 1;
+
+NS_EXTERN const int Ns_ModuleVersion;
+NS_EXPORT const int Ns_ModuleVersion = 1;
 
 #ifdef HAVE_OPENSSL_EVP_H
 
@@ -45,13 +47,6 @@ NS_EXPORT int Ns_ModuleVersion = 1;
 #include <openssl/rand.h>
 
 #define NSSSL_VERSION  "2.1"
-
-/*
- * The maximum chunk size from TLS is 2^14 => 16384 (see RFC 5246). OpenSSL
- * can't send more than this number of bytes in one attempt.
- */
-#define CHUNK_SIZE 16384
-
 
 NS_EXTERN bool NsTclObjIsByteArray(const Tcl_Obj *objPtr);
 
@@ -122,6 +117,33 @@ SSL_infoCB(const SSL *ssl, int where, int UNUSED(ret)) {
 #endif
 static DH *get_dh512(void);
 static DH *get_dh1024(void);
+
+#if defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x20700000L
+/*
+ * Compatibility function for libressl < 2.7; DH_set0_pqg is used just by the
+ * Diffie-Hellman parameters in dhparams.h.
+ */
+static int
+DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g)
+{
+    if ((dh->p == NULL && p == NULL) || (dh->g == NULL && g == NULL)) {
+        return 0;
+    }
+    if (p != NULL) {
+        BN_free(dh->p);
+        dh->p = p;
+    }
+    if (q != NULL) {
+        BN_free(dh->q);
+        dh->q = q;
+    }
+    if (g != NULL) {
+        BN_free(dh->g);
+        dh->g = g;
+    }
+    return 1;
+}
+#endif /* LIBRESSL_VERSION_NUMBER */
 
 #include "dhparams.h"
 
@@ -286,7 +308,7 @@ Ns_ModuleInit(const char *server, const char *module)
      * Parse SSL protocols
      */
     {
-        long unsigned n = SSL_OP_ALL;
+        unsigned long n = SSL_OP_ALL;
 
         value = Ns_ConfigGetValue(path, "protocols");
         if (value != NULL) {
@@ -363,7 +385,7 @@ Ns_ModuleInit(const char *server, const char *module)
 
         Ns_Log(Notice, "nsssl: Seeding OpenSSL's PRNG");
         for (n = 0; n < 1024; n++) {
-            ds.string[n] = (char)Ns_DRand();
+            ds.string[n] = (char)(Ns_DRand()*255);
         }
         RAND_seed(ds.string, 1024);
     }
@@ -397,13 +419,13 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 {
     NS_SOCKET sock;
 
-    sock = Ns_SockListenEx((char*)address, port, backlog, reuseport);
+    sock = Ns_SockListenEx(address, port, backlog, reuseport);
     if (sock != NS_INVALID_SOCKET) {
         SSLDriver *cfg = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
         if (cfg->deferaccept) {
-          Ns_SockSetDeferAccept(sock, driver->recvwait);
+            Ns_SockSetDeferAccept(sock, driver->recvwait);
         }
     }
     return sock;
@@ -429,8 +451,8 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 static NS_DRIVER_ACCEPT_STATUS
 Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, socklen_t *socklenPtr)
 {
-    SSLDriver *drvPtr = sock->driver->arg;
-    SSLContext *sslPtr = sock->arg;
+    SSLDriver  *drvPtr = sock->driver->arg;
+    SSLContext *sslCtx = sock->arg;
 
     sock->sock = Ns_SockAccept(listensock, sockaddrPtr, socklenPtr);
     if (sock->sock != NS_INVALID_SOCKET) {
@@ -445,24 +467,24 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, sockle
 #endif
         (void)Ns_SockSetNonBlocking(sock->sock);
 
-        if (sslPtr == NULL) {
-            sslPtr = ns_calloc(1, sizeof(SSLContext));
-            sslPtr->ssl = SSL_new(drvPtr->ctx);
-            if (sslPtr->ssl == NULL) {
+        if (sslCtx == NULL) {
+            sslCtx = ns_calloc(1, sizeof(SSLContext));
+            sslCtx->ssl = SSL_new(drvPtr->ctx);
+            if (sslCtx->ssl == NULL) {
                 char ipString[NS_IPADDR_SIZE];
                 Ns_Log(Error, "%d: SSL session init error for %s: [%s]",
                        sock->sock,
                        ns_inet_ntop((struct sockaddr *)&(sock->sa), ipString, sizeof(ipString)),
                        strerror(errno));
-                ns_free(sslPtr);
+                ns_free(sslCtx);
                 return NS_DRIVER_ACCEPT_ERROR;
             }
-            sock->arg = sslPtr;
-            SSL_set_fd(sslPtr->ssl, sock->sock);
-            SSL_set_mode(sslPtr->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
-            SSL_set_accept_state(sslPtr->ssl);
-            SSL_set_app_data(sslPtr->ssl, drvPtr);
-            SSL_set_tmp_dh_callback(sslPtr->ssl, SSL_dhCB);
+            sock->arg = sslCtx;
+            SSL_set_fd(sslCtx->ssl, sock->sock);
+            SSL_set_mode(sslCtx->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+            SSL_set_accept_state(sslCtx->ssl);
+            SSL_set_app_data(sslCtx->ssl, drvPtr);
+            SSL_set_tmp_dh_callback(sslCtx->ssl, SSL_dhCB);
         }
         return NS_DRIVER_ACCEPT_DATA;
     }
@@ -478,7 +500,13 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, sockle
  *      Receive data into given buffers.
  *
  * Results:
- *      Total number of bytes received or -1 on error or timeout.
+ *      Total number of bytes received or -1 on error. The return
+ *      value will be 0 when the peer has performed an orderly shutdown. The
+ *      resulting sockstate has one of the following codes:
+ *
+ *      NS_SOCK_READ, NS_SOCK_DONE, NS_SOCK_AGAIN, NS_SOCK_EXCEPTION
+ *
+ *      No NS_SOCK_TIMEOUT handling
  *
  * Side effects:
  *      None
@@ -487,70 +515,53 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, sockle
  */
 
 static ssize_t
-Recv(Ns_Sock *sock, struct iovec *bufs, int UNUSED(nbufs), Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
+Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
+     Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
 {
-    SSLDriver *drvPtr = sock->driver->arg;
-    SSLContext *sslPtr = sock->arg;
-    int got = 0;
-    char *p = (char *)bufs->iov_base;
+    SSLDriver   *drvPtr = sock->driver->arg;
+    SSLContext  *sslCtx = sock->arg;
+    Ns_SockState sockState = NS_SOCK_NONE;
+    ssize_t      nRead = 0;
 
     /*
      * Verify client certificate, driver may require valid cert
      */
 
-    if (drvPtr->verify && sslPtr->verified == 0) {
+    if (drvPtr->verify && sslCtx->verified == 0) {
         X509 *peer;
-        if ((peer = SSL_get_peer_certificate(sslPtr->ssl))) {
-             X509_free(peer);
-             if (SSL_get_verify_result(sslPtr->ssl) != X509_V_OK) {
-                 char ipString[NS_IPADDR_SIZE];
-                 Ns_Log(Error, "nsssl: client certificate not valid by %s",
-                        ns_inet_ntop((struct sockaddr *)&(sock->sa), ipString, sizeof(ipString)));
-                 return NS_ERROR;
-             }
+
+        peer = SSL_get_peer_certificate(sslCtx->ssl);
+
+        if (peer != NULL) {
+            X509_free(peer);
+            if (SSL_get_verify_result(sslCtx->ssl) != X509_V_OK) {
+                char ipString[NS_IPADDR_SIZE];
+
+                Ns_Log(Error, "nsssl: client certificate not valid by %s",
+                       ns_inet_ntop((struct sockaddr *)&(sock->sa), ipString,
+                                    sizeof(ipString)));
+                nRead = -1;
+                sockState = NS_SOCK_EXCEPTION;
+            }
         } else {
             char ipString[NS_IPADDR_SIZE];
+
             Ns_Log(Error, "nsssl: no client certificate provided by %s",
-                   ns_inet_ntop((struct sockaddr *)&(sock->sa), ipString, sizeof(ipString)));
-            return NS_ERROR;
+                   ns_inet_ntop((struct sockaddr *)&(sock->sa), ipString,
+                                sizeof(ipString)));
+            nRead = -1;
+            sockState = NS_SOCK_EXCEPTION;
         }
-        sslPtr->verified = 1;
+        sslCtx->verified = 1;
     }
 
-    while (1) {
-        int err, n;
-
-        ERR_clear_error();
-        n = SSL_read(sslPtr->ssl, p + got, (int)bufs->iov_len - got);
-        err = SSL_get_error(sslPtr->ssl, n);
-
-        switch (err) {
-        case SSL_ERROR_NONE:
-            if (n < 0) {
-                fprintf(stderr, "### SSL_read should not happen\n");
-                return n;
-            }
-            /*fprintf(stderr, "### SSL_read %d pending %d\n", n, SSL_pending(sslPtr->ssl));*/
-            got += n;
-            if (n == 1 && got < (int)bufs->iov_len) {
-                /*fprintf(stderr, "### SSL retry after read of %d bytes\n", n);*/
-                continue;
-            }
-            /*Ns_Log(Notice, "### SSL_read %d got <%s>", got, p);*/
-            return got;
-
-        case SSL_ERROR_WANT_READ:
-            /*fprintf(stderr, "### SSL_read WANT_READ returns %d\n", got);*/
-            return got;
-
-        default:
-            /*fprintf(stderr, "### SSL_read error\n");*/
-            SSL_set_shutdown(sslPtr->ssl, SSL_RECEIVED_SHUTDOWN);
-            return -1;
-        }
+    if (nRead > -1) {
+        nRead = Ns_SSLRecvBufs2(sslCtx->ssl, bufs, nbufs, &sockState);
     }
 
-    return -1;
+    Ns_SockSetReceiveState(sock, sockState);
+
+    return nRead;
 }
 
 
@@ -562,7 +573,7 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int UNUSED(nbufs), Ns_Time *UNUSED(timeo
  *      Send data from given buffers.
  *
  * Results:
- *      Total number of bytes sent or -1 on error or timeout.
+ *      Total number of bytes sent, -1 on error.
  *
  * Side effects:
  *      None
@@ -574,33 +585,34 @@ static ssize_t
 Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
      const Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
 {
-    SSLContext *sslPtr = sock->arg;
-    int         rc, size;
+    SSLContext *sslCtx = sock->arg;
+    ssize_t     sent = 0;
     bool        decork;
 
-    size = 0;
     decork = Ns_SockCork(sock, NS_TRUE);
+
     while (nbufs > 0) {
         if (bufs->iov_len > 0) {
+            int rc;
             ERR_clear_error();
-            rc = SSL_write(sslPtr->ssl, bufs->iov_base, (int)bufs->iov_len);
-
-            if (rc < 0) {
-                if (SSL_get_error(sslPtr->ssl, rc) == SSL_ERROR_WANT_WRITE) {
-                    Ns_Time timeout = { sock->driver->sendwait, 0 };
-                    if (Ns_SockTimedWait(sock->sock, NS_SOCK_WRITE, &timeout) == NS_OK) {
-                        continue;
-                    }
+            rc = SSL_write(sslCtx->ssl, bufs->iov_base, (int)bufs->iov_len);
+            if (rc <= 0) {
+                /*fprintf(stderr, "### SSL_write %p len %d rc %d SSL_get_error => %d: %s\n",
+                        (void*)bufs->iov_base, (int)bufs->iov_len,
+                        rc, SSL_get_error(sslCtx->ssl, rc),
+                        ERR_error_string(ERR_get_error(), NULL));*/
+                if (SSL_get_error(sslCtx->ssl, rc) != SSL_ERROR_WANT_WRITE) {
+                    SSL_set_shutdown(sslCtx->ssl, SSL_RECEIVED_SHUTDOWN);
+                    sent = -1;
+                } else {
+                    sent = 0;
                 }
-                if (decork) {
-                    Ns_SockCork(sock, NS_FALSE);
-                }
-                SSL_set_shutdown(sslPtr->ssl, SSL_RECEIVED_SHUTDOWN);
-                return -1;
+                break;
             }
-            size += rc;
+            sent += (ssize_t)rc;
             if (rc < (int)bufs->iov_len) {
-                Ns_Log(Debug, "SSL: partial write, wanted %" PRIuz " wrote %d", bufs->iov_len, rc);
+                Ns_Log(Debug, "SSL: partial write, wanted %" PRIuz " wrote %d",
+                       bufs->iov_len, rc);
                 break;
             }
         }
@@ -611,7 +623,8 @@ Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
     if (decork) {
         Ns_SockCork(sock, NS_FALSE);
     }
-    return size;
+
+    return sent;
 }
 
 
@@ -634,10 +647,10 @@ Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
 static bool
 Keep(Ns_Sock *sock)
 {
-    SSLContext *sslPtr = sock->arg;
+    SSLContext *sslCtx = sock->arg;
 
-    if (SSL_get_shutdown(sslPtr->ssl) == 0) {
-        BIO *bio = SSL_get_wbio(sslPtr->ssl);
+    if (SSL_get_shutdown(sslCtx->ssl) == 0) {
+        BIO *bio = SSL_get_wbio(sslCtx->ssl);
         if (bio != NULL && BIO_flush(bio) == 1) {
             return NS_TRUE;
         }
@@ -665,32 +678,50 @@ Keep(Ns_Sock *sock)
 static void
 Close(Ns_Sock *sock)
 {
-    SSLContext *sslPtr = sock->arg;
+    SSLContext *sslCtx = sock->arg;
 
-    if (sslPtr != NULL) {
+    if (sslCtx != NULL) {
         int r;
 
-        r = SSL_shutdown(sslPtr->ssl);
-        if (r == 0) {
-            /*
-             * The first shutdown did not work, so try again. However, to be
-             * sure that SSL_shutdown() does not block, issue a socket
-             * shutdown() command first.
-             */
-            shutdown(SSL_get_fd(sslPtr->ssl), SHUT_RDWR);
-            r = SSL_shutdown(sslPtr->ssl);
-        }
-        if (r == -1) {
-            unsigned long err = ERR_get_error();
+        /*
+         * SSL_shutdown() must not be called if a previous fatal error has
+         * occurred on a connection i.e. if SSL_get_error() has returned
+         * SSL_ERROR_SYSCALL or SSL_ERROR_SSL.
+         */
+        if (!Ns_SockInErrorState(sock)) {
+            int fd = SSL_get_fd(sslCtx->ssl);
 
-            if (err != 0) {
-                Ns_Log(Notice, "SSL_shutdown has failed: %s", ERR_error_string(err, NULL));
+            r = SSL_shutdown(sslCtx->ssl);
+            Ns_Log(Debug, "### SSL close(%d) err %d", fd, SSL_get_error(sslCtx->ssl, r));
+
+            if (r == 0) {
+                /*
+                 * The first shutdown did not work, so try again. However, to be
+                 * sure that SSL_shutdown() does not block, issue a socket
+                 * shutdown() command first.
+                 */
+                shutdown(SSL_get_fd(sslCtx->ssl), SHUT_RDWR);
+                r = SSL_shutdown(sslCtx->ssl);
             }
+            if (r == -1) {
+                unsigned long err = ERR_get_error();
+
+                if (err != 0) {
+                    char errorBuffer[256];
+
+                    Ns_Log(Notice, "SSL_shutdown(%d) has failed: %s",
+                           sock->sock, ERR_error_string(err, errorBuffer));
+                }
+            }
+        } else {
+            Ns_Log(Notice, "### SSL close(%d) avoid shutdown in error state",
+                   SSL_get_fd(sslCtx->ssl));
         }
-        SSL_free(sslPtr->ssl);
-        ns_free(sslPtr);
+        SSL_free(sslCtx->ssl);
+        ns_free(sslCtx);
     }
     if (sock->sock > -1) {
+        Ns_Log(Debug, "### SSL close(%d) socket",sock->sock);
         ns_sockclose(sock->sock);
         sock->sock = -1;
     }
@@ -762,15 +793,15 @@ static int
 ClientInit(Tcl_Interp *interp, Ns_Sock *sockPtr, NS_TLS_SSL_CTX *ctx)
 {
     SSL          *ssl;
-    SSLContext   *sslPtr;
+    SSLContext   *sslCtx;
     int           result;
 
     result = Ns_TLS_SSLConnect(interp, sockPtr->sock, ctx, NULL, &ssl);
 
     if (likely(result == TCL_OK)) {
-        sslPtr = ns_calloc(1, sizeof(SSLContext));
-        sslPtr->ssl = ssl;
-        sockPtr->arg = sslPtr;
+        sslCtx = ns_calloc(1, sizeof(SSLContext));
+        sslCtx->ssl = ssl;
+        sockPtr->arg = sslCtx;
     } else if (ssl != NULL) {
         SSL_shutdown(ssl);
         SSL_free(ssl);

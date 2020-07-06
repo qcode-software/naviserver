@@ -1,0 +1,229 @@
+
+<!DOCTYPE html><html><head>
+<title>admin-install - NaviServer Manual</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'admin-install.man' by tcllib/doctools with format 'html'
+   -->
+<!-- admin-install.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">admin-install(n) 4.99.19 manual &quot;NaviServer Manual&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>admin-install - NaviServer Installation Guide</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">Getting Started</a></li>
+<li class="doctools_section"><a href="#section3">Downloading</a></li>
+<li class="doctools_section"><a href="#section4">Building</a></li>
+<li class="doctools_section"><a href="#section5">Installing</a></li>
+<li class="doctools_section"><a href="#section6">Downloading and Installing Modules</a></li>
+<li class="doctools_section"><a href="#section7">Configuring</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>NaviServer is distributed in source form.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">Getting Started</a></h2>
+<p>NaviServer is reasonably portable and known to compile and run on the following platforms:</p>
+<ul class="doctools_itemized">
+<li><p>Linux 2.2 and better (x86 and others)</p></li>
+<li><p>FreeBSD 3.4 and better (x86 and others)</p></li>
+<li><p>OpenBSD 2.5 and better (x86 and others)</p></li>
+<li><p>Solaris 2.x and better (SPARC and x86)</p></li>
+<li><p>OpenSolaris (OmniOS, OpenIndiana)</p></li>
+<li><p>IRIX 6.x (mips)</p></li>
+<li><p>HP/UX 10 and 11 (hppa)</p></li>
+<li><p>DEC Tru64 &amp; OSF/1 4.0 and better (alpha)</p></li>
+<li><p>UnixWare 7.x and better (x86)</p></li>
+<li><p>Apple OS/X &quot;Darwin&quot;</p></li>
+</ul>
+<p>It's likely NaviServer can compile on other systems and/or higher or  lower
+numbered versions but this has not been extensively tested.  The primary
+development platforms for NaviServer is Linux.</p>
+<p>You will need a <em>C compiler</em>.  The best one to use is
+GNU GCC from <a href="http://www.gnu.org">http://www.gnu.org</a> and its mirrors or clang.
+NaviServer (and the included Tcl libraries) are written entirely in
+ANSI standard C.</p>
+<p><em>GNU make</em> is also required.  It is also available from the GNU web site.</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Downloading</a></h2>
+<p>Released versions are available from 
+<a href="http://sourceforge.net/project/showfiles.php?group_id=130646">SourceForge Download area</a></p>
+<p>Latest development version is available from Mercurial repository</p>
+<pre class="doctools_example">
+hg clone http://bitbucket.org/naviserver/naviserver
+cd naviserver
+./autogen.sh
+make install
+</pre>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">Building</a></h2>
+<p>We've tried to make building NaviServer as simple as possible.  On the supported
+platforms, simply type:</p>
+<pre class="doctools_example">
+./configure
+make
+</pre>
+<p>Some modules use third-party libraries.  If the library is missing, the NaviServer
+build will continue without error -- it just will not build the offending
+module.</p>
+<p>Note: If you have any problems building, the two files <em>include/Makefile.global</em> and
+<em>include/Makefile.module</em> have all the information you need to change
+settings throughout the NaviServer environment.</p>
+<p>Two options to configure.sh script worth noting:</p>
+<ol class="doctools_enumerated">
+<li><p>--enable-symbols to enable debugging information to be compiled in for
+       easy debugging, otherwise it will be compiled with optimization enabled and
+       that will prevent from effective troubleshooting in case of server crash</p></li>
+</ol>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Installing</a></h2>
+<p>Type &quot;<em>make install</em>&quot; to make a production server.  This
+will create an installation directory at <em>/usr/local/ns/</em>, populate
+the directories with various  startup files and  configuration files, copy
+the binaries to the <em>/usr/local/ns/bin</em> directory, and finish.  To install
+confidence tests, type &quot;make install-tests&quot; and they will appear in the
+tests/ directory of your server's pageroot.  The default location for installations
+can be overridden by typing &quot;<em>gmake install PREFIX=/your/directory/</em>&quot;.</p>
+</div>
+<div id="section6" class="doctools_section"><h2><a name="section6">Downloading and Installing Modules</a></h2>
+<p>To download and install additional modules:</p>
+<pre class="doctools_example">
+  hg clone http://bitbucket.org/naviserver/modulename
+  cd modulename
+  make install
+</pre>
+<p>The steps above assume, that NaviServer is installed at the standard
+place at <i class="term">/usr/local/ns/</i>. If this is not the case in your
+installation, please provide the location to make via parameter
+<i class="term">NAVISERVER</i>.</p>
+<pre class="doctools_example">
+  make NAVISERVER=PATH_TO_LOCATION install
+</pre>
+<p>At this moment the following modules are available:</p>
+<p><em>nsaccess nsclamav nsdbi nsdbmysql nsdhcpd nsicmp nsmemcache nssip nsstats nsvfs nsaspell nsconf nsdbilite nsdbpg nsdns nsimap nsphp nssmtpd nssyslogd nszlib nsauthpam nsconfigrw nsdbimy nsdbsqlite nsexpat nsldapd nsradiusd nssnmp nstftpd nschartdir nsdbbdb nsdbipg nsdbtds nsgdchart nsloopctl nsrtsp nsssl nsoracle nsudp</em></p>
+<p>To check what modules are available go to http://bitbucket.org/naviserver/.</p>
+<p>Some of the modules have external dependencies such as include
+directories or paths to libraries, so please look into module's README
+file for any additional information.</p>
+</div>
+<div id="section7" class="doctools_section"><h2><a name="section7">Configuring</a></h2>
+<p>The installation directory contains several configuration files under
+/usr/local/ns/conf installation directory.
+A simple configuration to start with is nsd-config.tcl, which is used
+below. A more complete reference of the available parameter is
+sample-config, a very short configuration file is simple-config.tcl.
+The most basic configuration parameters are the port and listening
+addresses, which are set in nsd-config.tcl as follows:</p>
+<ol class="doctools_enumerated">
+  
+<li><p>Listen for HTTP connections on your computer's primary
+        interface at port 8080.  To use another port and/or select
+        interfaces, you can set the <i class="term">port</i> and <i class="term">address</i>
+        parameters. For details how to configure the networking setup
+	of NaviServer, see <i class="term"><a href="../../index.html#key12">nssock</a></i> (for HTTP) and <i class="term"><a href="../../index.html#key13">nsssl</a></i>
+        (for HTTPS).</p></li>
+<li><p>Check security settings for <i class="term"><a href="../../index.html#key3">nscp</a></i> (Control Port module)
+  and listen on localhost:4080 if they are set.</p></li>
+</ol>
+<p>Note: Some modules can be disabled in the sample nsd.tcl for security
+reasons. They are <em>nscp</em> and <em>nsperm</em>. These modules can
+be disables by e.g. commenting out the respective lines in the
+&quot;ns/server/default/modules&quot; section.  These modules are not required
+to run a server unless you want to use the Control Port and/or the
+Permissions module, respectively.  Before using them in a production
+environment, change the passwords and default permissions by following
+the instructions in the NaviServer documentation.</p>
+<p>Although you must be root to start NaviServer on port 80, the server
+itself must change to a regular user shortly after initialization.
+You either need to start the server as a non-root user (in which case
+you will not be able to listen for connections on privileged ports
+such as port 80) or you must include a <em>-u user</em> command line
+flag to which the server will setuid(2) after startup. We assume in
+the following sections that a user <em>nsadmin</em> and a group
+<em>nsadmin</em> were already created on the system, where NaviServer
+is installed.</p>
+<p>If NaviServer was installed with default nsd.tcl config file, just
+type</p>
+<pre class="doctools_example">
+  /usr/local/ns/bin/nsd
+</pre>
+<p>and it will be started in the background listening on port 8080.</p>
+<p>You may either specify a Unix username or numeric uid, e.g.:</p>
+<pre class="doctools_example">
+  bin/nsd -t conf/nsd-config.tcl -u <em>nsadmin</em>
+</pre>
+<p>For the mode  of operation, there are four choices: 
+<em>Foreground, Background, Background with watchdog</em> and <em>Inittab.</em></p>
+<ul class="doctools_itemized">
+<li><p>Foreground mode:</p>
+<pre class="doctools_example">
+  bin/nsd  -f -t conf/nsd-config.tcl -u <em>nsadmin</em>-g <em>nsadmin</em>
+</pre>
+<p>In <em>Foreground </em>mode , the server starts  and emits diagnostic log messages
+directly to the  terminal window.   This is useful for testing, configuration
+or debugging  a server.  To start the server in foreground mode use:</p>
+<p>To stop a server running the foreground simply press  interrupt on your keyboard
+(e.g., ctrl-c or the DEL key) which will send a SIGINT to the server and
+initiate shutdown.</p></li>
+<li><p>Background mode:</p>
+<pre class="doctools_example">
+  bin/nsd -t conf/nsd-config.tcl -u <em>nsadmin</em>-g <em>nsadmin</em>
+</pre>
+<p>In <em>Background </em>mode, the server  forks and disassociates from the terminal.
+Diagnostic messages  are  appended to log/server.log.  This  is a  typical
+daemon-style mode of operation.  To start the server in  background  mode use:</p>
+<p>To stop a server running  the background  you may either use the kill(2) command
+to send a SIGTERM to the background  process id(*) or the special -K flag of the
+nsd binary.  This flag  will determine the process id from a special marker
+file, send the signal and wait for shutdown, e.g.:</p></li>
+<li><p>Background mode with built-in watchdog:</p>
+<pre class="doctools_example">
+ /usr/local/ns/bin/nsd  -w -t /usr/local/ns/nsd-config.tcl -u <em>nsadmin</em> -g <em>nsadmin</em>
+</pre>
+<p>In <em>Watchdog</em> mode, the server is restarted automatically when
+it crashes independent from the respawn support from the operating system.</p></li>
+<li><p>Inittab mode (non-forking mode):</p>
+<pre class="doctools_example">
+  w1:23:respawn:/usr/local/ns/bin/nsd  -i -t /usr/local/ns/nsd-config.tcl -u <em>nsadmin</em> -g <em>nsadmin</em>
+</pre>
+<p>In <em>Inittab</em> mode, the server runs in the foreground  but opens the
+log file as with background mode.  This mode is used  when the server is
+started from an entry in the &quot;/etc/inittab&quot; file.   The benefit of this mode
+is that init will restart the server automatically.</p>
+<p>Furthermore, the inittab mode is needed as well on macOS when
+NaviServer is started via launchd (controlled via launchctl).</p></li>
+</ul>
+<p><em>Note</em>: While running NaviServer on some Unix platforms (e.g.,
+Linux, SGI), you'll notice multiple nsd processes.  This is normal and
+represents the individual threads.  The main process id can be
+determined by checking the log/nsd.pid file or looking at the last few
+entries of the server log (per default &quot;logs/error.log&quot;, each of which
+will include the process id and thread id in the form [pid.tid].
+You can also telnet to the control port and type &quot;ns_info pid&quot;.</p>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="admin-maintenance.html">admin-maintenance</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key5">command-line-options</a>, <a href="../../index.html#key3">nscp</a>, <a href="../../index.html#key6">nsd</a>, <a href="../../index.html#key12">nssock</a>, <a href="../../index.html#key13">nsssl</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

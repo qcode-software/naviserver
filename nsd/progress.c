@@ -71,7 +71,7 @@ static Ns_Mutex      lock;            /* Lock around table and Progress struct. 
  *
  * NsConfigProgress --
  *
- *      Initialise the progress susbsystem at server startup.
+ *      Initialise the progress subsystem at server startup.
  *
  * Results:
  *      None.
@@ -86,7 +86,7 @@ void
 NsConfigProgress(void)
 {
     progressMinSize = (size_t)
-        Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "progressminsize", 0, 0, INT_MAX);
+        Ns_ConfigMemUnitRange(NS_CONFIG_PARAMETERS, "progressminsize", 0, 0, INT_MAX);
 
     if (progressMinSize > 0u) {
         Ns_SlsAlloc(&slot, ResetProgress);

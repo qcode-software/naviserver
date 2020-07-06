@@ -66,7 +66,7 @@ can be used to control the eventual response type).
 
 An ADP can include additional ADP files with the  ns_adp_include
 command or evaluate ADP text/script code directly with
- ns_adp_eval . This capability enables are large degree
+[cmd ns_adp_parse]. This capability enables are large degree
 of reuse of presentation and code between applications. Each
 such included file or ADP string evaluation is performed in
 it's own  call frame  similar to a Tcl procedure
@@ -81,7 +81,7 @@ stack to the underlying C-level request processing code.
 
 NaviServer can be configured to execute ADP's placed with other static
 files within a virtual server's pages directory via
-the  map  parameter in the  adp  server config
+the  map  parameter in the ADP server config
 section, for example:
 
 [example_begin]
@@ -140,9 +140,8 @@ individual ADP execution stream via the  ns_adp_ctl.
 [para]
 
 By default, each Tcl block is independent of other blocks and must be a
-complete script. In particular, this means that conditional
-code cannot span blocks, e.g., the following does not work
-by default:
+complete script. As a consequence, no conditional
+code can spanother ADP blocks. E.g., the following does not work:
 
 [example_begin]
 
@@ -212,8 +211,8 @@ enabled to support compression of ADP output.
 [example_begin]
 
    ns_section ns/server/server1/adp
-   ns_param gzip true ;# Enable ADP output compression.
-   ns_param bufsize 102400; # Buffer size, 1meg default.
+   ns_param gzip true     ;# Enable ADP output compression.
+   ns_param bufsize 1MB   ;# Buffer size, 1MB default.
 
 [example_end]
 
@@ -254,7 +253,7 @@ The path of an ADP page which is run before the requested ADP page.
 Default: none.
 
 [def errorpage]
-The path of an ADP page which is run when an code within an ADP raises an error
+The path of an ADP page which is run when a code within an ADP raises an error
 which is not caught. Default: none.
 
 [list_end]
@@ -270,11 +269,15 @@ The following parameters control memory usage.
 The size in bytes of the per-virtual-server page cache. This is the cache of ADP
 pages as read from disk and converted to an efficient form for evaluation. In
 addition, a separate cache of script blocks is kept per-thread, which is not
-controlled by this parameter. Default: 5MB.
+controlled by this parameter.
+The value can be specified in memory units (kB, MB, GB, KiB, MiB, GiB).
+Default: 5MB.
 
 [def bufsize]
 The size in bytes of the ADP output buffer. The buffer is flushed to the client
-when full, or each time a new chunk is appended when streaming is enabled.
+when full, or each time a new chunk is appended when streaming is
+enabled.
+The value can be specified in memory units (kB, MB, GB, KiB, MiB, GiB).
 Default: 1MB.
 
 [def tracesize]
@@ -351,7 +354,7 @@ Default: [cmd ns_adp_debuginit].
 [list_end]
 
 
-[see_also ns_adp_include ns_adp_puts ns_adp_ctl]
+[see_also ns_adp ns_adp_include ns_adp_puts ns_adp_ctl ns_adp_register ns_adp_parse ns_adp_abort]
 
 [keywords ADP gzip ns_conn configuration]
 

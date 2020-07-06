@@ -1,0 +1,204 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_info - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_info.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_info.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_info(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_info - Return information about various aspects of the running NaviServer</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_info</b> <i class="arg">option</i> <span class="opt">?<i class="arg">arg arg ...</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_info address</b></a></li>
+<li><a href="#3"><b class="cmd">ns_info argv0</b></a></li>
+<li><a href="#4"><b class="cmd">ns_info boottime</b></a></li>
+<li><a href="#5"><b class="cmd">ns_info builddate</b></a></li>
+<li><a href="#6"><b class="cmd">ns_info callbacks</b></a></li>
+<li><a href="#7"><b class="cmd">ns_info config</b></a></li>
+<li><a href="#8"><b class="cmd">ns_info home</b></a></li>
+<li><a href="#9"><b class="cmd">ns_info hostname</b></a></li>
+<li><a href="#10"><b class="cmd">ns_info ipv6</b></a></li>
+<li><a href="#11"><b class="cmd">ns_info locks</b></a></li>
+<li><a href="#12"><b class="cmd">ns_info log</b></a></li>
+<li><a href="#13"><b class="cmd">ns_info major</b></a></li>
+<li><a href="#14"><b class="cmd">ns_info minor</b></a></li>
+<li><a href="#15"><b class="cmd">ns_info mimetypes</b></a></li>
+<li><a href="#16"><b class="cmd">ns_info name</b></a></li>
+<li><a href="#17"><b class="cmd">ns_info nsd</b></a></li>
+<li><a href="#18"><b class="cmd">ns_info patchlevel</b></a></li>
+<li><a href="#19"><b class="cmd">ns_info pid</b></a></li>
+<li><a href="#20"><b class="cmd">ns_info pools</b></a></li>
+<li><a href="#21"><b class="cmd">ns_info scheduled</b></a></li>
+<li><a href="#22"><b class="cmd">ns_info server</b></a></li>
+<li><a href="#23"><b class="cmd">ns_info servers</b></a></li>
+<li><a href="#24"><b class="cmd">ns_info shutdownpending</b></a></li>
+<li><a href="#25"><b class="cmd">ns_info sockcallbacks</b></a></li>
+<li><a href="#26"><b class="cmd">ns_info ssl</b></a></li>
+<li><a href="#27"><b class="cmd">ns_info started</b></a></li>
+<li><a href="#28"><b class="cmd">ns_info tag</b></a></li>
+<li><a href="#29"><b class="cmd">ns_info threads</b></a></li>
+<li><a href="#30"><b class="cmd">ns_info uptime</b></a></li>
+<li><a href="#31"><b class="cmd">ns_info version</b></a></li>
+<li><a href="#32"><b class="cmd">ns_info winnt</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides information about the current state of the running NaviServer.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_info</b> <i class="arg">option</i> <span class="opt">?<i class="arg">arg arg ...</i>?</span></a></dt>
+<dd></dd>
+</dl>
+<dl class="doctools_definitions">
+<dt><a name="2"><b class="cmd">ns_info address</b></a></dt>
+<dd><p>Returns the primary IP address of the hostname of this machine, or
+the unspecified IP address (for IPv4 &quot;0.0.0.0&quot;, for IPv6 &quot;::&quot;) if
+unable to determine.</p></dd>
+<dt><a name="3"><b class="cmd">ns_info argv0</b></a></dt>
+<dd><p>Returns file path to executable binary</p></dd>
+<dt><a name="4"><b class="cmd">ns_info boottime</b></a></dt>
+<dd><p>Returns the time in epoch seconds since the current server was started</p></dd>
+<dt><a name="5"><b class="cmd">ns_info builddate</b></a></dt>
+<dd><p>Returns the date and time at which the current server was compiled, e.g.: &quot;Jul 20 2004 at 14:57:20&quot;</p></dd>
+<dt><a name="6"><b class="cmd">ns_info callbacks</b></a></dt>
+<dd><p>Returns all registered startup/exit/shutdown callbacks</p></dd>
+<dt><a name="7"><b class="cmd">ns_info config</b></a></dt>
+<dd><p>Returns the absolute path to the config file used to start the server</p></dd>
+<dt><a name="8"><b class="cmd">ns_info home</b></a></dt>
+<dd><p>Returns the current working directory of the server</p></dd>
+<dt><a name="9"><b class="cmd">ns_info hostname</b></a></dt>
+<dd><p>Returns the value of gethostname(), or &quot;localhost&quot; if that fails</p></dd>
+<dt><a name="10"><b class="cmd">ns_info ipv6</b></a></dt>
+<dd><p>Returns information if the binary was compiled with IPv6 support.</p></dd>
+<dt><a name="11"><b class="cmd">ns_info locks</b></a></dt>
+<dd><p>Lists the mutexes that currently exist.  A 5-element list is returned
+for each mutex: : mutex name, {}, unique id, lock counter, busy counter.</p></dd>
+<dt><a name="12"><b class="cmd">ns_info log</b></a></dt>
+<dd><p>Returns the name of the error log file. The name is specified by the
+&quot;serverlog&quot; parameter in the &quot;ns/parameters&quot; section.</p></dd>
+<dt><a name="13"><b class="cmd">ns_info major</b></a></dt>
+<dd><p>Returns the major version number.</p></dd>
+<dt><a name="14"><b class="cmd">ns_info minor</b></a></dt>
+<dd><p>Returns the minor version number.</p></dd>
+<dt><a name="15"><b class="cmd">ns_info mimetypes</b></a></dt>
+<dd><p>Returns the current mime-type mappings.</p></dd>
+<dt><a name="16"><b class="cmd">ns_info name</b></a></dt>
+<dd><p>Returns the name of the server implementation, i.e. &quot;NaviServer&quot;.</p></dd>
+<dt><a name="17"><b class="cmd">ns_info nsd</b></a></dt>
+<dd><p>Returns absolute  path and name of the nsd binary, which is currently
+executed.</p></dd>
+<dt><a name="18"><b class="cmd">ns_info patchlevel</b></a></dt>
+<dd><p>Returns the full version number of the server (including patch level).</p></dd>
+<dt><a name="19"><b class="cmd">ns_info pid</b></a></dt>
+<dd><p>Returns the process id of the running nsd process.</p></dd>
+<dt><a name="20"><b class="cmd">ns_info pools</b></a></dt>
+<dd><p>Returns usage info from the memory pools (returned by
+Tcl_GetMemoryInfo() if configured).</p></dd>
+<dt><a name="21"><b class="cmd">ns_info scheduled</b></a></dt>
+<dd><p>Returns the list of the scheduled procedures in the current process
+(all virtual servers). Each list element is itself a 9-element list of
+{id, flags, interval, nextqueue, lastqueue, laststart, lastend,
+procname, arg}:</p>
+<ul class="doctools_itemized">
+    
+<li><p>id - unique id returned by the scheduling command</p></li>
+<li><p>flags  -  Bitmap of one or more of:</p>
+<ul class="doctools_itemized">
+        
+<li><p>1 -- NS_SCHED_THREAD</p></li>
+<li><p>2 -- NS_SCHED_ONCE</p></li>
+<li><p>4 -- NS_SCHED_DAILY</p></li>
+<li><p>8 -- NS_SCHED_WEEKLY</p></li>
+<li><p>16 - NS_SCHED_PAUSED</p></li>
+<li><p>32 - NS_SCHED_RUNNING</p></li>
+</ul>
+</li>
+<li><p>interval - interval specification (i.e. seconds from
+    midnight for daily schedule)</p></li>
+<li><p>nextqueue - Next time to queue for run</p></li>
+<li><p>lastqueue - Last time queued for run</p></li>
+<li><p>laststart - Last time run started</p></li>
+<li><p>lastend - Last time run finished</p></li>
+<li><p>procname - for tasks scheduled with ns_schedule_proc this
+    will be ns:tclschedproc and arg will be the actual scheduled Tcl
+    script.</p></li>
+<li><p>arg - client data</p></li>
+</ul></dd>
+<dt><a name="22"><b class="cmd">ns_info server</b></a></dt>
+<dd><p>Returns the name of the current virtual server.</p></dd>
+<dt><a name="23"><b class="cmd">ns_info servers</b></a></dt>
+<dd><p>Returns the names of all virtual servers in the current nsd process.</p></dd>
+<dt><a name="24"><b class="cmd">ns_info shutdownpending</b></a></dt>
+<dd><p>Returns 1 if shutdown is pending, 0 otherwise.</p></dd>
+<dt><a name="25"><b class="cmd">ns_info sockcallbacks</b></a></dt>
+<dd><p>Returns returns a list of all socket callbacks such as the socket
+listening callback for the nscp module. Each list element is itself a
+4-element list like this:</p>
+<pre class="doctools_example">
+ {11 {read exit} nscp {127.0.0.1 9999} 0}
+</pre>
+</dd>
+<dt><a name="26"><b class="cmd">ns_info ssl</b></a></dt>
+<dd><p>Returns information if the binary was compiled with OpenSSL support.</p></dd>
+<dt><a name="27"><b class="cmd">ns_info started</b></a></dt>
+<dd><p>Returns 1 if the server is fully started, 0 otherwise.</p></dd>
+<dt><a name="28"><b class="cmd">ns_info tag</b></a></dt>
+<dd><p>Returns the most detailed revision info, which might be shipped with
+the tar file or obtained from mercurial.</p></dd>
+<dt><a name="29"><b class="cmd">ns_info threads</b></a></dt>
+<dd><p>Returns a list of all threads in the current process (all virtual
+servers). Each list element is itself a 7-element list of {name,
+parent, id, flag, ctime, procname, arg}:</p>
+<ul class="doctools_itemized">
+    
+<li><p>name - current name of the thread</p></li>
+<li><p>parent - parent thread name</p></li>
+<li><p>id - id of the thread</p></li>
+<li><p>flag - 1 if this is a detached thread, 0 otherwise</p></li>
+<li><p>ctime - Thread creation time</p></li>
+<li><p>procname - for conn threads this will be ns:connthread</p></li>
+<li><p>arg - client data - for a running conn thread arg will be a 7-element list in the format returned by ns_server all - {conn id, peeraddr, state, method, url, running time, bytes sent}, where state is either &quot;running&quot; or &quot;queued&quot;: {cns25 127.0.0.1 running POST /ds/shell 0.5158 0}</p></li>
+</ul></dd>
+<dt><a name="30"><b class="cmd">ns_info uptime</b></a></dt>
+<dd><p>Returns the number of seconds since the nsd process started.</p></dd>
+<dt><a name="31"><b class="cmd">ns_info version</b></a></dt>
+<dd><p>Returns the version number of the server (major and minor version
+number combined with a dot).</p></dd>
+<dt><a name="32"><b class="cmd">ns_info winnt</b></a></dt>
+<dd><p>Returns boolean whether running under windows NT.</p></dd>
+</dl>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key24">global built-in</a>, <a href="../../index.html#key126">introspection</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

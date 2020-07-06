@@ -1,0 +1,124 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_urlspace - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_urlspace.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_urlspace.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_urlspace(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_urlspace - Assign Application Data to URLs.</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">OPTIONS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_urlspace set</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">key</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">url</i> <i class="arg">value</i></a></li>
+<li><a href="#2"><b class="cmd">ns_urlspace get</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">key</i></b>?</span> <span class="opt">?<b class="option">-exact</b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">url</i> <i class="arg">value</i></a></li>
+<li><a href="#3"><b class="cmd">ns_urlspace list</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> 	</a></li>
+<li><a href="#4"><b class="cmd">ns_urlspace unset</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">key</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?<b class="option">-recurse</b>?</span> <i class="arg">url</i></a></li>
+<li><a href="#5"><b class="cmd">ns_urlspace new</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The command <b class="cmd">ns_urlspace</b> allows one to
+ assign/query/list/delete data to the trie representing the URL
+ space. The command supports filters and inheritance such one can
+ e.g. assign data to certain patterns of pages (e.g. to .adp-pages) or
+ such one can assign data to a higher level node which can be
+ inherited to all nodes below this one.</p>
+<p>The values assigned to the URL space are shared among all
+ threads of a server. So this command is somewhat similar to the set
+ of <b class="cmd"><a href="nsv.html">nsv</a></b> commands, but differs in its inheritance and filtering
+ capabilities.</p>
+<p>The command allows e.g. to implement access control (like the nsperm
+ module) on the Tcl level. Other applications are e.g. blacklisting of
+ certain parts of the URL tree from statistics, or to assign different
+ master templates to different parts of the URL tree.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_urlspace set</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">key</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">url</i> <i class="arg">value</i></a></dt>
+<dd><p>Assign a value to a node in the URL space. Per default,
+ the value is inherited to all sub-nodes, unless the option
+ <b class="option">-noinherit</b> is specified.</p></dd>
+<dt><a name="2"><b class="cmd">ns_urlspace get</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">key</i></b>?</span> <span class="opt">?<b class="option">-exact</b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">url</i> <i class="arg">value</i></a></dt>
+<dd><p>Retrieve a value from the URL space for a specified URL. Per
+ default, the returned values might be inherited from a parent node.
+ When the option <b class="option">-exact</b> is used, the inheritance is
+ deactivated, and only the values are returned directly assigned to
+ the URL. When the option <b class="option">-noinherit</b> is specified, only
+ values set with the <b class="option">-noinherit</b> flag are returned.</p></dd>
+<dt><a name="3"><b class="cmd">ns_urlspace list</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> 	</a></dt>
+<dd><p>List the values assigned to the URL space. The command returns a list
+of lists, containing for every item the 5 elements</p>
+<ul class="doctools_itemized">
+	
+<li><p>key</p></li>
+<li><p>path</p></li>
+<li><p>filter pattern</p></li>
+<li><p>the constants <b class="const">inherit</b> or <b class="const">noinherit</b></p></li>
+<li><p>the assigned data</p></li>
+</ul></dd>
+<dt><a name="4"><b class="cmd">ns_urlspace unset</b> <span class="opt">?<b class="option">-id <i class="arg">id</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">key</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?<b class="option">-recurse</b>?</span> <i class="arg">url</i></a></dt>
+<dd><p>Unset a value for a URL for the given or default key. This command
+undoes the effects of <b class="cmd">ns_urlspace set</b>. When the options
+<b class="option">-noinherit</b> is used the values set this way are deleted
+and vice versa. The option <b class="option">-recurse</b> performs the operation
+recursively. Unless <b class="option">-recurse</b> is specified, the command
+returns 1 or 0 on success or failure.</p></dd>
+<dt><a name="5"><b class="cmd">ns_urlspace new</b></a></dt>
+<dd><p>Allocate a new URL space id. When the number of compile-time configured
+URL spaces runs out, a Tcl exception is raised.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">OPTIONS</a></h2>
+<dl class="doctools_options">
+<dt><b class="option">-id</b> <i class="arg">id</i></dt>
+<dd><p>ID of the URL space. In general multiple different URL spaces
+could be used, which can be allocated with the command
+<b class="cmd">ns_urlspace new</b>. The maximum number of available URL spaces
+is a compile time constant of NaviServer. When no ID is specified,
+NaviServer allocates automatically a default ID on first usage.</p></dd>
+<dt><b class="option">-key</b> <i class="arg">key</i></dt>
+<dd><p>Every URL has a key assigned, which is logically part of the URL
+space. Using this key, one could for example use the HTTP methods
+<i class="term"><a href="../../index.html#key97">GET</a></i> or <i class="term"><a href="../../index.html#key100">POST</a></i> to assign different values to a URL
+for GET or POST requests. The key can be used as well for other
+purposes. If no key is specified, it default to the constant
+&quot;<b class="const">.</b>&quot; (dot character).</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="nsv.html">nsv</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key60">data structure</a>, <a href="../../index.html#key34">server built-in</a>, <a href="../../index.html#key74">shared</a>, <a href="../../index.html#key72">trie</a>, <a href="../../index.html#key75">urlspace</a>, <a href="../../index.html#key73">variables</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

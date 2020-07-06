@@ -1,0 +1,87 @@
+
+<!DOCTYPE html><html><head>
+<title>main-faq - NaviServer Manual</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'main-faq.man' by tcllib/doctools with format 'html'
+   -->
+<!-- main-faq.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">main-faq(n) 4.99.19 manual &quot;NaviServer Manual&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>main-faq - NaviServer Frequently-Asked Questions (FAQ)</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">Getting NaviServer</a></li>
+<li class="doctools_section"><a href="#section3">Building NaviServer</a></li>
+<li class="doctools_section"><a href="#section4">Installing NaviServer</a></li>
+<li class="doctools_section"><a href="#section5">Getting Help</a></li>
+<li class="doctools_section"><a href="#section6">Contributing Software</a></li>
+<li class="doctools_section"><a href="#section7">Contributing Patches</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p><em>NaviServer Frequently-Asked Questions and Answers</em></p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">Getting NaviServer</a></h2>
+<p>NaviServer binary builds for many platforms are at
+&lt;a href=&quot;http:/http://sourceforge.net/projects/naviserver/&quot;&gt;http://sourceforge.net/projects/naviserver/</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Building NaviServer</a></h2>
+<p>NaviServer builds very easily and the online documentation describes the process.
+We recommend that you use the defaults in include/Makefile.global when building your module.
+This file contains rules and knows how to build modules properly for all platforms NaviServer
+has been ported to. To link a shared object, we recommend the default which is:
+<em>gcc -shared -nostartfiles</em>
+On some Solaris installations the Cygnus compiler is unable to build working shared objects.
+We're told that if you put the -Wl,-E option in the nsd/Makefile when linking the executable,
+Cygnus works, but we have not verified this successfully.  GCC from just about anywhere else
+<em>will</em> work. You can get a pre-built copy of GCC from
+&lt;a href=&quot;http://www.sunfreeware.com/&quot;&gt;http://www.sunfreeware.com or
+build your own from &lt;a href=&quot;ftp://ftp.gnu.org/&quot;&gt;ftp://ftp.gnu.org. Just install it and
+put a link to the new gcc in /usr/local/bin (keep the broken Cygnus in /usr/cygnus/bin in case you need it).</p>
+<p>HINT: The magic option to GCC for the compiling step is &quot;-fPIC&quot;, so if you're
+using a third-party library, make sure &quot;-fPIC&quot; appears in the CFLAGS. And,
+to eliminate the possibility of strange behavior, it's helpful but not necessary
+to build everything with the same compiler and using the same options.
+If you're using a third-party library for which no source code is available,
+you may run into problems if the vendor did not build it with the equivalent
+of &quot;-fPIC&quot; on their compiler.  Shared objects must be position-independent.</p>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">Installing NaviServer</a></h2>
+<p>Installing NaviServer is very straightforward and is covered in the online documentation.
+<em>&lt;a name=&quot;Database_Access&quot;&gt;Database Access</em></p>
+<p>NaviServer works with a great many databases including all the popular enterprise systems.</p>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Getting Help</a></h2>
+<p>NaviServer has an active developer community as well as a very active user community.
+Links to these areas are at &lt;a href=&quot;http://sourceforge.net/projects/naviserver/&quot;&gt;http://sourceforge.net/projects/naviserver/.</p>
+</div>
+<div id="section6" class="doctools_section"><h2><a name="section6">Contributing Software</a></h2>
+<p>NaviServer is extremely extensible and we host a great many community-contributed
+modules at &lt;a href=&quot;http://sourceforge.net/projects/naviserver/&quot;&gt;http://sourceforge.net/projects/naviserver/.
+You can contribute your software by following the guidelines on that page.</p>
+</div>
+<div id="section7" class="doctools_section"><h2><a name="section7">Contributing Patches</a></h2>
+<p>We accept any form of patches at the Source Forge link on the left of this page.
+We request that your patch include a test case and, if possible, a context diff against a tagged
+version of the NaviServer source code.  In lieu of a test case we can also
+accept a narrative describing the problem in detail.</p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

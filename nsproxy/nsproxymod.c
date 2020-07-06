@@ -36,6 +36,7 @@
 
 #include "nsproxy.h"
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
 
 typedef struct {
@@ -104,8 +105,8 @@ Ns_ModuleInit(const char *server, const char *module)
     if (!initialized) {
         initialized = NS_TRUE;
         Nsproxy_LibInit();
-        Ns_RegisterProcInfo((Ns_Callback *)InitInterp, "nsproxy:initinterp", NULL);
-        Ns_RegisterProcInfo((Ns_Callback *)Ns_ProxyCleanup, "nsproxy:cleanup", NULL);
+        Ns_RegisterProcInfo((ns_funcptr_t)InitInterp, "nsproxy:initinterp", NULL);
+        Ns_RegisterProcInfo((ns_funcptr_t)Ns_ProxyCleanup, "nsproxy:cleanup", NULL);
     }
 
     smPtr = ns_malloc(sizeof(SrvMod));

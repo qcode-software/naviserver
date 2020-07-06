@@ -1,0 +1,101 @@
+
+<!DOCTYPE html><html><head>
+<title>ns_thread - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_thread.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_thread.n
+   -->
+<body><div id="man-header">
+  <a href="http://wiki.tcl.tk/2090"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+| <a href="../toc.html">Table Of Contents</a>
+| <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_thread(n) 4.99.19 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_thread - Operate on threads</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_thread begin</b> <span class="opt">?<b class="option">-name <i class="arg">threadName</i></b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">script</i></a></li>
+<li><a href="#2"><b class="cmd">ns_thread begindetached</b> <span class="opt">?<b class="option">-name <i class="arg">threadName</i></b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">script</i></a></li>
+<li><a href="#3"><b class="cmd">ns_thread handle</b></a></li>
+<li><a href="#4"><b class="cmd">ns_thread id</b></a></li>
+<li><a href="#5"><b class="cmd">ns_thread name</b> <span class="opt">?<i class="arg">name</i>?</span></a></li>
+<li><a href="#6"><b class="cmd">ns_thread stackinfo</b></a></li>
+<li><a href="#7"><b class="cmd">ns_thread wait</b> <i class="arg">handle</i></a></li>
+<li><a href="#8"><b class="cmd">ns_thread yield</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides a mechanism to manipulate threads.  The legal options (which may be abbreviated) are:</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_thread begin</b> <span class="opt">?<b class="option">-name <i class="arg">threadName</i></b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">script</i></a></dt>
+<dd><p>Initializes a new thread and starts it executing script. 
+When the option  <b class="option">-name</b> is specified, then the thread is named
+as &quot;-tcl-$name:$nr-&quot;, where $nr is a counter to ensure unique names.</p>
+<p>Threads created this way
+are joinable and must be ns_thread joined, otherwise the resources held by the thread
+will not be freed until the thread is joined.  Returns a handle to the
+new thread, which can be used in <b class="cmd">ns_thread wait</b>.</p></dd>
+<dt><a name="2"><b class="cmd">ns_thread begindetached</b> <span class="opt">?<b class="option">-name <i class="arg">threadName</i></b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">script</i></a></dt>
+<dd><p>Initializes a new thread and starts it executing script.
+Initializes a new thread and starts it executing script. 
+When the option  <b class="option">-name</b> is specified, then the thread is named
+as &quot;-tcl-$name:$nr-&quot;, where $nr is a counter to ensure unique names.</p>
+<p>Threads created this way are detached and do not need to be
+(nor can be) joined (no thread can wait for this thread). In contrary
+to <b class="cmd">ns_thread begin</b> this command returns an empty result.</p></dd>
+<dt><a name="3"><b class="cmd">ns_thread handle</b></a></dt>
+<dd><p>Returns the handle for the current thread.</p></dd>
+<dt><a name="4"><b class="cmd">ns_thread id</b></a></dt>
+<dd><p>Returns the current thread's thread ID as an integer.  This thread ID corresponds
+to the third element in the sub-list returned from <b class="cmd">ns_info threads</b>.</p></dd>
+<dt><a name="5"><b class="cmd">ns_thread name</b> <span class="opt">?<i class="arg">name</i>?</span></a></dt>
+<dd><p>Returns the name of the current thread.  Optionally sets the thread
+name if <i class="arg">name</i> is specified.</p></dd>
+<dt><a name="6"><b class="cmd">ns_thread stackinfo</b></a></dt>
+<dd><p>Returns the maximum available size of the C stack and the currently free size of the
+C stack from the current thread in a form usable for &quot;array set&quot;.  For
+example the command might return &quot;max 2048000 free 2024408&quot;</p></dd>
+<dt><a name="7"><b class="cmd">ns_thread wait</b> <i class="arg">handle</i></a></dt>
+<dd><p>Attempts to wait for the thread with the specified <i class="arg">handle</i>.  If the thread is still executing,
+the caller will block until the thread being joined completes.  Returns the return value of
+the script that the thread being joined was executing.</p>
+<p>NOTE: Calling <b class="cmd">ns_thread wait</b> on an invalid <i class="arg">handle</i>
+or a <i class="arg">handle</i> that has already been waited for will cause the
+server to abort with a fatal error.</p></dd>
+<dt><a name="8"><b class="cmd">ns_thread yield</b></a></dt>
+<dd><p>Causes the current thread to yield its CPU to other running threads.</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_info.html">ns_info</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#key143">stack</a>, <a href="../../index.html#key52">thread</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

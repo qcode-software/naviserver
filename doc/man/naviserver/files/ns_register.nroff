@@ -1,0 +1,721 @@
+'\"
+'\" Generated from file 'ns_register\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_register" n 4\&.99\&.19 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_register \- Register Tcl/ADP handlers
+.SH SYNOPSIS
+\fBns_register_adp\fR ?\fB-noinherit\fR? ?\fB-expires \fIt\fR\fR? ?\fB-options \fIoptions\fR\fR? ?--? \fImethod\fR \fIURL\fR ?\fIfile\fR?
+.sp
+\fBns_register_fastpath\fR ?\fB-noinherit\fR? ?--? \fImethod\fR \fIURL\fR
+.sp
+\fBns_register_filter\fR ?\fB-first\fR? ?--? \fIwhen\fR \fImethod\fR \fIURL\fR \fIscript\fR ?\fIargs\fR?
+.sp
+\fBns_register_proc\fR ?\fB-noinherit\fR? ?--? \fImethod\fR \fIURL\fR \fImyproc\fR ?\fIargs\fR?
+.sp
+\fBns_register_proxy\fR \fImethod\fR \fIprotocol\fR \fIscript\fR ?\fIargs\fR?
+.sp
+\fBns_register_tcl\fR ?\fB-noinherit\fR? ?\fB-cache cache\fR? ?--? \fImethod\fR \fIURL\fR ?\fIfile\fR?
+.sp
+\fBns_register_trace\fR \fImethod\fR \fIURL\fR \fIscript\fR ?\fIargs\fR?
+.sp
+\fBns_register_url2file\fR ?\fB-noinherit\fR? ?--? \fIURL\fR \fIscript\fR ?\fIargs\fR?
+.sp
+\fBns_register_fasturl2file\fR ?\fB-noinherit\fR? ?--? \fIURL\fR ?\fIbasepath\fR?
+.sp
+\fBns_unregister_op\fR ?\fB-noinherit\fR? ?\fB-recurse\fR? ?--? \fImethod\fR \fIURL\fR
+.sp
+\fBns_unregister_url2file\fR ?\fB-noinherit\fR? ?\fB-recurse\fR? ?--? \fIURL\fR
+.sp
+.BE
+.SH DESCRIPTION
+This document describes various command to bind Tcl code and/or
+ADP-pages to URL patterns\&.
+.SH COMMANDS
+.TP
+\fBns_register_adp\fR ?\fB-noinherit\fR? ?\fB-expires \fIt\fR\fR? ?\fB-options \fIoptions\fR\fR? ?--? \fImethod\fR \fIURL\fR ?\fIfile\fR?
+Requests to the server which match the \fImethod\fR and \fIURL\fR
+will trigger the \fIADP\fR page request handler\&. If \fIfile\fR is
+given then it is the specific \fIADP\fR page which should respond to all
+matching requests\&. Otherwise, the \fIADP\fR page will be located at request
+time using \fBns_url2file\fR\&.
+.sp
+This command works similar as \fBns_register_tcl\fR, but registers an
+ADP file instead of a Tcl script\&.
+.sp
+Use \fBns_unregister_op\fR to unregister an ADP request\&.
+.TP
+\fBns_register_fastpath\fR ?\fB-noinherit\fR? ?--? \fImethod\fR \fIURL\fR
+This command register given \fIURL\fR to be processed by fast path subsystem, i\&.e\&.
+all requests that match will be served by corresponding \&.adp files if resolved\&. This
+can be used when there is no global fast path handler installed\&.
+.sp
+The argument \fImethod\fR is restricted to GET, POST or HEAD
+.TP
+\fBns_register_filter\fR ?\fB-first\fR? ?--? \fIwhen\fR \fImethod\fR \fIURL\fR \fIscript\fR ?\fIargs\fR?
+\fIns_register_filter\fR registers a Tcl filter script for the specified method/URL combination
+on a virtual server\&. When \fB-first\fR is used, it is added to the
+front of the filter list, otherwise to the end\&.
+.sp
+The \fIwhen\fR argument specifies, when the filter script is
+called\&. \fIpreauth\fR means pre-authorization, \fIpostauth\fR means
+post-authorization, and \fItrace\fR means at the end of the request,
+after the page data has been returned to the user, and the connection
+has been processed and closed\&.
+.sp
+The filter will be called at the specified stage of a
+connection, if the method/URL combination for the filter matches the
+method/URL combination for the connection using glob style matching\&.
+.sp
+The URL can contain standard string-matching characters\&. For example, these are valid URLs:
+.CS
+
+
+   /employees/*\&.tcl
+   /accounts/*/out
+
+.CE
+.sp
+Using pre-authorization, the procedure will be called (assuming that the method/URL
+combination matches) just before authorization\&. If the procedure returns with a code of:
+.RS
+.IP \(bu
+TCL_OK (using: return "filter_ok"): The server will continue to the next pre-authorization
+filter for this connection, or, if there are no more pre-authorization filters, it will
+continue on with authorization\&.
+.IP \(bu
+TCL_BREAK (using: return "filter_break"): The server will not process any more pre-authorization
+filters for this connection, and it will continue on with authorization\&.
+.IP \(bu
+TCL_RETURN (using: return "filter_return"): The server will close the connection and will
+not run any more pre-authorization filters\&. It will not authorize the request, and it will
+not run the function registered for this METHOD/URL\&. It WILL run any trace functions
+registered for this METHOD/URL, usually including logging\&. It is assumed that the filter
+has sent a proper response (e\&.g\&., using \fBns_return\fR) to the client before returning TCL_RETURN\&.
+.RE
+.IP
+Using post-authorization, the procedure will be called (assuming that the method/URL combination matches)
+just after successful authorization\&. If the procedure returns:
+.RS
+.IP \(bu
+TCL_OK (using: return "filter_ok"): The server will continue to the next post-authorization
+filter for this connection, or, if there are no more post-authorization filters, it will run
+the function registered to handle this request\&.
+.IP \(bu
+TCL_BREAK (using: return "filter_break"): The server will not process any more post-authorization
+filters for this connection, and it will run the function registered to handle this request\&.
+.IP \(bu
+TCL_RETURN (using: return "filter_return"): The server will close the connection and will
+not run any more post-authorization filters and it will not run the function registered for
+this METHOD/URL\&. It WILL run any trace functions registered for this METHOD/URL, usually
+including logging\&. It is assumed that the filter has returned a proper response (e\&.g\&.,
+using \fBns_return\fR) to the client before returning TCL_RETURN\&.
+.RE
+.IP
+Using trace, the procedure will be called (assuming that the method/URL combination match) after
+the connection has been totally processed and closed\&. If the procedure returns:
+.RS
+.IP \(bu
+TCL_OK (using: return "filter_ok"): The server will continue to the next trace filter\&.
+.IP \(bu
+TCL_BREAK, TCL_RETURN (using: return "filter_break" or return "filter_return"): The rest
+of the trace filters are ignored\&.
+.RE
+.IP
+\fIns_register_filter\fR/\fIns_register_trace\fR and
+\fIns_register_proc\fR are similar, but significantly different\&.  With
+\fIns_register_proc\fR, the specified URL is used to match that URL
+and any URL below it in the hierarchy\&. Wildcards such as "*" are
+meaningful only for the final part of the URL, such as
+/scripts/*\&.tcl\&. With \fIns_register_filter\fR, the URL is used to
+match URLs as a string with standard string-matching characters\&.
+\fIns_register_proc\fR results in a single match, whereas multiple
+\fIns_register_filters\fR/\fIns_register_trace\fR can be matched
+and will be called\&.
+.sp
+Be aware that executing the same \fIns_register_filter\fR statement more than once (as
+you might do when re-initializing Tcl) will add the filter more than once! You
+may want to have a shared variable set to avoid multiple
+registrations\&. Filters can be shortcutted via \fBns_shortcut_filter\fR\&.
+.TP
+\fBns_register_proc\fR ?\fB-noinherit\fR? ?--? \fImethod\fR \fIURL\fR \fImyproc\fR ?\fIargs\fR?
+\fIns_register_proc\fR registers the procname to handle the specified method/URL combination\&.
+When the server gets a matching request, it calls procname with the connection id and
+any arguments specified here\&.
+.sp
+If \fB-noinherit\fR is specified, the requested URL must match the specified URL exactly\&.
+For example, if the URL specified with \fIns_register_proc\fR is /foo/bar, procname will
+not be called unless the requested URL is exactly /foo/bar\&.
+.sp
+If \fB-noinherit\fR is not specified, the requested URL can match the specified URL or any
+URL below it\&.  For example, if the URL specified with \fIns_register_proc\fR is /foo/bar,
+procname will be called for /foo/bar, /foo/bar/hmm, and any other URL below /foo/bar,
+provided there is not already another procedure registered for that exact URL or for
+a URL with a closer match\&.
+Note that you must use a glob-style matching character if you want inheritance
+for file names\&.  For example, if you want /foo/bar to match /foo/bar\&.html, you must use:
+.CS
+
+
+   ns_register_proc /foo/bar*
+
+.CE
+.IP
+You can register two procedures for any given method/URL combination
+by calling \fIns_register_proc\fR once with the \fB-noinherit\fR
+flag set and once without it\&.  Only one of the procedures will be
+called for any given request, depending on whether the URL was an
+exact match or not\&.  For example:
+.CS
+
+
+   ns_register_proc -noinherit GET /foo/bar Aproc
+   ns_register_proc GET /foo/bar Bproc
+   ns_register_proc GET /foo/bar/hmm Cproc
+
+.CE
+.IP
+Aproc will be called when the requested URL is exactly /foo/bar\&.  Bproc will be called when
+the requested URL is below /foo/bar, provided there is not already another procedure registered
+to be called for that exact URL or for a URL with a closer match\&.  Cproc (not Bproc) will be
+called when the requested URL is equal to or below /foo/bar/hmm\&.
+.sp
+The following example shows how arguments can be passed at
+registration time to the registered Tcl command:
+.CS
+
+
+   ns_register_proc GET /noargs noargs
+   ns_register_proc GET /onearg onearg 1
+   ns_register_proc GET /twoargs twoargs 1 2
+   ns_register_proc GET /threeargs threeargs 1 2 3
+
+   proc noargs { } {
+       ns_returnnotice 200 "testing" "noargs"
+    }
+
+   proc onearg { x } {
+       ns_returnnotice 200 "testing" "onearg gets $x"
+   }
+
+   proc twoargs { x y } {
+       ns_returnnotice 200 "testing" "twoargs gets $x $y "
+   }
+
+   proc threeargs { x y z } {
+       ns_returnnotice 200 "testing" "threeargs gets $x $y $z"
+   }
+
+.CE
+.TP
+\fBns_register_proxy\fR \fImethod\fR \fIprotocol\fR \fIscript\fR ?\fIargs\fR?
+\fIns_register_proxy\fR registers a Tcl script as a handler for the specified method/protocol
+combination\&.
+.sp
+Example of HTTP proxy server:
+.CS
+
+
+   ns_register_proxy GET http http_proxy_handler
+
+   proc http_proxy_handler { args } {
+
+       set port [ns_conn port]
+       if {$port == 0} {
+           set port 80
+       }
+       set url http://[ns_conn host]:$port[ns_conn url]?[ns_conn query]
+       ns_return 200 text/html [ns_httpget $url]]
+   }
+
+
+.CE
+.TP
+\fBns_register_tcl\fR ?\fB-noinherit\fR? ?\fB-cache cache\fR? ?--? \fImethod\fR \fIURL\fR ?\fIfile\fR?
+Register Tcl file to be called when request matches method/URL
+combination\&. This is to enable extension-less URLs or for mapping
+actual files into virtual URLs\&. The command \fBns_register_tcl\fR
+works similar as \fBns_register_adp\fR except the file to evaluate
+should be a Tcl file which might use \fBns_return\fR, \fBns_write\fR
+etc\&. to respond to the request\&.
+.sp
+If this argument \fIfile\fR is omitted, the command will register standard C-based
+callback which will resolve URLs into absolute Tcl file and execute it\&.
+.sp
+Use \fBns_unregister_op\fR to unregister a Tcl request handler\&.
+.TP
+\fBns_register_trace\fR \fImethod\fR \fIURL\fR \fIscript\fR ?\fIargs\fR?
+\fIns_register_trace\fR registers a Tcl script as a special filter for the
+specified method/URL combination\&. After the server handles the request
+for the specified method on a URL that matches the URL, it calls the
+trace script with the connection id and any arguments (args)
+specified\&.
+\fIns_register_trace\fR is very similar to
+\fIns_register_filter trace\fR (known internally as void_traces)\&.
+The script registered by this command fires after the scripts
+registered by \fIns_register_filter trace\fR and differ by the fact
+that they only execute if a response was successfully sent to the
+client (i\&.e\&. not a Server Error)\&. In addition, their return value is ignored\&.
+.sp
+The URL can contain standard string-matching characters\&. For example, these are valid URLs:
+.CS
+
+
+   /employees/*\&.tcl
+   /accounts/*/out
+
+.CE
+.sp
+\fIns_register_trace\fR is similar to \fIns_register_proc\fR except that the
+pattern-matching for the URL is performed differently\&. With \fIns_register_proc\fR,
+the specified URL is used to match that URL and any URL below it in the hierarchy\&.
+Wildcards such as "*" are meaningful only for the final part of the URL, such as
+/scripts/*\&.tcl\&. With \fIns_register_trace\fR, the URL is used to match URLs as
+a string with standard string-matching characters\&.
+.sp
+\fIns_register_proc\fR results in a single match, whereas multiple \fIns_register_trace\fR's
+can be matched and will be called\&.
+.TP
+\fBns_register_url2file\fR ?\fB-noinherit\fR? ?--? \fIURL\fR \fIscript\fR ?\fIargs\fR?
+.TP
+\fBns_register_fasturl2file\fR ?\fB-noinherit\fR? ?--? \fIURL\fR ?\fIbasepath\fR?
+These commands are used to perform runtime resolving of the requested
+URLs into corresponding files that will be served to the client\&. They
+use \fBns_url2file\fR interface which resolves file for current
+URL\&. \fBns_register_fasturl2file\fR register the default fast url2file
+proc for the given \fIURL\fR\&. The Tcl \fIscript\fR
+provided to \fBns_register_url2file\fR
+is used to return full path to the requested URL\&.
+.TP
+\fBns_unregister_op\fR ?\fB-noinherit\fR? ?\fB-recurse\fR? ?--? \fImethod\fR \fIURL\fR
+Unregister a Tcl or ADP request handler for the specified method/URL combination\&.
+This command unregisters any Tcl or C functions previously registered
+for this method/URL combination and with the same inheritance
+setting\&.  That is, if the \fB-noinherit\fR flag is specified with
+\fIns_unregister_op\fR, the function previously registered with the
+\fB-noinherit\fR flag using \fIns_register_proc\fR (or the NS_OP_NOINHERIT
+flag in ns_RegisterRequest) will be unregistered\&.  If \fB-noinherit\fR
+is omitted, the function previously registered without the
+\fB-noinherit\fR flag (or the NS_OP_NOINHERIT flag) will be unregistered\&.
+.TP
+\fBns_unregister_url2file\fR ?\fB-noinherit\fR? ?\fB-recurse\fR? ?--? \fIURL\fR
+The command is the inverse command to \fBns_register_url2file\fR\&.
+.PP
+.SH OPTIONS
+.TP
+\fB-cache\fR \fIt\fR
+Specifies for how long to keep result in the cache, in seconds or absolute time\&.
+.TP
+\fB-expires\fR \fIt\fR
+Specifies that the result of evaluating the \fIADP\fR page should be cached
+for \fIt\fR seconds, or until \fIt\fR time in the future (expressed as
+seconds after the \fIepoch\fR) if \fIt\fR is large\&.
+.TP
+\fB-noinherit\fR
+Specifies that the directory portion of the request URL should match
+exactly and not also apply to a URL lower in the hierarchy\&. This is
+the default\&.
+.sp
+Different \fIADP\fR page handlers can be registered for the
+same \fImethod\fR and \fIURL\fR if one uses the ?-noinherit?
+option and the other does not\&.
+.CS
+
+
+   \fBns_register_adp\fR            GET /a x\&.adp
+   \fBns_register_adp\fR -noinherit GET /b y\&.adp
+
+.CE
+.IP
+In the previous example, a\&.adp will run for the requests /a, /a/b,
+/a/b/c and so on\&. But b\&.adp will only run when the requested URL is
+exactly /b\&. The request /b/c will result in a 404 Page Not Found error\&.
+.CS
+
+
+   \fBns_register_adp\fR            GET /a x\&.adp
+   \fBns_register_adp\fR -noinherit GET /a y\&.adp
+
+.CE
+.IP
+In this example, a request for the exact URL /a will run the y\&.adp page, while
+/a/b and /a/b/c will run the x\&.adp page\&.  The y\&.adp page is more specific
+than the x\&.adp page, and hides it for the /a request, which matched it exactly\&.
+.TP
+\fB-options\fR \fIoptions\fR
+A list of one or more \fIADP\fR options that should be added to the default
+set which are in effect while the \fIADP\fR page runs\&. Options can only be
+enabled, not disabled\&. Valid options are those that \fBns_adp_ctl\fR
+accepts, which can be used by \fIADP\fR code to fine tune the options\&.
+.TP
+\fB-recurse\fR
+if specified, the delete operation will be recursive\&.
+.PP
+.SH ARGUMENTS
+.TP
+string \fImethod\fR
+The HTTP \fImethod\fR, such as \fIHEAD\fR, \fIGET\fR or \fIPOST\fR,
+which will be compared using exact string equality to the HTTP request\&.
+.CS
+
+
+   foreach method {HEAD GET POST} {
+       \fBns_register_adp\fR $method /foo/bar "\fIhmm\&.adp\fR"
+   }
+
+.CE
+.TP
+string \fIURL\fR
+The \fIURL\fR patterm to match against the URL in each HTTP request\&. The last
+component of the URL may contain the globbing characters \fI*\fR and \fI?\fR\&.
+.CS
+
+
+   \fBns_register_adp\fR GET /dynamic/*\&.htm?
+
+.CE
+.IP
+In this example, a URL where the last component matches the pattern *\&.htm?,
+such as /dynamic/foo\&.htm or /dynamic/a/b/c/bar\&.html, will be run by the
+ADP engine\&.
+.sp
+Only the last component of the URL may be a pattern\&. If this is too restrictive,
+try using \fBns_register_filter\fR\&.
+.TP
+string \fI?file?\fR
+The optional argument \fIfile\fR is either an absolute path to a file in the file system,
+or a path relative to the page root directory of the virtual server\&.
+.CS
+
+
+   \fBns_register_adp\fR GET /a "\fIa\&.adp\fR"    ; # relative to page root
+   \fBns_register_adp\fR GET /b "\fIb/b\&.adp\fR"  ; # relative to page root
+   \fBns_register_adp\fR GET /c "\fI/c\&.adp\fR"   ; # absolute in file-system root
+
+.CE
+.IP
+The first and second lines specify a file relative to the page
+root directory\&. The full path is constructed each time the \fIADP\fR page is
+requested using \fBns_pagepath\fR, so \fBns_serverroot\fR and
+\fBns_register_url2file\fR callbacks will be taken into account\&.
+.sp
+In the third example, a specific \fIADP\fR file in the server's file system
+is registered for a similarly named URL (and all URLs below
+it)\&. There are no calls to \fBns_pagepath\fR or \fBns_url2file\fR
+during the request\&.
+.PP
+.SH EXAMPLES
+.PP
+In the following example, all files with the \&.adp extension in and below the
+/big URL should be served by the \fIADP\fR handler, with the options
+\fIstricterror\fR and \fIstream\fR enabled:
+.CS
+
+
+   foreach method {GET HEAD POST} {
+       \fBns_register_adp\fR -options {stream stricterror} -- $method /big/*\&.adp
+   }
+
+.CE
+.PP
+In the following example, we return for every GET request
+for a \&.php file in the given path an info message\&.
+.CS
+
+
+   ns_register_proc GET /foo/bar/*\&.php {
+	ns_return 200 text/plain "Server refuses to execute PHP scripts here"
+    }
+
+.CE
+.PP
+This example shows how to expire all HTML files after an hour:
+.CS
+
+
+    if {![nsv_exists filters installed]} {
+      nsv_set filters installed 1
+      ns_register_filter postauth GET /*\&.html ExpireSoon 3600
+    }
+
+    proc ExpireSoon {seconds why} {
+      ns_set update [ns_conn outputheaders] Expires [ns_httptime [expr {$seconds + [ns_time]}]]
+    }
+
+
+.CE
+.PP
+The command \fBns_info\fR \fIrequestprocs\fR can be used to list the
+currently registered procs\&.
+.SH "SEE ALSO"
+ns_adp, ns_conn, ns_info, ns_shortcut_filter
+.SH KEYWORDS
+ADP, callback, fastpath, filter, request, server built-in

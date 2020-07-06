@@ -51,15 +51,21 @@
 # define PIPE_BUF 512
 #endif
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
+
 
 typedef struct {
     Ns_Mutex     lock;
     const char  *module;
     const char  *file;
     const char  *rollfmt;
-    const char **extheaders;
-    int          numheaders;
+    const char  *extendedHeaders;
+    const char **requestHeaders;
+    const char **responseHeaders;
+    const char  *driverPattern;
+    int          nrRequestHeaders;
+    int          nrResponseHeaders;
     int          fd;
     unsigned int flags;
     int          maxbackup;
@@ -78,7 +84,7 @@ typedef struct {
  * Local functions defined in this file
  */
 
-static Ns_Callback     LogRollCallback;
+static Ns_SchedProc    LogRollCallback;
 static Ns_ShutdownProc LogCloseCallback;
 static Ns_TraceProc    LogTrace;
 static Ns_ArgProc      LogArg;
@@ -95,7 +101,11 @@ static Ns_ReturnCode LogClose(Log *logPtr);
 static void AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-
+static Ns_ReturnCode ParseExtendedHeaders(Log *logPtr, const char *str)
+    NS_GNUC_NONNULL(1);
+static void
+AppendExtHeaders(Tcl_DString *dsPtr, const char **argv, const Ns_Set *set)
+    NS_GNUC_NONNULL(1);
 
 
 /*
@@ -121,11 +131,20 @@ Ns_ModuleInit(const char *server, const char *module)
 {
     const char   *path, *file;
     Log          *logPtr;
-    Tcl_DString    ds;
+    Tcl_DString   ds;
     static bool   first = NS_TRUE;
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(module != NULL);
+
+    /*
+     * Sanity check to provide a meaningful error instead of a
+     * crash. Currently, we do not allow one to register this module globally.
+     */
+    if (server == NULL) {
+        Ns_Fatal("Module %s: requires a concrete server (cannot be used as a global module)",
+                 module);
+    }
 
     /*
      * Register the info callbacks just once. This assumes we are
@@ -134,10 +153,10 @@ Ns_ModuleInit(const char *server, const char *module)
 
     if (first) {
         first = NS_FALSE;
-        Ns_RegisterProcInfo((Ns_Callback *)LogRollCallback, "nslog:roll", LogArg);
-        Ns_RegisterProcInfo((Ns_Callback *)LogCloseCallback, "nslog:close", LogArg);
-        Ns_RegisterProcInfo((Ns_Callback *)LogTrace, "nslog:conntrace", LogArg);
-        Ns_RegisterProcInfo((Ns_Callback *)AddCmds, "nslog:initinterp", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)LogRollCallback, "nslog:roll", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)LogCloseCallback, "nslog:close", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)LogTrace, "nslog:conntrace", LogArg);
+        Ns_RegisterProcInfo((ns_funcptr_t)AddCmds, "nslog:initinterp", LogArg);
     }
 
     Tcl_DStringInit(&ds);
@@ -218,6 +237,8 @@ Ns_ModuleInit(const char *server, const char *module)
         logPtr->flags |= LOG_CHECKFORPROXY;
     }
 
+    logPtr->driverPattern = Ns_ConfigString(path, "driver", NULL);
+
     logPtr->ipv4maskPtr = NULL;
 #ifdef HAVE_IPV6
     logPtr->ipv6maskPtr = NULL;
@@ -255,25 +276,18 @@ Ns_ModuleInit(const char *server, const char *module)
 
     if (Ns_ConfigBool(path, "rolllog", NS_TRUE)) {
         int hour = Ns_ConfigIntRange(path, "rollhour", 0, 0, 23);
-        Ns_ScheduleDaily((Ns_SchedProc *) LogRollCallback, logPtr,
+
+        Ns_ScheduleDaily(LogRollCallback, logPtr,
                          0, hour, 0, NULL);
     }
     if (Ns_ConfigBool(path, "rollonsignal", NS_FALSE)) {
-        Ns_RegisterAtSignal(LogRollCallback, logPtr);
+        Ns_RegisterAtSignal((Ns_Callback *)(ns_funcptr_t)LogRollCallback, logPtr);
     }
 
     /*
      * Parse extended headers; it is just a list of names
      */
-
-    Tcl_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, Ns_ConfigGetValue(path, "extendedheaders"), (char *)0L);
-    if (Tcl_SplitList(NULL, ds.string, &logPtr->numheaders,
-                      &logPtr->extheaders) != TCL_OK) {
-        Ns_Log(Error, "nslog: invalid %s/extendedHeaders parameter: '%s'",
-               path, ds.string);
-    }
-    Tcl_DStringFree(&ds);
+    (void)ParseExtendedHeaders(logPtr, Ns_ConfigGetValue(path, "extendedheaders"));
 
     /*
      *  Open the log and register the trace
@@ -299,6 +313,117 @@ AddCmds(Tcl_Interp *interp, const void *arg)
     return NS_OK;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * ParseExtendedHeaders --
+ *
+ *      Parse a string specifying the extended parameters.
+ *      The string might be:
+ *
+ *       - a list of plain request header fields, like e.g.
+ *         "Referer X-Forwarded-For"
+ *
+ *       - a tagged list of header fields, which might be request
+ *          or response header fields, like e.g.
+ *         "req:Referer response:Content-Type"
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      Upadating fields in logPtr
+ *
+ *----------------------------------------------------------------------
+ */
+static Ns_ReturnCode
+ParseExtendedHeaders(Log *logPtr, const char *str)
+{
+    Ns_ReturnCode result = NS_OK;
+
+    NS_NONNULL_ASSERT(logPtr != NULL);
+
+    if (str != NULL) {
+        int    argc;
+        char **argv;
+
+        if (Tcl_SplitList(NULL, str, &argc, &argv) != TCL_OK) {
+            Ns_Log(Error, "nslog: invalid 'extendedHeaders' parameter: '%s'", str);
+            result = NS_ERROR;
+
+        } else {
+            int i, tagged = 0;
+
+            if (logPtr->extendedHeaders != NULL) {
+                ns_free((char *)logPtr->extendedHeaders);
+            }
+            if (logPtr->requestHeaders != NULL) {
+                ns_free((char *)logPtr->requestHeaders);
+            }
+            if (logPtr->responseHeaders != NULL) {
+                ns_free((char *)logPtr->responseHeaders);
+            }
+            logPtr->extendedHeaders = ns_strdup(str);
+
+            for (i = 0; i < argc; i++) {
+                char *fieldName = argv[i];
+
+                if (strchr(fieldName, ':') != NULL) {
+                    tagged ++;
+                }
+            }
+            if (tagged == 0) {
+                logPtr->requestHeaders = (const char **)argv;
+                logPtr->nrRequestHeaders = argc;
+                logPtr->responseHeaders = NULL;
+                logPtr->nrResponseHeaders = 0;
+            } else {
+                Tcl_DString requestHeaderFields, responseHeaderFields;
+                int nrRequestsHeaderFields = 0, nrResponseHeaderFields = 0;
+
+                Tcl_DStringInit(&requestHeaderFields);
+                Tcl_DStringInit(&responseHeaderFields);
+
+                for (i = 0; i < argc; i++) {
+                    char *fieldName = argv[i];
+                    char *suffix = strchr(fieldName, ':');
+
+                    if (suffix != NULL) {
+                        *suffix = '\0';
+                        suffix ++;
+                        if (strncmp(fieldName, "request", 3) == 0) {
+                            Tcl_DStringAppendElement(&requestHeaderFields,suffix);
+                            nrRequestsHeaderFields++;
+                        } else if (strncmp(fieldName, "response", 3) == 0) {
+                            Tcl_DStringAppendElement(&responseHeaderFields,suffix);
+                            nrResponseHeaderFields++;
+                        } else {
+                            Ns_Log(Error, "nslog: ignore invalid entry prefix '%s' in extendedHeaders parameter",
+                                   fieldName);
+                        }
+                    } else {
+                        /*
+                         * No prefix, assume request header field
+                         */
+                        Tcl_DStringAppendElement(&requestHeaderFields,suffix);
+                        nrRequestsHeaderFields++;
+                    }
+                }
+                (void) Tcl_SplitList(NULL, requestHeaderFields.string,
+                                     &logPtr->nrRequestHeaders,
+                                     &logPtr->requestHeaders);
+                (void) Tcl_SplitList(NULL, responseHeaderFields.string,
+                                     &logPtr->nrResponseHeaders,
+                                     &logPtr->responseHeaders);
+
+                Tcl_DStringFree(&requestHeaderFields);
+                Tcl_DStringFree(&responseHeaderFields);
+                Tcl_Free((char*)argv);
+            }
+        }
+    }
+    return result;
+}
 
 /*
  *----------------------------------------------------------------------
@@ -319,9 +444,9 @@ AddCmds(Tcl_Interp *interp, const void *arg)
 static int
 LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    const char    *strarg, **hdrs;
-    int            rc, intarg, cmd;
-    Tcl_DString     ds;
+    const char    *strarg;
+    int            rc, cmd, result = TCL_OK;
+    Tcl_DString    ds;
     Log           *logPtr = clientData;
 
     enum {
@@ -360,63 +485,70 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
         break;
 
     case MAXBACKUP:
-        if (objc > 2) {
-            if (Tcl_GetIntFromObj(interp, objv[2], &intarg) != TCL_OK) {
-                return TCL_ERROR;
+        {
+            int intarg = 0;
+
+            if (objc > 2) {
+                if (Tcl_GetIntFromObj(interp, objv[2], &intarg) != TCL_OK) {
+                    result = TCL_ERROR;
+                } else {
+                    if (intarg < 1) {
+                        intarg = 100;
+                    }
+                }
             }
-            if (intarg < 1) {
-                intarg = 100;
+            if (result == TCL_OK) {
+                Ns_MutexLock(&logPtr->lock);
+                if (objc > 2) {
+                    logPtr->maxbackup = intarg;
+                } else {
+                    intarg = logPtr->maxbackup;
+                }
+                Ns_MutexUnlock(&logPtr->lock);
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
             }
         }
-        Ns_MutexLock(&logPtr->lock);
-        if (objc > 2) {
-            logPtr->maxbackup = intarg;
-        } else {
-            intarg = logPtr->maxbackup;
-        }
-        Ns_MutexUnlock(&logPtr->lock);
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
         break;
 
     case MAXBUFFER:
-        if (objc > 2) {
-            if (Tcl_GetIntFromObj(interp, objv[2], &intarg) != TCL_OK) {
-                return TCL_ERROR;
+        {
+            int intarg = 0;
+
+            if (objc > 2) {
+                if (Tcl_GetIntFromObj(interp, objv[2], &intarg) != TCL_OK) {
+                    result = TCL_ERROR;
+                } else {
+                    if (intarg < 0) {
+                        intarg = 0;
+                    }
+                }
             }
-            if (intarg < 0) {
-                intarg = 0;
+            if (result == TCL_OK) {
+                Ns_MutexLock(&logPtr->lock);
+                if (objc > 2) {
+                    logPtr->maxlines = intarg;
+                } else {
+                    intarg = logPtr->maxlines;
+                }
+                Ns_MutexUnlock(&logPtr->lock);
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
             }
         }
-        Ns_MutexLock(&logPtr->lock);
-        if (objc > 2) {
-            logPtr->maxlines = intarg;
-        } else {
-            intarg = logPtr->maxlines;
-        }
-        Ns_MutexUnlock(&logPtr->lock);
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
         break;
 
     case EXTHDRS:
         {
-            int n;
-            if (objc > 2) {
-                strarg = Tcl_GetString(objv[2]);
-                if (Tcl_SplitList(interp, strarg, &n, &hdrs) != TCL_OK) {
-                    return TCL_ERROR;
-                }
-            }
             Ns_MutexLock(&logPtr->lock);
             if (objc > 2) {
-                if (logPtr->extheaders != NULL) {
-                    Tcl_Free((char*)logPtr->extheaders);
-                }
-                logPtr->extheaders = hdrs;
-                logPtr->numheaders = n;
+                result = ParseExtendedHeaders(logPtr, Tcl_GetString(objv[2]));
             }
-            strarg = Tcl_Merge(logPtr->numheaders, logPtr->extheaders);
+            if (result == TCL_OK) {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->extendedHeaders, -1));
+            } else {
+                Ns_TclPrintfResult(interp, "invalid value: %s",
+                                   Tcl_GetString(objv[2]));
+            }
             Ns_MutexUnlock(&logPtr->lock);
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(strarg, -1));
         }
         break;
 
@@ -530,13 +662,13 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             }
             Ns_MutexUnlock(&logPtr->lock);
             if (status != NS_OK) {
-                return TCL_ERROR;
+                result = TCL_ERROR;
             }
         }
         break;
     }
 
-    return TCL_OK;
+    return result;
 }
 
 /*
@@ -608,6 +740,43 @@ AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
     } while (breakChar != NULL);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * AppendExtHeaders --
+ *
+ *      Append named extended header fields from provided set to log entry.
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      Append to Tcl_DString
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void
+AppendExtHeaders(Tcl_DString *dsPtr, const char **argv, const Ns_Set *set)
+{
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+
+    if (set != NULL && argv != NULL) {
+        const char **h;
+
+        for (h = argv; *h != NULL; h++) {
+            const char *p;
+
+            Tcl_DStringAppend(dsPtr, " \"", 2);
+            p = Ns_SetIGet(set, *h);
+            if (p != NULL) {
+                AppendEscaped(dsPtr, p);
+            }
+            Tcl_DStringAppend(dsPtr, "\"", 1);
+        }
+    }
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -630,7 +799,7 @@ static void
 LogTrace(void *arg, Ns_Conn *conn)
 {
     Log          *logPtr = arg;
-    const char  **h, *user, *p;
+    const char   *user, *p, *driverName;
     char          buffer[PIPE_BUF], *bufferPtr = NULL;
     int           n, i;
     Ns_ReturnCode status;
@@ -642,6 +811,18 @@ LogTrace(void *arg, Ns_Conn *conn)
         *ipPtr     = (struct sockaddr *)&ipStruct,
         *maskedPtr = (struct sockaddr *)&maskedStruct;
 
+    driverName = Ns_ConnDriverName(conn);
+    Ns_Log(Debug, "nslog called with driver pattern '%s' via driver '%s' req: %s",
+           logPtr->driverPattern, driverName, conn->request.line);
+
+    if (logPtr->driverPattern != NULL
+        && Tcl_StringMatch(driverName, logPtr->driverPattern) == 0
+        ) {
+        /*
+         * This is not for us.
+         */
+        return;
+    }
 
     Tcl_DStringInit(dsPtr);
     Ns_MutexLock(&logPtr->lock);
@@ -770,13 +951,13 @@ LogTrace(void *arg, Ns_Conn *conn)
     Ns_DStringPrintf(dsPtr, "%d %" PRIdz, (n != 0) ? n : 200, Ns_ConnContentSent(conn));
 
     /*
-     * Append the referer and user-agent headers (if any)
+     * Append the referrer and user-agent headers (if any)
      */
 
     if ((logPtr->flags & LOG_COMBINED)) {
 
         Tcl_DStringAppend(dsPtr, " \"", 2);
-        p = Ns_SetIGet(conn->headers, "referer");
+        p = Ns_SetIGet(conn->headers, "referrer");
         if (p != NULL) {
             AppendEscaped(dsPtr, p);
         }
@@ -823,25 +1004,20 @@ LogTrace(void *arg, Ns_Conn *conn)
     /*
      * Append the extended headers (if any)
      */
+    AppendExtHeaders(dsPtr, logPtr->requestHeaders, conn->headers);
+    AppendExtHeaders(dsPtr, logPtr->responseHeaders, conn->outputheaders);
 
-    for (h = logPtr->extheaders; *h != NULL; h++) {
-        Tcl_DStringAppend(dsPtr, " \"", 2);
-        p = Ns_SetIGet(conn->headers, *h);
-        if (p != NULL) {
-            AppendEscaped(dsPtr, p);
-        }
-        Tcl_DStringAppend(dsPtr, "\"", 1);
-    }
-
-    for (i = 0; i < ds.length; i++) {
+    for (i = 0; i < dsPtr->length; i++) {
         /*
          * Quick fix to disallow terminal escape characters in the log
          * file. See e.g. http://www.securityfocus.com/bid/37712/info
          */
-        if (unlikely(ds.string[i] == 0x1b)) {
-            ds.string[i] = 7; /* bell */
+        if (unlikely(dsPtr->string[i] == 0x1b)) {
+            dsPtr->string[i] = 7; /* bell */
         }
     }
+
+    Ns_Log(Ns_LogAccessDebug, "%s", dsPtr->string);
 
     /*
      * Append the trailing newline and optionally
@@ -851,18 +1027,18 @@ LogTrace(void *arg, Ns_Conn *conn)
     Tcl_DStringAppend(dsPtr, "\n", 1);
 
     if (logPtr->maxlines == 0) {
-        bufferSize = (size_t)ds.length;
+        bufferSize = (size_t)dsPtr->length;
         if (bufferSize < PIPE_BUF) {
           /*
            * Only ns_write() operations < PIPE_BUF are guaranteed to be atomic
            */
-            bufferPtr = ds.string;
+            bufferPtr = dsPtr->string;
             status = NS_OK;
         } else {
             status = LogFlush(logPtr, dsPtr);
         }
     } else {
-        Tcl_DStringAppend(&logPtr->buffer, ds.string, ds.length);
+        Tcl_DStringAppend(&logPtr->buffer, dsPtr->string, dsPtr->length);
         if (++logPtr->curlines > logPtr->maxlines) {
             bufferSize = (size_t)logPtr->buffer.length;
             if (bufferSize < PIPE_BUF) {
@@ -883,7 +1059,6 @@ LogTrace(void *arg, Ns_Conn *conn)
         }
     }
     Ns_MutexUnlock(&logPtr->lock);
-
     (void)(status); /* ignore status */
 
     if (likely(bufferPtr != NULL) && likely(logPtr->fd >= 0) && likely(bufferSize > 0)) {
@@ -916,7 +1091,7 @@ LogOpen(Log *logPtr)
 {
     int fd;
 
-    fd = ns_open(logPtr->file, O_APPEND|O_WRONLY|O_CREAT, 0644);
+    fd = ns_open(logPtr->file, O_APPEND | O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
     if (fd == NS_INVALID_FD) {
         Ns_Log(Error, "nslog: error '%s' opening '%s'",
                strerror(errno), logPtr->file);
@@ -1097,7 +1272,7 @@ LogCloseCallback(const Ns_Time *toPtr, void *arg)
 }
 
 static void
-LogRollCallback(void *arg)
+LogRollCallback(void *arg, int UNUSED(id))
 {
     LogCallback(LogRoll, arg, "roll");
 }

@@ -44,6 +44,13 @@
 
 #define IOBUFSZ 8192
 
+/*
+ * The chunked encoding header consists of a hex number followed by
+ * CRLF (see e.g. RFC 2616 section 3.6.1). It has to fit the maximum
+ * number of digits of a 64 byte number is 8, plus CRLF + NULL.
+ */
+#define MAX_CHARS_CHUNK_HEADER 12
+
 
 /*
  * Local functions defined in this file
@@ -228,9 +235,12 @@ CheckCompress(const Conn *connPtr, const struct iovec *bufs, int nbufs, unsigned
  *
  * Ns_ConnWriteData, Ns_ConnWriteVData --
  *
- *      Send one or more buffers of raw bytes to the client, possibly
+ *      Send zero or more buffers of raw bytes to the client, possibly
  *      using the HTTP chunked encoding if flags includes
  *      NS_CONN_STREAM.
+ *
+ *      Ns_ConnWriteVData() is called with (nbufs == 0) to flush
+ *      headers.
  *
  * Results:
  *      NS_OK if all data written, NS_ERROR otherwise.
@@ -262,7 +272,7 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fla
     struct iovec  sbufs[32], *sbufPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
-    assert(nbufs < 1 || bufs != NULL);
+    //NS_NONNULL_ASSERT(bufs != NULL);
 
     Ns_DStringInit(&ds);
 
@@ -313,6 +323,7 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fla
     if ((conn->flags & NS_CONN_SKIPBODY) == 0u) {
 
         if ((conn->flags & NS_CONN_CHUNK) == 0u) {
+
             /*
              * Output content without chunking header/trailers.
              */
@@ -329,17 +340,21 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fla
 
         } else {
 
+            /*
+             * Output content with chunking header/trailers.
+             */
+
             if (bodyLength > 0u) {
-                char hdr[32];
+                char   hdr[MAX_CHARS_CHUNK_HEADER];
                 size_t len;
 
                 assert(nbufs > 0);
                 assert(bufs != NULL);
+
                 /*
                  * Output length header followed by content and then
                  * trailer.
                  */
-
                 len = (size_t)snprintf(hdr, sizeof(hdr), "%lx\r\n", (unsigned long)bodyLength);
                 toWrite += Ns_SetVec(sbufPtr, sbufIdx++, hdr, len);
 
@@ -456,7 +471,7 @@ ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd)
         status = NS_OK;
         while (status == NS_OK && nsend > 0u) {
             ssize_t nread;
-            size_t toRead = nsend;
+            size_t  toRead = nsend;
 
             if (toRead > sizeof(buf)) {
                 toRead = sizeof(buf);
@@ -496,8 +511,8 @@ ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd)
  *
  * Ns_ConnSendFileVec --
  *
- *      Send a vector of file ranges/buffers. It promises to send all
- *      of it.
+ *      Send a vector of file buffers directly to the connection socket.
+ *      Promises to send all of the data.
  *
  * Results:
  *      NS_OK if all data sent, NS_ERROR otherwise.
@@ -511,37 +526,54 @@ ConnSend(Ns_Conn *conn, size_t nsend, Tcl_Channel chan, FILE *fp, int fd)
 Ns_ReturnCode
 Ns_ConnSendFileVec(Ns_Conn *conn, Ns_FileVec *bufs, int nbufs)
 {
-    Conn        *connPtr = (Conn *) conn;
+    Conn        *connPtr;
+    Sock        *sockPtr;
     int          i;
-    size_t       toWrite, nwrote;
+    size_t       nwrote = 0u, towrite = 0u;
+    Ns_Time      waitTimeout;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(bufs != NULL);
 
-    nwrote = 0u;
-    toWrite = 0u;
+    connPtr = (Conn *)conn;
+    sockPtr = (Sock *)connPtr->sockPtr;
+
+    NS_NONNULL_ASSERT(sockPtr != NULL);
+    NS_NONNULL_ASSERT(sockPtr->drvPtr != NULL);
+
+    waitTimeout.sec  = sockPtr->drvPtr->sendwait;
+    waitTimeout.usec = 0;
 
     for (i = 0; i < nbufs; i++) {
-        toWrite += bufs[i].length;
+        towrite += bufs[i].length;
     }
 
-    while (toWrite > 0u) {
-        ssize_t sent = NsDriverSendFile(connPtr->sockPtr, bufs, nbufs, 0u);
+    while (nwrote < towrite) {
+        ssize_t sent;
 
-        if (sent < 1) {
+        sent = NsDriverSendFile(sockPtr, bufs, nbufs, 0u);
+        if (sent == -1) {
             break;
         }
-        if ((size_t)sent < toWrite) {
-            (void)Ns_ResetFileVec(bufs, nbufs, (size_t)sent);
-        }
         nwrote += (size_t)sent;
-        toWrite -= (size_t)sent;
+        if (nwrote < towrite) {
+            Ns_Sock *sock = (Ns_Sock *)sockPtr;
+
+            if (sent > 0) {
+                (void)Ns_ResetFileVec(bufs, nbufs, (size_t)sent);
+            }
+            if (Ns_SockTimedWait(sock->sock, NS_SOCK_WRITE,
+                                 &waitTimeout) != NS_OK) {
+                break;
+            }
+        }
     }
-    if (nwrote > 0u) {
+
+    if (likely(nwrote > 0u)) {
         connPtr->nContentSent += nwrote;
     }
 
-    return nwrote < toWrite ? NS_ERROR : NS_OK;
+    return (nwrote != towrite) ? NS_ERROR : NS_OK;
 }
 
 
@@ -614,16 +646,14 @@ Ns_ConnSendDString(Ns_Conn *conn, const Ns_DString *dsPtr)
  *
  * Ns_ConnSend --
  *
- *      Send buffers to client efficiently.
- *      It promises to send all of it.
+ *      Send buffers to the connection socket efficiently.
+ *      It promises to send all data.
  *
  * Results:
- *      Number of bytes of given buffers written, otherwise
- *      -1 on error from first send.
+ *      Number of bytes sent, -1 on error.
  *
  * Side effects:
- *      - Will update connPtr->nContentSent.
- *      - Also depends on configured comm driver, i.e. nssock, nsssl.
+ *      Will update connPtr->nContentSent.
  *
  *----------------------------------------------------------------------
  */
@@ -631,53 +661,47 @@ Ns_ConnSendDString(Ns_Conn *conn, const Ns_DString *dsPtr)
 ssize_t
 Ns_ConnSend(Ns_Conn *conn, struct iovec *bufs, int nbufs)
 {
-    Conn    *connPtr = (Conn *) conn;
-    ssize_t  result;
+    ssize_t  sent = -1;
+    int      i;
+    size_t   towrite = 0u;
 
-    if (connPtr->sockPtr == NULL) {
-        result = -1;
+    for (i = 0; i < nbufs; i++) {
+        towrite += bufs[i].iov_len;
+    }
+
+    if (towrite == 0u) {
+        sent = 0;
+
+    } else if (NsWriterQueue(conn, towrite, NULL, NULL, NS_INVALID_FD,
+                             bufs, nbufs, NULL, 0, NS_FALSE) == NS_OK) {
+        Ns_Log(Debug, "==== writer sent %" PRIuz " bytes\n", towrite);
+        sent = (ssize_t)towrite;
 
     } else {
-        int    i;
-        size_t toWrite = 0u;
+        Ns_Time  waitTimeout;
+        Conn    *connPtr;
+        Sock    *sockPtr;
 
-        assert(nbufs <= 0 || bufs != NULL);
+        NS_NONNULL_ASSERT(conn != NULL);
 
-        for (i = 0; i < nbufs; i++) {
-            toWrite += bufs[i].iov_len;
+        connPtr = (Conn *)conn;
+        sockPtr = connPtr->sockPtr;
+
+        NS_NONNULL_ASSERT(sockPtr != NULL);
+        NS_NONNULL_ASSERT(sockPtr->drvPtr != NULL);
+
+        waitTimeout.sec  = sockPtr->drvPtr->sendwait;
+        waitTimeout.usec = 0;
+
+        sent = Ns_SockSendBufs((Ns_Sock*)sockPtr, bufs, nbufs, &waitTimeout, 0u);
+
+        if (likely(sent > 0)) {
+            connPtr->nContentSent += (size_t)sent;
         }
-
-        if (toWrite == 0u) {
-            /*
-             * Nothing to do.
-             */
-            result = 0;
-
-        } else if (NsWriterQueue(conn, toWrite, NULL, NULL, -1, bufs, nbufs, NS_FALSE) == NS_OK) {
-            Ns_Log(Debug, "==== writer sent %" PRIuz " bytes\n", toWrite);
-            result = (ssize_t)toWrite;
-
-        } else {
-            Ns_Time timeout;
-            ssize_t  sent;
-
-            /*
-             * Perform the actual send operation.
-             */
-            timeout.sec = connPtr->sockPtr->drvPtr->sendwait;
-            timeout.usec = 0;
-
-            sent = Ns_SockSendBufs((Ns_Sock*)connPtr->sockPtr, bufs, nbufs, &timeout, 0u);
-            if (likely(sent > 0)) {
-                /*
-                 * Update counters.
-                 */
-                connPtr->nContentSent += (size_t)sent;
-            }
-            result = sent;
-        }
+         NsPoolAddBytesSent(((Conn *)conn)->poolPtr,  (Tcl_WideInt)connPtr->nContentSent);
     }
-    return result;
+
+    return sent;
 }
 
 
@@ -870,6 +894,9 @@ Ns_ConnGets(char *buf, size_t bufsize, const Ns_Conn *conn)
 {
     char *p, *result = buf;
 
+    NS_NONNULL_ASSERT(buf != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
+
     p = buf;
     while (bufsize > 1u) {
         if (Ns_ConnRead(conn, p, 1u) != 0u) {
@@ -950,32 +977,47 @@ Ns_ConnReadLine(const Ns_Conn *conn, Ns_DString *dsPtr, size_t *nreadPtr)
     Request      *reqPtr;
     const Driver *drvPtr;
     const char   *eol;
-    size_t        nread;
-    Ns_ReturnCode status = NS_OK;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
     connPtr = (const Conn *) conn;
     reqPtr = connPtr->reqPtr;
-    drvPtr = connPtr->drvPtr;
+    assert(reqPtr != NULL);
 
-    if (connPtr->sockPtr == NULL
-        || (eol = strchr(reqPtr->next, INTCHAR('\n'))) == NULL
-        || (nread = (size_t)(eol - reqPtr->next)) > (size_t)drvPtr->maxline) {
+    drvPtr = connPtr->drvPtr;
+    eol = strchr(reqPtr->next, INTCHAR('\n'));
+
+    if ((connPtr->sockPtr == NULL) || (eol == NULL)) {
         status = NS_ERROR;
     } else {
-        size_t ncopy = nread;
-        ++nread;
-        if (nreadPtr != NULL) {
-            *nreadPtr = nread;
+        size_t nread = (size_t)(eol - reqPtr->next);
+
+        if (nread > (size_t)drvPtr->maxline) {
+            status = NS_ERROR;
+        } else {
+            size_t ncopy = nread;
+
+            ++nread;
+            if (nreadPtr != NULL) {
+                *nreadPtr = nread;
+            }
+
+            /*
+             * Read from the end of the buffer until we either reach
+             * ncopy == 0 (this means the start of the buffer), or
+             * until we fine a '\r'.
+             */
+            if (ncopy > 0u && *(eol-1) == '\r') {
+                --ncopy;
+            }
+            Ns_DStringNAppend(dsPtr, reqPtr->next, (int)ncopy);
+            reqPtr->next  += nread;
+            reqPtr->avail -= nread;
+
+            status = NS_OK;
         }
-        if (ncopy > 0u && *(eol-1) == '\r') {
-            --ncopy;
-        }
-        Ns_DStringNAppend(dsPtr, reqPtr->next, (int)ncopy);
-        reqPtr->next  += nread;
-        reqPtr->avail -= nread;
     }
     return status;
 }
@@ -1305,7 +1347,7 @@ CheckKeep(const Conn *connPtr)
                     if ( (connPtr->drvPtr->keepmaxuploadsize > 0u)
                          && (connPtr->contentLength > connPtr->drvPtr->keepmaxuploadsize) ) {
                         Ns_Log(Notice,
-                               "Disallow keep-alive, content-Length %" PRIdz
+                               "Disallow keep-alive: content-Length %" PRIdz
                                " larger keepmaxuploadsize %" PRIdz ": %s",
                                connPtr->contentLength, connPtr->drvPtr->keepmaxuploadsize,
                                connPtr->request.line);
@@ -1314,7 +1356,7 @@ CheckKeep(const Conn *connPtr)
                                 && (connPtr->responseLength > 0)
                                 && ((size_t)connPtr->responseLength > connPtr->drvPtr->keepmaxdownloadsize) ) {
                         Ns_Log(Notice,
-                               "Disallow keep-alive response length %" PRIdz " "
+                               "Disallow keep-alive: response length %" PRIdz " "
                                "larger keepmaxdownloadsize %" PRIdz ": %s",
                                connPtr->responseLength, connPtr->drvPtr->keepmaxdownloadsize,
                                connPtr->request.line);

@@ -1,0 +1,26 @@
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: nsmain: NaviServer/4.99.15d1 starting
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: nsmain: security info: uid=501, euid=501, gid=20, egid=20
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: nsmain: Tcl version: 8.6.6
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: nsmain: max files: soft limit 10240, hard limit 10240
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Warning: nsmain: rl_cur (10240) > FD_SETSIZE (1024), select() calls should not be used
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: pool default: queueLength 90 low water 9 high water 72
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Error: couldn't read file "/usr/local/src/naviserver/nsd/bin/init.tcl": no such file or directory
+couldn't read file "/usr/local/src/naviserver/nsd/bin/init.tcl": no such file or directory
+(context: init server)
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: nsmain: NaviServer/4.99.15d1 running
+[10/Dec/2016:18:12:43][40372.7fff7628d000][-main-] Notice: nsmain: security info: uid=501, euid=501, gid=20, egid=20
+[10/Dec/2016:18:12:43][40372.70000019a000][-conn:default:0-] Notice: thread initialized (0.002130 secs)
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Notice: nsmain: NaviServer/4.99.16d1 starting
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Notice: nsmain: security info: uid=501, euid=501, gid=20, egid=20
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Notice: nsmain: Tcl version: 8.6.6
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Notice: nsmain: max files: soft limit 10240, hard limit 10240
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Warning: nsmain: rl_cur (10240) > FD_SETSIZE (1024), select() calls should not be used
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Notice: pool default: queueLength 90 low water 9 high water 72
+[14/Jan/2017:22:30:55][99264.7fff798cf000][-main-] Fatal: received fatal signal 11
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Notice: nsmain: NaviServer/4.99.16d2 starting
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Notice: nsmain: security info: uid=501, euid=501, gid=20, egid=20
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Notice: nsmain: Tcl version: 8.6.6
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Notice: nsmain: max files: soft limit 10240, hard limit 10240
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Warning: nsmain: rl_cur (10240) > FD_SETSIZE (1024), select() calls should not be used
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Notice: pool default: queueLength 90 low water 9 high water 72
+[15/Feb/2017:10:33:07][34410.7fff7b6f2000][-main-] Fatal: received fatal signal 11

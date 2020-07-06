@@ -56,7 +56,6 @@ typedef struct Tmp {
 
 static Tmp      *firstTmpPtr = NULL;
 static Ns_Mutex  lock;
-static int       devNull;
 
 /*
  * The following constants are defined for this file
@@ -91,7 +90,7 @@ NsInitFd(void)
 #ifndef _WIN32
     struct rlimit  rl;
 #endif
-    int fd;
+    int fd, devNull;
 
     Ns_MutexInit(&lock);
     Ns_MutexSetName(&lock, "ns:fd");
@@ -100,16 +99,16 @@ NsInitFd(void)
      * Ensure fd 0, 1, and 2 are open on at least /dev/null.
      */
 
-    fd = ns_open(DEVNULL, O_RDONLY, 0);
+    fd = ns_open(DEVNULL, O_RDONLY | O_CLOEXEC, 0);
     if (fd > 0) {
         (void) ns_close(fd);
     }
-    fd = ns_open(DEVNULL, O_WRONLY, 0);
+    fd = ns_open(DEVNULL, O_WRONLY | O_CLOEXEC, 0);
     if (fd > 0 && fd != 1) {
         (void) ns_close(fd);
     }
-    fd = ns_open(DEVNULL, O_WRONLY, 0);
-    if (fd > 0 && fd != 2) {
+    fd = ns_open(DEVNULL, O_WRONLY | O_CLOEXEC, 0);
+    if ((fd > 0) && (fd != 2)) {
         (void) ns_close(fd);
     }
 
@@ -166,12 +165,11 @@ NsInitFd(void)
      * Open a fd on /dev/null which can be later re-used.
      */
 
-    devNull = ns_open(DEVNULL, O_RDWR, 0);
+    devNull = ns_open(DEVNULL, O_RDWR | O_CLOEXEC, 0);
     if (devNull < 0) {
         Ns_Fatal("fd: ns_open(%s) failed: %s", DEVNULL, strerror(errno));
     }
     (void) Ns_DupHigh(&devNull);
-    (void) Ns_CloseOnExec(devNull);
 }
 
 
@@ -348,7 +346,7 @@ Ns_GetTemp(void)
         /*
          * Create a new temp file
          */
-        int         flags, trys;
+        int         flags, tries;
         char       *path, buf[64];
         Ns_DString  ds;
 
@@ -359,7 +357,7 @@ Ns_GetTemp(void)
         flags |= _O_SHORT_LIVED|_O_NOINHERIT|_O_TEMPORARY|_O_BINARY;
 #endif
 
-        trys = 0;
+        tries = 0;
         do {
             Ns_Time     now;
 
@@ -371,7 +369,7 @@ Ns_GetTemp(void)
 #else
             fd = ns_open(path, flags, 0600);
 #endif
-        } while (fd < 0 && trys++ < 10 && errno == EEXIST);
+        } while (fd < 0 && tries++ < 10 && errno == EEXIST);
 
         if (fd < 0) {
             Ns_Log(Error, "tmp: could not open temp file %s: %s",
@@ -387,6 +385,7 @@ Ns_GetTemp(void)
         }
         Ns_DStringFree(&ds);
     }
+    Ns_Log(Debug, "Ns_GetTemp returns %d", fd);
 
     return fd;
 }
@@ -413,9 +412,13 @@ Ns_ReleaseTemp(int fd)
 {
     Tmp *tmpPtr;
 
+    assert(fd != NS_INVALID_FD);
+
     if (ns_lseek(fd, 0, SEEK_SET) != 0 || ftruncate(fd, 0) != 0) {
         (void) ns_close(fd);
     } else {
+        Ns_Log(Debug, "Ns_ReleaseTemp pushes %d", fd);
+
         tmpPtr = ns_malloc(sizeof(Tmp));
         tmpPtr->fd = fd;
         Ns_MutexLock(&lock);

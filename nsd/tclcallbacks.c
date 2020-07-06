@@ -55,7 +55,11 @@ static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const
  *
  * Ns_TclNewCallback --
  *
- *      Create a new script callback.
+ *      Create a new script callback. The callback uses a single memory chunk,
+ *      which can be freed as well by a single ns_free() operation. In order
+ *      to get alignment right, we use a minimal array in the ns_callback
+ *      guarantees proper alignment of the argument vector after the
+ *      Ns_TclCallback structure.
  *
  * Results:
  *      Pointer to Ns_TclCallback.
@@ -65,9 +69,8 @@ static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const
  *
  *----------------------------------------------------------------------
  */
-
-Ns_TclCallback*
-Ns_TclNewCallback(Tcl_Interp *interp, Ns_Callback *cbProc, Tcl_Obj *scriptObjPtr,
+Ns_TclCallback *
+Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr,
                   int objc, Tcl_Obj *const* objv)
 {
     Ns_TclCallback *cbPtr;
@@ -76,17 +79,20 @@ Ns_TclNewCallback(Tcl_Interp *interp, Ns_Callback *cbProc, Tcl_Obj *scriptObjPtr
     NS_NONNULL_ASSERT(cbProc != NULL);
     NS_NONNULL_ASSERT(scriptObjPtr != NULL);
 
-    cbPtr = ns_malloc(sizeof(Ns_TclCallback) + (size_t)objc * sizeof(char *));
+    cbPtr = ns_malloc(sizeof(Ns_TclCallback) +
+                      + (objc > 1 ? (size_t)(objc-1) * sizeof(char *) : 0u) );
+
     cbPtr->cbProc = cbProc;
     cbPtr->server = Ns_TclInterpServer(interp);
     cbPtr->script = ns_strdup(Tcl_GetString(scriptObjPtr));
     cbPtr->argc   = objc;
-    cbPtr->argv   = (char **)((char *)cbPtr + sizeof(Ns_TclCallback));
+    cbPtr->argv   = (char **)&cbPtr->args;
 
-    if (objc != 0) {
-        int ii;
-        for (ii = 0; ii < objc; ii++) {
-            cbPtr->argv[ii] = ns_strdup(Tcl_GetString(objv[ii]));
+    if (objc > 0) {
+        int i;
+
+        for (i = 0; i < objc; i++) {
+            cbPtr->argv[i] = ns_strdup(Tcl_GetString(objv[i]));
         }
     }
 
@@ -178,7 +184,7 @@ Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
         if (status != TCL_OK) {
             Ns_DStringSetLength(&ds, 0);
             Ns_DStringAppend(&ds, "\n    while executing callback\n");
-            Ns_GetProcInfo(&ds, (Ns_Callback *)cbPtr->cbProc, cbPtr);
+            Ns_GetProcInfo(&ds, (ns_funcptr_t)cbPtr->cbProc, cbPtr);
             Tcl_AddObjErrorInfo(interp, ds.string, ds.length);
             if (deallocInterp) {
                 (void) Ns_TclLogErrorInfo(interp, NULL);
@@ -278,9 +284,10 @@ AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
         result = TCL_ERROR;
 
     } else {
-      Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, Ns_TclCallbackProc, objv[1],
-                                                objc - 2, objv + 2);
-      (void) (*atProc)(Ns_TclCallbackProc, cbPtr);
+        Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp,
+                                                  (ns_funcptr_t)Ns_TclCallbackProc, objv[1],
+                                                  objc - 2, objv + 2);
+        (void) (*atProc)(Ns_TclCallbackProc, cbPtr);
     }
 
     return result;
@@ -335,7 +342,7 @@ NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
     static bool initialized = NS_FALSE;
 
     if (!initialized) {
-        Ns_RegisterProcInfo((Ns_Callback *)ShutdownProc, "ns:tclshutdown",
+        Ns_RegisterProcInfo((ns_funcptr_t)ShutdownProc, "ns:tclshutdown",
                             Ns_TclCallbackArgProc);
         initialized = NS_TRUE;
     }
@@ -344,7 +351,7 @@ NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
         result = TCL_ERROR;
 
     } else {
-        Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, (Ns_Callback *)ShutdownProc,
+        Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)ShutdownProc,
                                                   objv[1], objc - 2, objv + 2);
         (void) Ns_RegisterAtShutdown(ShutdownProc, cbPtr);
     }

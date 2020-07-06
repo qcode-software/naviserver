@@ -102,8 +102,8 @@ Returns or sets the number of bytes in the content to be sent.
 
 [call [cmd  "ns_conn copy"] [arg off] [arg len] [arg chan]]
 
-Copies data from the current connection to chan starting at byte off
-for len bytes.
+Copies number of bytes from the current connection starting
+at the given offset to a Tcl channel.
 
 
 [call [cmd  "ns_conn driver"]]
@@ -242,9 +242,19 @@ Returns any query data that was part of the HTTP request.
 Returns detailed timing information about the current requests. The
 result is a dict containing the keys "accepttime" (the time between
 the accept of a socket and its adding to the queue; not always easy to
-interprete), "queuetime" (time in the queue), "filtertime" (time spent
+interpret), "queuetime" (time in the queue), "filtertime" (time spent
 during running of filters) and "runtime" (time spent so far during the
 main request).
+
+
+[call [cmd  "ns_conn ratelimit"] [opt limit]]
+
+Query or set rate limit for the current connection. The value is
+provided in KB/s (kilobytes per second). A value of 0 means unlimited.
+Default values can be provided per connection pool
+(parameter [term ratelimit]) or on the driver level
+(parameter [term writerratelimit]).
+The limit is only enforced on connections using writer threads.
 
 
 [call [cmd  "ns_conn request"]]
@@ -260,7 +270,6 @@ Returns the name of the server handling the request.
 [call [cmd  "ns_conn sock"]]
 
 Returns the socket id (integer fd) of current connection.
-
 
 
 [call [cmd  "ns_conn start"]]
@@ -296,9 +305,10 @@ Returns the number of elements (delimited by `/') in the URL of the HTTP request
 Query or set the url encoding for the current connection.
 
 
-[call [cmd  "ns_conn urlv"]]
+[call [cmd  "ns_conn urlv"] [opt [arg idx]]]
 
 Returns a list containing the pieces of the URL delimited by `/'.
+When [arg idx] is provided, return the nth element of the URL vector.
 
 
 [call [cmd  "ns_conn version"]]

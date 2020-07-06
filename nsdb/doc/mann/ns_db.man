@@ -149,7 +149,7 @@ receiving "0" on the previous call, an error is returned.
 
 [call [cmd "ns_db logminduration"] [arg pool] [opt [arg duration]]]
 
-Query or set a threshold for logging of sql statements. Log only
+Query or set a threshold for logging of SQL statements. Log only
 statements in the error.log, when sql logging is turned on in general
 (via "ns_logctl severity Debug(sql) ...") and the statement took
 at least the specified duration (specified in seconds, e.g. "0.1").
@@ -257,7 +257,8 @@ below, for an example of this function.
 
 Returns statistics in form of a Tcl dict from all pools in form of a
 dict. The statistics contain the number of SQL statements executed,
-the number of get-handle operations, 
+the number of get-handle operations,
+the number of currently connected database connections,
 the total and the used handles from the pool, and the aggregated wait
 time for handles from this pool (including the connection setup time
 to the database server).
@@ -469,7 +470,7 @@ ns_section ns/db/pool/pool2
 
 
 [see_also ns_buildsqldate ns_dbquotevalue]
-[keywords "server built-in" module nsdb database sql pool]
+[keywords "server built-in" module nsdb database SQL pools]
 
 
 [manpage_end]

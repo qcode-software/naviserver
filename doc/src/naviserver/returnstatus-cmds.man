@@ -7,8 +7,12 @@
 [description]
 
 These commands return a complete response to the client using a variety of
-different HTTP status codes. Any queued headers, such as those set by
-[cmd ns_setcookie] or manually using [cmd "ns_conn outputheaders"] and
+different HTTP status codes. On contrary to the lower level commands
+like [cmd ns_return] these commands are designed to ease consistent
+behavior in common success, redirect or error situations.
+
+Like with [cmd ns_return] all queued headers, such as those set by
+[cmd ns_setcookie] (see [cmd ns_cookie]) or via [cmd "ns_conn"] [cmd "outputheaders"] and 
 [cmd "ns_set put"], are added to the default headers and sent in the response.
 
 [para]
@@ -30,7 +34,7 @@ return one.
 
 [para]
 NOTE: The script does not end at the time these commands are invoked.
-When used in an adp page, [cmd ns_adp_abort] or [cmd ns_adp_return]
+When used in an ADP page, [cmd ns_adp_abort] or [cmd ns_adp_return]
 should be called to end script processing after ns_returnredirect. 
 
 
@@ -61,7 +65,10 @@ instead of the old one in the future.
         [arg url] ]
 
 Return a response with status code [term 302], [term Found]. The [term Location]
-header will be set to the [arg url] if given.
+header will be set to the [arg url] if given. For non-fully qualified
+target addresses, the URL is completed with either the location
+configured via [cmd ns_locationproc] or via the [term location] configured in the
+network driver module (see [cmd nssock]).
 
 [para]
 Use this response to signal that the resource identified by the requested URL has
@@ -205,7 +212,7 @@ ns_register_proc GET /service {
 [example_end]
 
 
-[see_also ns_return ns_internalredirect]
-[keywords "server built-in" return redirect response status configuration]
+[see_also ns_return ns_internalredirect ns_conn ns_cookie ns_locationproc]
+[keywords "server built-in" return redirect response status configuration nssock]
 
 [manpage_end]

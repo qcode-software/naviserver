@@ -35,7 +35,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.17],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[4.99.19],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -50,7 +50,7 @@ AC_CONFIG_HEADERS([include/nsconfig.h])
 
 AC_SUBST([NS_MAJOR_VERSION],  [4])
 AC_SUBST([NS_MINOR_VERSION],  [99])
-AC_SUBST([NS_RELEASE_SERIAL], [17])
+AC_SUBST([NS_RELEASE_SERIAL], [19])
 AC_SUBST([NS_RELEASE_LEVEL],  [NS_FINAL_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
 
 AC_SUBST([NS_VERSION],     [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}\"])
@@ -209,6 +209,8 @@ AX_HAVE_GETGRNAM_R
 AX_HAVE_GETGRGID_R
 AX_HAVE_ARC4RANDOM
 AX_HAVE_CRYPT_R
+AX_HAVE_BSD_SENDFILE
+AX_HAVE_LINUX_SENDFILE
 
 AC_MSG_CHECKING([need for dup high])
 AC_RUN_IFELSE([AC_LANG_SOURCE([[
@@ -335,7 +337,7 @@ AC_CHECK_MEMBERS([struct sockaddr_in.sin_len],,,[
 
 AC_CHECK_LIB([crypt], [crypt],
   [
-    AC_DEFINE([HAVE_CRYPT], [],
+    AC_DEFINE([NS_HAVE_CRYPT], [],
               [Define to 1 if the native crypt library should be used])
     CRYPT_LIBS="-lcrypt"
   ],

@@ -77,19 +77,19 @@ test ns_serverpath-3.7 {virtual host path} -body {
 
 
 
-test ns_serverpath-4.1 {custom serverroot} -constraints serverListen -body {
+test ns_serverpath-4.1 {custom serverroot} -body {
     nstest::http -getbody 1 -setheaders [list Host testvhost2:$port] -- GET /serverpath
 } -result {200 testserverroot/arg}
 
-test ns_serverpath-4.2 {custom serverroot} -constraints serverListen -body {
+test ns_serverpath-4.2 {custom serverroot} -body {
     nstest::http -getbody 1 -setheaders [list Host testvhost2:$port] -- GET /serverpath?host=example.com
 } -result {200 testserverroot/example.com/arg}
 
-test ns_serverpath-4.3 {custom serverroot} -constraints serverListen -body {
+test ns_serverpath-4.3 {custom serverroot} -body {
     nstest::http -getbody 1 -setheaders [list Host testvhost2:$port] -- GET /serverpath?path=x
 } -result {200 testserverroot/arg/x}
 
-test ns_serverpath-4.4 {custom serverroot} -constraints serverListen -body {
+test ns_serverpath-4.4 {custom serverroot} -body {
     nstest::http -getbody 1 -setheaders [list Host testvhost2:$port] -- GET /serverpath?host=example.com&path=x
 } -result {200 testserverroot/example.com/arg/x}
 
