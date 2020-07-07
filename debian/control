@@ -16,7 +16,7 @@ Homepage: http://wiki.tcl.tk/2090
 
 Package: naviserver
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, debconf (>= 1.5.71), ucf (>= 3), logrotate (>= 3.14), tcl8.6 (>= 8.6.9), naviserver-core (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, debconf (>= 1.5.71), ucf (>= 3), logrotate (>= 3.14), tcl8.6 (>= 8.6.9), naviserver-core (= ${binary:Version}), adduser
 Conflicts: naviserver-nsssl
 Replaces: naviserver-nsssl
 Description: Programmable web server written in C & Tcl
