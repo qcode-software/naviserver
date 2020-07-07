@@ -97,6 +97,8 @@ EOF
 		# Cleanup, since key may have been written to $SSL_CERT before failure. Don't care if it fails.
 		rm -f $SSL_CERT || true
 		exit 1
+	else
+		chown www-data:www-data $SSL_CERT
     	fi
 fi
 
