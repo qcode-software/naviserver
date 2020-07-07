@@ -43,13 +43,13 @@ fi
 
 if [ ! -d $LOGDIR ]; then
         mkdir -p $LOGDIR
-	chown -R www-data:www-data $LOGDIR
+	chown www-data:www-data $LOGDIR
 	chmod 755 $LOGDIR
 fi
 
 # Set permissions on default pageroot
 if [ -d /usr/share/doc/$PACKAGE ]; then
-	chown -R www-data:www-data /usr/share/doc/$PACKAGE
+	chown www-data:www-data /usr/share/doc/$PACKAGE
 	chmod 755 /usr/share/doc/$PACKAGE
 fi
 
