@@ -15,20 +15,16 @@
 # check for presence of www-data:www-data user
 
 add_group_if_missing() {
-    if [ -x /usr/sbin/adduser ]; then
-        if ! id -g www-data >/dev/null 2>&1; then
-                addgroup --gid 33 --force-badname www-data
-        fi
+    if ! id -g www-data >/dev/null 2>&1; then
+            addgroup --gid 33 --force-badname www-data
     fi
 }
                                                                                                               
 add_user_if_missing() {
-    if [ -x /usr/sbin/adduser ]; then
-        if ! id -u www-data > /dev/null 2>&1; then
-            adduser --system --home /var/www --no-create-home \
-                --uid 33 --gid 33 --disabled-password --force-badname \
-                www-data
-        fi
+    if ! id -u www-data > /dev/null 2>&1; then
+        adduser --system --home /var/www --no-create-home \
+            --uid 33 --gid 33 --disabled-password --force-badname \
+            www-data
     fi
 }
 

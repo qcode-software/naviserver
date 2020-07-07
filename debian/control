@@ -1,6 +1,6 @@
 Source: naviserver
 Section: web
-Priority: extra
+Priority: optional
 Maintainer: Qcode Software Ltd <hackers@qcode.co.uk> 
 Build-Depends: debhelper (>= 12),
                dh-systemd,

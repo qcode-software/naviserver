@@ -26,7 +26,7 @@ then
     rm -rf /var/run/$PACKAGE
     rm -rf /etc/$PACKAGE
     rm -f /etc/logrotate.d/$PACKAGE
-    if [ -x /usr/bin/ucf ]; then
+    if which ucf > /dev/null; then
     	ucf --purge /etc/$PACKAGE/$PACKAGE.tcl 
     else
         rm -f /etc/$PACKAGE/$PACKAGE.tcl
