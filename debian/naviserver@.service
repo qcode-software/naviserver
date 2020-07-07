@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-PIDFile=/var/run/naviserver/%i.pid
+PIDFile=/run/naviserver/%i.pid
 # Default environment vars for all naviserver instances
 EnvironmentFile=/etc/default/naviserver
 # Environment variables for this %i instance of naviserver

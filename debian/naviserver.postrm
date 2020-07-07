@@ -23,7 +23,7 @@ PACKAGE=naviserver
 if [ "$1" = "purge" ]
 then
     rm -rf /var/log/$PACKAGE
-    rm -rf /var/run/$PACKAGE
+    rm -rf /run/$PACKAGE
     rm -rf /etc/$PACKAGE
     rm -f /etc/logrotate.d/$PACKAGE
     if which ucf > /dev/null; then

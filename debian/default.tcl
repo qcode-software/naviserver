@@ -32,7 +32,7 @@
 # Where a daemon is started from the config file:
 # /etc/naviserver/srv1.tcl
 # the init script will expect to find the corresponding pid file in:
-# /var/run/naviserver/srv1.pid
+# /run/naviserver/srv1.pid
 # If you change the instance name please keep in mind the pidfile is 
 # based on it.
 #
@@ -45,7 +45,7 @@ set 	homedir			/usr/lib/${package}
 
 # Log directories (access log, error log, pidfile)
 set	logdir 			/var/log/${package}
-set	piddir 			/var/run/${package}
+set	piddir 			/run/${package}
 
 # Name/description of the virtual server
 set	servername		"$instance"
