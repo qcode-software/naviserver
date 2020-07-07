@@ -1,1 +1,1 @@
-d /var/run/naviserver 0775 www-data www-data - -
+d /run/naviserver 0775 www-data www-data - -
