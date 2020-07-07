@@ -80,7 +80,6 @@ if [ ! -f $SSL_CERT ]; then
 #
 # Naviserver SSL default cert configuration file.
 #
-RANDFILE                = /dev/urandom
 [ req ]
 default_bits            = 2048
 default_keyfile         = privkey.pem
