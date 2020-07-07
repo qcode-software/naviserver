@@ -1,1 +1,2 @@
 0001-ISO_BUILD_DATE-to-match-upstream-build-date.patch
+0002-Specify-bash-for-makefile-so-distclean-works-as-expe.patch
