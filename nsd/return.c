@@ -461,7 +461,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
      *
      *       "MIME-Version: 1.0\r\n"
      *
-     * However, MIME_Version is a MIME header, not a HTTP header (although
+     * However, MIME_Version is a MIME header, not an HTTP header (although
      * allowed in HTTP/1.1); it's only used when HTTP messages are moved over
      * MIME-based protocols (e.g., SMTP), which is uncommon. The HTTP mime
      * message parsing semantics are defined by this RFC 2616 and not any MIME
@@ -535,7 +535,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
                         Ns_DString sanitize, *sanitizePtr = &sanitize;
                         /*
                          * We have to sanititize the header field to avoid
-                         * a HTTP response splitting attack. After each
+                         * an HTTP response splitting attack. After each
                          * newline in the value, we insert a TAB character
                          * (see Section 4.2 in RFC 2616)
                          */
@@ -926,10 +926,10 @@ ReturnOpen(Ns_Conn *conn, int status, const char *mimeType, Tcl_Channel chan,
 
         if (chan != NULL) {
             Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
-            result = Ns_ConnSendChannel(conn, chan, len);
+            result = Ns_ConnSendChannel(conn, chan, (ssize_t)len);
         } else if (fp != NULL) {
             Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
-            result = Ns_ConnSendFp(conn, fp, len);
+            result = Ns_ConnSendFp(conn, fp, (ssize_t)len);
         } else {
             result = ReturnRange(conn, mimeType, fd, NULL, len);
         }
@@ -1014,7 +1014,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
 
                 dataLength = 0u;
                 for (i = 0; i < nbufs; i++) {
-                    vbuf[i].iov_base = INT2PTR(bufs[i].offset);
+                    vbuf[i].iov_base = (char *)bufs[i].buffer + bufs[i].offset;
                     vbuf[i].iov_len  = bufs[i].length;
                     dataLength += bufs[i].length;
                 }

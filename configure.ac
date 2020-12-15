@@ -35,7 +35,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.19],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[4.99.20a],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -50,8 +50,8 @@ AC_CONFIG_HEADERS([include/nsconfig.h])
 
 AC_SUBST([NS_MAJOR_VERSION],  [4])
 AC_SUBST([NS_MINOR_VERSION],  [99])
-AC_SUBST([NS_RELEASE_SERIAL], [19])
-AC_SUBST([NS_RELEASE_LEVEL],  [NS_FINAL_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
+AC_SUBST([NS_RELEASE_SERIAL], [20])
+AC_SUBST([NS_RELEASE_LEVEL],  [NS_ALPHA_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
 
 AC_SUBST([NS_VERSION],     [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}\"])
 AC_SUBST([NS_PATCH_LEVEL], [\"$PACKAGE_VERSION\"])
@@ -212,6 +212,10 @@ AX_HAVE_CRYPT_R
 AX_HAVE_BSD_SENDFILE
 AX_HAVE_LINUX_SENDFILE
 
+AX_PTHREAD(
+   [ AC_DEFINE([HAVE_PTHREAD], 1, [Define if you have POSIX threads libraries and header files]) ],
+   [ AC_MSG_NOTICE(pthread is not available) ] )
+ 
 AC_MSG_CHECKING([need for dup high])
 AC_RUN_IFELSE([AC_LANG_SOURCE([[
   #include <stdio.h>
@@ -278,6 +282,8 @@ fi
 AC_MSG_CHECKING([package tag number from source control])
 if test -d ".hg" ; then
    ns_package_tag=`hg id -ibt`
+elif test -d ".git" ; then
+   ns_package_tag=`git describe --abbrev=12 --always --dirty=+`
 else
    ns_package_tag="tar-$PACKAGE_VERSION"
 fi

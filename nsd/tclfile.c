@@ -176,7 +176,7 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, const char *chanId, int write, int *fdPtr)
 static int
 FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
 {
-    int               maxFiles, result;
+    int               maxFiles = 0, result;
     Tcl_Obj          *fileObj = NULL;
     Ns_ObjvValueRange range = {0, 1000};
 
@@ -238,7 +238,7 @@ NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *      temporary filename using optionally a template as argument.
  *
  *      In general, the function mktemp() is not recommended, since
- *      there is a time gap between the generation of a file name and
+ *      there is a time gap between the generation of a filename and
  *      the generation of a file or directory with the name. This can
  *      result in race conditions or attacks. However, using this
  *      function is still better than home-brewed solutions for the
@@ -392,28 +392,35 @@ NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 int
 NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    Tcl_Channel       chan;
-    int               nbytes = INT_MAX, result = TCL_OK;
-    char             *fileidString;
-    Ns_ObjvSpec       args[] = {
-        {"fileid", Ns_ObjvString, &fileidString, NULL},
-        {"nbytes", Ns_ObjvInt,    &nbytes,       &posintRange0},
-        {NULL, NULL, NULL, NULL}
-    };
+    Tcl_Channel chan = NULL;
+    Tcl_WideInt nbytes = -1;
+    int         result = TCL_OK;
 
-    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK
-        || NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
+    if (unlikely(objc < 2 || objc > 3)) {
+        Tcl_WrongNumArgs(interp, 1, objv, "fileid ?nbytes?");
         result = TCL_ERROR;
 
-    } else if (Ns_TclGetOpenChannel(interp, fileidString, 0, NS_TRUE, &chan) != TCL_OK) {
+    } else if (objc >= 2
+               && Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[1]),
+                                       0, NS_TRUE, &chan) != TCL_OK) {
+        result = TCL_ERROR;
+    } else if (objc == 3
+               && Tcl_GetWideIntFromObj(interp, objv[2], &nbytes) != TCL_OK) {
+
+        result = TCL_ERROR;
+    } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
         result = TCL_ERROR;
 
-    } else  {
+    } else {
+
         /*
          * All parameters are ok.
          */
+
         const NsInterp *itPtr = clientData;
-        Ns_ReturnCode   status = Ns_ConnSendChannel(itPtr->conn, chan, (size_t)nbytes);
+        Ns_ReturnCode   status;
+
+        status = Ns_ConnSendChannel(itPtr->conn, chan, (ssize_t)nbytes);
 
         if (unlikely(status != NS_OK)) {
             Ns_TclPrintfResult(interp, "I/O failed");

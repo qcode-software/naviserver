@@ -295,6 +295,7 @@ Ns_ConnReturnFile(Ns_Conn *conn, int statusCode, const char *mimeType, const cha
     NS_NONNULL_ASSERT(fileName != NULL);
 
     if (Ns_Stat(fileName, &connPtr->fileInfo) == NS_FALSE) {
+        Ns_Log(Debug, "Ns_ConnReturnFile for '%s' returns 404", fileName);
         status = Ns_ConnReturnNotFound(conn);
     } else {
         status = FastReturn(conn, statusCode, mimeType, fileName);
@@ -397,6 +398,8 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
     } else {
 
     notfound:
+        Ns_Log(Debug, "Ns_FastPathProc for '%s' returns 404", ds.string);
+
         result = Ns_ConnReturnNotFound(conn);
     }
 
@@ -487,7 +490,7 @@ UrlIs(const char *server, const char *url, bool isDir)
  *
  * Ns_PageRoot --
  *
- *      Return path name of the server pages directory.
+ *      Return pathname of the server pages directory.
  *      Depreciated: Use Ns_PagePath() which is virtual host aware.
  *
  * Results:
@@ -573,7 +576,7 @@ CompressExternalFile(Tcl_Interp *interp, const char *cmdName, const char *fileNa
  *      Bame of the compressed file, when this is available and valid.
  *
  * Side effects:
- *      Potentially recompress file in the file system.
+ *      Potentially recompress file in the filesystem.
  *
  *----------------------------------------------------------------------
  */
@@ -605,12 +608,12 @@ CheckStaticCompressedDelivery(
     Tcl_DStringAppend(dsPtr, fileName, -1);
     Tcl_DStringAppend(dsPtr, ext, -1);
     compressedFileName = Tcl_DStringValue(dsPtr);
-    //fprintf(stderr, "=== check compressed file <%s> compressed <%s>\n",fileName, compressedFileName);
+    //fprintf(stderr, "=== check compressed file <%s> compressed <%s>\n", fileName, compressedFileName);
 
 
     if (Ns_Stat(compressedFileName, &gzStat)) {
         Ns_ConnCondSetHeaders(conn, "Vary", "Accept-Encoding");
-        //fprintf(stderr, "=== we have the file <%s> compressed <%s>\n",fileName, compressedFileName);
+        //fprintf(stderr, "=== we have the file <%s> compressed <%s>\n", fileName, compressedFileName);
 
         /*
          * We have a file with the compression extension
@@ -620,7 +623,7 @@ CheckStaticCompressedDelivery(
             /*
              * The modification time of the compressed file is older
              * than the modification time of the source, and the
-             * config file indicates the we have to try to refresh the
+             * configuration file indicates the we have to try to refresh the
              * compressed file (e.g. rezip the source).
              */
             if (CompressExternalFile(Ns_GetConnInterp(conn), cmdName, fileName, compressedFileName) == TCL_OK) {
@@ -707,7 +710,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
 
     /*
      * Determine the mime type if not given based on the requested
-     * file name (without a potential gz suffix).
+     * filename (without a potential gz suffix).
      */
     if (mimeType == NULL) {
         mimeType = Ns_GetMimeType(fileName);
@@ -719,12 +722,16 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
      * Check compressed versions of fileName
      */
     if (useBrotli && (connPtr->flags & NS_CONN_BROTLIACCEPTED) != 0u) {
-        compressedFileName = CheckStaticCompressedDelivery(conn, dsPtr, useBrotliRefresh, ".br","::ns_brotlifile", fileName, "br");
+        compressedFileName = CheckStaticCompressedDelivery(conn, dsPtr, useBrotliRefresh,
+                                                           ".br", "::ns_brotlifile",
+                                                           fileName, "br");
     }
 
     if (compressedFileName == NULL && useGzip && (connPtr->flags & NS_CONN_ZIPACCEPTED) != 0u) {
         Tcl_DStringSetLength(dsPtr, 0);
-        compressedFileName = CheckStaticCompressedDelivery(conn, dsPtr, useGzipRefresh, ".gz","::ns_gzipfile", fileName, "gzip");
+        compressedFileName = CheckStaticCompressedDelivery(conn, dsPtr, useGzipRefresh,
+                                                           ".gz", "::ns_gzipfile",
+                                                           fileName, "gzip");
     }
 
     if (compressedFileName != NULL) {
@@ -869,6 +876,8 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
     return status;
 
  notfound:
+
+    Ns_Log(Debug, "FastReturn for '%s' returns 404", fileName);
 
     Ns_DStringFree(dsPtr);
     return Ns_ConnReturnNotFound(conn);
@@ -1044,11 +1053,11 @@ NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                 const Ns_Time *timePtr = Ns_CacheGetExpirey(entry);
 
                 if (timePtr->usec == 0) {
-                    Ns_DStringPrintf(&ds, "%" PRIdz " %ld ",
-                                     size, timePtr->sec);
+                    Ns_DStringPrintf(&ds, "%" PRIdz " %" PRId64 " ",
+                                     size, (int64_t)timePtr->sec);
                 } else {
-                    Ns_DStringPrintf(&ds, "%" PRIdz " %ld:%ld ",
-                                     size, timePtr->sec, timePtr->usec);
+                    Ns_DStringPrintf(&ds, "%" PRIdz " " NS_TIME_FMT " ",
+                                     size, (int64_t)timePtr->sec, timePtr->usec);
                 }
                 entry = Ns_CacheNextEntry(&search);
             }

@@ -65,7 +65,7 @@ static NS_SOCKET SockSetup(NS_SOCKET sock);
 static ssize_t SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs,
                         unsigned int flags);
 
-static ssize_t SockSend(NS_SOCKET sock, struct iovec *bufs, int nbufs,
+static ssize_t SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
                         unsigned int flags);
 
 static NS_SOCKET BindToSameFamily(struct sockaddr *saPtr,
@@ -237,12 +237,32 @@ Ns_SockSetReceiveState(Ns_Sock *sock, Ns_SockState sockState)
     ((Sock *)sock)->recvSockState = sockState;
 }
 
+
+unsigned short
+Ns_SockGetPort(const Ns_Sock *sock)
+{
+    unsigned short result;
+    struct NS_SOCKADDR_STORAGE sa;
+    socklen_t len = (socklen_t)sizeof(sa);
+    int       retVal;
+
+    NS_NONNULL_ASSERT(sock != NULL);
+
+    retVal = getsockname(sock->sock, (struct sockaddr *) &sa, &len);
+    if (retVal == -1) {
+        result = 0u;
+    } else {
+        result = Ns_SockaddrGetPort((struct sockaddr *)&sa);
+    }
+
+    return result;
+}
 /*
  *----------------------------------------------------------------------
  *
  * Ns_SockInErrorState --
  *
- *      Check the error State of a ns_sock structure.
+ *      Check the error State of an ns_sock structure.
  *
  *      Background: SSL_shutdown() must not be called if a previous fatal error
  *      has occurred on a connection i.e. if SSL_get_error() has returned
@@ -259,11 +279,11 @@ Ns_SockSetReceiveState(Ns_Sock *sock, Ns_SockState sockState)
  *----------------------------------------------------------------------
  */
 bool
-Ns_SockInErrorState(Ns_Sock *sock)
+Ns_SockInErrorState(const Ns_Sock *sock)
 {
     NS_NONNULL_ASSERT(sock != NULL);
 
-    return (((Sock *)sock)->recvSockState == NS_SOCK_EXCEPTION);
+    return (((const Sock *)sock)->recvSockState == NS_SOCK_EXCEPTION);
 }
 
 
@@ -274,7 +294,7 @@ Ns_SockInErrorState(Ns_Sock *sock)
  *
  * Ns_SockRecvBufs --
  *
- *      Read data from a non-blocking socket into a vector of buffers.
+ *      Read data from a nonblocking socket into a vector of buffers.
  *      When the timeoutPtr is given, wait max the given time until
  *      the data is readable.
  *
@@ -332,10 +352,10 @@ Ns_SockRecvBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  *
  * Ns_SockRecvBufs2 --
  *
- *      Read data from a non-blocking socket into a vector of buffers.
+ *      Read data from a nonblocking socket into a vector of buffers.
  *      Ns_SockRecvBufs2() is similar to Ns_SockRecvBufs() with the following
  *      differences:
- *        a) the first argument is a NS_SOCKET
+ *        a) the first argument is an NS_SOCKET
  *        b) it performs no timeout handliong
  *        c) it returns the sockstate in its last argument
  *
@@ -392,7 +412,7 @@ Ns_SockRecvBufs2(NS_SOCKET sock, struct iovec *bufs, int nbufs,
  *
  * Ns_SockSendBufs --
  *
- *      Send a vector of buffers on a non-blocking socket.
+ *      Send a vector of buffers on a nonblocking socket.
  *      Promises to send all of the data.
  *
  * Results:
@@ -501,16 +521,16 @@ Ns_SockSendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
  *
  * Ns_SockSendBufs2 --
  *
- *      Send a vector of buffers on a non-blocking socket.
+ *      Send a vector of buffers on a nonblocking socket.
  *      It is similar to Ns_SockSendBufs() except that it
- *        a) receives a NS_SOCK as first argument
+ *        a) receives an NS_SOCK as first argument
  *        b) it does not care about partial writes,
  *           it simply returns the number of bytes sent.
  *        c) it never blocks
  *        d) it does not try corking
  *
  * Results:
- *      Number of bytes sent (which might be also 0 on EAGAIN cases)
+ *      Number of bytes sent (which might be also 0 on NS_EAGAIN cases)
  *      or -1 on error.
  *
  * Side effects:
@@ -523,11 +543,11 @@ ssize_t
 Ns_SockSendBufs2(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
                  unsigned int flags)
 {
-    ssize_t sent = 0;
+    ssize_t sent;
 
     NS_NONNULL_ASSERT(bufs != NULL);
 
-    sent = SockSend(sock, (struct iovec *)bufs, nbufs, flags);
+    sent = SockSend(sock, bufs, nbufs, flags);
 
     if (unlikely(sent == -1)) {
         if (Retry(ns_sockerrno)) {
@@ -547,7 +567,7 @@ Ns_SockSendBufs2(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
  *
  * NsSockRecv --
  *
- *      Timed recv operation from a non-blocking socket.
+ *      Timed recv operation from a nonblocking socket.
  *
  * Results:
  *      Number of bytes read, -1 on error.
@@ -586,7 +606,7 @@ Ns_SockRecv(NS_SOCKET sock, void *buffer, size_t length,
  *
  * Ns_SockSend --
  *
- *      Timed send operation to a non-blocking socket.
+ *      Timed send operation to a nonblocking socket.
  *
  * Results:
  *      Number of bytes written, -1 for error
@@ -640,7 +660,7 @@ Ns_SockSend(NS_SOCKET sock, const void *buffer, size_t length,
 Ns_ReturnCode
 Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
 {
-    int           n, pollTimeout;
+    int           n = 0, pollTimeout;
     struct pollfd pfd;
     Ns_ReturnCode result = NS_OK;
     short         requestedEvents, count = 0;
@@ -652,7 +672,7 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
      * meaning that the poll() call will return immediately.
      */
     if (timeoutPtr != NULL) {
-        pollTimeout = (int)(timeoutPtr->sec * 1000 + timeoutPtr->usec / 1000);
+        pollTimeout = (int)Ns_TimeToMilliseconds(timeoutPtr);
     } else {
         pollTimeout = -1;
     }
@@ -691,14 +711,14 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
                    " %.4x received %.4x", sock, requestedEvents, pfd.revents);
             result = NS_ERROR;
         } else {
-            int       err = 0;
-            socklen_t len = sizeof(errno);
+            int       err, sockerrno = 0;
+            socklen_t len = sizeof(sockerrno);
 
-            err = getsockopt(sock, SOL_SOCKET, SO_ERROR, &errno, &len);
-            if (err == -1 || errno != 0) {
+            err = getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)&sockerrno, &len);
+            if (err == -1 || sockerrno != 0) {
                 Ns_Log(Debug, "Ns_SockTimedWait on sock %d received events"
                        " %.4x, errno %d <%s>",
-                       sock, pfd.revents, errno, strerror(errno));
+                       sock, pfd.revents, sockerrno, strerror(sockerrno));
 
                 result = NS_ERROR;
             }
@@ -783,16 +803,18 @@ Ns_SockListen(const char *address, unsigned short port)
 NS_SOCKET
 Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
 {
+    int sockerrno;
+
     sock = accept(sock, saPtr, lenPtr);
+    sockerrno = ns_sockerrno;
 
     Ns_Log(Debug, "Ns_SockAccept returns sock %d, err %s", sock,
-           (ns_sockerrno == 0) ? "NONE" : ns_sockstrerror(ns_sockerrno));
+           (sockerrno == 0) ? "NONE" : ns_sockstrerror(sockerrno));
 
     if (likely(sock != NS_INVALID_SOCKET)) {
         sock = SockSetup(sock);
-    } else if (ns_sockerrno != 0 && ns_sockerrno != NS_EAGAIN) {
-        Ns_Log(Warning, "accept() fails, reason: %s",
-               ns_sockstrerror(ns_sockerrno));
+    } else if (sockerrno != 0 && sockerrno != NS_EAGAIN) {
+        Ns_Log(Warning, "accept() fails, reason: %s", ns_sockstrerror(sockerrno));
     }
 
     return sock;
@@ -1081,6 +1103,7 @@ Ns_SockConnectError(Tcl_Interp *interp, const char *host, unsigned short portNr,
     if (status == NS_TIMEOUT) {
         Ns_TclPrintfResult(interp, "timeout while connecting to %s port %hu", host, portNr);
         Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+        Ns_Log(Ns_LogTimeoutDebug, "socket connect to %s port %hu runs into timeout", host, portNr);
     } else {
         /*
          * Tcl_PosixError() sets as well the Tcl error code.
@@ -1155,7 +1178,7 @@ Ns_SockSetBlocking(NS_SOCKET sock)
 /*
  *----------------------------------------------------------------------
  *
- * SetDeferAccept --
+ * Ns_SockSetDeferAccept --
  *
  *      Tell the OS not to give us a new socket until data is available.
  *      This saves overhead in the poll() loop and the latency of a RT.
@@ -1221,6 +1244,61 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, long secs)
 #endif
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockSetKeepalive --
+ *
+ *      Tell the OS to activate keepalive on TCP sockets.
+ *      This makes it easy to detect stale connections.
+ *
+ *      For details, see
+ *      https://www.tldp.org/HOWTO/html_single/TCP-Keepalive-HOWTO/
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Changing socket behavior.
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
+Ns_SockSetKeepalive(NS_SOCKET sock, int optval)
+{
+#ifdef SO_KEEPALIVE
+    socklen_t optlen = sizeof(optval);
+
+    if (Ns_LogSeverityEnabled(Debug)) {
+        int val0 = 0;
+
+        /*
+         * Check on enabled debug the pre-existent status of the keepalive
+         * socket option in order to compare it with the newly set value.
+         */
+        if (getsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &val0, &optlen) < 0) {
+            Ns_Log(Error, "sock(%d) can't set keepalive %d: %s",
+                   sock, optval, ns_sockstrerror(ns_sockerrno));
+
+        } else if (val0 != optval) {
+            if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0) {
+                Ns_Log(Error, "sock(%d) can't set keepalive %d: %s",
+                       sock, optval, ns_sockstrerror(ns_sockerrno));
+            }
+        }
+        Ns_Log(Notice, "sock(%d): socket option SO_KEEPALIVE set from %d to %d",
+               sock, val0, optval);
+    } else {
+        if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen) < 0) {
+            Ns_Log(Error, "sock(%d) can't set keepalive %d: %s",
+                   sock, optval, ns_sockstrerror(ns_sockerrno));
+        }
+    }
+#endif
+}
+
+
 
 
 /*
@@ -1277,7 +1355,7 @@ static bool
 CloseLater(NS_SOCKET sock, void *UNUSED(arg), unsigned int UNUSED(why))
 {
     int rc = ns_sockclose(sock);
-    return (rc == 0 ? NS_TRUE : NS_FALSE);
+    return (rc == 0);
 }
 
 Ns_ReturnCode
@@ -1329,7 +1407,7 @@ Ns_SetSockErrno(ns_sockerrno_t err)
 #endif
 }
 
-char *
+const char *
 Ns_SockStrError(ns_sockerrno_t err)
 {
 #ifdef _WIN32
@@ -1385,7 +1463,7 @@ NsPoll(struct pollfd *pfds, NS_POLL_NFDS_TYPE nfds, const Ns_Time *timeoutPtr)
             if (Ns_DiffTime(timeoutPtr, &now, &diff) <= 0) {
                 ms = 0;
             } else {
-                ms = (int)(diff.sec * 1000 + diff.usec / 1000);
+                ms = (int)Ns_TimeToMilliseconds(&diff);
             }
         }
         n = ns_poll(pfds, nfds, ms);
@@ -1584,7 +1662,7 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                          */
                         if (multipleIPs) {
                             struct pollfd sockfd;
-                            socklen_t len;
+                            socklen_t     len;
 
                             if (err == NS_EWOULDBLOCK) {
                                 Ns_Log(Debug, "async connect to %s on sock %d returned NS_EWOULDBLOCK",
@@ -1604,29 +1682,31 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                              */
                             (void) ns_poll(&sockfd, 1, 100);
 
-                            /*
-                             * poll() finished - either with a timeout or
-                             * success. Actually we don't care, since the
-                             * getsockopt() for returning out the error helps
-                             * us to decide, whether to continiue with this IP
-                             * address or not.
-                             */
-                            len = sizeof(errno);
-                            getsockopt(sock, SOL_SOCKET, SO_ERROR, &errno, &len);
+                            {
+                                int error;
+                                /*
+                                 * poll() finished - either with a timeout or
+                                 * success. Actually we don't care, since the
+                                 * getsockopt() for returning out the error helps
+                                 * us to decide, whether to continue with this IP
+                                 * address or not.
+                                 */
+                                len = sizeof(error);
+                                getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)&error, &len);
 
-                            /*Ns_Log(Notice, "async connect on sock %d, poll returned %d revents %.4x, extraerr %d <%s>",
-                              sock, n, sockfd.revents, errno, ns_sockstrerror(errno));*/
-                            if (errno != 0) {
-                                Ns_Log(Notice, "multiple & async on connect to %s fails on sock %d err %d <%s>",
-                                       address, sock, errno, ns_sockstrerror(errno));
-                                ns_sockclose(sock);
-                                sock = NS_INVALID_SOCKET;
-                                continue;
-                            } else {
-                                Ns_Log(Debug, "async connect multipleIPs INPROGRESS sock %d continue", sock);
-                                break;
+                                /*Ns_Log(Notice, "async connect on sock %d, poll returned %d revents %.4x, extraerr %d <%s>",
+                                  sock, n, sockfd.revents, error, ns_sockstrerror(error));*/
+                                if (error != 0) {
+                                    Ns_Log(Notice, "multiple & async on connect to %s fails on sock %d err %d <%s>",
+                                           address, sock, error, ns_sockstrerror(error));
+                                    ns_sockclose(sock);
+                                    sock = NS_INVALID_SOCKET;
+                                    continue;
+                                } else {
+                                    Ns_Log(Debug, "async connect multipleIPs INPROGRESS sock %d continue", sock);
+                                    break;
+                                }
                             }
-
                         }
                     } else if (err != 0) {
                         Ns_Log(Notice, "close sock %d due to error err %d <%s>",
@@ -1694,7 +1774,7 @@ SockSetup(NS_SOCKET sock)
  *
  * SockRecv --
  *
- *      Read data from a non-blocking socket into a vector of buffers.
+ *      Read data from a nonblocking socket into a vector of buffers.
  *
  * Results:
  *
@@ -1743,7 +1823,7 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
  *
  * SockSend --
  *
- *      Send data to a non-blocking socket from a vector of buffers.
+ *      Send data to a nonblocking socket from a vector of buffers.
  *
  * Results:
  *
@@ -1757,7 +1837,7 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
  */
 
 static ssize_t
-SockSend(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
+SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags)
 {
     ssize_t numBytes = 0;
 
@@ -1774,7 +1854,7 @@ SockSend(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
     struct msghdr msg;
 
     memset(&msg, 0, sizeof(msg));
-    msg.msg_iov = bufs;
+    msg.msg_iov = (struct iovec *)bufs;
     msg.msg_iovlen = (NS_MSG_IOVLEN_T)nbufs;
     numBytes = sendmsg(sock, &msg, (int)flags|MSG_NOSIGNAL|MSG_DONTWAIT);
 #endif

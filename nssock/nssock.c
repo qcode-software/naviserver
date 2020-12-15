@@ -59,7 +59,7 @@ static Ns_DriverKeepProc Keep;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
-static void SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
+static void SetNodelay(const Ns_Driver *driver, NS_SOCKET sock)
     NS_GNUC_NONNULL(1);
 
 
@@ -119,7 +119,7 @@ Ns_ModuleInit(const char *server, const char *module)
  *
  * SockListen --
  *
- *      Open a listening TCP socket in non-blocking mode.
+ *      Open a listening TCP socket in nonblocking mode.
  *
  * Results:
  *      The open socket or NS_INVALID_SOCKET on error.
@@ -141,7 +141,7 @@ SockListen(Ns_Driver *driver, const char *address, unsigned short port, int back
 
         (void) Ns_SockSetNonBlocking(sock);
         if (cfg->deferaccept != 0) {
-            Ns_SockSetDeferAccept(sock, driver->recvwait);
+            Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
         }
     }
     return sock;
@@ -153,7 +153,7 @@ SockListen(Ns_Driver *driver, const char *address, unsigned short port, int back
  *
  * SockAccept --
  *
- *      Accept a new TCP socket in non-blocking mode.
+ *      Accept a new TCP socket in nonblocking mode.
  *
  * Results:
  *      NS_DRIVER_ACCEPT       - socket accepted
@@ -183,7 +183,7 @@ SockAccept(Ns_Sock *sock, NS_SOCKET listensock,
          * the send low watermark to 1 fixes this problem.
          */
         int value = 1;
-        setsockopt(sock->sock, SOL_SOCKET,SO_SNDLOWAT, &value, sizeof(value));
+        setsockopt(sock->sock, SOL_SOCKET, SO_SNDLOWAT, &value, sizeof(value));
 #endif
         (void)Ns_SockSetNonBlocking(sock->sock);
         SetNodelay(sock->driver, sock->sock);
@@ -341,7 +341,7 @@ SockClose(Ns_Sock *sock)
 
 
 static void
-SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
+SetNodelay(const Ns_Driver *driver, NS_SOCKET sock)
 {
 #ifdef TCP_NODELAY
     Config *cfg;

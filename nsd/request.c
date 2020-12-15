@@ -240,7 +240,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     p = strrchr(url, INTCHAR(' '));
     if (likely(p != NULL)) {
         /*
-         * We have a final token. Let see, if this a HTTP-version string.
+         * We have a final token. Let see, if this an HTTP-version string.
          */
         if (likely(strncmp(p + 1, HTTP, sizeof(HTTP) - 1u) == 0)) {
             /*
@@ -836,7 +836,6 @@ CompressAllow(double compressQvalue, double identityQvalue, double starQvalue)
              */
             result = NS_TRUE;
         }
-        //fprintf(stderr, "CompressAllow middle compressQvalue %f identity %f result %d\n", compressQvalue, identityQvalue,result);
     }
     return result;
 }

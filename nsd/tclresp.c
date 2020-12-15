@@ -271,7 +271,7 @@ NsTclWriteObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *c
          * text objects...
          */
 
-        binary = (conn->flags & NS_CONN_WRITE_ENCODED) != 0u ? NS_FALSE : NS_TRUE;
+        binary = ((conn->flags & NS_CONN_WRITE_ENCODED) == 0u);
 
         for (i = 0, n = 0; i < objc; i++) {
             if (!binary) {
@@ -619,7 +619,7 @@ NsTclConnSendFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
             Ns_LogDeprecated(objv, 3, "ns_writefp fileid ?nbytes?", NULL);
 
             conn->flags |= NS_CONN_SKIPHDRS;
-            status = Ns_ConnSendChannel(conn, chan, (size_t)length);
+            status = Ns_ConnSendChannel(conn, chan, (ssize_t)length);
 
             if (status != NS_OK) {
                 Ns_TclPrintfResult(interp, "could not send %d bytes from channel %s",
@@ -677,8 +677,9 @@ NsTclReturnBadRequestObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, i
  *
  * ReturnObjCmd --
  *
- *      Implements ns_returnnotfound, ns_returnunauthorized and
- *      ns_returnforbidden.  Send an error response to client.
+ *      Implements ns_returnnotfound, ns_returnunauthorized,
+ *      ns_returnforbidden, and ns_returnunavailable.
+ *      Send an error response to client.
  *
  * Results:
  *      Standard Tcl result.

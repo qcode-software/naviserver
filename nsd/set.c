@@ -331,10 +331,9 @@ Ns_SetFindCmp(const Ns_Set *set, const char *key, StringCmpProc cmp)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_SetGetCmp(const Ns_Set *set, const char *key, StringCmpProc cmp)
 {
-    char *result;
     int   i;
 
     NS_NONNULL_ASSERT(set != NULL);
@@ -342,12 +341,7 @@ Ns_SetGetCmp(const Ns_Set *set, const char *key, StringCmpProc cmp)
     NS_NONNULL_ASSERT(cmp != NULL);
 
     i = Ns_SetFindCmp(set, key, cmp);
-    if (i == -1) {
-        result = NULL;
-    } else {
-        result = set->fields[i].value;
-    }
-    return result;
+    return ((i == -1) ? NULL : set->fields[i].value);
 }
 
 
@@ -471,7 +465,7 @@ Ns_SetIFind(const Ns_Set *set, const char *key)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_SetGet(const Ns_Set *set, const char *key)
 {
     NS_NONNULL_ASSERT(set != NULL);
@@ -497,7 +491,7 @@ Ns_SetGet(const Ns_Set *set, const char *key)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_SetIGet(const Ns_Set *set, const char *key)
 {
     NS_NONNULL_ASSERT(set != NULL);
@@ -1047,7 +1041,7 @@ Ns_SetRecreate(Ns_Set *set)
  * Ns_SetRecreate2 --
  *
  *      This is a faster version of Ns_SetRecreate() since it tries to reuse
- *      pre-allocated, but truncated Ns_Set structures. It saves potentially
+ *      preallocated, but truncated Ns_Set structures. It saves potentially
  *      three ns_malloc operations:
  *        1) the Ns_Set structure
  *        2) the set name (it preserves the old name)

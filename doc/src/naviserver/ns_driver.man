@@ -29,24 +29,24 @@ snippets showing some options.
 "nssock" globally.
 
 [example_begin]
-   ns_section "ns/modules"
-   ns_param    nssock nssock.so
-   
-   ns_section "ns/module/nssock"
-   ns_param    port 80
-   ...
+ ns_section "ns/modules"
+ ns_param    nssock nssock.so
+ 
+ ns_section "ns/module/nssock"
+ ns_param    port 80
+ ...
 [example_end]   
 
 [para] Configuration snippet 2: Load the nssock module with the name
 "nssock" for a server named "server1".
 
 [example_begin]
-   ns_section "ns/server/server1/modules"
-   ns_param    nssock nssock.so
-   
-   ns_section "ns/server/server1/module/nssock"
-   ns_param    port 80
-   ...
+ ns_section "ns/server/server1/modules"
+ ns_param    nssock nssock.so
+ 
+ ns_section "ns/server/server1/module/nssock"
+ ns_param    port 80
+ ...
 [example_end]   
 
 [para] Configuration snippet 3:  Load the nssock module twice under
@@ -54,15 +54,15 @@ the name "nssock1" and "nssock2". The server will listen via driver
 module "nssock1" on port 8000 and via module "nssock2" on port 8001.
 
 [example_begin]
-   ns_section ns/server/server1/modules
-   ns_param   nssock1   nssock.so
-   ns_param   nssock2   nssock.so
+ ns_section ns/server/server1/modules
+ ns_param   nssock1   nssock.so
+ ns_param   nssock2   nssock.so
  
-   ns_section ns/server/server1/module/nssock1
-   ns_param   port    8000
-   
-   ns_section ns/server/server1/module/nssock2
-   ns_param   port    8001
+ ns_section ns/server/server1/module/nssock1
+ ns_param   port    8000
+ 
+ ns_section ns/server/server1/module/nssock2
+ ns_param   port    8001
 [example_end]
 
 The [term nssock] man page contains the detailed configuration options.
@@ -89,10 +89,8 @@ configuration data, might be e.g. "http://localhost:8091"
 [item] [term address] is the IP address (IPv4 or IPv6), on which the server is
 listening, might be e.g. "0.0.0.0"
 [item] [term protocol] is the name of the protocol, such as e.g. "http"
-[item] [term sendwait] timeout for send operations in seconds, default
-is "30".
-[item] [term recvwait] timeout for receive operations in seconds, default
-is "30".
+[item] [term sendwait] timeout for send operations.
+[item] [term recvwait] timeout for receive operations.
 [item] [term extraheaders] are the extra response header fields to be returned
 on every request via this driver.
 [list_end]
@@ -119,4 +117,5 @@ number of errors.
 [keywords "server built-in" address nssock socket driver configuration SO_REUSEPORT]
 
 [manpage_end]
+
 

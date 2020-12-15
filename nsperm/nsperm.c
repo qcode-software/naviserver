@@ -130,10 +130,10 @@ static bool ValidateUserAddr(User * userPtr, const char *peer);
 static Ns_RequestAuthorizeProc AuthProc;
 static void WalkCallback(Tcl_DString * dsPtr, const void *arg);
 static int CreateNonce(const char *privatekey, char **nonce, const char *uri);
-static int CreateHeader(Server * servPtr, Ns_Conn *conn, bool stale);
+static int CreateHeader(const Server * servPtr, const Ns_Conn *conn, bool stale);
 /*static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeout);*/
 
-static void FreeUserInfo(User *userPtr, char *name)
+static void FreeUserInfo(User *userPtr, const char *name)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -173,9 +173,9 @@ Ns_ModuleInit(const char *server, const char *module)
     NS_NONNULL_ASSERT(module != NULL);
 
     if (uskey < 0) {
-        double d;
-        char buf[TCL_INTEGER_SPACE];
-        Ns_CtxMD5 md5;
+        double        d;
+        char          buf[TCL_INTEGER_SPACE];
+        Ns_CtxMD5     md5;
         unsigned long bigRamdomNumber;
         unsigned char sig[16];
 
@@ -198,6 +198,7 @@ Ns_ModuleInit(const char *server, const char *module)
     Tcl_InitHashTable(&servPtr->users, TCL_STRING_KEYS);
     Tcl_InitHashTable(&servPtr->groups, TCL_STRING_KEYS);
     Ns_RWLockInit(&servPtr->lock);
+    Ns_RWLockSetName2(&servPtr->lock, "rw:nsperm", server);
     Ns_SetRequestAuthorizeProc(server, AuthProc);
 
     result = Ns_TclRegisterTrace(server, AddCmds, servPtr, NS_TCL_TRACE_CREATE);
@@ -718,7 +719,7 @@ ValidateUserAddr(User *userPtr, const char *peer)
  */
 
 static void
-FreeUserInfo(User *userPtr, char *name)
+FreeUserInfo(User *userPtr, const char *name)
 {
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
@@ -816,9 +817,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     Tcl_InitHashTable(&userPtr->hosts, TCL_STRING_KEYS);
     Tcl_InitHashTable(&userPtr->groups, TCL_STRING_KEYS);
 
-    /*
-      fprintf(stderr, "============= add user <%s> pwd <%s> field <%s> nrags %d\n", name, pwd, field, nargs);
-    */
+    // fprintf(stderr, "============= add user <%s> pwd <%s> field <%s> nrags %d\n", name, pwd, field, nargs);
 
     /*
      * Both -allow and -deny can be used for consistency, but
@@ -1376,7 +1375,9 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
-    if (noinherit != 0) {flags |= NS_OP_NOINHERIT;}
+    if (noinherit != 0) {
+        flags |= NS_OP_NOINHERIT;
+    }
 
     /*
      * Construct the base url.
@@ -1694,7 +1695,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
     Ns_CtxMD5Final(&md5, sig);
     Ns_HexString(sig, buf, 16, NS_TRUE);
 
-    /* Check for a stale time stamp. If the time stamp is stale we still check
+    /* Check for a stale timestamp. If the timestamp is stale we still check
      * to see if the user sent the proper digest password. The stale flag
      * is only set if the nonce is expired AND the credentials are OK, otherwise
      * the get a 401, but that happens elsewhere.
@@ -1731,7 +1732,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
  *----------------------------------------------------------------------
 */
 
-static int CreateHeader(Server *servPtr, Ns_Conn *conn, bool stale)
+static int CreateHeader(const Server *servPtr, const Ns_Conn *conn, bool stale)
 {
     Ns_DString  ds;
     char       *nonce = 0;

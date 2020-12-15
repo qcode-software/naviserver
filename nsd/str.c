@@ -210,9 +210,10 @@ Ns_StrToUpper(char *chars)
  *      parsed or overflows.
  *
  * Side effects:
- *      The string may begin with an arbitrary amount of white space (as determined by
- *      isspace(3)) followed by a  single  optional `+' or `-' sign.  If string starts with `0x' prefix,
- *      the number will be read in base 16, otherwise the number will be treated as decimal
+ *      The string may begin with an arbitrary amount of white space (as
+ *      determined by isspace(3)) followed by a single optional `+' or `-'
+ *      sign.  If string starts with `0x' prefix, the number will be read in
+ *      base 16, otherwise the number will be treated as decimal
  *
  *----------------------------------------------------------------------
  */
@@ -342,8 +343,11 @@ Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
                  * digits.
                  */
                 if (*endPtr == '.') {
-                    long   decimal, i, digits, divisor = 1;
-                    char  *ep;
+                    long long decimal;
+                    long      i;
+                    ptrdiff_t digits;
+                    int       divisor = 1;
+                    char     *ep;
 
                     endPtr++;
                     decimal = strtoll(endPtr, &ep, 10);
@@ -361,7 +365,7 @@ Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
                     endPtr++;
                 }
                 /*
-                 * Parse units.
+                 * Parse memory units.
                  *
                  * The International System of Units (SI) defines
                  *    kB, MB, GB as 1000, 1000^2, 1000^3 bytes,
@@ -585,10 +589,10 @@ Ns_StrIsHost(const char *chars)
  *
  *----------------------------------------------------------------------
  */
-const char *
+const unsigned char *
 Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *dsPtr)
 {
-    const char *result;
+    const unsigned char *result;
 
     NS_NONNULL_ASSERT(obj != NULL);
     NS_NONNULL_ASSERT(lengthPtr != NULL);
@@ -651,7 +655,7 @@ Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *
 
     if (forceBinary || NsTclObjIsByteArray(obj)) {
         //fprintf(stderr, "NsTclObjIsByteArray\n");
-        result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
+        result = (unsigned char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
     } else {
         int stringLength;
         const char *charInput;
@@ -664,7 +668,7 @@ Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *
         //}
 
         Tcl_UtfToExternalDString(NS_utf8Encoding, charInput, stringLength, dsPtr);
-        result = dsPtr->string;
+        result = (unsigned char *)dsPtr->string;
         *lengthPtr = dsPtr->length;
     }
 

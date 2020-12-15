@@ -30,7 +30,7 @@
 
 #ifdef HAVE_OPENSSL_EVP_H
 
-/* 
+/*
  * Common definitions of handling versions of openssl/libressl
  */
 
@@ -89,4 +89,18 @@
 
 # include <openssl/ssl.h>
 # include <openssl/err.h>
+
+typedef struct NsSSLConfig {
+    SSL_CTX  *ctx;
+    Ns_Mutex  lock;
+    int       verify;
+    int       deferaccept;  /* Enable the TCP_DEFER_ACCEPT optimization. */
+    DH       *dhKey512;     /* Fallback Diffie Hellman keys of length 512 */
+    DH       *dhKey1024;    /* Fallback Diffie Hellman keys of length 1024 */
+    DH       *dhKey2048;    /* Fallback Diffie Hellman keys of length 2048 */
+} NsSSLConfig;
+
+NS_EXTERN NsSSLConfig *NsSSLConfigNew(const char *path)
+   NS_GNUC_NONNULL(1);
+
 #endif

@@ -1,0 +1,199 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+test ns_time-1.0 {basic syntax: plain call} -body {
+    string is integer -strict [ns_time]
+} -result {1}
+
+#
+# incr
+#
+test ns_time-1.0 {ns_time incr int} -body {
+    ns_time incr 1 1
+} -result {2}
+
+test ns_time-1.1 {ns_time incr float int} -body {
+    ns_time incr 1.0 0
+} -result 1
+
+
+#
+# incr float with time units
+#
+test ns_time-1.2s {ns_time incr timeunit float+s int} -body {
+    ns_time incr 1.0s 0
+} -result 1
+test ns_time-1.2m {ns_time incr timeunit float+m int} -body {
+    ns_time incr 1.0m 0
+} -result 60
+test ns_time-1.2h {ns_time incr timeunit float+h int} -body {
+    ns_time incr 1.0h 0
+} -result 3600
+test ns_time-1.2d {ns_time incr timeunit float+d int} -body {
+    ns_time incr 1.0d 0
+} -result 86400
+test ns_time-1.2ms {ns_time incr timeunit float+ms int} -body {
+    ns_time incr 1.0ms 0
+} -result 0:1000
+
+#
+# incr int with time units
+#
+
+test ns_time-1.3s {ns_time incr timeunit int+s int} -body {
+    ns_time incr 1s 0
+} -result 1
+test ns_time-1.3m {ns_time incr timeunit int+m int} -body {
+    ns_time incr 1m 0
+} -result 60
+test ns_time-1.3h {ns_time incr timeunit int+h int} -body {
+    ns_time incr 1h 0
+} -result 3600
+test ns_time-1.3d {ns_time incr timeunit int+d int} -body {
+    ns_time incr 1d 0
+} -result 86400
+test ns_time-1.3ms {ns_time incr timeunit int+ms int} -body {
+    ns_time incr 1ms 0
+} -result 0:1000
+test ns_time-1.3μs {ns_time incr timeunit int+ms int} -body {
+    ns_time incr 1μs 0
+} -result 0:1
+
+#
+# incr float time units with magnitudes
+#
+test ns_time-1.4-10000ms {ns_time incr timeunit 10000ms int} -body {
+    ns_time incr 10000.0ms 0
+} -result 10
+test ns_time-1.4-1000ms {ns_time incr timeunit 1000ms int} -body {
+    ns_time incr 1000.0ms 0
+} -result 1
+test ns_time-1.4-100ms {ns_time incr timeunit 100ms int} -body {
+    ns_time incr 100.0ms 0
+} -result 0:100000
+test ns_time-1.4-10ms {ns_time incr timeunit 10ms int} -body {
+    ns_time incr 10.0ms 0
+} -result 0:10000
+test ns_time-1.4-1ms {ns_time incr timeunit 1ms int} -body {
+    ns_time incr 1.0ms 0
+} -result 0:1000
+test ns_time-1.4-0.1ms {ns_time incr timeunit 0.1ms int} -body {
+    ns_time incr 0.1ms 0
+} -result 0:100
+test ns_time-1.4-0.01ms {ns_time incr timeunit 0.01ms int} -body {
+    ns_time incr 0.01ms 0
+} -result 0:10
+test ns_time-1.4-0.001ms {ns_time incr timeunit 0.001ms int} -body {
+    ns_time incr 0.001ms 0
+} -result 0:1
+test ns_time-1.4-0.0001ms {ns_time incr timeunit 0.0001ms int} -body {
+    ns_time incr 0.0001ms 0
+} -result 0
+test ns_time-1.4-0.00001ms {ns_time incr timeunit 0.00001ms int (under resolution)} -body {
+    ns_time incr 0.00001ms 0
+} -result 0
+
+#
+# ns_time format
+#
+
+test ns_time-format-1.0 {ns_time format positive second} -body {
+    list [ns_time format 1:0] [ns_time format 1s]
+} -result {1 1}
+
+test ns_time-format-1.2 {ns_time format positive microsecond} -body {
+    list [ns_time format 0:1] [ns_time format 0.001ms]
+} -result {0.000001 0.000001}
+
+
+test ns_time-format-2.1 {ns_time format negative second} -body {
+    list [ns_time format -1:0] [ns_time format -1s]
+} -result {-1 -1}
+
+test ns_time-format-2.2 {ns_time format negative second with fraction} -body {
+    list [ns_time format -1:100000] [ns_time format -1.1s]
+} -result {-1.1 -1.1}
+
+test ns_time-format-2.3 {ns_time format negative second + microsecond} -body {
+    list [ns_time format -1:1] [ns_time format -1.000001s]
+} -result {-1.000001 -1.000001}
+
+
+test ns_time-format-2.4 {ns_time format negative microsecond} -body {
+    list [ns_time format 0:-1] [ns_time format -0.001ms]
+} -result {-0.000001 -0.000001}
+
+test ns_time-format-2.4-0.001ms {ns_time format negative microsecond} -body {
+    list \
+        [ns_time format -0.001ms] \
+        [ns_time format -0.01ms] \
+        [ns_time format -0.1ms] \
+        [ns_time format -1.0ms]
+} -result {-0.000001 -0.00001 -0.0001 -0.001}
+
+#
+# ns_time diff
+#
+
+test ns_time-diff-1 {ns_time diff simple} -body {
+    ns_time diff 1s 0.5s
+} -result 0:500000
+
+test ns_time-diff-2 {ns_time diff requires adjust} -body {
+    ns_time diff 1s 1ms
+} -result 0:999000
+
+test ns_time-diff-3 {ns_time diff subtract nothing} -body {
+    ns_time diff 1.1s 0ms
+} -result 1:100000
+
+test ns_time-diff-4 {ns_time diff add 1ms} -body {
+    ns_time diff 1s -1ms
+} -result 1:1000
+
+
+test ns_time-diff-5 {ns_time diff turn positive to negative} -body {
+    list \
+        [ns_time diff 0s   1ms] \
+        [ns_time diff 1s   1.001s] \
+        [ns_time diff 2s   3s] \
+        [ns_time diff 2.1s 3s] \
+        [ns_time diff 2s   3.1s] \
+        [ns_time diff 1s   2.001s]
+} -result {0:-1000 0:-1000 -1:0 0:-900000 -1:100000 -1:1000}
+
+test ns_time-diff-6 {ns_time diff make negative more negative} -body {
+    list \
+        [ns_time diff -1.0s 0ms] \
+        [ns_time diff -1s   100ms] \
+        [ns_time diff -2s   3s] \
+        [ns_time diff -2.1s 3s] \
+        [ns_time diff -2s   3.1s] \
+        [ns_time diff -1s   2.001s] \
+        [ns_time diff -0.1s 0.2s] \
+        [ns_time diff -1s   1.001s]
+} -result {-1:0 -1:100000 -5:0 -5:100000 -5:100000 -3:1000 0:-300000 -2:1000}
+
+test ns_time-diff-9 {ns_time diff turn negative to positive} -body {
+    list \
+        [ns_time diff -2s   -3s] \
+        [ns_time diff -2.1s -3s] \
+        [ns_time diff -2s   -3.1s] \
+        [ns_time diff -1s   -2.001s] \
+        [ns_time diff -0.1s -0.2s] \
+        [ns_time diff -1s   -1.001s]
+} -result {1 0:900000 1:100000 1:1000 0:100000 0:1000}
+
+
+cleanupTests
+
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

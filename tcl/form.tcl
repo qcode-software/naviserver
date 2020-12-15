@@ -193,13 +193,13 @@ proc ns_getform {{charset ""}}  {
 
     if {![info exists ::_ns_form]} {
 
+        set ::_ns_form [ns_conn form]
         set tmpfile [ns_conn contentfile]
         if { $tmpfile eq "" } {
             #
             # Get the content via memory (indirectly via [ns_conn
             # content], the command [ns_conn form] does this)
             #
-            set ::_ns_form [ns_conn form]
             foreach {file} [ns_conn files] {
                 set offs [ns_conn fileoffset $file]
                 set lens [ns_conn filelength $file]
@@ -226,7 +226,6 @@ proc ns_getform {{charset ""}}  {
             #
             # Get the content via external content file
             #
-            set ::_ns_form [ns_set create]
             ns_parseformfile $tmpfile $::_ns_form [ns_set iget [ns_conn headers] content-type]
             ns_atclose [list file delete -- $tmpfile]
         }
@@ -242,17 +241,38 @@ proc ns_getform {{charset ""}}  {
 #   Return a tempfile for a form file field.
 #
 # Result:
-#   Path of the temporary file or empty if no file found
+#   Path of the temporary file or empty if no file found.  When the
+#   INPUT element of the file contains the HTML5 attribute "multiple",
+#   a list of filenames is potentially returned.
 #
 # Side effects:
 #   None.
 #
 
+if {[info command lmap] eq {}} {
+    proc lmap {vars list body} {
+        set _r {}
+        set _l {}
+        foreach _v $vars {
+            set _n v[incr _x]
+            lappend _l $_n
+            upvar 1 $_v $_n
+        }
+        foreach $_l $list {
+            lappend _r [uplevel 1 $body]
+        }
+        return $_r
+    }
+}
+
 proc ns_getformfile {name} {
 
     set form [ns_getform]
     if {[ns_set find $form $name.tmpfile] > -1} {
-        return [ns_set get $form $name.tmpfile]
+        return [lmap {k v} [ns_set array $form] {
+            if {$k ne "$name.tmpfile"} continue
+            set v
+        }]
     }
 }
 
@@ -352,6 +372,19 @@ proc ns_parseformfile { file form contentType } {
         ns_log warning "ns_parseformfile could not open $file for reading"
         return
     }
+    #
+    # Separate content-type and options
+    #
+    set options ""
+    regexp {^(.*)\s*;(.*)$} $contentType . contentType options
+    #
+    # Handle charset in options
+    #
+    if {[regexp {charset\s*=\s*(\S+)} $options . charset]} {
+        if {$charset ni {utf-8 UTF-8}} {
+            fconfigure $fp -encoding $charset
+        }
+    }
 
     if {[string match "*www-form-urlencoded" $contentType]} {
         #
@@ -382,14 +415,15 @@ proc ns_parseformfile { file form contentType } {
     # type is neither *www-form-urlencoded nor it has boundaries
     # defined (multipart/form-data).
     #
-    if { ![regexp -nocase {boundary=(.*)$} $contentType 1 b] } {
-        ns_log warning "ns_parseformfile skips form processing: content-type $contentType"
+    if {![regexp -nocase {boundary=(.*)$} $options . b] } {
+        #ns_log warning "ns_parseformfile skips form processing: content-type '$contentType' options '$options'"
         close $fp
         return
     }
 
     fconfigure $fp -encoding binary -translation binary
     set boundary "--$b"
+    set fragment_headers ""
 
     while { ![eof $fp] } {
         # skip past the next boundary line
@@ -400,13 +434,29 @@ proc ns_parseformfile { file form contentType } {
         #
         # Fetch the disposition line and field name.
         #
-        set disposition [string trim [gets $fp]]
-        if { $disposition eq "" } {
+        set dispositionLine [string trim [gets $fp]]
+        if { $dispositionLine eq "" } {
             break
         }
 
-        set disposition [split [encoding convertfrom utf-8 $disposition] \;]
-        set name [string trim [lindex [split [lindex $disposition 1] =] 1] \"]
+        #
+        # Parse the header line with "ns_parseheader"
+        #
+        if {$fragment_headers ne ""} {
+            ns_set free $fragment_headers
+        }
+        set fragment_headers [ns_set create frag]
+        ns_parseheader $fragment_headers [encoding convertfrom utf-8 $dispositionLine]
+
+        #
+        # Parse the content of the disposition header into a dict and
+        # get field name and filename.
+        #
+        set disp [lindex [ns_parsefieldvalue [ns_set iget $fragment_headers Content-Disposition]] 0]
+
+        set filename [expr {[dict exist $disp filename] ? [dict get $disp filename] : ""}]
+        set name     [expr {[dict exist $disp name] ? [dict get $disp name] : ""}]
+        #ns_log notice "DISPO extracted filename <$filename> name <$name>"
 
         #
         # Fetch and save any field headers (usually just content-type
@@ -419,9 +469,12 @@ proc ns_parseformfile { file form contentType } {
             if { $line eq "" } {
                 break
             }
+            #
+            # Use still sloppy parsing
+            #
             set header [split [encoding convertfrom utf-8 $line] :]
-            set key [string tolower [string trim [lindex $header 0]]]
-            set value [string trim [lindex $header 1]]
+            set key    [string tolower [string trim [lindex $header 0]]]
+            set value  [string trim [lindex $header 1]]
 
             if {$key eq "content-type"} {
                 #
@@ -434,11 +487,10 @@ proc ns_parseformfile { file form contentType } {
             ns_set put $form $name.$key $value
         }
 
-        if { [llength $disposition] == 3 } {
+        if { $filename ne "" } {
             #
             # Uploaded file -- save the original filename as the value
             #
-            set filename [string trim [lindex [split [lindex $disposition 2] =] 1] \"]
             ns_set put $form $name $filename
 
             #
@@ -522,7 +574,7 @@ proc ns_parseformfile { file form contentType } {
 #   memory problems on huge files.
 #
 # Result:
-#   Returns the content the file name of the tmp file (default) or the
+#   Returns the content the filename of the temporary file (default) or the
 #   content of the file (when as_file is false).
 #
 

@@ -38,6 +38,18 @@
 #include "nsd.h"
 
 /*
+ * math.h is only needed for round()
+ *
+ * But older Microsoft Windows compilers do not include round() in math.h!  So
+ * for them, use the hack below:
+ */
+#if defined(_MSC_VER) && _MSC_VER <= 1600
+static double round(double val) { return floor(val + 0.5); }
+#else
+#include <math.h>
+#endif
+
+/*
  * Local functions defined in this file
  */
 
@@ -56,11 +68,17 @@ static int TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *con
 static int GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *tPtr)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
+static void DblValueToNstime(Ns_Time *timePtr, double dblValue)
+    NS_GNUC_NONNULL(1);
+
+static double ParseTimeUnit(const char *str)
+    NS_GNUC_NONNULL(1);
+
 /*
  * Local variables defined in this file.
  */
 
-static Tcl_ObjType timeType = {
+static const Tcl_ObjType timeType = {
     "ns:time",
     NULL,
     NULL,
@@ -70,7 +88,7 @@ static Tcl_ObjType timeType = {
 
 static const Tcl_ObjType *intTypePtr;
 static Ns_ObjvValueRange poslongRange0 = {0, LONG_MAX};
-
+static Ns_ObjvTimeRange nonnegTimeRange = {{0, 0}, {LONG_MAX, 0}};
 
 
 /*
@@ -207,8 +225,8 @@ Ns_TclGetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time *timePtr)
             }
         }
         if (likely(objPtr->typePtr == &timeType)) {
-            timePtr->sec =  (long) objPtr->internalRep.twoPtrValue.ptr1;
-            timePtr->usec = (long) objPtr->internalRep.twoPtrValue.ptr2;
+            timePtr->sec =  (time_t)objPtr->internalRep.twoPtrValue.ptr1;
+            timePtr->usec = PTR2LONG(objPtr->internalRep.twoPtrValue.ptr2);
         }
     }
     return result;
@@ -325,7 +343,7 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
             Ns_Time        t2 = {0, 0};
             Ns_Time       *tPtr;
             Ns_ObjvSpec    largs[] = {
-                {"time",  Ns_ObjvTime, &tPtr,  NULL},
+                {"time",  Ns_ObjvTime, &tPtr,    &nonnegTimeRange},
                 {"sec",   Ns_ObjvLong, &t2.sec,  &poslongRange0},
                 {"?usec", Ns_ObjvLong, &t2.usec, &poslongRange0},
                 {NULL, NULL, NULL, NULL}
@@ -409,8 +427,8 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
                 Tcl_DString ds, *dsPtr = &ds;
 
                 Tcl_DStringInit(dsPtr);
-                Ns_DStringPrintf(dsPtr, " %" PRId64 ".%06ld",
-                                 (int64_t)tPtr->sec, tPtr->usec);
+                Ns_DStringAppendTime(dsPtr, tPtr);
+
                 Tcl_DStringResult(interp, dsPtr);
             }
         }
@@ -438,7 +456,7 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *      Tcl result.
  *
  * Side effects:
- *      ns_localtime depends on the time zone of the server process.
+ *      ns_localtime depends on the timezone of the server process.
  *
  *----------------------------------------------------------------------
  */
@@ -498,6 +516,7 @@ NsTclLocalTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  * NsTclSleepObjCmd --
  *
  *      Sleep with millisecond resolution.
+ *      Implementation of ns_sleep command.
  *
  * Results:
  *      Tcl Result.
@@ -514,22 +533,18 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
     int          rc = TCL_OK;
     Ns_Time     *tPtr = NULL;
     Ns_ObjvSpec  args[] = {
-        {"timespec", Ns_ObjvTime, &tPtr, NULL},
+        {"timespec", Ns_ObjvTime, &tPtr, &nonnegTimeRange},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         rc = TCL_ERROR;
     } else {
+        time_t ms = Ns_TimeToMilliseconds(tPtr);
+
         assert(tPtr != NULL);
-
-        if (tPtr->sec < 0 || (tPtr->sec == 0 && tPtr->usec < 0)) {
-            Ns_TclPrintfResult(interp, "invalid timespec: %s", Tcl_GetString(objv[1]));
-            rc = TCL_ERROR;
-        } else {
-            int  ms = (int)(tPtr->sec * 1000 + tPtr->usec / 1000);
-
-            Tcl_Sleep(ms);
+        if (ms > 0) {
+            Tcl_Sleep((int)ms);
         }
     }
 
@@ -548,7 +563,7 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *      Tcl result.
  *
  * Side effects:
- *      Depends on the time zone of the server process.
+ *      Depends on the timezone of the server process.
  *
  *----------------------------------------------------------------------
  */
@@ -557,7 +572,7 @@ int
 NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK;
-    long              sec;
+    long              sec = 0;
     char             *fmt = (char *)"%c";
     Ns_ObjvValueRange range = {0, LONG_MAX};
     Ns_ObjvSpec  args[] = {
@@ -620,14 +635,116 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
 
     timePtr = (Ns_Time *) (void *) &objPtr->internalRep;
     Ns_AdjTime(timePtr);
-    if (timePtr->usec == 0) {
+
+    if (timePtr->usec == 0 && timePtr->sec >= 0) {
         len = ns_uint64toa(buf, (uint64_t)timePtr->sec);
     } else {
-        len = snprintf(buf, sizeof(buf), "%ld:%ld",
-                       timePtr->sec, timePtr->usec);
+        len = snprintf(buf, sizeof(buf), "%" PRId64 ":%ld",
+                       (int64_t)timePtr->sec, timePtr->usec);
     }
     Ns_TclSetStringRep(objPtr, buf, len);
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ParseTimeUnit --
+ *
+ *      Parse time units specified after an integer or a float.
+ *
+ *      Accepted time units are:
+ *         ms, s, m, h, d
+ *
+ * Results:
+ *      Multiplier relative to seconds
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static double ParseTimeUnit(const char *str)
+{
+    double multiplier = 1.0;
+
+    /*
+     * Skip whitespace
+     */
+    while (CHARTYPE(space, *str) != 0) {
+        str++;
+    }
+
+    if (*str == 's' && *(str+1) == '\0') {
+        multiplier = 1.0;
+    } else if (*str == 'm' && *(str+1) == '\0') {
+        multiplier = 60.0;
+    } else if (*str == 'h' && *(str+1) == '\0') {
+        multiplier = 3600.0;
+    } else if (*str == 'd' && *(str+1) == '\0') {
+        multiplier = 86400.0;
+    } else if (*str == 'm' && *(str+1) == 's' && *(str+2) == '\0') {
+        multiplier = 0.001;
+    } else if (*str == '\xce' && *(str+1) == '\xbc' && *(str+2) == 's' && *(str+3) == '\0') {
+        /* μ */
+        multiplier = 0.000001;
+    } else if (*str != '\0') {
+        Ns_Log(Warning, "ignoring time unit '%s'", str);
+    }
+
+    return multiplier;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * DblValueToNstime --
+ *
+ *      Convert double value (in seconds) to a NaviServer time value.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updating the Ns_Time value in the first argument.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+DblValueToNstime( Ns_Time *timePtr, double dblValue)
+{
+    NS_NONNULL_ASSERT(timePtr != NULL);
+
+    if (dblValue < 0.0) {
+        double posValue = -dblValue;
+
+        /*
+         * Calculate with the positive value.
+         */
+        timePtr->sec = (long)(posValue);
+        timePtr->usec = (long)round((posValue - (double)timePtr->sec) * 1000000.0);
+
+        /*
+         * Fill in the minus sign at the right place.
+         */
+        if (timePtr->sec == 0) {
+            timePtr->usec = -timePtr->usec;
+        } else {
+            timePtr->sec = -timePtr->sec;
+        }
+
+    } else {
+        timePtr->sec = (long)(dblValue);
+        timePtr->usec = (long)round((dblValue - (double)timePtr->sec) * 1000000.0);
+    }
+    /* fprintf(stderr, "gen dbltime %f final sec %ld usec %.06ld float %.10f %.10f long %ld\n",
+       dblValue, timePtr->sec, timePtr->usec,
+       (dblValue - (double)timePtr->sec),
+       round((dblValue - (double)timePtr->sec) * 1000000.0),
+       (long)((dblValue - (double)timePtr->sec)));
+    */
+}
+
 
 
 /*
@@ -656,12 +773,15 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
      * Look for the separator
      */
     char *sep;
-    int   rc = TCL_CONTINUE;
+    int   result = TCL_CONTINUE;
+    bool  isNegative;
 
     NS_NONNULL_ASSERT(str != NULL);
     NS_NONNULL_ASSERT(tPtr != NULL);
 
+    isNegative = (*str == '-');
     sep = strchr(str, INTCHAR(separator));
+
     if (sep != NULL) {
         int intValue;
 
@@ -673,9 +793,8 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
              * The first character was the separator, treat sec as 0.
              */
             tPtr->sec = 0L;
-        } else {
-            int result;
 
+        } else {
             /*
              * Overwrite the separator with a null-byte to make the
              * first part null-terminated.
@@ -684,17 +803,17 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
             result = Tcl_GetInt(interp, str, &intValue);
             *sep = separator;
             if (result != TCL_OK) {
-                rc = TCL_ERROR;
+                result = TCL_ERROR;
             } else {
                 tPtr->sec = (long)intValue;
-                rc = TCL_OK;
+                result = TCL_OK;
             }
         }
 
         /*
          * Get usec
          */
-        if (rc != TCL_ERROR) {
+        if (result != TCL_ERROR) {
             /*
              * When the separator is a dot, try to get the value in floating
              * point format, which are fractions of a second.
@@ -703,10 +822,49 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
                 double dblValue;
 
                 if (Tcl_GetDouble(interp, sep, &dblValue) != TCL_OK) {
-                    rc = TCL_ERROR;
+                    char *ptr = NULL, *p = sep;
+                    long  fraction;
+
+                    /*
+                     * Skip separator
+                     */
+                    p ++;
+
+                    fraction = strtol(p, &ptr, 10);
+                    if (likely(p != ptr)) {
+                        /*
+                         * We could parse at least a part of the string as
+                         * integer.
+                         */
+                        double multiplier = ParseTimeUnit(ptr);
+                        double dblFraction = (double)fraction;
+
+                        /*
+                         * Shift fraction value to right of the fraction
+                         * point.
+                         */
+                        while (p != ptr) {
+                            dblFraction /= 10.0;
+                            p ++;
+                        }
+                        if (isNegative) {
+                            /* fprintf(stderr, "GetTimeFromString neg value\n"
+                               "GetTimeFromString multiplier %.10f sec %ld dblFraction %.12f\n",
+                               multiplier, tPtr->sec, dblFraction);*/
+                            DblValueToNstime(tPtr, -1 *
+                                             multiplier * ((double)llabs(tPtr->sec) + dblFraction));
+                        } else {
+                            DblValueToNstime(tPtr, multiplier * ((double)tPtr->sec + dblFraction));
+                        }
+
+                        result = TCL_OK;
+
+                    } else {
+                        result = TCL_ERROR;
+                    }
                 } else {
                     tPtr->usec = (long)(dblValue * 1000000.0);
-                    rc = TCL_OK;
+                    result = TCL_OK;
                 }
 
             } else {
@@ -717,15 +875,39 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
                 assert(separator == ':');
 
                 if (Tcl_GetInt(interp, sep+1, &intValue) != TCL_OK) {
-                    rc = TCL_ERROR;
+                    result = TCL_ERROR;
                 } else {
                     tPtr->usec = (long)intValue;
-                    rc = TCL_OK;
+                    result = TCL_OK;
                 }
             }
         }
+    } else if  (separator == '.') {
+        char *ptr = NULL;
+        long sec;
+
+        /*
+         * No separator found, so try to interpret the string as integer
+         */
+        sec = strtol(str, &ptr, 10);
+
+        if (likely(str != ptr)) {
+            /*
+             * We could parse at least a part of the string as integer.
+             */
+            double multiplier = ParseTimeUnit(ptr);
+
+            if (multiplier == 1.0) {
+                tPtr->sec = sec;
+                tPtr->usec = 0;
+            } else {
+                DblValueToNstime(tPtr, multiplier * (double)sec);
+            }
+            result = TCL_OK;
+        }
     }
-    return rc;
+
+    return result;
 }
 
 
@@ -736,7 +918,7 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
  *
  *      Attempt to generate an Ns_Time internal respresentation for the Tcl
  *      object. It interprets integer as seconds, but allows as well the form
- *      sec:usec or sec.fraction.
+ *      sec:usec, sec.fraction, or number plus time unit.
  *
  * Results:
  *      The return value is a standard object Tcl result. If an error occurs
@@ -774,7 +956,7 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     }
 
     if (result == TCL_OK) {
-        Ns_AdjTime(&t);
+        /* Ns_AdjTime(&t); */
         SetTimeInternalRep(objPtr, &t);
     }
 
@@ -791,7 +973,8 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
  *      Convert string to time structure.  Check, if the string contains the
  *      classical NaviServer separator for sec:usec and interpret the string
  *      in this format.  If not, check if this has a "." as separator, and use
- *      a floating point notation.
+ *      a floating point notation. An optional time unit (ms, s, m, h, d) can
+ *      be specified immediately after the numeric part.
  *
  * Results:
  *      Tcl result code.
@@ -811,37 +994,19 @@ Ns_GetTimeFromString(Tcl_Interp *interp, const char *str, Ns_Time *tPtr)
     NS_NONNULL_ASSERT(tPtr != NULL);
 
     result = GetTimeFromString(interp, str, ':', tPtr);
-
     if (result == TCL_CONTINUE) {
         result = GetTimeFromString(interp, str, '.', tPtr);
     }
     if (result == TCL_CONTINUE) {
-        char *ptr = NULL;
-        long sec;
-
         /*
-         * No separator found, so try to interpret the string as integer
+         * We should not come here, since the GetTimeFromString() with
+         * '.' handles also integers and sets error messages.
          */
-        sec = strtol(str, &ptr, 10);
-
-        if (likely(str != ptr)) {
-            /*
-             * We could parse at least a part of the string as integer.
-             */
-            tPtr->sec = sec;
-            tPtr->usec = 0;
-            result = TCL_OK;
-
-        } else {
-            /*
-             * Still no success. If we have an interp, leave error message.
-             */
-            if (interp != NULL) {
-                Ns_TclPrintfResult(interp, "Invalid time value '%s'", str);
-            }
-            result = TCL_ERROR;
-        }
+        Ns_TclPrintfResult(interp, "expected time value but got \"%s\"", str);
+        result = TCL_ERROR;
     }
+    /* fprintf(stderr, "GetTimeFromString final " NS_TIME_FMT " -- %d\n", tPtr->sec, tPtr->usec, result);*/
+
     return result;
 }
 

@@ -8,8 +8,9 @@
 
 [description]
 
- This command encodes a string according to the rules for URL encoding defined in
- RFC #1738, Uniform Resource Locators.
+ This command encodes a string according to the rules for URL encoding
+ defined in RFC 3986 Uniform Resource Identifier (URI), (or RFC 1738,
+ when NaviServer was configured to use this older standard).
 
  ns_urlencode codes essentially all non-alphanumeric characters in the
  specified components.  The epcial octets are encoded by a "%"
@@ -29,10 +30,16 @@
 [list_end]
 
 The option [arg charset] can be used to specify the character set of
-the encode operation. Option [arg part] is used to specify the 
+the encode operation. Option [arg part] is used to specify the
 [arg query] (default) or [arg path] encoding. In the query mode, the
 components will be concatenated via "&", in the path mode the
 components are concatenated with "/".
+
+[para] The part argument can be as well used for more percent
+encodings such as the cookie encoding (value "cookie", RFC 6265) or
+the oauth1 encoding (value "oauth1") as defined in RFC 5849 Section
+3.6 for the construction of the * signature base string and the
+"Authorization" header field.
 
 [section {EXAMPLES}]
 
@@ -61,7 +68,7 @@ and 2 of https://www.w3.org/Addressing/URL/4_URI_Recommentations.html
  % set e1 {albert bertram marie-claude}
  % ns_urlencode -part path {*}$e1
  albert/bertram/marie-claude
-
+ 
  % set e2 {albert bertram/marie-claude}
  % ns_urlencode -part path {*}$e2
  albert/bertram%2fmarie-claude

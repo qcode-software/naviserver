@@ -57,7 +57,7 @@ static const char *ServerRoot(Ns_DString *dest, const NsServer *servPtr, const c
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2)
     NS_GNUC_RETURNS_NONNULL;
 
-static char *NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
+static const char *NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
 
 
@@ -125,7 +125,7 @@ ConfigServerVhost(const char *server)
         if (servPtr->vhost.enabled) {
             Ns_DStringInit(&ds);
             (void) NsPageRoot(&ds, servPtr, "www.example.com:80");
-            Ns_Log(Notice, "vhost[%s]: www.example.com:80 -> %s",server,ds.string);
+            Ns_Log(Notice, "vhost[%s]: www.example.com:80 -> %s", server, ds.string);
             Ns_DStringFree(&ds);
         }
         result = NS_OK;
@@ -171,7 +171,7 @@ Ns_PathIsAbsolute(const char *path)
  * Ns_NormalizePath, Ns_NormalizeUrl --
  *
  *  Remove "..", ".", multiple consecutive slashes from paths.
- *  While Ns_NormalizePath is designed for file system paths
+ *  While Ns_NormalizePath is designed for filesystem paths
  *  including special treatment for windows, the latter is defined
  *  for normalizing URLs.
  *
@@ -183,19 +183,19 @@ Ns_PathIsAbsolute(const char *path)
  *
  *----------------------------------------------------------------------
  */
-char *
+const char *
 Ns_NormalizePath(Ns_DString *dsPtr, const char *path)
 {
     return NormalizePath(dsPtr, path, NS_FALSE);
 }
 
-char *
+const char *
 Ns_NormalizeUrl(Ns_DString *dsPtr, const char *path)
 {
     return NormalizePath(dsPtr, path, NS_TRUE);
 }
 
-char *
+const char *
 NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
 {
     char                 end;
@@ -302,7 +302,7 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_MakePath(Ns_DString *dsPtr, ...)
 {
     va_list  ap;
@@ -341,7 +341,7 @@ Ns_MakePath(Ns_DString *dsPtr, ...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_HashPath(Ns_DString *dsPtr, const char *path, int levels)
 {
     const char *p = path;
@@ -387,7 +387,7 @@ Ns_HashPath(Ns_DString *dsPtr, const char *path, int levels)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_LibPath(Ns_DString *dsPtr, ...)
 {
     va_list  ap;
@@ -422,7 +422,7 @@ Ns_LibPath(Ns_DString *dsPtr, ...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_BinPath(Ns_DString *dsPtr, ...)
 {
     va_list  ap;
@@ -455,7 +455,7 @@ Ns_BinPath(Ns_DString *dsPtr, ...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_HomePath(Ns_DString *dsPtr, ...)
 {
     va_list  ap;
@@ -513,7 +513,7 @@ Ns_HomePathExists(const char *path, ...)
     Tcl_DecrRefCount(obj);
     Ns_DStringFree(&ds);
 
-    return status == 0 ? NS_TRUE : NS_FALSE;
+    return (status == 0);
 }
 
 
@@ -533,7 +533,7 @@ Ns_HomePathExists(const char *path, ...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...)
 {
     const NsServer *servPtr;
@@ -575,7 +575,7 @@ Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
 {
     const NsServer *servPtr;
@@ -619,7 +619,7 @@ Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_ModulePath(Ns_DString *dsPtr, const char *server, const char *module, ...)
 {
     va_list         ap;
@@ -692,10 +692,10 @@ Ns_SetServerRootProc(Ns_ServerRootProc *proc, void *arg)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
 {
-    char *path;
+    const char *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(servPtr != NULL);
@@ -733,7 +733,7 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
 int
 NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int               levels, result = TCL_OK;
+    int               levels = 1, result = TCL_OK;
     char             *inputString;
     Ns_ObjvValueRange range = {1, INT_MAX};
     Ns_ObjvSpec       args[] = {
@@ -1023,7 +1023,7 @@ MakePath(Ns_DString *dest, va_list *pap)
  *      dest->string.
  *
  * Side effects:
- *      Value of Host header may be bashed to lower case.
+ *      Value of Host header may be bashed to lowercase.
  *      Depends on registered Ns_ServerRootProc, if any.
  *
  *----------------------------------------------------------------------
@@ -1059,15 +1059,11 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
          * Bail out if there are suspicious characters in the unprocessed Host.
          */
 
-        if (!Ns_StrIsHost(rawHost)) {
-            path = NULL;
-
-        } else {
+        if (Ns_StrIsHost(rawHost)) {
 
             /*
              * Normalize the Host string.
              */
-
             Ns_DStringInit(&ds);
             safehost = Ns_DStringAppend(&ds, rawHost);
 

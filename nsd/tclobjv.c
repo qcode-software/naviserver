@@ -54,7 +54,7 @@ static int SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
 static void WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec,
                          Tcl_Interp *interp, int objc, Tcl_Obj *const* objv);
 
-static int GetOptIndexObjvSpec(Tcl_Obj *obj, Ns_ObjvSpec *tablePtr, int *idxPtr)
+static int GetOptIndexObjvSpec(Tcl_Obj *obj, const Ns_ObjvSpec *tablePtr, int *idxPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 static int GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const Ns_SubCmdSpec *tablePtr, int *idxPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
@@ -65,7 +65,7 @@ static void UpdateStringOfMemUnit(Tcl_Obj *objPtr)
 static int SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static void AppendRange(Ns_DString *dsPtr, Ns_ObjvValueRange *r)
+static void AppendRange(Ns_DString *dsPtr, const Ns_ObjvValueRange *r)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
@@ -73,7 +73,7 @@ static void AppendRange(Ns_DString *dsPtr, Ns_ObjvValueRange *r)
  */
 static const Tcl_ObjType *intTypePtr;
 
-static Tcl_ObjType specType = {
+static const Tcl_ObjType specType = {
     "ns:spec",
     FreeSpecObj,
     DupSpec,
@@ -81,7 +81,7 @@ static Tcl_ObjType specType = {
     SetSpecFromAny
 };
 
-static Tcl_ObjType memUnitType = {
+static const Tcl_ObjType memUnitType = {
     "ns:mem_unit",
     NULL,
     NULL,
@@ -141,7 +141,7 @@ NsTclInitSpecType(void)
  *----------------------------------------------------------------------
  */
 static int
-GetOptIndexObjvSpec(Tcl_Obj *obj, Ns_ObjvSpec *tablePtr, int *idxPtr)
+GetOptIndexObjvSpec(Tcl_Obj *obj, const Ns_ObjvSpec *tablePtr, int *idxPtr)
 {
     const char *key;
     int         result = TCL_ERROR;
@@ -319,7 +319,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
  *----------------------------------------------------------------------
  */
 int
-Ns_CheckWideRange(Tcl_Interp *interp, const char *name, Ns_ObjvValueRange *r, Tcl_WideInt value)
+Ns_CheckWideRange(Tcl_Interp *interp, const char *name, const Ns_ObjvValueRange *r, Tcl_WideInt value)
 {
     int result;
 
@@ -338,6 +338,66 @@ Ns_CheckWideRange(Tcl_Interp *interp, const char *name, Ns_ObjvValueRange *r, Tc
         Tcl_DStringAppend(dsPtr, "expected integer in range ", 26);
         AppendRange(dsPtr, r);
         Ns_DStringPrintf(dsPtr, " for '%s', but got %" TCL_LL_MODIFIER "d", name, value);
+        Tcl_DStringResult(interp, dsPtr);
+
+        result = TCL_ERROR;
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_CheckTimeRange --
+ *
+ *      Helper function for time range checking based on Ns_Times.
+ *      In error cases, the function leaves an error message in the interpreter.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR;
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_CheckTimeRange(Tcl_Interp *interp, const char *name, const Ns_ObjvTimeRange *r, Ns_Time *value)
+{
+    int result;
+    Tcl_DString ds0;
+
+    Tcl_DStringInit(&ds0);
+    //fprintf(stderr, "check time range '%s'\n", Ns_DStringAppendTime(&ds0, value));
+
+    if (r == NULL
+        || (Ns_DiffTime(value, &r->minValue, NULL) >= 0
+            && Ns_DiffTime(value, &r->maxValue, NULL) <= 0) ) {
+        /*
+         * No range or valid range.
+         */
+        result = TCL_OK;
+    } else {
+        /*
+         * Invalid range.
+         */
+        Tcl_DString ds, *dsPtr = &ds;
+
+        Tcl_DStringInit(dsPtr);
+        Tcl_DStringAppend(dsPtr, "expected time value in range [", -1);
+        if (r->maxValue.sec == LONG_MAX) {
+            Ns_DStringAppendTime(dsPtr, &r->minValue);
+            Tcl_DStringAppend(dsPtr, "s, MAX],", 8);
+        } else {
+            Ns_DStringAppendTime(dsPtr, &r->minValue);
+            Tcl_DStringAppend(dsPtr, "s , ", 5);
+            Ns_DStringAppendTime(dsPtr, &r->maxValue);
+            Tcl_DStringAppend(dsPtr, "],", 2);
+        }
+        Ns_DStringPrintf(dsPtr, " for '%s', but got ", name);
+        (void)Ns_DStringAppendTime(dsPtr, value);
+
         Tcl_DStringResult(interp, dsPtr);
 
         result = TCL_ERROR;
@@ -518,7 +578,7 @@ Ns_ObjvDouble(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
  *      TCL_OK or TCL_ERROR.
  *
  * Side effects:
- *          Next Tcl object maybe converted to boolean type.
+ *      Tcl_Obj maybe converted to boolean type.
  *
  *----------------------------------------------------------------------
  */
@@ -748,6 +808,10 @@ Ns_ObjvTime(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 
         result = Ns_TclGetTimePtrFromObj(interp, objv[0], dest);
         if (likely(result == TCL_OK)) {
+            result = Ns_CheckTimeRange(interp, spec->key, spec->arg, *dest);
+        }
+
+        if (likely(result == TCL_OK)) {
             *objcPtr -= 1;
         }
     } else {
@@ -757,8 +821,6 @@ Ns_ObjvTime(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
 
     return result;
 }
-
-
 
 
 /*
@@ -813,7 +875,7 @@ SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     if (objPtr->typePtr == intTypePtr) {
         long longValue;
         /*
-         * When the type is "int", usec is 0.
+         * When the type is "int", the memory unit is in bytes.
          */
         if (Tcl_GetLongFromObj(interp, objPtr, &longValue) != TCL_OK) {
             result = TCL_ERROR;
@@ -841,7 +903,7 @@ SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
  *
  * Ns_TclGetMemUnitFromObj --
  *
- *      Convert a tcl obj with a string value of a memory unit into a Tcl_WideInt.
+ *      Convert a Tcl_Obj with a string value of a memory unit into a Tcl_WideInt.
  *      It has the same interface as e.g. Tcl_GetWideIntFromObj().
  *
  * Results:
@@ -1289,7 +1351,7 @@ NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *----------------------------------------------------------------------
  * SetSpecFromAny --
  *
- *      Attempt to convert a Tcl object to ns:spec type.
+ *      Attempt to convert a Tcl_Obj to ns:spec type.
  *
  * Results:
  *      TCL_OK or TCL_ERROR.
@@ -1364,7 +1426,7 @@ SetSpecFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
 
         /*
          * Arguments with default values must have their keys
-         * prepended with '?' for the runtime parser. Tcl 'args' are
+         * prepended with '?' for the run time parser. Tcl 'args' are
          * always optional.
          */
 
@@ -1448,7 +1510,7 @@ FreeSpecs(Ns_ObjvSpec *specPtr)
  * FreeSpecObj --
  *
  *     This procedure is called to delete the internal rep of a
- *     ns:spec Tcl object.
+ *     ns:spec Tcl_Obj.
  *
  * Results:
  *      None.
@@ -1476,7 +1538,7 @@ FreeSpecObj(Tcl_Obj *objPtr)
  *----------------------------------------------------------------------
  * UpdateStringOfSpec --
  *
- *     This procedure is called to convert a Tcl object from
+ *     This procedure is called to convert a Tcl_Obj from
  *     ns:spec internal form to it's string form.
  *
  * Results:
@@ -1530,7 +1592,7 @@ UpdateStringOfSpec(Tcl_Obj *objPtr)
  * DupSpec --
  *
  *     This procedure is called to copy the internal rep of a
- *     ns:spec Tcl object to another object.
+ *     ns:spec Tcl_Obj to another object.
  *
  * Results:
  *      None.
@@ -1733,7 +1795,7 @@ SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
  *----------------------------------------------------------------------
  */
 
-static void AppendRange(Ns_DString *dsPtr, Ns_ObjvValueRange *r)
+static void AppendRange(Ns_DString *dsPtr, const Ns_ObjvValueRange *r)
 {
     if (r->minValue == LLONG_MIN) {
         Tcl_DStringAppend(dsPtr, "[MIN,", 5);
@@ -1933,7 +1995,7 @@ GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const N
                 if ((entryPtr+1)->key == NULL) {
                     Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : NS_EMPTY_STRING),
                                            " or ", entryPtr->key, (char *)0L);
-                } else if (entryPtr->key != NULL) {
+                } else {
                     Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, (char *)0L);
                     count++;
                 }

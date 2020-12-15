@@ -28,7 +28,7 @@ contains the following elements:
 [enum] name of the thread,
 [enum] driver,
 [enum] pool,
-[enum] IP address of the requestor,
+[enum] IP address of the client,
 [enum] file descriptor,
 [enum] remaining size,
 [enum] bytes already sent,
@@ -37,9 +37,10 @@ contains the following elements:
 [enum] the client data as provided via [lb]ns_conn clientdata[rb].
 [list_end]
 
-If [option {-server}] is
-specified, only the submitted file entries from the specified server
-are returned.
+If [option {-server}] is specified, only the submitted file entries
+from the specified server are returned. When NaviServer is running in
+reverse proxy mode, the client IP address is taken form the value as
+provided by the reverse proxy server.
 
 [call [cmd "ns_writer submit"] [arg data]]
 
@@ -97,7 +98,7 @@ latency and disk usage).
 
 
 [example_begin]
-ns_writer submitfiles {{filename /tmp/f1} {filename /tmp/f2 -offset 10}}
+ ns_writer submitfiles {{filename /tmp/f1} {filename /tmp/f2 -offset 10}}
 [example_end]
 
 
@@ -128,16 +129,16 @@ Boolean value.
 [list_end]
 
 [section CONFIGURATION]
-        
+      
 [para]
 [emph {Basic configuration options:}]
-        
+      
 [example_begin]
-ns_section "ns/server/default/module/nssock" {
+ ns_section "ns/server/default/module/nssock" {
     ns_param writerthreads 1
     ns_param writersize 4kB
     ns_param writerstreaming true
-}
+ }
 [example_end]
 
 [para]
@@ -162,11 +163,10 @@ reduce the damage of slow-read attacks.
 [section EXAMPLES]
 
 [example_begin]
-ns_writer submitfile /tmp/biglist.txt
+ ns_writer submitfile /tmp/biglist.txt
 [example_end]
 
 [see_also ns_returnfile ns_conn ns_write ns_headers]
-[keywords "server built-in" writer configuration]
+[keywords "server built-in" writer configuration reverseproxy]
+
 [manpage_end]
-
-

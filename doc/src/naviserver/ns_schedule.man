@@ -6,32 +6,50 @@
 
 [description]
 
-These commands perform scheduling of Tcl scripts at various intervals. Script will run in
-separate thread as background procedures. This functionality is similar to Unix cron.
+These commands perform scheduling of Tcl scripts at various
+intervals. Script will run in separate thread as background
+procedures. This functionality is similar to Unix cron.
 
 [section {COMMANDS}]
 
 [list_begin definitions]
 
 
-[call [cmd ns_schedule_proc] [opt [option {-once}]] [opt [option -thread]] [arg interval] [arg script]]
+[call [cmd ns_schedule_proc] \
+	[opt [option {-once}]] \
+	[opt [option -thread]] \
+	[arg interval] \
+	[arg script]]
 
-This command schedules a script to be run after a certain number of seconds.
-Returns the ID of the newly scheduled script.  If [option -once] is specified, then the
-script is run once and then unscheduled, otherwise it will continue to run every
-interval seconds.  If [option -thread] is specified, then the script will be run in its
-own thread, otherwise it will run in the scheduler's thread.  If the script is
-long-running, this may interfere with the running of other scheduled scripts,
-so long-running scripts should be run in their own threads.
+This command schedules a script to be run after a certain interval.
+Returns the ID of the newly scheduled script.  If
+[option -once] is specified, then the script is run once and then
+unscheduled, otherwise it will continue to run every interval
+time periods.
+
+[para] The
+[arg interval] can be specified with time units (per default seconds).
+Valid time units are ms, s, m, d.
+
+If [option -thread] is specified, then the script will be run in its
+own thread, otherwise it will run in the scheduler's thread.  If the
+script is long-running, this may interfere with the running of other
+scheduled scripts, so long-running scripts should be run in their own
+threads.
 
 [example_begin]
-   % set id [lb][lb]ns_schedule_proc -once 60 { ns_log notice "this should run in 60 seconds" }[rb][rb]
-   123
+ % set id [lb]ns_schedule_proc -once 60 { ns_log notice "this should run in 60 seconds" }[rb]
+ 123
 [example_end]
 
 
-
-[call [cmd ns_schedule_weekly] [opt [option -once]] [opt [option -thread]] [arg day] [arg hour] [arg minute] [arg script]]
+[call [cmd ns_schedule_weekly] \
+	[opt [option -once]] \
+	[opt [option -thread]] \
+	[arg day] \
+	[arg hour] \
+	[arg minute] \
+	[arg script]]
 
 This command schedules a script to be run on a certain day of the week at a
 certain hour and minute of that day.  Returns the ID of the newly scheduled script.
@@ -48,16 +66,19 @@ NOTE: day, hour and minute are specified in local time.  Beware of Daylight Savi
 shifts affecting the time of day when the script will execute.
 
 [example_begin]
-   % set id [lb][lb]ns_schedule_weekly -once 2 5 35 { ns_log notice "It is now Tuesday at 5:35 AM." }[rb][rb]
-   123
+ % set id [lb]ns_schedule_weekly -once 2 5 35 { ns_log notice "It is now Tuesday at 5:35 AM." }[rb]
+ 123
+ 
+ % ns_unschedule_proc $id
 [example_end]
 
-[example_begin]
-   % ns_unschedule_proc $id
-[example_end]
 
-
-[call [cmd ns_schedule_daily] [opt [option -once]] [opt [option -thread]] [arg hour] [arg minute] [arg script]]
+[call [cmd ns_schedule_daily] \
+	[opt [option -once]] \
+	[opt [option -thread]] \
+	[arg hour] \
+	[arg minute] \
+	[arg script]]
 
 This command schedules a script to be run at a certain hour and minute of the day.
 Returns the ID of the newly scheduled script.  If [option -once] is specified, then the script
@@ -71,12 +92,10 @@ NOTE: hour and minute are specified in local time.  Beware of Daylight Savings T
 shifts affecting the time of day when the script will execute.
 
 [example_begin]
-   % set id [lb][lb]ns_schedule_daily -once 5 35 { ns_log notice "It is now 5:35 AM." }[rb][rb]
-   123
-[example_end]
-
-[example_begin]
-   % ns_unschedule_proc $id
+ % set id [lb]ns_schedule_daily -once 5 35 { ns_log notice "It is now 5:35 AM." }[rb]
+ 123
+ 
+ % ns_unschedule_proc $id
 [example_end]
 
 
@@ -89,11 +108,11 @@ script from running at its next scheduled time.  Returns 1 on success,
 0 on failure.
 
 [example_begin]
-   % set id [lb][lb]ns_schedule_daily 1 0 { ns_log notice "One AM and all is well.  *gong*" }[rb][rb]
-   19
-   
-   % ns_pause $id
-   1
+ % set id [lb]ns_schedule_daily 1 0 { ns_log notice "One AM and all is well.  *gong*" }[rb]
+ 19
+ 
+ % ns_pause $id
+ 1
 [example_end]
 
 [call [cmd ns_resume] [arg id]]
@@ -103,58 +122,84 @@ scheduling of a previously paused script via [cmd ns_pause].  Returns 1
 on success, 0 on failure.
 
 [example_begin]
-   % set id [lb][lb]ns_schedule_daily 1 0 { ns_log notice "One AM and all is well.  *gong*" }[rb][rb]
-   19
-   
-   % ns_pause $id
-   1
-   
-   % ns_resume $id
-   1
+ % set id [lb]ns_schedule_daily 1 0 { ns_log notice "One AM and all is well.  *gong*" }[rb]
+ 19
+ 
+ % ns_pause $id
+ 1
+ 
+ % ns_resume $id
+ 1
 [example_end]
 
 
-[call [cmd ns_after] [arg seconds] [arg script]]
+[call [cmd ns_after] \
+	[arg interval] \
+	[arg script]]
 
-Execute a command after a time delay. 
- This command executes a script in the background after a number of seconds time delay.
- It does this by scheduling a one-shot event in the scheduler.  Uncaught script errors will
- go to the server log.  It returns an ID which can be used to unschedule the execution
- of the script (if seconds hasn't elapsed) using [cmd ns_unschedule_proc].
+Execute a command after a time delay.  This command executes a script
+in the background after [arg interval] time units.  It does this
+by scheduling a one-shot event in the scheduler.  Uncaught script
+errors will go to the server log.  It returns an ID which can be used
+to unschedule the execution of the script (if interval hasn't elapsed)
+using [cmd ns_unschedule_proc].
 
-[para]
- The script when executed will run in the scheduler thread.  If the script is long-running,
- this may interfere with the execution of other scheduled scripts, in which
- case [cmd ns_schedule_proc] should be used instead of ns_after.
+[para] The script when executed will run in the scheduler thread.  If
+ the script is long-running, this may interfere with the execution of
+ other scheduled scripts, in which case [cmd ns_schedule_proc] should
+ be used instead of [cmd ns_after].
 
 [example_begin]
-   % ns_after 5 { ns_log notice "ns_after script executed" }
-   123
+ % ns_after 5s { ns_log notice "ns_after script executed" }
+ 123
 [example_end]
 
 
 
 [call [cmd ns_unschedule_proc] [arg id]]
-Unschedules a  previous  scheduled  script.
 
-[para]
-NOTE: Current  behavior  is  to silently return without error if the id
-doesn't represent a currently scheduled ID.
+Unschedules a  previous  scheduled  script.
+The command returns a boolean result indicating
+success. When the [arg id] does not exist 0 is
+returned.
 
 [example_begin]
-   % ns_unschedule_proc $id
+ % ns_unschedule_proc $id
+ 1
 [example_end]
 
 [list_end]
+
+
+[section CONFIGURATION]
+
+The default settings of the configuration parameters for the
+scheduling commands can be provided in the global parameters of the
+NaviServer configuration file:
+
+[example_begin]
+ [cmd ns_section] ns/parameters {
+ # ...
+ # How many jobs to run in any schedule thread before thread exit.
+ ns_param schedsperthread 1000
+ #
+ # Log the system log when a scheduled job takes longer than
+ # this time period
+ ns_param schedlogminduration  2s
+ # ...
+ }
+[example_end]
 
 [section {Logging}]
 
 
 When entries are written from scheduled procedures to the server log
 via [cmd ns_log] these entries can be identified by the string
+
 [example_begin]
-...[lb]-sched:THREAD_NR:COUNTER_IN_THREAD:SCHED_ID-[rb]...
+ ...[lb]-sched:THREAD_NR:COUNTER_IN_THREAD:SCHED_ID-[rb]...
 [example_end]
+
 where THREAD_NR refers to the nth thread, COUNTER_IN_THREAD is the nth
 job in this thread and the SCHED_ID refers to the ID of the scheduled
 script as returned by the ns_schedule* commands.
@@ -165,4 +210,3 @@ script as returned by the ns_schedule* commands.
 [keywords "global built-in" background schedule]
 
 [manpage_end]
-

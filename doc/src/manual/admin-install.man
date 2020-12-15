@@ -61,14 +61,13 @@ Released versions are available from
 
 [para]
 
-Latest development version is available from Mercurial repository
+Latest development version is available from the Bitbucket repository
 
 [example_begin]
-hg clone http://bitbucket.org/naviserver/naviserver
-cd naviserver
-./autogen.sh
-make install
-
+ git clone https:/bitbucket.org/naviserver/naviserver.git
+ cd naviserver
+ ./autogen.sh
+ make install
 [example_end]
 
 [section {Building}]
@@ -77,10 +76,8 @@ We've tried to make building NaviServer as simple as possible.  On the supported
 platforms, simply type:
 
 [example_begin]
-
-./configure
-make
-
+ ./configure
+ make
 [example_end]
 
 [para]
@@ -210,7 +207,7 @@ is installed.
 
 [para]
 
-If NaviServer was installed with default nsd.tcl config file, just
+If NaviServer was installed with default nsd.tcl configuration file, just
 type
 [example_begin]
   /usr/local/ns/bin/nsd
@@ -254,9 +251,10 @@ initiate shutdown.
 [example_end]
 
 [para]
-In [emph {Background }]mode, the server  forks and disassociates from the terminal.
-Diagnostic messages  are  appended to log/server.log.  This  is a  typical
-daemon-style mode of operation.  To start the server in  background  mode use:
+In [emph {Background}] mode, the server forks and disassociates from
+the terminal.  Diagnostic messages are appended to log/server.log.
+This is a typical daemon-style mode of operation.  To start the server
+in background mode use:
 
 [para]
 

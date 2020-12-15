@@ -33,6 +33,10 @@ namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
 
+#
+# Skip the nstest::http-0.9 tests under Windows.
+#
+testConstraint http09 [expr {$::tcl_platform(platform) ne "windows"}]
 
 if {[ns_config test listenport]} {
     testConstraint serverListen true
@@ -41,7 +45,7 @@ if {[ns_config test listenport]} {
 
 test http_chunked-1.1 {
     ADP streaming w/chunks to HTTP/1.1 client
-} -constraints serverListen -body {
+} -constraints {serverListen http09} -body {
     nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
                 -getbody 1 -getheaders {Transfer-Encoding Connection Content-Length} \
         GET /http_chunked.adp?stream=1
@@ -49,7 +53,7 @@ test http_chunked-1.1 {
 
 test http_chunked-1.2 {
     ADP with short buffered response
-} -constraints serverListen -body {
+} -constraints {serverListen http09} -body {
     nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
                 -getheaders {Transfer-Encoding Connection Content-Length} -getbody t \
         GET /http_chunked.adp?stream=0
@@ -57,7 +61,7 @@ test http_chunked-1.2 {
 
 test http_chunked-1.3 {
     ADP with longer partly-buffered response and auto-streaming
-} -constraints serverListen -body {
+} -constraints {serverListen http09} -body {
     nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
                 -getheaders {Transfer-Encoding Connection Content-Length} -getbody t \
         GET /http_chunked.adp?stream=0&bufsize=8
@@ -75,7 +79,7 @@ test http_chunked-1.4 {
 
 test http_chunked-2.1 {
     Tcl streaming w/chunks to HTTP/1.1 client
-} -constraints serverListen -setup {
+} -constraints {serverListen http09} -setup {
     ns_register_proc GET /tclchunked {
         ns_headers 200 text/plain
         ns_write 0123456789
@@ -91,7 +95,7 @@ test http_chunked-2.1 {
 
 test http_chunked-2.1.1 {
     Tcl streaming multiple binary buffers w/chunks to HTTP/1.1 client
-} -constraints serverListen -setup {
+} -constraints {serverListen http09} -setup {
     ns_register_proc GET /tclchunked {
         ns_headers 200 text/plain
         ns_write [binary format a5 01234] [binary format a5 56789]
@@ -131,13 +135,110 @@ test http_chunked-2.3 {
 } -result {200 {} 5 01234}
 
 
-test http_chunked-3-1 {
+test http_chunked-2.4.0 {
+
+    PUT request with invalid chunked content.
+    providing a negative length
+
+} -constraints {serverListen http09} -setup {
+    ns_register_proc PUT /tclchunked {
+        set content [ns_conn content]
+        #ns_log notice "PUT received <$content>"
+        ns_return 200 text/plain $content
+    }
+} -body {
+    nstest::http-0.9 -http 1.1 \
+        -omitcontentlength 1 \
+        -setheaders {Transfer-Encoding Chunked} \
+        -getheaders {Transfer-Encoding Content-Length} -getbody 1 \
+        PUT /tclchunked "-1\r\nchunk\r\n0\r\n\r\n"
+} -cleanup {
+    ns_unregister_op PUT /tclchunked
+} -result {400 {} {}}
+
+
+test http_chunked-2.4.1 {
+
+    PUT request with chunked data and invalid length
+    (no hex encoded data)
+
+} -constraints {serverListen http09} -setup {
+    ns_register_proc PUT /tclchunked {
+        set content [ns_conn content]
+        #ns_log notice "PUT received <$content>"
+        ns_return 200 text/plain $content
+    }
+} -body {
+    nstest::http-0.9 -http 1.1 \
+        -omitcontentlength 1 \
+        -setheaders {Transfer-Encoding Chunked} \
+        -getheaders {Transfer-Encoding Content-Length} -getbody 1 \
+        PUT /tclchunked "x\r\nD\r\n0\r\n\r\n"
+} -cleanup {
+    ns_unregister_op PUT /tclchunked
+} -result {400 {} {}}
+
+
+test http_chunked-2.4.2 {
+
+    PUT request with invalid chunked content. Server receives much
+    less data than announced via chunk lengthw. Server will wait for
+    more data, and runs after some time into a timeout.
+
+} -constraints {serverListen http09} -setup {
+    ns_register_proc PUT /tclchunked {
+        set content [ns_conn content]
+        #ns_log notice "PUT received <$content>"
+        ns_return 200 text/plain $content
+    }
+} -body {
+    set result {}
+    set errorMsg {}
+    try {
+        nstest::http-0.9 -http 1.1 \
+            -omitcontentlength 1 \
+            -setheaders {Transfer-Encoding Chunked Connections close} \
+            -getheaders {Transfer-Encoding Content-Length} \
+            PUT /tclchunked "ffffffff\r\nchunk\r\n0\r\n\r\n"
+    } on error {errorMsg} {
+    } on ok {result} {
+    }
+    list errorMsg $errorMsg result $result
+} -cleanup {
+    ns_unregister_op PUT /tclchunked
+    unset result errorMsg
+} -result {errorMsg {} result {}}
+
+
+test http_chunked-2.4.3 {
+
+    PUT request with chunked data and a chunk extension.
+
+} -constraints {serverListen http09} -setup {
+    ns_register_proc PUT /tclchunked {
+        set content [ns_conn content]
+        #ns_log notice "PUT received <$content>"
+        ns_return 200 text/plain $content
+    }
+} -body {
+    nstest::http-0.9 -http 1.1 \
+        -omitcontentlength 1 \
+        -setheaders {Transfer-Encoding Chunked} \
+        -getheaders {Transfer-Encoding Content-Length} -getbody 1 \
+        PUT /tclchunked "1;last\r\nD\r\n0\r\n\r\n"
+} -cleanup {
+    ns_unregister_op PUT /tclchunked
+} -returnCodes {ok} -result {200 {} 1 D}
+
+
+
+test http_chunked-3.1 {
 
     PUT with Transfer-Encoding Chunked and unknown Content-Length (but
     provided X-Expected-Entity-Length). This is the format that WebDAV
     client of macOS uses (via Finder).
 
-} -constraints serverListen -setup {
+} -constraints {serverListen http09} -setup {
     ns_register_proc PUT /tclchunked {
         set content [ns_conn content]
         #ns_log notice "PUT received <$content>"

@@ -5,6 +5,20 @@ namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
 
+set ::notWin32 [expr {{windows} ne $::tcl_platform(platform)}]
+tcltest::testConstraint notWin32 $::notWin32
+
+# The nsproxy module does not currently work correctly on Windows, but
+# we may be able to get that fixed soon.  See Ibrahim Tannir's
+# 2020-06-04 email:
+#   https://sourceforge.net/p/naviserver/mailman/message/37029086/
+#   https://www.mail-archive.com/naviserver-devel@lists.sourceforge.net/msg03932.html
+# Also, on Windows some of these tests trigger this Ns_IncrTime() assertion:
+#   Assertion failed: sec >= 0, file time.c, line 344
+# Unfortunately, whether that assertion gets triggered is NOT 100%
+# repeatable, it appears to happen perhaps 1/3 of the time.
+
+
 test ns_proxy-1.1 {basic syntax} -body {
     ns_proxy
 } -returnCodes error -result {wrong # args: should be "ns_proxy option ?args?"}
@@ -19,27 +33,27 @@ test ns_proxy-2.1 {configuration syntax} -body {
 
 test ns_proxy-2.2 {configuration options} -body {
     ns_proxy configure testpool
-} -match glob -result {-env * -exec * -init * -reinit * -maxslaves * -maxruns * -gettimeout * -evaltimeout * -sendtimeout * -recvtimeout * -waittimeout * -idletimeout *}
+} -match glob -result {-env * -exec * -init * -reinit * -maxworkers * -maxruns * -gettimeout * -evaltimeout * -sendtimeout * -recvtimeout * -waittimeout * -idletimeout *}
 
 test ns_proxy-2.3 {configuration options types} -body {
     ns_proxy configure testpool -gettimeout dummy
-} -returnCodes error -result {expected integer but got "dummy"}
+} -returnCodes error -result {expected time value but got "dummy"}
 
 test ns_proxy-2.4 {configuration options types} -body {
     ns_proxy configure testpool -evaltimeout dummy
-} -returnCodes error -result {expected integer but got "dummy"}
+} -returnCodes error -result {expected time value but got "dummy"}
 
 test ns_proxy-2.5 {configuration options types} -body {
     ns_proxy configure testpool -recvtimeout dummy
-} -returnCodes error -result {expected integer but got "dummy"}
+} -returnCodes error -result {expected time value but got "dummy"}
 
 test ns_proxy-2.6 {configuration options types} -body {
     ns_proxy configure testpool -waittimeout dummy
-} -returnCodes error -result {expected integer but got "dummy"}
+} -returnCodes error -result {expected time value but got "dummy"}
 
 test ns_proxy-2.7 {configuration options types} -body {
     ns_proxy configure testpool -idletimeout dummy
-} -returnCodes error -result {expected integer but got "dummy"}
+} -returnCodes error -result {expected time value but got "dummy"}
 
 test ns_proxy-2.8 {configuration options types} -body {
     ns_proxy configure testpool -maxslaves dummy
@@ -98,7 +112,7 @@ test ns_proxy-3.8 {get from pool disabled} -body {
     ns_proxy get testpool
 } -returnCodes error -result {could not allocate from pool "testpool": insufficient handles}
 
-test ns_proxy-3.9 {get deadlock} -body {
+test ns_proxy-3.9 {get deadlock} -constraints {notWin32} -body {
     ns_proxy configure testpool -maxslaves 2
     ns_proxy get testpool
     set code [catch {ns_proxy get testpool} result]
@@ -107,8 +121,8 @@ test ns_proxy-3.9 {get deadlock} -body {
     ns_proxy cleanup
 } -result {1 {could not allocate from pool "testpool": allocation deadlock} {NSPROXY EDeadlock {allocation deadlock}}}
 
-test ns_proxy-3.10 {get with timeout on pool} -body {
-    ns_proxy configure testpool -gettimeout 100
+test ns_proxy-3.10 {get with timeout on pool} -constraints {notWin32} -body {
+    ns_proxy configure testpool -gettimeout 100ms
     ns_proxy get testpool -handles 2
     ns_thread wait [ns_thread begin {
         set code [catch {ns_proxy get testpool} result]
@@ -117,12 +131,12 @@ test ns_proxy-3.10 {get with timeout on pool} -body {
 } -cleanup {
     ns_proxy cleanup
     ns_proxy configure testpool -gettimeout 0
-} -result {1 {could not allocate from pool "testpool": timeout waiting for handle} {NSPROXY EGetTimeout {timeout waiting for handle}}}
+} -returnCodes {ok error} -result {1 {could not allocate from pool "testpool": timeout waiting for handle} {NSPROXY EGetTimeout {timeout waiting for handle}}}
 
-test ns_proxy-3.11 {get with timeout on command} -body {
+test ns_proxy-3.11 {get with timeout on command} -constraints {notWin32} -body {
     ns_proxy get testpool -handles 2
     ns_thread wait [ns_thread begin {
-        set code [catch {ns_proxy get testpool -timeout 100} result]
+        set code [catch {ns_proxy get testpool -timeout 100ms} result]
         list $code $result $::errorCode
     }]
 } -cleanup {
@@ -138,7 +152,7 @@ test ns_proxy-3.12 {get with bad init} -body {
     ns_proxy configure testpool -init ""
 }  -returnCodes error -result {invalid command name "dummy"}
 
-test ns_proxy-3.13 {put with bad re-init} -body {
+test ns_proxy-3.13 {put with bad re-init} -constraints {notWin32} -body {
     ns_proxy clear testpool
     ns_proxy configure testpool -reinit dummy
     ns_proxy put [ns_proxy get testpool]
@@ -147,25 +161,25 @@ test ns_proxy-3.13 {put with bad re-init} -body {
     ns_proxy configure testpool -reinit ""
 }  -returnCodes error -result {invalid command name "dummy"}
 
-test ns_proxy-4.0 {ping syntax} -body {
+test ns_proxy-4.0 {ping syntax} -constraints {notWin32} -body {
     ns_proxy ping
 } -returnCodes error -result {wrong # args: should be "ns_proxy ping handle"}
 
-test ns_proxy-4.1 {ping with bad handle} -body {
+test ns_proxy-4.1 {ping with bad handle} -constraints {notWin32} -body {
     ns_proxy ping dummy
 } -returnCodes error -result {no such handle: dummy}
 
-test ns_proxy-4.2 {ping normal} -body {
+test ns_proxy-4.2 {ping normal} -constraints {notWin32} -body {
     ns_proxy configure testpool -gettimeout 0 -maxslaves 2
     ns_proxy ping [ns_proxy get testpool]
 } -cleanup {
     ns_proxy cleanup
 } -result {}
 
-test ns_proxy-4.3 {ping dead proxy} -body {
-    ns_proxy configure testpool -evaltimeout 1000
+test ns_proxy-4.3 {ping dead proxy} -constraints {notWin32} -body {
+    ns_proxy configure testpool -evaltimeout 1s
     set proxy [ns_proxy get testpool]
-    catch {ns_proxy eval $proxy "after 2000"}
+    catch {ns_proxy eval $proxy "ns_sleep 2s"}
     set code [catch {ns_proxy ping $proxy} result]
     list $code $result $::errorCode
 } -cleanup {
@@ -179,42 +193,42 @@ test ns_proxy-5.0 {eval over handle} -body {
     ns_proxy cleanup
 } -result {1}
 
-test ns_proxy-5.1 {eval over command} -body {
+test ns_proxy-5.1 {eval over command} -constraints {notWin32} -body {
     [ns_proxy get testpool] "set a 1"
 } -cleanup {
     ns_proxy cleanup
 } -result {1}
 
-test ns_proxy-5.2 {eval with pool timeout} -body {
-    ns_proxy configure testpool -evaltimeout 1000
-    set code [catch {ns_proxy eval [ns_proxy get testpool] "after 2000"} result]
+test ns_proxy-5.2 {eval with pool timeout} -constraints {notWin32} -body {
+    ns_proxy configure testpool -evaltimeout 1s
+    set code [catch {ns_proxy eval [ns_proxy get testpool] "ns_sleep 2s"} result]
     list $code $result $::errorCode
 } -cleanup {
     ns_proxy configure testpool -evaltimeout 0
     ns_proxy cleanup
 } -match glob -result {1 {could not wait for proxy "testpool-*": timeout waiting for evaluation} {NSPROXY EEvalTimeout {timeout waiting for evaluation}}}
 
-test ns_proxy-5.3 {eval with proxy timeout} -body {
-    set code [catch {ns_proxy eval [ns_proxy get testpool] "after 2000" 1000} result]
+test ns_proxy-5.3 {eval with proxy timeout} -constraints {notWin32} -body {
+    set code [catch {ns_proxy eval [ns_proxy get testpool] "ns_sleep 2s" 1s} result]
     list $code $result $::errorCode
 } -cleanup {
     ns_proxy cleanup
 } -match glob -result {1 {could not wait for proxy "testpool-*": timeout waiting for evaluation} {NSPROXY EEvalTimeout {timeout waiting for evaluation}}}
 
-test ns_proxy-5.4 {eval with command timeout} -body {
-    set code [catch {[ns_proxy get testpool] "after 2000" 1000} result]
+test ns_proxy-5.4 {eval with command timeout} -constraints {notWin32} -body {
+    set code [catch {[ns_proxy get testpool] "ns_sleep 2s" 1s} result]
     list $code $result $::errorCode
 } -cleanup {
     ns_proxy cleanup
 } -match glob -result {1 {could not wait for proxy "testpool-*": timeout waiting for evaluation} {NSPROXY EEvalTimeout {timeout waiting for evaluation}}}
 
-test ns_proxy-5.5 {eval with bad command timeout} -body {
-    [ns_proxy get testpool] "after 2000" dummy
+test ns_proxy-5.5 {eval with bad command timeout} -constraints {notWin32} -body {
+    [ns_proxy get testpool] "ns_sleep 2s" dummy
 } -cleanup {
     ns_proxy cleanup
-} -returnCodes error -result {expected integer but got "dummy"}
+} -returnCodes error -result {expected time value but got "dummy"}
 
-test ns_proxy-5.7 {check free} -body {
+test ns_proxy-5.7 {check free} -constraints {notWin32} -body {
     ns_proxy configure testpool -maxslaves 5
     ns_proxy get testpool -handles 5
     set result ""
@@ -227,7 +241,7 @@ test ns_proxy-5.7 {check free} -body {
     ns_proxy cleanup
 } -result {4 3 2 1 0}
 
-test ns_proxy-5.8 {check handles for pool} -body {
+test ns_proxy-5.8 {check handles for pool} -constraints {notWin32} -body {
     ns_proxy get testpool1
     ns_proxy get testpool -handles 2
     set a [llength [ns_proxy handles]]
@@ -238,7 +252,7 @@ test ns_proxy-5.8 {check handles for pool} -body {
     ns_proxy cleanup
 } -result {1}
 
-test ns_proxy-5.9 {check pool resize} -body {
+test ns_proxy-5.9 {check pool resize} -constraints {notWin32} -body {
     set result ""
     ns_proxy configure testpool -maxslaves 5
     lappend result [llength [ns_proxy free testpool]]
@@ -251,12 +265,12 @@ test ns_proxy-5.9 {check pool resize} -body {
     ns_proxy cleanup
 } -result {5 8 5}
 
-test ns_proxy-5.10 {check active} -body {
+test ns_proxy-5.10 {check active} -constraints {notWin32} -body {
     set result ""
     ns_proxy config testpool -maxslaves 8
     set proxies [ns_proxy get testpool -handles 4]
     foreach p $proxies {
-        ns_proxy send $p "after 1000"
+        ns_proxy send $p "ns_sleep 1s"
     }
     lappend result [llength [ns_proxy active testpool]]
     foreach p $proxies {
@@ -269,17 +283,17 @@ test ns_proxy-5.10 {check active} -body {
     ns_proxy cleanup
 } -result {4 3 2 1 0}
 
-test ns_proxy-5.10 {check killing active proxy} -body {
+test ns_proxy-5.10 {check killing active proxy} -constraints {notWin32} -body {
     set result ""
     ns_proxy config testpool -maxslaves 8
     set proxies [ns_proxy get testpool -handles 1]
     foreach p $proxies {
-        ns_proxy send $p "after 100000"
+        ns_proxy send $p "ns_sleep 100s"
     }
     foreach p $proxies {
         ns_proxy stop testpool $p
     }
-    after 1000
+    ns_sleep 1s
     foreach state [ns_proxy active testpool] {
         array set ar $state
         lappend result $ar(slave)

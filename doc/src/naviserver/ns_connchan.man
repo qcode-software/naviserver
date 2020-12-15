@@ -40,9 +40,12 @@
  access the connection socket directly (e.g. via [cmd ns_write]) will fail.
 
 
-[call [cmd "ns_connchan close"] [arg channel]]
+[call [cmd "ns_connchan close"] \
+	[opt [option "-server [arg server]"]] \
+	[arg channel]]
 
- Close the named connection channel.
+ Close the named connection channel. The [option "-server"] can be
+ used for cleaup of stale handles.
 
 [call [cmd "ns_connchan exists"] [arg channel]]
 
@@ -61,14 +64,18 @@
 	[item] name of the thread
 	[item] start time of the initiating request, 
 	[item] driver, 
-	[item] the ip-address of the requestor, 
+	[item] the IP address of the client,
 	[item] sent bytes,
 	[item] received bytes,
 	[item] the client data as provided via [lb]ns_conn
-               clientdata[rb],
+             clientdata[rb],
 	[item] the cmd name of the callback, or "" when no callback is registered,
 	[item] the callback condition flags, or "" when no callback is registered.
  [list_end]
+
+When NaviServer is running in reverse proxy mode, the client IP
+address is taken form the value as provided by the reverse proxy
+server.
 
 [call [cmd "ns_connchan callback"] \
 	[opt [option "-timeout [arg t]"]] \
@@ -85,12 +92,12 @@ timeout for incoming packets, [option -sendtimeout] is the timeout for
 outgoing packets.  When [option -sendtimeout] has the value of 0, a
 read operation might return the empty string. A value larger than 0
 might block the event processing for the specified time.
+All timeouts values are specified in the form [arg secs[opt :microsecs]], or
+[arg secs.fraction] or as a number with the time units ms, s, m, d.
 
 [para]
 The argument [arg when] consist of one or more characters
 of r, w, e, or x, specifying, when the callback should fire.
-All timeouts are specified in the form [arg secs[opt :microsecs]] or
-[arg secs.fraction].
 
 [para] When the callback is fired, the specified Tcl command will be
 called with an additional argument, which is an indicator for the
@@ -110,17 +117,17 @@ the callback should be canceled or not. The return value is
 interpreted as follows:
 [list_begin itemized]
 [item] 0 - the callback is canceled, and the channel is deleted
-           automatically (typically, when an error occurs)
+         automatically (typically, when an error occurs)
 [item] 1 - the callback will be used as well for further events
 [item] 2 - the callback will be suspended. No further events will
-           be fired, but the channel is not deleted.
+         be fired, but the channel is not deleted.
 [list_end]
 
 
 [call [cmd "ns_connchan listen"] \
 	[opt [option "-driver [arg d]"]] \
 	[opt [option "-server [arg s]"]] \
-	[opt [option "-bind]"]] \
+	[opt [option "-bind"]] \
 	[arg address] \
 	[arg port] \
 	[arg script] \
@@ -133,6 +140,7 @@ connections. On success, this command returns a dict containing
 
 [call [cmd "ns_connchan open"] \
 	[opt [option "-headers [arg h]"]] \
+	[opt [option "-hostname [arg HOSTNAME ]"]] \
 	[opt [option "-method [arg m]"]] \
 	[opt [option "-timeout [arg t]"]] \
 	[opt [option "-version [arg v]"]] \
@@ -146,6 +154,14 @@ The URL might be an HTTP or an HTTPS URL.
 [option -timeout] is the timeout for establishing the connection
 (default 1 second), and
 [option -version] specifies the HTTP version (default 1.0)
+The timeout value [arg t] is specified in the form
+[arg secs[opt :microsecs]], or [arg secs.fraction],
+or as a number with the time units ms, s, m, d.
+
+For connecting to a server with virtual hosting that provides
+multiple certificates via SNI (Server Name Indication) the
+option [option -hostname] is required.
+
 
 [call [cmd "ns_connchan read"] \
 	[arg channel] \
@@ -164,7 +180,7 @@ the number of bytes sent, which might be less than the input length.
 [list_end]
 
 [see_also ns_conn ns_chan ns_sockcallback ns_write]
-[keywords "server built-in" channels socket driver]
+[keywords "server built-in" channels socket driver reverseproxy]
 
 [manpage_end]
 

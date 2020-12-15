@@ -91,17 +91,33 @@ Ns_DStringVarAppend(Ns_DString *dsPtr, ...)
 char *
 Ns_DStringExport(Ns_DString *dsPtr)
 {
-    char *s;
+    char   *s;
+    size_t  size;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
+#ifdef SAME_MALLOC_IN_TCL_AND_NS
+    /*
+     * The following code saves a memory duplication in case the Tcl_DString
+     * was allocated with the same memory allocator from Tcl as used for
+     * freeing in NaviServer. This is the case, when both Tcl (+ SYSTEM_MALLOC
+     * patch) and NaviServer were compiled with SYSTEM_MALLOC, or both without
+     * it. The save assumption is that we cannot trust on this ans we do not
+     * define this flag.
+     */
     if (dsPtr->string != dsPtr->staticSpace) {
         s = dsPtr->string;
         dsPtr->string = dsPtr->staticSpace;
     } else {
-        s = ns_malloc((size_t)dsPtr->length + 1u);
-        memcpy(s, dsPtr->string, (size_t)dsPtr->length + 1u);
+        size = (size_t)dsPtr->length + 1u;
+        s = ns_malloc(size);
+        memcpy(s, dsPtr->string, size);
     }
+#else
+    size = (size_t)dsPtr->length + 1u;
+    s = ns_malloc(size);
+    memcpy(s, dsPtr->string, size);
+#endif
     Ns_DStringFree(dsPtr);
 
     return s;
@@ -223,7 +239,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
      * Check for overflow and retry. For win32 just double the buffer size
      * and iterate, otherwise we should get this correct first time.
      */
-#if defined(_WIN32) && _MSC_VER < 1900
+#if defined(_WIN32) && defined(_MSC_VER) && _MSC_VER < 1900
     while (result == -1 && errno == ERANGE) {
         newLength = dsPtr->spaceAvl * 2;
 #else
@@ -424,7 +440,22 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(timePtr != NULL);
 
-    return Ns_DStringPrintf(dsPtr, "%" PRId64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
+    if (timePtr->sec < 0 || (timePtr->sec == 0 && timePtr->usec < 0)) {
+        Ns_DStringNAppend(dsPtr, "-", 1);
+    }
+    if (timePtr->usec == 0) {
+        Ns_DStringPrintf(dsPtr, "%lld", llabs(timePtr->sec));
+    } else {
+        Ns_DStringPrintf(dsPtr, "%lld.%06ld",
+                         llabs(timePtr->sec), labs(timePtr->usec));
+        /*
+         * Strip trailing zeros after comma dot.
+         */
+        while (dsPtr->string[dsPtr->length-1] == '0') {
+            dsPtr->length --;
+        }
+    }
+    return dsPtr->string;
 }
 
 

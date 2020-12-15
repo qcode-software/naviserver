@@ -58,7 +58,7 @@ struct nsconf nsconf;
 void
 NsInitConf(void)
 {
-    Ns_ThreadSetName("-main-");
+    Ns_ThreadSetName("-main:%s-", "conf");
 
     /*
      * At library load time the server is considered started.
@@ -73,7 +73,7 @@ NsInitConf(void)
     nsconf.version = PACKAGE_VERSION;
     nsconf.tcl.version = TCL_VERSION;
 
-    time(&nsconf.boot_t);
+    (void)time(&nsconf.boot_t);
     nsconf.pid = getpid();
 
    /*
@@ -177,17 +177,16 @@ NsConfUpdate(void)
     /*
      * nsmain.c
      */
-
-    nsconf.shutdowntimeout =
-        Ns_ConfigIntRange(path, "shutdowntimeout", 20, 0, INT_MAX);
-
+    Ns_ConfigTimeUnitRange(path, "shutdowntimeout",
+                           "20s", 0, 0, LONG_MAX, 0,
+                           &nsconf.shutdowntimeout);
     /*
      * sched.c
      */
-
     nsconf.sched.jobsperthread = Ns_ConfigIntRange(path, "schedsperthread", 0, 0, INT_MAX);
-    nsconf.sched.maxelapsed = Ns_ConfigIntRange(path, "schedmaxelapsed", 2, 0, INT_MAX);
-
+    Ns_ConfigTimeUnitRange(path, "schedlogminduration",
+                           "2s", 1, 0, LONG_MAX, 0,
+                           &nsconf.sched.maxelapsed);
     /*
      * binder.c, win32.c
      */
@@ -197,9 +196,13 @@ NsConfUpdate(void)
     /*
      * tcljob.c
      */
-
     nsconf.job.jobsperthread = Ns_ConfigIntRange(path, "jobsperthread", 0, 0, INT_MAX);
-    nsconf.job.timeout = Ns_ConfigIntRange(path, "jobtimeout", 300, 0, INT_MAX);
+    Ns_ConfigTimeUnitRange(path, "jobtimeout",
+                           "5m", 0, 0, LONG_MAX, 0,
+                           &nsconf.job.timeout);
+    Ns_ConfigTimeUnitRange(path, "joblogminduration",
+                           "1s", 0, 0, LONG_MAX, 0,
+                           &nsconf.job.logminduration);
 
     /*
      * tclinit.c
@@ -210,7 +213,7 @@ NsConfUpdate(void)
     if (Ns_PathIsAbsolute(nsconf.tcl.sharedlibrary) == NS_FALSE) {
         Ns_Set *set = Ns_ConfigCreateSection(NS_CONFIG_PARAMETERS);
 
-        Ns_HomePath(&ds, nsconf.tcl.sharedlibrary, (char *)0L);
+        (void)Ns_HomePath(&ds, nsconf.tcl.sharedlibrary, (char *)0L);
         nsconf.tcl.sharedlibrary = Ns_DStringExport(&ds);
 
         Ns_SetUpdate(set, "tcllibrary", nsconf.tcl.sharedlibrary);
