@@ -2,3 +2,4 @@
 0002-remove-build-files-from-upstream-package.patch
 0003-Update-makefile-to-remove-build-files.patch
 0004-cast-to-avoid-compiler-warning.patch
+0005-Remove-SYSTEM_MALLOC-flag-from-defaults.patch

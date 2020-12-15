@@ -1,0 +1,41 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Tue, 15 Dec 2020 11:55:49 +0000
+Subject: Remove SYSTEM_MALLOC flag from defaults
+
+---
+ debian/changelog | 6 ++++++
+ m4/tcl.m4        | 4 ++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index bdcc337..600f145 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++naviserver (4.99.19-1+deb10u2) buster; urgency=medium
++
++  * Remove DSYSTEM_MALLOC from default compile flags
++
++ -- Qcode Software Ltd <hackers@qcode.co.uk> Tue, 15 Dec 2020 11:52:59 +0000
++
+ naviserver (4.99.19-1+deb10u1) buster; urgency=medium
+ 
+   * Import 4.99.19 on buster
+diff --git a/m4/tcl.m4 b/m4/tcl.m4
+index bf36020..543ab2a 100644
+--- a/m4/tcl.m4
++++ b/m4/tcl.m4
+@@ -864,11 +864,11 @@ AC_DEFUN([TEA_ENABLE_SYMBOLS], [
+ 	[tcl_ok=$enableval], [tcl_ok=no])
+     DBGX=""
+     if test "$tcl_ok" = "no"; then
+-	CFLAGS_DEFAULT="${CFLAGS_OPTIMIZE} -DNDEBUG -DSYSTEM_MALLOC"
++	CFLAGS_DEFAULT="${CFLAGS_OPTIMIZE} -DNDEBUG"
+ 	LDFLAGS_DEFAULT="${LDFLAGS_OPTIMIZE}"
+ 	AC_MSG_RESULT([no])
+     else
+-	CFLAGS_DEFAULT="${CFLAGS_DEBUG} -DSYSTEM_MALLOC"
++	CFLAGS_DEFAULT="${CFLAGS_DEBUG}"
+ 	LDFLAGS_DEFAULT="${LDFLAGS_DEBUG}"
+ 	if test "$tcl_ok" = "yes"; then
+ 	    AC_MSG_RESULT([yes (standard debugging)])
