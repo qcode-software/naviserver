@@ -1,3 +1,9 @@
+naviserver (4.99.19-1+deb10u2) buster; urgency=medium
+
+  * Remove SYSTEM_MALLOC from default flags
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 15 Dec 2020 12:00:06 +0000
+
 naviserver (4.99.19-1+deb10u1) buster; urgency=medium
 
   * Import 4.99.19 on buster
