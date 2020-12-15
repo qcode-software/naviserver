@@ -591,7 +591,7 @@ Ns_ConnReturnRequestURITooLong(Ns_Conn *conn)
         result = Ns_ConnReturnNotice(conn, 414, "Request-URI Too Long",
                                      "The request URI is too long. You might "
                                      "consider to provide a larger value for "
-                                     "maxline in your NaviServer config file.");
+                                     "maxline in your NaviServer configuration file.");
     }
     return result;
 }
@@ -622,7 +622,7 @@ Ns_ConnReturnHeaderLineTooLong(Ns_Conn *conn)
         result = Ns_ConnReturnNotice(conn, 431, "Request Header Fields Too Large",
                                      "A provided request header line is too long. "
                                      "You might consider to provide a larger value "
-                                     "for maxline in your NaviServer config file");
+                                     "for maxline in your NaviServer configuration file");
     }
    return result;
 }
@@ -810,6 +810,11 @@ ReturnRedirect(Ns_Conn *conn, int httpStatus, Ns_ReturnCode *resultPtr)
                        "exceeded recursion limit of %d", httpStatus, MAX_RECURSION);
             } else {
                 connPtr->responseStatus = httpStatus;
+                if (httpStatus >= 400) {
+                    ns_free((char *)connPtr->request.method);
+                    connPtr->request.method = ns_strdup("GET");
+                }
+                Ns_Log(Debug, "ReturnRedirect '%s' to '%s'", connPtr->request.line, (const char *)Tcl_GetHashValue(hPtr));
                 *resultPtr = Ns_ConnRedirect(conn, Tcl_GetHashValue(hPtr));
                 result = NS_TRUE;
             }

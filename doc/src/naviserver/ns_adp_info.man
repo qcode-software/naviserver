@@ -6,7 +6,7 @@
 
 [description]
 
- This command returns the currently processing ADP file name with its size and 
+ This command returns the currently processing ADP filename with its size and
  modification date. This can be useful inside the ADP for generating conditional
  Tcl code for tempalting for example.
 
@@ -21,15 +21,12 @@
 [section EXAMPLES]
 
 [example_begin]
-
-ns_adp_info
-
-/usr/local/ns/pages/test.adp 1865 1167237186
-
+ ns_adp_info
+ 
+ /usr/local/ns/pages/test.adp 1865 1167237186
 [example_end]
 
 [see_also nsd]
 [keywords "server built-in" ADP]
 
 [manpage_end]
-

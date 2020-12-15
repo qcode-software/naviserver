@@ -140,7 +140,7 @@
 /*
  * This optimization, when turned on, prevents the server from doing a
  * whole lot of calls to Tcl_StringMatch on every lookup in urlspace.
- * Instead, a NS_strcmp is done.
+ * Instead, an NS_strcmp is done.
  *
  * GN 2015/11: This optimization was developed more than 10 years
  * ago. With the introduction of ns_urlspace it became easy to write
@@ -176,8 +176,8 @@
 
 #ifdef DEBUG
 static int NS_Tcl_StringMatch(const char *a, const char *b) {
-    int r = Tcl_StringMatch(a,b);
-    fprintf(stderr, "__TclStringMatch '%s' '%s' => %d\n", a,b, r);
+    int r = Tcl_StringMatch(a, b);
+    fprintf(stderr, "__TclStringMatch '%s' '%s' => %d\n", a, b, r);
     return r;
 }
 static size_t NS_strlen(const char *a) {
@@ -186,8 +186,8 @@ static size_t NS_strlen(const char *a) {
     return r;
 }
 static int NS_strcmp(const char *a, const char *b) {
-    int r = strcmp(a,b);
-    fprintf(stderr, "NS_strcmp '%s' '%s' => %d\n", a,b, r);
+    int r = strcmp(a, b);
+    fprintf(stderr, "NS_strcmp '%s' '%s' => %d\n", a, b, r);
     return r;
 }
 #else
@@ -295,7 +295,7 @@ typedef struct UrlSpaceContextSpec {
 static void  NodeDestroy(Node *nodePtr)
     NS_GNUC_NONNULL(1);
 
-static void ContextFilterDestroy(Ns_Index* indexPtr)
+static void ContextFilterDestroy(const Ns_Index* indexPtr)
     NS_GNUC_NONNULL(1);
 
 static void  BranchDestroy(Branch *branchPtr)
@@ -892,7 +892,6 @@ Ns_UrlSpecificDestroy(const char *server, const char *method, const char *url,
         if ((flags & NS_OP_RECURSE) != 0u) {
             //Ns_Log(Ns_LogUrlspaceDebug, "JunctionTruncBranch %s 0x%.6x", url, flags);
             JunctionTruncBranch(JunctionGet(servPtr, id), ds.string);
-            data = NULL;
         } else {
             //Ns_Log(Ns_LogUrlspaceDebug, "JunctionDeleteNode %s 0x%.6x", url, flags);
             data = JunctionDeleteNode(JunctionGet(servPtr, id), ds.string, flags);
@@ -1109,7 +1108,7 @@ NodeDestroy(Node *nodePtr)
     ns_free(nodePtr);
 }
 
-static void ContextFilterDestroy(Ns_Index* indexPtr)
+static void ContextFilterDestroy(const Ns_Index* indexPtr)
 {
     size_t i;
 
@@ -1343,7 +1342,7 @@ TrieInit(Trie *triePtr)
  *      seq is a null-delimited string of words, terminated with
  *      two nulls.
  *      id is allocated with Ns_UrlSpecificAlloc.
- *      flags is a bitmask of NS_OP_NODELETE, NS_OP_NOINHERIT for
+ *      flags is a bit mask of NS_OP_NODELETE, NS_OP_NOINHERIT for
  *      desired behavior.
  *
  * Results:
@@ -2022,7 +2021,7 @@ CmpChannelsAsStrings(const void *leftPtrPtr, const  void *rightPtrPtr)
 #ifdef DEBUG
     fprintf(stderr, "CmpChannelsAsStrings '%s' with '%s' -> %d\n",
             filterLeft, filterRight,
-            NS_strcmp(filterLeft, filterRight);
+            NS_strcmp(filterLeft, filterRight));
 #endif
     return NS_strcmp(filterLeft, filterRight);
 }
@@ -2728,8 +2727,9 @@ AllocTclUrlSpaceId(Tcl_Interp *interp,  int *idPtr)
         tclUrlSpaces[*idPtr] = NS_TRUE;
 
         Tcl_DStringInit(&ds);
-        Ns_DStringPrintf(&ds, "nsd:urlspace:%d", (int)*idPtr);
-        Ns_MutexSetName2(&itPtr->servPtr->urlspace.idlocks[*idPtr], ds.string, itPtr->servPtr->server);
+        Ns_DStringPrintf(&ds, "ns:rw:urlspace:%d", (int)*idPtr);
+        Ns_RWLockInit(&itPtr->servPtr->urlspace.idlocks[*idPtr]);
+        Ns_RWLockSetName2(&itPtr->servPtr->urlspace.idlocks[*idPtr], ds.string, itPtr->servPtr->server);
         Tcl_DStringFree(&ds);
 
         result = TCL_OK;
@@ -2916,9 +2916,9 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             fprintf(stderr, "=== GET id %d key %s url %s op %d\n", id, key, url, op);
 #endif
             //Ns_Log(Notice, "UrlSpaceGetObjCmd context %p context %p", (void*)context, (void*)ctxPtr);
-            Ns_MutexLock(&servPtr->urlspace.idlocks[id]);
+            Ns_RWLockRdLock(&servPtr->urlspace.idlocks[id]);
             data = NsUrlSpecificGet(servPtr, key, url, id, flags, op, NsUrlSpaceContextFilter, ctxPtr);
-            Ns_MutexUnlock(&servPtr->urlspace.idlocks[id]);
+            Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
 
             Tcl_SetObjResult(interp, Tcl_NewStringObj(data, -1));
         }
@@ -2963,9 +2963,9 @@ UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 
         Ns_DStringInit(dsPtr);
 
-        Ns_MutexLock(&servPtr->urlspace.idlocks[id]);
+        Ns_RWLockRdLock(&servPtr->urlspace.idlocks[id]);
         Ns_UrlSpecificWalk(id, servPtr->server, WalkCallback, dsPtr);
-        Ns_MutexUnlock(&servPtr->urlspace.idlocks[id]);
+        Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
 
         Tcl_DStringResult(interp, dsPtr);
     }
@@ -3077,7 +3077,7 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 #ifdef DEBUG
         fprintf(stderr, "=== SET use id %d\n", id);
 #endif
-        Ns_MutexLock(&servPtr->urlspace.idlocks[id]);
+        Ns_RWLockWrLock(&servPtr->urlspace.idlocks[id]);
 
         if (oc == 2) {
             contextSpec = NsUrlSpaceContextSpecNew(Tcl_GetString(ov[0]), Tcl_GetString(ov[1]));
@@ -3086,7 +3086,7 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         //Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceSetObjCmd contextFilter %p", (void*)contextSpec);
         Ns_UrlSpecificSet2(servPtr->server, key, url, id, ns_strdup(data),
                            flags, ns_free, contextSpec);
-        Ns_MutexUnlock(&servPtr->urlspace.idlocks[id]);
+        Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
     }
     return result;
 }
@@ -3159,9 +3159,9 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 
         Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceUnsetObjCmd %s 0x%.6x", url, flags);
 
-        Ns_MutexLock(&servPtr->urlspace.idlocks[id]);
+        Ns_RWLockWrLock(&servPtr->urlspace.idlocks[id]);
         data = Ns_UrlSpecificDestroy(servPtr->server, key, url, id, flags);
-        Ns_MutexUnlock(&servPtr->urlspace.idlocks[id]);
+        Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
 
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj((data != NULL) || recurse));
     }

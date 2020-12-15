@@ -239,11 +239,11 @@ proc ns_link {args} {
 #     The rename() causes the link named "from" to be renamed as "to".
 #     If "to" exists, it is first removed.
 #     Both "from" and "to" must be of the same type (that is, both dirs
-#     or both non-dirs), and must reside on the same file system.
+#     or both non-dirs), and must reside on the same filesystem.
 #
 #   What we cannot guarantee is:
 #
-#       "must reside on the same file system"
+#       "must reside on the same filesystem"
 #
 #   This is because there is no portable means in Tcl to assure this
 #   and because Tcl [file rename] is clever enough to copy-then-delete
@@ -452,7 +452,7 @@ proc ns_puts {args} {
 }
 
 #
-# ns_puts --
+# ns_returnadminnotice --
 #
 #   deprecated version of ns_returnnotice
 #   use "ns_returnnotice" instead
@@ -475,6 +475,17 @@ proc ns_adp_eval {args} {
 proc ns_adp_safeeval {args} {
     ns_deprecated "ns_adp_parse -safe"
     return [ns_adp_parse -safe -- {*}$args]
+}
+
+#
+# ns_adp_mime --
+#
+#   deprecated version of ns_adp_mimetype
+#   use "ns_adp_mimetype ..." instead
+#
+proc ns_adp_mime {args} {
+    ns_deprecated "ns_adp_mimetype"
+    return [ns_adp_mimetype {*}$args]
 }
 
 # Local variables:

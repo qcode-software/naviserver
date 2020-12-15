@@ -108,8 +108,12 @@ Restrict the cookie to a domain name, such as [term example.com]. The
 current domain is implied if none is specified.
 
 [opt_def -expires [arg time]]
-The cookie will expire in [arg time] seconds, after which the client will no
-longer send the cookie back to the server. If [arg time] is large it is treated
+The cookie will expire the given [arg time], after which the client will no
+longer send the cookie back to the server.
+The [arg time] value can be specified in the form
+[arg secs[opt :microsecs]], or [arg secs.fraction],
+or as a number with the time units ms, s, m, d.
+If [arg time] is large it is treated
 as the absolute time in the future when the cookie should expire. The special
 value [emph -1] may be used to indicate that the cookie should never
 expire.
@@ -145,10 +149,6 @@ if you need to access the cookie via JavaScript.
 If the secure option is true then the cookie will only be sent back to the
 server when the client uses a secure ([term TLS]/[term SSL]) connection.
 
-
-
-
-
 [para]
 The expiry time is valid across browser sessions.  If no expiry is
 specified then the cookie will expire when the browser session ends,
@@ -157,20 +157,18 @@ which is usually when the user closes their browser.
 [list_end]
 
 
-
 [section EXAMPLES]
 
 Track all user agents which ever vist out site:
 
 [example_begin]
-proc browser_tracking_filter {} {
-    if {![lb][cmd ns_getcookie] first_visit 0[rb]} {
-        [cmd ns_setcookie] -expires -1 -- first_visit [lb]clock seconds[rb]
-    }
-}
-ns_register_filter preauth GET /* browser_tracking_filter
+ proc browser_tracking_filter {} {
+   if {![lb][cmd ns_getcookie] first_visit 0[rb]} {
+     [cmd ns_setcookie] -expires -1 -- first_visit [lb]clock seconds[rb]
+   }
+ }
+ ns_register_filter preauth GET /* browser_tracking_filter
 [example_end]
-
 
 [see_also ns_cookiecharset ]
 [keywords "server built-in" cookie session]

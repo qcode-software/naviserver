@@ -30,20 +30,32 @@
 /*
  * sched.c --
  *
- *  Support for the background task and scheduled procedure
- *  interfaces.  The implementation is based on the paper:
+ *  Support for the background task and scheduled procedure interfaces.  The
+ *  implementation of the priority queue based on a binary heap. A binary heap
+ *  has the following characteristics:
  *
- *  "A Heap-based Callout Implementation to Meet Real-Time Needs",
- *  by Barkley and Lee, in "Proceeding of the Summer 1988 USENIX
- *  Conference".
+ *   - Cost of insertion:                O(log N)
+ *   - Cost of deletion:                 O(log N)
+ *   - Cost of change of key value:      O(log N) (not used here)
+ *   - Cost of smallest (largest) value: O(1)
  *
- *  The heap code in particular is based on:
+ *  The binary heap code is based on:
  *
- *  "Chapter 9. Priority Queues and Heapsort", Sedgewick "Algorithms
- *  in C, 3rd Edition", Addison-Wesley, 1998.
+ *      "Chapter 9. Priority Queues and Heapsort", Sedgewick "Algorithms
+ *       in C, 3rd Edition", Addison-Wesley, 1998.
+ *
+ *       https://algs4.cs.princeton.edu/24pq/
  */
 
 #include "nsd.h"
+
+/*
+ * The following two defines can be used to turn on consistency checking and
+ * intense tracing of the scheduling/unscheduling of the commands.
+ *
+ * #define NS_SCHED_CONSISTENCY_CHECK
+ * #define NS_SCHED_TRACE_EVENTS
+ */
 
 /*
  * The following structure defines a scheduled event.
@@ -54,16 +66,16 @@ typedef struct Event {
     Tcl_HashEntry  *hPtr;       /* Entry in event hash or NULL if deleted. */
     int             id;         /* Unique event id. */
     int             qid;        /* Current priority queue id. */
-    time_t          nextqueue;  /* Next time to queue for run. */
-    time_t          lastqueue;  /* Last time queued for run. */
-    time_t          laststart;  /* Last time run started. */
-    time_t          lastend;    /* Last time run finished. */
-    unsigned int    flags;      /* One or more of NS_SCHED_ONCE, NS_SCHED_THREAD,
-                                 * NS_SCHED_DAILY, or NS_SCHED_WEEKLY. */
-    int             interval;   /* Interval specification. */
+    Ns_Time         nextqueue;  /* Next time to queue for run. */
+    Ns_Time         lastqueue;  /* Last time queued for run. */
+    Ns_Time         laststart;  /* Last time run started. */
+    Ns_Time         lastend;    /* Last time run finished. */
+    Ns_Time         interval;   /* Interval specification. */
     Ns_SchedProc   *proc;       /* Procedure to execute. */
     void           *arg;        /* Client data for procedure. */
     Ns_SchedProc   *deleteProc; /* Procedure to cleanup when done (if any). */
+    unsigned int    flags;      /* One or more of NS_SCHED_ONCE, NS_SCHED_THREAD,
+                                 * NS_SCHED_DAILY, or NS_SCHED_WEEKLY. */
 } Event;
 
 /*
@@ -72,11 +84,13 @@ typedef struct Event {
 
 static Ns_ThreadProc SchedThread;       /* Detached event firing thread. */
 static Ns_ThreadProc EventThread;       /* Proc for NS_SCHED_THREAD events. */
-static Event *DeQueueEvent(int qid);    /* Remove event from heap. */
+static Event *DeQueueEvent(int k);      /* Remove event from heap. */
 static void FreeEvent(Event *ePtr)      /* Free completed or cancelled event. */
     NS_GNUC_NONNULL(1);
-static void QueueEvent(Event *ePtr, const time_t *nowPtr);    /* Queue event on heap. */
+static void QueueEvent(Event *ePtr, const Ns_Time *nowPtr);    /* Queue event on heap. */
 static void Exchange(int i, int j);     /* Exchange elements in the global queue */
+static bool Larger(int j, int k);       /* Function defining the sorting
+                                           criterium of the binary heap */
 
 
 /*
@@ -169,16 +183,17 @@ NsInitSched(void)
  */
 
 int
-Ns_After(int delay, Ns_SchedProc *proc, void *arg, ns_funcptr_t deleteProc)
+Ns_After(const Ns_Time *interval, Ns_SchedProc *proc, void *arg, ns_funcptr_t deleteProc)
 {
     int result;
 
     NS_NONNULL_ASSERT(proc != NULL);
+    NS_NONNULL_ASSERT(interval != NULL);
 
-    if (delay < 0) {
+    if (interval->sec < 0 || interval->usec < 0) {
         result = (int)NS_ERROR;
     } else {
-        result = Ns_ScheduleProcEx(proc, arg, NS_SCHED_ONCE, delay, (Ns_SchedProc *)deleteProc);
+        result = Ns_ScheduleProcEx(proc, arg, NS_SCHED_ONCE, interval, (Ns_SchedProc *)deleteProc);
     }
     return result;
 }
@@ -201,18 +216,16 @@ Ns_After(int delay, Ns_SchedProc *proc, void *arg, ns_funcptr_t deleteProc)
  */
 
 int
-Ns_ScheduleProc(Ns_SchedProc *proc, void *arg, int thread, int interval)
+Ns_ScheduleProc(Ns_SchedProc *proc, void *arg, int thread, int secs)
 {
-    int result;
+    Ns_Time interval;
 
     NS_NONNULL_ASSERT(proc != NULL);
 
-    if (interval < 0) {
-        result = (int)NS_ERROR;
-    } else {
-        result = Ns_ScheduleProcEx(proc, arg, (thread != 0) ? NS_SCHED_THREAD : 0u, interval, NULL);
-    }
-    return result;
+    interval.sec = secs;
+    interval.usec = 0;
+    return Ns_ScheduleProcEx(proc, arg, (thread != 0) ? NS_SCHED_THREAD : 0u,
+                             &interval, NULL);
 }
 
 
@@ -243,8 +256,12 @@ Ns_ScheduleDaily(Ns_SchedProc *proc, void *clientData, unsigned int flags,
     if (hour > 23 || hour < 0 || minute > 59 || minute < 0) {
         result = (int)NS_ERROR;
     } else {
-        int seconds = (hour * 3600) + (minute * 60);
-        result = Ns_ScheduleProcEx(proc, clientData, flags | NS_SCHED_DAILY, seconds, cleanupProc);
+        Ns_Time interval;
+
+        interval.sec = (hour * 3600) + (minute * 60);
+        interval.usec = 0;
+        result = Ns_ScheduleProcEx(proc, clientData, flags | NS_SCHED_DAILY,
+                                   &interval, cleanupProc);
     }
     return result;
 }
@@ -277,8 +294,12 @@ Ns_ScheduleWeekly(Ns_SchedProc *proc, void *clientData, unsigned int flags,
     if (day < 0 || day > 6 || hour > 23 || hour < 0 || minute > 59 || minute < 0) {
         result = (int)NS_ERROR;
     } else {
-        int seconds = (((day * 24) + hour) * 3600) + (minute * 60);
-        result = Ns_ScheduleProcEx(proc, clientData, flags | NS_SCHED_WEEKLY, seconds, cleanupProc);
+        Ns_Time interval;
+
+        interval.sec = (((day * 24) + hour) * 3600) + (minute * 60);
+        interval.usec = 0;
+        result = Ns_ScheduleProcEx(proc, clientData, flags | NS_SCHED_WEEKLY,
+                                   &interval, cleanupProc);
     }
     return result;
 }
@@ -290,7 +311,7 @@ Ns_ScheduleWeekly(Ns_SchedProc *proc, void *clientData, unsigned int flags,
  * Ns_ScheduleProcEx --
  *
  *  Schedule a proc to run at a given interval.  The interpretation
- *  of interval (whether interative, daily, or weekly) is handled
+ *  of interval (whether iterative, daily, or weekly) is handled
  *  by QueueEvent.
  *
  * Results:
@@ -304,26 +325,29 @@ Ns_ScheduleWeekly(Ns_SchedProc *proc, void *clientData, unsigned int flags,
 
 int
 Ns_ScheduleProcEx(Ns_SchedProc *proc, void *clientData, unsigned int flags,
-    int interval, Ns_SchedProc *cleanupProc)
+                  const Ns_Time *interval, Ns_SchedProc *cleanupProc)
 {
     int id;
 
     NS_NONNULL_ASSERT(proc != NULL);
+    NS_NONNULL_ASSERT(interval != NULL);
 
-    if (unlikely(interval < 0)) {
+    if (unlikely(interval->sec < 0 || interval->usec < 0)) {
         id = (int)NS_ERROR;
 
     } else {
         Event    *ePtr;
         int       isNew;
-        time_t    now;
+        Ns_Time   now;
 
-        time(&now);
+        Ns_GetTime(&now);
         ePtr = ns_malloc(sizeof(Event));
         ePtr->flags = flags;
-        ePtr->nextqueue = 0;
-        ePtr->lastqueue = ePtr->laststart = ePtr->lastend = -1;
-        ePtr->interval = interval;
+        ePtr->nextqueue.sec = 0;
+        ePtr->nextqueue.usec = 0;
+        ePtr->lastqueue.sec = ePtr->laststart.sec = ePtr->lastend.sec = -1;
+        ePtr->lastqueue.usec = ePtr->laststart.usec = ePtr->lastend.usec = 0;
+        ePtr->interval = *interval;
         ePtr->proc = proc;
         ePtr->deleteProc = cleanupProc;
         ePtr->arg = clientData;
@@ -477,10 +501,10 @@ Ns_Resume(int id)
 
             ePtr = Tcl_GetHashValue(hPtr);
             if ((ePtr->flags & NS_SCHED_PAUSED) != 0u) {
-                time_t now;
+                Ns_Time now;
 
                 ePtr->flags &= ~NS_SCHED_PAUSED;
-                time(&now);
+                Ns_GetTime(&now);
                 QueueEvent(ePtr, &now);
                 resumed = NS_TRUE;
             }
@@ -538,6 +562,81 @@ NsWaitSchedShutdown(const Ns_Time *toPtr)
     }
 }
 
+static bool
+Larger(int j, int k)
+{
+    return (Ns_DiffTime(&queue[j]->nextqueue, &queue[k]->nextqueue, NULL) == 1);
+}
+
+
+#ifndef NS_SCHED_CONSISTENCY_CHECK
+static void QueueConsistencyCheck(const char *UNUSED(startMsg), int UNUSED(n), bool UNUSED(runAsserts)) {
+}
+#else
+
+
+static void
+QueueConsistencyCheck(const char *startMsg, int n, bool runAsserts)
+{
+    int          k;
+
+    Ns_Log(Notice, "=== %s (%d) ", startMsg, n);
+
+#ifdef NS_SCHED_TRACE_EVENTS
+    Event      *ePtr;
+    Tcl_DString ds;
+    time_t      s;
+
+    Tcl_DStringInit(&ds);
+
+    Ns_DStringPrintf(&ds, "=== %s (%d) ", startMsg, n);
+    if (n > 1) {
+        s = queue[1]->nextqueue.sec;
+    }
+    for (k = 1; k <= n; k++) {
+        ePtr = queue[k];
+        Ns_DStringPrintf(&ds, "[%d] (%p id %d qid %d " NS_TIME_FMT ")  ",
+                         k, (void*)ePtr, ePtr->id, ePtr->qid,
+                         (int64_t)ePtr->nextqueue.sec, ePtr->nextqueue.usec);
+    }
+    Ns_Log(Notice, "%s", ds.string);
+    Tcl_DStringFree(&ds);
+#endif
+
+    /*
+     * Check if all parent nodes (k/2) are earlier then the child nodes.
+     */
+    for (k = 2; k <= n; k++) {
+        int  j  = k/2;
+        bool ok = !Larger(j, k);
+
+        if (!ok) {
+            Ns_Log(Error, "=== %s: parent node [%d] (id %d " NS_TIME_FMT
+                   ") is later than child [%d] (id %d " NS_TIME_FMT ")",
+                   startMsg,
+                   j, queue[j]->id, (int64_t)queue[j]->nextqueue.sec, queue[j]->nextqueue.usec,
+                   k, queue[k]->id, (int64_t)queue[k]->nextqueue.sec, queue[k]->nextqueue.usec);
+            if (runAsserts) {
+                assert(ok);
+            }
+        }
+    }
+
+    /*
+     * Check whether all qids correspond to the array position.
+     */
+    for (k = 1; k <= n; k++) {
+        if (queue[k]->qid != k) {
+            Ns_Log(Error, "=== %s inconsistent qid on pos %d (id %d): is %d, should be %d",
+                   startMsg, k, queue[k]->id, queue[k]->qid, k);
+            if (runAsserts) {
+                assert(queue[k]->qid == k);
+            }
+        }
+    }
+}
+#endif
+
 
 /*
  *----------------------------------------------------------------------
@@ -556,7 +655,7 @@ NsWaitSchedShutdown(const Ns_Time *toPtr)
  */
 
 static void
-QueueEvent(Event *ePtr, const time_t *nowPtr)
+QueueEvent(Event *ePtr, const Ns_Time *nowPtr)
 {
     if ((ePtr->flags & NS_SCHED_PAUSED) == 0u) {
 
@@ -566,46 +665,64 @@ QueueEvent(Event *ePtr, const time_t *nowPtr)
 
         if ((ePtr->flags & (NS_SCHED_DAILY | NS_SCHED_WEEKLY)) != 0u) {
             struct tm  *tp;
+            time_t      secs = nowPtr->sec;
 
-            tp = ns_localtime(nowPtr);
-            tp->tm_sec = ePtr->interval;
+            tp = ns_localtime(&secs);
+            tp->tm_sec = (int)ePtr->interval.sec;
             tp->tm_hour = 0;
             tp->tm_min = 0;
             if ((ePtr->flags & NS_SCHED_WEEKLY) != 0u) {
                 tp->tm_mday -= tp->tm_wday;
             }
-            ePtr->nextqueue = mktime(tp);
-            if (ePtr->nextqueue <= *nowPtr) {
+            ePtr->nextqueue.sec = mktime(tp);
+            ePtr->nextqueue.usec = 0;
+            if (Ns_DiffTime(&ePtr->nextqueue, nowPtr, NULL) <= 0) {
                 tp->tm_mday += ((ePtr->flags & NS_SCHED_WEEKLY) != 0u) ? 7 : 1;
-                ePtr->nextqueue = mktime(tp);
+                ePtr->nextqueue.sec = mktime(tp);
+                ePtr->nextqueue.usec = 0;
             }
         } else {
-            ePtr->nextqueue = *nowPtr + ePtr->interval;
+            ePtr->nextqueue = *nowPtr;
+            Ns_IncrTime(&ePtr->nextqueue, ePtr->interval.sec, ePtr->interval.usec);
         }
 
-        /*
-         * Place the new event at the end of the queue array and
-         * heap it up into place.  The queue array is extended
-         * if necessary.
-         */
-
         ePtr->qid = ++nqueue;
+        /*
+         * The queue array is extended if necessary.
+         */
         if (maxqueue <= nqueue) {
             maxqueue += 25;
             queue = ns_realloc(queue, sizeof(Event *) * ((size_t)maxqueue + 1u));
         }
+        /*
+         * Place the new event at the end of the queue array.
+         */
         queue[nqueue] = ePtr;
+
         if (nqueue > 1) {
             int j, k;
 
+            QueueConsistencyCheck("Queue event", nqueue - 1, NS_FALSE);
+
+            /*
+             * Bottom-up reheapify: swim up" in the heap.  When a node is
+             * larger than its parent, then the nodes have to swapped.
+             *
+             * In the implementation below, "j" is always k/2 and represents
+             * the parent node in the binary tree.
+             */
             k = nqueue;
             j = k / 2;
-            while (k > 1 && queue[j]->nextqueue > queue[k]->nextqueue) {
+            while (k > 1 && Larger(j, k)) {
                 Exchange(j, k);
                 k = j;
                 j = k / 2;
             }
+            QueueConsistencyCheck("Queue event end", nqueue, NS_TRUE);
         }
+        Ns_Log(Debug, "QueueEvent (id %d qid %d " NS_TIME_FMT ")",
+               ePtr->id, ePtr->qid,
+               (int64_t)ePtr->nextqueue.sec, ePtr->nextqueue.usec);
 
         /*
          * Signal or create the SchedThread if necessary.
@@ -638,30 +755,46 @@ QueueEvent(Event *ePtr, const time_t *nowPtr)
  */
 
 static Event *
-DeQueueEvent(int qid)
+DeQueueEvent(int k)
 {
-    Event          *ePtr;
-    int             j;
+    Event *ePtr;
+
+    Ns_Log(Debug, "DeQueueEvent (id %d qid %d " NS_TIME_FMT ")",
+           queue[k]->id, k,
+           (int64_t)queue[k]->nextqueue.sec, queue[k]->nextqueue.usec);
+
+    QueueConsistencyCheck("Dequeue event start", nqueue, NS_TRUE);
 
     /*
-     * Swap out the event to be removed and heap down to restore the
-     * order of events to be fired.
+     * Remove an element qid (named k in Sedgewick) from the priority queue.
+     *
+     * 1) Exchange element to be deleted with the node at the end. Now, the
+     *    element will violate in most cases the heap order.
+     * 2) Sink down the element.
      */
 
-    Exchange(qid, nqueue);
+    Exchange(k, nqueue);
     ePtr = queue[nqueue--];
     ePtr->qid = 0;
 
-    while ((j = 2 * qid) <= nqueue) {
-        if (j < nqueue && queue[j]->nextqueue > queue[j + 1]->nextqueue) {
-            ++j;
-        }
-        if (queue[j]->nextqueue > queue[qid]->nextqueue) {
+    for (;;) {
+        int j =  2 * k;
+
+        if (j > nqueue) {
             break;
         }
-        Exchange(qid, j);
-        qid = j;
+
+        if (j < nqueue && Larger(j, j+1)) {
+            ++j;
+        }
+
+        if (!Larger(k, j)) {
+            break;
+        }
+        Exchange(k, j);
+        k = j;
     }
+    QueueConsistencyCheck("Dequeue event end", nqueue, NS_TRUE);
 
     return ePtr;
 }
@@ -686,7 +819,7 @@ DeQueueEvent(int qid)
 static void
 EventThread(void *arg)
 {
-    time_t    now;
+    Ns_Time   now;
     Event    *ePtr;
     int       jpt, njobs;
     uintptr_t jobId;
@@ -713,10 +846,11 @@ EventThread(void *arg)
         --nIdleThreads;
         Ns_MutexUnlock(&lock);
 
-        Ns_ThreadSetName("-sched:%" PRIuPTR ":%" PRIuPTR ":%d-", (uintptr_t)arg, ++jobId, ePtr->id);
+        Ns_ThreadSetName("-sched:%" PRIuPTR ":%" PRIuPTR ":%d-",
+                         (uintptr_t)arg, ++jobId, ePtr->id);
         (*ePtr->proc) (ePtr->arg, ePtr->id);
         Ns_ThreadSetName("-sched:idle%" PRIuPTR "-", (uintptr_t)arg);
-        time(&now);
+        Ns_GetTime(&now);
 
         Ns_MutexLock(&lock);
         ++nIdleThreads;
@@ -790,9 +924,8 @@ FreeEvent(Event *ePtr)
 static void
 SchedThread(void *UNUSED(arg))
 {
-    time_t          now;
+    Ns_Time         now;
     Ns_Time         timeout = {0, 0};
-    long            elapsed;
     Event          *ePtr, *readyPtr = NULL;
 
     (void) Ns_WaitForStartup();
@@ -808,9 +941,15 @@ SchedThread(void *UNUSED(arg))
          * detached events or add to a list of synchronous events.
          */
 
-        time(&now);
-        while (nqueue > 0 && queue[1]->nextqueue <= now) {
+        Ns_GetTime(&now);
+        while (nqueue > 0 && Ns_DiffTime(&queue[1]->nextqueue, &now, NULL) <= 0) {
             ePtr = DeQueueEvent(1);
+
+#ifdef NS_SCHED_TRACE_EVENTS
+            Ns_Log(Notice, "... dequeue event (id %d) " NS_TIME_FMT,
+                   ePtr->id,
+                   (int64_t)ePtr->nextqueue.sec, ePtr->nextqueue.usec);
+#endif
             if ((ePtr->flags & NS_SCHED_ONCE) != 0u) {
                 Tcl_DeleteHashEntry(ePtr->hPtr);
                 ePtr->hPtr = NULL;
@@ -826,6 +965,14 @@ SchedThread(void *UNUSED(arg))
                 readyPtr = ePtr;
             }
         }
+
+#ifdef NS_SCHED_TRACE_EVENTS
+        if (readyPtr != NULL || firstEventPtr != NULL) {
+            Ns_Log(Notice, "... dequeuing done ready %p ready-nextPtr %p first %p",
+                   (void*)readyPtr, (void*)(readyPtr ? readyPtr->nextPtr : NULL),
+                   (void*)firstEventPtr);
+        }
+#endif
 
         /*
          * Dispatch any threaded events.
@@ -845,20 +992,19 @@ SchedThread(void *UNUSED(arg))
          */
 
         while ((ePtr = readyPtr) != NULL) {
-            double diffTime;
+            Ns_Time diff;
 
             readyPtr = ePtr->nextPtr;
             ePtr->laststart = now;
             ePtr->flags |= NS_SCHED_RUNNING;
             Ns_MutexUnlock(&lock);
             (*ePtr->proc) (ePtr->arg, ePtr->id);
+            Ns_GetTime(&now);
 
-            time(&now);
-            diffTime = difftime(now, ePtr->laststart);
-            elapsed = (long) diffTime;
-            if (elapsed > nsconf.sched.maxelapsed) {
-                Ns_Log(Warning, "sched: excessive time taken by proc %d (%ld seconds)",
-                       ePtr->id, elapsed);
+            (void)Ns_DiffTime(&ePtr->laststart, &now, &diff);
+            if (Ns_DiffTime(&diff, &nsconf.sched.maxelapsed, NULL) == 1) {
+                Ns_Log(Warning, "sched: excessive time taken by proc %d (" NS_TIME_FMT " seconds)",
+                       ePtr->id, (int64_t)diff.sec, diff.usec);
             }
             if (ePtr->hPtr == NULL) {
                 FreeEvent(ePtr);
@@ -868,7 +1014,7 @@ SchedThread(void *UNUSED(arg))
             if (ePtr != NULL) {
                 ePtr->flags &= ~NS_SCHED_RUNNING;
                 ePtr->lastend = now;
-                QueueEvent(ePtr, &now);
+                QueueEvent(ePtr, &ePtr->lastend);
             }
         }
 
@@ -879,8 +1025,7 @@ SchedThread(void *UNUSED(arg))
         if (nqueue == 0) {
             Ns_CondWait(&schedcond, &lock);
         } else if (!shutdownPending) {
-            timeout.sec  = (long)queue[1]->nextqueue;
-            timeout.usec = 0;
+            timeout = queue[1]->nextqueue;
             (void) Ns_CondTimedWait(&schedcond, &lock, &timeout);
         }
 
@@ -930,10 +1075,17 @@ NsGetScheduled(Tcl_DString *dsPtr)
         const Event *ePtr = Tcl_GetHashValue(hPtr);
 
         Tcl_DStringStartSublist(dsPtr);
-        Ns_DStringPrintf(dsPtr, "%d %d %d %" PRId64 " %" PRId64 " %" PRId64 " %" PRId64,
-            ePtr->id, ePtr->flags, ePtr->interval,
-            (int64_t) ePtr->nextqueue, (int64_t) ePtr->lastqueue,
-            (int64_t) ePtr->laststart, (int64_t) ePtr->lastend);
+        Ns_DStringPrintf(dsPtr, "%d %d ", ePtr->id, ePtr->flags);
+        Ns_DStringAppendTime(dsPtr, &ePtr->interval);
+        Tcl_DStringAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &ePtr->nextqueue);
+        Tcl_DStringAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &ePtr->lastqueue);
+        Tcl_DStringAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &ePtr->laststart);
+        Tcl_DStringAppend(dsPtr, " ", 1);
+        Ns_DStringAppendTime(dsPtr, &ePtr->lastend);
+        Tcl_DStringAppend(dsPtr, " ", 1);
         Ns_GetProcInfo(dsPtr, (ns_funcptr_t)ePtr->proc, ePtr->arg);
         Tcl_DStringEndSublist(dsPtr);
         hPtr = Tcl_NextHashEntry(&search);

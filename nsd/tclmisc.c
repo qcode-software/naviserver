@@ -41,7 +41,7 @@
  */
 
 static bool WordEndsInSemi(const char *word, size_t *lengthPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
+    NS_GNUC_NONNULL(1);
 static void SHAByteSwap(uint32_t *dest, const uint8_t *src, unsigned int words)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static void SHATransform(Ns_CtxSHA1 *sha)
@@ -203,7 +203,8 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
         Ns_Log(Error, "%s\n%s", Ns_DStringValue(&ds), errorInfo);
         Ns_DStringFree(&ds);
     } else {
-        Ns_Log(Error, "%s\n%s", Tcl_GetStringResult(interp), errorInfo);
+        Ns_Log(Error, "%s\n%s line %d", Tcl_GetStringResult(interp), errorInfo,
+               Tcl_GetErrorLine(interp));
     }
 
    return errorInfo;
@@ -327,7 +328,8 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
     Tcl_IncrRefCount(valPtr);
     errPtr = Tcl_ObjSetVar2(interp, varPtr, NULL, valPtr, TCL_LEAVE_ERR_MSG);
     Tcl_DecrRefCount(valPtr);
-    return (errPtr != NULL ? NS_TRUE : NS_FALSE);
+
+    return (errPtr != NULL);
 }
 
 
@@ -514,6 +516,95 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 /*
  *----------------------------------------------------------------------
  *
+ * NsTclTrimObjCmd --
+ *
+ *      Multiline trim with optional delimiter and builtin substitution
+ *      (latter is not really needed but convenient).  Trim leading spaces on
+ *      multiple lines.
+ *
+ *      Implementation of ns_trim.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int               result = TCL_OK, substInt = 0;
+    Tcl_Obj          *textObj;
+    char             *delimiterString = NULL;
+    Ns_ObjvSpec       opts[] = {
+        {"-subst",     Ns_ObjvBool,   &substInt,     INT2PTR(NS_TRUE)},
+        {"-delimiter", Ns_ObjvString, &delimiterString, NULL},
+        {"--",         Ns_ObjvBreak,  NULL,         NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    Ns_ObjvSpec  args[] = {
+        {"text",      Ns_ObjvObj,  &textObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_DString ds, *dsPtr = &ds;
+        int         textLength;
+        char       *p;
+        const char *endOfString;
+
+        Tcl_DStringInit(dsPtr);
+
+        if (substInt != 0) {
+            textObj = Tcl_SubstObj(interp, textObj, TCL_SUBST_ALL);
+        }
+        p = Tcl_GetStringFromObj(textObj, &textLength);
+        endOfString = p + textLength;
+
+        while(likely(p < endOfString)) {
+            const char *to;
+            char       *j;
+            ptrdiff_t   length;
+
+            for (j = p; likely(j < endOfString); j++) {
+                if (CHARTYPE(space, *j) != 0) {
+                    continue;
+                }
+                if (delimiterString != NULL && *j == *delimiterString) {
+                    j++;
+                    break;
+                }
+                break;
+            }
+            to = strchr(j, INTCHAR('\n'));
+            if (likely(to != NULL)) {
+                length = (to - j) + 1;
+            } else {
+                length = (endOfString - j);
+            }
+            Tcl_DStringAppend(dsPtr, j, (int)length);
+
+            p = j + length;
+        }
+
+        Tcl_DStringResult(interp, dsPtr);
+
+    }
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
  * NsTclStripHtmlObjCmd --
  *
  *      Implements ns_striphtml.
@@ -599,10 +690,10 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                      * Starting an entity.
                      */
                     inentity = WordEndsInSemi(inPtr, &length);
-                    /*
-                     * Handle numeric entities between 33 and 255.
-                     */
                     if (inentity) {
+                        /*
+                         * Handle numeric entities between 33 and 255.
+                         */
                         if (CHARTYPE(digit, *(inPtr + 1u)) != 0) {
                             long value = strtol(inPtr + 1u, NULL, 10);
 
@@ -871,6 +962,8 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                                     } else {
                                         *outPtr++ = *entities[i].value;
                                     }
+                                    inPtr += length + 1;
+                                    inentity = NS_FALSE;
                                     break;
                                 }
 
@@ -899,8 +992,9 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 
         if (needEncode) {
             Tcl_DString ds;
-            (void)Tcl_ExternalToUtfDString(Ns_GetCharsetEncoding("utf-8"), inString, (int)strlen(inString),
-                                           &ds);
+
+            (void)Tcl_ExternalToUtfDString(Ns_GetCharsetEncoding("utf-8"),
+                                           inString, (int)strlen(inString), &ds);
             Tcl_DStringResult(interp, &ds);
         } else {
             Tcl_SetObjResult(interp, Tcl_NewStringObj(inString, -1));
@@ -1031,9 +1125,9 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 static void hexPrint(const char *msg, const unsigned char *octects, size_t octectLength)
 {
     size_t i;
-    fprintf(stderr, "%s octectLength %zu:", msg, octectLength);
-    for (i=0; i<octectLength; i++) {
-        fprintf(stderr, "%.2x ",octects[i] & 0xff);
+    fprintf(stderr, "%s octectLength %" PRIuz ":", msg, octectLength);
+    for (i = 0; i < octectLength; i++) {
+        fprintf(stderr, "%.2x ", octects[i] & 0xff);
     }
     fprintf(stderr, "\n");
 }
@@ -1066,11 +1160,11 @@ Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         const unsigned char *bytes;
 
         Tcl_DStringInit(&ds);
-        bytes = (const unsigned char*)Ns_GetBinaryString(charsObj, isBinary == 1, &nbytes, &ds);
+        bytes = Ns_GetBinaryString(charsObj, isBinary == 1, &nbytes, &ds);
         //hexPrint("source ", bytes,  (size_t)nbytes);
 
         size = (size_t)nbytes;
-        buffer = ns_malloc(1u + (4u * MAX(size,2u)) / 2u);
+        buffer = ns_malloc(1u + (4u * MAX(size, 2u)) / 2u);
         (void)Ns_HtuuEncode2(bytes, size, buffer, encoding);
 
         Tcl_SetResult(interp, buffer, (Tcl_FreeProc *) ns_free);
@@ -1216,6 +1310,7 @@ static bool
 WordEndsInSemi(const char *word, size_t *lengthPtr)
 {
     const char *start;
+
     NS_NONNULL_ASSERT(word != NULL);
 
     /*
@@ -1230,6 +1325,7 @@ WordEndsInSemi(const char *word, size_t *lengthPtr)
         word++;
     }
     *lengthPtr = (size_t)(word - start);
+
     return (*word == ';');
 }
 
@@ -1317,18 +1413,24 @@ SHAByteSwap(uint32_t *dest, const uint8_t *src, unsigned int words)
     } while (--words > 0u);
 }
 
-/* Initialize the SHA values */
+/*
+ * Initialize the SHA values
+ */
 void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
 {
 
-    /* Set the h-vars to their initial values */
+    /*
+     * Set the h-vars to their initial values.
+     */
     ctx->iv[0] = 0x67452301u;
     ctx->iv[1] = 0xEFCDAB89u;
     ctx->iv[2] = 0x98BADCFEu;
     ctx->iv[3] = 0x10325476u;
     ctx->iv[4] = 0xC3D2E1F0u;
 
-    /* Initialise bit count */
+    /*
+     * Initialize bit count
+     */
 #if defined(HAVE_64BIT)
     ctx->bytes = 0u;
 #else
@@ -1345,23 +1447,23 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
  *  two halves rather than OR, allowing more opportunity for using
  *  associativity in optimization. (Colin Plumb)
  */
-#define f1(x,y,z) ( (z) ^ ((x) & ((y) ^ (z)) ) )	/* Rounds 0-19 */
-#define f2(x,y,z) ( (x) ^ (y) ^ (z) )			/* Rounds 20-39 */
-#define f3(x,y,z) ( ((x) & (y)) + ((z) & ((x) ^ (y)) ) )	/* Rounds 40-59 */
-#define f4(x,y,z) ( (x) ^ (y) ^ (z) )			/* Rounds 60-79 */
+#define f1(x, y, z) ( (z) ^ ((x) & ((y) ^ (z)) ) )         /* Rounds 0-19 */
+#define f2(x, y, z) ( (x) ^ (y) ^ (z) )                    /* Rounds 20-39 */
+#define f3(x, y, z) ( ((x) & (y)) + ((z) & ((x) ^ (y)) ) ) /* Rounds 40-59 */
+#define f4(x, y, z) ( (x) ^ (y) ^ (z) )                    /* Rounds 60-79 */
 
 /*
  * The SHA Mysterious Constants.
  */
-#define K2  (0x5A827999u)	/* Rounds 0 -19 - floor(sqrt(2)  * 2^30) */
-#define K3  (0x6ED9EBA1u)	/* Rounds 20-39 - floor(sqrt(3)  * 2^30) */
-#define K5  (0x8F1BBCDCu)	/* Rounds 40-59 - floor(sqrt(5)  * 2^30) */
-#define K10 (0xCA62C1D6u)	/* Rounds 60-79 - floor(sqrt(10) * 2^30) */
+#define K2  (0x5A827999u)      /* Rounds 0 -19 - floor(sqrt(2)  * 2^30) */
+#define K3  (0x6ED9EBA1u)      /* Rounds 20-39 - floor(sqrt(3)  * 2^30) */
+#define K5  (0x8F1BBCDCu)      /* Rounds 40-59 - floor(sqrt(5)  * 2^30) */
+#define K10 (0xCA62C1D6u)      /* Rounds 60-79 - floor(sqrt(10) * 2^30) */
 
 /*
  * 32-bit rotate left - kludged with shifts
  */
-#define ROTL(n,X) ( ((X) << (n)) | ((X) >> (32-(n))) )
+#define ROTL(n, X) ( ((X) << (n)) | ((X) >> (32-(n))) )
 
 /*
  *  The initial expanding function
@@ -1377,16 +1479,16 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
  *  The expandx() version doesn't write the result back, which can be
  *  used for the last three rounds since those outputs are never used.
  */
-#if SHA_VERSION			/* FIPS 180.1 */
+#if SHA_VERSION       /* FIPS 180.1 */
 
-#define expandx(W,i) (t = W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u], \
+#define expandx(W, i) (t = W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u], \
                         ROTL(1, t))
-#define expand(W,i) (W[(i)&15u] = expandx(W,(i)))
+#define expand(W, i) (W[(i)&15u] = expandx(W, (i)))
 
 #else /* Old FIPS 180 */
 
-#define expandx(W,i) (W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u])
-#define expand(W,i) (W[(i)&15u] ^= W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u])
+#define expandx(W, i) (W[(i)&15u] ^ W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u])
+#define expand(W, i) (W[(i)&15u] ^= W[((i)-14)&15u] ^ W[((i)-8)&15u] ^ W[((i)-3)&15u])
 
 #endif /* SHA_VERSION */
 
@@ -1394,16 +1496,16 @@ void Ns_CtxSHAInit(Ns_CtxSHA1 * ctx)
    The prototype SHA sub-round
 
    The fundamental sub-round is
-   a' = e + ROTL(5,a) + f(b, c, d) + k + data;
+   a' = e + ROTL(5, a) + f(b, c, d) + k + data;
    b' = a;
-   c' = ROTL(30,b);
+   c' = ROTL(30, b);
    d' = c;
    e' = d;
    ... but this is implemented by unrolling the loop 5 times and renaming
-   the variables (e,a,b,c,d) = (a',b',c',d',e') each iteration.
+   the variables (e, a, b, c, d) = (a', b', c', d', e') each iteration.
  */
 #define subRound(a, b, c, d, e, f, k, data) \
-    ( (e) += ROTL(5u,(a)) + f((b), (c), (d)) + (k) + (data), (b) = ROTL(30u, (b)) )
+    ( (e) += ROTL(5u, (a)) + f((b), (c), (d)) + (k) + (data), (b) = ROTL(30u, (b)) )
 /*
  *  The above code is replicated 20 times for each of the 4 functions,
  *  using the next 20 values from the W[] array for "data" each time.
@@ -1556,20 +1658,20 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
         uint32_t t = ctx->bytesLo;
         ctx->bytesLo = (uint32_t)(t + len);
         if (ctx->bytesLo < t) {
-            ctx->bytesHi++;		/* Carry from low to high */
+            ctx->bytesHi++;                    /* Carry from low to high */
         }
-        i = (unsigned) t % SHA_BLOCKBYTES;	/* Bytes already in ctx->key */
+        i = (unsigned) t % SHA_BLOCKBYTES;     /* Bytes already in ctx->key */
     }
 #endif
 
     /*
-     * i is always less than SHA_BLOCKBYTES.
+     * "i" is always less than SHA_BLOCKBYTES.
      */
     if (SHA_BLOCKBYTES - i > len) {
         memcpy(ctx->key + i, buf, len);
 
     } else {
-        if (i != 0u) {				/* First chunk is an odd size */
+        if (i != 0u) {                         /* First chunk is an odd size */
             memcpy(ctx->key + i, buf, SHA_BLOCKBYTES - i);
             SHAByteSwap(ctx->key, (const uint8_t *) ctx->key, SHA_BLOCKWORDS);
             SHATransform(ctx);
@@ -1577,7 +1679,9 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
             len -= SHA_BLOCKBYTES - i;
         }
 
-        /* Process data in 64-byte chunks */
+        /*
+         * Process data in 64-byte chunks
+         */
         while (len >= SHA_BLOCKBYTES) {
             SHAByteSwap(ctx->key, buf, SHA_BLOCKWORDS);
             SHATransform(ctx);
@@ -1585,7 +1689,9 @@ void Ns_CtxSHAUpdate(Ns_CtxSHA1 *ctx, const unsigned char *buf, size_t len)
             len -= SHA_BLOCKBYTES;
         }
 
-        /* Handle any remaining bytes of data. */
+        /*
+         * Handle any remaining bytes of data.
+         */
         if (len != 0u) {
             memcpy(ctx->key, buf, len);
         }
@@ -1603,7 +1709,7 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
 #else
     unsigned i = (unsigned) ctx->bytesLo % SHA_BLOCKBYTES;
 #endif
-    uint8_t *p = (uint8_t *) ctx->key + i;	/* First unused byte */
+    uint8_t *p = (uint8_t *) ctx->key + i;     /* First unused byte */
 
     /*
      * Set the first char of padding to 0x80. There is always room.
@@ -1615,7 +1721,10 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
      */
     i = (SHA_BLOCKBYTES - 1u) - i;
 
-    if (i < 8u) {				/* Padding forces an extra block */
+    if (i < 8u) {
+        /*
+         * Padding forces an extra block
+         */
         memset(p, 0, i);
         SHAByteSwap(ctx->key, (const uint8_t *) ctx->key, 16u);
         SHATransform(ctx);
@@ -1738,7 +1847,7 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
         Tcl_DString    ds;
 
         Tcl_DStringInit(&ds);
-        bytes = (const unsigned char *)Ns_GetBinaryString(charsObj, isBinary == 1, &nbytes, &ds);
+        bytes = Ns_GetBinaryString(charsObj, isBinary == 1, &nbytes, &ds);
         //hexPrint("source ", bytes, (size_t)nbytes);
 
         Ns_CtxSHAInit(&ctx);
@@ -1847,7 +1956,7 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 #endif
 
 #ifndef HIGHFIRST
-#define byteReverse(buf, len)	/* Nothing */
+#define byteReverse(buf, len)   /* Nothing */
 #else
 /*
  * Note: this code is harmless on little-endian machines.
@@ -1892,16 +2001,17 @@ void Ns_CtxMD5Update(Ns_CtxMD5 *ctx, const unsigned char *buf, size_t len)
     NS_NONNULL_ASSERT(ctx != NULL);
     NS_NONNULL_ASSERT(buf != NULL);
 
-    /* Update bit count */
-
+    /*
+     * Update bit count.
+     */
     t = ctx->bits[0];
     ctx->bits[0] = t + ((uint32_t) len << 3);
     if (ctx->bits[0] < t) {
-        ctx->bits[1]++;		/* Carry from low to high */
+        ctx->bits[1]++;       /* Carry from low to high */
     }
     ctx->bits[1] += (uint32_t)(len >> 29);
 
-    t = (t >> 3) & 0x3Fu;	/* Bytes already in shsInfo->data */
+    t = (t >> 3) & 0x3Fu;       /* Bytes already in shsInfo->data */
 
     /*
      * Handle any leading odd-sized chunks
@@ -2171,12 +2281,12 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
         result = TCL_ERROR;
 
     } else {
-        Ns_CtxMD5      ctx;
-        unsigned char  digest[16];
-        char           digestChars[33];
-        int            length;
-        Tcl_DString    ds;
-        const char    *str;
+        Ns_CtxMD5            ctx;
+        unsigned char        digest[16];
+        char                 digestChars[33];
+        int                  length;
+        Tcl_DString          ds;
+        const unsigned char *str;
 
         Tcl_DStringInit(&ds);
         str = Ns_GetBinaryString(charsObj, isBinary == 1, &length, &ds);
@@ -2209,7 +2319,8 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  */
 
 int
-NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
+                   int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -2225,7 +2336,8 @@ NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 }
 
 int
-NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
+                    int objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -2408,6 +2520,8 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *          hashcode. On the other hand, that hardly ever actually occurs and
  *          this function *is* very cheap, even by comparison with
  *          industry-standard hashes like FNV.
+ *
+ *       Implements the "ns_hash" command.
  *
  * Results:
  *      Numeric hash value.

@@ -34,30 +34,26 @@
  *     Gustaf Neumann neumann@wu-wien.ac.at
  */
 
+/* Needed for SSL support on Windows: */
+#if defined(_MSC_VER) && !defined(HAVE_CONFIG_H)
+# include "nsconfig-win32.h"
+#endif
+
 #include "ns.h"
 
 NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
 
+/* Start:HAVE_OPENSSL_EVP_H: Big ifdef block that covers most of this file. */
 #ifdef HAVE_OPENSSL_EVP_H
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include "../nsd/nsopenssl.h"
 
-#define NSSSL_VERSION  "2.1"
-
-NS_EXTERN bool NsTclObjIsByteArray(const Tcl_Obj *objPtr);
-
-typedef struct {
-    SSL_CTX     *ctx;
-    Ns_Mutex     lock;
-    int          verify;
-    int          deferaccept;  /* Enable the TCP_DEFER_ACCEPT optimization. */
-    DH          *dhKey512;     /* Fallback Diffie Hellman keys of length 512 */
-    DH          *dhKey1024;    /* Fallback Diffie Hellman keys of length 1024 */
-} SSLDriver;
+#define NSSSL_VERSION  "2.3"
 
 typedef struct {
     SSL         *ssl;
@@ -76,10 +72,6 @@ static Ns_DriverKeepProc Keep;
 static Ns_DriverCloseProc Close;
 static Ns_DriverClientInitProc ClientInit;
 
-static int SSLPassword(char *buf, int num, int rwflag, void *userdata);
-
-static DH *SSL_dhCB(SSL *ssl, int isExport, int keyLength);
-
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 static void SSLLock(int mode, int n, const char *file, int line);
 static unsigned long SSLThreadId(void);
@@ -89,105 +81,26 @@ static unsigned long SSLThreadId(void);
  * Static variables defined in this file.
  */
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 static Ns_Mutex *driver_locks;
+#endif
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
-
-
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-/*
- * The renegotiation issue was fixed in recent versions of OpenSSL,
- * and the flag was removed.
- */
-static void
-SSL_infoCB(const SSL *ssl, int where, int UNUSED(ret)) {
-    if ((where & SSL_CB_HANDSHAKE_DONE)) {
-
-        ssl->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
-    }
-}
-#endif
-
-
-/*
- * Include pre-generated DH parameters
- */
-#ifndef HEADER_DH_H
-#include <openssl/dh.h>
-#endif
-static DH *get_dh512(void);
-static DH *get_dh1024(void);
-
-#if defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x20700000L
-/*
- * Compatibility function for libressl < 2.7; DH_set0_pqg is used just by the
- * Diffie-Hellman parameters in dhparams.h.
- */
-static int
-DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g)
-{
-    if ((dh->p == NULL && p == NULL) || (dh->g == NULL && g == NULL)) {
-        return 0;
-    }
-    if (p != NULL) {
-        BN_free(dh->p);
-        dh->p = p;
-    }
-    if (q != NULL) {
-        BN_free(dh->q);
-        dh->q = q;
-    }
-    if (g != NULL) {
-        BN_free(dh->g);
-        dh->g = g;
-    }
-    return 1;
-}
-#endif /* LIBRESSL_VERSION_NUMBER */
-
-#include "dhparams.h"
-
-/*
- * Callback used for ephemeral DH keys
- */
-static DH *
-SSL_dhCB(SSL *ssl, int isExport, int keyLength) {
-    SSLDriver *drvPtr;
-    DH *key;
-
-    Ns_Log(Debug, "SSL_dhCB: isExport %d keyLength %d", isExport, keyLength);
-    drvPtr = (SSLDriver *) SSL_get_app_data(ssl);
-
-    switch (keyLength) {
-    case 512:
-        key = drvPtr->dhKey512;
-        break;
-
-    case 1024:
-    default:
-        key = drvPtr->dhKey1024;
-    }
-    Ns_Log(Debug, "SSL_dhCB: returns %p\n", (void *)key);
-    return key;
-}
 
 NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
-    Tcl_DString         ds;
-    int                num;
-    const char        *path, *value;
-    SSLDriver         *drvPtr;
+    Tcl_DString        ds;
+    int                num, result;
+    const char        *path;
+    NsSSLConfig       *cfgPtr;
     Ns_DriverInitData  init;
 
     memset(&init, 0, sizeof(init));
     Tcl_DStringInit(&ds);
 
     path = Ns_ConfigGetPath(server, module, (char *)0L);
-
-    drvPtr = ns_calloc(1, sizeof(SSLDriver));
-    drvPtr->deferaccept = Ns_ConfigBool(path, "deferaccept", NS_FALSE);
-    drvPtr->verify = Ns_ConfigBool(path, "verify", 0);
+    cfgPtr = NsSSLConfigNew(path);
 
     init.version = NS_DRIVER_VERSION_4;
     init.name = "nsssl";
@@ -201,17 +114,18 @@ Ns_ModuleInit(const char *server, const char *module)
     init.closeProc = Close;
     init.clientInitProc = ClientInit;
     init.opts = NS_DRIVER_SSL|NS_DRIVER_ASYNC;
-    init.arg = drvPtr;
+    init.arg = cfgPtr;
     init.path = path;
     init.protocol = "https";
     init.defaultPort = 443;
 
     if (Ns_DriverInit(server, module, &init) != NS_OK) {
         Ns_Log(Error, "nsssl: driver init failed.");
-        ns_free(drvPtr);
+        ns_free(cfgPtr);
         return NS_ERROR;
     }
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     num = CRYPTO_num_locks();
     driver_locks = ns_calloc((size_t)num, sizeof(*driver_locks));
     {   int n;
@@ -221,160 +135,17 @@ Ns_ModuleInit(const char *server, const char *module)
             Tcl_DStringSetLength(&ds, 0);
         }
     }
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+
     CRYPTO_set_locking_callback(SSLLock);
     CRYPTO_set_id_callback(SSLThreadId);
 #endif
     Ns_Log(Notice, "OpenSSL %s initialized", SSLeay_version(SSLEAY_VERSION));
 
-    drvPtr->ctx = SSL_CTX_new(SSLv23_server_method());
-    if (drvPtr->ctx == NULL) {
+    result = Ns_TLS_CtxServerInit(path, NULL, NS_DRIVER_SNI, cfgPtr, &cfgPtr->ctx);
+    if (result != TCL_OK) {
         Ns_Log(Error, "nsssl: init error: %s", strerror(errno));
         return NS_ERROR;
     }
-    SSL_CTX_set_app_data(drvPtr->ctx, drvPtr);
-
-    /*
-     * Get default keys and save it in the driver data for fast reuse.
-     */
-    drvPtr->dhKey512 = get_dh512();
-    drvPtr->dhKey1024 = get_dh1024();
-
-    /*
-     * Load certificate and private key
-     */
-    value = Ns_ConfigGetValue(path, "certificate");
-    if (value == NULL) {
-        Ns_Log(Error, "nsssl: certificate parameter must be specified in the config file under %s", path);
-        return NS_ERROR;
-    }
-
-    if (SSL_CTX_use_certificate_chain_file(drvPtr->ctx, value) != 1) {
-        Ns_Log(Error, "nsssl: certificate load error from cert %s: %s", value, ERR_error_string(ERR_get_error(), NULL));
-        return NS_ERROR;
-    }
-    if (SSL_CTX_use_PrivateKey_file(drvPtr->ctx, value, SSL_FILETYPE_PEM) != 1) {
-        Ns_Log(Error, "nsssl: private key load error: %s", ERR_error_string(ERR_get_error(), NULL));
-        return NS_ERROR;
-    }
-
-    /*
-     * Get DH parameters from .pem file
-     */
-    {
-        BIO *bio = BIO_new_file(value, "r");
-        DH  *dh  = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
-        BIO_free(bio);
-
-        if (dh != NULL) {
-            if (SSL_CTX_set_tmp_dh(drvPtr->ctx, dh) < 0) {
-                Ns_Log(Error, "nsssl: Couldn't set DH parameters");
-                return NS_ERROR;
-            }
-            DH_free(dh);
-        }
-    }
-
-#if OPENSSL_VERSION_NUMBER > 0x00908070 && !defined(OPENSSL_NO_EC)
-    /*
-     * Generate key for eliptic curve cryptography (potentially used
-     * for Elliptic Curve Digital Signature Algorithm (ECDSA) and
-     * Elliptic Curve Diffie-Hellman (ECDH).
-     */
-    {
-        EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-
-        if (ecdh == NULL) {
-            Ns_Log(Error, "nsssl: Couldn't obtain ecdh parameters");
-            return NS_ERROR;
-        }
-        SSL_CTX_set_options(drvPtr->ctx, SSL_OP_SINGLE_ECDH_USE);
-        if (SSL_CTX_set_tmp_ecdh(drvPtr->ctx, ecdh) != 1) {
-            Ns_Log(Error, "nsssl: Couldn't set ecdh parameters");
-            return NS_ERROR;
-        }
-        EC_KEY_free (ecdh);
-    }
-#endif
-
-    /*
-     * Https cache support
-     */
-    Ns_DStringPrintf(&ds, "nsssl:%d", getpid());
-    SSL_CTX_set_session_id_context(drvPtr->ctx, (void *) ds.string, (unsigned int)ds.length);
-    SSL_CTX_set_session_cache_mode(drvPtr->ctx, SSL_SESS_CACHE_SERVER);
-
-    /*
-     * Parse SSL protocols
-     */
-    {
-        unsigned long n = SSL_OP_ALL;
-
-        value = Ns_ConfigGetValue(path, "protocols");
-        if (value != NULL) {
-            if (strstr(value, "!SSLv2") != NULL) {
-                n |= SSL_OP_NO_SSLv2;
-                Ns_Log(Notice, "nsssl: disabling SSLv2");
-            }
-            if (strstr(value, "!SSLv3") != NULL) {
-                n |= SSL_OP_NO_SSLv3;
-                Ns_Log(Notice, "nsssl: disabling SSLv3");
-            }
-            if (strstr(value, "!TLSv1") != NULL) {
-                /*
-                 * Currently, we can't deselect v1.1 or v1.2 or 1.3 using
-                 * SSL_OP_NO_TLSv1_1 etc., but just the full "TLSv1" block.
-                 */
-
-                n |= SSL_OP_NO_TLSv1;
-                Ns_Log(Notice, "nsssl: disabling TLSv1");
-            }
-        }
-        SSL_CTX_set_options(drvPtr->ctx, n);
-    }
-
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-    /*
-     * Set info callback to prevent client-initiated renegotiation
-     * (after the handshake).
-     */
-    SSL_CTX_set_info_callback(drvPtr->ctx, SSL_infoCB);
-#endif
-
-    /*
-     * Parse SSL ciphers
-     */
-    value = Ns_ConfigGetValue(path, "ciphers");
-    if (value != NULL && SSL_CTX_set_cipher_list(drvPtr->ctx, value) == 0) {
-        Ns_Log(Error, "nsssl: error loading ciphers: %s", value);
-    }
-
-    SSL_CTX_set_default_passwd_cb(drvPtr->ctx, SSLPassword);
-    SSL_CTX_set_mode(drvPtr->ctx, SSL_MODE_AUTO_RETRY);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_SINGLE_DH_USE);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_SSLEAY_080_CLIENT_DH_BUG);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_TLS_D5_BUG);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_TLS_BLOCK_PADDING_BUG);
-
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
-    /*
-     * Prefer server ciphers to secure against BEAST attack.
-     */
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_NO_SSLv2);
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_SINGLE_DH_USE);
-    /*
-     * Disable compression to avoid CRIME attack.
-     */
-#ifdef SSL_OP_NO_COMPRESSION
-    SSL_CTX_set_options(drvPtr->ctx, SSL_OP_NO_COMPRESSION);
-#endif
-    if (drvPtr->verify) {
-        SSL_CTX_set_verify(drvPtr->ctx, SSL_VERIFY_PEER, NULL);
-    }
-
-    SSL_CTX_set_tmp_dh_callback(drvPtr->ctx, SSL_dhCB);
 
     /*
      * Seed the OpenSSL Pseudo-Random Number Generator.
@@ -394,7 +165,8 @@ Ns_ModuleInit(const char *server, const char *module)
     }
 
     Tcl_DStringFree(&ds);
-    Ns_Log(Notice, "nsssl: version %s loaded, based on %s", NSSSL_VERSION, SSLeay_version(SSLEAY_VERSION));
+    Ns_Log(Notice, "nsssl: version %s loaded, based on %s",
+           NSSSL_VERSION, SSLeay_version(SSLEAY_VERSION));
     return NS_OK;
 }
 
@@ -403,7 +175,7 @@ Ns_ModuleInit(const char *server, const char *module)
  *
  * Listen --
  *
- *      Open a listening socket in non-blocking mode.
+ *      Open a listening socket in nonblocking mode.
  *
  * Results:
  *      The open socket or NS_INVALID_SOCKET on error.
@@ -421,11 +193,11 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 
     sock = Ns_SockListenEx(address, port, backlog, reuseport);
     if (sock != NS_INVALID_SOCKET) {
-        SSLDriver *cfg = driver->arg;
+        NsSSLConfig *cfgPtr = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
-        if (cfg->deferaccept) {
-            Ns_SockSetDeferAccept(sock, driver->recvwait);
+        if (cfgPtr->deferaccept) {
+            Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
         }
     }
     return sock;
@@ -437,7 +209,7 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
  *
  * Accept --
  *
- *      Accept a new socket in non-blocking mode.
+ *      Accept a new socket in nonblocking mode.
  *
  * Results:
  *      NS_DRIVER_ACCEPT_DATA  - socket accepted, data present
@@ -451,8 +223,8 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 static NS_DRIVER_ACCEPT_STATUS
 Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, socklen_t *socklenPtr)
 {
-    SSLDriver  *drvPtr = sock->driver->arg;
-    SSLContext *sslCtx = sock->arg;
+    NsSSLConfig *cfgPtr = sock->driver->arg;
+    SSLContext  *sslCtx = sock->arg;
 
     sock->sock = Ns_SockAccept(listensock, sockaddrPtr, socklenPtr);
     if (sock->sock != NS_INVALID_SOCKET) {
@@ -463,13 +235,13 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, sockle
        * the send low watermark to 1 fixes this problem.
        */
         int value = 1;
-        setsockopt(sock->sock, SOL_SOCKET,SO_SNDLOWAT, &value, sizeof(value));
+        setsockopt(sock->sock, SOL_SOCKET, SO_SNDLOWAT, &value, sizeof(value));
 #endif
         (void)Ns_SockSetNonBlocking(sock->sock);
 
         if (sslCtx == NULL) {
             sslCtx = ns_calloc(1, sizeof(SSLContext));
-            sslCtx->ssl = SSL_new(drvPtr->ctx);
+            sslCtx->ssl = SSL_new(cfgPtr->ctx);
             if (sslCtx->ssl == NULL) {
                 char ipString[NS_IPADDR_SIZE];
                 Ns_Log(Error, "%d: SSL session init error for %s: [%s]",
@@ -481,10 +253,8 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, sockle
             }
             sock->arg = sslCtx;
             SSL_set_fd(sslCtx->ssl, sock->sock);
-            SSL_set_mode(sslCtx->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
             SSL_set_accept_state(sslCtx->ssl);
-            SSL_set_app_data(sslCtx->ssl, drvPtr);
-            SSL_set_tmp_dh_callback(sslCtx->ssl, SSL_dhCB);
+            SSL_set_app_data(sslCtx->ssl, sock);
         }
         return NS_DRIVER_ACCEPT_DATA;
     }
@@ -518,7 +288,7 @@ static ssize_t
 Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
      Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
 {
-    SSLDriver   *drvPtr = sock->driver->arg;
+    NsSSLConfig *cfgPtr = sock->driver->arg;
     SSLContext  *sslCtx = sock->arg;
     Ns_SockState sockState = NS_SOCK_NONE;
     ssize_t      nRead = 0;
@@ -527,13 +297,17 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
      * Verify client certificate, driver may require valid cert
      */
 
-    if (drvPtr->verify && sslCtx->verified == 0) {
+    if (cfgPtr->verify && sslCtx->verified == 0) {
         X509 *peer;
-
+#ifdef HAVE_OPENSSL_3
+        peer = SSL_get0_peer_certificate(sslCtx->ssl);
+#else
         peer = SSL_get_peer_certificate(sslCtx->ssl);
-
+#endif
         if (peer != NULL) {
+#ifndef HAVE_OPENSSL_3
             X509_free(peer);
+#endif
             if (SSL_get_verify_result(sslCtx->ssl) != X509_V_OK) {
                 char ipString[NS_IPADDR_SIZE];
 
@@ -558,7 +332,6 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
     if (nRead > -1) {
         nRead = Ns_SSLRecvBufs2(sslCtx->ssl, bufs, nbufs, &sockState);
     }
-
     Ns_SockSetReceiveState(sock, sockState);
 
     return nRead;
@@ -587,41 +360,58 @@ Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
 {
     SSLContext *sslCtx = sock->arg;
     ssize_t     sent = 0;
-    bool        decork;
 
-    decork = Ns_SockCork(sock, NS_TRUE);
+    if (sslCtx == NULL) {
+        Ns_Log(Warning, "nsssl Send is called on a socket without sslCtx (sock %d)",
+               sock->sock);
+        sent = -1;
+    } else {
+        bool decork = Ns_SockCork(sock, NS_TRUE);
 
-    while (nbufs > 0) {
-        if (bufs->iov_len > 0) {
-            int rc;
-            ERR_clear_error();
-            rc = SSL_write(sslCtx->ssl, bufs->iov_base, (int)bufs->iov_len);
-            if (rc <= 0) {
-                /*fprintf(stderr, "### SSL_write %p len %d rc %d SSL_get_error => %d: %s\n",
-                        (void*)bufs->iov_base, (int)bufs->iov_len,
-                        rc, SSL_get_error(sslCtx->ssl, rc),
-                        ERR_error_string(ERR_get_error(), NULL));*/
-                if (SSL_get_error(sslCtx->ssl, rc) != SSL_ERROR_WANT_WRITE) {
+        while (nbufs > 0) {
+            if (bufs->iov_len > 0) {
+                int rc;
+
+                ERR_clear_error();
+                rc = SSL_write(sslCtx->ssl, bufs->iov_base, (int)bufs->iov_len);
+                if (rc <= 0) {
+                    int sslerr = SSL_get_error(sslCtx->ssl, rc);
+
+                    /*fprintf(stderr,
+                      "### SSL_write %p len %d rc %d SSL_get_error => %d: %s\n",
+                      (void*)bufs->iov_base, (int)bufs->iov_len,
+                      rc, sslerr, ERR_error_string(ERR_get_error(), NULL));*/
+
+                    if (sslerr == SSL_ERROR_WANT_WRITE) {
+
+                        /*
+                         * Effectively, SSL_ERROR_WANT_WRITE at this place
+                         * means we are against EWOULDBLOCK, so exit early,
+                         * reporting so much bytes sent as we did so far.
+                         */
+
+                        break;
+                    }
+
                     SSL_set_shutdown(sslCtx->ssl, SSL_RECEIVED_SHUTDOWN);
                     sent = -1;
-                } else {
-                    sent = 0;
-                }
-                break;
-            }
-            sent += (ssize_t)rc;
-            if (rc < (int)bufs->iov_len) {
-                Ns_Log(Debug, "SSL: partial write, wanted %" PRIuz " wrote %d",
-                       bufs->iov_len, rc);
-                break;
-            }
-        }
-        nbufs--;
-        bufs++;
-    }
 
-    if (decork) {
-        Ns_SockCork(sock, NS_FALSE);
+                    break; /* Any other error case is terminal */
+                }
+                sent += (ssize_t)rc;
+                if (rc < (int)bufs->iov_len) {
+                    Ns_Log(Debug, "SSL: partial write, wanted %" PRIuz " wrote %d",
+                           bufs->iov_len, rc);
+                    break;
+                }
+            }
+            nbufs--;
+            bufs++;
+        }
+
+        if (decork) {
+            Ns_SockCork(sock, NS_FALSE);
+        }
     }
 
     return sent;
@@ -681,18 +471,17 @@ Close(Ns_Sock *sock)
     SSLContext *sslCtx = sock->arg;
 
     if (sslCtx != NULL) {
-        int r;
 
         /*
          * SSL_shutdown() must not be called if a previous fatal error has
          * occurred on a connection i.e. if SSL_get_error() has returned
          * SSL_ERROR_SYSCALL or SSL_ERROR_SSL.
          */
-        if (!Ns_SockInErrorState(sock)) {
-            int fd = SSL_get_fd(sslCtx->ssl);
+        if (!Ns_SockInErrorState(sock) && SSL_in_init(sslCtx->ssl) != 1) {
+            int r = SSL_shutdown(sslCtx->ssl);
 
-            r = SSL_shutdown(sslCtx->ssl);
-            Ns_Log(Debug, "### SSL close(%d) err %d", fd, SSL_get_error(sslCtx->ssl, r));
+            Ns_Log(Debug, "### SSL close(%d) err %d", SSL_get_fd(sslCtx->ssl),
+                   SSL_get_error(sslCtx->ssl, r));
 
             if (r == 0) {
                 /*
@@ -713,47 +502,22 @@ Close(Ns_Sock *sock)
                            sock->sock, ERR_error_string(err, errorBuffer));
                 }
             }
-        } else {
-            Ns_Log(Notice, "### SSL close(%d) avoid shutdown in error state",
+        } else if (Ns_SockInErrorState(sock)) {
+            Ns_Log(Debug, "### SSL close(%d) avoid shutdown in error state",
                    SSL_get_fd(sslCtx->ssl));
         }
         SSL_free(sslCtx->ssl);
         ns_free(sslCtx);
     }
     if (sock->sock > -1) {
-        Ns_Log(Debug, "### SSL close(%d) socket",sock->sock);
+        Ns_Log(Debug, "### SSL close(%d) socket", sock->sock);
         ns_sockclose(sock->sock);
         sock->sock = -1;
     }
     sock->arg = NULL;
 }
 
-/*
- *----------------------------------------------------------------------
- *
- * SSLPassword --
- *
- *      Get the SSL password from the console (used by the OpenSSLs
- *      default_passwd_cb)
- *
- * Results:
- *      Length of the password.
- *
- * Side effects:
- *      Password passed back in buf.
- *
- *----------------------------------------------------------------------
- */
 
-static int
-SSLPassword(char *buf, int num, int UNUSED(rwflag), void *UNUSED(userdata))
-{
-    const char *pwd;
-
-    fprintf(stdout, "Enter SSL password:");
-    pwd = fgets(buf, num, stdin);
-    return (pwd != NULL ? (int)strlen(buf) : 0);
-}
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 static void
@@ -779,7 +543,7 @@ SSLThreadId(void)
  *
  * ClientInit --
  *
- *        Initialize client connection for the already open spockPtr.
+ *        Initialize client connection for the already open sockPtr.
  *
  * Results:
  *        Tcl result code
@@ -790,16 +554,19 @@ SSLThreadId(void)
  *----------------------------------------------------------------------
  */
 static int
-ClientInit(Tcl_Interp *interp, Ns_Sock *sockPtr, NS_TLS_SSL_CTX *ctx)
+ClientInit(Tcl_Interp *interp, Ns_Sock *sockPtr, void *arg)
 {
-    SSL          *ssl;
-    SSLContext   *sslCtx;
-    int           result;
+    SSL                    *ssl;
+    int                     result;
+    Ns_DriverClientInitArg *params= (Ns_DriverClientInitArg *)arg;
 
-    result = Ns_TLS_SSLConnect(interp, sockPtr->sock, ctx, NULL, &ssl);
+    result = Ns_TLS_SSLConnect(interp, sockPtr->sock,
+                               params->ctx,
+                               params->sniHostname, &ssl);
 
     if (likely(result == TCL_OK)) {
-        sslCtx = ns_calloc(1, sizeof(SSLContext));
+        SSLContext *sslCtx = ns_calloc(1, sizeof(SSLContext));
+
         sslCtx->ssl = ssl;
         sockPtr->arg = sslCtx;
     } else if (ssl != NULL) {
@@ -818,6 +585,7 @@ Ns_ModuleInit(const char *server, const char *module)
     return NS_ERROR;
 }
 #endif
+/* End: HAVE_OPENSSL_EVP_H: Big ifdef block that covers most of this file. */
 
 /*
  * Local Variables:

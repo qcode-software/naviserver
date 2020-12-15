@@ -1,5 +1,5 @@
 ########################################################################
-# Sample config file for NaviServer
+# Sample configuration file for NaviServer
 ########################################################################
 
 #
@@ -20,30 +20,33 @@ set home [file dirname [file dirname [info nameofexecutable]]]
 # Global settings (for all servers)
 ########################################################################
 
-ns_section "ns/parameters" {
+ns_section ns/parameters {
     ns_param    home                $home
     ns_param    tcllibrary          tcl
-    #ns_param   tclinitlock         true	       ;# default: false
+    #ns_param   tclinitlock         true     ;# default: false
     ns_param    serverlog           error.log
     #ns_param   pidfile             ${home}/logs/nsd.pid
-    #ns_param   logdebug            true               ;# default: false
-    #ns_param   logroll             false              ;# default: true
-    #ns_param	logrollfmt	    %Y-%m-%d           ;# format appended to log file name
-    #ns_param    logusec            true     ;# add timestamps in microsecond (usec) resolution (default: false)
-    #ns_param    logusecdiff        true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
-    #ns_param   sanitizelogfiles    2                  ;# default: 2; 0: none, 1: full, 2: human-friendly
+    #ns_param   logdebug            true     ;# default: false
+    #ns_param   logroll             false    ;# default: true
+    #ns_param	logrollfmt          %Y-%m-%d ;# format appended to log filename
+    #ns_param   logusec             true     ;# add timestamps in microsecond (usec) resolution (default: false)
+    #ns_param   logusecdiff         true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
+    #ns_param   sanitizelogfiles    2        ;# default: 2; 0: none, 1: full, 2: human-friendly
 
-    #ns_param   dbcloseonexit       off                ;# default: off; from nsdb
-    ns_param    jobsperthread       1000               ;# default: 0
-    ns_param    jobtimeout          0                  ;# default: 300
-    ns_param    schedsperthread     10                 ;# default: 0
-    ns_param    progressminsize     1MB                ;# default: 0
-    #ns_param   concurrentinterpcreate true            ;# default: false
-    #ns_param   listenbacklog        256               ;# default: 32; backlog for ns_socket commands
-    #ns_param   mutexlocktrace       true              ;# default false; print durations of long mutex calls to stderr
+    #ns_param   dbcloseonexit       off      ;# default: off; from nsdb
+    ns_param    jobsperthread       1000     ;# default: 0
+    #ns_param   jobtimeout          0s       ;# default: 5m
+    ns_param	joblogminduration   100s       ;# default: 1s
+    ns_param    schedsperthread     10       ;# default: 0
+    #ns_param	schedlogminduration 2s       ;# print warnings when scheduled job takes longer than that
+    ns_param    progressminsize     1MB      ;# default: 0
+    #ns_param   concurrentinterpcreate true  ;# default: false
+    #ns_param   listenbacklog       256      ;# default: 32; backlog for ns_socket commands
+    #ns_param   mutexlocktrace      true     ;# default false; print durations of long mutex calls to stderr
 
     # Reject output operations on already closed connections (e.g. subsequent ns_return statements)
-    #ns_param   rejectalreadyclosedconn false ;# default: true
+    #ns_param   rejectalreadyclosedconn false;# default: true
+    #ns_param   reverseproxymode    true     ;# running behind a reverse proxy server? (default: false)
 
     # configure SMTP module
     ns_param    smtphost            "localhost"
@@ -59,16 +62,16 @@ ns_section "ns/parameters" {
     ns_param    smtpauthpassword    ""
 }
 
-ns_section "ns/threads" {
+ns_section ns/threads {
     ns_param    stacksize           512kB
 }
 
-ns_section "ns/mimetypes" {
+ns_section ns/mimetypes {
     ns_param    default             text/plain
     ns_param    noextension         text/plain
 }
 
-ns_section "ns/fastpath" {
+ns_section ns/fastpath {
     ns_param    cache               false      ;# default: false
     ns_param    cachemaxsize        10MB       ;# default: 10MB
     ns_param    cachemaxentry       8kB        ;# default: 8kB
@@ -89,23 +92,23 @@ ns_section ns/servers {
 #
 # Global modules (for all servers)
 #
-ns_section "ns/modules" {
+ns_section ns/modules {
     ns_param    nssock              nssock
 }
 
-ns_section "ns/module/nssock" {
+ns_section ns/module/nssock {
     ns_param    defaultserver            default
     ns_param    port                     $port
     ns_param    address                  $address     ;# Space separated list of IP addresses
-    #ns_param    hostname                 [ns_info hostname]
+    #ns_param    hostname                [ns_info hostname]
     ns_param    maxinput                 10MB         ;# default: 1MB, maximum size for inputs (uploads)
     #ns_param   readahead                1MB          ;# default: 16384; size of readahead for requests
     ns_param    backlog                  1024         ;# default: 256; backlog for listen operations
     ns_param    acceptsize               10           ;# default: value of "backlog"; max number of accepted (but unqueued) requests
-    ns_param    closewait                0            ;# default: 2; timeout in seconds for close on socket
+    ns_param    closewait                0s           ;# default: 2s; timeout for close on socket
     ns_param    maxqueuesize             1024         ;# default: 1024; maximum size of the queue
-    ns_param    keepwait		 5	      ;# 5, timeout in seconds for keep-alive
-    ns_param    keepalivemaxuploadsize	 0.5MB	      ;# 0, don't allow keep-alive for upload content larger than this
+    ns_param    keepwait                 5s           ;# 5s, timeout for keep-alive
+    ns_param    keepalivemaxuploadsize   0.5MB        ;# 0, don't allow keep-alive for upload content larger than this
     ns_param    keepalivemaxdownloadsize 1MB          ;# 0, don't allow keep-alive for download content larger than this
     #
     # TCP tuning
@@ -126,7 +129,7 @@ ns_section "ns/module/nssock" {
 }
 
 #
-# The following section defines, which host names map to which
+# The following section defines, which hostnames map to which
 # server. In our case for example, the host "localhost" is mapped to
 # the nsd server named "default".
 #
@@ -139,14 +142,15 @@ ns_section ns/module/nssock/servers {
 #  Settings for the "default" server
 ########################################################################
 
-ns_section "ns/server/default" {
+ns_section ns/server/default {
     ns_param    enabletclpages      true  ;# default: false
     ns_param    checkmodifiedsince  false ;# default: true, check modified-since before returning files from cache. Disable for speedup
     ns_param    connsperthread      1000  ;# default: 0; number of connections (requests) handled per thread
     ns_param    minthreads          5     ;# default: 1; minimal number of connection threads
     ns_param    maxthreads          100   ;# default: 10; maximal number of connection threads
     ns_param    maxconnections      100   ;# default: 100; number of allocated connection structures
-    ns_param    threadtimeout       120   ;# default: 120; timeout for idle threads
+    ns_param    rejectoverrun       true  ;# default: false; send 503 when thread pool queue overruns
+    ns_param    threadtimeout       2m    ;# default: 2m; timeout for idle threads
     #ns_param   concurrentcreatethreshold 100 ;# default: 80; perform concurrent creates when queue is fully beyond this percentage
     ;# 100 is a conservative value, disabling concurrent creates
     #ns_param    connectionratelimit 200  ;# 0; limit rate per connection to this amount (KB/s); 0 means unlimited
@@ -156,13 +160,13 @@ ns_section "ns/server/default" {
     #ns_param   extraheaders  {Referrer-Policy "strict-origin"}
 }
 
-ns_section "ns/server/default/modules" {
+ns_section ns/server/default/modules {
     ns_param    nscp                nscp
     ns_param    nslog               nslog
     ns_param    nscgi               nscgi
 }
 
-ns_section "ns/server/default/fastpath" {
+ns_section ns/server/default/fastpath {
     ns_param    pagedir             pages
     #ns_param   serverdir           ""
     ns_param    directoryfile       "index.adp index.tcl index.html index.htm"
@@ -171,7 +175,7 @@ ns_section "ns/server/default/fastpath" {
     #ns_param   directoryadp       dir.adp
 }
 
-ns_section "ns/server/default/vhost" {
+ns_section ns/server/default/vhost {
     ns_param    enabled             false
     ns_param    hostprefix          ""
     ns_param    hosthashlevel       0
@@ -179,7 +183,7 @@ ns_section "ns/server/default/vhost" {
     ns_param    stripwww            true
 }
 
-ns_section "ns/server/default/adp" {
+ns_section ns/server/default/adp {
     ns_param    map                 "/*.adp"
     ns_param    enableexpire        false    ;# default: false; set "Expires: now" on all ADP's
     #ns_param   enabledebug         true     ;# default: false
@@ -190,8 +194,9 @@ ns_section "ns/server/default/adp" {
     #ns_param    bufsize             1MB
 }
 
-ns_section "ns/server/default/tcl" {
+ns_section ns/server/default/tcl {
     ns_param    nsvbuckets          16       ;# default: 8
+    ns_param    nsvrwlicks          false    ;# default: true
     ns_param    library             modules/tcl
     #
     # Example for initcmds (to be executed, when this server is fully initialized).
@@ -201,27 +206,27 @@ ns_section "ns/server/default/tcl" {
     #}
 }
 
-ns_section "ns/server/default/module/nscgi" {
+ns_section ns/server/default/module/nscgi {
     ns_param    map                 "GET  /cgi-bin $home/cgi-bin"
     ns_param    map                 "POST /cgi-bin $home/cgi-bin"
     ns_param    interps              CGIinterps
     #ns_param   allowstaticresources true    ;# default false; serve static resources from cgi directories
 }
 
-ns_section "ns/interps/CGIinterps" {
-    ns_param	.pl		    "/opt/local/bin/perl"
-    ns_param	.sh		    "/bin/bash"
+ns_section ns/interps/CGIinterps {
+    ns_param	.pl                 "/opt/local/bin/perl"
+    ns_param	.sh                 "/bin/bash"
 }
 
-ns_section "ns/server/default/module/nslog" {
+ns_section ns/server/default/module/nslog {
     #ns_param   file                access.log
     #ns_param   rolllog             true     ;# default: true; should server log files automatically
     #ns_param   rollonsignal        false    ;# default: false; perform roll on a sighup
     #ns_param   rollhour            0        ;# default: 0; specify at which hour to roll
     ns_param    maxbackup           7        ;# default: 10; max number of backup log files
-    #ns_param   rollfmt		    %Y-%m-%d-%H:%M	;# format appended to log file name
+    #ns_param   rollfmt             %Y-%m-%d-%H:%M	;# format appended to log filename
     #ns_param   logpartialtimes     true     ;# default: false
-    #ns_param   logreqtime	    true     ;# default: false; include time to service the request
+    #ns_param   logreqtime          true     ;# default: false; include time to service the request
     ns_param    logthreadname       true     ;# default: false; include thread name for linking with error.log
 
     ns_param	masklogaddr         true    ;# false, mask IP address in log file for GDPR (like anonip IP anonymizer)
@@ -229,12 +234,12 @@ ns_section "ns/server/default/module/nslog" {
     ns_param	maskipv6            ff:ff:ff:ff::  ;# mask for IPv6 addresses
 }
 
-ns_section "ns/server/default/module/nscp" {
+ns_section ns/server/default/module/nscp {
     ns_param   port     4080
     #ns_param   address  0.0.0.0
 }
 
-ns_section "ns/server/default/module/nscp/users" {
+ns_section ns/server/default/module/nscp/users {
     ns_param user "::"
 }
 

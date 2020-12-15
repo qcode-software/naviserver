@@ -57,7 +57,7 @@ static int RegisterPage(const ClientData clientData, const char *method,
                         unsigned int rflags, unsigned int aflags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static Ns_ReturnCode PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr,
+static Ns_ReturnCode PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr,
                                  unsigned int aflags)
     NS_GNUC_NONNULL(1);
 
@@ -100,44 +100,45 @@ static Ns_ObjvTable adpOpts[] = {
  */
 
 Ns_ReturnCode
-Ns_AdpRequest(Ns_Conn *conn, const char *file)
+Ns_AdpRequest(Ns_Conn *conn, const char *fileName)
 {
     NS_NONNULL_ASSERT(conn != NULL);
-    NS_NONNULL_ASSERT(file != NULL);
+    NS_NONNULL_ASSERT(fileName != NULL);
 
-    return PageRequest(conn, file, NULL, 0u);
+    return PageRequest(conn, fileName, NULL, 0u);
 }
 
 Ns_ReturnCode
-Ns_AdpRequestEx(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr)
+Ns_AdpRequestEx(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr)
 {
     NS_NONNULL_ASSERT(conn != NULL);
-    NS_NONNULL_ASSERT(file != NULL);
+    NS_NONNULL_ASSERT(fileName != NULL);
 
-    return PageRequest(conn, file, expiresPtr, 0u);
+    return PageRequest(conn, fileName, expiresPtr, 0u);
 }
 
 static Ns_ReturnCode
-PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned int aflags)
+PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr, unsigned int aflags)
 {
-    const Conn     *connPtr = (const Conn *) conn;
+    const Conn     *connPtr;
     NsServer       *servPtr;
     bool            fileNotFound;
     Tcl_DString     ds, *dsPtr = NULL;
     Ns_ReturnCode   status;
 
-    NS_NONNULL_ASSERT(connPtr != NULL);
+    NS_NONNULL_ASSERT(conn != NULL);
 
+    connPtr = (const Conn *) conn;
     servPtr = connPtr->poolPtr->servPtr;
 
     /*
      * Verify the file exists.
      */
 
-    if (file == NULL) {
+    if (fileName == NULL) {
         fileNotFound = NS_TRUE;
 
-    } else if (access(file, R_OK) == 0) {
+    } else if (access(fileName, R_OK) == 0) {
         fileNotFound = NS_FALSE;
 
     } else if (servPtr->adp.defaultExtension != NULL) {
@@ -145,11 +146,11 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
         Tcl_DStringInit(&ds);
         dsPtr = &ds;
 
-        Tcl_DStringAppend(dsPtr, file, -1);
+        Tcl_DStringAppend(dsPtr, fileName, -1);
         Tcl_DStringAppend(dsPtr, servPtr->adp.defaultExtension, -1);
 
         if (access(dsPtr->string, R_OK) == 0) {
-            file = dsPtr->string;
+            fileName = dsPtr->string;
             fileNotFound = NS_FALSE;
         } else {
             fileNotFound = NS_TRUE;
@@ -159,6 +160,10 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
     }
 
     if (fileNotFound) {
+        if (((Conn *)conn)->recursionCount == 1) {
+            Ns_Log(Warning, "AdpPageRequest for '%s' returns 404", fileName);
+        }
+        Ns_Log(Debug, "AdpPageRequest for '%s' returns 404", fileName);
         status = Ns_ConnReturnNotFound(conn);
 
     } else {
@@ -168,11 +173,13 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
         Tcl_Obj        *objv[2];
         int             result;
 
+        Ns_Log(Debug, "AdpPageRequest for '%s' access ok", fileName);
+
         /*
          * Set the output type based on the file type.
          */
 
-        type = Ns_GetMimeType(file);
+        type = Ns_GetMimeType(fileName);
         if (type == NULL || STREQ(type, "*/*")) {
             type = NSD_TEXTHTML;
         }
@@ -199,9 +206,9 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
 
         itPtr->adp.flags |= aflags;
         itPtr->adp.conn = conn;
-        start = ((servPtr->adp.startpage != NULL) ? servPtr->adp.startpage : file);
+        start = ((servPtr->adp.startpage != NULL) ? servPtr->adp.startpage : fileName);
         objv[0] = Tcl_NewStringObj(start, -1);
-        objv[1] = Tcl_NewStringObj(file, -1);
+        objv[1] = Tcl_NewStringObj(fileName, -1);
         Tcl_IncrRefCount(objv[0]);
         Tcl_IncrRefCount(objv[1]);
         result = NsAdpInclude(itPtr, 2, objv, start, expiresPtr);
@@ -209,7 +216,9 @@ PageRequest(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr, unsigned
         Tcl_DecrRefCount(objv[1]);
 
         if (itPtr->adp.exception == ADP_TIMEOUT) {
+            Ns_Log(Ns_LogTimeoutDebug, "ADP request %s lead to a timeout", conn->request.line);
             status = Ns_ConnReturnUnavailable(conn);
+            Tcl_ResetResult(interp);
 
         } else if (NsAdpFlush(itPtr, NS_FALSE) != TCL_OK || result != TCL_OK) {
             status = NS_ERROR;
@@ -376,7 +385,7 @@ NsAdpPageProc(const void *arg, Ns_Conn *conn)
     const AdpRequest *adp = arg;
     const Ns_Time    *expiresPtr;
     Ns_DString        ds;
-    const char       *file, *server;
+    const char       *fileName, *server;
     Ns_ReturnCode     status;
 
     NS_NONNULL_ASSERT(conn != NULL);
@@ -386,14 +395,14 @@ NsAdpPageProc(const void *arg, Ns_Conn *conn)
 
     if (adp->file[0] == '\0') {
         if (Ns_UrlToFile(&ds, server, conn->request.url) != NS_OK) {
-            file = NULL;
+            fileName = NULL;
         } else {
-            file = ds.string;
+            fileName = ds.string;
         }
     } else if (Ns_PathIsAbsolute(adp->file) == NS_FALSE) {
-        file = Ns_PagePath(&ds, server, adp->file, (char *)0L);
+        fileName = Ns_PagePath(&ds, server, adp->file, (char *)0L);
     } else {
-        file = adp->file;
+        fileName = adp->file;
     }
 
     if (adp->expires.sec > 0 || adp->expires.usec > 0) {
@@ -402,7 +411,7 @@ NsAdpPageProc(const void *arg, Ns_Conn *conn)
         expiresPtr = NULL;
     }
 
-    status = PageRequest(conn, file, expiresPtr, adp->flags);
+    status = PageRequest(conn, fileName, expiresPtr, adp->flags);
 
     Ns_DStringFree(&ds);
 
@@ -550,9 +559,10 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
 
     if (itPtr->adp.exception == ADP_ABORT) {
         Ns_TclPrintfResult(interp, "ADP flush disabled: ADP aborted");
-    } else
-    if ((conn->flags & NS_CONN_SENT_VIA_WRITER) != 0u || (len == 0 && doStream)) {
+
+    } else if ((conn->flags & NS_CONN_SENT_VIA_WRITER) != 0u || (len == 0 && doStream)) {
         result = TCL_OK;
+
     } else {
         if (itPtr->adp.chan != NULL) {
             while (len > 0) {

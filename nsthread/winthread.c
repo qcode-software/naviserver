@@ -34,6 +34,10 @@
  *
  *  Interface routines for nsthreads using WIN32 functions.
  *
+ * TODO: since there there exists also a pthreads library for windows, this
+ * file should be split up into parts still required here, and other parts
+ * that can be replaced by the pthreads library.
+ *
  */
 
 #include "thread.h"
@@ -79,6 +83,7 @@ typedef struct Search {
     struct dirent      ent;
 } Search;
 
+
 /*
  * Static functions defined in this file.
  */
@@ -95,6 +100,13 @@ static unsigned __stdcall ThreadMain(void *arg);
  */
 
 static DWORD tlskey;
+
+#define MAX_THREAD_EXIT_RESULTS 256
+
+static struct threadExitResults {
+    unsigned size;
+    void *data[MAX_THREAD_EXIT_RESULTS];
+} threadExitResults;
 
 #define GETWINTHREAD()  TlsGetValue(tlskey)
 
@@ -124,10 +136,11 @@ Nsthreads_LibInit(void)
     if (!initialized) {
         initialized = NS_TRUE;
         tlskey = TlsAlloc();
-        if (tlskey == 0xFFFFFFFF) {
+        if (TLS_OUT_OF_INDEXES == tlskey) {
             return;
         }
         NsInitThreads();
+        threadExitResults.size = 1;
     }
 }
 
@@ -581,7 +594,8 @@ Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, const Ns_Time *timePtr)
     Cond         *condPtr;
     WinThread    *wPtr;
     Ns_Time       now, wait;
-    DWORD         msec, w;
+    time_t        msec;
+    DWORD         w;
 
     /*
      * Convert to relative wait time and verify.
@@ -592,11 +606,10 @@ Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, const Ns_Time *timePtr)
     } else {
         Ns_GetTime(&now);
         Ns_DiffTime(timePtr, &now, &wait);
-        wait.usec /= 1000;
-        if (wait.sec < 0 || (wait.sec == 0 && wait.usec <= 0)) {
+        msec = Ns_TimeToMilliseconds(&wait);
+        if (msec < 0) {
             return NS_TIMEOUT;
         }
-        msec = wait.sec * 1000 + wait.usec;
     }
 
     /*
@@ -618,7 +631,7 @@ Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, const Ns_Time *timePtr)
      */
 
     Ns_MutexUnlock(mutex);
-    w = WaitForSingleObject(wPtr->event, msec);
+    w = WaitForSingleObject(wPtr->event, (DWORD)msec);
     if (w != WAIT_OBJECT_0 && w != WAIT_TIMEOUT) {
         NsThreadFatal("Ns_CondTimedWait", "WaitForSingleObject", GetLastError());
     }
@@ -698,11 +711,17 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *threadPtr)
     argPtr = ns_malloc(sizeof(ThreadArg));
     argPtr->arg = arg;
     argPtr->self = NULL;
+
     hdl = _beginthreadex(NULL, (unsigned int)stacksize, ThreadMain, argPtr, flags, &tid);
     if (hdl == 0u) {
         NsThreadFatal("NsCreateThread", "_beginthreadex", errno);
     }
     if (threadPtr == NULL) {
+        /*
+         * Provide a value for the closed handle, since this might be returned
+         * by "ns_thread handle".
+         */
+        argPtr->self = (HANDLE) -1;
         CloseHandle((HANDLE) hdl);
     } else {
         argPtr->self = (HANDLE) hdl;
@@ -717,14 +736,17 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *threadPtr)
  *
  * NsThreadExit --
  *
- *      Terminate a thread.  Note the use of _endthreadex instead
- *      of ExitThread which, as mentioned above, is correct.
+ *      Terminate a thread via _endthreadex(). The result of the thread is
+ *      passed via (the 32-bit) argument of _endthreadex(), which will be
+ *      accessible after the join. We use the argument as a pointer to the
+ *      threadExitResults table.
  *
  * Results:
  *      None.
  *
  * Side effects:
  *      Thread will clean itself up via the DllMain thread detach code.
+ *      Potentially updating the thread results table.
  *
  *----------------------------------------------------------------------
  */
@@ -732,7 +754,117 @@ NsCreateThread(void *arg, ssize_t stacksize, Ns_Thread *threadPtr)
 void
 NsThreadExit(void *arg)
 {
-    _endthreadex(PTR2UINT(arg));
+    unsigned index;
+
+    if (arg == NULL) {
+        /*
+         * Use always index "0" for NULL result.
+         */
+        index = 0u;
+    } else {
+        Ns_MasterLock();
+        index = threadExitResults.size;
+        if (index < MAX_THREAD_EXIT_RESULTS-1) {
+            threadExitResults.data[index] = arg;
+            threadExitResults.size++;
+        } else {
+            int ii;
+            for (ii = 1; ii < MAX_THREAD_EXIT_RESULTS; ii++) {
+                if (threadExitResults.data[ii] == NULL) {
+                    index = ii;
+                    break;
+                }
+            }
+
+            if (ii == MAX_THREAD_EXIT_RESULTS) {
+                index = 0;
+                fprintf(stderr, "NsThreadExit: thread %" PRIxPTR
+                       " %s - no free space in return table -"
+                       "returning NULL instead of %p.",
+                       Ns_ThreadId(), Ns_ThreadGetName(), (void*)arg);
+
+            }
+        }
+        Ns_MasterUnlock();
+        /*fprintf(stderr, "%" PRIxPTR " %s === NsThreadExit receives %p sets index %u\n",
+                Ns_ThreadId(), Ns_ThreadGetName(), (void*)arg, index); */
+    }
+    /*
+     * Return the index in the threadExitResults table.
+     */
+    _endthreadex(index);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsThreadResult --
+ *
+ *      Access the result of an exiting thread available. The only reason for
+ *      having this function is that the Windows function _endthreadex() just
+ *      accepts an "unsigned" value, whele we can access via the pthread
+ *      interface a pointer. This is cruical, since with 64-bit windows,
+ *      "unsigned" is just a 32-bit value. Therefore, In the windows version of
+ *      NaviServer we keep a table of results and pass just he index of this
+ *      table via _endthreadex().
+ *
+ * Results:
+ *      Pointer value (can be NULL).
+ *
+ * Side effects:
+ *      Potentially updating the thread results table.
+ *
+ *----------------------------------------------------------------------
+ */
+void *
+NsThreadResult(void *arg)
+{
+    unsigned  index = PTR2UINT(arg);
+    void     *result;
+
+    if (index == 0) {
+        /*
+         * Index "0" is used always for NULL result, no obtain pointer from
+         * the results table.
+         */
+        result = NULL;
+    } else {
+        Ns_MasterLock();
+        /*fprintf(stderr, "%" PRIxPTR " %s === NsThreadResult receives index %u\n",
+          Ns_ThreadId(), Ns_ThreadGetName(), index);*/
+        result = threadExitResults.data[index];
+        threadExitResults.data[index] = NULL;
+        if (threadExitResults.size == index+1) {
+            unsigned  i;
+
+            threadExitResults.size --;
+            /*
+             * Try to compact further all NULL entries (below top entry).
+             */
+            for (i = index; i>1; i--) {
+                if (threadExitResults.data[i] == NULL) {
+                    threadExitResults.size --;
+                }
+            }
+            /*fprintf(stderr, "%" PRIxPTR " %s === NsThreadResult last arg %p"
+                    " final size %u\n",
+                    Ns_ThreadId(), Ns_ThreadGetName(), (void*)result,
+                    threadExitResults.size);*/
+        } else {
+            /*
+             * When the result is not the top value, we can't reduce the
+             * threadExitResults.size. We have to rely on the compacting
+             * above for shrinking the array.
+             */
+            fprintf(stderr, "%" PRIxPTR " %s ===### NsThreadResult inner arg %p size %u index %lu ###\n",
+                    Ns_ThreadId(), Ns_ThreadGetName(),
+                    (void*)result, (unsigned)threadExitResults.size , index);
+        }
+        Ns_MasterUnlock();
+    }
+    /*fprintf(stderr, "%" PRIxPTR " %s === NsThreadResult returns index %u arg %p\n",
+      Ns_ThreadId(), Ns_ThreadGetName(), index, (void*)result);*/
+    return result;
 }
 
 
@@ -1078,14 +1210,14 @@ readdir(DIR * dp)
  */
 
 int
-link(char *from, char *to)
+link(char *UNUSED(from), char *UNUSED(to))
 {
     errno = EINVAL;
     return -1;
 }
 
 int
-symlink(const char *from, const char *to)
+symlink(const char *UNUSED(from), const char *UNUSED(to))
 {
     errno = EINVAL;
     return -1;

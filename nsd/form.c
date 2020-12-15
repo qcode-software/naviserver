@@ -64,9 +64,9 @@ static bool GetValue(const char *hdr, const char *att, const char **vsPtr, const
  *
  * Ns_ConnGetQuery --
  *
- *      Return the connection query data in form of a Ns_Set. This function
- *      parses the either the query (of the URL) or the form content (in POST
- *      requests with content type "www-form-urlencoded" or
+ *      Return the connection query data in form of an Ns_Set. This function
+ *      parses the either the query (of the request URL) or the form content
+ *      (in POST requests with content type "www-form-urlencoded" or
  *      "multipart/form-data"). In case the Ns_Set for the query is already
  *      set, it is treated as cached result and is returned untouched.
  *
@@ -79,88 +79,120 @@ static bool GetValue(const char *hdr, const char *att, const char **vsPtr, const
  *----------------------------------------------------------------------
  */
 
-Ns_Set  *
+Ns_Set *
 Ns_ConnGetQuery(Ns_Conn *conn)
 {
     Conn           *connPtr;
-    char           *form;
 
     NS_NONNULL_ASSERT(conn != NULL);
     connPtr = (Conn *) conn;
 
+    /*
+     * connPtr->query is used to cache the result, in case this function is
+     * called multiple times during a single request.
+     */
     if (connPtr->query == NULL) {
+        const char *contentType, *charset = NULL;
+        char       *content = NULL;
+        size_t      charsetOffset;
+        bool        haveFormData = NS_FALSE;
+        /*
+         * We are called the first time, so create an ns_set.
+         */
         connPtr->query = Ns_SetCreate(NULL);
-        if (connPtr->request.method != NULL && !STREQ(connPtr->request.method, "POST")) {
+        contentType = Ns_SetIGet(connPtr->headers, "content-type");
+
+        if (contentType != NULL) {
+            charset = NsFindCharset(contentType, &charsetOffset);
+            if (strncmp(contentType, "application/x-www-form-urlencoded", 33u) == 0) {
+                haveFormData = NS_TRUE;
+            } else if (strncmp(contentType, "multipart/form-data", 19u) == 0) {
+                haveFormData = NS_TRUE;
+            }
+        }
+
+        if (haveFormData) {
             /*
-             * If it is no POST resquest, parse the "form" content from the
-             * query parameters.
+             * It is unsafe to access the content when the
+             * connection is already closed due to potentially
+             * unmmapped memory.
              */
-            form = connPtr->request.query;
-            if (form != NULL) {
-                ParseQuery(form, connPtr->query, connPtr->urlEncoding, NS_FALSE);
-            }
-        } else if (/*
-                    * It is unsafe to access the content when the
-                    * connection is already closed due to potentially
-                    * unmmapped memory.
-                    */
-                   (connPtr->flags & NS_CONN_CLOSED ) == 0u
-                   && (form = connPtr->reqPtr->content) != NULL
-                   ) {
-            const char *contentType = Ns_SetIGet(conn->headers, "content-type");
-
-            if (contentType != NULL) {
-                Tcl_DString bound;
-
-                Tcl_DStringInit(&bound);
-
+            if ((connPtr->flags & NS_CONN_CLOSED) == 0u) {
+                content = connPtr->reqPtr->content;
+            } else {
                 /*
-                 * GetBoundary cares for "multipart/form-data"
+                 * Formdata is unavailable, but do not fall back to the
+                 * query-as-formdata tradition. We should keep a consistent
+                 * behavior.
                  */
-                if (!GetBoundary(&bound, contentType)) {
-                    if (Ns_StrCaseFind(contentType, "www-form-urlencoded") != NULL) {
-                        bool translate;
-#ifdef _WIN32
-                        /*
-                         * Keep CRLF
-                         */
-                        translate = NS_FALSE;
-#else
-                        /*
-                         * Translate CRLF -> LF, since browsers translate all
-                         * LF to CRLF in the body of POST requests.
-                         */
-                        translate = NS_TRUE;
-#endif
-                        ParseQuery(form, connPtr->query, connPtr->urlEncoding, translate);
-                    }
-                    /*
-                     * Don't do anything for other content-types.
-                     */
-                } else {
-                    const char *formEnd = form + connPtr->reqPtr->length;
-                    char       *s;
-
-                    s = NextBoundary(&bound, form, formEnd);
-                    while (s != NULL) {
-                        char  *e;
-
-                        s += bound.length;
-                        if (*s == '\r') {
-                            ++s;
-                        }
-                        if (*s == '\n') {
-                            ++s;
-                        }
-                        e = NextBoundary(&bound, s, formEnd);
-                        if (e != NULL) {
-                            ParseMultiInput(connPtr, s, e);
-                        }
-                        s = e;
-                    }
-                }
-                Tcl_DStringFree(&bound);
             }
+        } else if (connPtr->request.query != NULL) {
+            /*
+             * The content has none of the "FORM" content types, so get it
+             * in good old AOLserver tradition from the query variables.
+             */
+            ParseQuery(connPtr->request.query,
+                       connPtr->query,
+                       connPtr->urlEncoding,
+                       NS_FALSE);
+        }
+
+        if (content != NULL) {
+            Tcl_DString bound;
+            /*
+             * We have one of the accepted content types AND the data is
+             * provided via content string.
+             */
+            Tcl_DStringInit(&bound);
+
+            if (*contentType == 'a') {
+                bool         translate;
+                Tcl_Encoding encoding;
+#ifdef _WIN32
+                /*
+                 * Keep CRLF
+                 */
+                translate = NS_FALSE;
+#else
+                /*
+                 * Translate CRLF -> LF, since browsers translate all
+                 * LF to CRLF in the body of POST requests.
+                 */
+                translate = NS_TRUE;
+#endif
+                if (charset != NULL) {
+                    encoding = Ns_GetCharsetEncoding(charset);
+                } else {
+                    encoding = connPtr->urlEncoding;
+                }
+                ParseQuery(content, connPtr->query, encoding, translate);
+
+            } else if (GetBoundary(&bound, contentType)) {
+                /*
+                 * GetBoundary cares for "multipart/form-data; boundary=..."
+                 */
+                const char *formEndPtr = content + connPtr->reqPtr->length;
+                char       *s;
+
+                s = NextBoundary(&bound, content, formEndPtr);
+                while (s != NULL) {
+                    char  *e;
+
+                    s += bound.length;
+                    if (*s == '\r') {
+                        ++s;
+                    }
+                    if (*s == '\n') {
+                        ++s;
+                    }
+                    e = NextBoundary(&bound, s, formEndPtr);
+                    if (e != NULL) {
+                        ParseMultiInput(connPtr, s, e);
+                    }
+                    s = e;
+                }
+            }
+            Tcl_DStringFree(&bound);
         }
     }
     return connPtr->query;
@@ -398,7 +430,7 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
     Tcl_Encoding encoding;
     Tcl_DString  kds, vds;
     char        *e, saveend, unescape;
-    const char  *ks, *ke, *disp;
+    const char  *ks = NULL, *ke, *disp;
     Ns_Set      *set;
     int          isNew;
 
@@ -416,8 +448,12 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
      * Trim off the trailing \r\n and null terminate the input.
      */
 
-    if (end > start && *(end-1) == '\n') {--end;}
-    if (end > start && *(end-1) == '\r') {--end;}
+    if (end > start && *(end-1) == '\n') {
+        --end;
+    }
+    if (end > start && *(end-1) == '\r') {
+        --end;
+    }
     saveend = *end;
     *end = '\0';
 
@@ -425,10 +461,9 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
      * Parse header lines
      */
 
-    ks = NULL;
     while ((e = strchr(start, INTCHAR('\n'))) != NULL) {
         const char *s = start;
-        char save;
+        char        save;
 
         start = e + 1;
         if (e > s && *(e-1) == '\r') {
@@ -459,6 +494,7 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
             FormFile      *filePtr;
             Tcl_Interp    *interp = connPtr->itPtr->interp;
 
+            assert(fs != NULL);
             value = Ext2utf(&vds, fs, (size_t)(fe - fs), encoding, unescape);
             hPtr = Tcl_CreateHashEntry(&connPtr->files, key, &isNew);
             if (isNew != 0) {
@@ -510,10 +546,10 @@ ParseMultiInput(Conn *connPtr, const char *start, char *end)
  *
  * GetBoundary --
  *
- *      Copy multipart/form-data boundy string, if any.
+ *      Copy multipart/form-data boundary string, if any.
  *
  * Results:
- *      1 if boundy copied, 0 otherwise.
+ *      NS_TRUE if boundary copied, NS_FALSE otherwise.
  *
  * Side effects:
  *      Copies boundary string to given dstring.

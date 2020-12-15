@@ -5,7 +5,7 @@
  * http://www.mozilla.org/.
  *
  * Software distributed under the License is distributed on an "AS IS"
- * basis,WITHOUT WARRANTY OF ANY KIND,either express or implied. See
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
  * the License for the specific language governing rights and limitations
  * under the License.
  *
@@ -16,14 +16,14 @@
  * Inc. Portions created by AOL are Copyright(C) 1999 America Online,
  * Inc. All Rights Reserved.
  *
- * Alternatively,the contents of this file may be used under the terms
- * of the GNU General Public License(the "GPL"),in which case the
+ * Alternatively, the contents of this file may be used under the terms
+ * of the GNU General Public License(the "GPL"), in which case the
  * provisions of GPL are applicable instead of those above.  If you wish
  * to allow use of your version of this file only under the terms of the
  * GPL and not to allow others to use your version of this file under the
- * License,indicate your decision by deleting the provisions above and
+ * License, indicate your decision by deleting the provisions above and
  * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above,a recipient may use your
+ * If you do not delete the provisions above, a recipient may use your
  * version of this file under either the License or the GPL.
  *
  */
@@ -58,7 +58,7 @@ NS_EXPORT const int Ns_ModuleVersion = 1;
 typedef struct {
     Ns_Mutex     lock;
     const char  *module;
-    const char  *file;
+    const char  *filename;
     const char  *rollfmt;
     const char  *extendedHeaders;
     const char **requestHeaders;
@@ -94,9 +94,9 @@ static Tcl_ObjCmdProc  LogObjCmd;
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
 static Ns_ReturnCode LogFlush(Log *logPtr, Tcl_DString *dsPtr);
-static Ns_ReturnCode LogOpen (Log *logPtr);
-static Ns_ReturnCode LogRoll (Log *logPtr);
-static Ns_ReturnCode LogClose(Log *logPtr);
+static Ns_LogCallbackProc LogOpen;
+static Ns_LogCallbackProc LogClose;
+static Ns_LogCallbackProc LogRoll;
 
 static void AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -176,7 +176,7 @@ Ns_ModuleInit(const char *server, const char *module)
 
     file = Ns_ConfigString(path, "file", "access.log");
     if (Ns_PathIsAbsolute(file) == NS_TRUE) {
-        logPtr->file = ns_strdup(file);
+        logPtr->filename = ns_strdup(file);
     } else {
         /*
          * If log file is not given in absolute format, it's expected to
@@ -188,7 +188,7 @@ Ns_ModuleInit(const char *server, const char *module)
             (void) Ns_HomePath(&ds, "logs", "/", file, (char *)0L);
         } else {
             Tcl_Obj *dirpath;
-            int rc;
+            int      rc;
 
             Tcl_DStringSetLength(&ds, 0);
             (void) Ns_ModulePath(&ds, server, module, (char *)0L);
@@ -205,7 +205,7 @@ Ns_ModuleInit(const char *server, const char *module)
             Tcl_DStringSetLength(&ds, 0);
             (void) Ns_ModulePath(&ds, server, module, file, (char *)0L);
         }
-        logPtr->file = Ns_DStringExport(&ds);
+        logPtr->filename = Ns_DStringExport(&ds);
     }
 
     /*
@@ -234,6 +234,8 @@ Ns_ModuleInit(const char *server, const char *module)
         logPtr->flags |= LOG_SUPPRESSQUERY;
     }
     if (Ns_ConfigBool(path, "checkforproxy", NS_FALSE)) {
+        Ns_Log(Warning, "parameter checkforproxy of module nslog is deprecated; "
+               "use global parameter reversproxymode instead");
         logPtr->flags |= LOG_CHECKFORPROXY;
     }
 
@@ -321,12 +323,11 @@ AddCmds(Tcl_Interp *interp, const void *arg)
  *      Parse a string specifying the extended parameters.
  *      The string might be:
  *
- *       - a list of plain request header fields, like e.g.
- *         "Referer X-Forwarded-For"
+ *       - a Tcl list of plain request header fields, like e.g.
+ *         {Referer X-Forwarded-For}
  *
- *       - a tagged list of header fields, which might be request
- *          or response header fields, like e.g.
- *         "req:Referer response:Content-Type"
+ *       - a Tcl list of header fields with tags to denote request or response
+ *          header fields, like e.g. {req:Referer response:Content-Type}
  *
  * Results:
  *      None
@@ -344,8 +345,8 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
     NS_NONNULL_ASSERT(logPtr != NULL);
 
     if (str != NULL) {
-        int    argc;
-        char **argv;
+        int          argc;
+        const char **argv;
 
         if (Tcl_SplitList(NULL, str, &argc, &argv) != TCL_OK) {
             Ns_Log(Error, "nslog: invalid 'extendedHeaders' parameter: '%s'", str);
@@ -366,7 +367,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
             logPtr->extendedHeaders = ns_strdup(str);
 
             for (i = 0; i < argc; i++) {
-                char *fieldName = argv[i];
+                const char *fieldName = argv[i];
 
                 if (strchr(fieldName, ':') != NULL) {
                     tagged ++;
@@ -385,17 +386,17 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
                 Tcl_DStringInit(&responseHeaderFields);
 
                 for (i = 0; i < argc; i++) {
-                    char *fieldName = argv[i];
-                    char *suffix = strchr(fieldName, ':');
+                    const char *fieldName = argv[i];
+                    char       *suffix = strchr(fieldName, ':');
 
                     if (suffix != NULL) {
                         *suffix = '\0';
                         suffix ++;
                         if (strncmp(fieldName, "request", 3) == 0) {
-                            Tcl_DStringAppendElement(&requestHeaderFields,suffix);
+                            Tcl_DStringAppendElement(&requestHeaderFields, suffix);
                             nrRequestsHeaderFields++;
                         } else if (strncmp(fieldName, "response", 3) == 0) {
-                            Tcl_DStringAppendElement(&responseHeaderFields,suffix);
+                            Tcl_DStringAppendElement(&responseHeaderFields, suffix);
                             nrResponseHeaderFields++;
                         } else {
                             Ns_Log(Error, "nslog: ignore invalid entry prefix '%s' in extendedHeaders parameter",
@@ -405,7 +406,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
                         /*
                          * No prefix, assume request header field
                          */
-                        Tcl_DStringAppendElement(&requestHeaderFields,suffix);
+                        Tcl_DStringAppendElement(&requestHeaderFields, suffix);
                         nrRequestsHeaderFields++;
                     }
                 }
@@ -620,14 +621,14 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             }
             Ns_MutexLock(&logPtr->lock);
             LogClose(logPtr);
-            ns_free((char *)logPtr->file);
-            logPtr->file = ns_strdup(strarg);
+            ns_free((char *)logPtr->filename);
+            logPtr->filename = ns_strdup(strarg);
             Tcl_DStringFree(&ds);
             LogOpen(logPtr);
         } else {
             Ns_MutexLock(&logPtr->lock);
         }
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->file, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->filename, -1));
         Ns_MutexUnlock(&logPtr->lock);
         break;
 
@@ -643,7 +644,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
                 if (Tcl_FSAccess(objv[2], F_OK) == 0) {
                     status = Ns_RollFile(strarg, logPtr->maxbackup);
                 } else {
-                    Tcl_Obj *path = Tcl_NewStringObj(logPtr->file, -1);
+                    Tcl_Obj *path = Tcl_NewStringObj(logPtr->filename, -1);
 
                     Tcl_IncrRefCount(path);
                     rc = Tcl_FSRenameFile(path, objv[2]);
@@ -658,7 +659,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             }
             if (status != NS_OK) {
                 Ns_TclPrintfResult(interp, "could not roll \"%s\": %s",
-                                   logPtr->file, Tcl_PosixError(interp));
+                                   logPtr->filename, Tcl_PosixError(interp));
             }
             Ns_MutexUnlock(&logPtr->lock);
             if (status != NS_OK) {
@@ -725,7 +726,7 @@ AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
                 Tcl_DStringAppend(dsPtr, "\\\"", 2);
                 break;
             case '\\':
-                Tcl_DStringAppend(dsPtr, "\\\\",2);
+                Tcl_DStringAppend(dsPtr, "\\\\", 2);
                 break;
             default:
                 /*should not happen */ assert(0);
@@ -828,20 +829,19 @@ LogTrace(void *arg, Ns_Conn *conn)
     Ns_MutexLock(&logPtr->lock);
 
     /*
-     * Append the peer address. Watch for users coming
-     * from proxy servers (if configured).
+     * Append the peer address.
      */
-
     if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
-        p = Ns_SetIGet(conn->headers, "X-Forwarded-For");
-        if (p != NULL && !strcasecmp(p, "unknown")) {
-            p = NULL;
-        }
-        if (p == NULL) {
+        /*
+         * This branch of the if is deprecated and kept only for backward
+         * compatibility (added Dec 2020).
+         */
+        p = Ns_ConnForwardedPeerAddr(conn);
+        if (*p == '\0') {
             p = Ns_ConnPeerAddr(conn);
         }
     } else {
-        p = Ns_ConnPeerAddr(conn);
+        p = Ns_ConnConfiguredPeerAddr(conn);
     }
 
     /*
@@ -912,7 +912,7 @@ LogTrace(void *arg, Ns_Conn *conn)
     }
 
     /*
-     * Append a common log format time stamp including GMT offset
+     * Append a common log format timestamp including GMT offset
      */
 
     if (!(logPtr->flags & LOG_FMTTIME)) {
@@ -1087,24 +1087,28 @@ LogTrace(void *arg, Ns_Conn *conn)
  */
 
 static Ns_ReturnCode
-LogOpen(Log *logPtr)
+LogOpen(void *arg)
 {
-    int fd;
+    int           fd;
+    Ns_ReturnCode status;
+    Log          *logPtr = (Log *)arg;
 
-    fd = ns_open(logPtr->file, O_APPEND | O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+    fd = ns_open(logPtr->filename, O_APPEND | O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
     if (fd == NS_INVALID_FD) {
         Ns_Log(Error, "nslog: error '%s' opening '%s'",
-               strerror(errno), logPtr->file);
-        return NS_ERROR;
-    }
-    if (logPtr->fd >= 0) {
-        ns_close(logPtr->fd);
+               strerror(errno), logPtr->filename);
+        status = NS_ERROR;
+    } else {
+        status = NS_OK;
+        if (logPtr->fd >= 0) {
+            ns_close(logPtr->fd);
+        }
+
+        logPtr->fd = fd;
+        Ns_Log(Notice, "nslog: opened '%s'", logPtr->filename);
     }
 
-    logPtr->fd = fd;
-    Ns_Log(Notice, "nslog: opened '%s'", logPtr->file);
-
-    return NS_OK;
+    return status;
 }
 
 
@@ -1120,22 +1124,23 @@ LogOpen(Log *logPtr)
  *      NS_TRUE or NS_FALSE if log was closed.
  *
  * Side effects:
- *      Buffer entries,if any,are flushed.
+ *      Buffer entries, if any, are flushed.
  *
  *----------------------------------------------------------------------
  */
 
 static Ns_ReturnCode
-LogClose(Log *logPtr)
+LogClose(void *arg)
 {
     Ns_ReturnCode status = NS_OK;
+    Log *logPtr = (Log *)arg;
 
     if (logPtr->fd >= 0) {
         status = LogFlush(logPtr, &logPtr->buffer);
         ns_close(logPtr->fd);
         logPtr->fd = NS_INVALID_FD;
         Tcl_DStringFree(&logPtr->buffer);
-        Ns_Log(Notice, "nslog: closed '%s'", logPtr->file);
+        Ns_Log(Notice, "nslog: closed '%s'", logPtr->filename);
     }
 
     return status;
@@ -1199,33 +1204,19 @@ LogFlush(Log *logPtr, Tcl_DString *dsPtr)
  */
 
 static Ns_ReturnCode
-LogRoll(Log *logPtr)
+LogRoll(void *arg)
 {
-    Ns_ReturnCode status = NS_OK;
-    Tcl_Obj      *pathObj;
+    Ns_ReturnCode status;
+    Log          *logPtr = (Log *)arg;
 
-    NsAsyncWriterQueueDisable(NS_FALSE);
-
-    (void)LogClose(logPtr);
-
-    pathObj = Tcl_NewStringObj(logPtr->file, -1);
-    Tcl_IncrRefCount(pathObj);
-
-    if (Tcl_FSAccess(pathObj, F_OK) == 0) {
-        /*
-         * We are already logging to some file
-         */
-        status = Ns_RollFileFmt(pathObj,
+    status = Ns_RollFileCondFmt(LogOpen, LogClose, logPtr,
+                                logPtr->filename,
                                 logPtr->rollfmt,
                                 logPtr->maxbackup);
-    }
 
-    Tcl_DecrRefCount(pathObj);
-
-    if (status == NS_OK) {
-        status = LogOpen(logPtr);
-    }
-    NsAsyncWriterQueueEnable();
+    //if (status == NS_OK) {
+    //    status = LogOpen(logPtr);
+    //}
 
     return status;
 }
@@ -1248,7 +1239,7 @@ LogRoll(Log *logPtr)
  */
 
 static void
-LogCallback(Ns_ReturnCode(proc)(Log *), void *arg, const char *desc)
+LogCallbackProc(Ns_LogCallbackProc proc, void *arg, const char *desc)
 {
     int  status;
     Log *logPtr = arg;
@@ -1258,7 +1249,7 @@ LogCallback(Ns_ReturnCode(proc)(Log *), void *arg, const char *desc)
     Ns_MutexUnlock(&logPtr->lock);
 
     if (status != NS_OK) {
-        Ns_Log(Error, "nslog: failed: %s '%s': '%s'", desc, logPtr->file,
+        Ns_Log(Error, "nslog: failed: %s '%s': '%s'", desc, logPtr->filename,
                strerror(Tcl_GetErrno()));
     }
 }
@@ -1267,14 +1258,14 @@ static void
 LogCloseCallback(const Ns_Time *toPtr, void *arg)
 {
     if (toPtr == NULL) {
-        LogCallback(LogClose, arg, "close");
+        LogCallbackProc(LogClose, arg, "close");
     }
 }
 
 static void
 LogRollCallback(void *arg, int UNUSED(id))
 {
-    LogCallback(LogRoll, arg, "roll");
+    LogCallbackProc(LogRoll, arg, "roll");
 }
 
 
@@ -1283,7 +1274,7 @@ LogRollCallback(void *arg, int UNUSED(id))
  *
  * LogArg --
  *
- *      Copy log file as argument for callback introspection queries.
+ *      Copy log filename as argument for callback introspection queries.
  *
  * Results:
  *      None.
@@ -1299,7 +1290,7 @@ LogArg(Tcl_DString *dsPtr, const void *arg)
 {
     const Log *logPtr = arg;
 
-    Tcl_DStringAppendElement(dsPtr, logPtr->file);
+    Tcl_DStringAppendElement(dsPtr, logPtr->filename);
 }
 
 /*

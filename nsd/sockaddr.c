@@ -87,9 +87,9 @@ Ns_SockaddrMask(const struct sockaddr *addr, const struct sockaddr *mask, struct
         }
 #endif
         /*
-          fprintf(stderr, "#### addr   %s\n",ns_inet_ntoa(addr));
-          fprintf(stderr, "#### mask   %s\n",ns_inet_ntoa(mask));
-          fprintf(stderr, "#### masked %s\n",ns_inet_ntoa(maskedAddr));
+          fprintf(stderr, "#### addr   %s\n", ns_inet_ntoa(addr));
+          fprintf(stderr, "#### mask   %s\n", ns_inet_ntoa(mask));
+          fprintf(stderr, "#### masked %s\n", ns_inet_ntoa(maskedAddr));
         */
     } else if (addr->sa_family == AF_INET && mask->sa_family == AF_INET) {
         ((struct sockaddr_in *)maskedAddr)->sin_addr.s_addr =
@@ -242,7 +242,7 @@ Ns_SockaddrMaskedMatch(const struct sockaddr *addr, const struct sockaddr *mask,
  *
  * Ns_SockaddrMaskBits --
  *
- *      Build a mask with the given bits in a IPv4 or IPv6 sockaddr
+ *      Build a mask with the given bits in an IPv4 or IPv6 sockaddr
  *
  * Results:
  *      Mask computed in 1 arg.
@@ -262,7 +262,7 @@ Ns_SockaddrMaskBits(const struct sockaddr *mask, unsigned int nrBits)
         int i;
 
         if (nrBits > 128u) {
-            Ns_Log(Warning, "Invalid bitmask /%d: can be most 128 bits", nrBits);
+            Ns_Log(Warning, "Invalid bit mask /%d: can be most 128 bits", nrBits);
             nrBits = 128u;
         }
 #ifndef _WIN32
@@ -287,7 +287,7 @@ Ns_SockaddrMaskBits(const struct sockaddr *mask, unsigned int nrBits)
         }
 #else
         /*
-         * Windows does not have 32bit members, so process in 16bit
+         * Windows does not have 32-bit members, so process in 16-bit
          * chunks: Set the mask bits in the leading 16 bit Words to 1.
          */
         for (i = 0; i < 8 && nrBits >= 16u; i++, nrBits -= 16u) {
@@ -307,10 +307,10 @@ Ns_SockaddrMaskBits(const struct sockaddr *mask, unsigned int nrBits)
             addr->u.Word[i] = 0u;
         }
 #endif
-        /*fprintf(stderr, "#### FINAL mask %s\n",ns_inet_ntoa(mask));*/
+        /*fprintf(stderr, "#### FINAL mask %s\n", ns_inet_ntoa(mask));*/
     } else if (mask->sa_family == AF_INET) {
         if (nrBits > 32u) {
-            Ns_Log(Warning, "Invalid bitmask /%d: can be most 32 bits", nrBits);
+            Ns_Log(Warning, "Invalid bit mask /%d: can be most 32 bits", nrBits);
             nrBits = 32u;
         }
         ((struct sockaddr_in *)mask)->sin_addr.s_addr = htonl((~0u) << (32u - nrBits));
@@ -399,7 +399,7 @@ Ns_SockaddrParseIPMask(Tcl_Interp *interp, const char *ipString,
         }
         ns_free(dupIpString);
         /*
-         * Do a bitwise AND of the ip address with the netmask
+         * Do a bitwise AND of the IP address with the netmask
          * to make sure that all non-network bits are 0. That
          * saves us from doing this operation every time a
          * connection comes in.
@@ -423,7 +423,7 @@ Ns_SockaddrParseIPMask(Tcl_Interp *interp, const char *ipString,
  *    This function is a version of inet_ntop() which is agnostic to IPv4 and IPv6.
  *
  * Results:
- *    String pointing to printable ip address.
+ *    String pointing to printable IP address.
  *
  * Side effects:
  *    Update provided buffer with resulting character string.
@@ -529,7 +529,7 @@ ns_inet_pton(struct sockaddr *saPtr, const char *addr) {
  *
  * Ns_GetSockAddr --
  *
- *      Take a host/port and fill in a NS_SOCKADDR_STORAGE structure
+ *      Take a host/port and fill in an NS_SOCKADDR_STORAGE structure
  *      appropriately. The passed in host may be an IP address or a DNS name.
  *
  * Results:

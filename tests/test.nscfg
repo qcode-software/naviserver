@@ -119,6 +119,11 @@ ns_section "ns/module/nssock/servers" {
     ns_param   testvhost       testvhost
     ns_param   testvhost2      testvhost2
 }
+ns_section "ns/module/nsssl/servers" {
+    ns_param   test            test
+    ns_param   testvhost       testvhost
+    ns_param   testvhost2      testvhost2
+}
 
 ns_section     "ns/mimetypes" {
     ns_param    .utf_adp          "text/plain"
@@ -190,9 +195,9 @@ ns_section "ns/limit/confLimit2" {
 }
 
 ns_section "ns/servers" {
+    ns_param   test            "Main Test Server"
     ns_param   testvhost       "Virtual Host Test Server"
     ns_param   testvhost2      "Virtual Host Test Server with custom procs"
-    ns_param   test            "Main Test Server"
 }
 
 #
@@ -261,6 +266,10 @@ ns_section "ns/server/test/module/nslog" {
     ns_param   checkforproxy   true
     ns_param   extendedheaders "X-Test"
 }
+ns_section "ns/server/test/module/nsssl" {
+    ns_param   certificate     [ns_config "test" home]/testserver/etc/server.pem
+    #ns_param   certificate     [ns_config "test" home]/testserver/etc/openacs.org.pem
+}
 
 ns_section "ns/server/test/db" {
     ns_param   pools           a,b
@@ -285,6 +294,19 @@ ns_section "ns/server/testvhost" {
     ns_param   enabletclpages  true
     ns_param   minthreads 1
     ns_param   maxthreads 3
+}
+ns_section "ns/server/testvhost/redirects" {
+    #
+    # Provide custom error pages:
+    #
+    ns_param   404    /404.tcl
+    ns_param   405    /405.tcl
+}
+ns_section "ns/server/testvhost/modules" {
+    ns_param   nslog           [ns_config "test" home]/../nslog/nslog[sharedlibextension]
+}
+ns_section "ns/server/testvhost/module/nslog" {
+    ns_param   file            [ns_config "test" home]/testserver/access.log
 }
 ns_section "ns/server/testvhost/fastpath" {
     ns_param   serverdir       testserver

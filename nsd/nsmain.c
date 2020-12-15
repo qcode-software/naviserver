@@ -51,10 +51,10 @@ typedef struct Args {
  */
 
 typedef enum {
-    starting,  /* == 0 */
-    running,   /* == 1 */
-    stopping,  /* == 2 */
-    exiting    /* == 3 */
+    starting_state,  /* == 0 */
+    running_state,   /* == 1 */
+    stopping_state,  /* == 2 */
+    exiting_state    /* == 3 */
 } runState;
 
 /*
@@ -101,11 +101,12 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 {
     Args           cmd;
     int            sig, optionIndex;
-    const char    *config = NULL;
     Ns_Time        timeout;
     Ns_Set        *set;
+    bool           testMode = NS_FALSE;
+    const char    *configFileContent = NULL;
 #ifndef _WIN32
-    int            debug = 0;
+    bool           debug = NS_FALSE;
     bool           forked = NS_FALSE;
     char           mode = '\0';
     const char    *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
@@ -173,17 +174,17 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         case 'h':
             UsageMsg(0);
 
-        case 'c':
-        case 'f':
-        case 'V':
+        case 'c': NS_FALL_THROUGH; /* fall through */
+        case 'f': NS_FALL_THROUGH; /* fall through */
 #ifdef _WIN32
-        case 'I':
-        case 'R':
-        case 'S':
+        case 'I': NS_FALL_THROUGH; /* fall through */
+        case 'R': NS_FALL_THROUGH; /* fall through */
+        case 'S': NS_FALL_THROUGH; /* fall through */
 #else
-        case 'i':
-        case 'w':
+        case 'i': NS_FALL_THROUGH; /* fall through */
+        case 'w': NS_FALL_THROUGH; /* fall through */
 #endif
+        case 'V':
             if (mode != '\0') {
 #ifdef _WIN32
                 UsageError("only one of the options -c, -f, -I, -R, -S or -V"
@@ -206,15 +207,19 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             }
             break;
         case 't':
-            if (nsconf.config != NULL) {
+            if (nsconf.configFile != NULL) {
                 UsageError("multiple -t <file> options");
             }
             if (optionIndex + 1 < argc) {
-                nsconf.config = argv[++optionIndex];
+                nsconf.configFile = argv[++optionIndex];
             } else {
                 UsageError("no parameter for -t option");
             }
             break;
+        case 'T':
+            testMode = NS_TRUE;
+            break;
+
         case 'p':
         case 'z':
             /* NB: Ignored. */
@@ -242,7 +247,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             }
             break;
         case 'd':
-            debug = 1;
+            debug = NS_TRUE;
             break;
         case 'g':
             if (optionIndex + 1 < argc) {
@@ -269,6 +274,28 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         printf("   Built:           %s\n", Ns_InfoBuildDate());
         printf("   Tcl version:     %s\n", nsconf.tcl.version);
         printf("   Platform:        %s\n", Ns_InfoPlatform());
+        return 0;
+    }
+
+    if (testMode) {
+        const char *fileContent;
+
+        if (nsconf.configFile == NULL) {
+            UsageError("option -t <file> must be provided, when -T is used");
+        }
+        fileContent = NsConfigRead(nsconf.configFile);
+        if (fileContent != NULL) {
+
+            /*
+             * Evaluate the configuration file.
+             */
+            NsConfigEval(fileContent, nsconf.configFile, argc, argv, optionIndex);
+
+            printf("%s/%s: configuration file %s looks OK\n",
+                   PACKAGE_NAME, PACKAGE_VERSION, nsconf.configFile);
+
+            ns_free((char *)fileContent);
+        }
         return 0;
     }
 
@@ -320,10 +347,10 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         if (mode != 'w') {
             /*
              * Unless we are in watchdog mode, setup pipe for realizing
-             * non-zero return codes in case setup fails.
+             * nonzero return codes in case setup fails.
              *
              * Background: The pipe is used for communicating problems during
-             * startup from the child process to return non-zero return codes
+             * startup from the child process to return nonzero return codes
              * in case the server does not start up. However, the watchdog
              * mode restarts the child if necessary, so the pipe to the child
              * can't be used.
@@ -466,20 +493,25 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     nsconf.nsd = ns_strdup(Tcl_GetNameOfExecutable());
 
     /*
-     * Find and read config file, if given at the command line, just use it,
+     * Find and read configuration file, if given at the command line, just use it,
      * if not specified, try to figure out by looking in the current dir for
      * nsd.tcl and for ../conf/nsd.tcl
      */
 
-    if (nsconf.config == NULL) {
-        nsconf.config = MakePath("nsd.tcl");
-        if (nsconf.config == NULL) {
-            nsconf.config = MakePath("conf/nsd.tcl");
+    if (nsconf.configFile == NULL) {
+        nsconf.configFile = MakePath("nsd.tcl");
+        if (nsconf.configFile == NULL) {
+            nsconf.configFile = MakePath("conf/nsd.tcl");
         }
     }
 
-    if (nsconf.config != NULL) {
-        config = NsConfigRead(nsconf.config);
+    /*
+     * In case chroot has to be performed, we might not be able anymore to
+     * read the configuration file. So, we have to read it before issuing the
+     * chroot() command.
+     */
+    if (nsconf.configFile != NULL) {
+        configFileContent = NsConfigRead(nsconf.configFile);
     }
 
 #ifndef _WIN32
@@ -550,18 +582,16 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
 #endif /* ! _WIN32 */
 
-    if (config != NULL) {
-
+    if (configFileContent != NULL) {
         /*
-         * Evaluate the config file.
+         * Evaluate the configuration file.
          */
-
-        NsConfigEval(config, argc, argv, optionIndex);
-        ns_free((char *)config);
+        NsConfigEval(configFileContent, nsconf.configFile, argc, argv, optionIndex);
+        ns_free((char *)configFileContent);
     }
 
     /*
-     * This is the first place, where we can use values from the config file.
+     * This is the first place, where we can use values from the configuration file.
      *
      * Turn on logging of long mutex calls if desired. For whatever reason, we
      * can't access NS_mutexlocktrace from here (unknown external symbol),
@@ -591,8 +621,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     if (server != NULL) {
         int i = Ns_SetFind(servers, server);
         if (i < 0) {
-            Ns_Log(Error, "nsmain: no such server '%s' in config file '%s'",
-                   server, nsconf.config);
+            Ns_Log(Error, "nsmain: no such server '%s' in configuration file '%s'",
+                   server, nsconf.configFile);
             Ns_Log(Warning, "nsmain: Writing the server names we DO have to stderr now:");
             Ns_SetPrint(servers);
             Ns_Fatal("nsmain: no such server '%s'", server);
@@ -621,7 +651,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         if (nsconf.home == NULL) {
             Ns_Fatal("nsmain: missing: [%s]home", NS_CONFIG_PARAMETERS);
         }
-    } else if (mode == 'c' && nsconf.config == NULL) {
+    } else if (mode == 'c' && nsconf.configFile == NULL) {
         /*
          * Try to get HOME from environment variable NAVISERVER. If
          * this is not defined, take the value from the path. Using
@@ -656,6 +686,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         Ns_ConfigBool(NS_CONFIG_PARAMETERS, "rejectalreadyclosedconn", NS_TRUE);
     nsconf.sanitize_logfiles =
         Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 2);
+    nsconf.reverseproxymode =
+        Ns_ConfigBool(NS_CONFIG_PARAMETERS, "reverseproxymode", NS_FALSE);
 
     /*
      * Make the result queryable.
@@ -720,7 +752,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 #endif
 
     /*
-     * Open the log file now that the home directory and runtime
+     * Open the log file now that the home directory and run time
      * user id have been set.
      */
 
@@ -734,7 +766,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * generated some messages.
      */
 
-    StatusMsg(starting);
+    StatusMsg(starting_state);
     LogTclVersion();
 
 #ifndef _WIN32
@@ -785,6 +817,10 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             NsInitServer(server, initProc);
 
         }
+        /*
+         * Make the first server the default server.
+         */
+        server = Ns_SetKey(servers, 0);
     }
     nsconf.defaultServer = server;
 
@@ -819,7 +855,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * Signal startup is complete.
      */
 
-    StatusMsg(running);
+    StatusMsg(running_state);
 
     Ns_MutexLock(&nsconf.state.lock);
     nsconf.state.started = NS_TRUE;
@@ -838,7 +874,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
                      ", error: %s (parent process was probably killed)",
                      nwrite, strerror(errno));
         }
-        ns_close(nsconf.state.pipefd[1]);
+        (void)ns_close(nsconf.state.pipefd[1]);
         nsconf.state.pipefd[1] = 0;
     }
 
@@ -875,15 +911,16 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * without waiting for all subsystems to exit gracefully
      */
 
-    StatusMsg(stopping);
+    StatusMsg(stopping_state);
 
     Ns_MutexLock(&nsconf.state.lock);
     nsconf.state.stopping = NS_TRUE;
-    if (sig == NS_SIGQUIT || nsconf.shutdowntimeout < 0) {
-        nsconf.shutdowntimeout = 0;
+    if (sig == NS_SIGQUIT) {
+        nsconf.shutdowntimeout.sec = 0;
+        nsconf.shutdowntimeout.usec = 0;
     }
     Ns_GetTime(&timeout);
-    Ns_IncrTime(&timeout, nsconf.shutdowntimeout, 0);
+    Ns_IncrTime(&timeout, nsconf.shutdowntimeout.sec, nsconf.shutdowntimeout.usec);
     Ns_MutexUnlock(&nsconf.state.lock);
 
     /*
@@ -926,7 +963,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     NsRemovePidFile();
-    StatusMsg(exiting);
+    StatusMsg(exiting_state);
 
     /*
      * The main thread exits gracefully on NS_SIGTERM.
@@ -1001,8 +1038,8 @@ Ns_StopServer(char *server)
  *
  * NsTclShutdownObjCmd --
  *
- *      Shutdown the server, waiting at most timeout seconds for threads
- *      to exit cleanly before giving up.
+ *      Shutdown the server, waiting at most timeout seconds for threads to
+ *      exit cleanly before giving up. Implements "ns_shutdown".
  *
  * Results:
  *      Tcl result.
@@ -1018,32 +1055,37 @@ int
 NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         sig = NS_SIGTERM, result = TCL_OK;
-    long        timeout = 0;
-    Ns_ObjvValueRange timeoutRange = {0, LONG_MAX};
+    Ns_Time    *timeoutPtr = NULL;
     Ns_ObjvSpec opts[] = {
         {"-restart", Ns_ObjvBool,  &sig, INT2PTR(NS_SIGINT)},
         {"--",       Ns_ObjvBreak, NULL, NULL},
         {NULL,       NULL,         NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"?timeout", Ns_ObjvLong, &timeout, &timeoutRange},
-        {NULL,       NULL,        NULL,     NULL}
+        {"?timeout", Ns_ObjvTime, &timeoutPtr, NULL},
+        {NULL,       NULL,        NULL,        NULL}
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
+
+    } else if (timeoutPtr != NULL && timeoutPtr->sec < 0) {
+        Ns_TclPrintfResult(interp, "timeout must be >= 0");
+        result = TCL_ERROR;
+
     } else {
 
         Ns_MutexLock(&nsconf.state.lock);
-        if (timeout > 0) {
-            nsconf.shutdowntimeout = timeout;
+        if (timeoutPtr != NULL) {
+            nsconf.shutdowntimeout.sec = timeoutPtr->sec;
+            nsconf.shutdowntimeout.usec = timeoutPtr->usec;
         } else {
-            timeout = nsconf.shutdowntimeout;
+            timeoutPtr = &nsconf.shutdowntimeout;
         }
         Ns_MutexUnlock(&nsconf.state.lock);
 
         NsSendSignal(sig);
-        Tcl_SetObjResult(interp, Tcl_NewLongObj(timeout));
+        Tcl_SetObjResult(interp, Ns_TclNewTimeObj(timeoutPtr));
     }
     return result;
 }
@@ -1073,26 +1115,26 @@ StatusMsg(runState state)
 
     switch (state) {
 
-    case starting:
+    case starting_state:
         what = "starting";
         break;
 
-    case running:
+    case running_state:
         what = "running";
         break;
 
-    case stopping:
+    case stopping_state:
         what = "stopping";
         break;
 
-    case exiting:
+    case exiting_state:
         what = "exiting";
         break;
     }
     Ns_Log(Notice, "nsmain: %s/%s (%s) %s",
            Ns_InfoServerName(), Ns_InfoServerVersion(), Ns_InfoTag(), what);
 #ifndef _WIN32
-    if (state == starting || state == running) {
+    if (state == starting_state || state == running_state) {
         Ns_Log(Notice, "nsmain: security info: uid=%d, euid=%d, gid=%d, egid=%d",
                (int)getuid(), (int)geteuid(), (int)getgid(), (int)getegid());
     }
@@ -1188,8 +1230,9 @@ UsageMsg(int exitCode)
         "  -b  bind <address:port>  (Example: 192.168.0.1:80,[::1]:80)\n"
         "  -B  bind address:port list from <file>\n"
 #endif
-        "  -s  use server named <server> in config file\n"
-        "  -t  read config from <file>\n"
+        "  -s  use server named <server> in configuration file\n"
+        "  -t  read configuration file from <file>\n"
+        "  -T  just check configuration file (without starting server)\n"
         "\n", nsconf.argv0);
     exit(exitCode);
 }
@@ -1241,7 +1284,7 @@ MakePath(const char *file)
             Tcl_DecrRefCount(obj);
 
             /*
-             * If file name was given, check if the file exists
+             * If filename was given, check if the file exists
              */
             if (path != NULL && *file != '\0' && access(path, F_OK) != 0) {
                 ckfree((void *)path);
@@ -1322,6 +1365,10 @@ CmdThread(void *arg)
 
     NsRestoreSignals();
     NsBlockSignal(NS_SIGPIPE);
+
+#if defined(__APPLE__) && defined(__MACH__)
+    signal(SIGPIPE, SIG_IGN);
+#endif
 
     Tcl_Main(cmd->argc, cmd->argv, NsTclAppInit);
 }

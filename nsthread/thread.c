@@ -64,7 +64,7 @@ static void CleanupThread(void *arg);
 static void SetBottomOfStack(void *ptr)  NS_GNUC_NONNULL(1);
 
 /*
- * The following pointer maintains a linked list of all threads.
+ * The pointer firstThreadPtr is the anchor of a linked list of all threads.
  */
 
 static Thread *firstThreadPtr;
@@ -197,7 +197,7 @@ Ns_ThreadStackSize(ssize_t size)
  *
  * ThreadMain --
  *
- *      Thread startup routine.  Sets the given pre-allocated thread
+ *      Thread startup routine.  Sets the given preallocated thread
  *      structure and calls the user specified procedure.
  *
  * Results:
@@ -279,16 +279,16 @@ Ns_ThreadGetName(void)
  */
 
 void
-Ns_ThreadSetName(const char *name,...)
+Ns_ThreadSetName(const char *fmt, ...)
 {
     Thread *thisPtr = GetThread();
     va_list ap;
 
-    NS_NONNULL_ASSERT(name != NULL);
+    NS_NONNULL_ASSERT(fmt != NULL);
 
     Ns_MasterLock();
-    va_start(ap, name);
-    vsnprintf(thisPtr->name, NS_THREAD_NAMESIZE, name, ap);
+    va_start(ap, fmt);
+    vsnprintf(thisPtr->name, NS_THREAD_NAMESIZE, fmt, ap);
     va_end(ap);
     Ns_MasterUnlock();
 }
@@ -431,6 +431,28 @@ Ns_ThreadExit(void *arg)
     NsThreadExit(arg);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ThreadResult --
+ *
+ *      Obtain the result of a terminating thread. The purpose of this
+ *      function is to make the symbol Ns_ThreadResult() piublic and to keep
+ *      the NsThreadResult() private, similar to Ns_ThreadExit and
+ *      NsThreadExit().
+ *
+ * Results:
+ *      Thread result, might be NULL.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+void *
+Ns_ThreadResult(void *arg) {
+    return NsThreadResult(arg);
+}
 
 /*
  *----------------------------------------------------------------------

@@ -164,11 +164,15 @@ ConfigServerAdp(const char *server)
      */
 
     Tcl_InitHashTable(&servPtr->adp.pages, TCL_STRING_KEYS);
-    Ns_MutexInit(&servPtr->adp.pagelock);
-    Ns_CondInit(&servPtr->adp.pagecond);
-    Ns_MutexSetName2(&servPtr->adp.pagelock, "nsadp:pages", server);
     Tcl_InitHashTable(&servPtr->adp.tags, TCL_STRING_KEYS);
+
+    Ns_CondInit(&servPtr->adp.pagecond);
+
+    Ns_MutexInit(&servPtr->adp.pagelock);
+    Ns_MutexSetName2(&servPtr->adp.pagelock, "ns:adp:pages", server);
+
     Ns_RWLockInit(&servPtr->adp.taglock);
+    Ns_RWLockSetName2(&servPtr->adp.taglock, "rw:adp:tags", server);
 
     /*
      * Initialise various ADP options.
@@ -431,13 +435,12 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
     Tcl_HashEntry  *hPtr;
     struct stat     st;
     Ns_DString      tmp, path;
-    InterpPage     *ipagePtr;
-    Page           *pagePtr;
-    AdpCache       *cachePtr;
+    InterpPage     *ipagePtr = NULL;
+    Page           *pagePtr = NULL;
     Ns_Time         now;
     int             isNew;
     const char     *p;
-    int             result;
+    int             result = TCL_ERROR;   /* assume error until accomplished success */
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(file != NULL);
@@ -446,9 +449,6 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
     servPtr = itPtr->servPtr;
     interp = itPtr->interp;
 
-    ipagePtr = NULL;
-    pagePtr = NULL;
-    result = TCL_ERROR;   /* assume error until accomplished success */
     Ns_DStringInit(&tmp);
     Ns_DStringInit(&path);
 
@@ -590,6 +590,7 @@ AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
         const AdpCode *codePtr;
         Objs          *objsPtr;
         int            cacheGen = 0;
+        AdpCache      *cachePtr;
 
         pagePtr = ipagePtr->pagePtr;
         if (expiresPtr == NULL || (itPtr->adp.flags & ADP_CACHE) == 0u) {
@@ -847,11 +848,11 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
     Tcl_Interp   *interp;
     Tcl_Encoding  encoding;
     Tcl_DString   utf;
-    char         *buf;
-    int           fd, tries;
+    char         *buf = NULL;
+    int           fd, tries = 0;
+    size_t        size = 0u;
     ssize_t       n;
-    size_t        size;
-    Page         *pagePtr;
+    Page         *pagePtr = NULL;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(file != NULL);
@@ -866,13 +867,10 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
         return NULL;
     }
 
-    pagePtr = NULL;
-    buf = NULL;
-    tries = 0;
     do {
         /*
-         * fstat the open file to ensure it has not changed or been
-         * replaced since the original stat.
+         * fstat() the open file to ensure it has not changed or been replaced
+         * since the original stat().
          */
 
         if (fstat(fd, stPtr) != 0) {

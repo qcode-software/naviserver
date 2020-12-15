@@ -80,6 +80,7 @@ static Ns_ObjvTable traceWhen[] = {
     {"delete",     (unsigned int)NS_TCL_TRACE_DELETE},
     {"freeconn",   (unsigned int)NS_TCL_TRACE_FREECONN},
     {"getconn",    (unsigned int)NS_TCL_TRACE_GETCONN},
+    {"idle",       (unsigned int)NS_TCL_TRACE_IDLE},
     {NULL,         (unsigned int)0}
 };
 
@@ -147,6 +148,11 @@ static Tcl_ObjCmdProc ICtlUpdateObjCmd;
  */
 
 static Ns_Tls tls;  /* Slot for per-thread Tcl interp cache. */
+
+static Ns_Mutex updateLock = NULL;
+static int concurrentUpdates = 0;
+static int maxConcurrentUpdates = 1000;
+
 static Ns_Mutex interpLock = NULL;
 static bool concurrent_interp_create = NS_FALSE;
 
@@ -197,7 +203,7 @@ Nsd_Init(Tcl_Interp *interp)
  *
  * NsConfigTcl --
  *
- *      Allow configuration of Tcl-specific parameters via the config file.
+ *      Allow configuration of Tcl-specific parameters via the configuration file.
  *
  * Results:
  *      None.
@@ -212,6 +218,7 @@ void
 NsConfigTcl(void)
 {
     concurrent_interp_create = Ns_ConfigBool(NS_CONFIG_PARAMETERS, "concurrentinterpcreate", NS_FALSE);
+    maxConcurrentUpdates = Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "maxconcurrentupdates", 1000, 1, INT_MAX);
 }
 
 
@@ -236,6 +243,9 @@ NsInitTcl(void)
 {
     Ns_MutexInit(&interpLock);
     Ns_MutexSetName(&interpLock, "interp");
+
+    Ns_MutexInit(&updateLock);
+    Ns_MutexSetName(&updateLock, "update");
     /*
      * Allocate the thread storage slot for the table of interps
      * per-thread. At thread exit, DeleteInterps will be called
@@ -266,6 +276,7 @@ ConfigServerTcl(const char *server)
         const char *path, *p, *initFileString;
         int         n;
         Ns_Set     *set;
+        bool        initFileStringCopied = NS_FALSE;
 
         Ns_ThreadSetName("-main:%s-", server);
 
@@ -286,16 +297,23 @@ ConfigServerTcl(const char *server)
             Ns_HomePath(&ds, initFileString, (char *)0L);
             initFileString = Ns_DStringExport(&ds);
             Ns_SetUpdate(set, "initfile", initFileString);
+            initFileStringCopied = NS_TRUE;
         }
         servPtr->tcl.initfile = Tcl_NewStringObj(initFileString, -1);
+        if (initFileStringCopied) {
+            ns_free((char *)initFileString);
+        }
         Tcl_IncrRefCount(servPtr->tcl.initfile);
 
         servPtr->tcl.modules = Tcl_NewObj();
         Tcl_IncrRefCount(servPtr->tcl.modules);
 
         Ns_RWLockInit(&servPtr->tcl.lock);
-        Ns_MutexInit(&servPtr->tcl.cachelock);
-        Ns_MutexSetName2(&servPtr->tcl.cachelock, "ns:tcl.cache", server);
+        Ns_RWLockSetName2(&servPtr->tcl.lock, "rw:tcl", server);
+
+        Ns_RWLockInit(&servPtr->tcl.cachelock);
+        Ns_RWLockSetName2(&servPtr->tcl.cachelock, "ns:tcl.cache", server);
+
         Tcl_InitHashTable(&servPtr->tcl.caches, TCL_STRING_KEYS);
         Tcl_InitHashTable(&servPtr->tcl.runTable, TCL_STRING_KEYS);
         Tcl_InitHashTable(&servPtr->tcl.synch.mutexTable, TCL_STRING_KEYS);
@@ -304,8 +322,9 @@ ConfigServerTcl(const char *server)
         Tcl_InitHashTable(&servPtr->tcl.synch.condTable, TCL_STRING_KEYS);
         Tcl_InitHashTable(&servPtr->tcl.synch.rwTable, TCL_STRING_KEYS);
 
+        servPtr->nsv.rwlocks = Ns_ConfigBool(path, "nsvrwlocks", NS_TRUE);
         servPtr->nsv.nbuckets = Ns_ConfigIntRange(path, "nsvbuckets", 8, 1, INT_MAX);
-        servPtr->nsv.buckets = NsTclCreateBuckets(server, servPtr->nsv.nbuckets);
+        servPtr->nsv.buckets = NsTclCreateBuckets(servPtr, servPtr->nsv.nbuckets);
 
         /*
          * Initialize the list of connection headers to log for Tcl errors.
@@ -326,8 +345,8 @@ ConfigServerTcl(const char *server)
         Ns_MutexSetName2(&servPtr->chans.lock, "nstcl:chans", server);
 
         Tcl_InitHashTable(&servPtr->connchans.table, TCL_STRING_KEYS);
-        Ns_MutexInit(&servPtr->connchans.lock);
-        Ns_MutexSetName2(&servPtr->connchans.lock, "nstcl:connchans", server);
+        Ns_RWLockInit(&servPtr->connchans.lock);
+        Ns_RWLockSetName2(&servPtr->connchans.lock, "nstcl:connchans", server);
         result = NS_OK;
     }
     return result;
@@ -555,6 +574,19 @@ Ns_GetConnInterp(Ns_Conn *conn)
         RunTraces(itPtr, NS_TCL_TRACE_GETCONN);
     }
     return connPtr->itPtr->interp;
+}
+
+void
+NsIdleCallback(NsServer *servPtr)
+{
+    NsInterp *itPtr;
+
+    NS_NONNULL_ASSERT(servPtr != NULL);
+
+    itPtr = PopInterp(servPtr, NULL);
+    itPtr->nsconn.flags = 0u;
+    RunTraces(itPtr, NS_TCL_TRACE_IDLE);
+    PushInterp(itPtr);
 }
 
 
@@ -1027,7 +1059,7 @@ static int
 ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,  Ns_TclTraceType when)
 {
     unsigned int    flags = 0u;
-    Tcl_Obj        *scriptObj;
+    Tcl_Obj        *scriptObj = NULL;
     int             remain = 0, result = TCL_OK;
     Ns_ReturnCode   status;
     Ns_ObjvSpec     addTraceArgs[] = {
@@ -1225,6 +1257,52 @@ ICtlEpochObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         Tcl_SetObjResult(interp, Tcl_NewIntObj(servPtr->tcl.epoch));
         Ns_RWLockUnlock(&servPtr->tcl.lock);
     }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ICtlMaxconcurrentupdatesObjCmd - subcommand of NsTclICtlObjCmd --
+ *
+ *      Implements "ns_ictl maxconcurrentupdates" command.  Sets or queries the
+ *      number for allowed concurrent updates, when epoch counter is
+ *      incremented.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ICtlMaxconcurrentupdatesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int               result = TCL_OK, maxValue = -1;
+    Ns_ObjvValueRange posIntRange1 = {1, INT_MAX};
+    Ns_ObjvSpec       args[] = {
+        {"?max", Ns_ObjvInt, &maxValue, &posIntRange1},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        Ns_MutexLock(&updateLock);
+        if (maxValue != -1) {
+            maxConcurrentUpdates = maxValue;
+        } else {
+            maxValue = maxConcurrentUpdates;
+        }
+        Ns_MutexUnlock(&updateLock);
+
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(maxValue));
+    }
+
     return result;
 }
 
@@ -1555,21 +1633,22 @@ int
 NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
-        {"addmodule",     ICtlAddModuleObjCmd},
-        {"cleanup",       ICtlCleanupObjCmd},
-        {"epoch",         ICtlEpochObjCmd},
-        {"get",           ICtlGetObjCmd},
-        {"getmodules",    ICtlGetModulesObjCmd},
-        {"gettraces",     ICtlGetTracesObjCmd},
-        {"markfordelete", ICtlMarkForDeleteObjCmd},
-        {"oncleanup",     ICtlOnCleanupObjCmd},
-        {"oncreate",      ICtlOnCreateObjCmd},
-        {"ondelete",      ICtlOnDeleteObjCmd},
-        {"oninit",        ICtlOnCreateObjCmd},
-        {"runtraces",     ICtlRunTracesObjCmd},
-        {"save",          ICtlSaveObjCmd},
-        {"trace",         ICtlTraceObjCmd},
-        {"update",        ICtlUpdateObjCmd},
+        {"addmodule",            ICtlAddModuleObjCmd},
+        {"cleanup",              ICtlCleanupObjCmd},
+        {"epoch",                ICtlEpochObjCmd},
+        {"get",                  ICtlGetObjCmd},
+        {"getmodules",           ICtlGetModulesObjCmd},
+        {"gettraces",            ICtlGetTracesObjCmd},
+        {"markfordelete",        ICtlMarkForDeleteObjCmd},
+        {"maxconcurrentupdates", ICtlMaxconcurrentupdatesObjCmd},
+        {"oncleanup",            ICtlOnCleanupObjCmd},
+        {"oncreate",             ICtlOnCreateObjCmd},
+        {"ondelete",             ICtlOnDeleteObjCmd},
+        {"oninit",               ICtlOnCreateObjCmd},
+        {"runtraces",            ICtlRunTracesObjCmd},
+        {"save",                 ICtlSaveObjCmd},
+        {"trace",                ICtlTraceObjCmd},
+        {"update",               ICtlUpdateObjCmd},
         {NULL, NULL}
     };
 
@@ -1692,7 +1771,7 @@ NsTclInitServer(const char *server)
         }
         Ns_TclDeAllocateInterp(interp);
     }
-    Ns_ThreadSetName("-main-");
+    Ns_ThreadSetName("-main:%s-", server);
 }
 
 /*
@@ -2048,7 +2127,7 @@ CreateInterp(NsInterp **itPtrPtr, NsServer *servPtr)
 
     /*
      * Make sure, the system encoding is UTF-8. Changing the system
-     * encoding at runtime is a potentially dangerous operation, since
+     * encoding at run time is a potentially dangerous operation, since
      * Tcl might be loading already files based on a previous
      * encoding in another thread. So, we want to perform this
      * operation only once for all threads.
@@ -2173,14 +2252,16 @@ UpdateInterp(NsInterp *itPtr)
     NsServer   *servPtr;
     int         result = TCL_OK, epoch, scriptLength = 0;
     const char *script = NULL;
+    bool        doUpdateNow = NS_FALSE;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     servPtr = itPtr->servPtr;
 
     /*
-     * A reader-writer lock is used on the assumption updates are
-     * rare and likley expensive to evaluate if the virtual server
-     * contains significant state.
+     * A reader-writer lock is used on the assumption updates are rare and
+     * likley expensive to evaluate if the virtual server contains significant
+     * state. The Rd lock is here, since we are just reading the protected
+     * variables.
      *
      * In the codeblock below, we want to avoid running the blueprint update
      * under the lock. Therefore, we copy the blueprint script with ns_strdup.
@@ -2188,28 +2269,48 @@ UpdateInterp(NsInterp *itPtr)
     Ns_RWLockRdLock(&servPtr->tcl.lock);
     if (itPtr->epoch != servPtr->tcl.epoch) {
         epoch        = servPtr->tcl.epoch;
-        script       = ns_strdup(servPtr->tcl.script);
-        scriptLength = servPtr->tcl.length;
+        /*
+         * The epoch has changed. Perform the interpreter update now, when
+         * either (a) the interpreter is fresh, or when the concurrently
+         * running updates are below maxConcurrentUpdates.
+         */
+        doUpdateNow = (itPtr->epoch < 1) || (concurrentUpdates < maxConcurrentUpdates);
+        if (doUpdateNow) {
+            concurrentUpdates++;
+            script = ns_strdup(servPtr->tcl.script);
+            scriptLength = servPtr->tcl.length;
+        }
     } else {
         epoch = itPtr->epoch;
     }
     Ns_RWLockUnlock(&servPtr->tcl.lock);
 
     if (itPtr->epoch != epoch) {
-        Ns_Time startTime, now, diffTime;
+        if (doUpdateNow) {
+            Ns_Time startTime, now, diffTime;
 
-        Ns_GetTime(&startTime);
-        result = Tcl_EvalEx(itPtr->interp, script,
-                            scriptLength, TCL_EVAL_GLOBAL);
-        Ns_GetTime(&now);
-        Ns_DiffTime(&now, &startTime, &diffTime);
-        Ns_Log(Notice, "update interpreter to epoch %d, trace %s, time %" PRId64 ".%06ld secs",
-               epoch,
-               GetTraceLabel(itPtr->currentTrace),
-               (int64_t) diffTime.sec, diffTime.usec );
+            Ns_GetTime(&startTime);
+            result = Tcl_EvalEx(itPtr->interp, script,
+                                scriptLength, TCL_EVAL_GLOBAL);
+            Ns_GetTime(&now);
+            Ns_DiffTime(&now, &startTime, &diffTime);
+            Ns_Log(Notice, "update interpreter %s to epoch %d, trace %s, time "
+                   NS_TIME_FMT " secs concurrent %d",
+                   servPtr->server, epoch,
+                   GetTraceLabel(itPtr->currentTrace),
+                   (int64_t) diffTime.sec, diffTime.usec,
+                   concurrentUpdates);
 
-        ns_free((char *)script);
-        itPtr->epoch = epoch;
+            itPtr->epoch = epoch;
+            ns_free((char *)script);
+
+            Ns_MutexLock(&updateLock);
+            concurrentUpdates--;
+            Ns_MutexUnlock(&updateLock);
+        } else {
+            Ns_Log(Notice, "========= postponed update, %s epoch %d interpreter",
+                   servPtr->server, epoch);
+        }
     }
 
     return result;
@@ -2227,11 +2328,10 @@ UpdateInterp(NsInterp *itPtr)
  *      None.
  *
  * Side effects:
- *      Depeneds on callbacks. Event may be logged.
+ *      Depends on callbacks. Event may be logged.
  *
  *----------------------------------------------------------------------
  */
-
 static void
 RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
 {
@@ -2243,13 +2343,14 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
     servPtr = itPtr->servPtr;
     if (servPtr != NULL) {
 
-        //Ns_Log(Notice, "RunTraces %d",(int)why);
+        //Ns_Log(Notice, "RunTraces %d", (int)why);
         itPtr->currentTrace = why;
 
         switch (why) {
-        case NS_TCL_TRACE_FREECONN:
-        case NS_TCL_TRACE_DEALLOCATE:
-        case NS_TCL_TRACE_DELETE:
+        case NS_TCL_TRACE_FREECONN:   NS_FALL_THROUGH; /* fall through */
+        case NS_TCL_TRACE_DEALLOCATE: NS_FALL_THROUGH; /* fall through */
+        case NS_TCL_TRACE_DELETE:     NS_FALL_THROUGH; /* fall through */
+        case NS_TCL_TRACE_IDLE:
             /*
              * Run finalization traces in LIFO order.
              */
@@ -2265,8 +2366,8 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
             }
             break;
 
-        case NS_TCL_TRACE_ALLOCATE:
-        case NS_TCL_TRACE_CREATE:
+        case NS_TCL_TRACE_ALLOCATE:  NS_FALL_THROUGH; /* fall through */
+        case NS_TCL_TRACE_CREATE:    NS_FALL_THROUGH; /* fall through */
         case NS_TCL_TRACE_GETCONN:
             /*
              * Run initialization traces in FIFO order.
@@ -2293,12 +2394,12 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
 static void
 LogTrace(const NsInterp *itPtr, const TclTrace *tracePtr, Ns_TclTraceType why)
 {
-    Ns_DString  ds;
-
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(tracePtr != NULL);
 
     if (Ns_LogSeverityEnabled(Debug)) {
+        Ns_DString  ds;
+
         Ns_DStringInit(&ds);
         Ns_DStringNAppend(&ds, GetTraceLabel(why), -1);
         Ns_DStringNAppend(&ds, " ", 1);

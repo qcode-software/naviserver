@@ -142,7 +142,7 @@ install-doc:
 		echo "\nNo documentation is installed locally; either generate the documentation with" ; \
 		echo "   make build-doc"; \
 		echo "(which requires tcllib to be installed, such that dtplite can be used for the generation)" ; \
-		echo "or use the online documentation from http://naviserver.sourceforge.net/n/toc.html" ; \
+		echo "or use the online documentation from https://naviserver.sourceforge.io/n/toc.html" ; \
 	fi;
 
 install-examples:
@@ -236,7 +236,7 @@ check: test
 
 test: all $(EXTRA_TEST_REQ)
 	$(NS_LD_LIBRARY_PATH) ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
-	for i in $(EXTRA_TEST_DIRS); do \
+	@for i in $(EXTRA_TEST_DIRS); do \
 		( cd $$i && $(MAKE) test ) || exit 1; \
 	done
 
@@ -266,14 +266,14 @@ helgrind: all
 	$(NS_LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
 cppcheck:
-	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c nsssl/*.c \
 		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
 #CLANG_TIDY_CHECKS=-checks=-*,performance-*,portability-*,cert-*,modernize-*
 CLANG_TIDY_CHECKS=
 #CLANG_TIDY_CHECKS=-checks=-*,bugprone-*
 clang-tidy:
-	clang-tidy-mp-9.0 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	clang-tidy-mp-10 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		$(CLANG_TIDY_CHECKS) -- \
 		-I./include -I/usr/include $(DEFS)
 

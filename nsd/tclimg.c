@@ -419,7 +419,7 @@ GifSize(Tcl_Channel chan, uint32_t *wPtr, uint32_t *hPtr)
 
     /*
      * Skip the magic as caller has already
-     * checked it allright.
+     * checked it alright.
      */
     do {
         if (Tcl_Read(chan, (char*)buf, 6) != 6) {
@@ -700,7 +700,7 @@ GetImageType(Tcl_Channel chan)
     static const unsigned char jpeg_magic  [] = {0xffu, 0xd8u};
     static const          char gif87_magic [] = {'G','I','F','8','7','a'};
     static const          char gif89_magic [] = {'G','I','F','8','9','a'};
-    static const unsigned char png_magic   [] = {0x89u,0x50u,0x4eu,0x47u,0xdu,0x0au,0x1au,0x0au};
+    static const unsigned char png_magic   [] = {0x89u, 0x50u, 0x4eu, 0x47u, 0xdu, 0x0au, 0x1au, 0x0au};
 
     NS_NONNULL_ASSERT(chan != NULL);
 

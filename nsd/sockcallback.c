@@ -151,7 +151,7 @@ Ns_SockCancelCallbackEx(NS_SOCKET sock, Ns_SockProc *proc, void *arg, const char
  *----------------------------------------------------------------------
  */
 
-NS_EXTERN void
+void
 NsInitSockCallback(void)
 {
     static bool initialized = NS_FALSE;
@@ -466,13 +466,13 @@ SockCallbackThread(void *UNUSED(arg))
                 ++nfds;
 
                 if (cbPtr->timeout.sec != 0 || cbPtr->timeout.usec != 0) {
-                    long to = diff.sec * -1000 + diff.usec / 1000 + 1;
+                    time_t to = diff.sec * -1000 + diff.usec / 1000 + 1;
 
                     if (to < pollTimeout)  {
                         /*
                          * Reduce poll timeout to smaller value.
                          */
-                        pollTimeout = to;
+                        pollTimeout = (long)to;
                     }
                 }
             }
@@ -504,7 +504,7 @@ SockCallbackThread(void *UNUSED(arg))
             /*
              * Execute any ready callbacks.
              */
-            for (hPtr = Tcl_FirstHashEntry(&activeCallbacks, &search); n > 0 && hPtr != NULL;
+            for (hPtr = Tcl_FirstHashEntry(&activeCallbacks, &search); hPtr != NULL;
                  hPtr = Tcl_NextHashEntry(&search)) {
                 cbPtr = Tcl_GetHashValue(hPtr);
                 for (i = 0; i < Ns_NrElements(when); ++i) {
@@ -513,7 +513,7 @@ SockCallbackThread(void *UNUSED(arg))
                         /*
                          * Call the Sock_Proc with the SockState flag
                          * combination from when[i]. This is actually
-                         * the only place, where a Ns_SockProc is called
+                         * the only place, where an Ns_SockProc is called
                          * with a flag combination in the last
                          * argument. If this would not be the case, we
                          * could set the type of the last parameter of
@@ -550,6 +550,7 @@ SockCallbackThread(void *UNUSED(arg))
         ns_free(Tcl_GetHashValue(hPtr));
     }
     Tcl_DeleteHashTable(&activeCallbacks);
+    ns_free(pfds);
 
     Ns_Log(Notice, "socks: shutdown complete");
 

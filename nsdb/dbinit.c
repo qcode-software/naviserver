@@ -60,15 +60,15 @@ typedef struct Pool {
     int              nhandles;
     struct Handle   *firstPtr;
     struct Handle   *lastPtr;
-    bool             fVerboseError;
-    time_t           maxidle;
-    time_t           maxopen;
-    int              stale_on_close;
+    Ns_Time          maxidle;
+    Ns_Time          maxopen;
     Tcl_WideInt      statementCount;
     Tcl_WideInt      getHandleCount;
     Ns_Time          waitTime;
     Ns_Time          sqlTime;
     Ns_Time          minDuration;
+    int              stale_on_close;
+    bool             fVerboseError;
 }  Pool;
 
 /*
@@ -290,9 +290,9 @@ Ns_DbPoolAllowable(const char *server, const char *pool)
 void
 Ns_DbPoolPutHandle(Ns_DbHandle *handle)
 {
-    Handle	*handlePtr;
-    Pool	*poolPtr;
-    time_t       now;
+    Handle *handlePtr;
+    Pool   *poolPtr;
+    time_t  now;
 
     NS_NONNULL_ASSERT(handle != NULL);
 
@@ -767,14 +767,16 @@ Ns_DbPoolStats(Tcl_Interp *interp)
              *  Tcl_ListObjAppendElement(interp, valuesObj, Ns_TclNewTimeObj(&poolPtr->waitTime));
             */
             if (likely(result == TCL_OK)) {
-                len = snprintf(buf, sizeof(buf), "%" PRId64 ".%06ld", (int64_t) poolPtr->waitTime.sec, poolPtr->waitTime.usec);
+                len = snprintf(buf, sizeof(buf), NS_TIME_FMT,
+                               (int64_t)poolPtr->waitTime.sec, poolPtr->waitTime.usec);
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj(buf, len));
             }
             if (likely(result == TCL_OK)) {
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj("sqltime", 7));
             }
             if (likely(result == TCL_OK)) {
-                len = snprintf(buf, sizeof(buf), "%" PRId64 ".%06ld", (int64_t) poolPtr->sqlTime.sec, poolPtr->sqlTime.usec);
+                len = snprintf(buf, sizeof(buf), NS_TIME_FMT,
+                               (int64_t)poolPtr->sqlTime.sec, poolPtr->sqlTime.usec);
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj(buf, len));
             }
             if (likely(result == TCL_OK)) {
@@ -1000,7 +1002,7 @@ NsDbLogSql(const Ns_Time *startTime, const Ns_DbHandle *handle, const char *sql)
         }
     } else {
         /*
-         * No exception log entries, if SQL debug is enabled and runtime
+         * No exception log entries, if SQL debug is enabled and run time
          * is above threshold.
          */
         Ns_Time endTime, diffTime;
@@ -1013,7 +1015,7 @@ NsDbLogSql(const Ns_Time *startTime, const Ns_DbHandle *handle, const char *sql)
             long delta = Ns_DiffTime(&poolPtr->minDuration, &diffTime, NULL);
 
             if (delta < 1) {
-                Ns_Log(Ns_LogSqlDebug, "pool %s duration %" PRId64 ".%06ld secs: '%s'",
+                Ns_Log(Ns_LogSqlDebug, "pool %s duration " NS_TIME_FMT " secs: '%s'",
                        handle->poolname, (int64_t)diffTime.sec, diffTime.usec, sql);
             }
         }
@@ -1156,16 +1158,16 @@ IsStale(const Handle *handlePtr, time_t now)
     if (handlePtr->connected) {
         time_t    minAccess, minOpen;
 
-        minAccess = now - handlePtr->poolPtr->maxidle;
-        minOpen   = now - handlePtr->poolPtr->maxopen;
-        if ((handlePtr->poolPtr->maxidle > 0 && handlePtr->atime < minAccess) ||
-            (handlePtr->poolPtr->maxopen > 0 && (handlePtr->otime < minOpen)) ||
+        minAccess = now - handlePtr->poolPtr->maxidle.sec;
+        minOpen   = now - handlePtr->poolPtr->maxopen.sec;
+        if ((handlePtr->poolPtr->maxidle.sec > 0 && handlePtr->atime < minAccess) ||
+            (handlePtr->poolPtr->maxopen.sec > 0 && (handlePtr->otime < minOpen)) ||
             (handlePtr->stale) ||
             (handlePtr->poolPtr->stale_on_close > handlePtr->stale_on_close)) {
 
             Ns_Log(Notice, "nsdb: closing %s handle in pool '%s'",
-                   (handlePtr->poolPtr->maxidle > 0 && handlePtr->atime < minAccess) ? "idle"
-                   : (handlePtr->poolPtr->maxopen > 0 && (handlePtr->otime < minOpen) ? "old"
+                   (handlePtr->poolPtr->maxidle.sec > 0 && handlePtr->atime < minAccess) ? "idle"
+                   : (handlePtr->poolPtr->maxopen.sec > 0 && (handlePtr->otime < minOpen) ? "old"
                       : "stale"),
                    handlePtr->poolname);
 
@@ -1293,6 +1295,7 @@ CreatePool(const char *pool, const char *path, const char *driver)
 {
     Pool            *poolPtr;
     struct DbDriver *driverPtr;
+    Ns_Time          checkinterval;
 
     NS_NONNULL_ASSERT(pool != NULL);
     NS_NONNULL_ASSERT(path != NULL);
@@ -1309,7 +1312,7 @@ CreatePool(const char *pool, const char *path, const char *driver)
 
     } else {
         int          i;
-        const char  *source, *minDurationString;
+        const char  *source;
 
         /*
          * Load the configured values.
@@ -1337,18 +1340,26 @@ CreatePool(const char *pool, const char *path, const char *driver)
         poolPtr->stale_on_close = 0;
         poolPtr->fVerboseError = Ns_ConfigBool(path, "logsqlerrors", NS_FALSE);
         poolPtr->nhandles = Ns_ConfigIntRange(path, "connections", 2, 0, INT_MAX);
-        poolPtr->maxidle = Ns_ConfigIntRange(path, "maxidle", 600, 0, INT_MAX);
-        poolPtr->maxopen = Ns_ConfigIntRange(path, "maxopen", 3600, 0, INT_MAX);
-        minDurationString = Ns_ConfigGetValue(path, "logminduration");
-        if (minDurationString != NULL) {
-            if (Ns_GetTimeFromString(NULL, minDurationString, &poolPtr->minDuration) != TCL_OK) {
-                Ns_Log(Error, "dbinit: invalid LogMinDuration '%s' specified", minDurationString);
-            } else {
-                Ns_Log(Notice, "dbinit: set LogMinDuration for pool %s over %s to %" PRId64 ".%06ld",
-                       pool, minDurationString,
-                       (int64_t)poolPtr->minDuration.sec,
-                       poolPtr->minDuration.usec);
-            }
+
+        Ns_ConfigTimeUnitRange(path, "maxidle",
+                               "5m", 0, 0, INT_MAX, 0, &poolPtr->maxidle);
+        Ns_ConfigTimeUnitRange(path, "maxopen",
+                               "60m", 0, 0, INT_MAX, 0, &poolPtr->maxopen);
+        if (poolPtr->maxidle.usec != 0) {
+            Ns_Log(Warning, "maxidle is implemented based on seconds granularity. "
+                   "Fractions of seconds are ignored");
+        }
+        if (poolPtr->maxopen.usec != 0) {
+            Ns_Log(Warning, "maxopen is implemented based on seconds granularity. "
+                   "Fractions of seconds are ignored");
+        }
+
+        Ns_ConfigTimeUnitRange(path, "logminduration",
+                               "0ms", 0, 0, INT_MAX, 0, &poolPtr->minDuration);
+        if (poolPtr->minDuration.sec != 0 || poolPtr->minDuration.usec != 0) {
+            Ns_Log(Notice, "dbinit: set LogMinDuration for pool %s to " NS_TIME_FMT,
+                   pool, (int64_t)poolPtr->minDuration.sec,
+                   poolPtr->minDuration.usec);
         }
 
         /*
@@ -1385,8 +1396,11 @@ CreatePool(const char *pool, const char *path, const char *driver)
             handlePtr->poolname = pool;
             ReturnHandle(handlePtr);
         }
-        (void) Ns_ScheduleProc(CheckPool, poolPtr, 0,
-                               Ns_ConfigIntRange(path, "checkinterval", 600, 0, INT_MAX));
+
+        Ns_ConfigTimeUnitRange(path, "checkinterval",
+                               "5m", 1, 0, INT_MAX, 0, &checkinterval);
+
+        (void) Ns_ScheduleProcEx(CheckPool, poolPtr, 0, &checkinterval, NULL);
     }
     return poolPtr;
 }
@@ -1605,8 +1619,8 @@ Ns_DbListMinDurations(Tcl_Interp *interp, const char *server)
 
             poolPtr = GetPool(pool);
             (void) Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(pool, -1));
-            len = snprintf(buffer, sizeof(buffer), "%" PRId64 ".%06ld",
-                           (int64_t) poolPtr->minDuration.sec, poolPtr->minDuration.usec);
+            len = snprintf(buffer, sizeof(buffer), NS_TIME_FMT,
+                           (int64_t)poolPtr->minDuration.sec, poolPtr->minDuration.usec);
             (void) Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(buffer, len));
         }
     }

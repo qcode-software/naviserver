@@ -179,6 +179,7 @@ NsStopServers(const Ns_Time *toPtr)
     hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
     while (hPtr != NULL) {
         servPtr = Tcl_GetHashValue(hPtr);
+        NsStopHttp(servPtr);
         NsStopServer(servPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -300,8 +301,8 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     Ns_MutexInit(&servPtr->pools.lock);
     Ns_MutexSetName2(&servPtr->pools.lock, "nsd:pools", server);
 
-    Ns_MutexInit(&servPtr->filter.lock);
-    Ns_MutexSetName2(&servPtr->filter.lock, "nsd:filter", server);
+    Ns_RWLockInit(&servPtr->filter.lock);
+    Ns_RWLockSetName2(&servPtr->filter.lock, "nsd:filter", server);
 
     Ns_MutexInit(&servPtr->tcl.synch.lock);
     Ns_MutexSetName2(&servPtr->tcl.synch.lock, "nsd:tcl:synch", server);
@@ -320,6 +321,8 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
         CreatePool(servPtr, Ns_SetKey(set, i));
     }
     NsTclInitServer(server);
+    NsInitHttp(servPtr);
+
     NsInitStaticModules(server);
     initServPtr = NULL;
 }
@@ -444,8 +447,14 @@ CreatePool(NsServer *servPtr, const char *pool)
         Ns_ConfigIntRange(path, "maxthreads", 10, 0, maxconns);
     poolPtr->threads.min =
         Ns_ConfigIntRange(path, "minthreads", 1, 1, poolPtr->threads.max);
-    poolPtr->threads.timeout =
-        Ns_ConfigIntRange(path, "threadtimeout", 120, 0, INT_MAX);
+
+    Ns_ConfigTimeUnitRange(path, "threadtimeout", "2m", 0, 0, INT_MAX, 0,
+                           &poolPtr->threads.timeout);
+
+    poolPtr->wqueue.rejectoverrun = Ns_ConfigBool(path, "rejectoverrun", NS_FALSE);
+    Ns_ConfigTimeUnitRange(path, "retryafter", "5s", 0, 0, INT_MAX, 0,
+                           &poolPtr->wqueue.retryafter);
+
     poolPtr->rate.defaultConnectionLimit =
         Ns_ConfigIntRange(path, "connectionratelimit", -1, -1, INT_MAX);
     poolPtr->rate.poolLimit =
@@ -480,7 +489,7 @@ CreatePool(NsServer *servPtr, const char *pool)
            poolPtr->wqueue.highwatermark);
 
     /*
-     * To allow one to vary maxthreads at runtime, allow potentially
+     * To allow one to vary maxthreads at run time, allow potentially
      * maxconns threads to be created. Otherwise, maxthreads would be
      * sufficient.
      */

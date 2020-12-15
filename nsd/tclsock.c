@@ -487,7 +487,7 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 {
     char          *lhost = NULL, *host = (char*)NS_EMPTY_STRING;
     unsigned short lport = 0u, port = 0u;
-    int            nonblock = 0, async = 0, msec = -1, result;
+    int            nonblock = 0, async = 0, result;
     Ns_Time       *timeoutPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
@@ -518,12 +518,13 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     } else {
         NS_SOCKET      sock;
         Ns_ReturnCode  status = NS_OK;
+        time_t         msec;
 
         /*
          * Provide error messages for invalid argument combinations.  Note that either
          *     -nonblock | -async
          * or
-         *     -timeout seconds?:microseconds?
+         *     -timeout time
          * are accepted as combinations.
          */
         if (nonblock != 0 || async != 0) {
@@ -535,7 +536,9 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
         }
 
         if (timeoutPtr != NULL) {
-            msec = (int)(timeoutPtr->sec * 1000 + timeoutPtr->usec / 1000);
+            msec = Ns_TimeToMilliseconds(timeoutPtr);
+        } else {
+            msec = -1;
         }
 
         /*
@@ -574,7 +577,7 @@ NsTclSockOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *
  * NsTclSelectObjCmd --
  *
- *      Imlements select: basically a Tcl version of select(2).
+ *      Implements select: basically a Tcl version of select(2).
  *
  * Results:
  *      Tcl result.
@@ -614,7 +617,15 @@ NsTclSelectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
         if (Ns_TclGetTimeFromObj(interp, objv[2], &timeout) != TCL_OK) {
             return TCL_ERROR;
         }
+#ifdef _WIN32
+        /*
+         * Unfortunately, windows defines tv_sec as long.
+         * https://docs.microsoft.com/en-us/windows/win32/api/winsock/ns-winsock-timeval
+         */
+        tv.tv_sec  = (long)timeout.sec;
+#else
         tv.tv_sec  = timeout.sec;
+#endif
         tv.tv_usec = (suseconds_t)timeout.usec;
         arg = 3;
     }
@@ -774,7 +785,7 @@ NsTclSocketPairObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int UNU
  * NsTclSockCallbackCmd --
  *
  *      Register a Tcl callback to be run when a certain state exists
- *      on a socket.
+ *      on a socket. Implements "ns_sockcallback".
  *
  * Results:
  *      Tcl result.

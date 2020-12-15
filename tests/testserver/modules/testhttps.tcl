@@ -46,12 +46,13 @@ namespace eval ::nstest {
         ns_parseargs {
             {-proto http}
             {-http 1.0}
-            -setheaders
-            -getheaders
-            -getmultiheaders
+            {-setheaders}
+            {-getheaders}
+            {-getmultiheaders}
             {-getbody 0}
             {-getbinary 0}
             {-verbose 0}
+            {-hostname}
             --
             method
             {url ""}
@@ -74,6 +75,10 @@ namespace eval ::nstest {
         set timeout 3
         set ::nstest::verbose $verbose
         set extraFlags {}
+
+        if {[info exists hostname]} {
+            lappend extraFlags -hostname $hostname
+        }
 
         set hdrs [ns_set create]
         if {[info exists setheaders]} {
@@ -117,7 +122,7 @@ namespace eval ::nstest {
             set binaryFlag ""
         }
 
-        set fullUrl $proto://\[$host\]:$port/$url
+        set fullUrl $proto://\[$host\]:$port/[string trimleft $url /]
         log url $fullUrl
         set result [ns_http run \
                         {*}$extraFlags \

@@ -38,13 +38,14 @@
 #ifdef _WIN32
 
 # include <process.h>
+# include <VersionHelpers.h>
 static void Set2Argv(Ns_DString *dsPtr, const Ns_Set *env);
 
 #else
 
 # define ERR_DUP        (-1)
-# define ERR_CHDIR	(-2)
-# define ERR_EXEC	(-3)
+# define ERR_CHDIR      (-2)
+# define ERR_EXEC       (-3)
 static int ExecProc(const char *exec, const char *dir, int fdin, int fdout,
                     char **argv, char **envp)
     NS_GNUC_NONNULL(1);
@@ -150,7 +151,7 @@ Ns_WaitForProcessStatus(pid_t pid, int *exitcodePtr, int *waitstatusPtr)
 {
     Ns_ReturnCode status = NS_OK;
 #ifdef _WIN32
-    HANDLE        process = (HANDLE) pid;
+    HANDLE        process = (HANDLE)pid;
     DWORD         exitcode = 0u;
 
     if ((WaitForSingleObject(process, INFINITE) == WAIT_FAILED) ||
@@ -169,7 +170,7 @@ Ns_WaitForProcessStatus(pid_t pid, int *exitcodePtr, int *waitstatusPtr)
             *exitcodePtr = exitcode;
         }
         if (nsconf.exec.checkexit == TRUE && exitcode != 0u) {
-            Ns_Log(Error, "exec: process %d exited with non-zero status: %d",
+            Ns_Log(Error, "exec: process %d exited with nonzero status: %d",
                    pid, exitcode);
             status = NS_ERROR;
         }
@@ -204,7 +205,7 @@ Ns_WaitForProcessStatus(pid_t pid, int *exitcodePtr, int *waitstatusPtr)
         int exitcode = WEXITSTATUS(waitstatus);
 
         if (exitcode != 0) {
-            Ns_Log(Warning, "process %d exited with non-zero exit code: %d",
+            Ns_Log(Warning, "process %d exited with nonzero exit code: %d",
                    pid, exitcode);
         }
         if (exitcodePtr != NULL) {
@@ -254,7 +255,7 @@ Ns_ExecArgblk(const char *exec, const char *dir, int fdin, int fdout,
     } else {
         int i;
         /*
-         * Produce an NULL terminated argv from a string containing '\0'
+         * Produce a NULL terminated argv from a string containing '\0'
          * characters as separators. We could make this dynamic, but the only
          * usage within the NaviServer source tree is nscgi, which uses always
          * exactly 2 or 0 arguments.
@@ -285,10 +286,10 @@ Ns_ExecArgblk(const char *exec, const char *dir, int fdin, int fdout,
         return NS_INVALID_PID;
     }
     oinfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-    if (GetVersionEx(&oinfo) == TRUE && oinfo.dwPlatformId != VER_PLATFORM_WIN32_NT) {
-        cmd = "command.com";
-    } else {
+    if (IsWindowsXPOrGreater()) {
         cmd = "cmd.exe";
+    } else {
+        cmd = "command.com";
     }
 
     /*
@@ -345,8 +346,7 @@ Ns_ExecArgblk(const char *exec, const char *dir, int fdin, int fdout,
                 Ns_DStringNAppend(&cds, " ", 1);
             }
         }
-        Ns_NormalizePath(&xds, exec);
-        s = xds.string;
+        s = Ns_NormalizePath(&xds, exec);
         while (*s != '\0') {
             if (*s == '/') {
                 *s = '\\';
@@ -366,14 +366,14 @@ Ns_ExecArgblk(const char *exec, const char *dir, int fdin, int fdout,
         exec != NULL ? exec : cds.string, NsWin32ErrMsg(GetLastError()));
         pid = NS_INVALID_PID;
     } else {
-        CloseHandle(pi.hThread);
-        pid = pi.hProcess;
+        (void)CloseHandle(pi.hThread);
+        pid = (pid_t)pi.hProcess;
     }
     Ns_DStringFree(&cds);
     Ns_DStringFree(&xds);
     Ns_DStringFree(&eds);
-    CloseHandle(si.hStdInput);
-    CloseHandle(si.hStdOutput);
+    (void)CloseHandle(si.hStdInput);
+    (void)CloseHandle(si.hStdOutput);
     return pid;
 #endif
 }
@@ -521,12 +521,12 @@ ExecProc(const char *exec, const char *dir, int fdin, int fdout, char **argv,
 
         ns_close(errpipe[0]);
         if (dir != NULL && chdir(dir) != 0) {
-            result = ERR_CHDIR;
+            //result = ERR_CHDIR;
         } else if ((fdin == 1 && (fdin = ns_dup(1)) < 0) ||
                     (fdout == 0 && (fdout = ns_dup(0)) < 0) ||
                     (fdin != 0 && ns_dup2(fdin, 0) < 0) ||
                     (fdout != 1 && ns_dup2(fdout, 1) < 0)) {
-            result = ERR_DUP;
+            //result = ERR_DUP;
         } else {
             if (fdin > 2) {
                 ns_close(fdin);
@@ -540,7 +540,7 @@ ExecProc(const char *exec, const char *dir, int fdin, int fdout, char **argv,
             (void)Ns_NoCloseOnExec(2);
             execve(exec, argv, envp);
             /* NB: Not reached on successful execve(). */
-            result = ERR_EXEC;
+            //result = ERR_EXEC;
         }
         //errnum = errno;
         {

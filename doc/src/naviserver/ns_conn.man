@@ -25,14 +25,28 @@ The subcommands of ns_conn are (in alphabetical order):
 Returns the compression formats accepted by the client.
 
 [call [cmd  "ns_conn addr"]]
-
 Returns the local IP address of the current connection.
 
 [call [cmd  "ns_conn auth"]]
+Returns the authorization header content as an [cmd ns_set]. For
+[term Basic] authentication there are reserved keys:
+Username and Password, these are the keys returned by
+[cmd "ns_conn authuser"] and [cmd "ns_conn authpassword"].
 
-Returns all authorization headers as a ns_set. For Basic authentication
-there are reserved keys: Username and Password, these are the keys returned by ns_conn authuser and
-ns_conn authpassword. This ns_set can be updated.
+[para] In case of [term Digest] authentication, all the fields
+provided are returned in the ns_set. For [term Bearer] authentication
+the base65 encoded Token is returned in the ns_set.
+
+[para] This ns_set can be updated.
+
+[para] For other authorization schemes, the
+[term Authorization] header field can be handled
+like all other request header fields:
+
+[example_begin]
+ set auth_header [lb]ns_set iget [lb]ns_conn headers[rb] Authorization ""[rb]
+[example_end]
+
 
 [call [cmd  "ns_conn authpassword"]]
 
@@ -40,7 +54,7 @@ Returns the decoded user password from the authorization data.
 
 [call [cmd  "ns_conn authuser"]]
 
-Returns the decoded user name from the authorization data.
+Returns the decoded username from the authorization data.
 
 
 
@@ -158,11 +172,21 @@ with a POST or appended to the URL in a GET request.
 upload widgets. Use [cmd ns_getform] instead.
 
 
+[call [cmd  "ns_conn headerlength"]]
+
+Returns the length of the header. Together with
+[cmd "ns_conn contentlength"] this can be used to
+determine the uncompressed request size,
+(not counting chunked overhead).
+
 [call [cmd  "ns_conn headers"]]
 
-Returns all the header data as an ns_set. The keys of the ns_set represent the field
-names. The case of the returned field names depends on the HeaderCase configuration
-parameter. By default, HeaderCase is "Preserve", which means case is preserved.
+Returns all the HTTP request header fields as an [cmd ns_set].
+The keys of the ns_set represent the field
+names. The case of the returned field names depends
+on the "HeaderCase" configuration
+parameter. By default, HeaderCase is "Preserve",
+which means case is preserved.
 
 [call [cmd  "ns_conn host"]]
 
@@ -199,16 +223,29 @@ Returns the HTTP method, e.g. GET.
 
 [call [cmd  "ns_conn outputheaders"]]
 
-Returns an ns_set containing the headers that will be sent out when a result is returned
-to the client. This ns_set can be manipulated like any other ns_set. You can also use this
-command to write to the set of output headers. For example: ns_set put [lb]ns_conn outputheaders[rb] key value.
+Returns an [cmd ns_set] containing the HTTP response header fields,
+i.e. the fields that will be sent out when a result is returned
+to the client. This ns_set can be manipulated like any other ns_set.
+You can also use this command to extend/update/clear to the
+set of HTTP response header fields.
+[para]
+For example:
+[example_begin]
+ ns_set put [lb]ns_conn outputheaders[rb] "Content-Disposition" "attachment;filename=export.xotcl"
+[example_end]
 
 
-[call [cmd  "ns_conn  peeraddr"]]
+[call [cmd  "ns_conn  peeraddr"] [opt [option "-source configured|direct|forwarded"]]]
 
-Returns the IP address of the client, i.e. the "other side" of the HTTP connection. The
-IP address is returned in the form of a string separated with periods (e.g., 155.164.59.75).
+Returns the IP address of the client, i.e. the "other side" of the
+HTTP connection. The IP address is returned in the form of a string
+separated with periods (e.g., 155.164.59.75). In reverse proxy mode
+the IP address is determined by the value forwarded by the reverse
+proxy server (via the x-fowarded-for header field).
 
+[para] The result can be influenced by the [option "-source"] to
+return the result as configured by the reverse proxy mode (default),
+or to return always the direct or forwarded IP address.
 
 [call [cmd  "ns_conn  peerport"]]
 
@@ -234,7 +271,8 @@ This is only set, when the NaviServer is used as a proxy server.
 
 [call [cmd  "ns_conn query"]]
 
-Returns any query data that was part of the HTTP request.
+Returns the query parameters of the HTTP request
+(transmitted after question mark via URL).
 
 
 [call [cmd  "ns_conn partialtimes"]]
@@ -274,7 +312,7 @@ Returns the socket id (integer fd) of current connection.
 
 [call [cmd  "ns_conn start"]]
 
-Returns the time the connection request started in "sec:usec" (a.k.a.
+Returns the time the connection request started in "sec:usec" (aka
 ns_time) format.
 
 
@@ -327,15 +365,12 @@ encoded response.
 [section EXAMPLES]
 
 [example_begin]
-
-if { [lb]string match /page/* [lb]ns_conn url[rb][rb] } {
+ if { [lb]string match /page/* [lb]ns_conn url[rb][rb] } {
   ns_returnnotfound
-}
-
+ }
 [example_end]
 
 [see_also ns_adp ns_getform ns_set ns_queryget ns_time]
-[keywords "server built-in" gzip connection]
+[keywords "server built-in" gzip connection reverseproxy]
 
 [manpage_end]
-

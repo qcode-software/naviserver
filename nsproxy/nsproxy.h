@@ -11,7 +11,7 @@
  *
  * The Original Code is AOLserver Code and related documentation
  * distributed by AOL.
- * 
+ *
  * The Initial Developer of the Original Code is America Online,
  * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
  * Inc. All Rights Reserved.
@@ -30,7 +30,7 @@
 /*
  * nsproxy.h --
  *
- *      Definitions for simple slave-process proxies.
+ *      Definitions for simple worker process proxies.
  */
 
 #ifndef NSPROXY_H
@@ -45,7 +45,7 @@
 
 /*
  * The following structure is allocated per-interp
- * to manage per-interp state of the module. This 
+ * to manage per-interp state of the module. This
  * is used from both nsproxymod.c and nsproxylib.c
  */
 
@@ -62,7 +62,7 @@ typedef struct InterpData {
 NS_EXTERN void Nsproxy_LibInit (void);
 NS_EXTERN int Nsproxy_Init(Tcl_Interp *interp) NS_GNUC_NONNULL(1);
 
-NS_EXTERN int Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init);
+NS_EXTERN int Ns_ProxyMain(int argc, char *const*argv, Tcl_AppInitProc *init);
 NS_EXTERN int Ns_ProxyTclInit(Tcl_Interp *interp);
 
 NS_EXTERN Ns_TclTraceProc  Ns_ProxyCleanup;
@@ -74,10 +74,20 @@ NS_EXTERN Ns_TclTraceProc  Ns_ProxyCleanup;
 
 typedef void* PROXY;
 
-NS_EXTERN int  Ns_ProxyGet  (Tcl_Interp *interp, const char *poolName, PROXY *handlePtr,
-                             int ms);
-NS_EXTERN int  Ns_ProxyEval (Tcl_Interp *interp, PROXY handle, const char *script,
-                             int ms);
-NS_EXTERN void Ns_ProxyPut  (PROXY handle);
+NS_EXTERN int  Ns_ProxyGet(Tcl_Interp *interp, const char *poolName, PROXY *handlePtr,
+                           Ns_Time *timePtr);
+NS_EXTERN int  Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, const char *script,
+                            const Ns_Time *timeoutPtr);
+NS_EXTERN void Ns_ProxyPut(PROXY handle);
 
 #endif /* NSPROXY_H */
+
+
+/*
+ * Local Variables:
+ * mode: c
+ * c-basic-offset: 4
+ * fill-column: 78
+ * indent-tabs-mode: nil
+ * End:
+ */

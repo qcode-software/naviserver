@@ -41,8 +41,8 @@ static bool TclX_IsNullObj(Tcl_Obj *objPtr) NS_GNUC_NONNULL(1);
 #define FALSE 0
 
 
-#define ckbinstrdup(a,b) \
-  ((char *)memcpy(ckalloc((unsigned int)((b)+1)),(a),(size_t)((b)+1)))
+#define ckbinstrdup(a, b) \
+  ((char *)memcpy(ckalloc((unsigned int)((b)+1)), (a), (size_t)((b)+1)))
 
 /*
  * listType is used in TclX_IsNullObj() in read-only mode
@@ -52,7 +52,7 @@ static const Tcl_ObjType *listType;
 
 /*
  * This is called once from InitInterp() call in tclinit.c
- * for first-time initialization of special Tcl objects.
+ * for first-time initialization of special Tcl_Objs.
  */
 void NsTclInitKeylistType(void)
 {
@@ -305,7 +305,7 @@ Tcl_GetKeyedListField(Tcl_Interp *interp, const char *fieldName,
  *    recursively process sub-field names separated by `.'.
  *  - fieldValue (I) - The value to set for the field.
  *  - keyedList (I) - The keyed list to set a field value in, may be
- *    an NULL or an empty list to create a new keyed list.
+ *    a NULL or an empty list to create a new keyed list.
  * Returns:
  *   A pointer to a dynamically allocated string, or
  *   NULL if an error occurred.
@@ -390,7 +390,7 @@ Tcl_DeleteKeyedListField(Tcl_Interp *interp, const char *fieldName, const char *
 /*
  * Keyed lists are stored as arrays recursively defined objects.  The data
  * portion of a keyed list entry is a Tcl_Obj which may be a keyed list object
- * or any other Tcl object.  Since determine the structure of a keyed list is
+ * or any other Tcl_Obj.  Since determine the structure of a keyed list is
  * lazy (you don't know if an element is data or another keyed list) until it
  * is accessed, the object can be transformed into a keyed list from a Tcl
  * string or list.
@@ -480,7 +480,7 @@ static Tcl_SetFromAnyProc      SetKeyedListFromAny;
 /*
  * Type definition.
  */
-static Tcl_ObjType keyedListType = {
+static const Tcl_ObjType keyedListType = {
     "keyedList",              /* name */
     FreeKeyedListInternalRep, /* freeIntRepProc */
     DupKeyedListInternalRep,  /* dupIntRepProc */
