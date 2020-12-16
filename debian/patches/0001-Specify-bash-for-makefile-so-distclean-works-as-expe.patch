@@ -7,7 +7,7 @@ Subject: Specify bash for makefile so distclean works as expected
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/Makefile b/Makefile
-index 4de6c59..e910d78 100644
+index c161f18..e90535d 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -28,7 +28,7 @@

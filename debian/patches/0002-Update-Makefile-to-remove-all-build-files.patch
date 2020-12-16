@@ -1,0 +1,23 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Wed, 16 Dec 2020 09:22:00 +0000
+Subject: Update Makefile to remove all build files
+
+---
+ Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index e90535d..cbb2e89 100644
+--- a/Makefile
++++ b/Makefile
+@@ -292,8 +292,8 @@ clean-bak: clean
+ 
+ distclean: clean
+ 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
+-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
++	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1,nsconfig.h,nsversion.h} \
++	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl naviserver.rdf version_include.man
+ 
+ dist: clean
+ 	$(RM) naviserver-$(NS_PATCH_LEVEL)
