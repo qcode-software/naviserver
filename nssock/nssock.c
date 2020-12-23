@@ -36,6 +36,7 @@
 
 #include "ns.h"
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
 
 
@@ -58,7 +59,7 @@ static Ns_DriverKeepProc Keep;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
-static void SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
+static void SetNodelay(const Ns_Driver *driver, NS_SOCKET sock)
     NS_GNUC_NONNULL(1);
 
 
@@ -118,7 +119,7 @@ Ns_ModuleInit(const char *server, const char *module)
  *
  * SockListen --
  *
- *      Open a listening TCP socket in non-blocking mode.
+ *      Open a listening TCP socket in nonblocking mode.
  *
  * Results:
  *      The open socket or NS_INVALID_SOCKET on error.
@@ -134,13 +135,13 @@ SockListen(Ns_Driver *driver, const char *address, unsigned short port, int back
 {
     NS_SOCKET sock;
 
-    sock = Ns_SockListenEx((char*)address, port, backlog, reuseport);
+    sock = Ns_SockListenEx(address, port, backlog, reuseport);
     if (sock != NS_INVALID_SOCKET) {
         Config *cfg = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
         if (cfg->deferaccept != 0) {
-            Ns_SockSetDeferAccept(sock, driver->recvwait);
+            Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
         }
     }
     return sock;
@@ -152,7 +153,7 @@ SockListen(Ns_Driver *driver, const char *address, unsigned short port, int back
  *
  * SockAccept --
  *
- *      Accept a new TCP socket in non-blocking mode.
+ *      Accept a new TCP socket in nonblocking mode.
  *
  * Results:
  *      NS_DRIVER_ACCEPT       - socket accepted
@@ -182,7 +183,7 @@ SockAccept(Ns_Sock *sock, NS_SOCKET listensock,
          * the send low watermark to 1 fixes this problem.
          */
         int value = 1;
-        setsockopt(sock->sock, SOL_SOCKET,SO_SNDLOWAT, &value, sizeof(value));
+        setsockopt(sock->sock, SOL_SOCKET, SO_SNDLOWAT, &value, sizeof(value));
 #endif
         (void)Ns_SockSetNonBlocking(sock->sock);
         SetNodelay(sock->driver, sock->sock);
@@ -200,7 +201,15 @@ SockAccept(Ns_Sock *sock, NS_SOCKET listensock,
  *      Receive data into given buffers.
  *
  * Results:
- *      Total number of bytes received or -1 on error or timeout.
+ *      Total number of bytes received or -1 on error, EOF or timeout.
+ *      The member "recvSockState" of Ns_Sock with have the following
+ *      potential SockState values:
+ *          success:  NS_SOCK_READ
+ *          eof:      NS_SOCK_DONE
+ *          again:    NS_SOCK_AGAIN
+ *          error:    NS_SOCK_EXCEPTION
+ *          timeout:  NS_SOCK_TIMEOUT
+ *          not used: NS_SOCK_NONE
  *
  * Side effects:
  *      May block once for driver recvwait timeout seconds if no data
@@ -213,21 +222,7 @@ static ssize_t
 SockRecv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
          Ns_Time *timeoutPtr, unsigned int flags)
 {
-    ssize_t n;
-
-    n = Ns_SockRecvBufs(sock->sock, bufs, nbufs, timeoutPtr, flags);
-    if (n == 0) {
-        /*
-         * n == 0 this means usually eof (peer closed connection), return
-         * value of 0 means in the driver SOCK_MORE. In order to cause a close
-         * of the socket, return -1, but clear the errno. This might not be
-         * the cleanest solution, but lets us to perform a proper close
-         * operation without logging an error.
-         */
-        errno = 0;
-        n = -1;
-    }
-    return n;
+    return Ns_SockRecvBufs(sock, bufs, nbufs, timeoutPtr, flags);
 }
 
 
@@ -257,43 +252,10 @@ SockSend(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
 
     decork = Ns_SockCork(sock, NS_TRUE);
 
-    {
-#ifdef _WIN32
-        DWORD bytesSent;
-        int   rc;
-
-        rc = WSASend(sock->sock, (LPWSABUF)bufs, nbufs, &bytesSent, flags,
-                     NULL, NULL);
-        if (rc == -1) {
-            if (GetLastError() == WSAEWOULDBLOCK) {
-                sent = 0;
-            } else {
-                sent = -1;
-            }
-        } else {
-            sent = (ssize_t)bytesSent;
-        }
-#else
-        struct msghdr msg;
-
-        memset(&msg, 0, sizeof(msg));
-        msg.msg_iov = (struct iovec *)bufs;
-        msg.msg_iovlen = (NS_MSG_IOVLEN_T)nbufs;
-        sent = sendmsg(sock->sock, &msg, (int)flags);
-        if (sent == -1) {
-            if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-               sent = 0;
-            }
-        }
-#endif
-    }
+    sent = Ns_SockSendBufs2(sock->sock, bufs, nbufs, flags);
 
     if (decork) {
         Ns_SockCork(sock, NS_FALSE);
-    }
-
-    if (sent == -1) {
-        Ns_Log(Debug, "SockSend: %s", ns_sockstrerror(ns_sockerrno));
     }
 
     return sent;
@@ -321,9 +283,9 @@ SockSend(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
 
 static ssize_t
 SendFile(Ns_Sock *sock, Ns_FileVec *bufs, int nbufs,
-         Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
+         Ns_Time *UNUSED(timeoutPtr), unsigned int flags)
 {
-    return Ns_SockSendFileBufs(sock, bufs, nbufs);
+    return Ns_SockSendFileBufs(sock, bufs, nbufs, NS_DRIVER_CAN_USE_SENDFILE|flags);
 }
 
 
@@ -379,7 +341,7 @@ SockClose(Ns_Sock *sock)
 
 
 static void
-SetNodelay(Ns_Driver *driver, NS_SOCKET sock)
+SetNodelay(const Ns_Driver *driver, NS_SOCKET sock)
 {
 #ifdef TCP_NODELAY
     Config *cfg;

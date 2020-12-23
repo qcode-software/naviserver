@@ -273,7 +273,7 @@ PrebindCloseSockets(const char *proto, struct sockaddr *saPtr, struct Prebind *p
         if (sock != NS_INVALID_SOCKET) {
             count ++;
             Ns_Log(Debug, "prebind closing %s socket %d\n", proto, sock);
-            ns_sockclose(sock);
+            (void)ns_sockclose(sock);
         }
     }
     ns_free(pPtr);
@@ -328,7 +328,7 @@ Ns_SockListenEx(const char *address, unsigned short port, int backlog, bool reus
              */
             ns_sockerrno_t err = ns_sockerrno;
 
-            ns_sockclose(sock);
+            (void)ns_sockclose(sock);
             errno = err;
             sock = NS_INVALID_SOCKET;
             Ns_SetSockErrno(err);
@@ -518,7 +518,7 @@ Ns_SockListenUnix(const char *path, int backlog, unsigned short mode)
          */
         ns_sockerrno_t err = ns_sockerrno;
 
-        ns_sockclose(sock);
+        (void)ns_sockclose(sock);
         errno = err;
         sock = NS_INVALID_SOCKET;
         Ns_SetSockErrno(err);
@@ -563,13 +563,14 @@ Ns_SockBindUdp(const struct sockaddr *saPtr, bool reusePort)
 
     sock = (NS_SOCKET)socket((int)saPtr->sa_family, SOCK_DGRAM, 0);
 
-    if (sock == NS_INVALID_SOCKET
-        || setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&n, (socklen_t)sizeof(n)) == -1
-        || setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&n, (socklen_t)sizeof(n)) == -1
-        || bind(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) == -1) {
+    if (sock != NS_INVALID_SOCKET
+        && (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&n, (socklen_t)sizeof(n)) == -1
+            || setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (char*)&n, (socklen_t)sizeof(n)) == -1
+            || bind(sock, saPtr, Ns_SockaddrGetSockLen(saPtr)) == -1)
+        ) {
         ns_sockerrno_t err = ns_sockerrno;
 
-        ns_sockclose(sock);
+        (void)ns_sockclose(sock);
         sock = NS_INVALID_SOCKET;
         Ns_SetSockErrno(err);
     } else {
@@ -616,7 +617,7 @@ Ns_SockBindUnix(const char *path, int socktype, unsigned short mode)
     pathLength = strlen(path);
 
     if (pathLength >= sizeof(addr.sun_path)) {
-        Ns_Log(Error, "provided path exeeds maximum length: %s\n", path);
+        Ns_Log(Error, "provided path exceeds maximum length: %s\n", path);
         return NS_INVALID_SOCKET;
     }
 
@@ -627,15 +628,17 @@ Ns_SockBindUnix(const char *path, int socktype, unsigned short mode)
 
     sock = socket(AF_UNIX, socktype > 0 ? socktype : SOCK_STREAM, 0);
 
-    if (sock == NS_INVALID_SOCKET
-        || bind(sock, (struct sockaddr *) &addr, sizeof(addr)) == -1
-        || (mode && chmod(path, mode) == -1)) {
+    if (sock != NS_INVALID_SOCKET
+        && (bind(sock, (struct sockaddr *) &addr, sizeof(addr)) == -1
+            || (mode && chmod(path, mode) == -1))
+        ) {
         ns_sockerrno_t err = errno;
 
-        ns_sockclose(sock);
+        (void)ns_sockclose(sock);
         sock = NS_INVALID_SOCKET;
         Ns_SetSockErrno(err);
     }
+
     return sock;
 #endif /* _WIN32 */
 }
@@ -734,7 +737,7 @@ NsPreBind(const char *args, const char *file)
 
     /*
      * Check, if the bind options were provided via file. If so, parse
-     * and interprete it.
+     * and interpret it.
      */
     if (status == NS_OK && file != NULL) {
         Tcl_Channel chan = Tcl_OpenFileChannel(NULL, file, "r", 0);
@@ -828,7 +831,7 @@ NsClosePreBound(void)
         port = PTR2INT(Tcl_GetHashValue(hPtr));
         Ns_Log(Warning, "prebind: closed unused raw socket: %d = %d",
                port, sock);
-        ns_sockclose(sock);
+        (void)ns_sockclose(sock);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -845,7 +848,7 @@ NsClosePreBound(void)
         sock = PTR2NSSOCK(Tcl_GetHashValue(hPtr));
         Ns_Log(Warning, "prebind: closed unused Unix-domain socket: [%s] %d",
                addr, sock);
-        ns_sockclose(sock);
+        (void)ns_sockclose(sock);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -886,7 +889,7 @@ static Ns_ReturnCode
 PrebindSockets(const char *spec)
 {
     Tcl_HashEntry         *hPtr;
-    int                    isNew, sock;
+    int                    isNew = 0, sock;
     char                  *next, *str, *line, *lines;
     long                   l;
     Ns_ReturnCode          status = NS_OK;
@@ -1026,13 +1029,13 @@ PrebindSockets(const char *spec)
             while (count--) {
                 sock = Ns_SockBindRaw(IPPROTO_ICMP);
                 if (sock == NS_INVALID_SOCKET) {
-                    Ns_Log(Error, "prebind: bind error for icmp: %s",strerror(errno));
+                    Ns_Log(Error, "prebind: bind error for icmp: %s", strerror(errno));
                     continue;
                 }
                 hPtr = Tcl_CreateHashEntry(&preboundRaw, NSSOCK2PTR(sock), &isNew);
                 if (isNew == 0) {
                     Ns_Log(Error, "prebind: icmp: duplicate entry");
-                    ns_sockclose(sock);
+                    (void)ns_sockclose(sock);
                     continue;
                 }
                 Tcl_SetHashValue(hPtr, IPPROTO_ICMP);
@@ -1054,12 +1057,12 @@ PrebindSockets(const char *spec)
                 if (l > 0) {
                     mode = (unsigned short)l;
                 } else {
-                    Ns_Log(Error, "prebind: unix: ignore invalid mode value: %s",line);
+                    Ns_Log(Error, "prebind: unix: ignore invalid mode value: %s", line);
                 }
             }
             hPtr = Tcl_CreateHashEntry(&preboundUnix, (char *) line, &isNew);
             if (isNew == 0) {
-                Ns_Log(Error, "prebind: unix: duplicate entry: %s",line);
+                Ns_Log(Error, "prebind: unix: duplicate entry: %s", line);
                 continue;
             }
             sock = Ns_SockBindUnix(line, SOCK_STREAM, mode);
@@ -1133,7 +1136,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     memset(&msg, 0, sizeof(msg));
     msg.msg_iov = iov;
     msg.msg_iovlen = 4;
-    n = sendmsg(binderRequest[1], (struct msghdr *) &msg, 0);
+    n = sendmsg(binderRequest[1], &msg, 0);
     if (n != REQUEST_SIZE) {
         Ns_Log(Error, "Ns_SockBinderListen: sendmsg() failed: sent %" PRIdz " bytes, '%s'",
                n, strerror(errno));
@@ -1141,7 +1144,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     }
 
     /*
-     * Reveive reply.
+     * Revive reply.
      */
     iov[0].iov_base = (void*) &err;
     iov[0].iov_len = sizeof(int);
@@ -1155,7 +1158,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     msg.msg_accrights = (void*) &sock;
     msg.msg_accrightslen = sizeof(sock);
 #endif
-    n = recvmsg(binderResponse[0], (struct msghdr *) &msg, 0);
+    n = recvmsg(binderResponse[0], &msg, 0);
     if (n != RESPONSE_SIZE) {
         Ns_Log(Error, "Ns_SockBinderListen: recvmsg() failed: recv %" PRIdz " bytes, '%s'",
                n, strerror(errno));
@@ -1166,7 +1169,11 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
     {
       struct cmsghdr *c = CMSG_FIRSTHDR(&msg);
       if ((c != NULL) && c->cmsg_type == SCM_RIGHTS) {
-          int *ptr = (int*)CMSG_DATA(c);
+          int *ptr;
+          /*
+           * Use memcpy to avoid alignment problems.
+           */
+          memcpy(&ptr, CMSG_DATA(c), sizeof(int*));
           sock = *ptr;
       }
     }
@@ -1179,7 +1186,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
      */
 
     if (sock != NS_INVALID_SOCKET && Ns_CloseOnExec(sock) != NS_OK) {
-        ns_sockclose(sock);
+        (void)ns_sockclose(sock);
         sock = NS_INVALID_SOCKET;
     }
     if (err == 0) {
@@ -1201,7 +1208,7 @@ Ns_SockBinderListen(char type, const char *address, unsigned short port, int opt
  *
  * NsForkBinder --
  *
- *      Fork of the slave bind/listen process.  This routine is called
+ *      Fork of the bind/listen process.  This routine is called
  *      by main() when the server starts as root.
  *
  * Results:
@@ -1247,8 +1254,8 @@ NsForkBinder(void)
         if (pid < 0) {
             Ns_Fatal("NsForkBinder: fork() failed: '%s'", strerror(errno));
         } else if (pid == 0) {
-            ns_sockclose(binderRequest[1]);
-            ns_sockclose(binderResponse[0]);
+            (void)ns_sockclose(binderRequest[1]);
+            (void)ns_sockclose(binderResponse[0]);
             Binder();
         }
         exit(0);
@@ -1257,7 +1264,7 @@ NsForkBinder(void)
         Ns_Fatal("NsForkBinder: Ns_WaitForProcess(%d) failed: '%s'",
                  pid, strerror(errno));
     } else if (status != 0) {
-        Ns_Fatal("NsForkBinder: process %d exited with non-zero status: %d",
+        Ns_Fatal("NsForkBinder: process %d exited with nonzero status: %d",
                  pid, status);
     }
     binderRunning = NS_TRUE;
@@ -1287,10 +1294,10 @@ void
 NsStopBinder(void)
 {
     if (binderRunning) {
-        ns_sockclose(binderRequest[1]);
-        ns_sockclose(binderResponse[0]);
-        ns_sockclose(binderRequest[0]);
-        ns_sockclose(binderResponse[1]);
+        (void)ns_sockclose(binderRequest[1]);
+        (void)ns_sockclose(binderResponse[0]);
+        (void)ns_sockclose(binderRequest[0]);
+        (void)ns_sockclose(binderResponse[1]);
         binderRunning = NS_FALSE;
     }
 }
@@ -1301,7 +1308,7 @@ NsStopBinder(void)
  *
  * Binder --
  *
- *      Slave process bind/listen loop.
+ *      Child process bind/listen loop.
  *
  * Results:
  *      None.
@@ -1354,7 +1361,7 @@ Binder(void)
         type = '\0';
         err = 0;
         do {
-            n = recvmsg(binderRequest[0], (struct msghdr *) &msg, 0);
+            n = recvmsg(binderRequest[0], &msg, 0);
         } while (n == -1 && errno == NS_EINTR);
         if (n == 0) {
             break;
@@ -1364,10 +1371,10 @@ Binder(void)
         }
 
         /*
-         * NB: Due to a bug in Solaris the slave process must
+         * NB: Due to a bug in Solaris the child process must
          * call both bind() and listen() before returning the
          * socket.  All other Unix versions would actually allow
-         * just performing the bind() in the slave and allowing
+         * just performing the bind() in the child and allowing
          * the parent to perform the listen().
          */
         switch (type) {
@@ -1406,7 +1413,11 @@ Binder(void)
             c = CMSG_FIRSTHDR(&msg);
             c->cmsg_level = SOL_SOCKET;
             c->cmsg_type  = SCM_RIGHTS;
-            pfd = (int*)CMSG_DATA(c);
+            /*
+             * Use memcpy to avoid alignment problems.
+             */
+            memcpy(&pfd, CMSG_DATA(c), sizeof(int*));
+
             *pfd = sock;
             c->cmsg_len = CMSG_LEN(sizeof(int));
             msg.msg_controllen = c->cmsg_len;
@@ -1417,16 +1428,16 @@ Binder(void)
         }
 
         do {
-            n = sendmsg(binderResponse[1], (struct msghdr *) &msg, 0);
+            n = sendmsg(binderResponse[1], &msg, 0);
         } while (n == -1 && errno == NS_EINTR);
         if (n != RESPONSE_SIZE) {
             Ns_Fatal("binder: sendmsg() failed: sent %" PRIdz " bytes, '%s'", n, strerror(errno));
         }
         if (sock != -1) {
             /*
-             * Close the socket as it won't be needed in the slave.
+             * Close the socket as it won't be needed in the child.
              */
-            ns_sockclose(sock);
+            (void)ns_sockclose(sock);
         }
     }
     Ns_Log(Notice, "binder: stopped");

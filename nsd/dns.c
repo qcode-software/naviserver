@@ -81,8 +81,8 @@ static void LogError(char *func, int h_errnop);
 
 static Ns_Cache *hostCache;
 static Ns_Cache *addrCache;
-static int       ttl;       /* Time in seconds each entry can live in the cache. */
-static int       timeout;   /* Time in seconds to wait for concurrent update.  */
+static Ns_Time   ttl;       /* Time in seconds each entry can live in the cache. */
+static Ns_Time   timeout;   /* Time in seconds to wait for concurrent update.  */
 
 
 
@@ -111,9 +111,12 @@ NsConfigDNS(void)
         size_t maxSize = (size_t)Ns_ConfigMemUnitRange(path, "dnscachemaxsize", 1024 * 500,
                                                        0, INT_MAX);
         if (maxSize > 0u) {
-            timeout = Ns_ConfigIntRange(path, "dnswaittimeout",  5, 0, INT_MAX);
-            ttl = Ns_ConfigIntRange(path, "dnscachetimeout", 60, 0, INT_MAX);
-            ttl *= 60; /* NB: Config specifies minutes, seconds used internally. */
+            Ns_ConfigTimeUnitRange(path, "dnswaittimeout",
+                                   "5s", 0, 0, INT_MAX, 0,
+                                   &timeout);
+            Ns_ConfigTimeUnitRange(path, "dnscachetimeout",
+                                   "60m", 0, 0, INT_MAX, 0,
+                                   &ttl);
 
             hostCache = Ns_CacheCreateSz("ns:dnshost", TCL_STRING_KEYS,
                                          maxSize, ns_free);
@@ -193,7 +196,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, bo
         Ns_Entry   *entry;
 
         Ns_GetTime(&t);
-        Ns_IncrTime(&t, timeout, 0);
+        Ns_IncrTime(&t, timeout.sec, timeout.usec);
 
         Ns_CacheLock(cache);
         entry = Ns_CacheWaitCreateEntry(cache, key, &isNew, &t);
@@ -214,7 +217,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, bo
 
                     Ns_GetTime(&endTime);
                     (void)Ns_DiffTime(&endTime, &t, &diffTime);
-                    Ns_IncrTime(&endTime, ttl, 0);
+                    Ns_IncrTime(&endTime, ttl.sec, ttl.usec);
                     Ns_CacheSetValueExpires(entry, ns_strdup(ds.string),
                                             (size_t)ds.length, &endTime,
                                             (int)(diffTime.sec * 1000000 + diffTime.usec),
@@ -234,8 +237,8 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, bo
     if (success) {
         if (getProc == GetAddr && !all) {
             /*
-             * When "all" is not specified for an GetAddr, return just
-             * the first address.
+             * When "all" is not specified for a GetAddr() call,
+             * return just the first address.
              */
             const char *p = ds.string;
 
@@ -293,7 +296,24 @@ GetHost(Ns_DString *dsPtr, const char *addr)
                           buf, sizeof(buf),
                           NULL, 0, NI_NAMEREQD);
         if (err != 0) {
-            Ns_Log(Notice, "dns: getnameinfo failed for addr <%s>: %s", addr, gai_strerror(err));
+            switch (err) {
+#if defined(EAI_SYSTEM)
+            case EAI_SYSTEM:
+                Ns_Log(Warning, "dns: getnameinfo failed for addr <%s>: %s", addr,
+                       strerror(errno));
+                break;
+#endif
+            case EAI_NONAME:
+                    /*
+                     * EAI_NONAME: The name does not resolve for the
+                     * supplied arguments. No need to report this as
+                     * an error.
+                     */
+                break;
+            default:
+                Ns_Log(Warning, "dns: getnameinfo failed for addr <%s>: %s", addr,
+                       gai_strerror(err));
+            }
         } else {
             Ns_DStringAppend(dsPtr, buf);
             success = NS_TRUE;
@@ -318,7 +338,8 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     hints.ai_socktype = SOCK_STREAM;
 
     result = getaddrinfo(host, NULL, &hints, &res);
-    if (result == 0) {
+    switch (result) {
+    case 0:
         ptr = res;
         while (ptr != NULL) {
 
@@ -347,10 +368,24 @@ GetAddr(Ns_DString *dsPtr, const char *host)
             }
         }
         freeaddrinfo(res);
+        break;
 
-    } else if (result != EAI_NONAME) {
-        Ns_Log(Error, "dns: getaddrinfo failed for %s: %s", host,
+#if defined(EAI_SYSTEM)
+        case EAI_SYSTEM:
+            Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
+                   strerror(errno));
+            break;
+#endif
+    case EAI_NONAME:
+        /*
+         * EAI_NONAME: The name does not resolve for the supplied arguments
+         */
+        break;
+
+    default:
+        Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
                gai_strerror(result));
+        break;
     }
 
     return success;
@@ -408,8 +443,12 @@ GetHost(Ns_DString *dsPtr, const char *addr)
     if (result == 0) {
         Ns_DStringAppend(dsPtr, buf);
         status = NS_TRUE;
+    } else if (result == EAI_SYSTEM) {
+        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)",
+               strerror(errno), addr);
     } else if (result != EAI_NONAME) {
-        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)", gai_strerror(result), addr);
+        Ns_Log(Warning, "dns: getnameinfo failed: %s (%s)",
+               gai_strerror(result), addr);
     } else {
         /*
          * EAI_NONAME: The name does not resolve for the supplied arguments
@@ -516,8 +555,11 @@ GetAddr(Ns_DString *dsPtr, const char *host)
             ptr = ptr->ai_next;
         }
         freeaddrinfo(res);
+    } else if (result == EAI_SYSTEM) {
+        Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
+               strerror(errno));
     } else if (result != EAI_NONAME) {
-        Ns_Log(Error, "dns: getaddrinfo failed for %s: %s", host,
+        Ns_Log(Warning, "dns: getaddrinfo failed for %s: %s", host,
                gai_strerror(result));
     } else {
         /*
@@ -658,13 +700,12 @@ static void
 LogError(char *func, int h_errnop)
 {
     char        buf[100];
-    const char *h, *e;
+    const char *h, *e = NULL;
 
-    e = NULL;
     switch (h_errnop) {
     case HOST_NOT_FOUND:
         /* Log nothing. */
-        return;
+        h = NULL;
         break;
 
     case TRY_AGAIN:
@@ -682,7 +723,7 @@ LogError(char *func, int h_errnop)
 #ifdef NETDB_INTERNAL
     case NETDB_INTERNAL:
         h = "netdb internal error: ";
-        e = strerror(errno);
+        errorStr = strerror(errno);
         break;
 #endif
 
@@ -691,7 +732,10 @@ LogError(char *func, int h_errnop)
         h = buf;
     }
 
-    Ns_Log(Error, "dns: %s failed: %s%s", func, h, (e != 0) ? e : NS_EMPTY_STRING);
+    if (h != NULL) {
+        Ns_Log(Error, "dns: %s failed: %s%s", func, h,
+               (errorStr != NULL) ? errorStr : NS_EMPTY_STRING);
+    }
 }
 
 #endif

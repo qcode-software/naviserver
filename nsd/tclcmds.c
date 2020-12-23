@@ -59,6 +59,7 @@ static const Cmd basicCmds[] = {
     {"ns_absoluteurl",           NULL, NsTclAbsoluteUrlObjCmd},
     {"ns_addrbyhost",            NULL, NsTclGetAddrObjCmd},
     {"ns_after",                 NULL, NsTclAfterObjCmd},
+    {"ns_asynclogfile",          NULL, NsTclAsyncLogfileObjCmd},
     {"ns_atexit",                NULL, NsTclAtExitObjCmd},
     {"ns_atprestartup",          NULL, NsTclAtPreStartupObjCmd},
     {"ns_atshutdown",            NULL, NsTclAtShutdownObjCmd},
@@ -81,6 +82,7 @@ static const Cmd basicCmds[] = {
     {"ns_crypto::hmac",          NULL, NsTclCryptoHmacObjCmd},
     {"ns_crypto::md",            NULL, NsTclCryptoMdObjCmd},
     {"ns_crypto::randombytes",   NULL, NsTclCryptoRandomBytesObjCmd},
+    {"ns_crypto::scrypt",        NULL, NsTclCryptoScryptObjCmd},
     {"ns_encodingforcharset",    NULL, NsTclEncodingForCharsetObjCmd},
     {"ns_env",                   NULL, NsTclEnvObjCmd},
     {"ns_fastpath_cache_stats",  NULL, NsTclFastPathCacheStatsObjCmd},
@@ -114,6 +116,7 @@ static const Cmd basicCmds[] = {
     {"ns_normalizepath",         NULL, NsTclNormalizePathObjCmd},
     {"ns_pagepath",              NULL, NsTclPagePathObjCmd},
     {"ns_parseargs",             NULL, NsTclParseArgsObjCmd},
+    {"ns_parsefieldvalue",       NULL, NsTclParseFieldvalue},
     {"ns_parseheader",           NULL, NsTclParseHeaderObjCmd},
     {"ns_parsehttptime",         NULL, NsTclParseHttpTimeObjCmd},
     {"ns_parsequery",            NULL, NsTclParseQueryObjCmd},
@@ -187,7 +190,6 @@ static const Cmd servCmds[] = {
     {"ns_adp_exception",         NULL, NsTclAdpExceptionObjCmd},
     {"ns_adp_flush",             NULL, NsTclAdpFlushObjCmd},
     {"ns_adp_info",              NULL, NsTclAdpInfoObjCmd},
-    {"ns_adp_mime",              NULL, NsTclAdpMimeTypeObjCmd},
     {"ns_adp_mimetype",          NULL, NsTclAdpMimeTypeObjCmd},
     {"ns_adp_parse",             NULL, NsTclAdpParseObjCmd},
     {"ns_adp_puts",              NULL, NsTclAdpPutsObjCmd},
@@ -273,6 +275,7 @@ static const Cmd servCmds[] = {
     {"ns_setuser",               NULL, NsTclSetUserObjCmd},
     {"ns_shutdown",              NULL, NsTclShutdownObjCmd},
     {"ns_startcontent",          NULL, NsTclStartContentObjCmd},
+    {"ns_trim",                  NULL, NsTclTrimObjCmd},
     {"ns_unregister_op",         NULL, NsTclUnRegisterOpObjCmd},
     {"ns_unregister_url2file",   NULL, NsTclUnRegisterUrl2FileObjCmd},
     {"ns_upload_stats",          NULL, NsTclProgressObjCmd},
@@ -283,6 +286,7 @@ static const Cmd servCmds[] = {
     {"ns_writer",                NULL, NsTclWriterObjCmd},
     {"nsv_append",               NULL, NsTclNsvAppendObjCmd},
     {"nsv_array",                NULL, NsTclNsvArrayObjCmd},
+    {"nsv_dict",                 NULL, NsTclNsvDictObjCmd},
     {"nsv_bucket",               NULL, NsTclNsvBucketObjCmd},
     {"nsv_exists",               NULL, NsTclNsvExistsObjCmd},
     {"nsv_get",                  NULL, NsTclNsvGetObjCmd},
@@ -331,7 +335,7 @@ AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
 
     while (cmdPtr->name != NULL) {
         /*
-         * One has to provide wither an objProc or a proc.
+         * One has to provide either an objProc or a proc.
          */
         if (cmdPtr->objProc != NULL) {
             (void)Tcl_CreateObjCommand(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);

@@ -37,6 +37,11 @@
 #include "nsd.h"
 
 /*
+ * Static variables defined in this file.
+ */
+static Ns_ObjvValueRange posintRange0 = {0, INT_MAX};
+
+/*
  * Structure handling one registered channel for the [ns_chan] command
  */
 
@@ -171,20 +176,20 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, const char *chanId, int write, int *fdPtr)
 static int
 FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
 {
-    int           maxFiles, result;
+    int               maxFiles = 0, result;
+    Tcl_Obj          *fileObj = NULL;
+    Ns_ObjvValueRange range = {0, 1000};
+
+    Ns_ObjvSpec args[] = {
+        {"path",        Ns_ObjvObj, &fileObj,  NULL},
+        {"maxbackups",  Ns_ObjvInt, &maxFiles, &range},
+        {NULL, NULL, NULL, NULL}
+    };
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(cmd != NULL);
 
-    if (objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "file backupMax");
-        result = TCL_ERROR;
-
-    } else if (Tcl_GetIntFromObj(interp, objv[2], &maxFiles) != TCL_OK) {
-        result = TCL_ERROR;
-
-    } else if (maxFiles <= 0 || maxFiles > 1000) {
-        Ns_TclPrintfResult(interp, "invalid max %d: should be > 0 and <= 1000.", maxFiles);
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
@@ -192,15 +197,16 @@ FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
          * All parameters are ok.
          */
         Ns_ReturnCode status;
+        const char   *path = Tcl_GetString(fileObj);
 
         if (*cmd == 'p' /* "purge" */ ) {
-            status = Ns_PurgeFiles(Tcl_GetString(objv[1]), maxFiles);
+            status = Ns_PurgeFiles(path, maxFiles);
         } else /* must be "roll" */ {
-            status = Ns_RollFile(Tcl_GetString(objv[1]), maxFiles);
+            status = Ns_RollFile(path, maxFiles);
         }
         if (status != NS_OK) {
             Ns_TclPrintfResult(interp, "could not %s \"%s\": %s",
-                               cmd, Tcl_GetString(objv[1]), Tcl_PosixError(interp));
+                               cmd, path, Tcl_PosixError(interp));
             result = TCL_ERROR;
         } else {
             result = TCL_OK;
@@ -232,7 +238,7 @@ NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *      temporary filename using optionally a template as argument.
  *
  *      In general, the function mktemp() is not recommended, since
- *      there is a time gap between the generation of a file name and
+ *      there is a time gap between the generation of a filename and
  *      the generation of a file or directory with the name. This can
  *      result in race conditions or attacks. However, using this
  *      function is still better than home-brewed solutions for the
@@ -301,8 +307,8 @@ NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
         {NULL, NULL,  NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"pid",  Ns_ObjvInt, &pid,    NULL},
-        {"sig",  Ns_ObjvInt, &sig,    NULL},
+        {"pid",  Ns_ObjvInt, &pid, NULL},
+        {"sig",  Ns_ObjvInt, &sig, &posintRange0},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -386,28 +392,35 @@ NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 int
 NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    Tcl_Channel     chan;
-    int             nbytes = INT_MAX, result = TCL_OK;
-    char           *fileidString;
-    Ns_ObjvSpec     args[] = {
-        {"fileid", Ns_ObjvString, &fileidString, NULL},
-        {"nbytes", Ns_ObjvInt,    &nbytes, NULL},
-        {NULL, NULL, NULL, NULL}
-    };
+    Tcl_Channel chan = NULL;
+    Tcl_WideInt nbytes = -1;
+    int         result = TCL_OK;
 
-    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK
-        || NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
+    if (unlikely(objc < 2 || objc > 3)) {
+        Tcl_WrongNumArgs(interp, 1, objv, "fileid ?nbytes?");
         result = TCL_ERROR;
 
-    } else if (Ns_TclGetOpenChannel(interp, fileidString, 0, NS_TRUE, &chan) != TCL_OK) {
+    } else if (objc >= 2
+               && Ns_TclGetOpenChannel(interp, Tcl_GetString(objv[1]),
+                                       0, NS_TRUE, &chan) != TCL_OK) {
+        result = TCL_ERROR;
+    } else if (objc == 3
+               && Tcl_GetWideIntFromObj(interp, objv[2], &nbytes) != TCL_OK) {
+
+        result = TCL_ERROR;
+    } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
         result = TCL_ERROR;
 
-    } else  {
+    } else {
+
         /*
          * All parameters are ok.
          */
+
         const NsInterp *itPtr = clientData;
-        Ns_ReturnCode   status = Ns_ConnSendChannel(itPtr->conn, chan, (size_t)nbytes);
+        Ns_ReturnCode   status;
+
+        status = Ns_ConnSendChannel(itPtr->conn, chan, (ssize_t)nbytes);
 
         if (unlikely(status != NS_OK)) {
             Ns_TclPrintfResult(interp, "I/O failed");
@@ -437,20 +450,18 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 int
 NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char    *fileString;
-    off_t    length = 0;
-    int      result = TCL_OK;
-
+    char             *fileString;
+    int               length = 0, result = TCL_OK;
     Ns_ObjvSpec args[] = {
         {"file",      Ns_ObjvString, &fileString, NULL},
-        {"?length",   Ns_ObjvInt,    &length,  NULL},
+        {"?length",   Ns_ObjvInt,    &length, &posintRange0},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
-    } else if (truncate(fileString, length) != 0) {
+    } else if (truncate(fileString, (off_t)length) != 0) {
         Ns_TclPrintfResult(interp, "truncate (\"%s\", %s) failed: %s",
                            fileString,
                            length == 0 ? "0" : Tcl_GetString(objv[2]),
@@ -480,12 +491,11 @@ NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 int
 NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int         fd, result = TCL_OK;
-    off_t       length = 0;
-    char       *fileIdString;
+    int               fd, length = 0, result = TCL_OK;
+    char             *fileIdString;
     Ns_ObjvSpec args[] = {
         {"fileId",    Ns_ObjvString, &fileIdString, NULL},
-        {"?length",   Ns_ObjvInt,    &length,  NULL},
+        {"?length",   Ns_ObjvInt,    &length,       &posintRange0},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -495,7 +505,7 @@ NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
     } else if (Ns_TclGetOpenFd(interp, fileIdString, 1, &fd) != TCL_OK) {
         result = TCL_ERROR;
 
-    } else if (ftruncate(fd, length) != 0) {
+    } else if (ftruncate(fd, (off_t)length) != 0) {
         Ns_TclPrintfResult(interp, "ftruncate (\"%s\", %s) failed: %s",
                            fileIdString,
                            length == 0 ? "0" : Tcl_GetString(objv[2]),
@@ -942,7 +952,7 @@ SpliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
  *      None.
  *
  * Side effects:
- *      Channel is not accesible by Tcl scripts any more.
+ *      Channel is not accessible by Tcl scripts any more.
  *
  *----------------------------------------------------------------------
  */

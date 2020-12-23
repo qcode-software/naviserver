@@ -5,7 +5,6 @@ namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
 
-
 # rfc2396 unreserved URI characters, except for + which receives
 # special treatment by the HTTP URL scheme.
 set unreservedChars "-.!~*'()0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -16,7 +15,7 @@ test ns_urlencode-1.1.1 {basic syntax} -body {
 
 test ns_urlencode-1.1.2 {basic syntax} -body {
     ns_urlencode -part x y
-} -returnCodes error -result {bad option "x": must be query, path, or cookie}
+} -returnCodes error -result {bad option "x": must be query, path, cookie, or oauth1}
 
 test ns_urlencode-1.2.1 {basic syntax} -body {
     ns_urldecode
@@ -24,7 +23,7 @@ test ns_urlencode-1.2.1 {basic syntax} -body {
 
 test ns_urlencode-1.2.2 {basic syntax} -body {
     ns_urldecode -part x y
-} -returnCodes error -result {bad option "x": must be query, path, or cookie}
+} -returnCodes error -result {bad option "x": must be query, path, cookie, or oauth1}
 
 
 test ns_urlencode-2.1.1a {basic operation} -body {
@@ -33,7 +32,7 @@ test ns_urlencode-2.1.1a {basic operation} -body {
 
 test ns_urlencode-2.1.1b {basic operation} -body {
     ns_urlencode --
-} -returnCodes error -result {wrong # args: should be "ns_urlencode ?-charset charset? ?-part part? ?-uppercase? ?--? args"}
+} -returnCodes {error ok} -result {--}
 
 test ns_urlencode-2.1.1c {basic operation} -body {
     ns_urlencode -- --
@@ -41,7 +40,7 @@ test ns_urlencode-2.1.1c {basic operation} -body {
 
 test ns_urlencode-2.1.1d {basic operation} -body {
     ns_urldecode --
-} -returnCodes error -result {wrong # args: should be "ns_urldecode ?-charset charset? ?-part part? ?--? string"}
+} -returnCodes {error ok} -result {--}
 
 test ns_urlencode-2.1.1e {basic operation} -body {
     ns_urldecode -- --
@@ -217,64 +216,68 @@ if {[ns_config test listenport] ne ""} {
 
 test ns_urlencode-3.0 {test request with unencoded path segments} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
-        ns_return 200 text/plain [list [ns_conn url] [ns_conn urlv]]
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
     nstest::http -http 1.1 -getbody 1 GET /foo/bar.tcl
 } -cleanup {
     ns_unregister_op GET /foo/*
-} -result "200 {/foo/bar.tcl {foo bar.tcl}}"
+} -result {200 {URL /foo/bar.tcl URLV {foo bar.tcl}}}
 
 test ns_urlencode-3.1 {test request with unencoded path segments, 2 elements, ending with slash} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
-        ns_return 200 text/plain [list [ns_conn url] [ns_conn urlv]]
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
     nstest::http -http 1.1 -getbody 1 GET /foo/bar/
 } -cleanup {
     ns_unregister_op GET /foo/*
-} -result "200 {/foo/bar/ {foo bar}}"
+} -result {200 {URL /foo/bar/ URLV {foo bar}}}
 
-test ns_urlencode-3.2 {test request with unencoded path segments, 1 element ending with slash} -constraints {serverListen} -setup {
+test ns_urlencode-3.2 {
+    test request with unencoded path segments, 1 element ending with slash
+} -constraints {serverListen} -setup {
     ns_register_proc GET /foo* {
-        ns_return 200 text/plain [list [ns_conn url] [ns_conn urlv]]
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
     nstest::http -http 1.1 -getbody 1 GET /foo/
 } -cleanup {
     ns_unregister_op GET /foo*
-} -result "200 {/foo/ foo}"
+} -result {200 {URL /foo/ URLV foo}}
 
-test ns_urlencode-3.3 {test request with unencoded path segments, 1 element, no slash} -constraints {serverListen} -setup {
+test ns_urlencode-3.3 {
+    test request with unencoded path segments, 1 element, no slash
+} -constraints {serverListen} -setup {
     ns_register_proc GET /foo* {
-        ns_return 200 text/plain [list [ns_conn url] [ns_conn urlv]]
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
     nstest::http -http 1.1 -getbody 1 GET /foo
 } -cleanup {
     ns_unregister_op GET /foo*
-} -result "200 {/foo foo}"
+} -result {200 {URL /foo URLV foo}}
 
 
 test ns_urlencode-4.0 {test request with encoded path segments} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
-        ns_return 200 text/plain [list [ns_conn url] [ns_conn urlv]]
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
     nstest::http -http 1.1 -getbody 1 GET /foo/bar%20baz.tcl
 } -cleanup {
     ns_unregister_op GET /foo/*
-} -result "200 {{/foo/bar baz.tcl} {foo {bar baz.tcl}}}"
+} -result {200 {URL {/foo/bar baz.tcl} URLV {foo {bar baz.tcl}}}}
 
 test ns_urlencode-4.1 {test request with encoded path segments} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
-        ns_return 200 text/plain [list [ns_conn url] [ns_conn urlv]]
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
     nstest::http -http 1.1 -getbody 1 GET /foo/bar%2fbaz.tcl
 } -cleanup {
     ns_unregister_op GET /foo/*
-} -result "200 {/foo/bar/baz.tcl {foo bar/baz.tcl}}"
+} -result {200 {URL /foo/bar/baz.tcl URLV {foo bar/baz.tcl}}}
 
 
 
@@ -313,6 +316,41 @@ test ns_urlencode-5.2 {encode and unencode character sequence with percent codes
 } -cleanup {
     ns_unregister_op GET /encode-decode
 } -result "200 {/%20,'\\\".=+ /%2520%2c'%22.=+ 1}"
+
+test ns_urlencode-5.3.1 {encode and unencode character sequence with oauth1 encoding} -body {
+    set string {-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~}
+    set enc [ns_urlencode -part oauth1 $string]
+    string equal $enc $string
+} -cleanup {
+    unset string enc
+} -result "1"
+
+test ns_urlencode-5.3.2 {encode and unencode character sequence with oauth1 encoding} -body {
+    set string {-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~}
+    set enc [ns_urlencode -part oauth1 $string]
+    set dec [ns_urldecode -part oauth1 $enc]
+    string equal $enc $dec
+} -cleanup {
+    unset string enc dec
+} -result "1"
+
+test ns_urlencode-5.3.3 {encode and unencode character sequence with oauth1 encoding} -body {
+    ns_urldecode -part oauth1 a+b
+} -result "a+b"
+
+test ns_urlencode-5.3.4 {encode and unencode character sequence with oauth1 encoding} -body {
+    set unencoded {-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~}
+    set string ""
+    for {set i 1} {$i < 128} {incr i} {
+        set c [format %c $i]
+        if {[string first $c $unencoded] == -1} {append string $c}
+    }
+    # The reset must be a multiple of 2 chars, since everything must be encoded.
+    expr {[string length [ns_urlencode -part oauth1 $string]] % 3}
+} -cleanup {
+    unset string i c unencoded
+} -result 0
+
 
 
 test ns_urlencode-6.0 {security check: see, if we can sneek in a binary 0 to trick "string is integer"} -constraints {serverListen} -setup {

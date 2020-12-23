@@ -116,10 +116,10 @@ Ns_InfoServerVersion(void)
  *
  * Ns_InfoConfigFile --
  *
- *      Returns path to config file.
+ *      Returns path to configuration file.
  *
  * Results:
- *      Path to config file.
+ *      Path to configuration file.
  *
  * Side effects:
  *      None.
@@ -130,7 +130,7 @@ Ns_InfoServerVersion(void)
 const char *
 Ns_InfoConfigFile(void)
 {
-    return nsconf.config;
+    return nsconf.configFile;
 }
 
 
@@ -142,7 +142,7 @@ Ns_InfoConfigFile(void)
  *      Returns server's PID
  *
  * Results:
- *      PID (tread like pid_t)
+ *      PID (thread like pid_t)
  *
  * Side effects:
  *      None.
@@ -253,7 +253,9 @@ Ns_InfoPlatform(void)
 long
 Ns_InfoUptime(void)
 {
-    return (long)difftime(time(NULL), nsconf.boot_t);
+    double diff = difftime(time(NULL), nsconf.boot_t);
+
+    return (long)diff;
 }
 
 
@@ -296,7 +298,7 @@ Ns_InfoBootTime(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoHostname(void)
 {
     return nsconf.hostname;
@@ -320,7 +322,7 @@ Ns_InfoHostname(void)
  *----------------------------------------------------------------------
  */
 
-char *
+const char *
 Ns_InfoAddress(void)
 {
     return nsconf.address;
@@ -608,6 +610,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
 
     case ILocksIdx:
         Ns_MutexList(&ds);
+        Ns_RWLockList(&ds);
         Tcl_DStringResult(interp, &ds);
         break;
 
@@ -741,10 +744,10 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
                  * All following cases are deprecated.
                  */
 
-            case IPageDirIdx: /* fall through */
+            case IPageDirIdx: NS_FALL_THROUGH; /* fall through */
             case IPageRootIdx:
                 Ns_LogDeprecated(objv, 2, "ns_server ?-server s? pagedir", NULL);
-                NsPageRoot(&ds, itPtr->servPtr, NULL);
+                (void)NsPageRoot(&ds, itPtr->servPtr, NULL);
                 Tcl_DStringResult(interp, &ds);
                 break;
 
@@ -835,9 +838,9 @@ NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 
         Ns_DStringInit(&ds);
         if (moduleString != NULL) {
-            Ns_MakePath(&ds, lib, moduleString, (char *)0L);
+            (void)Ns_MakePath(&ds, lib, moduleString, (char *)0L);
         } else {
-            Ns_MakePath(&ds, lib, (char *)0L);
+            (void)Ns_MakePath(&ds, lib, (char *)0L);
         }
         Tcl_DStringResult(interp, &ds);
     }

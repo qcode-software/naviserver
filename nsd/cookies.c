@@ -463,7 +463,7 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value,
     } else if (maxage == TIME_T_MAX) {
         Ns_DStringAppend(&cookie, "; Expires=Fri, 01-Jan-2035 01:00:00 GMT");
     } else if (maxage > 0) {
-        Ns_DStringPrintf(&cookie, "; Max-Age=%ld", maxage);
+        Ns_DStringPrintf(&cookie, "; Max-Age=%" PRId64, (int64_t)maxage);
     } else {
         /*
          * maxage == 0, don't specify any expiry
@@ -490,6 +490,8 @@ Ns_ConnSetCookieEx(const Ns_Conn *conn, const char *name, const char *value,
         Ns_DStringAppend(&cookie, "; SameSite=Strict");
     } else if ((flags & NS_COOKIE_SAMESITE_LAX) != 0u) {
         Ns_DStringAppend(&cookie, "; SameSite=Lax");
+    } else if ((flags & NS_COOKIE_SAMESITE_NONE) != 0u) {
+        Ns_DStringAppend(&cookie, "; SameSite=None");
     }
 
 
@@ -573,8 +575,7 @@ Ns_ConnDeleteSecureCookie(const Ns_Conn *conn, const char *name,
  *----------------------------------------------------------------------
  */
 
-
-char *
+const char *
 Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
 {
     int idx;
@@ -613,9 +614,9 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     Ns_Conn       *conn;
     char          *name, *data, *domain = NULL, *path = NULL;
     int            secure = 0, scriptable = 0, discard = 0, replace = 0, result;
-    int            samesite = INTCHAR('n');
+    int            samesite = INTCHAR('I');
     Ns_Time       *expiresPtr = NULL;
-    Ns_ObjvTable   samesiteValues[] = {
+    static Ns_ObjvTable samesiteValues[] = {
         {"strict", UCHAR('s')},
         {"lax",    UCHAR('l')},
         {"none",   UCHAR('n')},
@@ -659,10 +660,12 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         if (replace != 0) {
             flags |= NS_COOKIE_REPLACE;
         }
-        if (samesite == INTCHAR('s')) {
+        if (samesite == INTCHAR('s') || samesite == INTCHAR('S')) {
             flags |= NS_COOKIE_SAMESITE_STRICT;
-        } else if (samesite == INTCHAR('l')) {
+        } else if (samesite == INTCHAR('l') || samesite == INTCHAR('L')) {
             flags |= NS_COOKIE_SAMESITE_LAX;
+        } else if (samesite == INTCHAR('n') || samesite == INTCHAR('N')) {
+            flags |= NS_COOKIE_SAMESITE_NONE;
         }
 
         /*

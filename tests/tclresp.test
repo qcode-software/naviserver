@@ -9,12 +9,16 @@ namespace import -force ::tcltest::*
 if {[ns_config test listenport]} {
     testConstraint serverListen true
 }
+#
+# Skip the nstest::http-0.9 tests under Windows.
+#
+testConstraint http09 [expr {$::tcl_platform(platform) ne "windows"}]
 
 
 
 test tclresp-1.1.1 {basic syntax} -body {
     ns_headers
-} -returnCodes error -result {wrong # args: should be "ns_headers ?-binary? ?--? status ?type? ?length?"}
+} -returnCodes error -result {wrong # args: should be "ns_headers ?-binary? ?--? status[100,599] ?type? ?length[0,2147483647]?"}
 
 test tclresp-1.1.2 {basic syntax} -body {
     ns_headers 200
@@ -22,7 +26,7 @@ test tclresp-1.1.2 {basic syntax} -body {
 
 test tclresp-1.2.1 {basic syntax} -body {
     ns_return
-} -returnCodes error -result {wrong # args: should be "ns_return ?-binary? status type data"}
+} -returnCodes error -result {wrong # args: should be "ns_return ?-binary? status[100,599] type data"}
 
 test tclresp-1.2.2 {basic syntax} -body {
     ns_return 200 text/plain x
@@ -30,7 +34,7 @@ test tclresp-1.2.2 {basic syntax} -body {
 
 test tclresp-1.3.1 {basic syntax} -body {
     ns_respond -x
-} -returnCodes error -result {wrong # args: should be "ns_respond ?-status status? ?-type type? ?-length length? ?-headers headers? ?-string string? ?-file file? ?-fileid fileid? ?-binary binary?"}
+} -returnCodes error -result {wrong # args: should be "ns_respond ?-status status[100,599]? ?-type type? ?-length length[0,2147483647]? ?-headers headers? ?-string string? ?-file file? ?-fileid fileid? ?-binary binary?"}
 
 test tclresp-1.3.2 {basic syntax} -body {
     ns_respond -string x
@@ -88,7 +92,7 @@ test tclresp-1.3.5-c {basic syntax connected} -constraints serverListen -setup {
 
 test tclresp-1.4.1 {basic syntax} -body {
     ns_returnfile
-} -returnCodes error -result {wrong # args: should be "ns_returnfile status type filename"}
+} -returnCodes error -result {wrong # args: should be "ns_returnfile status[100,599] type filename"}
 
 test tclresp-1.4.2 {basic syntax} -body {
     ns_returnfile 200 text/plain x
@@ -96,7 +100,7 @@ test tclresp-1.4.2 {basic syntax} -body {
 
 test tclresp-1.5.1 {basic syntax} -body {
     ns_returnfp
-} -returnCodes error -result {wrong # args: should be "ns_returnfp status type channel len"}
+} -returnCodes error -result {wrong # args: should be "ns_returnfp status[100,599] type channel length[0,2147483647]"}
 
 test tclresp-1.5.2 {basic syntax} -body {
     ns_returnfp 200 text/plain x 0
@@ -124,7 +128,7 @@ test tclresp-1.9.1 {basic syntax} -body {
 
 test tclresp-1.10.1 {basic syntax} -body {
     ns_returnerror
-} -returnCodes error -result {wrong # args: should be "ns_returnerror status message"}
+} -returnCodes error -result {wrong # args: should be "ns_returnerror status[100,599] message"}
 
 test tclresp-1.10.2 {basic syntax} -body {
     ns_returnerror 200 x
@@ -132,7 +136,7 @@ test tclresp-1.10.2 {basic syntax} -body {
 
 test tclresp-1.11.1 {basic syntax} -body {
     ns_returnnotice
-} -returnCodes error -result {wrong # args: should be "ns_returnnotice status title message"}
+} -returnCodes error -result {wrong # args: should be "ns_returnnotice status[100,599] title message"}
 
 test tclresp-1.11.2 {basic syntax} -body {
     ns_returnnotice 200 x y
@@ -156,13 +160,27 @@ test tclresp-1.13.2 {basic syntax} -body {
 
 test tclresp-1.14.1 {basic syntax} -body {
     ns_connsendfp
-} -returnCodes error -result {wrong # args: should be "ns_connsendfp channel len"}
+} -returnCodes error -result {wrong # args: should be "ns_connsendfp channel length[0,2147483647]"}
 
 test tclresp-1.14.2 {basic syntax} -body {
     ns_connsendfp x 0
 } -returnCodes error -result {no connection}
 
+test tclresp-1.15.1 {basic syntax} -body {
+    ns_writefp
+} -returnCodes error -result {wrong # args: should be "ns_writefp fileid ?nbytes?"}
 
+test tclresp-1.15.2 {basic syntax} -body {
+    ns_writefp junk
+} -returnCodes error -result {can not find channel named "junk"}
+
+test tclresp-1.15.3 {basic syntax} -body {
+    ns_writefp stdout
+} -returnCodes error -result {channel "stdout" not open for reading}
+
+test tclresp-1.15.4 {basic syntax} -body {
+    ns_writefp stdin x
+} -returnCodes error -result {expected integer but got "x"}
 
 #
 # The following tests various combinations of
@@ -177,9 +195,9 @@ test tclresp-1.14.2 {basic syntax} -body {
 # etc...
 #
 
-test tclresp-2.1 {ns_headers, status, http/1.0} -constraints serverListen -setup {
+test tclresp-2.1 {ns_headers, status, HTTP/1.0} -constraints serverListen -setup {
     ns_register_proc GET /tclresp {
-        ns_headers 999
+        ns_headers 599
         ns_write x
     }
 } -body {
@@ -188,9 +206,9 @@ test tclresp-2.1 {ns_headers, status, http/1.0} -constraints serverListen -setup
         GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
-} -result {999 {} close {} {} x}
+} -result {599 {} close {} {} x}
 
-test tclresp-2.2 {ns_headers, status, type, http/1.0} -constraints serverListen -setup {
+test tclresp-2.2 {ns_headers, status, type, HTTP/1.0} -constraints serverListen -setup {
     ns_register_proc GET /tclresp {
         ns_headers 200 text/plain
         ns_write x
@@ -203,20 +221,20 @@ test tclresp-2.2 {ns_headers, status, type, http/1.0} -constraints serverListen 
     ns_unregister_op GET /tclresp
 } -match glob -result {200 {text/plain; charset=*} close {} {} x}
 
-test tclresp-2.3 {ns_headers, status, type, length, http/1.0 keep-alive} -setup {
+test tclresp-2.3 {ns_headers, status, type, length, HTTP/1.0 keep-alive} -setup {
     ns_register_proc GET /tclresp {
         ns_headers 200 text/plain 9
         ns_write abcdefghi
     }
-} -body {
-    nstest::http -http 1.0 -setheaders {Connection keep-alive} \
+} -constraints http09 -body {
+    nstest::http-0.9 -http 1.0 -setheaders {Connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
 } -match glob -result {200 {text/plain; charset=*} keep-alive {} 9 abcdefghi}
 
-test tclresp-2.3.1 {ns_headers, status, type, length, http/1.0 close} -setup {
+test tclresp-2.3.1 {ns_headers, status, type, length, HTTP/1.0 close} -setup {
     ns_register_proc GET /tclresp {
         ns_headers 200 text/plain 9
         ns_write abcdefghi
@@ -229,28 +247,28 @@ test tclresp-2.3.1 {ns_headers, status, type, length, http/1.0 close} -setup {
     ns_unregister_op GET /tclresp
 } -match glob -result {200 {text/plain; charset=*} close {} 9 abcdefghi}
 
-test tclresp-2.4 {ns_headers, status, type, length, http/1.1} -setup {
+test tclresp-2.4 {ns_headers, status, type, length, HTTP/1.1} -setup {
     ns_register_proc GET /tclresp {
         ns_headers 200 text/plain 9
         ns_write abcde
         ns_write fghi
     }
-} -body {
-    nstest::http -http 1.1 -setheaders {Connection keep-alive} \
+} -constraints http09 -body {
+    nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
 } -match glob -result {200 {text/plain; charset=*} keep-alive {} 9 abcdefghi}
 
-test tclresp-2.5 {ns_headers, status, type, http/1.1} -constraints serverListen -setup {
+test tclresp-2.5 {ns_headers, status, type, HTTP/1.1} -constraints serverListen -setup {
     ns_register_proc GET /tclresp {
         ns_headers 200 text/plain
         ns_write abcde
         ns_write fghi
     }
-} -body {
-    nstest::http -http 1.1 -setheaders {Connection keep-alive} \
+} -constraints http09 -body {
+    nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
@@ -262,8 +280,6 @@ fghi
 0
 
 }}
-
-
 
 
 test tclresp-3.1 {ns_return} -constraints serverListen -setup {
@@ -428,7 +444,7 @@ test tclresp-5.3 {ns_returnfile fastpath cache collision} -constraints serverLis
 
 test tclresp-5.4 {ns_eval of proc with comment} -constraints serverListen -setup {
     #
-    # Define a cmd which create a tcl proc and contains a comment
+    # Define a cmd which create a Tcl proc and contains a comment
     #
     set cmd [list proc ::foo {} {
         # some comment
@@ -616,8 +632,8 @@ test tclresp-12.5 {
 
 test tclresp-13.1 {ns_write without headers} -setup {
     ns_register_proc GET /tclresp ns_write x
-} -body {
-    nstest::http -getbody 1 -getheaders {Content-Type} GET /tclresp
+} -constraints http09  -body {
+    nstest::http-0.9 -getbody 1 -getheaders {Content-Type} GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
 } -result {{} x}
@@ -627,11 +643,49 @@ test tclresp-13.2 {ns_write w/ manual headers} -setup {
         ns_write "HTTP/1.0 200 OK\r\nContent-Length: 1\r\n\r\n"
         ns_write x
     }
-} -body {
-    nstest::http -getbody 1 -getheaders {Content-Length} GET /tclresp
+} -constraints http09 -body {
+    nstest::http-0.9 -getbody 1 -getheaders {Content-Length} GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
 } -result {200 1 x}
+
+
+
+test tclresp-14.1 {ns_writefp Tcl channel, stream} -setup {
+    ns_register_proc GET /tclresp {
+        set file tclresp-14
+        file delete $file
+        set chan [open $file a+]
+        puts -nonewline $chan 01234
+        seek $chan 0
+        ns_headers -binary 200 application/octet-stream
+        ns_writefp $chan
+        close $chan
+        file delete $file
+    }
+} -body {
+    nstest::http -http 1.0 -getbody 1 GET /tclresp
+} -cleanup {
+    ns_unregister_op GET /tclresp
+} -result {200 01234}
+
+test tclresp-14.2 {ns_writefp Tcl channel, byte count} -setup {
+    ns_register_proc GET /tclresp {
+        set file tclresp-14
+        file delete $file
+        set chan [open $file a+]
+        puts -nonewline $chan 01234
+        seek $chan 0
+        ns_headers -binary 200 application/octet-stream 5
+        ns_writefp $chan 5
+        close $chan
+        file delete $file
+    }
+} -body {
+    nstest::http -http 1.0 -getbody 1 GET /tclresp
+} -cleanup {
+    ns_unregister_op GET /tclresp
+} -result {200 01234}
 
 #### ns_startcontent is deprecated
 # test tclresp-13.3 {ns_startcontent w/ manual headers} -setup {

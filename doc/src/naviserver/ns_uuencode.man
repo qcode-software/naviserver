@@ -6,9 +6,13 @@
 
 [description]
 
- This command performs a binary-to-text encoding on string.  The encoded string will
- be approximately 33% longer than the original.
+ This command performs a binary-to-text encoding on string.  The
+ encoded string will be approximately 33% longer than the original by
+ using he base64 encoding scheme. The command is kept
+ for backward compatibility, the command [cmd ns_base64encode]
+ should be used instead.
 
+[para]
  NOTE: This stype of encodeing is sometimes called "htuu". This
  command converts the specified argument to RFC 1113 printable
  encoding format. This technique is similar to the familiar Unix
@@ -19,20 +23,25 @@
 
 [list_begin definitions]
 
- [call [cmd ns_uuencode] [arg string]]
+ [call [cmd ns_uuencode] \
+ 	[opt [option -binary]] \
+	[opt [option --]] \
+	[arg string]]
+
+When the option [option -binary] is used, the Tcl byte array value
+of the provided input argument is used and no UTF-8 interpretation
+is performed.
 
 [list_end]
 
 [section EXAMPLES]
 
 [example_begin]
-
-oss2:nscp 7> ns_uuencode test
-dGVzdA==
-
-oss2:nscp 6> ns_uudecode dGVzdA==
-test
-
+ oss2:nscp 7> ns_uuencode test
+ dGVzdA==
+ 
+ oss2:nscp 6> ns_uudecode dGVzdA==
+ test
 [example_end]
 
 [see_also ns_uudecode ns_base64]

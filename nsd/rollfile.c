@@ -65,7 +65,7 @@ static int Unlink(const char *file)
  *
  * Ns_RollFile --
  *
- *      Roll the log file. When the log is rolled, it gets renamed to
+ *      Roll the logfile. When the log is rolled, it gets renamed to
  *      filename.xyz, where 000 <= xyz <= 999. Older files have higher
  *      numbers.
  *
@@ -116,7 +116,7 @@ Ns_RollFile(const char *fileName, int max)
 
             do {
                 char *dot = strrchr(next, INTCHAR('.')) + 1;
-                snprintf(dot, 4u, "%03d", MIN(num, 999) );
+                snprintf(dot, 4u, "%03u", MIN(num, 999u) );
                 num ++;
             } while ((err = Exists(next)) == 1 && num < (unsigned int)max);
 
@@ -132,9 +132,9 @@ Ns_RollFile(const char *fileName, int max)
 
             while (err == 0 && num-- > 0) {
                 char *dot = strrchr(first, INTCHAR('.')) + 1;
-                snprintf(dot, 4u, "%03d", MIN(num, 999));
+                snprintf(dot, 4u, "%03u", MIN(num, 999u));
                 dot = strrchr(next, INTCHAR('.')) + 1;
-                snprintf(dot, 4u, "%03d", MIN(num + 1, 999));
+                snprintf(dot, 4u, "%03u", MIN(num + 1u, 999u));
                 err = Rename(first, next);
             }
             ns_free((char *)next);
@@ -162,7 +162,7 @@ Ns_RollFile(const char *fileName, int max)
  *
  * Ns_RollFileFmt --
  *
- *      Roll the log file either based on a timestamp and a rollfmt, or
+ *      Roll the logfile either based on a timestamp and a rollfmt, or
  *      based on sequential numbers, when not rollfmt is given.
  *
  * Results:
@@ -170,7 +170,7 @@ Ns_RollFile(const char *fileName, int max)
  *
  * Side effects:
 
- *      The log file will be renamed, old log files (outside maxbackup)
+ *      The logfile will be renamed, old logfiles (outside maxbackup)
  *      are deleted.
  *
  *----------------------------------------------------------------------
@@ -190,14 +190,35 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
         status = Ns_RollFile(file, maxbackup);
 
     } else {
-        time_t           now = time(NULL);
+        time_t           now0, now1 = time(NULL);
         char             timeBuf[512];
         Ns_DString       ds;
         Tcl_Obj         *newPath;
-        const struct tm *ptm;
+        struct tm        tm0, tm1, *ptm0, *ptm1;
 
-        ptm = ns_localtime(&now);
-        (void) strftime(timeBuf, sizeof(timeBuf)-1u, rollfmt, ptm);
+        /*
+         * Rolling happens often at midnight, using often a day
+         * precision. When e.g. a scheduled procedure the time when this
+         * function is called might be slightly after the scheduled
+         * time, which might lead to a day jump. The problem aggrevates,
+         * when multiple log files are rotated.
+         *
+         * One approach to address the time variation would be to pass
+         * the scheduled timestamp to this function (i.e. not relying on
+         * the current time). However, this function might not only be
+         * used in the scheduled cases.
+         *
+         * The approach used below calculates therefore a comparison
+         * timestamp 60 seconds before, and in case, this refer to a
+         * different day, we assume the mentioned day jump and use the
+         * earlier date for calculating the format.
+         */
+        now0 = now1 - 60;
+        ptm0 = ns_localtime_r(&now0, &tm0);
+        ptm1 = ns_localtime_r(&now1, &tm1);
+
+        (void) strftime(timeBuf, sizeof(timeBuf)-1u, rollfmt,
+                        (ptm0->tm_mday < ptm1->tm_mday) ? ptm0 : ptm1);
 
         Ns_DStringInit(&ds);
         Ns_DStringVarAppend(&ds, file, ".", timeBuf, (char *)0L);
@@ -227,6 +248,97 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
         }
     }
 
+    return status;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_RollFileCondFmt --
+ *
+ *      Function to conditionally roll the file based on the format
+ *      string.  This function closes the current logfile, uses
+ *      Ns_RollFileFmt() in case, a file with the same name exists, and
+ *      (re)opens log logfile again.
+ *
+ * Results:
+ *      NS_OK/NS_ERROR
+ *
+ * Side effects:
+
+ *      The logfile will be renamed, old logfiles (outside maxbackup)
+ *      are deleted.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+Ns_RollFileCondFmt(Ns_LogCallbackProc openProc, Ns_LogCallbackProc closeProc,
+                   void *arg,
+                   const char *filename, const char *rollfmt, int maxbackup)
+{
+    Ns_ReturnCode status = NS_OK;
+    Tcl_DString   errorMsg;
+
+    Tcl_DStringInit(&errorMsg);
+
+    /*
+     * We assume, we are already logging to some file.
+     */
+
+    NsAsyncWriterQueueDisable(NS_FALSE);
+
+    /*
+     * Close the logfile.
+     */
+    status = closeProc(arg);
+    if (status == NS_OK) {
+        Tcl_Obj      *pathObj;
+
+        pathObj = Tcl_NewStringObj(filename, -1);
+        Tcl_IncrRefCount(pathObj);
+
+        /*
+         * If the logfile exists already, roll it.
+         */
+        if (Tcl_FSAccess(pathObj, F_OK) == 0) {
+            /*
+             * The current logfile exists.
+             */
+            status = Ns_RollFileFmt(pathObj,
+                                    rollfmt,
+                                    maxbackup);
+            if (status != NS_OK) {
+                Ns_DStringPrintf(&errorMsg, "log: rolling logfile failed failed for '%s': %s",
+                                 filename, strerror(Tcl_GetErrno()));
+            }
+        }
+        Tcl_DecrRefCount(pathObj);
+    } else {
+        /*
+         * Closing the file did not work. Delay writing the error msg
+         * until the logfile is open (we might work on the system log
+         * here).
+         */
+        Ns_DStringPrintf(&errorMsg, "log: closing logfile failed for '%s': %s",
+                         filename, strerror(Tcl_GetErrno()));
+    }
+
+    /*
+     * Now open the logfile (maybe again).
+     */
+    status = openProc(arg);
+    NsAsyncWriterQueueEnable();
+
+    if (status == NS_OK) {
+        if (errorMsg.length > 0) {
+            Ns_Log(Warning, "%s", errorMsg.string);
+        }
+        Ns_Log(Notice, "log: re-opening logfile '%s'", filename);
+    } else {
+        Ns_Log(Warning, "log: opening logfile failed: '%s'", filename);
+    }
+
+    Tcl_DStringFree(&errorMsg);
     return status;
 }
 

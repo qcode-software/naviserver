@@ -36,6 +36,9 @@
 
 #include "nsd.h"
 
+static Ns_ObjvValueRange posintRange0 = {0, INT_MAX};
+static Ns_ObjvValueRange posintRange1 = {1, INT_MAX};
+
 /*
  * Static functions defined in this file.
  */
@@ -43,12 +46,11 @@
 static int GetChan(Tcl_Interp *interp, const char *id, Tcl_Channel *chanPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static int GetIndices(Tcl_Interp *interp, const Conn *connPtr,
-                      Tcl_Obj *const* objv, int *offPtr, int *lenPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-
 static Tcl_Channel MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static const Ns_Driver* ConnGetDriver(const Ns_Conn *conn) NS_GNUC_PURE
+    NS_GNUC_NONNULL(1);
 
 
 /*
@@ -143,7 +145,7 @@ const char *
 Ns_ConnAuthUser(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
-    return conn->auth != NULL ? Ns_SetIGet(conn->auth, "Username") : NULL;
+    return (conn->auth != NULL) ? Ns_SetIGet(conn->auth, "Username") : NULL;
 }
 
 
@@ -167,7 +169,7 @@ const char *
 Ns_ConnAuthPasswd(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
-    return conn->auth != NULL ? Ns_SetIGet(conn->auth, "Password") : NULL;
+    return (conn->auth != NULL) ? Ns_SetIGet(conn->auth, "Password") : NULL;
 }
 
 
@@ -179,7 +181,7 @@ Ns_ConnAuthPasswd(const Ns_Conn *conn)
  *      Get the content length from the client
  *
  * Results:
- *      An size_t content length, or 0 if none sent
+ *      A size_t content length, or 0u if no data was sent
  *
  * Side effects:
  *      None
@@ -248,7 +250,7 @@ Ns_ConnContentSize(const Ns_Conn *conn)
  *
  * Ns_ConnContentFile --
  *
- *      Return pointer of the file name with spooled content.
+ *      Return pointer of the filename with spooled content.
  *
  * Results:
  *      Pointer to string
@@ -267,7 +269,7 @@ Ns_ConnContentFile(const Ns_Conn *conn)
     NS_NONNULL_ASSERT(conn != NULL);
 
     sockPtr = ((const Conn *)conn)->sockPtr;
-    return sockPtr != NULL ? sockPtr->tfile : NULL;
+    return (sockPtr != NULL) ? sockPtr->tfile : NULL;
 }
 
 /*
@@ -295,7 +297,7 @@ Ns_ConnContentFd(const Ns_Conn *conn)
 
     sockPtr = ((const Conn *)conn)->sockPtr;
 
-    return sockPtr != NULL ? sockPtr->tfd : 0;
+    return (sockPtr != NULL) ? sockPtr->tfd : 0;
 }
 
 
@@ -437,9 +439,11 @@ Ns_ConnResponseLength(const Ns_Conn *conn)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConnPeerAddr --
+ * Ns_ConnPeerAddr, Ns_ConnForwardedPeerAddr --
  *
- *      Get the peer's internet address
+ *      Get the peer's direct or forwarded IP address.
+ *      The forwarded IP address is determined by the
+ *      X-Forwarded-For header.
  *
  * Results:
  *      A string IP address
@@ -458,6 +462,49 @@ Ns_ConnPeerAddr(const Ns_Conn *conn)
     return ((const Conn *)conn)->reqPtr->peer;
 }
 
+const char *
+Ns_ConnForwardedPeerAddr(const Ns_Conn *conn)
+{
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    return ((const Conn *)conn)->reqPtr->proxypeer;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConnPeerAddr, Ns_ConnForwardedPeerAddr --
+ *
+ *      This is a mode specifoc function for determining the IP address of the
+ *      communication peer. In reverse proxy mode, try to get the forwarded IP
+ *      address.  In case, this fails, return the direct IP address. When
+ *      reverse proxy mode is turned off, return the direct IP address.
+ *
+ * Results:
+ *      A string IP address
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_ConnConfiguredPeerAddr(const Ns_Conn *conn)
+{
+    const char *p;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+
+    if (nsconf.reverseproxymode) {
+        p = Ns_ConnForwardedPeerAddr(conn);
+        if (*p == '\0') {
+            p = Ns_ConnPeerAddr(conn);
+        }
+    } else {
+        p = Ns_ConnPeerAddr(conn);
+    }
+    return p;
+}
 
 /*
  *----------------------------------------------------------------------
@@ -525,15 +572,7 @@ Ns_ConnCurrentPort(const Ns_Conn *conn)
 
     connPtr = (const Conn *)conn;
     if (connPtr->sockPtr != NULL) {
-        struct NS_SOCKADDR_STORAGE sa;
-        socklen_t len = (socklen_t)sizeof(sa);
-        int       retVal = getsockname(connPtr->sockPtr->sock, (struct sockaddr *) &sa, &len);
-
-        if (retVal == -1) {
-            result = 0u;
-        } else {
-            result = Ns_SockaddrGetPort((struct sockaddr *)&sa);
-        }
+        result = Ns_SockGetPort((Ns_Sock *)(connPtr->sockPtr));
     } else {
         result = 0u;
     }
@@ -584,18 +623,25 @@ Ns_ConnPeer(const Ns_Conn *conn)
  *----------------------------------------------------------------------
  */
 
-char *
-Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr)
+const char *
+Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr, const struct sockaddr *clientsaPtr)
 {
     const Conn *connPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(saPtr != NULL);
+    NS_NONNULL_ASSERT(clientsaPtr != NULL);
 
     connPtr = (Conn *)conn;
 
     connPtr->reqPtr->port = Ns_SockaddrGetPort(saPtr);
     (void)ns_inet_ntop(saPtr, connPtr->reqPtr->peer, NS_IPADDR_SIZE);
+
+    if (clientsaPtr->sa_family != 0) {
+        (void)ns_inet_ntop(clientsaPtr, connPtr->reqPtr->proxypeer, NS_IPADDR_SIZE);
+    } else {
+        connPtr->reqPtr->proxypeer[0] = '\0';
+    }
 
     return connPtr->reqPtr->peer;
 }
@@ -788,30 +834,59 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
         }
 
     } else if (servPtr->vhost.enabled
-               && (headers = Ns_ConnHeaders(conn)) != NULL
-               && (host = Ns_SetIGet(headers, "Host")) != NULL
-               && *host != '\0') {
+               && ((headers = Ns_ConnHeaders(conn)) != NULL)
+               && ((host = Ns_SetIGet(headers, "Host")) != NULL)
+               && (*host != '\0')) {
         /*
-         * Construct a location string from the HTTP host header.
+         * Construct a location string from the HTTP "host" header field
+         * without using port and default port.
          */
-        if (Ns_StrIsHost(host)) {
-            /*
-             * We have here no port and no default port
-             */
+        if (Ns_StrIsValidHostHeaderContent(host)) {
             location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0u, 0u);
         }
-
     }
 
     /*
-     * If everything else fails, append the static driver location.
+     * If everything above failed, try the static driver location or - as last
+     * resort - use the configured address.
      */
+    if ((location == NULL) && (connPtr->location != NULL)) {
+            location = Ns_DStringAppend(dest, connPtr->location);
+        }
     if (location == NULL) {
-        location = Ns_DStringAppend(dest, connPtr->location);
+        unsigned short port = (connPtr->sockPtr != NULL)
+            ? Ns_SockGetPort((Ns_Sock*)connPtr->sockPtr)
+            : connPtr->drvPtr->port;
+        location = Ns_HttpLocationString(dest,
+                                         connPtr->drvPtr->protocol,
+                                         connPtr->drvPtr->address,
+                                         port, connPtr->drvPtr->defport);
     }
 
     return location;
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ConnGetDriver --
+ *
+ *      Return the Driver for a connection
+ *
+ * Results:
+ *      configured driver
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+static const Ns_Driver*
+ConnGetDriver(const Ns_Conn *conn)
+{
+    return (Ns_Driver *)((const Conn *)conn)->drvPtr;
+}
+
 
 
 /*
@@ -833,11 +908,11 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
 const char *
 Ns_ConnHost(const Ns_Conn *conn)
 {
-    const Driver *drvPtr;
+    const Ns_Driver *drvPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    drvPtr = ((const Conn *)conn)->drvPtr;
+    drvPtr = ConnGetDriver(conn);
     assert(drvPtr != NULL);
 
     return drvPtr->address;
@@ -899,7 +974,7 @@ Ns_ConnSock(const Ns_Conn *conn)
 
     sockPtr = ((const Conn *)conn)->sockPtr;
 
-    return (sockPtr != NULL ? sockPtr->sock : NS_INVALID_SOCKET);
+    return (sockPtr != NULL) ? sockPtr->sock : NS_INVALID_SOCKET;
 }
 
 /*
@@ -931,7 +1006,7 @@ Ns_ConnSockPtr(const Ns_Conn *conn)
  *
  * Ns_ConnSockContent --
  *
- *      Returns read buffer for incoming requests
+ *      Returns read buffer for incoming requests.
  *
  * Results:
  *      NULL if no content have been read yet
@@ -979,11 +1054,11 @@ Ns_ConnSockContent(const Ns_Conn *conn)
 const char *
 Ns_ConnDriverName(const Ns_Conn *conn)
 {
-    const Driver *drvPtr;
+    const Ns_Driver *drvPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
-    drvPtr = ((const Conn *)conn)->drvPtr;
+    drvPtr = ConnGetDriver(conn);
     assert(drvPtr != NULL);
 
     return drvPtr->moduleName;
@@ -1002,7 +1077,7 @@ Ns_ConnDriverName(const Ns_Conn *conn)
  *      accepted (this is maybe a kept open connection),
  *      Ns_ConnQueueTime() returns the time a request was queued,
  *      Ns_ConnDequeueTime() returns the time a request was taken out
- *      of the queue, and Ns_ConnFilterTime() is the time stampt after
+ *      of the queue, and Ns_ConnFilterTime() is the timestamp after
  *      the filters are executed.
  *
  * Results:
@@ -1160,7 +1235,7 @@ NsConnTimeStatsUpdate(Ns_Conn *conn) {
  *----------------------------------------------------------------------
  */
 void
-NsConnTimeStatsFinalize(Ns_Conn *conn) {
+NsConnTimeStatsFinalize(const Ns_Conn *conn) {
     const Conn *connPtr;
     ConnPool   *poolPtr;
     Ns_Time     now, diffTimeSpan;
@@ -1280,9 +1355,9 @@ Ns_ConnModifiedSince(const Ns_Conn *conn, time_t since)
     assert(poolPtr->servPtr != NULL);
 
     if (poolPtr->servPtr->opts.modsince) {
-        char *hdr = Ns_SetIGet(conn->headers, "If-Modified-Since");
+        const char *hdr = Ns_SetIGet(conn->headers, "If-Modified-Since");
 
-        if (hdr != NULL && Ns_ParseHttpTime(hdr) >= since) {
+        if ((hdr != NULL) && (Ns_ParseHttpTime(hdr) >= since)) {
             result = NS_FALSE;
         }
     }
@@ -1309,11 +1384,11 @@ Ns_ConnModifiedSince(const Ns_Conn *conn, time_t since)
 bool
 Ns_ConnUnmodifiedSince(const Ns_Conn *conn, time_t since)
 {
-    char *hdr;
-    bool  result = NS_TRUE;
+    const char *hdr;
+    bool        result = NS_TRUE;
 
     hdr = Ns_SetIGet(conn->headers, "If-Unmodified-Since");
-    if (hdr != NULL && Ns_ParseHttpTime(hdr) < since) {
+    if ((hdr != NULL) && (Ns_ParseHttpTime(hdr) < since)) {
         result = NS_FALSE;
     }
     return result;
@@ -1456,7 +1531,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
     Tcl_Channel          chan;
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
-    int                  setNameLength, idx, off, len, opt = 0, n, result = TCL_OK;
+    int                  setNameLength, opt = 0, result = TCL_OK;
     const char          *setName;
 
     static const char *const opts[] = {
@@ -1467,7 +1542,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         "driver",
         "encoding",
         "fileheaders", "filelength", "fileoffset", "files", "flags", "form",
-        "headers", "host",
+        "headerlength", "headers", "host",
         "id", "isconnected",
         "keepalive",
         "location",
@@ -1475,7 +1550,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         "outputheaders",
         "partialtimes", "peeraddr", "peerport", "pool", "port", "protocol",
         "query",
-        "request",
+        "ratelimit", "request",
         "server", "sock", "start", "status",
         "timeout",
         "url", "urlc", "urlencoding", "urlv",
@@ -1491,7 +1566,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, 0u,
         NS_CONN_REQUIRE_CONNECTED,
         NS_CONN_REQUIRE_CONFIGURED,
@@ -1499,8 +1574,8 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
@@ -1515,7 +1590,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         CDriverIdx,
         CEncodingIdx,
         CFileHdrIdx, CFileLenIdx, CFileOffIdx, CFilesIdx, CFlagsIdx, CFormIdx,
-        CHeadersIdx, CHostIdx,
+        CHeaderLengthIdx, CHeadersIdx, CHostIdx,
         CIdIdx, CIsConnectedIdx,
         CKeepAliveIdx,
         CLocationIdx,
@@ -1523,7 +1598,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         COutputHeadersIdx,
         CPartialTimesIdx, CPeerAddrIdx, CPeerPortIdx, CPoolIdx, CPortIdx, CProtocolIdx,
         CQueryIdx,
-        CRequestIdx,
+        CRatelimitIdx, CRequestIdx,
         CServerIdx, CSockIdx, CStartIdx, CStatusIdx,
         CTimeoutIdx,
         CUrlIdx, CUrlcIdx, CUrlEncodingIdx, CUrlvIdx,
@@ -1545,7 +1620,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         result = TCL_ERROR;
     } else if (required_flags[opt] != 0u) {
         /*
-         * We have to check the conncection requirements.
+         * We have to check the connection requirements.
          */
         if (NsConnRequire(interp, required_flags[opt], NULL) != NS_OK) {
             result = TCL_ERROR;
@@ -1556,10 +1631,20 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
             assert(conn != NULL);
             request = &connPtr->request;
         }
+    } else {
+        request = &connPtr->request;
     }
 
     if (result == TCL_ERROR) {
         return result;
+    }
+
+    /*
+     * Each time, when NsConnRequire was called and succeeded, the request
+     * must be not NULL.
+     */
+    if (required_flags[opt] != 0u) {
+        assert(request != NULL);
     }
 
     switch (opt) {
@@ -1574,11 +1659,17 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         break;
 
     case CKeepAliveIdx:
-        if (objc > 2 && Tcl_GetIntFromObj(interp, objv[2],
-                                          &connPtr->keep) != TCL_OK) {
-            result = TCL_ERROR;
-        } else {
-            Tcl_SetObjResult(interp, Tcl_NewIntObj(connPtr->keep));
+        {
+            Ns_ObjvValueRange keepRange = {0, 1};
+            int          oc = 1;
+            Ns_ObjvSpec spec = {"?size", Ns_ObjvInt, &connPtr->keep, &keepRange};
+
+            if (objc > 2 && Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
+                result = TCL_ERROR;
+            }
+            if (result == TCL_OK) {
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(connPtr->keep));
+            }
         }
         break;
 
@@ -1595,11 +1686,15 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
 
     case CCompressIdx:
         if (objc > 2) {
-            if (Tcl_GetIntFromObj(interp, objv[2], &n) != TCL_OK
-                    && Tcl_GetBooleanFromObj(interp, objv[2], &n) != TCL_OK) {
+            Ns_ObjvValueRange compressRange = {0, 9};
+            int               oc = 1, level = 0;
+            Ns_ObjvSpec       spec = {"?level", Ns_ObjvInt, &level, &compressRange};
+
+            if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
                 result = TCL_ERROR;
+
             } else {
-                Ns_ConnSetCompression(conn, n);
+                Ns_ConnSetCompression(conn, level);
             }
         }
         if (result == TCL_OK) {
@@ -1611,15 +1706,21 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
     case CUrlvIdx:
         if (objc == 2) {
             Tcl_SetObjResult(interp, Tcl_NewStringObj(request->urlv, request->urlv_len));
-        } else if (Tcl_GetIntFromObj(interp, objv[2], &idx) != TCL_OK) {
-            result = TCL_ERROR;
-        } else if (idx >= 0 && idx < request->urlc) {
-            const char **elements;
-            int          length;
+        } else {
+            Ns_ObjvValueRange idxRange = {0, request->urlc - 1};
+            int               oc = 1, idx = 0;
+            Ns_ObjvSpec       spec = {"?idx", Ns_ObjvInt, &idx, &idxRange};
 
-            Tcl_SplitList(NULL, request->urlv, &length, &elements);
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(elements[idx], -1));
-            Tcl_Free((char *) elements);
+            if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
+                result = TCL_ERROR;
+            } else {
+                const char **elements;
+                int          length;
+
+                (void)Tcl_SplitList(NULL, request->urlv, &length, &elements);
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(elements[idx], -1));
+                Tcl_Free((char *) elements);
+            }
         }
         break;
 
@@ -1627,7 +1728,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         {
             const char *addr = Ns_ConnCurrentAddr(conn);
 
-            Tcl_SetObjResult(interp, Tcl_NewStringObj((addr != NULL ? addr : NS_EMPTY_STRING), -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj((addr != NULL) ? addr : NS_EMPTY_STRING, -1));
         }
         break;
 
@@ -1674,14 +1775,13 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         {
             int         binary = (int)NS_FALSE, offset = 0, length = -1, requiredLength;
             Tcl_DString encDs;
-
             Ns_ObjvSpec lopts[] = {
                 {"-binary",    Ns_ObjvBool,  &binary, INT2PTR(NS_TRUE)},
                 {NULL, NULL, NULL, NULL}
             };
             Ns_ObjvSpec args[] = {
-                {"?offset", Ns_ObjvInt, &offset, NULL},
-                {"?length", Ns_ObjvInt, &length, NULL},
+                {"?offset", Ns_ObjvInt, &offset, &posintRange0},
+                {"?length", Ns_ObjvInt, &length, &posintRange1},
                 {NULL, NULL, NULL, NULL}
             };
 
@@ -1700,24 +1800,24 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
                  */
                 Ns_TclPrintfResult(interp, "connection already closed, can't get content");
                 result = TCL_ERROR;
-
-            } else if (offset < 0 || length < -1) {
-                Ns_TclPrintfResult(interp, "invalid offset and/or length specified");
-                result = TCL_ERROR;
             }
 
             requiredLength = length;
-            if (result == TCL_OK
-                && offset > 0 && ((size_t)offset > connPtr->reqPtr->length)) {
+            if ((result == TCL_OK)
+                && (offset > 0)
+                && ((size_t)offset > connPtr->reqPtr->length)
+                ) {
                 Ns_TclPrintfResult(interp, "offset exceeds available content length");
                 result = TCL_ERROR;
             }
 
-            if (result == TCL_OK
-                && length == -1) {
+            if ((result == TCL_OK) && (length == -1)) {
                 length = (int)connPtr->reqPtr->length - offset;
-            } else if (result == TCL_OK
-                       && length > -1 && ((size_t)length + (size_t)offset > connPtr->reqPtr->length)) {
+
+            } else if ((result == TCL_OK)
+                       && (length > -1)
+                       && ((size_t)length + (size_t)offset > connPtr->reqPtr->length)
+                       ) {
                 Ns_TclPrintfResult(interp, "offset + length exceeds available content length");
                 result = TCL_ERROR;
             }
@@ -1830,12 +1930,36 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         }
         break;
 
-    case CPeerAddrIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnPeerAddr(conn), -1));
+    case CPeerAddrIdx: {
+        int source = INTCHAR('c');
+        static Ns_ObjvTable sourceTable[] = {
+            {"configured", UCHAR('c')},
+            {"direct",     UCHAR('d')},
+            {"forwarded",  UCHAR('f')},
+            {NULL,         0u}
+        };
+        Ns_ObjvSpec lopts[] = {
+            {"-source", Ns_ObjvIndex,  &source, sourceTable},
+            {NULL, NULL, NULL, NULL}
+        };
+        if (Ns_ParseObjv(lopts, NULL, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
+        } else if (source == INTCHAR('c')) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnConfiguredPeerAddr(conn), -1));
+        } else if (source == INTCHAR('d')) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnPeerAddr(conn), -1));
+        } else {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_ConnForwardedPeerAddr(conn), -1));
+        }
         break;
+    }
 
     case CPeerPortIdx:
         Tcl_SetObjResult(interp, Tcl_NewIntObj((int)Ns_ConnPeerPort(conn)));
+        break;
+
+    case CHeaderLengthIdx:
+        Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)connPtr->reqPtr->coff));
         break;
 
     case CHeadersIdx:
@@ -1908,8 +2032,8 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         }
         break;
 
-    case CFileOffIdx: /* fall through */
-    case CFileLenIdx: /* fall through */
+    case CFileOffIdx: NS_FALL_THROUGH; /* fall through */
+    case CFileLenIdx: NS_FALL_THROUGH; /* fall through */
     case CFileHdrIdx:
         if (objc != 3) {
             Tcl_WrongNumArgs(interp, 2, objv, NULL);
@@ -1938,16 +2062,49 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
             Tcl_WrongNumArgs(interp, 2, objv, "off len chan");
             result = TCL_ERROR;
 
-        } else if (GetIndices(interp, connPtr, objv+2, &off, &len) != TCL_OK ||
-                   GetChan(interp, Tcl_GetString(objv[4]), &chan) != TCL_OK) {
-            result = TCL_ERROR;
+        } else {
+            int               oc = 3, offset;
+            Ns_ObjvValueRange offsetRange = {0, (Tcl_WideInt)connPtr->reqPtr->length};
+            Ns_ObjvSpec       specOffset = {"offset", Ns_ObjvInt, &offset, &offsetRange};
 
-        } else if (Tcl_Write(chan, connPtr->reqPtr->content + off, len) != len) {
-            Ns_TclPrintfResult(interp, "could not write %s bytes to %s: %s",
-                               Tcl_GetString(objv[3]),
-                               Tcl_GetString(objv[4]),
-                               Tcl_PosixError(interp));
-            result = TCL_ERROR;
+            if (Ns_ObjvInt(&specOffset, interp, &oc, &objv[2]) != TCL_OK) {
+                result = TCL_ERROR;
+
+            } else {
+                int               length;
+                Ns_ObjvValueRange lengthRange = {0, ((Tcl_WideInt)connPtr->reqPtr->length - offset)};
+                Ns_ObjvSpec       specLength = {"length", Ns_ObjvInt, &length, &lengthRange};
+
+                if (Ns_ObjvInt(&specLength, interp, &oc, &objv[3]) != TCL_OK) {
+                    result = TCL_ERROR;
+
+                } else if (GetChan(interp, Tcl_GetString(objv[4]), &chan) != TCL_OK) {
+                    result = TCL_ERROR;
+
+                } else if (Tcl_Write(chan, connPtr->reqPtr->content + offset, length) != length) {
+                    Ns_TclPrintfResult(interp, "could not write %s bytes to %s: %s",
+                                       Tcl_GetString(objv[3]),
+                                       Tcl_GetString(objv[4]),
+                                       Tcl_PosixError(interp));
+                    result = TCL_ERROR;
+                }
+            }
+        }
+        break;
+
+    case CRatelimitIdx:
+        if (objc > 2) {
+            int               rateLimit, oc = 2;
+            Ns_ObjvSpec       specLength = {"ratelimit", Ns_ObjvInt, &rateLimit, &posintRange0};
+
+            if (Ns_ObjvInt(&specLength, interp, &oc, &objv[2]) != TCL_OK) {
+                result = TCL_ERROR;
+            } else {
+                connPtr->rateLimit = rateLimit;
+            }
+        }
+        if (result == TCL_OK) {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(connPtr->rateLimit));
         }
         break;
 
@@ -2045,17 +2202,22 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
             result = TCL_ERROR;
 
         } else if (objc == 3) {
-            int status;
+            Ns_ObjvValueRange statusRange = {100, 599};
+            int               oc = 2, status;
+            Ns_ObjvSpec       spec = {"?status", Ns_ObjvInt, &status, &statusRange};
 
-            if (Tcl_GetIntFromObj(interp, objv[2], &status) != TCL_OK) {
+            if (NsConnRequire(interp, NS_CONN_REQUIRE_CONNECTED, &conn) != NS_OK) {
+                result = TCL_ERROR;
+
+            } else if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
                 result = TCL_ERROR;
 
             } else {
-                Tcl_SetObjResult(interp,Tcl_NewIntObj(Ns_ConnResponseStatus(conn)));
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_ConnResponseStatus(conn)));
                 Ns_ConnSetResponseStatus(conn, status);
             }
         } else {
-            Tcl_SetObjResult(interp,Tcl_NewIntObj(Ns_ConnResponseStatus(conn)));
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_ConnResponseStatus(conn)));
         }
         break;
 
@@ -2098,9 +2260,12 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
             Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)connPtr->nContentSent));
 
         } else if (objc == 3) {
-            Tcl_WideInt sent;
+            Tcl_WideInt       sent;
+            Ns_ObjvValueRange sentRange = {0, LLONG_MAX};
+            Ns_ObjvSpec       spec = {"?idx", Ns_ObjvWideInt, &sent, &sentRange};
+            int               oc = 1;
 
-            if (Tcl_GetWideIntFromObj(interp, objv[2], &sent) != TCL_OK) {
+            if (Ns_ObjvWideInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
                 result = TCL_ERROR;
             } else {
                 connPtr->nContentSent = (size_t)sent;
@@ -2201,17 +2366,17 @@ NsTclLocationProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
 int
 NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    const NsInterp *itPtr = clientData;
-    int             toCopy = 0, result = TCL_OK;
-    char           *chanName;
-    Tcl_Channel     chan;
+    const NsInterp   *itPtr = clientData;
+    int               toCopy = 0, result = TCL_OK;
+    char             *chanName;
+    Tcl_Channel       chan;
 
     /*
      * Syntax: ns_conncptofp ?-bytes tocopy? channel
      */
 
     Ns_ObjvSpec opts[] = {
-        {"-bytes",   Ns_ObjvInt,   &toCopy, NULL},
+        {"-bytes",   Ns_ObjvInt,   &toCopy, &posintRange0},
         {"--",       Ns_ObjvBreak, NULL,    NULL},
         {NULL,       NULL,         NULL,    NULL}
     };
@@ -2237,7 +2402,9 @@ NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     } else {
         const Request *reqPtr = ((Conn *)itPtr->conn)->reqPtr;
 
-        if (toCopy > (int)reqPtr->avail || toCopy <= 0) {
+        Ns_LogDeprecated(objv, 1, "ns_conn copy ...", NULL);
+
+        if ((toCopy > (int)reqPtr->avail) || (toCopy == 0)) {
             toCopy = (int)reqPtr->avail;
         }
         if (Ns_ConnCopyToChannel(itPtr->conn, (size_t)toCopy, chan) != NS_OK) {
@@ -2319,53 +2486,6 @@ GetChan(Tcl_Interp *interp, const char *id, Tcl_Channel *chanPtr)
 
     } else {
         *chanPtr = chan;
-    }
-
-    return result;
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * GetIndices --
- *
- *      Return offset and length from given Tcl_Obj's.
- *
- * Results:
- *      TCL_OK if objects are valid offsets, TCL_ERROR otherwise.
- *
- * Side effects:
- *      Given offPtr and lenPtr are updated with indices or error
- *      message is left in the interp.
- *
- *----------------------------------------------------------------------
- */
-
-static int
-GetIndices(Tcl_Interp *interp, const Conn *connPtr, Tcl_Obj *const* objv, int *offPtr,
-           int *lenPtr)
-{
-    int off, len, result = TCL_OK;
-
-    NS_NONNULL_ASSERT(interp != NULL);
-    NS_NONNULL_ASSERT(connPtr != NULL);
-
-    if (Tcl_GetIntFromObj(interp, objv[0], &off) != TCL_OK
-        || Tcl_GetIntFromObj(interp, objv[1], &len) != TCL_OK) {
-        result = TCL_ERROR;
-
-    } else if (off < 0 || (size_t)off > connPtr->reqPtr->length) {
-        Ns_TclPrintfResult(interp, "invalid offset: %s", Tcl_GetString(objv[0]));
-        result = TCL_ERROR;
-
-    } else if (len < 0 || (size_t)len > (connPtr->reqPtr->length - (size_t)off)) {
-        Ns_TclPrintfResult(interp, "invalid length: %s", Tcl_GetString(objv[1]));
-        result = TCL_ERROR;
-
-    } else {
-        *offPtr = off;
-        *lenPtr = len;
     }
 
     return result;
@@ -2492,7 +2612,7 @@ NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr)
         status = NS_ERROR;
 
     } else if (((flags & NS_CONN_REQUIRE_CONNECTED) != 0u)
-               && Ns_ConnSockPtr(conn) == NULL) {
+               && (Ns_ConnSockPtr(conn) == NULL)) {
         Tcl_SetObjResult(interp, Tcl_NewStringObj("connection socket is detached", -1));
         status = NS_ERROR;
 

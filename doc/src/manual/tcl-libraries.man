@@ -23,13 +23,11 @@ function being used to bind the Tcl procedure [term hello] to handle a GET
 request for /example/hello, plus the [term hello] procedure itself:
 
 [example_begin]
-
  ns_register_proc GET /example/hello hello
  
  proc hello {} {
    ns_return 200 text/plain "Hello World"
  }
-
 [example_end]
 
 After the function is loaded (typically from a Tcl library directory)
@@ -91,7 +89,7 @@ listed below are well-suited to the Tcl libraries approach.
 [section {Tcl Libraries}]
 
 Tcl libraries contain Tcl files, which are loaded at startup time. The
-functions defined in these Tcl files are available at runtime without
+functions defined in these Tcl files are available at run time without
 any function loading overhead. 
 
 NaviServer distinguishes between global (shared) and per-server
@@ -99,7 +97,7 @@ NaviServer distinguishes between global (shared) and per-server
 
 [list_begin itemized]
 
-[item] The [emph "global (shared)"] Tcl libray directory is specified by the
+[item] The [emph "global (shared)"] Tcl library directory is specified by the
 parameter [term tcllibrary] in the [term ns/parameters] section and it
 defaults to [term tcl] under NaviServer [term home] directory.
 
@@ -115,7 +113,7 @@ defaults to [term tcl] under NaviServer [term home] directory.
 
 [item ]The [emph "per-server (private)"] Tcl library directory is
 specified by the parameter [term library] in the
-[term ns/server/\$servername/tcl] section.  It defaults to
+[term {ns/server/$server/tcl}] section.  It defaults to
 [term modules/tcl]
 under NaviServer [term home].  One can specify a
 different Tcl library directory for each server.
@@ -177,10 +175,10 @@ directories and then the specified Tcl-only modules:
 [list_end]
 
 If the [term tcl] section of the server configuration contains the
-parameter [term initcmds] then thest commands are executed after the
+parameter [term initcmds] then these commands are executed after the
 initialization of the Tcl-only modules. This feature is useful e.g.
 for simple server configurations, where the full code of the
-server-initialization can be put into the config file. So only one
+server-initialization can be put into the configuration file. So only one
 file has to be maintained
 
 [example_begin]
@@ -213,7 +211,7 @@ line to the per-server modules section in the configuration file:
  # Parameters of the "modules" section of the server "myserver"
  #
  ns_section ns/server/myserver/modules {
-     ns_param mymodule Tcl
+   ns_param mymodule Tcl
  }
 [example_end]
 
@@ -229,15 +227,15 @@ the modules [term foo] and [term bar] are loaded,
  # Parameters of the "tcl" section of the server "myserver"
  #
  ns_section ns/server/myserver/tcl {
-     ns_param library /home/mydir/tcl/myserver-lib
+   ns_param library /home/mydir/tcl/myserver-lib
  }
  
  #
  # Parameters of the "modules" section of the server "myserver"
  #
  ns_section ns/server/myserver/modules {
-     ns_param foo tcl
-     ns_param bar tcl
+   ns_param foo tcl
+   ns_param bar tcl
  }
 [example_end]
 
@@ -245,9 +243,9 @@ the modules [term foo] and [term bar] are loaded,
 directories will be initialized as server start-up:
 
 [example_begin]
-  /home/mydir/tcl/myserver-lib
-  /home/mydir/tcl/myserver-lib/foo
-  /home/mydir/tcl/myserver-lib/bar
+ /home/mydir/tcl/myserver-lib
+ /home/mydir/tcl/myserver-lib/foo
+ /home/mydir/tcl/myserver-lib/bar
 [example_end]
 
 
@@ -255,28 +253,29 @@ Assume the library directory for module [term foo] contains these
 files:
 
 [example_begin]
-  init.tcl
-  aa.tcl
-  zz.tcl
+ init.tcl
+ aa.tcl
+ zz.tcl
 [example_end]
 
 The Tcl files will be sourced in this order:
 
 [example_begin]
-  /home/mydir/tcl/myserver-lib/...
-  /home/mydir/tcl/myserver-lib/foo/init.tcl
-  /home/mydir/tcl/myserver-lib/foo/aa.tcl
-  /home/mydir/tcl/myserver-lib/foo/zz.tcl
+ /home/mydir/tcl/myserver-lib/...
+ /home/mydir/tcl/myserver-lib/foo/init.tcl
+ /home/mydir/tcl/myserver-lib/foo/aa.tcl
+ /home/mydir/tcl/myserver-lib/foo/zz.tcl
 [example_end]
 
 For a loaded Tcl-only module [term foo] the paths of the actual files
 can by queried via [term ns_library] as shown in the following example.
 
 [example_begin]
-   set shared [lb]ns_library shared foo[rb]
-   set priv [lb]ns_library private foo[rb]
+ set shared [lb]ns_library shared foo[rb]
+ set priv [lb]ns_library private foo[rb]
 [example_end]
 
 [see_also ns_config ns_library]
 [keywords configuration paths resolution]
 [manpage_end]
+

@@ -37,7 +37,7 @@
 #include "nsd.h"
 
 #ifdef HAVE__NSGETENVIRON
-#include <crt_externs.h>
+# include <crt_externs.h>
 #elif !defined(_WIN32)
 extern char **environ;
 #endif
@@ -71,7 +71,7 @@ static Ns_Mutex lock = NULL;
  *----------------------------------------------------------------------
  */
 
-NS_EXTERN void
+void
 NsInitTclEnv(void)
 {
     static bool initialized = NS_FALSE;
@@ -305,6 +305,10 @@ PutEnv(Tcl_Interp *interp, const char *name, const char *value)
     }
 #endif
 
+    /*
+     * In case we have no unsetenv(), we have to deal with the value==NULL
+     * case here.
+     */
     len = nameLength = strlen(name);
     if (value != NULL) {
         valueLength = strlen(value) + 1;

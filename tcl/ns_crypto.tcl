@@ -20,7 +20,7 @@ nx::Class create ::ns_crypto::HashFunctions {
     :property {digest sha256}
     :variable ctx
 
-    :public method readfile {filename} {
+    :public method readfile {{-encoding hex} filename} {
         #
         # Read a file blockwise and call the incremental crypto
         # function on every block.
@@ -38,7 +38,7 @@ nx::Class create ::ns_crypto::HashFunctions {
         #
         # Return the hash sum
         #
-        return [:get]
+        return [:get -encoding $encoding]
     }
 }
 
@@ -50,16 +50,20 @@ nx::Class create ::ns_crypto::HashFunctions {
 #
 nx::Class create ns_md -superclass ::ns_crypto::HashFunctions {
 
-    :public object method string {{-digest sha256} message} {
-        ::ns_crypto::md string -digest $digest $message
+    :public object method string {{-digest sha256} {-encoding hex} message} {
+        ::ns_crypto::md string -digest $digest -encoding $encoding $message
     }
 
-    :public object method file {{-digest sha256} filename} {
-        if {![file readable $filename]} {
-            return -code error "file $filename is not readable"
-        }
+    :public object method file {{-digest sha256} {-encoding hex} filename args} {
         set m [:new -digest $digest]
-        set r [$m readfile $filename]
+        set r ""
+        foreach path [concat [list $filename] $args] {
+            if {![file readable $path]} {
+                $m destroy
+                return -code error "file $path is not readable"
+            }
+            set r [$m readfile -encoding $encoding $path]
+        }
         $m destroy
         return $r
     }
@@ -75,8 +79,8 @@ nx::Class create ns_md -superclass ::ns_crypto::HashFunctions {
     :public method add {message} {
         ::ns_crypto::md add ${:ctx} $message
     }
-    :public method get {} {
-        ::ns_crypto::md get ${:ctx}
+    :public method get {{-encoding hex}} {
+        ::ns_crypto::md get -encoding $encoding ${:ctx}
     }
 }
 
@@ -92,16 +96,20 @@ nx::Class create ns_md -superclass ::ns_crypto::HashFunctions {
 nx::Class create ns_hmac -superclass ::ns_crypto::HashFunctions {
     :property key:required
 
-    :public object method string {{-digest sha256} key message} {
-        ::ns_crypto::hmac string -digest $digest $key $message
+    :public object method string {{-digest sha256} {-encoding hex} key message} {
+        ::ns_crypto::hmac string -digest $digest -encoding $encoding $key $message
     }
 
-    :public object method file {{-digest sha256} key filename} {
-        if {![file readable $filename]} {
-            return -code error "file $filename is not readable"
-        }
+    :public object method file {{-digest sha256} {-encoding hex} key filename args} {
         set m [:new -digest $digest -key $key]
-        set r [$m readfile $filename]
+        set r ""
+        foreach path [concat [list $filename] $args] {
+            if {![file readable $path]} {
+                $m destroy
+                return -code error "file $path is not readable"
+            }
+            set r [$m readfile -encoding $encoding $path]
+        }
         $m destroy
         return $r
     }
@@ -117,8 +125,8 @@ nx::Class create ns_hmac -superclass ::ns_crypto::HashFunctions {
     :public method add {message} {
         ::ns_crypto::hmac add ${:ctx} $message
     }
-    :public method get {} {
-        ::ns_crypto::hmac get ${:ctx}
+    :public method get {{-encoding hex}} {
+        ::ns_crypto::hmac get -encoding $encoding ${:ctx}
     }
 }
 
@@ -183,7 +191,7 @@ nsf::proc ::ns_crypto::hotp_truncate {
 #     T: time slice (moving factor for one time passwd)
 #
 # The RFC examples use 8 digits for output, the moving factor is there
-# an 64 bit value.  Of course, in general the value can be different,
+# a 64 bit value.  Of course, in general the value can be different,
 # but these are used here to obtain the same results as in test
 # vectors in the RFC.
 
@@ -201,7 +209,7 @@ nsf::proc ns_totp {
     #
     if {![info exists key]} {
         set secret [ns_config "ns/server/[ns_info server]" serversecret ""];
-        set key [binary format H* [::ns_crypto::md string -digest sha224 $secret-$user_id]]
+        set key [::ns_crypto::md string -digest sha224 -encoding binary $secret-$user_id]
     }
     #
     # If no time is provided, take the current time

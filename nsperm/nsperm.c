@@ -48,8 +48,9 @@
 
 #define PERM_IMPLICIT_ALLOW   1
 
-
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
+
 static const char *NS_EMPTY_STRING = "";
 
 /*
@@ -69,7 +70,7 @@ typedef struct Server {
 
 typedef struct {
     int flags;
-    char pwd[32];
+    char pwd[NS_ENCRYPT_BUFSIZE];
     Tcl_HashTable groups;
     Tcl_HashTable nets;
     Tcl_HashTable masks;
@@ -129,10 +130,10 @@ static bool ValidateUserAddr(User * userPtr, const char *peer);
 static Ns_RequestAuthorizeProc AuthProc;
 static void WalkCallback(Tcl_DString * dsPtr, const void *arg);
 static int CreateNonce(const char *privatekey, char **nonce, const char *uri);
-static int CreateHeader(Server * servPtr, Ns_Conn *conn, bool stale);
+static int CreateHeader(const Server * servPtr, const Ns_Conn *conn, bool stale);
 /*static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeout);*/
 
-static void FreeUserInfo(User *userPtr, char *name)
+static void FreeUserInfo(User *userPtr, const char *name)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -172,9 +173,9 @@ Ns_ModuleInit(const char *server, const char *module)
     NS_NONNULL_ASSERT(module != NULL);
 
     if (uskey < 0) {
-        double d;
-        char buf[TCL_INTEGER_SPACE];
-        Ns_CtxMD5 md5;
+        double        d;
+        char          buf[TCL_INTEGER_SPACE];
+        Ns_CtxMD5     md5;
         unsigned long bigRamdomNumber;
         unsigned char sig[16];
 
@@ -197,6 +198,7 @@ Ns_ModuleInit(const char *server, const char *module)
     Tcl_InitHashTable(&servPtr->users, TCL_STRING_KEYS);
     Tcl_InitHashTable(&servPtr->groups, TCL_STRING_KEYS);
     Ns_RWLockInit(&servPtr->lock);
+    Ns_RWLockSetName2(&servPtr->lock, "rw:nsperm", server);
     Ns_SetRequestAuthorizeProc(server, AuthProc);
 
     result = Ns_TclRegisterTrace(server, AddCmds, servPtr, NS_TCL_TRACE_CREATE);
@@ -717,7 +719,7 @@ ValidateUserAddr(User *userPtr, const char *peer)
  */
 
 static void
-FreeUserInfo(User *userPtr, char *name)
+FreeUserInfo(User *userPtr, const char *name)
 {
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
@@ -771,15 +773,14 @@ FreeUserInfo(User *userPtr, char *name)
 
 static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
 {
-    Server *servPtr = data;
-    User *userPtr;
-    Tcl_HashEntry *hPtr;
+    Server             *servPtr = data;
+    User               *userPtr;
+    Tcl_HashEntry      *hPtr;
     struct NS_SOCKADDR_STORAGE ip, mask;
-    struct sockaddr     *ipPtr = (struct sockaddr *)&ip, *maskPtr = (struct sockaddr *)&mask;
+    struct sockaddr    *ipPtr = (struct sockaddr *)&ip, *maskPtr = (struct sockaddr *)&mask;
     char buf[NS_ENCRYPT_BUFSIZE];
-    char *name, *slash, *net, *pwd;
-    char *field = NULL, *salt = NULL;
-    int isNew, i, nargs = 0, allow = 0, deny = 0, clear = 0;
+    char               *name, *pwd, *field = NULL, *salt = NULL;
+    int                 isNew, i, nargs = 0, allow = 0, deny = 0, clear = 0;
 
     Ns_ObjvSpec opts[] = {
         {"-allow", Ns_ObjvBool, &allow, INT2PTR(NS_TRUE)},
@@ -816,9 +817,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     Tcl_InitHashTable(&userPtr->hosts, TCL_STRING_KEYS);
     Tcl_InitHashTable(&userPtr->groups, TCL_STRING_KEYS);
 
-    /*
-      fprintf(stderr, "============= add user <%s> pwd <%s> field <%s> nrags %d\n", name, pwd, field, nargs);
-    */
+    // fprintf(stderr, "============= add user <%s> pwd <%s> field <%s> nrags %d\n", name, pwd, field, nargs);
 
     /*
      * Both -allow and -deny can be used for consistency, but
@@ -836,80 +835,35 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
      */
 
     for (i = objc - nargs; i < objc; ++i) {
-        int validIp;
-        net = Tcl_GetString(objv[i]);
+        Ns_ReturnCode status;
+        char         *net = Tcl_GetString(objv[i]);
 
-        memset(ipPtr, 0, sizeof(struct NS_SOCKADDR_STORAGE));
-        memset(maskPtr, 0, sizeof(struct NS_SOCKADDR_STORAGE));
-
-        slash = strchr(net, INTCHAR('/'));
-        if (slash == NULL) {
-            /*
-             * No mask is given
-             */
-            validIp = ns_inet_pton(ipPtr, net);
-            if (validIp > 0) {
-                maskPtr->sa_family = ipPtr->sa_family;
-                Ns_SockaddrMaskBits(maskPtr, (maskPtr->sa_family == AF_INET6) ? 128 :32);
-            }
-        } else {
-            int validMask;
-            /*
-             * Mask is given, try to convert the masked address into
-             * binary values.
-             */
-
-            *slash = '\0';
-            slash++;
-
-            validIp = ns_inet_pton(ipPtr, net);
-            if (strchr(slash, INTCHAR('.')) == NULL && strchr(slash, INTCHAR(':')) == NULL) {
-                maskPtr->sa_family = ipPtr->sa_family;
-                Ns_SockaddrMaskBits(maskPtr, (unsigned int)strtol(slash, NULL, 10));
-                validMask = 1;
-            } else {
-                validMask = ns_inet_pton(maskPtr, slash);
-            }
-
-            if (validIp <= 0 || validMask <= 0) {
-                Ns_TclPrintfResult(interp, "invalid address or hostname \"%s\". "
-                                   "Should be ipaddr/netmask or hostname", net);
-                goto fail;
-            }
-
-            /*
-             * Do a bitwise AND of the ip address with the netmask
-             * to make sure that all non-network bits are 0. That
-             * saves us from doing this operation every time a
-             * connection comes in.
-             */
-            Ns_SockaddrMask(ipPtr, maskPtr, ipPtr);
-            /*Ns_LogSockaddr(Notice, "NSPERM: maskedAddress", ipPtr);*/
+        status = Ns_SockaddrParseIPMask(interp, net, ipPtr, maskPtr, NULL);
+        if (status != NS_OK) {
+            goto fail;
         }
 
-        if (validIp > 0) {
-            /*
-             * Is this a new netmask? If so, add it to the list.
-             * A list of netmasks is maintained and every time a
-             * new connection comes in, the peer address is ANDed with
-             * each of them and a lookup on that address is done
-             * on the hash table of networks.
-             */
-            (void) Tcl_CreateHashEntry(&userPtr->masks, (char *)maskPtr, &isNew);
+        /*
+         * Is this a new netmask? If so, add it to the list.
+         * A list of netmasks is maintained and every time a
+         * new connection comes in, the peer address is ANDed with
+         * each of them and a lookup on that address is done
+         * on the hash table of networks.
+         */
+        (void) Tcl_CreateHashEntry(&userPtr->masks, (char *)maskPtr, &isNew);
 
-            /*
-             * Add the potentially masked IpAddress to the nets table.
-             */
-            hPtr = Tcl_CreateHashEntry(&userPtr->nets,  (char *)ipPtr, &isNew);
-            if (hPtr != NULL) {
-                char ipString[NS_IPADDR_SIZE];
-                Tcl_SetHashValue(hPtr,
-                                 (ClientData)ns_strdup(ns_inet_ntop(maskPtr, ipString, sizeof(ipString))));
-            }
-            if (isNew == 0) {
-                Ns_TclPrintfResult(interp, "duplicate entry: %s", net);
-                goto fail;
-            }
+        /*
+         * Add the potentially masked IpAddress to the nets table.
+         */
+        hPtr = Tcl_CreateHashEntry(&userPtr->nets,  (char *)ipPtr, &isNew);
+        if (hPtr != NULL) {
+            char ipString[NS_IPADDR_SIZE];
+            Tcl_SetHashValue(hPtr,
+                             (ClientData)ns_strdup(ns_inet_ntop(maskPtr, ipString, sizeof(ipString))));
+        }
+        if (isNew == 0) {
+            Ns_TclPrintfResult(interp, "duplicate entry: %s", net);
+            goto fail;
         }
     }
 
@@ -1335,7 +1289,7 @@ static int AllowDenyObjCmd(
      */
 
     Ns_DStringInit(&base);
-    Ns_NormalizePath(&base, url);
+    Ns_NormalizeUrl(&base, url);
 
     /*
      * Locate and verify the exact record.
@@ -1421,14 +1375,16 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
         return TCL_ERROR;
     }
-    if (noinherit != 0) {flags |= NS_OP_NOINHERIT;}
+    if (noinherit != 0) {
+        flags |= NS_OP_NOINHERIT;
+    }
 
     /*
      * Construct the base url.
      */
 
     Ns_DStringInit(&base);
-    Ns_NormalizePath(&base, url);
+    Ns_NormalizeUrl(&base, url);
 
     /*
      * Locate and verify the exact record.
@@ -1739,7 +1695,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
     Ns_CtxMD5Final(&md5, sig);
     Ns_HexString(sig, buf, 16, NS_TRUE);
 
-    /* Check for a stale time stamp. If the time stamp is stale we still check
+    /* Check for a stale timestamp. If the timestamp is stale we still check
      * to see if the user sent the proper digest password. The stale flag
      * is only set if the nonce is expired AND the credentials are OK, otherwise
      * the get a 401, but that happens elsewhere.
@@ -1776,7 +1732,7 @@ static int CheckNonce(const char *privatekey, char *nonce, char *uri, int timeou
  *----------------------------------------------------------------------
 */
 
-static int CreateHeader(Server *servPtr, Ns_Conn *conn, bool stale)
+static int CreateHeader(const Server *servPtr, const Ns_Conn *conn, bool stale)
 {
     Ns_DString  ds;
     char       *nonce = 0;

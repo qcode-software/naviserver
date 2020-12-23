@@ -1,32 +1,43 @@
 # Emacs mode:  -*-Makefile-*-
-
 #
-# 1. Edit include/Makefile.build and replace Makefile.module with
-#    Makefile.win32
+# To build on Windows using the Microsoft Visual Studio command-line compiler:
 #
-# 2. Update TCLPATH and VC variables below to reflect actual path to
-#    Tcl and VicualC++ installations
+# 1. You no longer need to edit "include/Makefile.build", it now
+#    automatically picks between Makefile.module (for Unix via Gnu
+#    make) and Makefile.win32 (for Window via nmake).
 #
-# 3. Run appropriate Microsoft build setup script.  E.g.:
+# 2. Update Update the 'tcl_64' and 'tcllib_64' variables below for
+#    your system.  See also these settings in "include/Makefile.win32":
+#    'HAVE_OPENSSL_EVP_H', 'openssl_64'.
+#
+# 3. Run appropriate Microsoft build setup script.  E.g. one of these:
+#    "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
 #    "%ProgramFiles%\Microsoft SDKs\Windows\v7.1\Bin\SetEnv.Cmd" /Debug /x64 /win7
 #
 # 4. nmake -f Makefile.win32
-#    or
-#    nmake -f Makefile.win32 TCLPATH=c:\tcl VC=c:\vc
-#
 #
 
-tcl_64 = C:\P\Tcl-64
+tcl_64 = C:\P\Tcl-64-8.6
+#tcl_64 = C:\P\ActiveTcl
 tcl_32 = C:\P\Tcl-32
-TCLLIB  = tcl85.lib
+
+tcllib_64 = tcl86t.lib
+tcllib_32 = tcl85.lib
+
+!if "" == "$(TARGET_CPU)"
+TARGET_CPU = $(VSCMD_ARG_TGT_ARCH)
+!endif
 
 !if "x86" == "$(TARGET_CPU)"
 TCLPATH = $(tcl_32)
+TCLLIB  = $(tcllib_32)
 !elseif "x64" == "$(TARGET_CPU)"
 TCLPATH = $(tcl_64)
+TCLLIB  = $(tcllib_64)
 !else
 !message Warning: Unexpected TARGET_CPU:  $(TARGET_CPU)
 TCLPATH = $(tcl_64)
+TCLLIB  = $(tcllib_64)
 !endif
 
 # I should be able to implicitly use these environment variable mappings:
@@ -37,20 +48,9 @@ TCLPATH = $(tcl_64)
 # /x86 build shell!  So I do NOT use them here: --atp@piskorski.com,
 # 2014/10/12 14:25 EDT
 
-VC      = C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC
-MSDK    = C:\Program Files\Microsoft SDKs\Windows\v7.1
-
-# Note that I compile NaviServer (on Windows 7 x86-64) like so:
-#
-# "%ProgramFiles%\Microsoft SDKs\Windows\v7.1\Bin\SetEnv.Cmd" /Debug /x64 /win7
-# cd C:\foo\naviserver
-# nmake -f Makefile.win32
-#
-# Running SetEnv.Cmd sets various important environment variables.
-# I do not run vcvars32.bat because it is intended for 32-bit builds only.
-# I believe I COULD run vcvarsall.bat instead of SetEnv.Cmd, but I'm
-# not clear on their real differences, except that vcvarsall.bat ships
-# with Visual Studio while SetEnv.Cmd ships with the Microsoft SDK.
+#VC      = C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC
+#MSDK    = C:\Program Files\Microsoft SDKs\Windows\v7.1
+#VC      = C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC
 
 smash_lib_include = 0
 # For reference and to help debugging, these are the full LIB and
@@ -68,8 +68,8 @@ INCLUDE = $(MSDK)\Include;$(VC)\include
 !endif
 !endif
 
-# If your call to SetEnv.Cmd is working correctly, you should only
-# need to append to LIB and INCLUDE like this:
+# If your call to vcvars64.bat (or SetEnv.Cmd) is working correctly,
+# you should only need to append to LIB and INCLUDE like this:
 !message Appending to LIB and INCLUDE.
 LIB     = $(LIB);$(TCLPATH)\lib
 INCLUDE = $(INCLUDE);$(TCLPATH)\include
@@ -81,23 +81,19 @@ INCLUDE = $(INCLUDE);$(TCLPATH)\include
 DEBUG=1
 !endif
 
+PWD = $(MAKEDIR)
+PEM_FILE  = tests/testserver/etc/server.pem
+SSLCONFIG = tests/testserver/etc/openssl.cnf
+
 # nmake command to exec for each module:
-NMAKE	= nmake /nologo TCLPATH="$(TCLPATH)" TCLLIB="$(TCLLIB)" LIB="$(LIB)" DEBUG=$(DEBUG)
+NMAKE = nmake /nologo TCLPATH="$(TCLPATH)" TCLLIB="$(TCLLIB)" LIB="$(LIB)" DEBUG=$(DEBUG) NSBUILD=1
 
 
-# To build for XP rather than a newer version of Windows, we would
-# need to set additional options as explained here:
-#
-# http://blogs.msdn.com/b/vcblog/archive/2012/10/08/windows-xp-targeting-with-c-in-visual-studio-2012.aspx
-# Windows XP Targeting with C++ in Visual Studio 2012; by Ibrahim Damlaj; 8 Oct 2012
-#
-# However, include/nsthread.h sets WINVERSION to Vista to allow usage of InetNtop().
-
-
-# Note our use below of nmake's macro string substition feature:
+# Note our use below of nmake's macro string substitution feature:
+#   https://docs.microsoft.com/en-us/cpp/build/reference/macro-substitution?view=vs-2019
 #   http://msdn.microsoft.com/en-us/library/bsd42ets%28v=vs.110%29.aspx
 #
-# Our use of $(build_targets) below expands into a separate target for
+# Our use of $(core_targets) below expands into a separate target for
 # each module, which is especially convenient when we only want to
 # build one or two of them at a time (e.g., for debugging).  But nmake
 # does not have anything like Gnu make's explicit ".PHONY" syntax, so
@@ -116,7 +112,7 @@ NMAKE	= nmake /nologo TCLPATH="$(TCLPATH)" TCLLIB="$(TCLLIB)" LIB="$(LIB)" DEBUG
 # For the core NaviServer modules, we use the same module/Makefile for
 # both make and nmake.  Unfortunately, it looks like that won't work
 # for add-on modules.  Their makefiles have more diversity, and even
-# if they are did NOT, there are still other stumbling blocks.  E.g.:
+# if they did NOT, there are still other stumbling blocks.  E.g.:
 #
 # Microsoft nmake supports an undocumented "include" command, but it
 # apparently ONLY allows hard-coded paths, it does NOT allow using
@@ -127,8 +123,8 @@ NMAKE	= nmake /nologo TCLPATH="$(TCLPATH)" TCLLIB="$(TCLLIB)" LIB="$(LIB)" DEBUG
 # module/Makefile.win32 files.
 # --atp@piskorski.com, 2014/10/10 17:25 EDT
 
-core_targets = _nsthread _nsd _nscgi _nscp _nsdb _nssock _nslog _nsperm _nsssl
-module_targets = _NONE-YET
+core_targets = _nsthread _nsd _nscgi _nscp _nsdb _nsdbtest _nssock _nslog _nsperm _nsssl _nsproxy
+module_targets = _nsoracle
 
 tgts_core_clean = $(core_targets:_=C)
 tgts_modl_clean = $(module_targets:_=C)
@@ -137,14 +133,16 @@ tgts_modl_inst  = $(module_targets:_=I)
 
 all: all-core
 clean: clean-core
-install: install-core install-mod
+install: all-core all-mod _install
 
-all-core: $(core_targets)
+# Actually only nsd needs nsversion-win32.h, but I do not see a good
+# way to make only that one target depend on it:
+
+include/nsversion-win32.h:  _nsversion
+all-core:  include/nsversion-win32.h  $(core_targets) _cert
 all-mod:  $(module_targets)
 clean-core: $(tgts_core_clean)
 clean-mod:  $(tgts_modl_clean)
-install-core: $(tgts_core_inst) I_tcl I_include
-install-mod:  $(tgts_modl_inst)
 
 # Bizarrely, from within nmake changing directories with "pushd" or
 # "popd" only takes effect for THAT ONE LINE, while using "cd" retains
@@ -152,31 +150,35 @@ install-mod:  $(tgts_modl_inst)
 # Why, I have no idea.  --atp@piskorski.com, 2014/10/11 05:54 EDT
 
 $(core_targets):
-	if exist "$(@:_=)\Makefile.win32" ( \
+	@if exist "$(@:_=)\Makefile.win32" ( \
 	pushd $(@:_=) & $(NMAKE) -f Makefile.win32 & popd ) else ( \
 	pushd $(@:_=) & $(NMAKE) & popd )
 $(module_targets):
-	if not exist "..\$(@:_=)" (echo No such directory:  ..\$(@:_=)) else ( \
+	@if not exist "..\$(@:_=)" (echo No such directory:  ..\$(@:_=)) else ( \
 	pushd "..\$(@:_=)" & $(NMAKE) -f Makefile.win32 & popd )
 $(tgts_core_clean):
-	if exist "$(@:C=)\Makefile.win32" ( \
+	@if exist "$(@:C=)\Makefile.win32" ( \
 	pushd $(@:C=) & $(NMAKE) -f Makefile.win32 clean & popd ) else ( \
 	pushd $(@:C=) & $(NMAKE) clean & popd )
 $(tgts_modl_clean):
 	@if not exist "..\$(@:C=)" (echo No such directory:  ..\$(@:C=)) else ( \
 	pushd "..\$(@:C=)" & $(NMAKE) -f Makefile.win32 clean & popd )
 
+_nsversion:
+	tclsh win32-util/configure.tcl
+_install:
+	tclsh win32-util/install-nsd.tcl -i 1
 
-# TODO: I have not used nor debugged the install process here at all,
-# as I currently use a Tcl script for installing on Windows.
-# --atp@piskorski.com, 2014/10/10 12:14 EDT
+_cert: $(PEM_FILE)
+$(PEM_FILE):
+	openssl req -new -config $(SSLCONFIG) -x509 -nodes -sha1 -days 365 -keyout $(PEM_FILE) -out $(PEM_FILE)
+	openssl dhparam 1024 >> $(PEM_FILE)
 
-# Install to the NAVISERVER directory:
-$(tgts_core_inst):
-	pushd $(@:I=) & $(NMAKE) install & popd
-$(tgts_modl_inst):
-	pushd "..\$(@:I=)" & $(NMAKE) -f Makefile.win32 install & popd
-I_tcl:
-	pushd tcl & nmake -f ../include/Makefile.win32 install-tcl & popd
-I_include:
-	pushd include & nmake -f Makefile.win32 install-include & popd
+# Nmake has NO GOOD WAY to save the output of a shell command into a variable!
+# Thus we use a static output filename here, rather than e.g. embedding the current date/time.
+# Fortunately command output redirection works essentially the same way as in Unix.
+_test:
+	PATH=$(PWD)\nsd;$(PWD)\nsthread;$(PWD)\nsdb;$(PWD)\nsproxy;$(PATH) & $(PWD)\nsd\nsd.exe -c -t $(PWD)/tests/test.nscfg $(PWD)/tests/all.tcl 1>> test-win-out-0.txt 2>&1
+
+_test_one:
+	PATH=$(PWD)\nsd;$(PWD)\nsthread;$(PWD)\nsdb;$(PWD)\nsproxy;$(PATH) & $(PWD)\nsd\nsd.exe -c -t $(PWD)/tests/test.nscfg $(PWD)/tests/all.tcl -verbose sp -file ns_thread.test

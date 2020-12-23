@@ -42,7 +42,7 @@
  * this value has no effect.
  */
 
-uintptr_t nsThreadMaxTls = NS_THREAD_MAXTLS;
+static uintptr_t nsThreadMaxTls = NS_THREAD_MAXTLS;
 
 /*
  * Static functions defined in this file.
@@ -104,7 +104,7 @@ Ns_TlsAlloc(Ns_Tls *keyPtr, Ns_TlsCleanup *cleanup)
  */
 
 void
-Ns_TlsSet(Ns_Tls *keyPtr, void *value)
+Ns_TlsSet(const Ns_Tls *keyPtr, void *value)
 {
     uintptr_t   key;
 
@@ -140,7 +140,7 @@ Ns_TlsSet(Ns_Tls *keyPtr, void *value)
  */
 
 void *
-Ns_TlsGet(Ns_Tls *keyPtr)
+Ns_TlsGet(const Ns_Tls *keyPtr)
 {
     uintptr_t  key;
     void      *result;
@@ -194,9 +194,9 @@ NsCleanupTls(void **slots)
         NS_finalshutdown != 1
 #endif
         ) {
-        int trys, retry;
+        int tries, retry;
 
-        trys = 0;
+        tries = 0;
         do {
             int i;
 
@@ -212,7 +212,7 @@ NsCleanupTls(void **slots)
                     retry = 1;
                 }
             }
-        } while (retry && trys++ < 5);
+        } while (retry && tries++ < 5);
     }
 }
 

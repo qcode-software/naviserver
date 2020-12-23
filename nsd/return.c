@@ -461,7 +461,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
      *
      *       "MIME-Version: 1.0\r\n"
      *
-     * However, MIME_Version is a MIME header, not a HTTP header (although
+     * However, MIME_Version is a MIME header, not an HTTP header (although
      * allowed in HTTP/1.1); it's only used when HTTP messages are moved over
      * MIME-based protocols (e.g., SMTP), which is uncommon. The HTTP mime
      * message parsing semantics are defined by this RFC 2616 and not any MIME
@@ -535,7 +535,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
                         Ns_DString sanitize, *sanitizePtr = &sanitize;
                         /*
                          * We have to sanititize the header field to avoid
-                         * a HTTP response splitting attack. After each
+                         * an HTTP response splitting attack. After each
                          * newline in the value, we insert a TAB character
                          * (see Section 4.2 in RFC 2616)
                          */
@@ -865,7 +865,7 @@ Ns_ConnReturnHtml(Ns_Conn *conn, int status, const char *html, ssize_t len)
  *
  * Side effects:
  *      Will set a length header, so 'len' must describe the complete
- *      length of the entitiy.
+ *      length of the entity.
  *
  *      May send various HTTP error responses.
  *
@@ -920,16 +920,16 @@ ReturnOpen(Ns_Conn *conn, int status, const char *mimeType, Tcl_Channel chan,
     Ns_ConnSetResponseStatus(conn, status);
 
     if ((chan != NULL || fp != NULL)
-        && (NsWriterQueue(conn, len, chan, fp, fd, NULL, 0, NS_FALSE) == NS_OK)) {
+        && (NsWriterQueue(conn, len, chan, fp, fd, NULL, 0,  NULL, 0, NS_FALSE) == NS_OK)) {
         result = NS_OK;
     } else {
 
         if (chan != NULL) {
             Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
-            result = Ns_ConnSendChannel(conn, chan, len);
+            result = Ns_ConnSendChannel(conn, chan, (ssize_t)len);
         } else if (fp != NULL) {
             Ns_ConnSetLengthHeader(conn, len, NS_FALSE);
-            result = Ns_ConnSendFp(conn, fp, len);
+            result = Ns_ConnSendFp(conn, fp, (ssize_t)len);
         } else {
             result = ReturnRange(conn, mimeType, fd, NULL, len);
         }
@@ -1014,13 +1014,13 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
 
                 dataLength = 0u;
                 for (i = 0; i < nbufs; i++) {
-                    vbuf[i].iov_base = INT2PTR(bufs[i].offset);
+                    vbuf[i].iov_base = (char *)bufs[i].buffer + bufs[i].offset;
                     vbuf[i].iov_len  = bufs[i].length;
                     dataLength += bufs[i].length;
                 }
             }
             if (NsWriterQueue(conn, dataLength, NULL, NULL, NS_INVALID_FD,
-                              vbuf, nbufs, NS_FALSE) == NS_OK) {
+                              vbuf, nbufs,  NULL, 0, NS_FALSE) == NS_OK) {
                 Ns_DStringFree(&ds);
                 return NS_OK;
 
@@ -1041,7 +1041,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
                 }
                 dataLength = bufs[0].length;
             }
-            if (NsWriterQueue(conn, dataLength, NULL, NULL, fd, NULL, 0,
+            if (NsWriterQueue(conn, dataLength, NULL, NULL, fd, NULL, 0, NULL, 0,
                               NS_FALSE) == NS_OK) {
                 Ns_DStringFree(&ds);
                 return NS_OK;
@@ -1067,6 +1067,8 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
     if (result == NS_OK) {
         result = Ns_ConnSendFileVec(conn, bufs, nbufs);
     }
+
+    NsPoolAddBytesSent(((Conn *)conn)->poolPtr,  (Tcl_WideInt)Ns_ConnContentSent(conn));
 
     Ns_DStringFree(&ds);
 

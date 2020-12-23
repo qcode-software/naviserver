@@ -43,7 +43,7 @@ HDRS	= nsd.h
 LIBOBJS = adpcmds.o adpeval.o adpparse.o adprequest.o auth.o binder.o \
 	  cache.o callbacks.o cls.o compress.o config.o conn.o connio.o \
 	  cookies.o connchan.o \
-	  crypt.o dns.o driver.o dstring.o encoding.o event.o exec.o \
+	  crypt.o dlist.o dns.o driver.o dstring.o encoding.o event.o exec.o \
 	  fastpath.o fd.o filter.o form.o httptime.o index.o info.o \
 	  init.o limits.o lisp.o listen.o log.o mimetypes.o modload.o nsconf.o \
 	  nsmain.o nsthread.o op.o pathname.o pidfile.o proc.o progress.o queue.o \
@@ -54,9 +54,16 @@ LIBOBJS = adpcmds.o adpeval.o adpparse.o adprequest.o auth.o binder.o \
 	  tclrequest.o tclresp.o tclsched.o tclset.o tclsock.o sockaddr.o \
 	  tclthread.o tcltime.o tclvar.o tclxkeylist.o tls.o stamp.o \
 	  url.o url2file.o urlencode.o urlopen.o urlspace.o uuencode.o \
-	  unix.o watchdog.o nswin32.o tclcrypto.o
+	  unix.o watchdog.o nswin32.o tclcrypto.o tclparsefieldvalue.o
 
 include ../include/Makefile.build
+
+tls.o: dhparams.h nsopenssl.h
+
+dhparams.h:
+	openssl dhparam -C -2 -noout 512 >> dhparams.h
+	openssl dhparam -C -2 -noout 1024 >> dhparams.h
+	openssl dhparam -C -2 -noout 2048 >> dhparams.h
 
 install-init:
 	$(INSTALL_DATA) init.tcl $(DESTDIR)$(INSTBIN)

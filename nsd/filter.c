@@ -86,7 +86,7 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
                   Ns_FilterProc *proc, Ns_FilterType when, void *arg, bool first)
 {
     NsServer *servPtr;
-    Filter *fPtr;
+    Filter   *fPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -102,13 +102,20 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
     fPtr->url = ns_strdup(url);
     fPtr->when = when;
     fPtr->arg = arg;
-    Ns_MutexLock(&servPtr->filter.lock);
+
+    Ns_RWLockWrLock(&servPtr->filter.lock);
     if (first) {
+        /*
+         * Prepend element at the start of the list.
+         */
         fPtr->nextPtr = servPtr->filter.firstFilterPtr;
         servPtr->filter.firstFilterPtr = fPtr;
     } else {
         Filter **fPtrPtr;
 
+        /*
+         * Append element at the end of the list.
+         */
         fPtr->nextPtr = NULL;
         fPtrPtr = &servPtr->filter.firstFilterPtr;
         while (*fPtrPtr != NULL) {
@@ -116,7 +123,8 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
         }
         *fPtrPtr = fPtr;
     }
-    Ns_MutexUnlock(&servPtr->filter.lock);
+    Ns_RWLockUnlock(&servPtr->filter.lock);
+
     return (void *) fPtr;
 }
 
@@ -150,19 +158,17 @@ NsRunFilters(Ns_Conn *conn, Ns_FilterType why)
     if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
         Ns_ReturnCode filter_status = NS_OK;
 
-        Ns_MutexLock(&servPtr->filter.lock);
+        Ns_RWLockRdLock(&servPtr->filter.lock);
         fPtr = servPtr->filter.firstFilterPtr;
         while (fPtr != NULL && filter_status == NS_OK) {
             if (unlikely(fPtr->when == why)
                 && (Tcl_StringMatch(conn->request.method, fPtr->method) != 0)
                 && (Tcl_StringMatch(conn->request.url, fPtr->url) != 0)) {
-                Ns_MutexUnlock(&servPtr->filter.lock);
                 filter_status = (*fPtr->proc)(fPtr->arg, conn, why);
-                Ns_MutexLock(&servPtr->filter.lock);
             }
             fPtr = fPtr->nextPtr;
         }
-        Ns_MutexUnlock(&servPtr->filter.lock);
+        Ns_RWLockUnlock(&servPtr->filter.lock);
         if (filter_status == NS_FILTER_BREAK ||
             (why == NS_FILTER_TRACE && filter_status == NS_FILTER_RETURN)) {
             status = NS_OK;

@@ -10,6 +10,7 @@ namespace import -force ::tcltest::*
 #
 tcltest::testConstraint crypto [ns_info ssl]
 tcltest::testConstraint nsf [expr {[info commands ::nsf::proc] ne ""}]
+tcltest::testConstraint tcl86 [expr {$tcl_version >= 8.6}]
 
 #######################################################################################
 #  Message digests: sha1, sha224, sha256, sha512
@@ -43,6 +44,49 @@ test ns_crypto_sha2-2.4 {basic operation} -constraints crypto -body {
 } -result "f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7"
 
 #######################################################################################
+#  Signing text using a fixed private key, using SHA1.
+#  The operation is roughly equivalent to
+#
+#     openssl dgst -sha1 -sign myprivate.pem -out sha1.sign myfile.txt
+#
+#  Example from:
+#  https://medium.com/@bn121rajesh/rsa-sign-and-verify-using-openssl-behind-the-scene-bf3cac0aade2
+#######################################################################################
+test ns_crypto_sign-1.0 {basic operation} -constraints crypto -body {
+    set path [ns_config "test" home]/testserver/etc/
+    ::ns_crypto::md string -digest sha1 -sign $path/myprivate.pem "abcdefghijklmnopqrstuvwxyz\n"
+} -result "9139be98f16cf53d22da63cb559bb06a93338da6a344e28a4285c2da33facb7080d26e7a09483779a016eebc207602fc3f90492c2f2fb8143f0fe30fd855593d"
+
+#######################################################################################
+#  verify signature using a fixed private key, using SHA1.
+#  The operation is roughly equivalent to
+#
+#     openssl dgst -sha1 -verify mypublic.pem -signature sha1.sign myfile.txt
+#
+#######################################################################################
+
+test ns_crypto_signature_verify-1.0 {basic operation} -constraints crypto -body {
+    set path [ns_config "test" home]/testserver/etc/
+    set sig [::ns_crypto::md string \
+                 -digest sha1 \
+                 -encoding binary \
+                 -sign $path/myprivate.pem \
+                 "abcdefghijklmnopqrstuxvwxyz\n"]
+    set vfy_ok [::ns_crypto::md string \
+                    -digest sha1 \
+                    -verify $path//myprivate.pem \
+                    -signature $sig \
+                    "abcdefghijklmnopqrstuxvwxyz\n"]
+    set vfy_nok [::ns_crypto::md string \
+                     -digest sha1 \
+                     -verify $path//myprivate.pem \
+                     -signature $sig \
+                     "abcdefghijklmnopqrstuxvwxyz"]
+    return [list $vfy_ok $vfy_nok]
+} -result {1 0}
+
+
+#######################################################################################
 #  HMAC: Keyed-Hashing for Message Authentication
 #  based on sha1, sha224, sha256, sha512
 #  RFC 2104 https://tools.ietf.org/html/rfc2104
@@ -53,7 +97,7 @@ test ns_hmac_sha2-1.1 {basic syntax: plain call} -constraints crypto -body {
 } -returnCodes error -result {wrong # args: should be "ns_crypto::hmac command ?args?"}
 test ns_hmac_sha2-1.2 {basic syntax: plain call} -constraints crypto -body {
     ns_crypto::hmac string -digest sha123 x
-} -returnCodes error -result {wrong # args: should be "ns_crypto::hmac string ?-digest digest? ?-encoding encoding? key message"}
+} -returnCodes error -result {wrong # args: should be "ns_crypto::hmac string ?-binary? ?-digest digest? ?-encoding encoding? ?--? key message"}
 test ns_hmac_sha2-1.3 {basic syntax: plain call} -constraints crypto -body {
     ns_crypto::hmac string -digest sha123 x y
 } -returnCodes error -match glob -result {Unknown value for digest "sha123", valid: *}
@@ -186,6 +230,96 @@ if {[string match "*hkdf*" $errorMsg]} {
     } -result "085a01ea1b10f36933068b56efa5ad81a4f14b822f5b091568a9cdd4f155fda2c22e422478d305f3f896"
 
 }
+
+
+#######################################################################################
+#  Working with "funny" UTF-8 characters
+#######################################################################################
+test md-utf-1.0 {plain umlaut, 16-bit UTF-8} -constraints {nsf} -body {
+    ns_md string ü
+} -result 607474ca475a9724d7360aba71a56d5df77e61350e3f724cfa1f46e857e2d85f
+
+test md-utf-1.1 {character outside 16-bit range, 24 bits UTF-8} -constraints {nsf} -body {
+    ns_md string ☀
+} -result d0f6163cbf68c300eb17b4e538651099d95afaaab84fa7b283f56face0ca643c
+
+test md-utf-1.2 {plain umlaut, no-nsf, 16-bit UTF-8} -body {
+    ns_crypto::md string ü
+} -result 607474ca475a9724d7360aba71a56d5df77e61350e3f724cfa1f46e857e2d85f
+
+test md-utf-1.3 {character outside 16-bit range, no-nsf, 24 bits UTF-8} -body {
+    ns_crypto::md string ☀
+} -result d0f6163cbf68c300eb17b4e538651099d95afaaab84fa7b283f56face0ca643c
+
+#######################################################################################
+#  Real world example including hmac and md
+#######################################################################################
+test hmac-md-1.0 {test results of hmac passed to ns_crypto::md} -body {
+    ns_crypto::md string [ns_crypto::hmac string \
+                              -digest sha256 \
+                              -encoding binary \
+                              "AWS4LfongAfJ2Y2L1y5M1R1sd6fk1csV1ttRXQACnpzI" \
+                              20190808]
+} -result 4e4beb75ada15a19223adff1a57d7f11964b2209d3513ad51c7227fdc109b963
+
+test hmac-md-1.0.1 {test results of hmac passed to ns_crypto::md} -body {
+    set h [ns_crypto::hmac string \
+               -digest sha256 \
+               -encoding binary \
+               "AWS4LfongAfJ2Y2L1y5M1R1sd6fk1csV1ttRXQACnpzI" \
+               20190808]
+    #ns_log notice "obj(h) [nsf::__db_get_obj $h]"
+    ns_crypto::md string $h
+} -result 4e4beb75ada15a19223adff1a57d7f11964b2209d3513ad51c7227fdc109b963
+
+
+test hmac-md-1.1 {test results of ns_crypto::hmac passed to ns_md} -body {
+    ns_crypto::md string [ns_crypto::hmac string \
+                      -digest sha256 \
+                      -encoding binary \
+                      "AWS4LfongAfJ2Y2L1y5M1R1sd6fk1csV1ttRXQACnpzI" \
+                      20190808]
+} -result 4e4beb75ada15a19223adff1a57d7f11964b2209d3513ad51c7227fdc109b963
+
+
+test base64-md5.1 {
+    ns_base64encode and decode with 2 byte UTF-8 character "ü"
+} -body {
+    set string "ü"
+    set m0 [ns_md5 $string]
+    #ns_log notice "obj(str0) [nsf::__db_get_obj $string] $m0 $string"
+    set encoded [ns_base64encode $string]
+    set m1 [ns_md5 $string]
+    #ns_log notice "obj(str1) [nsf::__db_get_obj $string] $m1 $string"
+    set decoded [ns_base64decode $encoded]
+    set m2 [ns_md5 $string]
+    #ns_log notice "obj(dec1) [nsf::__db_get_obj $decoded] $m2 $decoded"
+    set decoded [encoding convertfrom utf-8 $decoded]
+    set m3 [ns_md5 $string]
+    #ns_log notice "obj(dec2) [nsf::__db_get_obj $decoded] $m3 $decoded"
+    list $m1 $m2 $m3
+} -result {C03410A5204B21CD8229FF754688D743 C03410A5204B21CD8229FF754688D743 C03410A5204B21CD8229FF754688D743}
+
+test base64-md5.2 {
+    ns_base64encode and decode with 2 byte UTF-8 character "ü"
+} -constraints tcl86 -body {
+    set encoded {I+w+Yr+CXWGVsk2ZbqqzZlKcTuEM8TCMLOYjBv1h8xo2txA0Q5UX7v5gd5j6e8x1eIWGcfd3ORH2Vgt2HcDURw==}
+    set ns_dec  [ns_base64decode -binary $encoded]
+    set tcl_dec [binary decode base64 $encoded]
+    set m0 [ns_md5 $ns_dec]
+    set m1 [ns_md5 $tcl_dec]
+    #ns_log notice "obj(ns_dec) [nsf::__db_get_obj $ns_dec] $m0"
+    #ns_log notice "obj(tcl_de) [nsf::__db_get_obj $tcl_dec] $m1"
+
+    binary scan $ns_dec H* ns_hex
+    binary scan $tcl_dec H* tcl_hex
+    #ns_log notice "ns_dec  <$ns_hex>"
+    #ns_log notice "tcl_dec <$tcl_hex>"
+
+    list $m0 $m1 [string equal $ns_hex $tcl_hex]
+} -result {E50C2BFEF5ABE4D1004C192DFFA769ED E50C2BFEF5ABE4D1004C192DFFA769ED 1}
+
+
 
 #
 # Local variables:

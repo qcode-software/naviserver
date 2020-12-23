@@ -55,7 +55,11 @@ static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const
  *
  * Ns_TclNewCallback --
  *
- *      Create a new script callback.
+ *      Create a new script callback. The callback uses a single memory chunk,
+ *      which can be freed as well by a single ns_free() operation. In order
+ *      to get alignment right, we use a minimal array in the ns_callback
+ *      guarantees proper alignment of the argument vector after the
+ *      Ns_TclCallback structure.
  *
  * Results:
  *      Pointer to Ns_TclCallback.
@@ -65,7 +69,6 @@ static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const
  *
  *----------------------------------------------------------------------
  */
-
 Ns_TclCallback *
 Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr,
                   int objc, Tcl_Obj *const* objv)
@@ -76,17 +79,20 @@ Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr
     NS_NONNULL_ASSERT(cbProc != NULL);
     NS_NONNULL_ASSERT(scriptObjPtr != NULL);
 
-    cbPtr = ns_malloc(sizeof(Ns_TclCallback) + (size_t)objc * sizeof(char *));
+    cbPtr = ns_malloc(sizeof(Ns_TclCallback) +
+                      + (objc > 1 ? (size_t)(objc-1) * sizeof(char *) : 0u) );
+
     cbPtr->cbProc = cbProc;
     cbPtr->server = Ns_TclInterpServer(interp);
     cbPtr->script = ns_strdup(Tcl_GetString(scriptObjPtr));
     cbPtr->argc   = objc;
-    cbPtr->argv   = (char **)((char *)cbPtr + sizeof(Ns_TclCallback));
+    cbPtr->argv   = (char **)&cbPtr->args;
 
-    if (objc != 0) {
-        int ii;
-        for (ii = 0; ii < objc; ii++) {
-            cbPtr->argv[ii] = ns_strdup(Tcl_GetString(objv[ii]));
+    if (objc > 0) {
+        int i;
+
+        for (i = 0; i < objc; i++) {
+            cbPtr->argv[i] = ns_strdup(Tcl_GetString(objv[i]));
         }
     }
 
@@ -145,7 +151,7 @@ Ns_TclFreeCallback(void *arg)
 
 int
 Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
-                   Ns_DString *result, ...)
+                   Tcl_DString *resultDString, ...)
 {
     Ns_DString   ds;
     bool         deallocInterp = NS_FALSE;
@@ -164,7 +170,7 @@ Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
 
         Ns_DStringInit(&ds);
         Ns_DStringAppend(&ds, cbPtr->script);
-        va_start(ap, result);
+        va_start(ap, resultDString);
 
         for (arg = va_arg(ap, char *); arg != NULL; arg = va_arg(ap, char *)) {
             Ns_DStringAppendElement(&ds, arg);
@@ -183,8 +189,8 @@ Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
             if (deallocInterp) {
                 (void) Ns_TclLogErrorInfo(interp, NULL);
             }
-        } else if (result != NULL) {
-            Ns_DStringAppend(result, Tcl_GetStringResult(interp));
+        } else if (resultDString != NULL) {
+            Ns_DStringAppend(resultDString, Tcl_GetStringResult(interp));
         }
         Ns_DStringFree(&ds);
         if (deallocInterp) {

@@ -31,6 +31,7 @@
 
 #include "../nsdb/nsdb.h"
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
 
 NS_EXPORT NsDb_DriverInitProc Ns_DbDriverInit;
@@ -169,7 +170,7 @@ CloseDb(Ns_DbHandle *UNUSED(handle))
  *      Retrieve the column names of the current result.
  *
  * Results:
- *      An Ns_Set whos keys are the names of columns, or NULL on error.
+ *      An Ns_Set which keys are the names of columns, or NULL on error.
  *
  * Side effects:
  *      None.
@@ -207,7 +208,7 @@ static int
 Exec(const Ns_DbHandle *handle, char *sql)
 {
     int result;
-    
+
     if (handle->verbose) {
         Ns_Log(Notice, "nsdbtest(%s): Querying '%s'", handle->driver, sql);
     }
@@ -243,9 +244,16 @@ Exec(const Ns_DbHandle *handle, char *sql)
 static int
 GetRow(Ns_DbHandle *UNUSED(handle), const Ns_Set *row)
 {
-    Ns_SetPutValue(row, 0u, "ok");
+    int result;
 
-    return (int)NS_END_DATA;
+    if (Ns_SetValue(row, 0) == NULL) {
+        Ns_SetPutValue(row, 0u, "ok");
+        result = (int)NS_OK;
+    } else {
+        result = (int)NS_END_DATA;
+    }
+
+    return result;
 }
 
 

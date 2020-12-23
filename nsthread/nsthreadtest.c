@@ -73,6 +73,9 @@ static void MemThread(void *arg);
 static void Msg(const char *fmt,...)
     NS_GNUC_PRINTF(1, 2);
 
+static void CheckStackThread(void *UNUSED(arg)) NS_GNUC_NORETURN;
+static void WorkThread(void *arg)               NS_GNUC_NORETURN;
+
 /*
  * Msg -
  *
@@ -191,9 +194,9 @@ WorkThread(void *arg)
         Ns_ReturnCode   st;
 
         Ns_GetTime(&to);
-        Msg("time: %" PRId64 ".%06ld", (int64_t) to.sec, to.usec);
+        Msg("time: " NS_TIME_FMT, (int64_t) to.sec, to.usec);
         Ns_IncrTime(&to, 5, 0);
-        Msg("time: %" PRId64 ".%06ld", (int64_t) to.sec, to.usec);
+        Msg("time: " NS_TIME_FMT, (int64_t) to.sec, to.usec);
         Ns_MutexLock(&lock);
         time(&now);
         Msg("timed wait starts: %s", ns_ctime(&now));
@@ -235,9 +238,9 @@ AtExit(void)
 #define NA 10000
 #define BS (1024*16)
 
-int nthreads = 10;
-int memstart;
-int nrunning;
+static int nthreads = 10;
+static int memstart;
+static int nrunning;
 
 static void
 MemThread(void *arg)
@@ -302,7 +305,7 @@ MemTime(int ns)
     }
     Ns_GetTime(&end);
     Ns_DiffTime(&end, &start, &diff);
-    printf("done:  %" PRId64 "%06ld sec\n", (int64_t) diff.sec, diff.usec);
+    printf("done: " NS_TIME_FMT " sec\n", (int64_t) diff.sec, diff.usec);
 }
 
 
@@ -369,7 +372,9 @@ static void
 PthreadTlsCleanup(void *arg)
 {
     intptr_t i = (intptr_t) arg;
-    printf("pthread[%" PRIxPTR "]: log: %" PRIdPTR"\n", (uintptr_t) pthread_self(), i);
+    pthread_t self = pthread_self();
+
+    printf("pthread[%" PRIxPTR "]: log: %" PRIdPTR"\n", (uintptr_t)self, i);
 }
 
 static void *
@@ -427,7 +432,7 @@ int main(int argc, char *argv[])
     Tcl_FindExecutable(argv[0]);
     Nsthreads_LibInit();
 
-    Ns_ThreadSetName("%s", "-main-");
+    Ns_ThreadSetName("-main:%s-", "test");
 
     /*
      * Jump directly to memory test if requested.
@@ -441,7 +446,6 @@ int main(int argc, char *argv[])
             case 'm':
                 nthreads = (int)strtol(p + 1, NULL, 10);
                 goto mem;
-                break;
         }
     }
 
@@ -450,6 +454,8 @@ int main(int argc, char *argv[])
     Ns_MutexSetName(&dlock, "dumplock");
     Ns_MutexSetName(&slock, "msglock");
     Ns_MutexSetName(&block, "busylock");
+    Ns_RWLockSetName2(&rwlock, "rwlock", NULL);
+
     Ns_ThreadStackSize(81920);
     Ns_SemaInit(&sema, 3);
     Msg("sema initialized to 3");

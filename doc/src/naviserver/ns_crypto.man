@@ -26,6 +26,7 @@ Note: some common options are described in a separate section below.
 
 
 [call [cmd "ns_crypto::aead::encrypt string"] \
+     [opt [option -binary]] \
      [opt [option "-aad [arg aad]"]] \
      [opt [option "-cipher [arg cipher]"]] \
      [opt [option "-encoding [arg encoding]"]] \
@@ -47,7 +48,6 @@ Additional Authenticated Data (AAD),which is data handled by
 encryption, which is sent in clear text. The encryption still provides
 authenticity for AAD. AAD can be used e.g. for addresses, ports,
 sequence numbers, protocol version numbers.
-The function uses the raw bytes of the provided value.
 
 [para] The option [option "-cipher"] can be used to
 specify the used cipher such as e.g. [term aes-128-gcm] (default) or
@@ -59,17 +59,20 @@ value, a value that is unique within the specified context (see the
 NIST publication for details).
 
 [para] The option [option "-key"] specifies the key for the
-encryption. The function uses the raw bytes of the provided value.
+encryption.
 
 [para] The argument [arg input] is the data to be encrypted.
-The function uses the raw bytes of this argument.
+
+[para] When the option [option -binary] is specified, it applies to
+[option -key], [option -aad], [option -iv], [arg input],
 
 [example_begin]
-% ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 -key secret "hello world"
-bytes fa260f97eae35e3e3df0b7 tag 93654f78fd189b559c091acb410a0040
+ % ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 -key secret "hello world"
+ bytes fa260f97eae35e3e3df0b7 tag 93654f78fd189b559c091acb410a0040
 [example_end]
 
 [call [cmd "ns_crypto::aead::decrypt string"] \
+     [opt [option -binary]] \
      [opt [option "-aad [arg aad]"]] \
      [opt [option "-cipher [arg cipher]"]] \
      [opt [option "-encoding [arg encoding]"]] \
@@ -83,53 +86,87 @@ This function implements the inverse function of
 [term tag] of the encryption result is used as an input for decryption.
 The result is a byte string of the decrypted input (no dict).
 
+[para] When the option [option -binary] is specified, it applies to
+[option -key], [option -aad], [option -iv], [option -tag], [arg input],
 
 [example_begin]
-% set d [lb]ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 \
+ % set d [lb]ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 \
     -key secret -encoding binary \
     "hello world"[rb]
-% ns_crypto::aead::decrypt string -cipher aes-128-gcm -iv 123456789 \
+ % ns_crypto::aead::decrypt string -cipher aes-128-gcm -iv 123456789 \
     -key secret -tag [lb]dict get $d tag[rb] \
     -encoding binary [lb]dict get $d bytes[rb]
 [example_end]
+
 
 [call [cmd "ns_crypto::eckey generate"] \
      [opt [option "-name [arg name]"]] \
      [opt [option "-pem [arg pem]"]] \
      ]
 
+Generate an EC pemfile without the need of an external command.
+[para]
 This function requires OpenSSL compiled with EC support enabled.
 
+
 [call [cmd "ns_crypto::eckey import"] \
+     [opt [option -binary]] \
      [opt [option "-string [arg string]"]] \
      [opt [option "-encoding [arg encoding]"]] \
      ]
 
-This function requires OpenSSL compiled with EC support enabled.
+[para] When the option [option -binary] is specified, it applies to
+[option -string].
+
+[para] This function requires OpenSSL compiled with EC support enabled.
 
 [call [cmd "ns_crypto::eckey priv"] \
-     [opt [option "-pem [arg pem]"]] \
      [opt [option "-encoding [arg encoding]"]] \
+     [opt [option "-pem [arg pem]"]] \
+     [opt [option "-passphrase [arg passphrase]"]] \
      ]
 
-This function requires OpenSSL compiled with EC support enabled.
+Obtain the private key in various encodings from an elliptic curves
+PEM file. When the .pem-file is secured by a passphrase, this has
+to be provided via [option "-passphrase"].
+
+[para] This function requires OpenSSL compiled with EC support
+enabled.
+
 
 [call [cmd "ns_crypto::eckey sharedsecret"] \
-     [opt [option "-pem [arg pem]"]] \
+     [opt [option "-binary"]] \
      [opt [option "-encoding [arg encoding]"]] \
+     [opt [option "-passphrase [arg passphrase]"]] \
+     [opt [option "-pem [arg pem]"]] \
      [arg pubkey]]
 
-This function requires OpenSSL compiled with EC support enabled.
+Generate a shared secret based on the private key from the .pem file
+and the provided public key. When the .pem file is secured by a
+passphrase, this has to be provided via [option "-passphrase"].
+
+[para] When the option [option -binary] is specified, it applies to
+[arg pubkey].
+
+[para] This function requires OpenSSL 1.1 or newer, compiled with EC
+support enabled.
+
 
 [call [cmd "ns_crypto::eckey pub"] \
      [opt [option "-pem [arg pem]"]] \
+     [opt [option "-passphrase [arg passphrase]"]] \
      [opt [option "-encoding [arg encoding]"]] \
     ]
 
-This function requires OpenSSL compiled with EC support enabled.
+Obtain the public key in various encodings from an elliptic curves PEM
+file. When the .pem file is secured by a passphrase, this has to be
+provided via [option "-passphrase"].
+
+[para] This function requires OpenSSL compiled with EC support enabled.
 
 
 [call [cmd "ns_crypto::hmac string"] \
+     [opt [option -binary]] \
      [opt [option "-digest [arg digest]"]] \
      [opt [option "-encoding [arg encoding]"]] \
      [arg key] \
@@ -142,38 +179,87 @@ a message authentication code of a key (secret) with a message. It may
 be used to simultaneously verify both the data integrity and the
 authentication of a message. For details of HMAC, consult RFC 4231.
 
+[para]
+When the option [option -binary] is specified, it applies to
+[arg key] and [arg message].
+
 [example_begin]
-% ns_hmac string -digest sha256 "Jefe" "what do ya want for nothing?"
-5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+ % ns_hmac string -digest sha256 "Jefe" "what do ya want for nothing?"
+ 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
 [example_end]
 
-[para] This low level function operates just on an input string (which has to
+[para] This low-level function operates just on an input string (which has to
 be in memory). In order to compute HMACs on large data, use
 [cmd ns_hmac].
 
 
 [call [cmd "ns_crypto::md string"] \
      [opt [option "-digest [arg digest]"]] \
-     [opt [option "-sign [arg pemfile]"]] \
      [opt [option "-encoding [arg encoding]"]] \
+     [opt [option "-passphrase [arg passphrase]"]] \
+     [opt [option "-sign [arg pemfile]"]] \
+     [opt [option "-signature [arg signatureString]"]] \
+     [opt [option "-verify [arg pemfile]"]] \
+     [opt [option -binary]] \
      [arg message]]
 
 [para] Return a message digest for the provided [arg message] and
 return it in the specified encoding. Optionally, this function can
-encrypt the message digest with the privated key form the
-provided .pem file to obtain a digital signature based on
-https://www.openssl.org/docs/man1.1.0/crypto/EVP_DigestSignInit.html).
+return a signature based on the provided private key, or it can
+verify such a signature.
+
+[para]
+When the option [option -binary] is specified, it applies to
+[arg message].
 
 [example_begin]
-% ns_crypto::md string -digest sha256 "what do ya want for nothing?"
-b381e7fec653fc3ab9b178272366b8ac87fed8d31cb25ed1d0e1f3318644c89c
+ % ns_crypto::md string -digest sha256 "what do ya want for nothing?"
+ b381e7fec653fc3ab9b178272366b8ac87fed8d31cb25ed1d0e1f3318644c89c
 [example_end]
 
-[para] This low level function operates just on an input string (which has to
-be in memory). In order to compute digests on large data, use
-[cmd ns_md].
+[para] This low-level function operates just on an input string (which
+has to be in memory). In order to compute digests on large data (such
+as from files), use [cmd ns_md].
+
+[para] The [cmd "ns_crypto::md string"] interface can be as well used
+for digital signing and verification of the signature, when the
+respective keys are passed in as PEM files. When the PEM file is secured
+by a passphrase, the option [option "-passphrase [arg ...]"] has
+to be used to decipher the key.
+
+[para] The option [option "-sign [arg pemfile]"] is used to sign
+the given message.
+
+[para] The options [option "-verify [arg pemfile]"] and
+[option "-signature [arg signatureString]"] can be used to
+verify a signature using the private key from provided PEM file.
+The [arg signatureString] is required to be a binary string,
+therefore, produced with the output option [option "-encoding binary"]
+in the example below:
+
+[example_begin]
+ % set sig [lb]::ns_crypto::md string \
+ 	     -digest sha1 \
+ 	     -encoding binary \
+ 	     -sign /usr/local/src/naviserver/myprivate.pem \
+ 	     "abcdefghijklmnopqrstuxvwxyz\n"[rb]
+ 
+ % set vfy [lb]::ns_crypto::md string \
+ 	     -digest sha1 \
+ 	     -verify /usr/local/src/naviserver/myprivate.pem \
+ 	     -signature $sig \
+ 	     "abcdefghijklmnopqrstuxvwxyz\n"[rb]
+ 1
+[example_end]
+
+[para] The PEM files provided to [option "-sign"] and
+[option "-verify"] are private keys that can have
+the following key types: CMAC, DSA, ECDSA, HMAC and RSA.
+
+
 
 [call [cmd "ns_crypto::md hkdf"] \
+     [opt [option -binary]] \
      [opt [option "-digest [arg digest]"]] \
      [opt [option "-salt [arg salt]"]] \
      [opt [option "-secret [arg secret]"]] \
@@ -181,15 +267,44 @@ be in memory). In order to compute digests on large data, use
      [opt [option "-encoding [arg encoding]"]] \
      [arg length]]
 
+Derive keys based on message digests.
+See: RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
+https://tools.ietf.org/html/rfc5869
+
+[para]
+When the option [option -binary] is specified, it applies to
+[arg message].
+
+[para]
 This function requires OpenSSL 1.1.0.
 
 
 [call [cmd "ns_crypto::md vapidsign"] \
      [opt [option "-digest [arg digest]"]] \
-     [opt [option "-pem [arg pem]"]] \
      [opt [option "-encoding [arg encoding]"]] \
+     [opt [option "-passphrase [arg passphrase]"]] \
+     [opt [option "-pem [arg pem]"]] \
+     [opt [option -binary]] \
      [arg message]]
 
+Sign a message according to the Voluntary Application Server
+Identification (VAPID) for Web Push
+https://tools.ietf.org/id/draft-ietf-webpush-vapid-03.html
+
+[para] Essentially, this is a special form of a signed message
+digest based on elliptic curve cryptography.
+See also: Generic Event Delivery Using HTTP Push
+https://tools.ietf.org/html/rfc8030
+
+[para] The signing key is taken from the provided .pem file.
+When the .pem file is secured by a passphrase, this has to be
+provided via [option "-passphrase"].
+
+[para]
+When the option [option -binary] is specified, it applies to
+[arg message].
+
+[para]
 This function requires OpenSSL compiled with EC support enabled.
 
 
@@ -201,9 +316,49 @@ Return the specified number of random bytes in the specified encoding
 (default hex).
 
 [example_begin]
-% ns_crypto::randombytes 20
-3191eb4360a3dc9b5ef667641b264d43aa1019aa
+ % ns_crypto::randombytes 20
+ 3191eb4360a3dc9b5ef667641b264d43aa1019aa
 [example_end]
+
+
+[call [cmd "ns_crypto::scrypt"] \
+     [opt [option -binary]] \
+     [opt [option "-secret [arg secret]"]] \
+     [opt [option "-salt [arg salt]"]] \
+     [opt [option "-n [arg n]"]] \
+     [opt [option "-n [arg r]"]] \
+     [opt [option "-n [arg p]"]] \
+     [opt [option "-encoding [arg encoding]"]] \
+     [arg nrbytes]]
+
+Compute a password has based on the scrypt Password-Based Key
+Derivation Function (RFC 7914) and return the specified number of
+random bytes in the specified encoding (default hex).
+
+[para]
+The scrypt function is a modern replacement for crypt and bcrypt and
+derives more secret keys from a secret string.  It is based on memory-hard
+functions, which offer added protection against attacks using custom hardware
+and GPU arrays. The functions requires the compilation of NaviServer against
+OpenSSL 3.0 or newer.
+
+[para]
+The scrypt function is as well used in many cryptocurrencies as a
+proof-of-work algorithm.
+
+[para] Colin Percival. 2009. Stronger key derivation via
+sequential memory-hard functions. In BSDCan ’09: The Technical BSD
+Conference.
+
+[para]
+When the option [option -binary] is specified, it applies to
+[option -salt] and [option -secret].
+
+[example_begin]
+ % ns_crypto::randombytes 20
+ 3191eb4360a3dc9b5ef667641b264d43aa1019aa
+[example_end]
+
 
 
 [list_end]
@@ -226,11 +381,20 @@ output encoding used for the resulting values of the dict.
 Possible encodings are [term hex], [term base64url],
 [term base64], or [term binary]. Default is [term hex].
 
+[opt_def -binary]
+
+[para]
+When the option [option -binary] is used, the mentioned input
+arguments are treated as binary. The Tcl byte array value
+of the provided input argument is used and no UTF-8 interpretation
+is performed. When the type of the Tcl value is clearly a binary type
+(pure/proper byte array) then it is not necessary to use
+[option -binary] explicitly.
+
 
 [list_end]
 
 [see_also nsd ns_md ns_hmac]
-[keywords crypto HMAC HKDF AEAD]
+[keywords crypto HMAC HKDF AEAD random]
 
 [manpage_end]
-

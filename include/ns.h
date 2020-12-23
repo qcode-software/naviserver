@@ -37,7 +37,12 @@
 #ifndef NS_H
 #define NS_H
 
+#if defined(_MSC_VER) && !defined(HAVE_CONFIG_H)
+#include "nsversion-win32.h"
+#else
 #include "nsversion.h"
+#endif
+
 #include "nsthread.h"
 
 #ifdef HAVE_ZLIB_H
@@ -77,23 +82,25 @@
 
 #define Ns_ConnIsClosed(conn) (((conn)->flags & NS_CONN_CLOSED) != 0u)
 
-#define NS_CONN_SKIPHDRS             0x002u /* Client is HTTP/0.9, do not send HTTP headers  */
-#define NS_CONN_SKIPBODY             0x004u /* HTTP HEAD request, do not send body */
-#define NS_CONN_READHDRS             0x008u /* Unused */
-#define NS_CONN_SENTHDRS             0x010u /* Response headers have been sent to client */
-#define NS_CONN_WRITE_ENCODED        0x020u /* Character data mode requested mime-type header. */
-#define NS_CONN_STREAM               0x040u /* Data is to be streamed when ready.  */
-#define NS_CONN_STREAM_CLOSE         0x080u /* Writer Stream should be closed.  */
-#define NS_CONN_CHUNK                0x100u /* Streamed data is to be chunked. */
-#define NS_CONN_SENT_LAST_CHUNK      0x200u /* Marks that the last chunk was sent in chunked mode */
-#define NS_CONN_SENT_VIA_WRITER      0x400u /* Response data has been sent via writer thread */
-#define NS_CONN_SOCK_CORKED          0x800u /* underlying socket is corked */
-#define NS_CONN_ZIPACCEPTED         0x1000u /* the request accepts zip compression */
-#define NS_CONN_BROTLIACCEPTED      0x2000u /* the request accept brotli compression */
-#define NS_CONN_ENTITYTOOLARGE    0x010000u /* the sent Entity was too large */
-#define NS_CONN_REQUESTURITOOLONG 0x020000u /* request-URI too long */
-#define NS_CONN_LINETOOLONG       0x040000u /* request Header line too long */
-#define NS_CONN_CONFIGURED        0x100000u /* the connection is fully configured */
+#define NS_CONN_SKIPHDRS              0x002u /* Client is HTTP/0.9, do not send HTTP headers  */
+#define NS_CONN_SKIPBODY              0x004u /* HTTP HEAD request, do not send body */
+#define NS_CONN_READHDRS              0x008u /* Unused */
+#define NS_CONN_SENTHDRS              0x010u /* Response headers have been sent to client */
+#define NS_CONN_WRITE_ENCODED         0x020u /* Character data mode requested mime-type header. */
+#define NS_CONN_STREAM                0x040u /* Data is to be streamed when ready.  */
+#define NS_CONN_STREAM_CLOSE          0x080u /* Writer Stream should be closed.  */
+#define NS_CONN_CHUNK                 0x100u /* Streamed data is to be chunked. */
+#define NS_CONN_SENT_LAST_CHUNK       0x200u /* Marks that the last chunk was sent in chunked mode */
+#define NS_CONN_SENT_VIA_WRITER       0x400u /* Response data has been sent via writer thread */
+#define NS_CONN_SOCK_CORKED           0x800u /* Underlying socket is corked */
+#define NS_CONN_SOCK_WAITING          0x800u /* Connection pushed to waiting list */
+#define NS_CONN_ZIPACCEPTED         0x10000u /* The request accepts zip compression */
+#define NS_CONN_BROTLIACCEPTED      0x20000u /* The request accept brotli compression */
+#define NS_CONN_CONTINUE            0x40000u /* The request got "Expect: 100-continue" */
+#define NS_CONN_ENTITYTOOLARGE    0x0100000u /* The sent entity was too large */
+#define NS_CONN_REQUESTURITOOLONG 0x0200000u /* Request-URI too long */
+#define NS_CONN_LINETOOLONG       0x0400000u /* Request header line too long */
+#define NS_CONN_CONFIGURED        0x1000000u /* The connection is fully configured */
 
 
 /*
@@ -106,13 +113,15 @@
 #define NS_COOKIE_DISCARD          0x04u  /* Discard the cookie at the end of the current session. */
 #define NS_COOKIE_REPLACE          0x08u  /* Replace the cookie in the output headers. */
 #define NS_COOKIE_EXPIRENOW        0x10u  /* Used for deletion of cookies. */
-#define NS_COOKIE_SAMESITE_STRICT  0x20u  /* Use SameSite=strict to protect against CSRF attacks */
-#define NS_COOKIE_SAMESITE_LAX     0x40u  /* Use SameSite=lax to protect against CSRF attacks */
+#define NS_COOKIE_SAMESITE_STRICT  0x20u  /* Cookies sent in a first-party context  */
+#define NS_COOKIE_SAMESITE_LAX     0x40u  /* Cookies are sent with top-level navigations */
+#define NS_COOKIE_SAMESITE_NONE    0x80u  /* Cookies sent in all contexts */
+
 /*
  * The following are the valid attributes of a scheduled event. For NaviServer
  * and the current set of NaviServer modules, these constants would not be
  * needed here. As long Ns_ScheduleProcEx() is in the public interface and
- * uses the flags, we these constants here as well.
+ * uses the flags, we need these constants here as well.
  */
 #define NS_SCHED_THREAD            0x01u /* Ns_SchedProc will run in detached thread */
 #define NS_SCHED_ONCE              0x02u /* Call cleanup proc after running once */
@@ -128,7 +137,7 @@
 #define NS_OP_NOINHERIT            0x02u /* Match URL exactly */
 #define NS_OP_NODELETE             0x04u /* Do call previous procs Ns_OpDeleteProc */
 #define NS_OP_RECURSE              0x08u /* Also destroy registered procs below given URL */
-
+#define NS_OP_ALLFILTERS           0x10u /* Also destroy all filters for this node */
 
 
 /*
@@ -146,14 +155,16 @@ typedef enum {
  * The following define socket events for the Ns_Sock* APIs.
  */
 typedef enum {
-    NS_SOCK_READ =              0x01u, /* Socket is readable */
-    NS_SOCK_WRITE =             0x02u, /* Socket is writable */
-    NS_SOCK_EXCEPTION =         0x04u, /* Socket has OOB data */
-    NS_SOCK_EXIT =              0x08u, /* The server is shutting down */
-    NS_SOCK_DONE =              0x10u, /* Task processing is done */
-    NS_SOCK_CANCEL =            0x20u, /* Remove event from sock callback thread */
-    NS_SOCK_TIMEOUT =           0x40u, /* Timeout waiting for socket event. */
-    NS_SOCK_INIT =              0x80u /* Initialise a Task callback. */
+    NS_SOCK_NONE =            0x0000u, /* No value provided */
+    NS_SOCK_READ =            0x0001u, /* Socket is readable */
+    NS_SOCK_WRITE =           0x0002u, /* Socket is writable */
+    NS_SOCK_EXCEPTION =       0x0004u, /* Socket is in an error state */
+    NS_SOCK_EXIT =            0x0008u, /* The server is shutting down */
+    NS_SOCK_DONE =            0x0010u, /* Task processing is done */
+    NS_SOCK_CANCEL =          0x0020u, /* Remove event from sock callback thread */
+    NS_SOCK_TIMEOUT =         0x0040u, /* Timeout waiting for socket event. */
+    NS_SOCK_AGAIN =           0x0080u, /* Try AGAIN */
+    NS_SOCK_INIT =            0x0100u  /* Initialise a Task callback. */
 } Ns_SockState;
 
 /*
@@ -173,12 +184,14 @@ typedef enum {
 #define NS_SOCK_ANY                ((unsigned int)NS_SOCK_READ|(unsigned int)NS_SOCK_WRITE|(unsigned int)NS_SOCK_EXCEPTION)
 
 /*
- * The following are valid comm driver options.
+ * The following are valid network driver options.
  */
 #define NS_DRIVER_ASYNC            0x01u /* Use async read-ahead. */
 #define NS_DRIVER_SSL              0x02u /* Use SSL port, protocol defaults. */
 #define NS_DRIVER_NOPARSE          0x04u /* Do not parse request */
 #define NS_DRIVER_UDP              0x08u /* UDP, can't use stream socket options */
+#define NS_DRIVER_CAN_USE_SENDFILE 0x10u /* Allow to send clear text via sendfile */
+#define NS_DRIVER_SNI              0x20u /* SNI - just used when NS_DRIVER_SSL is set as well */
 
 #define NS_DRIVER_VERSION_1        1    /* Obsolete. */
 #define NS_DRIVER_VERSION_2        2    /* IPv4 only */
@@ -196,7 +209,8 @@ typedef enum {
     NS_TCL_TRACE_ALLOCATE     = 0x04u, /* Interp allocated, possibly from thread cache */
     NS_TCL_TRACE_DEALLOCATE   = 0x08u, /* Interp de-allocated, returned to thread-cache */
     NS_TCL_TRACE_GETCONN      = 0x10u, /* Interp allocated for connection processing (filter, proc) */
-    NS_TCL_TRACE_FREECONN     = 0x20u  /* Interp finished connection processing */
+    NS_TCL_TRACE_FREECONN     = 0x20u, /* Interp finished connection processing */
+    NS_TCL_TRACE_IDLE         = 0x40u  /* Interp (connthread) idle */
 } Ns_TclTraceType;
 
 /*
@@ -313,37 +327,53 @@ typedef enum {
 NS_EXTERN Ns_LogSeverity Ns_LogTaskDebug;   /* Severity at which to log verbose. */
 NS_EXTERN Tcl_Encoding   NS_utf8Encoding;   /* Cached UTF-8 encoding */
 
+#if defined(_MSC_VER) && !defined(Ns_LogAccessDebug_DEFINED_ALREADY)
+extern NS_IMPORT  Ns_LogSeverity Ns_LogAccessDebug;
+#elif defined(_MSC_VER)
+#else
+NS_EXTERN Ns_LogSeverity Ns_LogAccessDebug;
+#endif
+
+struct Ns_ObjvSpec;
+
 /*
  * Typedefs of functions
  */
 
-typedef int   (Ns_IndexCmpProc) (const void *left, const void *right);
-typedef int   (Ns_SortProc) (void *left, void *right);
-typedef bool  (Ns_EqualProc) (void *left, void *right);
-typedef void  (Ns_ElemVoidProc) (void *elem);
-typedef void *(Ns_ElemValProc) (void *elem);
-typedef bool  (Ns_ElemTestProc) (void *elem);
-typedef void  (Ns_Callback) (void *arg);
-typedef void  (Ns_ShutdownProc) (const Ns_Time *toPtr, void *arg);
-typedef int   (Ns_TclInterpInitProc) (Tcl_Interp *interp, const void *arg);
-typedef int   (Ns_TclTraceProc) (Tcl_Interp *interp, const void *arg);
-typedef void  (Ns_TclDeferProc) (Tcl_Interp *interp, void *arg);
-typedef bool  (Ns_SockProc) (NS_SOCKET sock, void *arg, unsigned int why);
-typedef void  (Ns_TaskProc) (Ns_Task *task, NS_SOCKET sock, void *arg, Ns_SockState why);
-typedef void  (Ns_EventProc) (Ns_Event *event, NS_SOCKET sock, void *arg, Ns_Time *now, Ns_SockState why);
-typedef void  (Ns_SchedProc) (void *arg, int id);
-typedef Ns_ReturnCode (Ns_ServerInitProc) (const char *server);
-typedef Ns_ReturnCode (Ns_ModuleInitProc) (const char *server, const char *module) NS_GNUC_NONNULL(2);
-typedef Ns_ReturnCode (Ns_RequestAuthorizeProc) (const char *server, const char *method,
-                                                 const char *url, const char *user,
-                                                 const char *pass, const char *peer);
-typedef void  (Ns_AdpParserProc)(Ns_DString *outPtr, char *page);
+typedef int           (Ns_SortProc)(void *left, void *right);
+typedef bool          (Ns_EqualProc)(void *left, void *right);
+typedef void          (Ns_ElemVoidProc)(void *elem);
+typedef void *        (Ns_ElemValProc)(void *elem);
+typedef bool          (Ns_ElemTestProc)(void *elem);
+typedef void          (Ns_Callback) (void *arg);
+typedef Ns_ReturnCode (Ns_LogCallbackProc)(void *arg);
+typedef void          (Ns_FreeProc)(void *arg);
+typedef void          (Ns_ShutdownProc)(const Ns_Time *toPtr, void *arg);
+typedef int           (Ns_TclInterpInitProc)(Tcl_Interp *interp, const void *arg);
+typedef int           (Ns_TclTraceProc)(Tcl_Interp *interp, const void *arg);
+typedef void          (Ns_TclDeferProc)(Tcl_Interp *interp, void *arg);
+typedef bool          (Ns_SockProc)(NS_SOCKET sock, void *arg, unsigned int why);
+typedef void          (Ns_TaskProc)(Ns_Task *task, NS_SOCKET sock, void *arg,
+                                    Ns_SockState why);
+typedef void          (Ns_EventProc)(Ns_Event *event, NS_SOCKET sock, void *arg,
+                                     Ns_Time *now, Ns_SockState why);
+typedef void          (Ns_SchedProc)(void *arg, int id);
+typedef Ns_ReturnCode (Ns_ServerInitProc)(const char *server);
+typedef Ns_ReturnCode (Ns_ModuleInitProc)(const char *server, const char *module)
+    NS_GNUC_NONNULL(2);
+typedef Ns_ReturnCode (Ns_RequestAuthorizeProc)(const char *server, const char *method,
+                                                const char *url, const char *user,
+                                                const char *pass, const char *peer);
+typedef void          (Ns_AdpParserProc)(Tcl_DString *outPtr, char *page);
 typedef Ns_ReturnCode (Ns_UserAuthorizeProc) (const char *user, const char *passwd)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-struct Ns_ObjvSpec;
-typedef int   (Ns_ObjvProc) (struct Ns_ObjvSpec *spec, Tcl_Interp *interp,
-                             int *objcPtr, Tcl_Obj *const* objv)
+typedef int           (Ns_ObjvProc)(struct Ns_ObjvSpec *spec, Tcl_Interp *interp,
+                                    int *objcPtr, Tcl_Obj *const* objv)
     NS_GNUC_NONNULL(1);
+typedef int           (Ns_IndexCmpProc) (const void *left, const void *right)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+typedef int           (Ns_IndexKeyCmpProc) (const void *key, const void *elemPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * Generic function pointer type, can be used for recasting between different
@@ -354,6 +384,7 @@ typedef void (*ns_funcptr_t)(void);
 /*
  * The field of a key-value data structure.
  */
+
 
 typedef struct Ns_SetField {
     char *name;
@@ -416,6 +447,12 @@ typedef struct Ns_Index {
     size_t            inc;
 } Ns_Index;
 
+typedef struct Ns_IndexContextSpec {
+    Ns_FreeProc *freeProc;
+    void        *data;
+    Ns_FreeProc *dataFreeProc;
+} Ns_IndexContextSpec;
+
 /*
  * A linked list data structure.
  */
@@ -437,6 +474,17 @@ typedef struct Ns_ObjvSpec {
     void            *dest;
     void            *arg;
 } Ns_ObjvSpec;
+
+typedef struct Ns_ObjvValueRange {
+    Tcl_WideInt minValue;
+    Tcl_WideInt maxValue;
+} Ns_ObjvValueRange;
+
+typedef struct Ns_ObjvTimeRange {
+    Ns_Time minValue;
+    Ns_Time maxValue;
+} Ns_ObjvTimeRange;
+
 
 /*
  * The following struct is used to validate options from
@@ -466,8 +514,9 @@ typedef struct Ns_TclCallback {
     ns_funcptr_t    cbProc;
     const char     *server;
     const char     *script;
-    int             argc;
     char          **argv;
+    int             argc;
+    char           *args[1];
 } Ns_TclCallback;
 
 /*
@@ -483,14 +532,14 @@ typedef struct Ns_Driver {
     const char *location;      /* Location, e.g, "http://foo:9090" */
     const char *address;       /* Address in location, e.g. "foo" */
     const char *protocol;      /* Protocol in location, e.g, "http" */
-    long        sendwait;      /* send() I/O timeout in seconds */
-    long        recvwait;      /* recv() I/O timeout in seconds */
+    Ns_Time     sendwait;      /* send() I/O timeout in seconds */
+    Ns_Time     recvwait;      /* recv() I/O timeout in seconds */
     size_t      bufsize;       /* Conn bufsize (0 for SSL) */
     const Ns_Set *extraHeaders;  /* Extra header fields added for every request */
 } Ns_Driver;
 
 /*
- * The following structure defins the public
+ * The following structure defines the public
  * parts of the driver socket connection.
  */
 
@@ -508,9 +557,10 @@ typedef struct Ns_Sock {
  */
 
 typedef struct Ns_FileVec {
-    off_t      offset;  /* Offset into file to begin sending, or void *. */
-    size_t     length;  /* Number of bytes to send from offset. */
-    int        fd;      /* File descriptor of file to send, or < 0 for memory. */
+    const char *buffer;  /* Optional memory buffer, when fd is invalid */
+    size_t      length;  /* Number of bytes to send from offset. */
+    off_t       offset;  /* Offset for file (or buffer) */
+    int         fd;      /* File descriptor of file to send, or < 0 for memory. */
 } Ns_FileVec;
 
 /*
@@ -565,8 +615,13 @@ typedef void
      NS_GNUC_NONNULL(1);
 
 typedef int
-(Ns_DriverClientInitProc)(Tcl_Interp *interp, Ns_Sock *sock, NS_TLS_SSL_CTX *ctx);
+(Ns_DriverClientInitProc)(Tcl_Interp *interp, Ns_Sock *sock, void* arg)
+     NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(2)  NS_GNUC_NONNULL(3);
 
+typedef struct Ns_DriverClientInitArg {
+    NS_TLS_SSL_CTX *ctx;
+    const char *sniHostname;
+} Ns_DriverClientInitArg;
 
 /*
  * The following structure defines the values to initialize the driver. This is
@@ -574,10 +629,9 @@ typedef int
  */
 
 typedef struct Ns_DriverInitData {
-    int                      version;          /* Version 4. */
     const char              *name;             /* This will show up in log file entries */
     Ns_DriverListenProc     *listenProc;       /* Open listening socket for conns. */
-    Ns_DriverAcceptProc     *acceptProc;       /* Accept a new non-blocking socket. */
+    Ns_DriverAcceptProc     *acceptProc;       /* Accept a new nonblocking socket. */
     Ns_DriverRecvProc       *recvProc;         /* Read bytes from conn into iovec. */
     Ns_DriverSendProc       *sendProc;         /* Write bytes to conn from iovec. */
     Ns_DriverSendFileProc   *sendFileProc;     /* Optional: write bytes from files/buffers. */
@@ -585,11 +639,12 @@ typedef struct Ns_DriverInitData {
     Ns_DriverRequestProc    *requestProc;      /* First proc to be called by a connection thread. */
     Ns_DriverCloseProc      *closeProc;        /* Close a connection socket. */
     Ns_DriverClientInitProc *clientInitProc;   /* Initialize a client connection*/
+    int                      version;          /* Version 4. */
     unsigned int             opts;             /* NS_DRIVER_ASYNC | NS_DRIVER_SSL  */
     void                    *arg;              /* Module's driver callback data */
     const char              *path;             /* Path to find config parameter such as port, address, etc. */
-    unsigned short           defaultPort;      /* Default port */
     const char              *protocol;         /* Protocol */
+    unsigned short           defaultPort;      /* Default port */
 } Ns_DriverInitData;
 
 
@@ -639,7 +694,7 @@ typedef Ns_ReturnCode (Ns_FilterProc)
     (const void *arg, Ns_Conn *conn, Ns_FilterType why);
 
 typedef Ns_ReturnCode (Ns_LogFilter)
-    (void *arg, Ns_LogSeverity severity, const Ns_Time *stamp, const char *msg, size_t len)
+    (const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp, const char *msg, size_t len)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 typedef Ns_ReturnCode (Ns_UrlToFileProc)
@@ -681,11 +736,11 @@ Ns_AdpGetOutput(Tcl_Interp *interp, Tcl_DString **dsPtrPtr,
  */
 
 NS_EXTERN Ns_ReturnCode
-Ns_AdpRequest(Ns_Conn *conn, const char *file)
+Ns_AdpRequest(Ns_Conn *conn, const char *fileName)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
-Ns_AdpRequestEx(Ns_Conn *conn, const char *file, const Ns_Time *expiresPtr)
+Ns_AdpRequestEx(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN int
@@ -718,16 +773,16 @@ Ns_AuthorizeUser(const char *user, const char *passwd)
  */
 
 NS_EXTERN Ns_Cache *
-Ns_CacheCreate(const char *name, int keys, time_t ttl, Ns_Callback *freeProc)
+Ns_CacheCreate(const char *name, int keys, time_t ttl, Ns_FreeProc *freeProc)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_Cache *
-Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_Callback *freeProc)
+Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_FreeProc *freeProc)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_Cache *
 Ns_CacheCreateEx(const char *name, int keys, time_t ttl, size_t maxSize,
-                 Ns_Callback *freeProc)
+                 Ns_FreeProc *freeProc)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN void
@@ -755,6 +810,10 @@ NS_EXTERN Ns_Entry *
 Ns_CacheWaitCreateEntryT(Ns_Cache *cache, const char *key, int *newPtr,
                         const Ns_Time *timeoutPtr, const Ns_CacheTransactionStack *transactionStackPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+NS_EXTERN const char *
+Ns_CacheName(const Ns_Cache *cache)
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 
 NS_EXTERN const char *
 Ns_CacheKey(const Ns_Entry *entry)
@@ -953,47 +1012,6 @@ Ns_InflateEnd(Ns_CompressStream *cStream)
     NS_GNUC_NONNULL(1);
 
 /*
- * For HTTP tasks (in ns_http and ns_https)
- */
-typedef struct {
-    Ns_Task           *task;
-    NS_SOCKET          sock;
-    int                status;
-    const char        *url;
-    const char        *error;
-    char              *next;             /* write to client */
-    size_t             requestLength;    /* size of request */
-    size_t             sent;             /* amount of data sent */
-    size_t             replyLength;      /* size of the reply */
-    size_t             received;         /* amount data in the body received */
-    int                replyHeaderSize;
-    Ns_Set            *replyHeaders;     /* ns_set for header fields of the reply */
-    int                spoolLimit;       /* spool to file, when this body > this size */
-    int                spoolFd;          /* fd of spool file */
-    const char        *spoolFileName;    /* filename of spoolfile */
-    Ns_Mutex           lock;             /* needed for switching modes (spooling to file/memory) */
-    unsigned int       flags;
-    Ns_CompressStream *compress;
-    Ns_Time            timeout;
-    Ns_Time            stime;
-    Ns_Time            etime;
-    bool               sendSpoolMode;    /* flag, whether a file is to be transmitted via bodyFileFd */
-    int                bodyFileFd;       /* fd of a file which is sent as body */
-    Ns_SockState       finalSockState;
-    Tcl_Obj           *infoObj;
-    const char        *doneCallback;
-    NS_TLS_SSL_CTX    *ctx;
-    NS_TLS_SSL        *ssl;
-    Tcl_DString        ds;
-} Ns_HttpTask;
-
-#define NS_HTTP_FLAG_DECOMPRESS    0x0001u
-#define NS_HTTP_FLAG_GZIP_ENCODING 0x0002u
-#define NS_HTTP_FLAG_GUNZIP        (NS_HTTP_FLAG_DECOMPRESS|NS_HTTP_FLAG_GZIP_ENCODING)
-
-
-
-/*
  * config.c:
  */
 
@@ -1075,6 +1093,14 @@ NS_EXTERN const Ns_Set *
 Ns_ConfigSet(const char *section, const char *key)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
+NS_EXTERN void
+Ns_ConfigTimeUnitRange(const char *section, const char *key,
+                       const char *defaultString,
+                       long minSec, long minUsec,
+                       long maxSec, long maxUsec,
+                       Ns_Time *timePtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2)  NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(8);
+
 /*
  * conn.c:
  */
@@ -1104,9 +1130,11 @@ NS_EXTERN const char *   Ns_ConnLocation(Ns_Conn *conn) NS_GNUC_DEPRECATED_FOR(N
 NS_EXTERN char *         Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN bool           Ns_ConnModifiedSince(const Ns_Conn *conn, time_t since) NS_GNUC_NONNULL(1);
 NS_EXTERN Ns_Set *       Ns_ConnOutputHeaders(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
-NS_EXTERN const char *   Ns_ConnPeer(const Ns_Conn *conn) NS_GNUC_DEPRECATED_FOR(Ns_ConnPeerAddr);
+NS_EXTERN const char *   Ns_ConnPeer(const Ns_Conn *conn) NS_GNUC_PURE NS_GNUC_DEPRECATED_FOR(Ns_ConnPeerAddr);
 NS_EXTERN const char *   Ns_ConnPeerAddr(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 NS_EXTERN unsigned short Ns_ConnPeerPort(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
+NS_EXTERN const char *   Ns_ConnForwardedPeerAddr(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
+NS_EXTERN const char *   Ns_ConnConfiguredPeerAddr(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 NS_EXTERN unsigned short Ns_ConnPort(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 NS_EXTERN Ns_Time *      Ns_ConnQueueTime(Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 NS_EXTERN ssize_t        Ns_ConnResponseLength(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
@@ -1115,7 +1143,9 @@ NS_EXTERN const char *   Ns_ConnServer(const Ns_Conn *conn) NS_GNUC_NONNULL(1) N
 NS_EXTERN void           Ns_ConnSetCompression(Ns_Conn *conn, int level) NS_GNUC_NONNULL(1);
 NS_EXTERN void           Ns_ConnSetContentSent(Ns_Conn *conn, size_t length) NS_GNUC_NONNULL(1);
 NS_EXTERN void           Ns_ConnSetEncoding(Ns_Conn *conn, Tcl_Encoding encoding) NS_GNUC_NONNULL(1);
-NS_EXTERN char *         Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+NS_EXTERN const char *   Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr,
+                                        const struct sockaddr *clientsaPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 NS_EXTERN void           Ns_ConnSetResponseStatus(Ns_Conn *conn, int newStatus) NS_GNUC_NONNULL(1);
 NS_EXTERN void           Ns_ConnSetUrlEncoding(Ns_Conn *conn, Tcl_Encoding encoding) NS_GNUC_NONNULL(1);
 NS_EXTERN NS_SOCKET      Ns_ConnSock(const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_PURE;
@@ -1154,15 +1184,15 @@ Ns_ConnWriteVData(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fla
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ConnSendFd(Ns_Conn *conn, int fd, size_t nsend)
+Ns_ConnSendFd(Ns_Conn *conn, int fd, ssize_t nsend)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ConnSendFp(Ns_Conn *conn, FILE *fp, size_t nsend)
+Ns_ConnSendFp(Ns_Conn *conn, FILE *fp, ssize_t nsend)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ConnSendChannel(Ns_Conn *conn, Tcl_Channel chan, size_t nsend)
+Ns_ConnSendChannel(Ns_Conn *conn, Tcl_Channel chan, ssize_t nsend)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
@@ -1263,7 +1293,7 @@ NS_EXTERN void
 Ns_ConnDeleteSecureCookie(const Ns_Conn *conn, const char *name, const char *domain, const char *path)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
@@ -1340,8 +1370,8 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN char *
-Ns_DStringAppendPrintable(Tcl_DString *dsPtr, const char *buffer, size_t len)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+Ns_DStringAppendPrintable(Tcl_DString *dsPtr, bool indentMode, const char *buffer, size_t len)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN char *
 Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
@@ -1466,6 +1496,10 @@ Ns_RegisterCleanup(Ns_TraceProc *proc, void *arg)
 /*
  * uuencode.c
  */
+
+NS_EXTERN size_t
+Ns_Base64Encode(const unsigned char *input, size_t inputSize, char *buf, size_t maxLineLength, int encoding)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN size_t
 Ns_HtuuEncode(const unsigned char *input, size_t inputSize, char *buf)
@@ -1640,6 +1674,12 @@ Ns_TaskCreate(NS_SOCKET sock, Ns_TaskProc *proc, void *arg)
     NS_GNUC_RETURNS_NONNULL
     NS_GNUC_WARN_UNUSED_RESULT;
 
+NS_EXTERN Ns_Task *
+Ns_TaskTimedCreate(NS_SOCKET sock, Ns_TaskProc *proc, void *arg, Ns_Time *)
+    NS_GNUC_NONNULL(2)
+    NS_GNUC_RETURNS_NONNULL
+    NS_GNUC_WARN_UNUSED_RESULT;
+
 NS_EXTERN Ns_ReturnCode
 Ns_TaskEnqueue(Ns_Task *task, Ns_TaskQueue *queue)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -1677,16 +1717,16 @@ Ns_TaskFree(Ns_Task *task)
  */
 
 NS_EXTERN void
-Ns_TclResetObjType(Tcl_Obj *objPtr, Tcl_ObjType *newTypePtr)
+Ns_TclResetObjType(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN void
-Ns_TclSetTwoPtrValue(Tcl_Obj *objPtr, Tcl_ObjType *newTypePtr,
+Ns_TclSetTwoPtrValue(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr,
                      void *ptr1, void *ptr2)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN void
-Ns_TclSetOtherValuePtr(Tcl_Obj *objPtr, Tcl_ObjType *newTypePtr, void *value)
+Ns_TclSetOtherValuePtr(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr, void *value)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 NS_EXTERN void
@@ -1739,6 +1779,15 @@ NS_EXTERN Ns_ObjvProc Ns_ObjvString;
 NS_EXTERN Ns_ObjvProc Ns_ObjvTime;
 NS_EXTERN Ns_ObjvProc Ns_ObjvUShort;
 NS_EXTERN Ns_ObjvProc Ns_ObjvWideInt;
+
+NS_EXTERN int Ns_TclGetMemUnitFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Tcl_WideInt *memUnitPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+NS_EXTERN int Ns_CheckWideRange(Tcl_Interp *interp, const char *name, const Ns_ObjvValueRange *r, Tcl_WideInt value)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN int Ns_CheckTimeRange(Tcl_Interp *interp, const char *name, const Ns_ObjvTimeRange *r, Ns_Time *value)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
 NS_EXTERN int
 Ns_SubcmdObjv(const Ns_SubCmdSpec *subcmdSpec, ClientData clientData,
@@ -1808,7 +1857,7 @@ Tcl_SetKeyedListField(Tcl_Interp  *interp, const char *fieldName,
  * listen.c:
  */
 
-NS_EXTERN Ns_ReturnCode
+NS_EXTERN NS_SOCKET
 Ns_SockListenCallback(const char *addr, unsigned short port, Ns_SockProc *proc, bool bind, void *arg)
     NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(5);
 
@@ -1851,14 +1900,14 @@ Ns_LogTime2(char *timeBuf, bool gmt)
 
 NS_EXTERN void
 Ns_SetLogFlushProc(Ns_LogFlushProc *procPtr)
-    NS_GNUC_DEPRECATED_FOR(Ns_AddLogFilter);
+    NS_GNUC_DEPRECATED_FOR(Ns_AddLogFilter) NS_GNUC_NORETURN;
 
 NS_EXTERN void
 Ns_SetNsLogProc(Ns_LogProc *procPtr)
-    NS_GNUC_DEPRECATED_FOR(Ns_AddLogFilter);
+    NS_GNUC_DEPRECATED_FOR(Ns_AddLogFilter) NS_GNUC_NORETURN;
 
 NS_EXTERN void
-Ns_AddLogFilter(Ns_LogFilter *procPtr, void *arg, Ns_Callback *freeProc)
+Ns_AddLogFilter(Ns_LogFilter *procPtr, void *arg, Ns_FreeProc *freeProc)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN void
@@ -1903,6 +1952,11 @@ NS_EXTERN Ns_ReturnCode
 Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, int maxbackup)
     NS_GNUC_NONNULL(1);
 
+NS_EXTERN Ns_ReturnCode
+Ns_RollFileCondFmt(Ns_LogCallbackProc openProc, Ns_LogCallbackProc closeProc, void *arg,
+                   const char *filename, const char *rollfmt, int maxbackup)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
 /*
  * nsmain.c:
  */
@@ -1922,7 +1976,7 @@ Ns_StopServer(char *server);
 /*
  * info.c:
  */
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_InfoAddress(void) NS_GNUC_CONST;
 
 NS_EXTERN time_t
@@ -1937,7 +1991,7 @@ Ns_InfoConfigFile(void) NS_GNUC_PURE;
 NS_EXTERN const char *
 Ns_InfoHomePath(void) NS_GNUC_PURE;
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_InfoHostname(void) NS_GNUC_PURE;
 
 NS_EXTERN bool
@@ -2100,27 +2154,31 @@ NS_EXTERN bool
 Ns_PathIsAbsolute(const char *path) NS_GNUC_PURE
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_NormalizePath(Ns_DString *dsPtr, const char *path)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
 
-NS_EXTERN char *
+NS_EXTERN const char *
+Ns_NormalizeUrl(Ns_DString *dsPtr, const char *path)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
+
+NS_EXTERN const char *
 Ns_MakePath(Ns_DString *dsPtr, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_HashPath(Ns_DString *dsPtr, const char *path, int levels)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_LibPath(Ns_DString *dsPtr, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_BinPath(Ns_DString *dsPtr, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_HomePath(Ns_DString *dsPtr, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
@@ -2128,15 +2186,15 @@ NS_EXTERN bool
 Ns_HomePathExists(const char *path, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_ModulePath(Ns_DString *dsPtr, const char *server, const char *module, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_PagePath(Ns_DString *dsPtr, const char *server, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
@@ -2375,6 +2433,10 @@ Ns_ConnReturnNotImplemented(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
+Ns_ConnTryReturnInternalError(Ns_Conn *conn, Ns_ReturnCode status, const char *causeString)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+
+NS_EXTERN Ns_ReturnCode
 Ns_ConnReturnInternalError(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
@@ -2391,28 +2453,28 @@ Ns_ConnReturnUnavailable(Ns_Conn *conn)
  */
 
 NS_EXTERN Ns_ReturnCode
-Ns_VarGet(const char *server, const char *array, const char *key, Ns_DString *dsPtr)
+Ns_VarGet(const char *server, const char *array, const char *keyString, Ns_DString *dsPtr)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 NS_EXTERN bool
-Ns_VarExists(const char *server, const char *array, const char *key)
+Ns_VarExists(const char *server, const char *array, const char *keyString)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 NS_EXTERN Ns_ReturnCode
-Ns_VarSet(const char *server, const char *array, const char *key,
+Ns_VarSet(const char *server, const char *array, const char *keyString,
           const char *value, ssize_t len)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 NS_EXTERN Ns_ReturnCode
-Ns_VarUnset(const char *server, const char *array, const char *key)
+Ns_VarUnset(const char *server, const char *array, const char *keyString)
     NS_GNUC_NONNULL(2);
 
 NS_EXTERN Tcl_WideInt
-Ns_VarIncr(const char *server, const char *array, const char *key, int incr)
+Ns_VarIncr(const char *server, const char *array, const char *keyString, int incr)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 NS_EXTERN Ns_ReturnCode
-Ns_VarAppend(const char *server, const char *array, const char *key,
+Ns_VarAppend(const char *server, const char *array, const char *keyString,
              const char *value, ssize_t len)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
@@ -2421,8 +2483,8 @@ Ns_VarAppend(const char *server, const char *array, const char *key,
  */
 
 NS_EXTERN int
-Ns_After(int delay, Ns_SchedProc *proc, void *arg, ns_funcptr_t deleteProc)
-    NS_GNUC_NONNULL(2);
+Ns_After(const Ns_Time *interval, Ns_SchedProc *proc, void *arg, ns_funcptr_t deleteProc)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN bool
 Ns_Cancel(int id);
@@ -2434,24 +2496,24 @@ NS_EXTERN bool
 Ns_Resume(int id);
 
 NS_EXTERN int
-Ns_ScheduleProc(Ns_SchedProc proc, void *arg, int thread, int interval)
-    NS_GNUC_NONNULL(1);
+Ns_ScheduleProc(Ns_SchedProc *proc, void *arg, int thread, int secs)
+    NS_GNUC_NONNULL(1) NS_GNUC_DEPRECATED_FOR(Ns_ScheduleProcEx);
 
 NS_EXTERN int
-Ns_ScheduleDaily(Ns_SchedProc proc, void *clientData, unsigned int flags,
-                 int hour, int minute, Ns_SchedProc cleanupProc)
+Ns_ScheduleDaily(Ns_SchedProc *proc, void *clientData, unsigned int flags,
+                 int hour, int minute, Ns_SchedProc *cleanupProc)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN int
 Ns_ScheduleWeekly(Ns_SchedProc *proc, void *clientData, unsigned int flags,
                   int day, int hour, int minute,
-                  Ns_SchedProc cleanupProc)
+                  Ns_SchedProc *cleanupProc)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN int
 Ns_ScheduleProcEx(Ns_SchedProc *proc, void *clientData, unsigned int flags,
-                  int interval, Ns_SchedProc cleanupProc)
-    NS_GNUC_NONNULL(1);
+                  const Ns_Time *interval, Ns_SchedProc *cleanupProc)
+    NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(4);
 
 NS_EXTERN void
 Ns_UnscheduleProc(int id);
@@ -2503,7 +2565,7 @@ Ns_SetFindCmp(const Ns_Set *set, const char *key,
               int (*cmp) (const char *s1, const char *s2))
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_SetGetCmp(const Ns_Set *set, const char *key,
              int (*cmp) (const char *s1, const char *s2))
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
@@ -2524,11 +2586,11 @@ NS_EXTERN int
 Ns_SetIFind(const Ns_Set *set, const char *key)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_SetGet(const Ns_Set *set, const char *key)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_PURE;
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_SetIGet(const Ns_Set *set, const char *key)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
@@ -2688,7 +2750,7 @@ Ns_ResetFileVec(Ns_FileVec *bufs, int nbufs, size_t sent)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN ssize_t
-Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs)
+Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs, unsigned int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN bool
@@ -2729,14 +2791,35 @@ NS_EXTERN ssize_t
 Ns_SockSend(NS_SOCKET sock, const void *buffer, size_t length, const Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(2);
 
+NS_EXTERN void
+Ns_SockSetReceiveState(Ns_Sock *sock, Ns_SockState sockState)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN bool
+Ns_SockInErrorState(const Ns_Sock *sock) NS_GNUC_PURE
+    NS_GNUC_NONNULL(1);
+
+unsigned short
+Ns_SockGetPort(const Ns_Sock *sock)
+    NS_GNUC_NONNULL(1);
+
 NS_EXTERN ssize_t
-Ns_SockRecvBufs(NS_SOCKET sock, struct iovec *bufs, int nbufs,
+Ns_SockRecvBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
                 const Ns_Time *timeoutPtr, unsigned int flags);
+NS_EXTERN ssize_t
+Ns_SockRecvBufs2(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags,
+                 Ns_SockState *sockStatePtr)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(5);
 
 NS_EXTERN ssize_t
 Ns_SockSendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
                 const Ns_Time *timeoutPtr, unsigned int flags)
     NS_GNUC_NONNULL(1);
+
+NS_EXTERN ssize_t
+Ns_SockSendBufs2(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
+                 unsigned int flags)
+    NS_GNUC_NONNULL(2);
 
 NS_EXTERN NS_SOCKET
 Ns_BindSock(const struct sockaddr *saPtr)
@@ -2796,11 +2879,11 @@ Ns_SockSetBlocking(NS_SOCKET sock);
 NS_EXTERN void
 Ns_SockSetDeferAccept(NS_SOCKET sock, long secs);
 
+NS_EXTERN void
+Ns_SockSetKeepalive(NS_SOCKET sock, int optval);
+
 NS_EXTERN Ns_ReturnCode
 Ns_SockCloseLater(NS_SOCKET sock);
-
-NS_EXTERN char *
-Ns_SockError(void);
 
 NS_EXTERN void
 Ns_ClearSockErrno(void);
@@ -2811,7 +2894,7 @@ Ns_GetSockErrno(void);
 NS_EXTERN void
 Ns_SetSockErrno(ns_sockerrno_t err);
 
-NS_EXTERN char *
+NS_EXTERN const char *
 Ns_SockStrError(ns_sockerrno_t err);
 
 #ifdef _WIN32
@@ -2824,6 +2907,7 @@ ns_sockdup(NS_SOCKET sock);
 NS_EXTERN int
 ns_socknbclose(NS_SOCKET sock);
 #endif
+
 
 /*
  * sockaddr.c:
@@ -2861,7 +2945,7 @@ NS_EXTERN void
 Ns_SockaddrSetPort(struct sockaddr *saPtr, unsigned short port)
     NS_GNUC_NONNULL(1);
 
-socklen_t
+NS_EXTERN socklen_t
 Ns_SockaddrGetSockLen(const struct sockaddr *saPtr)
         NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 
@@ -2869,7 +2953,17 @@ NS_EXTERN void
 Ns_LogSockaddr(Ns_LogSeverity severity, const char *prefix, const struct sockaddr *saPtr)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
+NS_EXTERN  Ns_ReturnCode
+Ns_SockaddrParseIPMask(Tcl_Interp *interp, const char *ipString,
+                       struct sockaddr *ipPtr, struct sockaddr *maskPtr,
+                       unsigned int *nrBitsPtr)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
+NS_EXTERN bool
+Ns_SockaddrMaskedMatch(const struct sockaddr *addr,
+                       const struct sockaddr *mask,
+                       const struct sockaddr *masked)
+        NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 /*
  * sockcallback.c:
@@ -2941,12 +3035,12 @@ Ns_StrCaseFind(const char *chars, const char *subString)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN bool
-Ns_StrIsHost(const char *chars)
+Ns_StrIsValidHostHeaderContent(const char *chars)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN const char *
-Ns_GetBinaryString(Tcl_Obj *obj, int *lengthPtr, Tcl_DString *dsPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+NS_EXTERN const unsigned char *
+Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *dsPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 /*
  * tclcallbacks.c:
@@ -2959,7 +3053,7 @@ Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr
 
 NS_EXTERN int
 Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
-                   Ns_DString *result, ...) NS_GNUC_SENTINEL
+                   Tcl_DString *resultDString, ...) NS_GNUC_SENTINEL
     NS_GNUC_NONNULL(2);
 
 
@@ -3079,23 +3173,12 @@ Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
  * tclhttp.c
  */
 NS_EXTERN void
-Ns_HttpCheckHeader(Ns_HttpTask *httpPtr)
-    NS_GNUC_NONNULL(1);
-
-NS_EXTERN void
-Ns_HttpCheckSpool(Ns_HttpTask *httpPtr)
-    NS_GNUC_NONNULL(1);
-
-NS_EXTERN int
-Ns_HttpAppendBuffer(Ns_HttpTask *httpPtr, const char *buffer, size_t inSize)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-
-NS_EXTERN void
 Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
 NS_EXTERN char *
-Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString, const char *hostString,
+Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString,
+                      const char *hostString,
                       unsigned short port, unsigned short defPort)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 
@@ -3194,7 +3277,7 @@ Ns_HttpTime(Ns_DString *dsPtr, const time_t *when)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN time_t
-Ns_ParseHttpTime(char *chars)
+Ns_ParseHttpTime(const char *chars)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -3272,6 +3355,14 @@ Ns_CookieDecode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN char *
+Ns_Oauth1Encode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN char *
+Ns_Oauth1Decode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+NS_EXTERN char *
 Ns_EncodeUrlWithEncoding(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding)
     NS_GNUC_DEPRECATED_FOR(Ns_UrlQueryEncode)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -3320,11 +3411,21 @@ Ns_UrlSpecificWalk(int id, const char *server, Ns_ArgProc func, Tcl_DString *dsP
 
 NS_EXTERN void
 Ns_UrlSpecificSet(const char *server, const char *method, const char *url, int id,
-                  void *data, unsigned int flags, void (*deletefunc)(void *data))
+                  void *data, unsigned int flags, Ns_Callback freeProc)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(5);
+
+NS_EXTERN void
+Ns_UrlSpecificSet2(const char *server, const char *method, const char *url, int id,
+                   void *data, unsigned int flags, Ns_Callback freeProc,
+                   void *contextSpec)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(5);
 
 NS_EXTERN void *
 Ns_UrlSpecificGet(const char *server, const char *method, const char *url, int id)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+NS_EXTERN void *
+Ns_UrlSpecificGet2(const char *server, const char *method, const char *url, int id, void *context)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 NS_EXTERN void *
@@ -3442,10 +3543,17 @@ Ns_TLS_CtxClientCreate(Tcl_Interp *interp,
 
 NS_EXTERN int
 Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
-                       const char *cert, const char *caFile, const char *caPath, bool verify,
-                       const char *ciphers,
+                       const char *cert, const char *caFile, const char *caPath,
+                       bool verify, const char *ciphers, const char *ciphersuites,
+                       const char *protocols,
                        NS_TLS_SSL_CTX **ctxPtr)
-        NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(7);
+    NS_GNUC_NONNULL(9);
+
+
+NS_EXTERN int
+Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp, unsigned int flags, void* app_data,
+                     NS_TLS_SSL_CTX **ctxPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5);
 
 NS_EXTERN void
 Ns_TLS_CtxFree(NS_TLS_SSL_CTX *ctx)
@@ -3461,6 +3569,18 @@ NS_EXTERN int
 Ns_TLS_SSLAccept(Tcl_Interp *interp, NS_SOCKET sock,
                  NS_TLS_SSL_CTX *ctx, NS_TLS_SSL **sslPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+
+#ifdef HAVE_OPENSSL_EVP_H
+NS_EXTERN ssize_t
+Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs), Ns_SockState *sockStatePtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
+
+NS_EXTERN ssize_t
+Ns_SSLSendBufs2(SSL *ssl, const struct iovec *bufs, int nbufs)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+#endif
+
+
 #endif /* NS_H */
 
 /*

@@ -58,8 +58,7 @@ static void CreatePool(NsServer *servPtr, const char *pool)
  * Static variables defined in this file.
  */
 
-static NsServer   *initServPtr;  /* Currently initializing server. */
-
+static NsServer         *initServPtr;  /* Currently initializing server. */
 static const ServerInit *firstInitPtr; /* First in list of server config callbacks. */
 static ServerInit       *lastInitPtr;  /* Last in list of server config callbacks. */
 
@@ -180,6 +179,7 @@ NsStopServers(const Ns_Time *toPtr)
     hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
     while (hPtr != NULL) {
         servPtr = Tcl_GetHashValue(hPtr);
+        NsStopHttp(servPtr);
         NsStopServer(servPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -277,6 +277,10 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      * Initialize on-the-fly compression support.
      */
     servPtr->compress.enable = Ns_ConfigBool(path, "compressenable", NS_FALSE);
+#ifndef HAVE_ZLIB_H
+    Ns_Log(Warning, "init server %s: compress is enabled, but no zlib support built in",
+           server);
+#endif
     servPtr->compress.level = Ns_ConfigIntRange(path, "compresslevel", 4, 1, 9);
     servPtr->compress.minsize = (int)Ns_ConfigMemUnitRange(path, "compressminsize", 512, 0, INT_MAX);
     servPtr->compress.preinit = Ns_ConfigBool(path, "compresspreinit", NS_FALSE);
@@ -297,8 +301,8 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     Ns_MutexInit(&servPtr->pools.lock);
     Ns_MutexSetName2(&servPtr->pools.lock, "nsd:pools", server);
 
-    Ns_MutexInit(&servPtr->filter.lock);
-    Ns_MutexSetName2(&servPtr->filter.lock, "nsd:filter", server);
+    Ns_RWLockInit(&servPtr->filter.lock);
+    Ns_RWLockSetName2(&servPtr->filter.lock, "nsd:filter", server);
 
     Ns_MutexInit(&servPtr->tcl.synch.lock);
     Ns_MutexSetName2(&servPtr->tcl.synch.lock, "nsd:tcl:synch", server);
@@ -317,6 +321,8 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
         CreatePool(servPtr, Ns_SetKey(set, i));
     }
     NsTclInitServer(server);
+    NsInitHttp(servPtr);
+
     NsInitStaticModules(server);
     initServPtr = NULL;
 }
@@ -429,17 +435,6 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->wqueue.maxconns = maxconns;
     connBufPtr = ns_calloc((size_t) maxconns, sizeof(Conn));
 
-    for (n = 0; n < maxconns - 1; ++n) {
-        connPtr = &connBufPtr[n];
-        connPtr->nextPtr = &connBufPtr[n+1];
-        if (servPtr->compress.enable
-            && servPtr->compress.preinit) {
-            (void) Ns_CompressInit(&connPtr->cStream);
-        }
-    }
-    connBufPtr[n].nextPtr = NULL;
-    poolPtr->wqueue.freePtr = &connBufPtr[0];
-
     /*
      * Setting connsperthread to > 0 will cause the thread to graceously exit,
      * after processing that many requests, thus initiating kind-of Tcl-level
@@ -452,8 +447,34 @@ CreatePool(NsServer *servPtr, const char *pool)
         Ns_ConfigIntRange(path, "maxthreads", 10, 0, maxconns);
     poolPtr->threads.min =
         Ns_ConfigIntRange(path, "minthreads", 1, 1, poolPtr->threads.max);
-    poolPtr->threads.timeout =
-        Ns_ConfigIntRange(path, "threadtimeout", 120, 0, INT_MAX);
+
+    Ns_ConfigTimeUnitRange(path, "threadtimeout", "2m", 0, 0, INT_MAX, 0,
+                           &poolPtr->threads.timeout);
+
+    poolPtr->wqueue.rejectoverrun = Ns_ConfigBool(path, "rejectoverrun", NS_FALSE);
+    Ns_ConfigTimeUnitRange(path, "retryafter", "5s", 0, 0, INT_MAX, 0,
+                           &poolPtr->wqueue.retryafter);
+
+    poolPtr->rate.defaultConnectionLimit =
+        Ns_ConfigIntRange(path, "connectionratelimit", -1, -1, INT_MAX);
+    poolPtr->rate.poolLimit =
+        Ns_ConfigIntRange(path, "poolratelimit", -1, -1, INT_MAX);
+
+    if (poolPtr->rate.poolLimit != -1) {
+        NsWriterBandwidthManagement = NS_TRUE;
+    }
+    for (n = 0; n < maxconns - 1; ++n) {
+        connPtr = &connBufPtr[n];
+        connPtr->nextPtr = &connBufPtr[n+1];
+        if (servPtr->compress.enable
+            && servPtr->compress.preinit) {
+            (void) Ns_CompressInit(&connPtr->cStream);
+        }
+        connPtr->rateLimit = poolPtr->rate.defaultConnectionLimit;
+    }
+
+    connBufPtr[n].nextPtr = NULL;
+    poolPtr->wqueue.freePtr = &connBufPtr[0];
 
     queueLength = maxconns - poolPtr->threads.max;
 
@@ -463,16 +484,18 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->wqueue.lowwatermark  = (queueLength * lowwatermark) / 100;
 
     Ns_Log(Notice, "pool %s: queueLength %d low water %d high water %d",
-           *pool == '\0' ? "default" : pool,
+           NsPoolName(pool),
            queueLength, poolPtr->wqueue.lowwatermark,
            poolPtr->wqueue.highwatermark);
 
     /*
-     * To allow one to vary maxthreads at runtime, allow potentially
+     * To allow one to vary maxthreads at run time, allow potentially
      * maxconns threads to be created. Otherwise, maxthreads would be
      * sufficient.
      */
     poolPtr->tqueue.args = ns_calloc((size_t)maxconns, sizeof(ConnThreadArg));
+
+    Ns_DListInit(&(poolPtr->rate.writerRates));
 
     /*
      * The Pools are never freed before exit, so there is apparently no need
@@ -483,14 +506,11 @@ CreatePool(NsServer *servPtr, const char *pool)
         Tcl_DString ds;
         int         j;
 
-        if (*pool == '\0') {
-            pool = "default";
-        }
         Tcl_DStringInit(&ds);
         Tcl_DStringAppend(&ds, "nsd:", 4);
         Tcl_DStringAppend(&ds, servPtr->server, -1);
         Tcl_DStringAppend(&ds, ":", 1);
-        Tcl_DStringAppend(&ds, pool, -1);
+        Tcl_DStringAppend(&ds, NsPoolName(pool), -1);
 
         for (j = 0; j < maxconns; j++) {
             char suffix[64];
@@ -507,6 +527,10 @@ CreatePool(NsServer *servPtr, const char *pool)
 
         Ns_MutexInit(&poolPtr->threads.lock);
         Ns_MutexSetName2(&poolPtr->threads.lock, ds.string, "threads");
+
+        Ns_MutexInit(&poolPtr->rate.lock);
+        Ns_MutexSetName2(&poolPtr->rate.lock, ds.string, "ratelimit");
+
         Tcl_DStringFree(&ds);
     }
 }

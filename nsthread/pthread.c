@@ -28,6 +28,10 @@
  */
 
 #ifndef _WIN32
+#include <nsconfig.h>
+#endif
+
+#ifdef HAVE_PTHREAD
 
 /*
  * pthread.c --
@@ -144,6 +148,11 @@ NsGetTls(void)
     slots = pthread_getspecific(key);
     if (slots == NULL) {
         slots = calloc(NS_THREAD_MAXTLS, sizeof(void *));
+        if (slots == NULL) {
+            fprintf(stderr, "Fatal: NsGetTls failed to allocate %" PRIuz " bytes.\n",
+                    NS_THREAD_MAXTLS * sizeof(void *));
+            abort();
+        }
         pthread_setspecific(key, slots);
     }
     return slots;
@@ -452,6 +461,31 @@ NsThreadExit(void *arg)
     pthread_exit(arg);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsThreadResult --
+ *
+ *      Stub function, which is not necessary when pthreads are used, since
+ *      pthread_exit passes a pointer values). However, the situation for
+ *      windows is different, and we keep this function here for symmetry with
+ *      the version using windows native threads. For background, see
+ *      winthread.c.
+ *
+ * Results:
+ *      Pointer value (can be NULL).
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+void *
+NsThreadResult(void *arg)
+{
+    return arg;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -525,7 +559,9 @@ Ns_ThreadYield(void)
 uintptr_t
 Ns_ThreadId(void)
 {
-    return (uintptr_t) pthread_self();
+    pthread_t result = pthread_self();
+
+    return (uintptr_t) result;
 }
 
 
@@ -548,9 +584,11 @@ Ns_ThreadId(void)
 void
 Ns_ThreadSelf(Ns_Thread *threadPtr)
 {
+    pthread_t result = pthread_self();
+
     NS_NONNULL_ASSERT(threadPtr != NULL);
 
-    *threadPtr = (Ns_Thread) (uintptr_t)pthread_self();
+    *threadPtr = (Ns_Thread)result;
 }
 
 
@@ -736,7 +774,7 @@ Ns_ReturnCode
 Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, const Ns_Time *timePtr)
 {
     int              err;
-    Ns_ReturnCode    status = NS_ERROR;
+    Ns_ReturnCode    status;
     struct timespec  ts;
 
     NS_NONNULL_ASSERT(cond != NULL);
@@ -873,8 +911,12 @@ CleanupTls(void *arg)
     pthread_setspecific(key, NULL);
     free(slots);
 }
-
+#else
+# ifndef _WIN32
+#  error "pthread support is required"
+# endif
 #endif
+
 
 /*
  * Local Variables:

@@ -131,9 +131,10 @@ test byteranges-2.2 {Multiple contiguous ranges} -constraints serverListen -body
 # The following test lead to a crash in earlier versions
 #
 test byteranges-2.2.1 {Multiple contiguous ranges, single bytes} -constraints serverListen -body {
-    nstest::http -getbody 1 -setheaders {Range bytes=1-1,3-3,5-5,7-7,9-9} \
-        -getheaders {Content-length Content-range} \
-        GET /10bytes
+    set r [nstest::http -getbody 1 -setheaders {Range bytes=1-1,3-3,5-5,7-7,9-9} \
+               -getheaders {Content-length Content-range} \
+               GET /10bytes]
+    string map {\r ""} $r
 } -result {206 471 {} {--NaviServerNaviServerNaviServer
 Content-type: */*
 Content-range: bytes 1-1/10
@@ -162,12 +163,12 @@ Content-range: bytes 9-9/10
 --NaviServerNaviServerNaviServer--
 }}
 
-
 test byteranges-2.3 {Multiple non-contiguous ranges} -constraints serverListen -body {
-    nstest::http -getbody 1 -setheaders {Range bytes=0-2,7-9} \
-        -getheaders {Content-type Content-range Content-length} \
-        GET /10bytes
-} -result [list 206 {multipart/byteranges; boundary=NaviServerNaviServerNaviServer} {} 214 \
+    set r [nstest::http -getbody 1 -setheaders {Range bytes=0-2,7-9} \
+               -getheaders {Content-type Content-range Content-length} \
+               GET /10bytes]
+    string map {\r ""} $r
+} -returnCodes {ok error} -result [list 206 {multipart/byteranges; boundary=NaviServerNaviServerNaviServer} {} 214 \
         {--NaviServerNaviServerNaviServer
 Content-type: */*
 Content-range: bytes 0-2/10
@@ -182,9 +183,10 @@ Content-range: bytes 7-9/10
 }]
 
 test byteranges-2.4 {Multiple ranges, out of order} -constraints serverListen -body {
-    nstest::http -getbody 1 -setheaders {Range bytes=7-9,0-2} \
-        -getheaders {Content-type Content-range Content-length} \
-        GET /10bytes
+    set r [nstest::http -getbody 1 -setheaders {Range bytes=7-9,0-2} \
+               -getheaders {Content-type Content-range Content-length} \
+               GET /10bytes]
+    string map {\r ""} $r
 } -result [list 206 {multipart/byteranges; boundary=NaviServerNaviServerNaviServer} {} 214 \
         {--NaviServerNaviServerNaviServer
 Content-type: */*
@@ -215,9 +217,10 @@ test byteranges-2.6 {Multiple overlapping ranges} -constraints serverListen -bod
 
 test byteranges-2.8.1 {Multiple non-contiguous ranges, fd} \
     -constraints {serverListen} -body {
-    nstest::http -getbody 1 -setheaders {Range bytes=0-2,7-9} \
-        -getheaders {Content-type Content-range Content-length} \
-        GET /16480bytes
+        set r [nstest::http -getbody 1 -setheaders {Range bytes=0-2,7-9} \
+                   -getheaders {Content-type Content-range Content-length} \
+                   GET /16480bytes]
+        string map {\r ""} $r
 } -result [list 206 {multipart/byteranges; boundary=NaviServerNaviServerNaviServer} {} 220 \
         {--NaviServerNaviServerNaviServer
 Content-type: */*
@@ -372,7 +375,7 @@ test byteranges-5.2.1 {ns_writer range reply - wrong offset} \
     }} -body {
         nstest::http -getbody 1 \
             GET /tclresp
-    } -result {200 {offset must be a positive value less or equal filesize}}
+    } -result {200 {expected integer in range [0,MAX] for '-offset', but got -1}}
 
 test byteranges-5.2.2 {ns_writer range reply - wrong offset} \
     -constraints serverListen -setup { ns_register_proc GET /tclresp {
@@ -390,7 +393,7 @@ test byteranges-5.2.3 {ns_writer range reply - wrong size} \
     }} -body {
         nstest::http -getbody 1 \
             GET /tclresp
-    } -result {200 {size must be a positive value less or equal filesize}}
+    } -result {200 {offset + size must be less or equal filesize}}
 
 test byteranges-5.2.4 {ns_writer range reply - wrong size} \
     -constraints serverListen -setup { ns_register_proc GET /tclresp {
@@ -399,7 +402,7 @@ test byteranges-5.2.4 {ns_writer range reply - wrong size} \
     }} -body {
         nstest::http -getbody 1 \
             GET /tclresp
-    } -result {200 {size must be a positive value less or equal filesize}}
+    } -result {200 {expected integer in range [1,MAX] for '-size', but got -1}}
 
 test byteranges-5.2.5 {ns_writer range reply - wrong offset + size} \
     -constraints serverListen -setup { ns_register_proc GET /tclresp {
@@ -485,14 +488,19 @@ test byteranges-7.4 {Too Many non-contiguous ranges (more than NS_MAX_RANGES)} \
 
 #
 # The question whether or not the fd is used internally depends on
-# the config file. Make sure that caching is activated, and the
+# the configuration file. Make sure that caching is activated, and the
 # cachemaxentry is larger than 2048.
 #
-test byteranges-7.5a {larger byte ranges, no fd, writer} -constraints serverListen -body {
-    nstest::http -getbody 0 -setheaders {Range bytes=0-100,200-300,400-1300,1600-1699} \
-        -getheaders {Content-length Content-range Content-Type} \
-        GET /2048bytes
-} -result {206 1608 {} {multipart/byteranges; boundary=NaviServerNaviServerNaviServer}}
+test byteranges-7.5a {larger byte ranges, no fd, writer} -constraints serverListen \
+    -setup {
+        #ns_logctl severity Debug(task) on
+    } -body {
+        nstest::http -getbody 0 -setheaders {Range bytes=0-100,200-300,400-1300,1600-1699} \
+            -getheaders {Content-length Content-range Content-Type} \
+            GET /2048bytes
+    } -cleanup {
+        #ns_logctl severity Debug(task) off
+    } -result {206 1608 {} {multipart/byteranges; boundary=NaviServerNaviServerNaviServer}}
 
 #
 # The following test returns 4 bytes more than byteranges-7.5a, since

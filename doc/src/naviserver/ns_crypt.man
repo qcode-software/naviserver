@@ -23,9 +23,7 @@ which is reasonably attacked with modern computers with ordinary brute-force att
 
 [list_begin definitions]
 
-
 [call [cmd ns_crypt] [arg key] [arg salt]]
-
 
 [list_end]
 
@@ -33,13 +31,13 @@ which is reasonably attacked with modern computers with ordinary brute-force att
 [section EXAMPLES]
 
 [example_begin]
-   % ns_crypt password qy
-   qyz8eIFW3uJoo
+ % ns_crypt password qy
+ qyz8eIFW3uJoo
 [example_end]
 
 
-[see_also nsd ns_uuencode ns_uudecode ns_sha1 ns_md5]
-[keywords "global built-in" encoding crypt]
+[see_also nsd ns_base64 ns_md ns_hmac ns_sha1 ns_md5]
+[keywords "global built-in" encoding crypto]
 
 [manpage_end]
 

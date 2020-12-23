@@ -11,7 +11,7 @@
  *
  * The Original Code is AOLserver Code and related documentation
  * distributed by AOL.
- * 
+ *
  * The Initial Developer of the Original Code is America Online,
  * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
  * Inc. All Rights Reserved.
@@ -28,10 +28,10 @@
  */
 
 
-/* 
+/*
  * dstring.c --
  *
- *      Ns_DString routines.  Ns_DString's are now compatible 
+ *      Ns_DString routines.  Ns_DString's are now compatible
  *      with Tcl_DString's.
  */
 
@@ -91,17 +91,33 @@ Ns_DStringVarAppend(Ns_DString *dsPtr, ...)
 char *
 Ns_DStringExport(Ns_DString *dsPtr)
 {
-    char *s;
+    char   *s;
+    size_t  size;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
+#ifdef SAME_MALLOC_IN_TCL_AND_NS
+    /*
+     * The following code saves a memory duplication in case the Tcl_DString
+     * was allocated with the same memory allocator from Tcl as used for
+     * freeing in NaviServer. This is the case, when both Tcl (+ SYSTEM_MALLOC
+     * patch) and NaviServer were compiled with SYSTEM_MALLOC, or both without
+     * it. The save assumption is that we cannot trust on this ans we do not
+     * define this flag.
+     */
     if (dsPtr->string != dsPtr->staticSpace) {
         s = dsPtr->string;
         dsPtr->string = dsPtr->staticSpace;
     } else {
-        s = ns_malloc((size_t)dsPtr->length + 1u);
-        memcpy(s, dsPtr->string, (size_t)dsPtr->length + 1u);  
+        size = (size_t)dsPtr->length + 1u;
+        s = ns_malloc(size);
+        memcpy(s, dsPtr->string, size);
     }
+#else
+    size = (size_t)dsPtr->length + 1u;
+    s = ns_malloc(size);
+    memcpy(s, dsPtr->string, size);
+#endif
     Ns_DStringFree(dsPtr);
 
     return s;
@@ -128,7 +144,7 @@ Ns_DStringAppendArg(Ns_DString *dsPtr, const char *bytes)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(bytes != NULL);
-    
+
     return Ns_DStringNAppend(dsPtr, bytes, (int) strlen(bytes) + 1);
 }
 
@@ -190,11 +206,11 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(fmt != NULL);
-    
+
     origLength = dsPtr->length;
 
     /*
-     * Extend the dstring, trying first to firt everything in the
+     * Extend the dstring, trying first to fit everything in the
      * static space (unless it is unreasonably small), or if
      * we already have an allocated buffer just bump it up by 1k.
      */
@@ -223,7 +239,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
      * Check for overflow and retry. For win32 just double the buffer size
      * and iterate, otherwise we should get this correct first time.
      */
-#if defined(_WIN32) && _MSC_VER < 1900
+#if defined(_WIN32) && defined(_MSC_VER) && _MSC_VER < 1900
     while (result == -1 && errno == ERANGE) {
         newLength = dsPtr->spaceAvl * 2;
 #else
@@ -277,12 +293,12 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
     char *s, **argv;
     int   i, argc, len, size;
 
-    /* 
+    /*
      * Determine the number of strings.
      */
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
-    
+
     argc = 0;
     s = dsPtr->string;
     while (*s != '\0') {
@@ -382,17 +398,19 @@ Ns_DStringPush(Ns_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 char *
-Ns_DStringAppendPrintable(Tcl_DString *dsPtr, const char *buffer, size_t len)
+Ns_DStringAppendPrintable(Tcl_DString *dsPtr, bool indentMode, const char *buffer, size_t len)
 {
     size_t i;
-    
+
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(buffer != NULL);
-    
+
     for (i = 0; i < len; i++) {
         unsigned char c = UCHAR(buffer[i]);
-            
-        if ((CHARTYPE(print, c) == 0) || (c > UCHAR(127))) {
+
+        if (c == '\n' && indentMode) {
+            Tcl_DStringAppend(dsPtr, "\n:    ", 6);
+        } else if ((CHARTYPE(print, c) == 0) || (c > UCHAR(127))) {
             Ns_DStringPrintf(dsPtr, "\\x%.2x", (c & 0xffu));
         } else {
             Ns_DStringPrintf(dsPtr, "%c", c);
@@ -418,13 +436,28 @@ Ns_DStringAppendPrintable(Tcl_DString *dsPtr, const char *buffer, size_t len)
  */
 char *
 Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
-{    
+{
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(timePtr != NULL);
 
-    return Ns_DStringPrintf(dsPtr, "%" PRId64 ".%06ld", (int64_t)timePtr->sec, timePtr->usec);
+    if (timePtr->sec < 0 || (timePtr->sec == 0 && timePtr->usec < 0)) {
+        Ns_DStringNAppend(dsPtr, "-", 1);
+    }
+    if (timePtr->usec == 0) {
+        Ns_DStringPrintf(dsPtr, "%lld", llabs(timePtr->sec));
+    } else {
+        Ns_DStringPrintf(dsPtr, "%lld.%06ld",
+                         llabs(timePtr->sec), labs(timePtr->usec));
+        /*
+         * Strip trailing zeros after comma dot.
+         */
+        while (dsPtr->string[dsPtr->length-1] == '0') {
+            dsPtr->length --;
+        }
+    }
+    return dsPtr->string;
 }
- 
+
 
 
 /*
@@ -445,7 +478,7 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
 #undef Ns_DStringInit
 
 NS_EXTERN void Ns_DStringInit(Ns_DString *dsPtr) NS_GNUC_DEPRECATED_FOR(Tcl_DStringInit);
- 
+
 void
 Ns_DStringInit(Ns_DString *dsPtr)
 {
@@ -455,7 +488,7 @@ Ns_DStringInit(Ns_DString *dsPtr)
 #undef Ns_DStringFree
 
 NS_EXTERN void Ns_DStringFree(Ns_DString *dsPtr) NS_GNUC_DEPRECATED_FOR(Tcl_DStringFree);
- 
+
 void
 Ns_DStringFree(Ns_DString *dsPtr)
 {

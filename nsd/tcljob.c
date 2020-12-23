@@ -176,9 +176,10 @@ typedef struct ThreadPool {
     int                maxThreads;
     int                nthreads;
     int                nidle;
-    Job               *firstPtr;
     int                jobsPerThread;
+    Job               *firstPtr;
     Ns_Time            timeout;
+    Ns_Time            logminduration;
 } ThreadPool;
 
 
@@ -235,11 +236,11 @@ static bool   AnyDone(Queue *queue)
 static void   SetupJobDefaults(void);
 
 static const char* GetJobCodeStr(int code);
-static const char* GetJobStateStr(JobStates state);
-static const char* GetJobTypeStr(JobTypes type);
-static const char* GetJobReqStr(JobRequests req);
-static const char* GetQueueReqStr(QueueRequests req);
-static const char* GetTpReqStr(ThreadPoolRequests req);
+static const char* GetJobStateStr(JobStates state) NS_GNUC_PURE;
+static const char* GetJobTypeStr(JobTypes type) NS_GNUC_PURE;
+static const char* GetJobReqStr(JobRequests req) NS_GNUC_PURE;
+static const char* GetQueueReqStr(QueueRequests req) NS_GNUC_PURE;
+static const char* GetTpReqStr(ThreadPoolRequests req) NS_GNUC_PURE;
 
 static int AppendField(Tcl_Interp *interp, Tcl_Obj *list,
                        const char *name, const char *value)
@@ -253,14 +254,6 @@ static int AppendFieldInt(Tcl_Interp *interp, Tcl_Obj *list,
 static int AppendFieldLong(Tcl_Interp *interp, Tcl_Obj *list,
                            const char *name, long value)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
-
-static int AppendFieldDouble(Tcl_Interp *interp, Tcl_Obj *list,
-                             const char *name, double value)
-    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
-
-static double ComputeDelta(const Ns_Time *start, const Ns_Time *end)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-
 
 /*
  * Globals
@@ -299,6 +292,8 @@ NsTclInitQueueType(void)
     tp.jobsPerThread = 0;
     tp.timeout.sec = 0;
     tp.timeout.usec = 0;
+    tp.logminduration.sec = 0;
+    tp.logminduration.usec = 0;
 }
 
 
@@ -391,12 +386,14 @@ NsWaitJobsShutdown(const Ns_Time *toPtr)
 static int
 JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int            result = TCL_OK;
-    int            jpt = -1;
-    Ns_Time       *timeoutPtr = NULL;
+    int               result = TCL_OK;
+    int               jpt = -1;
+    Ns_Time          *timeoutPtr = NULL, *logminPtr = NULL;
+    Ns_ObjvValueRange jptRange = {0, INT_MAX};
     Ns_ObjvSpec    lopts[] = {
-        {"-jobsperthread",  Ns_ObjvInt,  &jpt,        NULL},
+        {"-jobsperthread",  Ns_ObjvInt,  &jpt,        &jptRange},
         {"-timeout",        Ns_ObjvTime, &timeoutPtr, NULL},
+        {"-logminduration", Ns_ObjvTime, &logminPtr,  NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -412,8 +409,14 @@ JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         if (timeoutPtr != NULL) {
             tp.timeout = *timeoutPtr;
         }
-        Ns_TclPrintfResult(interp, "jobsperthread %d timeout %ld:%06ld",
-                           tp.jobsPerThread, tp.timeout.sec, tp.timeout.usec);
+        if (logminPtr != NULL) {
+            tp.logminduration = *logminPtr;
+        }
+        Ns_TclPrintfResult(interp, "jobsperthread %d timeout " NS_TIME_FMT
+                           " logminduration " NS_TIME_FMT,
+                           tp.jobsPerThread,
+                           (int64_t)tp.timeout.sec, tp.timeout.usec,
+                           (int64_t)tp.logminduration.sec, tp.logminduration.usec );
         Ns_MutexUnlock(&tp.queuelock);
     }
 
@@ -440,16 +443,17 @@ JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 static int
 JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int          result = TCL_OK, maxThreads = NS_JOB_DEFAULT_MAXTHREADS;
-    Tcl_Obj     *queueIdObj;
-    char        *descString  = (char *)"";
-    Ns_ObjvSpec  lopts[] = {
+    int               result = TCL_OK, maxThreads = NS_JOB_DEFAULT_MAXTHREADS;
+    Tcl_Obj          *queueIdObj;
+    char             *descString  = (char *)"";
+    Ns_ObjvValueRange maxThreadsRange = {1, INT_MAX};
+    Ns_ObjvSpec       lopts[] = {
         {"-desc",   Ns_ObjvString,   &descString,   NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
         {"queueId",     Ns_ObjvObj,  &queueIdObj,  NULL},
-        {"?maxThreads", Ns_ObjvInt,  &maxThreads,  NULL},
+        {"?maxThreads", Ns_ObjvInt,  &maxThreads,  &maxThreadsRange},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -705,7 +709,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
     if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
         result =  TCL_ERROR;
     } else {
-        Ns_Time        timeout = {0,0};
+        Ns_Time        timeout = {0, 0};
         Job           *jobPtr;
         Tcl_HashEntry *hPtr;
 
@@ -748,6 +752,9 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
                 if (timedOut == NS_TIMEOUT) {
                     Ns_TclPrintfResult(interp, "Wait timed out.");
                     Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+                    Ns_Log(Ns_LogTimeoutDebug, "ns_job %s runs into timeout: %s",
+                           jobIdString, Tcl_DStringValue(&jobPtr->script));
+
                     jobPtr->req = JOB_NONE;
                     result = TCL_ERROR;
                     goto releaseQueue;
@@ -948,7 +955,7 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         result = TCL_ERROR;
 
     } else {
-        Ns_Time         timeout = {0,0};
+        Ns_Time         timeout = {0, 0};
         Tcl_HashSearch  search;
 
         if (deltaTimeoutPtr != NULL) {
@@ -965,15 +972,23 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
          */
 
         if (deltaTimeoutPtr != NULL) {
-            while ((Tcl_FirstHashEntry(&queue->jobs, &search) != NULL)
-                   && (result == TCL_OK)
-                   && !AnyDone(queue)) {
+            const Tcl_HashEntry *hPtr;
+
+            for (hPtr = Tcl_FirstHashEntry(&queue->jobs, &search);
+                 hPtr != NULL && !AnyDone(queue);
+                 hPtr = Tcl_NextHashEntry(&search)) {
                 Ns_ReturnCode timedOut = Ns_CondTimedWait(&queue->cond,
                                                           &queue->lock, &timeout);
                 if (timedOut == NS_TIMEOUT) {
-                    Ns_TclPrintfResult(interp, "Wait timed out.");
+                    Job *jobPtr = Tcl_GetHashValue(hPtr);
+
                     Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+                    Ns_Log(Ns_LogTimeoutDebug, "ns_job %s runs into timeout: %s",
+                           Tcl_DStringValue(&jobPtr->id), Tcl_DStringValue(&jobPtr->script));
+
+                    Ns_TclPrintfResult(interp, "Wait timed out.");
                     result = TCL_ERROR;
+                    break;
                 }
             }
         } else {
@@ -1008,7 +1023,7 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 static int
 JobJobsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    Queue         *queue;
+    Queue         *queue = NULL;
     int            result = TCL_OK;
     Ns_ObjvSpec    args[] = {
         {"queueId",  ObjvQueue,    &queue,   NULL},
@@ -1137,10 +1152,11 @@ JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         jobList = Tcl_NewListObj(0, NULL);
         for (hPtr = Tcl_FirstHashEntry(&queue->jobs, &search);
              hPtr != NULL;
-             hPtr = Tcl_NextHashEntry(&search)) {
+             hPtr = Tcl_NextHashEntry(&search)
+             ) {
             const char *jobId1, *jobState, *jobCode, *jobType, *jobReq, *jobResults, *jobScript;
             Tcl_Obj    *jobFieldList;
-            double      delta;
+            Ns_Time     diff;
             char        threadId[32];
             Job        *jobPtr = (Job *)Tcl_GetHashValue(hPtr);
 
@@ -1155,7 +1171,8 @@ JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
             if ( jobPtr->state == JOB_SCHEDULED || jobPtr->state == JOB_RUNNING) {
                 Ns_GetTime(&jobPtr->endTime);
             }
-            delta = ComputeDelta(&jobPtr->startTime, &jobPtr->endTime);
+
+            (void)Ns_DiffTime(&jobPtr->startTime, &jobPtr->endTime, &diff);
             snprintf(threadId, sizeof(threadId), "%" PRIxPTR, jobPtr->tid);
 
             /*
@@ -1164,13 +1181,13 @@ JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
             jobFieldList = Tcl_NewListObj(0, NULL);
             if (AppendField(interp, jobFieldList, "id",        jobId1) != TCL_OK
                 || AppendField(interp, jobFieldList, "state",  jobState) != TCL_OK
-                || AppendField(interp, jobFieldList, "results",jobResults) != TCL_OK
+                || AppendField(interp, jobFieldList, "results", jobResults) != TCL_OK
                 || AppendField(interp, jobFieldList, "script", jobScript) != TCL_OK
                 || AppendField(interp, jobFieldList, "code",   jobCode) != TCL_OK
                 || AppendField(interp, jobFieldList, "type",   jobType) != TCL_OK
                 || AppendField(interp, jobFieldList, "req",    jobReq) != TCL_OK
                 || AppendField(interp, jobFieldList, "thread", threadId) != TCL_OK
-                || AppendFieldDouble(interp, jobFieldList, "time", delta) != TCL_OK
+                || AppendFieldLong(interp, jobFieldList, "time", (long)Ns_TimeToMilliseconds(&diff)) != TCL_OK
                 || AppendFieldLong(interp, jobFieldList, "starttime", (long)jobPtr->startTime.sec) != TCL_OK
                 || AppendFieldLong(interp, jobFieldList, "endtime", (long)jobPtr->endTime.sec) != TCL_OK
                 ) {
@@ -1441,7 +1458,7 @@ JobThread(void *UNUSED(arg))
     (void)Ns_WaitForStartup();
     Ns_MutexLock(&tp.queuelock);
     tid = tp.nextThreadId++;
-    Ns_ThreadSetName("-ns_job_%lx-", tid);
+    Ns_ThreadSetName("-nsjob:%lx-", tid);
     Ns_Log(Notice, "Starting thread: -ns_job_%" PRIxPTR "-", tid);
 
     async = Tcl_AsyncCreate(JobAbort, NULL);
@@ -1449,8 +1466,8 @@ JobThread(void *UNUSED(arg))
     SetupJobDefaults();
 
     /*
-     * Setting this parameter to > 0 will cause the thread to
-     * graciously exit after processing that many job requests,
+     * Setting parameter "jobsperthread" to > 0 will cause the thread
+     * to graciously exit after processing that many job requests,
      * thus initiating kind-of Tcl-level garbage collection.
      */
 
@@ -1514,7 +1531,7 @@ JobThread(void *UNUSED(arg))
         /*
          * ... Rename the thread according to the job ...
          */
-        Ns_ThreadSetName("-%s:%lx", jobPtr->queueId, tid);
+        Ns_ThreadSetName("-nsjob:%s:%lx", jobPtr->queueId, tid);
         ++queue->nRunning;
 
         Ns_MutexUnlock(&queue->lock);
@@ -1533,7 +1550,7 @@ JobThread(void *UNUSED(arg))
         /*
          * Rename the job again to the generic name
          */
-        Ns_ThreadSetName("-ns_job_%lx-", tid);
+        Ns_ThreadSetName("-nsjob:%lx-", tid);
 
         jobPtr->state  = JOB_DONE;
         jobPtr->code   = code;
@@ -1541,6 +1558,16 @@ JobThread(void *UNUSED(arg))
         jobPtr->async  = NULL;
 
         Ns_GetTime(&jobPtr->endTime);
+        {
+            Ns_Time diffTime;
+
+            (void)Ns_DiffTime(&jobPtr->endTime, &jobPtr->startTime, &diffTime);
+            if (Ns_DiffTime(&tp.logminduration, &diffTime, NULL) < 1) {
+                Ns_Log(Notice, "ns_job %s duration " NS_TIME_FMT " secs: '%s'",
+                       jobPtr->queueId, (int64_t)diffTime.sec, diffTime.usec,
+                       jobPtr->script.string);
+            }
+        }
 
         /*
          * Make sure we show error message for detached job, otherwise
@@ -2361,71 +2388,6 @@ AppendFieldLong(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
     return result;
 }
 
-
-/*
- *----------------------------------------------------------------------
- *
- * AppendFieldDouble --
- *
- *      Append the job field to the job field list.
- *
- * Results:
- *      Standard Tcl result.
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
- */
-static int
-AppendFieldDouble(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
-                  double value)
-{
-    Tcl_Obj *elObj;
-    int      result;
-
-    NS_NONNULL_ASSERT(list != NULL);
-    NS_NONNULL_ASSERT(name != NULL);
-
-    elObj = Tcl_NewStringObj(name, -1);
-    result = Tcl_ListObjAppendElement(interp, list, elObj);
-    if (likely( result == TCL_OK )) {
-        elObj = Tcl_NewDoubleObj(value);
-        result = Tcl_ListObjAppendElement(interp, list, elObj);
-    }
-
-    return result;
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * ComputeDelta --
- *
- *      Compute the time difference.
- *
- * Results:
- *      Difference in milliseconds
- *
- * Side effects:
- *      None.
- *
- *----------------------------------------------------------------------
- */
-static double
-ComputeDelta(const Ns_Time *start, const Ns_Time *end)
-{
-    Ns_Time diff;
-
-    NS_NONNULL_ASSERT(start != NULL);
-    NS_NONNULL_ASSERT(end != NULL);
-
-    (void)Ns_DiffTime(end, start, &diff);
-
-    return ((double)diff.sec * 1000.0) + ((double)diff.usec / 1000.0);
-}
-
 /*
  *----------------------------------------------------------------------
  *
@@ -2448,7 +2410,10 @@ SetupJobDefaults(void)
        tp.jobsPerThread = nsconf.job.jobsperthread;
     }
     if (tp.timeout.sec == 0 && tp.timeout.usec == 0) {
-        tp.timeout.sec = nsconf.job.timeout;
+        tp.timeout = nsconf.job.timeout;
+    }
+    if (tp.logminduration.sec == 0 && tp.logminduration.usec == 0) {
+        tp.logminduration = nsconf.job.logminduration;
     }
 }
 

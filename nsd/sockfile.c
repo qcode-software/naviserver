@@ -55,8 +55,11 @@ ssize_t pread(int fd, char *buf, size_t count, off_t offset);
  * Local functions defined in this file
  */
 
-static ssize_t _SendFile(Ns_Sock *sock, int fd, off_t offset, size_t length);
-static ssize_t SendFile(Ns_Sock *sock, int fd, off_t offset, size_t length);
+static ssize_t _SendFile(Ns_Sock *sock, int fd, off_t offset, size_t length)
+    NS_GNUC_NONNULL(1);
+
+static ssize_t SendFile(Ns_Sock *sock, int fd, off_t offset, size_t length, unsigned int flags)
+    NS_GNUC_NONNULL(1);
 
 
 /*
@@ -82,12 +85,9 @@ Ns_SetFileVec(Ns_FileVec *bufs, int i,  int fd, const void *data,
 {
     bufs[i].fd = fd;
     bufs[i].length = length;
+    bufs[i].offset = offset;
+    bufs[i].buffer = (char *)data;
 
-    if (fd != NS_INVALID_FD) {
-        bufs[i].offset = offset;
-    } else {
-        bufs[i].offset = ((off_t)(intptr_t) data) + offset;
-    }
     return length;
 }
 
@@ -141,7 +141,7 @@ Ns_ResetFileVec(Ns_FileVec *bufs, int nbufs, size_t sent)
  *
  * Ns_SockSendFileBufs --
  *
- *      Send a vector of buffers/files on a non-blocking socket.
+ *      Send a vector of buffers/files on a nonblocking socket.
  *
  * Results:
  *      Number of bytes sent, -1 on error.
@@ -154,7 +154,7 @@ Ns_ResetFileVec(Ns_FileVec *bufs, int nbufs, size_t sent)
  */
 
 ssize_t
-Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs)
+Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs, unsigned int flags)
 {
     ssize_t       towrite = 0, nwrote = 0;
     struct iovec  sbufs[UIO_MAXIOV], *sbufPtr;
@@ -178,8 +178,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs)
             /*
              * Coalesce runs of memory buffers into fixed-sized iovec.
              */
-
-            (void) Ns_SetVec(sbufPtr, nsbufs++, INT2PTR(offset), length);
+            (void) Ns_SetVec(sbufPtr, nsbufs++, (char*)bufs[i].buffer + offset, length);
         }
 
         if (   (fd == NS_INVALID_FD && (nsbufs == UIO_MAXIOV || i == nbufs-1))
@@ -208,7 +207,7 @@ Ns_SockSendFileBufs(Ns_Sock *sock, const Ns_FileVec *bufs, int nbufs)
          */
 
         if (fd != NS_INVALID_FD) {
-            ssize_t sent = SendFile(sock, fd, offset, length);
+            ssize_t sent = SendFile(sock, fd, offset, length, flags);
             if (sent == -1) {
                 nwrote = -1;
                 break;
@@ -323,8 +322,7 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
  * SendFile --
  *
  *      Custom wrapper for sendfile() that handles the case
- *      where the source file system does not support it,
- *      or when it is not defined for the platform.
+ *      where it is not defined for the platform.
  *
  * Results:
  *      Number of bytes sent, -1 on error.
@@ -337,39 +335,50 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
  */
 
 static ssize_t
-SendFile(Ns_Sock *sock, int fd, off_t offset, size_t length)
+SendFile(Ns_Sock *sock, int fd, off_t offset, size_t length, unsigned int flags)
 {
-    ssize_t sent = -1;
+    ssize_t sent;
 
     NS_NONNULL_ASSERT(sock != NULL);
 
     assert(fd != NS_INVALID_FD);
     assert(offset >= 0);
 
+    /*
+     * Only, when the current driver supports sendfile(), try to use the
+     * native implementation. When we are using e.g. HTTPS, using sendfile
+     * does not work, since it would write plain data to the encrypted
+     * channel. The sendfile emulation _SendFile() uses always the right
+     * driver I/O.
+     */
+    if ( (flags & NS_DRIVER_CAN_USE_SENDFILE) == 0u) {
+        sent = _SendFile(sock, fd, offset, length);
+    } else {
 #if defined(HAVE_LINUX_SENDFILE)
-    sent = sendfile(sock->sock, fd, &offset, length);
-    if (sent == -1) {
-        if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-            sent = 0;
-        } else if (errno == EINVAL || errno == ENOSYS) {
-            sent = _SendFile(sock, fd, offset, length);
+        sent = sendfile(sock->sock, fd, &offset, length);
+        if (sent == -1) {
+            if (errno == EINTR || errno == NS_EAGAIN || errno == EWOULDBLOCK) {
+                sent = 0;
+            } else if (errno == EINVAL || errno == ENOSYS) {
+                sent = _SendFile(sock, fd, offset, length);
+            }
         }
-    }
 #elif defined(HAVE_BSD_SENDFILE)
-    {
-        int rc, flags = 0;
+        int rc, opt_flags = 0;
         off_t sbytes = 0;
 
-        rc = sendfile(fd, sock->sock, offset, length, NULL, &sbytes, flags);
-        if (rc == 0 || errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+        rc = sendfile(fd, sock->sock, offset, length, NULL, &sbytes, opt_flags);
+        if (rc == 0 || errno == EINTR || errno == NS_EAGAIN || errno == EWOULDBLOCK) {
             sent = sbytes;
         } else if (errno == EOPNOTSUPP) {
             sent = _SendFile(sock, fd, offset, length);
+        } else {
+            sent = 0;
         }
-    }
 #else
-    sent = _SendFile(sock, fd, offset, length);
+        sent = _SendFile(sock, fd, offset, length);
 #endif
+    }
 
     return sent;
 }

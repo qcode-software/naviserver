@@ -210,9 +210,10 @@ Ns_StrToUpper(char *chars)
  *      parsed or overflows.
  *
  * Side effects:
- *      The string may begin with an arbitrary amount of white space (as determined by
- *      isspace(3)) followed by a  single  optional `+' or `-' sign.  If string starts with `0x' prefix,
- *      the number will be read in base 16, otherwise the number will be treated as decimal
+ *      The string may begin with an arbitrary amount of white space (as
+ *      determined by isspace(3)) followed by a single optional `+' or `-'
+ *      sign.  If string starts with `0x' prefix, the number will be read in
+ *      base 16, otherwise the number will be treated as decimal
  *
  *----------------------------------------------------------------------
  */
@@ -342,8 +343,11 @@ Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
                  * digits.
                  */
                 if (*endPtr == '.') {
-                    long   decimal, i, digits, divisor = 1;
-                    char  *ep;
+                    long long decimal;
+                    long      i;
+                    ptrdiff_t digits;
+                    int       divisor = 1;
+                    char     *ep;
 
                     endPtr++;
                     decimal = strtoll(endPtr, &ep, 10);
@@ -361,7 +365,7 @@ Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
                     endPtr++;
                 }
                 /*
-                 * Parse units.
+                 * Parse memory units.
                  *
                  * The International System of Units (SI) defines
                  *    kB, MB, GB as 1000, 1000^2, 1000^3 bytes,
@@ -369,7 +373,7 @@ Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
                  *    KiB, MiB and GiB as 1024, 1024^2, 1024^3 bytes.
                  *
                  * For effective memory usage, multiple of 1024 are
-                 * better. Therefore we follow the PostgreSQL conventions and
+                 * better. Therefore, we follow the PostgreSQL conventions and
                  * use 1024 as multiplier, but we allow as well the IEC
                  * abbreviations.
                  */
@@ -532,7 +536,7 @@ Ns_StrCaseFind(const char *chars, const char *subString)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_StrIsHost --
+ * Ns_StrIsValidHostHeaderContent --
  *
  *      Does the given string contain only characters permitted in a
  *      Host header? Letters, digits, single periods and the colon port
@@ -548,7 +552,7 @@ Ns_StrCaseFind(const char *chars, const char *subString)
  */
 
 bool
-Ns_StrIsHost(const char *chars)
+Ns_StrIsValidHostHeaderContent(const char *chars)
 {
     register const char *p;
     bool result = NS_TRUE;
@@ -585,21 +589,89 @@ Ns_StrIsHost(const char *chars)
  *
  *----------------------------------------------------------------------
  */
-const char *
-Ns_GetBinaryString(Tcl_Obj *obj, int *lengthPtr, Tcl_DString *dsPtr)
+const unsigned char *
+Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *dsPtr)
 {
-    const char *result;
+    const unsigned char *result;
 
     NS_NONNULL_ASSERT(obj != NULL);
     NS_NONNULL_ASSERT(lengthPtr != NULL);
 
     /*
-     * Just reference dsPtr for the time being, we should wait, until Tcl 8.7
-     * is released and then maybe get tid of dsPtr.
+     * Obtain the binary data from an obj. If the Tcl_Obj is not a bytecode
+     * obj, produce it on the fly to avoid putting the burden to the user.
+     *
+     * Tcl requires the user to convert UTF-8 characters into bytearrays on
+     * the scripting level, as the following example illustrates. The UTF-8
+     * character "ü" requires 2 bytes:
+     *
+     * % binary encode hex ü
+     * fc
+     * % binary encode hex [encoding convertto utf-8 ü]
+     * c3bc
+     *
+     * When doing a base64 encoding, the casual user expect the same behavior
+     * as in a shell, e.g. for transforming "ü" into a based64 encoded string:
+     *
+     * $ echo -n "ü" |base64
+     * w7w=
+     *
+     * % ns_base64encode ü
+     * w7w=
+     *
+     * But Tcl requires this interaction "manually":
+     *
+     * % binary encode base64 ü
+     * /A==
+     *
+     * % binary encode base64 [encoding convertto utf-8 ü]
+     * w7w=
+     *
+     * The same principle should as well apply for the crypto commands, where
+     * the NaviServer user should not have to care for converting chars to
+     * bytestrings manually.
+     *
+     * $ echo -n "ü" |openssl sha1
+     * (stdin)= 94a759fd37735430753c7b6b80684306d80ea16e
+     *
+     * % ns_sha1 "ü"
+     * 94A759FD37735430753C7B6B80684306D80EA16E
+     *
+     * % ns_md string -digest sha1 ü
+     * 94a759fd37735430753c7b6b80684306d80ea16e
+     *
+     * The same should hold as well for 3-byte UTF-8 characters
+     *
+     * $ echo -n "☀" |openssl sha1
+     * (stdin)= d5b6c20ee0b3f6dafa632a63eafe3fd0db26752d
+     *
+     * % ns_sha1 ☀
+     * D5B6C20EE0B3F6DAFA632A63EAFE3FD0DB26752D
+     *
+     * % ns_md string -digest sha1 ☀
+     * d5b6c20ee0b3f6dafa632a63eafe3fd0db26752d
+     *
      */
-    (void)dsPtr;
 
-    result = (char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
+    if (forceBinary || NsTclObjIsByteArray(obj)) {
+        //fprintf(stderr, "NsTclObjIsByteArray\n");
+        result = (unsigned char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
+    } else {
+        int         stringLength;
+        const char *charInput;
+
+        charInput = Tcl_GetStringFromObj(obj, &stringLength);
+
+        //if (NsTclObjIsEncodedByteArray(obj)) {
+        //    fprintf(stderr, "NsTclObjIsEncodedByteArray\n");
+        //} else {
+        //    //fprintf(stderr, "some other obj\n");
+        //}
+
+        Tcl_UtfToExternalDString(NS_utf8Encoding, charInput, stringLength, dsPtr);
+        result = (unsigned char *)dsPtr->string;
+        *lengthPtr = dsPtr->length;
+    }
 
     return result;
 }

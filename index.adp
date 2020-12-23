@@ -10,18 +10,18 @@
 </head>
 <body>
  <div id="man-header">
-  <a href="http://wiki.tcl.tk/2090"><span class="logo"></span><strong>NaviServer</strong></a>
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo"></span><strong>NaviServer</strong></a>
   - programmable web server
  </div>
 
   <h1>
-   Welcome to <a href="http://naviserver.sourceforge.net/">NaviServer
+   Welcome to <a href="https://sourceforge.net/projects/naviserver/">NaviServer
    <%=[ns_info patchlevel]%></a> under
    <%=[set . "$::tcl_platform(os) $::tcl_platform(osVersion)"]%>
   </h1>
   <p>
   If you can see this page, then the <a
-  href="http://naviserver.sourceforge.net/">NaviServer</a> web server
+  href="https://sourceforge.net/projects/naviserver/">NaviServer</a> web server
   was activated on this machine.
   The server installation contains currently just the default content provided by
   the standard NaviServer distribution. In a next step, this placeholder page should be

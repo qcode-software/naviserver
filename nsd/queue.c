@@ -57,26 +57,38 @@ static bool neededAdditionalConnectionThreads(const ConnPool *poolPtr)
 static void WakeupConnThreads(ConnPool *poolPtr)
     NS_GNUC_NONNULL(1);
 
-static Ns_ReturnCode MapspecParse(Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+static Ns_ReturnCode MapspecParse(Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url,
+                                  NsUrlSpaceContextSpec **specPtr)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
-static int ServerMaxThreadsObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+static int ServerMaxThreadsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                                   ConnPool *poolPtr, int nargs)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
-static int ServerMinThreadsObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+static int ServerMinThreadsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                                   ConnPool *poolPtr, int nargs)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
-static int ServerMapObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+
+static int ServerConnectionRateLimitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+                                           ConnPool *poolPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+
+static int ServerPoolRateLimitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+                                     ConnPool *poolPtr, int nargs)
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
+
+static int ServerMapObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                            NsServer  *servPtr, ConnPool *poolPtr, int nargs)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6);
 
-static int ServerMappedObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+static int ServerMappedObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                               NsServer *servPtr, int nargs)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
-static int ServerUnmapObjCmd(const ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+static int ServerUnmapObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                              NsServer *servPtr, int nargs)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
@@ -95,9 +107,12 @@ static int ServerListQueuedCmd(Tcl_DString *dsPtr, Tcl_Interp *interp, int objc,
 
 static void ServerListActive(Tcl_DString *dsPtr, ConnPool *poolPtr, bool checkforproxy)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 static void ServerListQueued(Tcl_DString *dsPtr, ConnPool *poolPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
+static int SetPoolAttribute(Tcl_Interp *interp, int nargs, ConnPool *poolPtr, int *valuePtr, int value)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 static Ns_ArgProc WalkCallback;
 
@@ -195,24 +210,152 @@ Ns_GetConn(void)
  */
 
 void
-NsMapPool(ConnPool *poolPtr, const char *map, unsigned int flags)
+NsMapPool(ConnPool *poolPtr, const char *mapString, unsigned int flags)
 {
-    const char **mv, *server;
-    int          mc;
+    const char            *server;
+    char                  *method, *url;
+    Tcl_Obj               *mapspecObj;
+    NsUrlSpaceContextSpec *specPtr;
 
     NS_NONNULL_ASSERT(poolPtr != NULL);
-    NS_NONNULL_ASSERT(map != NULL);
+    NS_NONNULL_ASSERT(mapString != NULL);
 
+    mapspecObj = Tcl_NewStringObj(mapString, -1);
     server = poolPtr->servPtr->server;
 
-    if (Tcl_SplitList(NULL, map, &mc, &mv) == TCL_OK) {
-        if (mc == 2) {
-            Ns_UrlSpecificSet(server, mv[0], mv[1], poolid, poolPtr, flags, NULL);
-            Ns_Log(Notice, "pool[%s]: mapped %s %s -> %s",
-                   server, mv[0], mv[1], poolPtr->pool);
-        }
-        Tcl_Free((char *) mv);
+    Tcl_IncrRefCount(mapspecObj);
+    if (MapspecParse(NULL, mapspecObj, &method, &url, &specPtr) == NS_OK) {
+        Ns_UrlSpecificSet2(server, method, url, poolid, poolPtr, flags, NULL, specPtr);
+
+    } else {
+        Ns_Log(Warning,
+               "invalid mapspec '%s'; must be 2- or 3-element list "
+               "containing HTTP method, URL, and optionally a filtercontext",
+               mapString);
     }
+    Tcl_DecrRefCount(mapspecObj);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsPoolName --
+ *
+ *      Return a printable pool name. In essence, it translates the empty pool
+ *      name (the default pool) to the string "defaullr" for printing
+ *      purposes.
+ *
+ * Results:
+ *      Printable string.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+const char *
+NsPoolName(const char *poolName)
+{
+    const char *result;
+
+    NS_NONNULL_ASSERT(poolName != NULL);
+
+    if (*poolName == '\0') {
+        result = "default";
+    } else {
+        result = poolName;
+    }
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsPoolAllocateThreadSlot --
+ *
+ *      Allocate a thread slot for this pool. When bandwidth management is
+ *      activated for a pool, one has to aggregate the pool data from multiple
+ *      writer threads. This happens via slots allocated to the
+ *      threads. Currently, writer threads only exit when the server goes
+ *      down, so there is no need to reuse slots from writer thread, and the
+ *      associated slots are stable once allocated. This function will be
+ *      called only once per writer thread and pool. The thread ID will become
+ *      necessary, when the writer threads are dynamic.
+ *
+ * Results:
+ *      Allocated slot id for this thread.
+ *
+ * Side effects:
+ *      Maybe the DList allocates additional memory.
+ *
+ *----------------------------------------------------------------------
+ */
+size_t
+NsPoolAllocateThreadSlot(ConnPool *poolPtr, uintptr_t UNUSED(threadID))
+{
+    Ns_DList *dlPtr;
+
+    dlPtr = &(poolPtr->rate.writerRates);
+
+    /*
+     * Appending must be locked, since in rare cases, a realloc might happen
+     * under the hood when appending
+     */
+    Ns_MutexLock(&poolPtr->rate.lock);
+    Ns_DListAppend(dlPtr, 0u);
+    Ns_MutexUnlock(&poolPtr->rate.lock);
+
+    return (dlPtr->size - 1u);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsPoolTotalRate --
+ *
+ *      Calculate the total rate form all writer threads. The function simply
+ *      adds the data from all allocated slots and reports the number of
+ *      associated writer threads for estimating rates per writer threads.
+ *
+ * Results:
+ *      Actual total rate for a pool (sum of rates per writer thread).
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsPoolTotalRate(ConnPool *poolPtr, size_t slot, int rate, int *writerThreadCount)
+{
+    Ns_DList *dlPtr;
+    size_t    i;
+    uintptr_t totalRate = 0u;
+
+    dlPtr = &(poolPtr->rate.writerRates);
+    dlPtr->data[slot] = (void*)(uintptr_t)rate;
+
+    Ns_MutexLock(&poolPtr->rate.lock);
+    for (i = 0u; i < dlPtr->size; i ++) {
+        totalRate = totalRate + (uintptr_t)dlPtr->data[i];
+    }
+    poolPtr->rate.currentRate = (int)totalRate;
+    Ns_MutexUnlock(&poolPtr->rate.lock);
+
+    *writerThreadCount = (int)dlPtr->size;
+
+    return (int)totalRate;
+}
+
+void
+NsPoolAddBytesSent(ConnPool *poolPtr, Tcl_WideInt bytesSent)
+{
+    Ns_MutexLock(&poolPtr->rate.lock);
+    poolPtr->rate.bytesSent += bytesSent;
+    Ns_MutexUnlock(&poolPtr->rate.lock);
 }
 
 
@@ -354,10 +497,12 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
  *
  * NsQueueConn --
  *
- *      Append a connection to the run queue.
+ *      Append a connection to the run queue of a connection pool when
+ *      possible (e.g. no shutdown, a free connection thread is available,
+ *      ...)
  *
  * Results:
- *      NS_TRUE if queued, NS_FALSE otherwise.
+ *      NS_OK (queued), NS_ERROR (return error), NS_TIMEOUT (try again)
  *
  * Side effects:
  *      Connection will run shortly.
@@ -365,14 +510,15 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
  *----------------------------------------------------------------------
  */
 
-bool
+Ns_ReturnCode
 NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 {
     ConnThreadArg *argPtr = NULL;
     NsServer      *servPtr;
     ConnPool      *poolPtr = NULL;
     Conn          *connPtr = NULL;
-    bool           create = NS_FALSE, queued = NS_TRUE;
+    bool           create = NS_FALSE;
+    int            queued = NS_OK;
 
     NS_NONNULL_ASSERT(sockPtr != NULL);
     NS_NONNULL_ASSERT(nowPtr != NULL);
@@ -382,128 +528,180 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
     servPtr = sockPtr->servPtr;
 
     /*
-     * Select server connection pool. For non-HTTP drivers, the request.method
+     * Perform no queuing on shutdown.
+     */
+    if (unlikely(servPtr->pools.shutdown)) {
+        return NS_ERROR;
+    }
+
+    /*
+     * Select connection pool. For non-HTTP drivers, the request.method
      * won't be provided.
      */
+    if ((sockPtr->poolPtr == NULL)
+        && (sockPtr->reqPtr != NULL)
+        && (sockPtr->reqPtr->request.method != NULL)) {
+        NsUrlSpaceContext ctx;
 
-    if ((sockPtr->reqPtr != NULL) && (sockPtr->reqPtr->request.method != NULL)) {
+        ctx.headers = sockPtr->reqPtr->headers;
+        if (nsconf.reverseproxymode
+            && ((struct sockaddr *)&sockPtr->clientsa)->sa_family != 0
+            ) {
+            ctx.saPtr = (struct sockaddr *)&(sockPtr->clientsa);
+        } else {
+            ctx.saPtr = (struct sockaddr *)&(sockPtr->sa);
+        }
+
+        /*
+         * Here we could fit-in the peer addr, when behindproxy is true.
+         */
         poolPtr = NsUrlSpecificGet(servPtr,
                                    sockPtr->reqPtr->request.method,
                                    sockPtr->reqPtr->request.url,
-                                   poolid, 0u, NS_URLSPACE_DEFAULT);
+                                   poolid, 0u, NS_URLSPACE_DEFAULT,
+                                   NsUrlSpaceContextFilter, &ctx);
+        sockPtr->poolPtr = poolPtr;
+    } else if (sockPtr->poolPtr != NULL) {
+        poolPtr = sockPtr->poolPtr;
+        Ns_Log(Notice , "=== NsQueueConn URL <%s> was already assigned to pool <%s>",
+               sockPtr->reqPtr->request.url, poolPtr->pool);
     }
     if (poolPtr == NULL) {
         poolPtr = servPtr->pools.defaultPtr;
     }
 
    /*
-    * Queue connection if possible (e.g. no shutdown, a free Conn is
-    * available, ...)
+    * We know the pool. Try to add connection into the queue of this pool
+    * (either into a free slot or into its waiting list, or, when everything
+    * fails signal an error or timeout (for retry attempts) to the caller.
     */
+    Ns_MutexLock(&poolPtr->wqueue.lock);
+    if (poolPtr->wqueue.freePtr != NULL) {
+        connPtr = poolPtr->wqueue.freePtr;
+        poolPtr->wqueue.freePtr = connPtr->nextPtr;
+        connPtr->nextPtr = NULL;
+    }
+    Ns_MutexUnlock(&poolPtr->wqueue.lock);
 
-    if (!servPtr->pools.shutdown) {
+    if (likely(connPtr != NULL)) {
+        /*
+         * We have got a free connPtr from the pool. Initialize the
+         * connPtr and copy flags from the socket.
+         */
 
-        Ns_MutexLock(&poolPtr->wqueue.lock);
-        if (poolPtr->wqueue.freePtr != NULL) {
-            connPtr = poolPtr->wqueue.freePtr;
-            poolPtr->wqueue.freePtr = connPtr->nextPtr;
-            connPtr->nextPtr = NULL;
+        /* ConnThreadQueuePrint(poolPtr, "driver");*/
+
+        Ns_MutexLock(&servPtr->pools.lock);
+        connPtr->id = servPtr->pools.nextconnid++;
+        poolPtr->stats.processed++;
+        Ns_MutexUnlock(&servPtr->pools.lock);
+
+        connPtr->requestQueueTime     = *nowPtr;
+        connPtr->sockPtr              = sockPtr;
+        connPtr->drvPtr               = sockPtr->drvPtr;
+        connPtr->poolPtr              = poolPtr;
+        connPtr->server               = servPtr->server;
+        connPtr->location             = sockPtr->location;
+        connPtr->flags                = sockPtr->flags;
+        if ((sockPtr->drvPtr->opts & NS_DRIVER_ASYNC) == 0u) {
+            connPtr->acceptTime       = *nowPtr;
+        } else {
+            connPtr->acceptTime       = sockPtr->acceptTime;
         }
-        Ns_MutexUnlock(&poolPtr->wqueue.lock);
+        connPtr->rateLimit            = poolPtr->rate.defaultConnectionLimit;
 
-        if (connPtr != NULL) {
-            /*
-             * We have got a free connPtr from the pool. Initialize the
-             * connPtr and copy flags from the socket.
-             */
+        /*
+         * Reset members of sockPtr, which have been passed to connPtr.
+         */
+        sockPtr->acceptTime.sec       = 0;
+        sockPtr->flags                = 0u;
 
-            /* ConnThreadQueuePrint(poolPtr, "driver");*/
-
-            Ns_MutexLock(&servPtr->pools.lock);
-            connPtr->id = servPtr->pools.nextconnid++;
-            poolPtr->stats.processed++;
-            Ns_MutexUnlock(&servPtr->pools.lock);
-
-            connPtr->requestQueueTime     = *nowPtr;
-            connPtr->sockPtr              = sockPtr;
-            connPtr->drvPtr               = sockPtr->drvPtr;
-            connPtr->poolPtr              = poolPtr;
-            connPtr->server               = servPtr->server;
-            connPtr->location             = sockPtr->location;
-            connPtr->flags                = sockPtr->flags;
-            if ((sockPtr->drvPtr->opts & NS_DRIVER_ASYNC) == 0u) {
-                connPtr->acceptTime       = *nowPtr;
-            } else {
-                connPtr->acceptTime       = sockPtr->acceptTime;
-            }
-            sockPtr->acceptTime.sec       = 0; /* invalidate time */
-
-            /*
-             * Try to get an entry from the connection thread queue,
-             * and dequeue it when possible.
-             */
+        /*
+         * Try to get an entry from the connection thread queue,
+         * and dequeue it when possible.
+         */
+        if (poolPtr->tqueue.nextPtr != NULL) {
+            Ns_MutexLock(&poolPtr->tqueue.lock);
             if (poolPtr->tqueue.nextPtr != NULL) {
-                Ns_MutexLock(&poolPtr->tqueue.lock);
-                if (poolPtr->tqueue.nextPtr != NULL) {
-                  argPtr = poolPtr->tqueue.nextPtr;
-                  poolPtr->tqueue.nextPtr = argPtr->nextPtr;
-                }
-                Ns_MutexUnlock(&poolPtr->tqueue.lock);
+                argPtr = poolPtr->tqueue.nextPtr;
+                poolPtr->tqueue.nextPtr = argPtr->nextPtr;
             }
+            Ns_MutexUnlock(&poolPtr->tqueue.lock);
+        }
 
-            if (argPtr != NULL) {
-                /*
-                 * We could obtain an idle thread. Dequeue the entry,
-                 * such that no one else might grab it, and fill in the
-                 * connPtr that should be run by this thread.
-                 */
+        if (argPtr != NULL) {
+            /*
+             * We could obtain an idle thread. Dequeue the entry,
+             * such that no one else might grab it, and fill in the
+             * connPtr that should be run by this thread.
+             */
 
-                assert(argPtr->state == connThread_idle);
-                argPtr->connPtr = connPtr;
+            assert(argPtr->state == connThread_idle);
+            argPtr->connPtr = connPtr;
 
-                Ns_MutexLock(&poolPtr->wqueue.lock);
-                Ns_MutexLock(&poolPtr->threads.lock);
-                create = neededAdditionalConnectionThreads(poolPtr);
-                Ns_MutexUnlock(&poolPtr->threads.lock);
-                Ns_MutexUnlock(&poolPtr->wqueue.lock);
+            Ns_MutexLock(&poolPtr->wqueue.lock);
+            Ns_MutexLock(&poolPtr->threads.lock);
+            create = neededAdditionalConnectionThreads(poolPtr);
+            Ns_MutexUnlock(&poolPtr->threads.lock);
+            Ns_MutexUnlock(&poolPtr->wqueue.lock);
 
+        } else {
+            /*
+             * There is no connection thread ready, so we add the
+             * connection to the waiting queue.
+             */
+            Ns_MutexLock(&poolPtr->wqueue.lock);
+            if (poolPtr->wqueue.wait.firstPtr == NULL) {
+                poolPtr->wqueue.wait.firstPtr = connPtr;
             } else {
-              /*
-               * There is no connection thread ready, so we add the
-               * connection to the waiting queue.
-               */
-                Ns_MutexLock(&poolPtr->wqueue.lock);
-                if (poolPtr->wqueue.wait.firstPtr == NULL) {
-                    poolPtr->wqueue.wait.firstPtr = connPtr;
-                } else {
-                    poolPtr->wqueue.wait.lastPtr->nextPtr = connPtr;
-                }
-                poolPtr->wqueue.wait.lastPtr = connPtr;
-                poolPtr->wqueue.wait.num ++;
-                Ns_MutexLock(&poolPtr->threads.lock);
-                poolPtr->stats.queued++;
-                create = neededAdditionalConnectionThreads(poolPtr);
-                Ns_MutexUnlock(&poolPtr->threads.lock);
-                Ns_MutexUnlock(&poolPtr->wqueue.lock);
+                poolPtr->wqueue.wait.lastPtr->nextPtr = connPtr;
             }
+            poolPtr->wqueue.wait.lastPtr = connPtr;
+            poolPtr->wqueue.wait.num ++;
+            Ns_MutexLock(&poolPtr->threads.lock);
+            poolPtr->stats.queued++;
+            create = neededAdditionalConnectionThreads(poolPtr);
+            Ns_MutexUnlock(&poolPtr->threads.lock);
+            Ns_MutexUnlock(&poolPtr->wqueue.lock);
         }
     }
 
-    if (connPtr == NULL) {
-        Ns_Log(Notice, "[%s pool %s] All available connections are used, waiting %d idle %d current %d",
-               poolPtr->servPtr->server,
-               poolPtr->pool,
-               poolPtr->wqueue.wait.num,
-               poolPtr->threads.idle,
-               poolPtr->threads.current);
-        queued = NS_FALSE;
+    if (unlikely(connPtr == NULL)) {
+        /*
+         * The connection thread pool queue is full.  We can either keep the
+         * sockPtr in a waiting state, or we can reject the queue overrun with
+         * a 503 - depending on the configuration.
+         */
+        queued = NS_TIMEOUT;
         create = NS_FALSE;
+
+        if ((sockPtr->flags & NS_CONN_SOCK_WAITING) == 0u) {
+            /*
+             * The flag NS_CONN_SOCK_WAITING is just used to avalid reporting
+             * the same request multiple times as unsuccessful queueing attempts
+             * (when rejectoverrun is false).
+             */
+            sockPtr->flags |= NS_CONN_SOCK_WAITING;
+            Ns_Log(Notice, "[%s pool %s] All available connections are used, waiting %d idle %d current %d",
+                   poolPtr->servPtr->server,
+                   poolPtr->pool,
+                   poolPtr->wqueue.wait.num,
+                   poolPtr->threads.idle,
+                   poolPtr->threads.current);
+
+            if (poolPtr->wqueue.rejectoverrun) {
+                Ns_MutexLock(&poolPtr->threads.lock);
+                poolPtr->stats.dropped++;
+                Ns_MutexUnlock(&poolPtr->threads.lock);
+                queued = NS_ERROR;
+            }
+        }
 
     } else if (argPtr != NULL) {
         /*
          * We have a connection thread ready.
          *
-         * Perform lock just at the "right" debug level.
+         * Perform lock just in the debugging case to avoid race condition.
          */
         if (Ns_LogSeverityEnabled(Debug)) {
             int idle;
@@ -580,6 +778,41 @@ WalkCallback(Ns_DString *dsPtr, const void *arg)
 /*
  *----------------------------------------------------------------------
  *
+ * SetPoolAttribute --
+ *
+ *    Helper function to factor out common code when modifying integer
+ *    attributes in the pools structure.
+ *
+ * Results:
+ *    Tcl result.
+ *
+ * Side effects:
+ *    Sets interp result.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+SetPoolAttribute(Tcl_Interp *interp, int nargs, ConnPool *poolPtr, int *valuePtr, int value) {
+
+    if (nargs == 1) {
+        Ns_MutexLock(&poolPtr->threads.lock);
+        *valuePtr = value;
+        Ns_MutexUnlock(&poolPtr->threads.lock);
+    } else {
+        /*
+         * Called without an argument, just return the current setting.
+         */
+        assert(nargs == 0);
+    }
+
+    Tcl_SetObjResult(interp, Tcl_NewIntObj(*valuePtr));
+    return TCL_OK;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
  * ServerMaxThreadsObjCmd, subcommand of NsTclServerObjCmd --
  *
  *    Implements the "ns_server ... maxthreads ..." command.
@@ -592,13 +825,15 @@ WalkCallback(Ns_DString *dsPtr, const void *arg)
  *
  *----------------------------------------------------------------------
  */
+
 static int
-ServerMaxThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+ServerMaxThreadsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                        ConnPool *poolPtr, int nargs)
 {
-    int             result = TCL_OK, value = 0;
-    Ns_ObjvSpec args[] = {
-        {"?value",   Ns_ObjvInt, &value, NULL},
+    int               result = TCL_OK, value = 0;
+    Ns_ObjvValueRange range = {poolPtr->threads.min, poolPtr->wqueue.maxconns};
+    Ns_ObjvSpec       args[] = {
+        {"?maxthreads",   Ns_ObjvInt, &value, &range},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -608,24 +843,8 @@ ServerMaxThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, 
 
     if (Ns_ParseObjv(NULL, args, interp, objc-nargs, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    } else if (nargs == 1) {
-        if (value < poolPtr->threads.min || value > poolPtr->wqueue.maxconns) {
-            Ns_TclPrintfResult(interp, "argument is not an integer in valid range: %s", Tcl_GetString(objv[objc-1]));
-            result = TCL_ERROR;
-        } else {
-            Ns_MutexLock(&poolPtr->threads.lock);
-            poolPtr->threads.max = value;
-            Ns_MutexUnlock(&poolPtr->threads.lock);
-        }
     } else {
-        /*
-         * Called without an argument, just return the current setting.
-         */
-        assert(nargs == 0);
-    }
-
-    if (result == TCL_OK) {
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.max));
+        result = SetPoolAttribute(interp, nargs, poolPtr, &poolPtr->threads.max, value);
     }
     return result;
 }
@@ -647,12 +866,13 @@ ServerMaxThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, 
  *----------------------------------------------------------------------
  */
 static int
-ServerMinThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+ServerMinThreadsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                        ConnPool *poolPtr, int nargs)
 {
-    int             result = TCL_OK, value = 0;
-    Ns_ObjvSpec args[] = {
-        {"?value",   Ns_ObjvInt, &value, NULL},
+    int               result = TCL_OK, value = 0;
+    Ns_ObjvValueRange range = {1, poolPtr->threads.max};
+    Ns_ObjvSpec       args[] = {
+        {"?minthreads", Ns_ObjvInt, &value, &range},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -662,24 +882,53 @@ ServerMinThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, 
 
     if (Ns_ParseObjv(NULL, args, interp, objc-nargs, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    } else if (nargs == 1) {
-        if (value < 1 || value > poolPtr->threads.max) {
-            Ns_TclPrintfResult(interp, "argument is not an integer in valid range: %d", value);
-            result = TCL_ERROR;
-        } else {
-            Ns_MutexLock(&poolPtr->threads.lock);
-            poolPtr->threads.min = value;
-            Ns_MutexUnlock(&poolPtr->threads.lock);
-        }
     } else {
-        /*
-         * Called without an argument, just return the current setting.
-         */
-        assert(nargs == 0);
+        result = SetPoolAttribute(interp, nargs, poolPtr, &poolPtr->threads.min, value);
     }
+    return result;
+}
 
-    if (result == TCL_OK) {
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->threads.min));
+static int
+ServerPoolRateLimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+                       ConnPool *poolPtr, int nargs)
+{
+    int               result = TCL_OK, value = 0;
+    Ns_ObjvValueRange range = {-1, INT_MAX};
+    Ns_ObjvSpec       args[] = {
+        {"?poolratelimit", Ns_ObjvInt, &value, &range},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
+
+    if (Ns_ParseObjv(NULL, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        result = SetPoolAttribute(interp, nargs, poolPtr, &poolPtr->rate.poolLimit, value);
+    }
+    return result;
+}
+static int
+ServerConnectionRateLimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+                                ConnPool *poolPtr, int nargs)
+{
+    int               result = TCL_OK, value = 0;
+    Ns_ObjvValueRange range = {-1, INT_MAX};
+    Ns_ObjvSpec       args[] = {
+        {"?connectionratelimit", Ns_ObjvInt, &value, &range},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(objv != NULL);
+    NS_NONNULL_ASSERT(poolPtr != NULL);
+
+    if (Ns_ParseObjv(NULL, args, interp, objc-nargs, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        result = SetPoolAttribute(interp, nargs, poolPtr, &poolPtr->rate.defaultConnectionLimit, value);
     }
     return result;
 }
@@ -704,25 +953,43 @@ ServerMinThreadsObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, 
  */
 
 static Ns_ReturnCode
-MapspecParse( Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url) {
-    Ns_ReturnCode status;
+MapspecParse(Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url,
+             NsUrlSpaceContextSpec **specPtr) {
+    Ns_ReturnCode status = NS_ERROR;
     int           oc;
     Tcl_Obj     **ov;
 
-    NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(mapspecObj != NULL);
     NS_NONNULL_ASSERT(method != NULL);
     NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(specPtr != NULL);
 
-    if (Tcl_ListObjGetElements(NULL, mapspecObj, &oc, &ov) == TCL_OK && oc == 2) {
-        *method = Tcl_GetString(ov[0]);
-        *url = Tcl_GetString(ov[1]);
-        status = NS_OK;
-    } else {
+    if (Tcl_ListObjGetElements(NULL, mapspecObj, &oc, &ov) == TCL_OK) {
+        if (oc == 2 || oc == 3) {
+            status = NS_OK;
+            *method = Tcl_GetString(ov[0]);
+            *url = Tcl_GetString(ov[1]);
+            if (oc == 3) {
+                int        oc2;
+                Tcl_Obj  **ov2;
+
+                if (Tcl_ListObjGetElements(NULL, ov[2], &oc2, &ov2) == TCL_OK && oc2 == 2) {
+                    *specPtr = NsUrlSpaceContextSpecNew(Tcl_GetString(ov2[0]),
+                                                        Tcl_GetString(ov2[1]));
+
+                } else {
+                    status = NS_ERROR;
+                }
+            } else {
+                *specPtr = NULL;
+            }
+        }
+    }
+    if (unlikely(status == NS_ERROR) && interp != NULL) {
         Ns_TclPrintfResult(interp,
-                           "invalid mapspec '%s'; must be 2-element list containing HTTP method and URL",
+                           "invalid mapspec '%s'; must be 2- or 3-element list "
+                           "containing HTTP method, URL, and optionally a filtercontext",
                            Tcl_GetString(mapspecObj));
-        status = NS_ERROR;
     }
 
     return status;
@@ -745,7 +1012,7 @@ MapspecParse( Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url
  *----------------------------------------------------------------------
  */
 static int
-ServerMapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+ServerMapObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                 NsServer  *servPtr, ConnPool *poolPtr, int nargs)
 {
     int             result = TCL_OK, noinherit = 0;
@@ -768,22 +1035,28 @@ ServerMapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
         result = TCL_ERROR;
     } else if (mapspecObj != NULL) {
         char *method, *url;
+        NsUrlSpaceContextSpec *specPtr = NULL;
 
-        if (MapspecParse(interp, mapspecObj, &method, &url) != NS_OK) {
+        if (MapspecParse(interp, mapspecObj, &method, &url, &specPtr) != NS_OK) {
             result = TCL_ERROR;
         } else {
             unsigned int flags = 0u;
+            Tcl_DString ds;
 
             if (noinherit != 0) {
                 flags |= NS_OP_NOINHERIT;
             }
 
             Ns_MutexLock(&servPtr->urlspace.lock);
-            Ns_UrlSpecificSet(servPtr->server, method, url, poolid, poolPtr, flags, NULL);
+            Ns_UrlSpecificSet2(servPtr->server, method, url, poolid, poolPtr, flags, NULL, specPtr);
             Ns_MutexUnlock(&servPtr->urlspace.lock);
 
-            Ns_Log(Notice, "pool[%s]: mapped %s %s -> %s",
-                   servPtr->server, method, url, poolPtr->pool);
+            Tcl_DStringInit(&ds);
+            Ns_Log(Notice, "pool[%s]: mapped %s %s%s -> %s",
+                   servPtr->server, method, url,
+                   (specPtr == NULL ? "" : NsUrlSpaceContextSpecAppend(&ds, specPtr)),
+                   poolPtr->pool);
+            Tcl_DStringFree(&ds);
         }
 
     } else {
@@ -887,12 +1160,13 @@ ServerMapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *----------------------------------------------------------------------
  */
 static int
-ServerMappedObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+ServerMappedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                   NsServer *servPtr, int nargs)
 {
     int          result = TCL_OK, noinherit = 0, exact = 0;
     Tcl_Obj     *mapspecObj = NULL;
     char        *method, *url;
+    NsUrlSpaceContextSpec *specPtr;
     Ns_ObjvSpec  lopts[] = {
         {"-exact",     Ns_ObjvBool,   &exact, INT2PTR(NS_TRUE)},
         {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
@@ -909,7 +1183,7 @@ ServerMappedObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int 
 
     if (Ns_ParseObjv(lopts, args, interp, objc-nargs, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    } else if (MapspecParse(interp, mapspecObj, &method, &url) != NS_OK) {
+    } else if (MapspecParse(interp, mapspecObj, &method, &url, &specPtr) != NS_OK) {
         result = TCL_ERROR;
     } else {
         unsigned int    flags = 0u;
@@ -927,7 +1201,8 @@ ServerMappedObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int 
         }
 
         Ns_MutexLock(&servPtr->urlspace.lock);
-        mappedPoolPtr = (ConnPool *)NsUrlSpecificGet(servPtr,  method, url, poolid, flags, op);
+        mappedPoolPtr = (ConnPool *)NsUrlSpecificGet(servPtr,  method, url, poolid, flags, op,
+                                                     NULL, NULL);
         Ns_MutexUnlock(&servPtr->urlspace.lock);
 
         if (mappedPoolPtr != NULL) {
@@ -955,12 +1230,13 @@ ServerMappedObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int 
  *----------------------------------------------------------------------
  */
 static int
-ServerUnmapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+ServerUnmapObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
                   NsServer *servPtr, int nargs)
 {
     int          result = TCL_OK, noinherit = 0;
     char        *method, *url;
     Tcl_Obj     *mapspecObj = NULL;
+    NsUrlSpaceContextSpec *specPtr;
     Ns_ObjvSpec  lopts[] = {
         {"-noinherit", Ns_ObjvBool, &noinherit, INT2PTR(NS_TRUE)},
         {NULL, NULL, NULL, NULL}
@@ -976,7 +1252,7 @@ ServerUnmapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int o
 
     if (Ns_ParseObjv(lopts, args, interp, objc-nargs, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    } else if (MapspecParse(interp, mapspecObj, &method, &url) != NS_OK) {
+    } else if (MapspecParse(interp, mapspecObj, &method, &url, &specPtr) != NS_OK) {
         result = TCL_ERROR;
     } else {
         bool          success;
@@ -986,17 +1262,20 @@ ServerUnmapObjCmd(const ClientData UNUSED(clientData), Tcl_Interp *interp, int o
         if (noinherit != 0) {
             flags |= NS_OP_NOINHERIT;
         }
+        // TODO: for the time being
+        flags |= NS_OP_ALLFILTERS;
 
         Ns_MutexLock(&servPtr->urlspace.lock);
         data = Ns_UrlSpecificDestroy(servPtr->server,  method, url, poolid, flags);
         Ns_MutexUnlock(&servPtr->urlspace.lock);
 
         success = (data != NULL);
-        if (success) {
-            Ns_Log(Notice, "pool[%s]: unmapped %s %s", servPtr->server, method, url);
-        } else {
-            Ns_Log(Warning, "pool[%s]: could not unmap %s %s", servPtr->server, method, url);
-        }
+        // TODO: data is no good indicator when (all) context constraints are deleted.
+        //if (success) {
+        //    Ns_Log(Notice, "pool[%s]: unmapped %s %s", servPtr->server, method, url);
+        //} else {
+        //    Ns_Log(Warning, "pool[%s]: could not unmap %s %s", servPtr->server, method, url);
+        //}
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj(success));
     }
 
@@ -1160,16 +1439,18 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     int             subcmd = 0, result = TCL_OK, nargs = 0;
     NsServer       *servPtr = NULL;
     ConnPool       *poolPtr;
-    char           *pool = NULL, *optArg = NULL, buf[100];
+    char           *pool = NULL, *optArg = NULL;
     Tcl_DString     ds, *dsPtr = &ds;
 
     enum {
-        SActiveIdx, SAllIdx, SConnectionsIdx,
+        SActiveIdx, SAllIdx,
+        SConnectionsIdx, SConnectionRateLimitIdx,
         SFiltersIdx,
         SKeepaliveIdx,
         SMapIdx, SMappedIdx,
         SMaxthreadsIdx, SMinthreadsIdx,
-        SPagedirIdx, SPoolsIdx, SQueuedIdx,
+        SPagedirIdx, SPoolRateLimitIdx, SPoolsIdx,
+        SQueuedIdx,
         SRequestprocsIdx,
         SServerdirIdx, SStatsIdx,
         STcllibIdx, SThreadsIdx, STracesIdx,
@@ -1178,28 +1459,30 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     };
 
     static Ns_ObjvTable subcmds[] = {
-        {"active",       (unsigned int)SActiveIdx},
-        {"all",          (unsigned int)SAllIdx},
-        {"connections",  (unsigned int)SConnectionsIdx},
-        {"filters",      (unsigned int)SFiltersIdx},
-        {"keepalive",    (unsigned int)SKeepaliveIdx},
-        {"map",          (unsigned int)SMapIdx},
-        {"mapped",       (unsigned int)SMappedIdx},
-        {"maxthreads",   (unsigned int)SMaxthreadsIdx},
-        {"minthreads",   (unsigned int)SMinthreadsIdx},
-        {"pagedir",      (unsigned int)SPagedirIdx},
-        {"pools",        (unsigned int)SPoolsIdx},
-        {"queued",       (unsigned int)SQueuedIdx},
-        {"requestprocs", (unsigned int)SRequestprocsIdx},
-        {"serverdir",    (unsigned int)SServerdirIdx},
-        {"stats",        (unsigned int)SStatsIdx},
-        {"tcllib",       (unsigned int)STcllibIdx},
-        {"threads",      (unsigned int)SThreadsIdx},
-        {"traces",       (unsigned int)STracesIdx},
-        {"unmap",        (unsigned int)SUnmapIdx},
-        {"url2file",     (unsigned int)SUrl2fileIdx},
-        {"waiting",      (unsigned int)SWaitingIdx},
-        {NULL,           0u}
+        {"active",              (unsigned int)SActiveIdx},
+        {"all",                 (unsigned int)SAllIdx},
+        {"connectionratelimit", (unsigned int)SConnectionRateLimitIdx},
+        {"connections",         (unsigned int)SConnectionsIdx},
+        {"filters",             (unsigned int)SFiltersIdx},
+        {"keepalive",           (unsigned int)SKeepaliveIdx},
+        {"map",                 (unsigned int)SMapIdx},
+        {"mapped",              (unsigned int)SMappedIdx},
+        {"maxthreads",          (unsigned int)SMaxthreadsIdx},
+        {"minthreads",          (unsigned int)SMinthreadsIdx},
+        {"pagedir",             (unsigned int)SPagedirIdx},
+        {"poolratelimit",       (unsigned int)SPoolRateLimitIdx},
+        {"pools",               (unsigned int)SPoolsIdx},
+        {"queued",              (unsigned int)SQueuedIdx},
+        {"requestprocs",        (unsigned int)SRequestprocsIdx},
+        {"serverdir",           (unsigned int)SServerdirIdx},
+        {"stats",               (unsigned int)SStatsIdx},
+        {"tcllib",              (unsigned int)STcllibIdx},
+        {"threads",             (unsigned int)SThreadsIdx},
+        {"traces",              (unsigned int)STracesIdx},
+        {"unmap",               (unsigned int)SUnmapIdx},
+        {"url2file",            (unsigned int)SUrl2fileIdx},
+        {"waiting",             (unsigned int)SWaitingIdx},
+        {NULL,                  0u}
     };
     Ns_ObjvSpec opts[] = {
         {"-server", Ns_ObjvServer,  &servPtr, NULL},
@@ -1235,6 +1518,8 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         && subcmd != SActiveIdx
         && subcmd != SQueuedIdx
         && subcmd != SAllIdx
+        && subcmd != SPoolRateLimitIdx
+        && subcmd != SConnectionRateLimitIdx
         ) {
         /*
          * Just for backwards compatibility
@@ -1339,7 +1624,7 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         break;
 
     case SMappedIdx:
-        result = ServerMappedObjCmd(clientData, interp, objc, objv, servPtr,nargs);
+        result = ServerMappedObjCmd(clientData, interp, objc, objv, servPtr, nargs);
         break;
 
     case SUnmapIdx:
@@ -1348,6 +1633,14 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
     case SMaxthreadsIdx:
         result = ServerMaxThreadsObjCmd(clientData, interp, objc, objv, poolPtr, nargs);
+        break;
+
+    case SPoolRateLimitIdx:
+        result = ServerPoolRateLimitObjCmd(clientData, interp, objc, objv, poolPtr, nargs);
+        break;
+
+    case SConnectionRateLimitIdx:
+        result = ServerConnectionRateLimitObjCmd(clientData, interp, objc, objv, poolPtr, nargs);
         break;
 
     case SMinthreadsIdx:
@@ -1361,21 +1654,12 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
     case SStatsIdx:
         Tcl_DStringInit(dsPtr);
 
-        Tcl_DStringAppendElement(dsPtr, "requests");
-        snprintf(buf, sizeof(buf), "%lu", poolPtr->stats.processed);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "spools");
-        snprintf(buf, sizeof(buf), "%lu", poolPtr->stats.spool);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "queued");
-        snprintf(buf, sizeof(buf), "%lu", poolPtr->stats.queued);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "connthreads");
-        snprintf(buf, sizeof(buf), "%lu", poolPtr->stats.connthreads);
-        Tcl_DStringAppendElement(dsPtr, buf);
+        Ns_DStringPrintf(dsPtr, "requests %lu ", poolPtr->stats.processed);
+        Ns_DStringPrintf(dsPtr, "spools %lu ", poolPtr->stats.spool);
+        Ns_DStringPrintf(dsPtr, "queued %lu ", poolPtr->stats.queued);
+        Ns_DStringPrintf(dsPtr, "dropped %lu ", poolPtr->stats.dropped);
+        Ns_DStringPrintf(dsPtr, "sent %" TCL_LL_MODIFIER "d ", poolPtr->rate.bytesSent);
+        Ns_DStringPrintf(dsPtr, "connthreads %lu", poolPtr->stats.connthreads);
 
         Ns_DStringAppend(dsPtr, " accepttime ");
         Ns_DStringAppendTime(dsPtr, &poolPtr->stats.acceptTime);
@@ -1396,10 +1680,12 @@ NsTclServerObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         break;
 
     case SThreadsIdx:
+        Ns_MutexLock(&poolPtr->threads.lock);
         Ns_TclPrintfResult(interp,
                            "min %d max %d current %d idle %d stopping 0",
                            poolPtr->threads.min, poolPtr->threads.max,
                            poolPtr->threads.current, poolPtr->threads.idle);
+        Ns_MutexUnlock(&poolPtr->threads.lock);
         break;
 
     case SActiveIdx:
@@ -1643,19 +1929,8 @@ ConnThreadSetName(const char *server, const char *pool, uintptr_t threadId, uint
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(pool != NULL);
 
-    if (*pool != '\0') {
-        /*
-         * Non-Empty pool name.
-         */
-        Ns_ThreadSetName("-conn:%s:%s:%" PRIuPTR ":%" PRIuPTR "-",
-                         server, pool, threadId, connId);
-    } else {
-        /*
-         * Empty pool name.
-         */
-        Ns_ThreadSetName("-conn:%s:%" PRIuPTR ":%" PRIuPTR "-",
-                         server, threadId, connId);
-    }
+    Ns_ThreadSetName("-conn:%s:%s:%" PRIuPTR ":%" PRIuPTR "-",
+                     server, NsPoolName(pool), threadId, connId);
 }
 
 
@@ -1687,7 +1962,7 @@ NsConnThread(void *arg)
     bool           duringShutdown, fromQueue;
     int            cpt, ncons, current;
     Ns_ReturnCode  status = NS_OK;
-    long           timeout;
+    Ns_Time        timeout;
     const char    *exitMsg;
     Ns_Thread      joinThread;
     Ns_Mutex      *threadsLockPtr, *tqueueLockPtr, *wqueueLockPtr;
@@ -1739,7 +2014,7 @@ NsConnThread(void *arg)
         interp = NsTclAllocateInterp(servPtr);
         Ns_GetTime(&end);
         Ns_DiffTime(&end, &start, &diff);
-        Ns_Log(Notice, "thread initialized (%" PRId64 ".%06ld secs)",
+        Ns_Log(Notice, "thread initialized (" NS_TIME_FMT " secs)",
                (int64_t)diff.sec, diff.usec);
         Ns_TclDeAllocateInterp(interp);
         argPtr->state = connThread_ready;
@@ -1799,7 +2074,7 @@ NsConnThread(void *arg)
             /*
              * We put an entry into the thread queue. However, we must
              * take care, that signals are not sent, before this thread
-             * is waiting for it. Therefore we lock the connection
+             * is waiting for it. Therefore, we lock the connection
              * thread specific lock right here, also the signal sending
              * code uses the same lock.
              */
@@ -1815,12 +2090,12 @@ NsConnThread(void *arg)
             while (!servPtr->pools.shutdown) {
 
                 Ns_GetTime(timePtr);
-                Ns_IncrTime(timePtr, timeout, 0);
+                Ns_IncrTime(timePtr, timeout.sec, timeout.usec);
 
                 status = Ns_CondTimedWait(&argPtr->cond, &argPtr->lock, timePtr);
 
                 if (status == NS_TIMEOUT) {
-                    if (argPtr->connPtr != NULL) {
+                    if (unlikely(argPtr->connPtr != NULL)) {
                         /*
                          * This should not happen: we had a timeout, but there
                          * is a connection to be handled; when a connection
@@ -1835,6 +2110,7 @@ NsConnThread(void *arg)
                          * We have a timeout, but we should not reduce the
                          * number of threads below min-threads.
                          */
+                        NsIdleCallback(servPtr);
                         continue;
 
                     } else {
@@ -1997,14 +2273,14 @@ NsConnThread(void *arg)
                 Ns_DiffTime(&now, &connPtr->requestQueueTime,   &fullTime);
 
                 Ns_Log(Debug, "[%d] end of job, waiting %d current %d idle %d ncons %d fromQueue %d"
-                       " start %" PRId64 ".%06ld"
-                       " %" PRId64 ".%06ld"
-                       " accept %" PRId64 ".%06ld"
-                       " queue %" PRId64 ".%06ld"
-                       " filter %" PRId64 ".%06ld"
-                       " run %" PRId64 ".%06ld"
-                       " netrun %" PRId64 ".%06ld"
-                       " total %" PRId64 ".%06ld",
+                       " start " NS_TIME_FMT
+                       " " NS_TIME_FMT
+                       " accept " NS_TIME_FMT
+                       " queue " NS_TIME_FMT
+                       " filter " NS_TIME_FMT
+                       " run " NS_TIME_FMT
+                       " netrun " NS_TIME_FMT
+                       " total " NS_TIME_FMT,
                        ThreadNr(poolPtr, argPtr),
                        waiting, poolPtr->threads.current, idle, ncons, fromQueue ? 1 : 0,
                        (int64_t) connPtr->acceptTime.sec, connPtr->acceptTime.usec,
@@ -2121,7 +2397,7 @@ ConnRun(Conn *connPtr)
     Ns_Conn        *conn;
     const NsServer *servPtr;
     Ns_ReturnCode   status;
-    char           *auth;
+    const char     *auth;
 
     NS_NONNULL_ASSERT(connPtr != NULL);
 
@@ -2134,7 +2410,10 @@ ConnRun(Conn *connPtr)
     /*
      * Make sure we update peer address with actual remote IP address
      */
-    (void) Ns_ConnSetPeer(conn, (struct sockaddr *)&(sockPtr->sa));
+    (void) Ns_ConnSetPeer(conn,
+                          (struct sockaddr *)&(sockPtr->sa),
+                          (struct sockaddr *)&(sockPtr->clientsa)
+                          );
 
     /*
      * Get the request data from the reqPtr to ease life-time management in
@@ -2177,7 +2456,7 @@ ConnRun(Conn *connPtr)
     Tcl_InitHashTable(&connPtr->files, TCL_STRING_KEYS);
 
     memcpy(connPtr->idstr, "cns", 3u);
-    ns_uint64toa(&connPtr->idstr[3], (uint64_t)connPtr->id);
+    (void)ns_uint64toa(&connPtr->idstr[3], (uint64_t)connPtr->id);
 
     connPtr->outputheaders = Ns_SetCreate(NULL);
     if (connPtr->request.version < 1.0) {
@@ -2218,8 +2497,20 @@ ConnRun(Conn *connPtr)
         /*
          * Run classical HTTP requests
          */
+
         status = NsRunFilters(conn, NS_FILTER_PRE_AUTH);
         Ns_GetTime(&connPtr->filterDoneTime);
+
+        if (connPtr->sockPtr == NULL) {
+            /*
+             * If - for what-ever reason - a filter has closed the connection,
+             * treat the result as NS_FILTER_RETURN. Other feedback to this
+             * connection can not work anymore.
+             */
+            Ns_Log(Debug, "Filter closed connection; cancel further request processing");
+
+            status = NS_FILTER_RETURN;
+        }
 
         if (status == NS_OK) {
             status = Ns_AuthorizeRequest(servPtr->server,
@@ -2232,7 +2523,7 @@ ConnRun(Conn *connPtr)
             case NS_OK:
                 status = NsRunFilters(conn, NS_FILTER_POST_AUTH);
                 Ns_GetTime(&connPtr->filterDoneTime);
-                if (status == NS_OK) {
+                if (status == NS_OK && (connPtr->sockPtr != NULL)) {
                     /*
                      * Run the actual request
                      */
@@ -2248,28 +2539,30 @@ ConnRun(Conn *connPtr)
                 (void) Ns_ConnReturnUnauthorized(conn);
                 break;
 
-            case NS_ERROR:          /* fall through */
-            case NS_FILTER_BREAK:   /* fall through */
-            case NS_FILTER_RETURN:  /* fall through */
-            case NS_TIMEOUT:        /* fall through */
-            default:
-                (void) Ns_ConnReturnInternalError(conn);
+            case NS_ERROR:          NS_FALL_THROUGH; /* fall through */
+            case NS_FILTER_BREAK:   NS_FALL_THROUGH; /* fall through */
+            case NS_FILTER_RETURN:  NS_FALL_THROUGH; /* fall through */
+            case NS_TIMEOUT:
+                (void)Ns_ConnTryReturnInternalError(conn, status, "after authorize request");
                 break;
             }
         } else if (status != NS_FILTER_RETURN) {
             /*
-             * If not ok or filter_return, then the pre-auth filter coughed
+             * If not ok or filter_return, then the pre-auth filter caught
              * an error.  We are not going to proceed, but also we
              * can't count on the filter to have sent a response
              * back to the client.  So, send an error response.
              */
-            (void) Ns_ConnReturnInternalError(conn);
-            status = NS_FILTER_RETURN; /* to allow tracing to happen */
+            (void)Ns_ConnTryReturnInternalError(conn, status, "after pre_auth filter");
+            /*
+             * Set the status so that NS_FILTER_TRACE can still run.
+             */
+            status = NS_FILTER_RETURN;
         }
     }
 
     /*
-     * Update runtime statistics to make these usable for traces (e.g. access log).
+     * Update run time statistics to make these usable for traces (e.g. access log).
      */
     NsConnTimeStatsUpdate(conn);
 
@@ -2282,6 +2575,8 @@ ConnRun(Conn *connPtr)
              */
             NsRunTraces(conn);
         }
+    } else {
+        Ns_Log(Notice, "not running NS_FILTER_TRACE status %d", status);
     }
 
     /*
@@ -2300,8 +2595,16 @@ ConnRun(Conn *connPtr)
      * process the remaining bytes.
      *
      */
-    if ((sockPtr->keep) && (connPtr->reqPtr->leftover > 0u)) {
-        NsWakeupDriver(sockPtr->drvPtr);
+    {
+        bool wakeup;
+
+        Ns_MutexLock(&sockPtr->drvPtr->lock);
+        wakeup = (sockPtr->keep && (connPtr->reqPtr->leftover > 0u));
+        Ns_MutexUnlock(&sockPtr->drvPtr->lock);
+
+        if (wakeup) {
+            NsWakeupDriver(sockPtr->drvPtr);
+        }
     }
 
     /*
@@ -2323,9 +2626,12 @@ ConnRun(Conn *connPtr)
         connPtr->fd = 0;
     }
     if (connPtr->strWriter != NULL) {
-        WriterSock *wrPtr;
+        void *wrPtr;
 
         NsWriterLock();
+        /*
+         * Avoid potential race conditions, so refetch inside the lock.
+         */
         wrPtr = connPtr->strWriter;
         if (wrPtr != NULL) {
             NsWriterFinish(wrPtr);
@@ -2433,7 +2739,8 @@ CreateConnThread(ConnPool *poolPtr)
         poolPtr->threads.creating --;
         Ns_MutexUnlock(&poolPtr->threads.lock);
 
-        Ns_Log(Notice, "Cannot create connection thread, all available slots (%d) are used\n", i);
+        Ns_Log(Debug, "Cannot create additional connection thread in pool '%s', "
+               "maxthreads (%d) are running", poolPtr->pool, i);
     }
 }
 
@@ -2465,7 +2772,7 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state, bool chec
     /*
      * An annoying race condition can be lethal here.
      *
-     * In the state "waiting", we have never a connPtr->reqPtr, therefore we
+     * In the state "waiting", we have never a connPtr->reqPtr, therefore, we
      * can't even determine the peer address, nor the request method or the
      * request URL. Furthermore, there is no way to honor the "checkforproxy"
      * flag.
@@ -2474,64 +2781,25 @@ AppendConn(Tcl_DString *dsPtr, const Conn *connPtr, const char *state, bool chec
         Tcl_DStringStartSublist(dsPtr);
 
         if (connPtr->reqPtr != NULL) {
+            const char *p;
+
             Tcl_DStringAppendElement(dsPtr, connPtr->idstr);
 
-            /*
-             * The settings of (connPtr->flags & NS_CONN_CONFIGURED) is
-             * protected via the mutex connPtr->poolPtr->tqueue.lock from the
-             * caller, so the protected members can't be changed from another
-             * thread.
-             */
-            if ((connPtr->flags & NS_CONN_CONFIGURED) != 0u) {
-                const char *p;
-
-                if ( checkforproxy ) {
-                    /*
-                     * When the connection is NS_CONN_CONFIGURED, the headers
-                     * have to be always set.
-                     */
-                    assert(connPtr->headers != NULL);
-                    p = Ns_SetIGet(connPtr->headers, "X-Forwarded-For");
-
-                    if (p == NULL || (*p == '\0') || strcasecmp(p, "unknown") == 0) {
-                        /*
-                         * Lookup of header field failed, use upstream peer
-                         * address.
-                         */
-                        p = Ns_ConnPeerAddr((const Ns_Conn *) connPtr);
-                    }
-                } else {
-                    p = Ns_ConnPeerAddr((const Ns_Conn *) connPtr);
-                }
-                Tcl_DStringAppendElement(dsPtr, p);
-            } else {
+            if (checkforproxy) {
                 /*
-                 * The request is not configured, the headers might not be
-                 * fully processed. In this situation we can determine the
-                 * peer address, but not the header fields.
+                 * The user requested explicitly for "checkforproxy", so only
+                 * return the proxy value.
                  */
-                if (checkforproxy ) {
-                    /*
-                     * The user requested "checkforproxy", but we can't. Since
-                     * we assume that the user uses this option typically when
-                     * running behind a proxy, we do not want to return here
-                     * the peer address, which might be incorrect. So we
-                     * append "unknown" as in other semi-processed cases.
-                     */
-                    Ns_Log(Notice, "Connection is not configured, we can't check for the proxy yet");
-                    Tcl_DStringAppendElement(dsPtr, "unknown");
-                } else {
-                    /*
-                     * Append the peer address, which is part of the reqPtr
-                     * and unrelated with the configured state.
-                     */
-                    Tcl_DStringAppendElement(dsPtr, Ns_ConnPeerAddr((const Ns_Conn *) connPtr));
-                }
+                p = Ns_ConnForwardedPeerAddr((const Ns_Conn *)connPtr);
+            } else {
+                p = Ns_ConnConfiguredPeerAddr((const Ns_Conn *)connPtr);
             }
+            Tcl_DStringAppendElement(dsPtr, p);
         } else {
             /*
              * connPtr->reqPtr == NULL. Having no connPtr->reqPtr is normal
-             * for "queued" requests but not for "running" requests. Report this in the error log.
+             * for "queued" requests but not for "running" requests. Report
+             * this in the error log.
              */
             Tcl_DStringAppendElement(dsPtr, "unknown");
             if (*state == 'r') {

@@ -73,8 +73,8 @@ typedef struct Cgi {
     char           *path;
     const char     *pathinfo;
     char           *dir;
-    char           *exec;
-    char           *interp;
+    const char     *exec;
+    const char     *interp;
     Ns_Set         *interpEnv;
     int             ifd;
     int             ofd;
@@ -105,7 +105,9 @@ typedef struct Map {
 static int devNull;
 static Ns_LogSeverity Ns_LogCGIDebug;
 
+NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
+
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
 static const char *NS_EMPTY_STRING = "";
@@ -271,7 +273,7 @@ CgiRequest(const void *arg, Ns_Conn *conn)
     const Map      *mapPtr;
     Mod            *modPtr;
     Cgi             cgi;
-    Ns_ReturnCode   status;
+    Ns_ReturnCode   status = NS_OK;
 
     mapPtr = arg;
     modPtr = mapPtr->modPtr;
@@ -282,13 +284,15 @@ CgiRequest(const void *arg, Ns_Conn *conn)
 
     if (modPtr->maxInput > 0 && (int)conn->contentLength > modPtr->maxInput) {
         return Ns_ConnReturnBadRequest(conn, "Exceeded maximum CGI input size");
-    }
 
-    if (CgiInit(&cgi, mapPtr, conn) != NS_OK) {
+    } else if (CgiInit(&cgi, mapPtr, conn) != NS_OK) {
         return Ns_ConnReturnNotFound(conn);
+
     } else if ((cgi.interp == NULL)
                && (access(cgi.exec, X_OK) != 0)) {
-
+        /*
+         * Can't execute interpreter. Maybe return file a static file?
+         */
         if (((modPtr->flags & CGI_ALLOW_STATIC) != 0u) &&
             ( STREQ(conn->request.method, "GET") ||
               STREQ(conn->request.method, "HEAD")) ) {
@@ -303,28 +307,26 @@ CgiRequest(const void *arg, Ns_Conn *conn)
             status = Ns_ConnReturnNotFound(conn);
         }
         goto done;
-    }
 
-    /*
-     * Spool input to temp file if necessary.
-     */
-
-    if (conn->contentLength > 0u && CgiSpool(&cgi, conn) != NS_OK) {
+    } else if (conn->contentLength > 0u
+               && (CgiSpool(&cgi, conn) != NS_OK)) {
+        /*
+         * Content length failure.
+         */
         if ((cgi.flags & CGI_ECONTENT) != 0u) {
             status = Ns_ConnReturnBadRequest(conn, "Insufficient Content");
         } else {
-            status = Ns_ConnReturnInternalError(conn);
+            (void)Ns_ConnTryReturnInternalError(conn, NS_ERROR, "nscgi: cannot spool data");
         }
         goto done;
-    }
 
-    /*
-     * Wait for CGI access if necessary.
-     */
-
-    if (modPtr->maxCgi > 0) {
-        Ns_Time timeout;
+    } else if (modPtr->maxCgi > 0) {
+        Ns_Time       timeout;
         Ns_ReturnCode wait = NS_OK;
+
+        /*
+         * Wait for CGI access if necessary.
+         */
 
         Ns_GetTime(&timeout);
         Ns_IncrTime(&timeout, modPtr->maxWait, 0);
@@ -346,8 +348,9 @@ CgiRequest(const void *arg, Ns_Conn *conn)
      * Execute the CGI and copy output.
      */
 
-    if (CgiExec(&cgi, conn) != NS_OK) {
-        status = Ns_ConnReturnInternalError(conn);
+    status = CgiExec(&cgi, conn);
+    if (status != NS_OK) {
+        status = Ns_ConnTryReturnInternalError(conn, status, "nscgi: cgi exec failed");
     } else {
         status = CgiCopy(&cgi, conn);
     }
@@ -423,7 +426,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
 
     ulen = strlen(url);
     plen = strlen(mapPtr->url);
-    if ((strncmp(mapPtr->url, url, (size_t)plen) == 0) &&
+    if ((strncmp(mapPtr->url, url, plen) == 0) &&
         (ulen == plen || url[plen] == '/')) {
 
         if (mapPtr->path == NULL) {
@@ -593,12 +596,11 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
     int           fd;
     Ns_ReturnCode status;
     size_t        len;
-    const char   *content, *err;
+    const char   *content, *err = NULL;
 
     NS_NONNULL_ASSERT(cgiPtr != NULL);
     NS_NONNULL_ASSERT(conn != NULL);
 
-    err = NULL;
     len = conn->contentLength;
     content = Ns_ConnContent(conn);
     fd = Ns_GetTemp();
@@ -1178,7 +1180,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     }
     Ns_DStringFree(&ds);
     if (n < 0) {
-        status = Ns_ConnReturnInternalError(conn);
+        status = Ns_ConnTryReturnInternalError(conn, NS_ERROR, "nscgi: reading client data failed");
     } else {
 
         /*
@@ -1263,7 +1265,7 @@ CgiRegister(Mod *modPtr, const char *map)
 {
     char           *method;
     char           *url;
-    char           *path;
+    const char     *path;
     Ns_DString      ds1, ds2;
     Map            *mapPtr;
 
