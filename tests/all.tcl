@@ -12,7 +12,7 @@
 #
 # The Original Code is AOLserver Code and related documentation
 # distributed by AOL.
-# 
+#
 # The Initial Developer of the Original Code is America Online,
 # Inc. Portions created by AOL are Copyright (C) 1999 America Online,
 # Inc. All Rights Reserved.
@@ -40,6 +40,7 @@
 # Make sure, the testfile runs with an expected locale
 #
 set env(LANG) en_US.UTF-8
+encoding system utf-8
 
 package require Tcl 8.5
 package require tcltest 2.2
@@ -58,9 +59,28 @@ proc tcltest::test args {
     uplevel 1 tcltest::__test $args
 }
 
-ns_logctl severity DriverDebug true
+
+# For temporary debugging, you can turn test files on/off here.  But
+# for committing public changes, you should instead use the tcltest
+# "-constraints" feature, NOT do it here:
+if {$::tcl_platform(platform) eq "windows"} {
+   #configure -verbose {pass skip start}
+   ## Temporarily (and silently!) SKIP these for now:
+   #configure -notfile [list]
+   ## ONLY run these tests:
+   #configure -file [list ns_thread.test]
+}
+
+#ns_logctl severity Debug(ns:driver) true
+#ns_logctl severity debug on
 
 runAllTests
+
+#
+# The "notice" messages during test shutdown are typically not very
+# interesting, so turn it off to make the output shorter.
+#
+ns_logctl severity notice off
 
 #
 # Shutdown the server to let the cleanup handlers run

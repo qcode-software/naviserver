@@ -1,6 +1,6 @@
 /*
  * This is the style sheet for the HTML version of the naviserver and module
- * man pages that appear at: http://naviserver.sourceforge.net/api/*
+ * man pages that appear at: https://naviserver.sourceforge.io/n/toc.html*
  *
  */
 
@@ -144,6 +144,20 @@ b.const {
     font-family: "Courier New", Courier, monospace;
     font-weight: normal;
 }
+ul.doctools_syntax li a span.opt b {
+    font-weight: normal;
+}
+
+#see-also a,
+#keywords a,
+ul.doctools_syntax li a {
+    text-decoration: none;
+    color: darkslateblue;
+}
+
+ul.doctools_syntax li {
+    margin: 0px 0px 6px 0px;
+}
 
 span.logo {
     background-image: url('//naviserver.sourceforge.io/ns-icon-16.png');
@@ -154,5 +168,19 @@ span.logo {
 pre.doctools_example {
     background-color: #eeeeee;
     padding: 10px;
-    width: 100%;
+    margin-left: 2em;
+    margin-right: 2em;
+}
+
+div.doctools_section p {
+    margin-left: 2em;
+}
+div.doctools_section p {
+    margin-left: 2em;
+}
+div.doctools_section dl.doctools_definitions p {
+    margin-left: 0em;
+}
+div.doctools_section dl.doctools_definitions dd {
+    margin-left: 2em;
 }

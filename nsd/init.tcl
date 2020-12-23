@@ -49,7 +49,7 @@ ns_log notice "nsd/init.tcl\[[ns_info server]\]: booting virtual server: " \
     "Tcl system encoding: \"[encoding system]\""
 
 
-package require Tcl 8.4
+package require Tcl 8.5
 
 
 #
@@ -88,7 +88,7 @@ proc __ns_sourcelibs {{modname ""}} {
         set lib [set $name]
         if {![file isdirectory $lib] || ![file readable $lib]} {
             set level [expr {$modname eq "" ? "warning" : "notice"}]
-            ns_log $level "$lib is not a readable directory (ignored)"
+            ns_log $level "$name $lib is not a readable directory (ignored)"
         }
     }
 
@@ -178,7 +178,7 @@ proc __ns_sourcemodule {modname} {
 #     This results in a very small script which is quick
 #     to load and consume far less memory as "things" are
 #     loaded on as-needed basis by the Tcl [unknown] command.
-#     However this mode may pose compatibility problems by
+#     However, this mode may pose compatibility problems by
 #     some init scripts doing "weird" things during the
 #     interp initialization.
 #

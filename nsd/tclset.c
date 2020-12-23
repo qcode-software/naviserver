@@ -288,19 +288,19 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         "array", "cleanup", "copy", "cput", "create",
         "delete", "delkey", "find", "free", "get",
         "icput", "idelkey", "ifind", "iget", "imerge",
-        "isnull", "iunique", "key", "list", "merge",
-        "move", "name", "new", "print", "put",
+        "isnull", "iunique", "iupdate", "key", "keys", "list",
+        "merge", "move", "name", "new", "print", "put",
         "size", "split", "truncate", "unique", "update",
-        "value", NULL,
+        "value", "values", NULL,
     };
     enum {
         SArrayIdx, SCleanupIdx, SCopyIdx, SCPutIdx, SCreateidx,
         SDeleteIdx, SDelkeyIdx, SFindIdx, SFreeIdx, SGetIdx,
         SICPutIdx, SIDelkeyIdx, SIFindIdx, SIGetIdx, SIMergeIdx,
-        SIsNullIdx, SIUniqueIdx, SKeyIdx, SListIdx, SMergeIdx,
-        SMoveIdx, sINameIdx, SNewIdx, SPrintIdx, SPutIdx,
+        SIsNullIdx, SIUniqueIdx, SIUpdateIdx, SKeyIdx, SKeysIdx, SListIdx,
+        SMergeIdx, SMoveIdx, sINameIdx, SNewIdx, SPrintIdx, SPutIdx,
         SSizeIdx, SSplitIdx, STruncateIdx, SUniqueIdx, SUpdateIdx,
-        SValueIdx
+        SValueIdx, SValuesIdx
     };
 
     if (unlikely(objc < 2)) {
@@ -347,8 +347,8 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         }
         break;
 
-    case SNewIdx:   /* fall through */
-    case SCopyIdx:  /* fall through */
+    case SNewIdx:   NS_FALL_THROUGH; /* fall through */
+    case SCopyIdx:  NS_FALL_THROUGH; /* fall through */
     case SSplitIdx: {
         int           offset = 2;
         const char   *name;
@@ -430,10 +430,10 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             Tcl_Obj *objPtr;
 
             switch (opt) {
-            case SArrayIdx:  /* fall through */
-            case SSizeIdx:   /* fall through */
-            case sINameIdx:  /* fall through */
-            case SPrintIdx:  /* fall through */
+            case SArrayIdx:  NS_FALL_THROUGH; /* fall through */
+            case SSizeIdx:   NS_FALL_THROUGH; /* fall through */
+            case sINameIdx:  NS_FALL_THROUGH; /* fall through */
+            case SPrintIdx:  NS_FALL_THROUGH; /* fall through */
             case SFreeIdx:
                 /*
                  * These commands require only the set.
@@ -463,6 +463,26 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                         Tcl_SetObjResult(interp, Tcl_NewStringObj(set->name, -1));
                         break;
 
+                    case SKeysIdx: {
+                        if (unlikely(objc > 5)) {
+                            Tcl_WrongNumArgs(interp, 2, objv, "setId ?pattern?");
+                            result = TCL_ERROR;
+                        } else {
+                            size_t i;
+                            const char *pattern = (objc == 4 ? Tcl_GetString(objv[3]) : NULL);
+
+                            Tcl_DStringInit(&ds);
+                            for (i = 0u; i < set->size; ++i) {
+                                const char *value = (set->fields[i].name != NULL ? set->fields[i].name : "");
+                                if (pattern == NULL || (Tcl_StringMatch(value, pattern) != 0)) {
+                                    Tcl_DStringAppendElement(&ds, value);
+                                }
+                            }
+                            Tcl_DStringResult(interp, &ds);
+                        }
+                        break;
+                    }
+
                     case SPrintIdx:
                         Ns_SetPrint(set);
                         break;
@@ -479,7 +499,31 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SGetIdx:  /* fall through */
+            case SKeysIdx:   NS_FALL_THROUGH; /* fall through */
+            case SValuesIdx: {
+                if (unlikely(objc > 5)) {
+                    Tcl_WrongNumArgs(interp, 2, objv, "setId ?pattern?");
+                    result = TCL_ERROR;
+                } else {
+                    size_t i;
+                    const char *pattern = (objc == 4 ? Tcl_GetString(objv[3]) : NULL);
+
+                    Tcl_DStringInit(&ds);
+                    for (i = 0u; i < set->size; ++i) {
+                        const char *value = (opt == SKeysIdx ? set->fields[i].name : set->fields[i].value);
+                        if (value == NULL) {
+                            value = "";
+                        }
+                        if (pattern == NULL || (Tcl_StringMatch(value, pattern) != 0)) {
+                            Tcl_DStringAppendElement(&ds, value);
+                        }
+                    }
+                    Tcl_DStringResult(interp, &ds);
+                }
+                break;
+            }
+
+            case SGetIdx:  NS_FALL_THROUGH; /* fall through */
             case SIGetIdx:
                 if (unlikely(objc < 4)) {
                     Tcl_WrongNumArgs(interp, 2, objv, "setId key ?default?");
@@ -506,11 +550,11 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SFindIdx:    /* fall through */
-            case SIFindIdx:   /* fall through */
-            case SDelkeyIdx:  /* fall through */
-            case SIDelkeyIdx: /* fall through */
-            case SUniqueIdx:  /* fall through */
+            case SFindIdx:    NS_FALL_THROUGH; /* fall through */
+            case SIFindIdx:   NS_FALL_THROUGH; /* fall through */
+            case SDelkeyIdx:  NS_FALL_THROUGH; /* fall through */
+            case SIDelkeyIdx: NS_FALL_THROUGH; /* fall through */
+            case SUniqueIdx:  NS_FALL_THROUGH; /* fall through */
             case SIUniqueIdx:
                 /*
                  * These commands require a set and string key.
@@ -560,29 +604,23 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SValueIdx:   /* fall through */
-            case SIsNullIdx:  /* fall through */
-            case SKeyIdx:     /* fall through */
-            case SDeleteIdx:  /* fall through */
+            case SValueIdx:   NS_FALL_THROUGH; /* fall through */
+            case SIsNullIdx:  NS_FALL_THROUGH; /* fall through */
+            case SKeyIdx:     NS_FALL_THROUGH; /* fall through */
+            case SDeleteIdx:  NS_FALL_THROUGH; /* fall through */
             case STruncateIdx: {
                 /*
                  * These commands require a set and key/value index.
                  */
-                int i;
+                Ns_ObjvValueRange idxRange = {0, (Tcl_WideInt)Ns_SetSize(set)};
+                int               i, oc = 1;
+                Ns_ObjvSpec       spec = {"?idx", Ns_ObjvInt, &i, &idxRange};
 
                 if (unlikely(objc != 4)) {
                     Tcl_WrongNumArgs(interp, 2, objv, "setId index");
                     result = TCL_ERROR;
 
-                } else if (unlikely(Tcl_GetIntFromObj(interp, objv[3], &i) != TCL_OK)) {
-                    result = TCL_ERROR;
-
-                } else if (unlikely(i < 0)) {
-                    Ns_TclPrintfResult(interp, "invalid index %d: must be >= 0", i);
-                    result = TCL_ERROR;
-
-                } else if (unlikely((size_t)i >= Ns_SetSize(set))) {
-                    Ns_TclPrintfResult(interp, "invalid index %d: beyond range of set fields", i);
+                } else if (Ns_ObjvInt(&spec, interp, &oc, &objv[3]) != TCL_OK) {
                     result = TCL_ERROR;
 
                 } else {
@@ -620,9 +658,10 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 break;
             }
 
-            case SPutIdx:     /* fall through */
-            case SUpdateIdx:  /* fall through */
-            case SCPutIdx:    /* fall through */
+            case SPutIdx:     NS_FALL_THROUGH; /* fall through */
+            case SUpdateIdx:  NS_FALL_THROUGH; /* fall through */
+            case SIUpdateIdx: NS_FALL_THROUGH; /* fall through */
+            case SCPutIdx:    NS_FALL_THROUGH; /* fall through */
             case SICPutIdx:
                 /*
                  * These commands require a set, key, and value.
@@ -640,6 +679,10 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                     switch (opt) {
                     case SUpdateIdx:
                         Ns_SetDeleteKey(set, key);
+                        i = (int)Ns_SetPut(set, key, val);
+                        break;
+                    case SIUpdateIdx:
+                        Ns_SetIDeleteKey(set, key);
                         i = (int)Ns_SetPut(set, key, val);
                         break;
 
@@ -672,8 +715,8 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 }
                 break;
 
-            case SIMergeIdx: /* fall through */
-            case SMergeIdx:  /* fall through */
+            case SIMergeIdx: NS_FALL_THROUGH; /* fall through */
+            case SMergeIdx:  NS_FALL_THROUGH; /* fall through */
             case SMoveIdx:
                 /*
                  * These commands require two sets.

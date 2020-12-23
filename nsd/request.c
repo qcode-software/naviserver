@@ -139,7 +139,14 @@ Ns_FreeRequest(Ns_Request *request)
  *
  * Ns_ParseRequests --
  *
- *    Parse a request from a browser into an Ns_Request structure.
+ *    Parse a request from the client into an Ns_Request structure.
+ *    On success, it fills the following Ns_Request members:
+ *      - line
+ *      - method
+ *      - version
+ *      - protocol
+ *      - host
+ *      - port
  *
  * Results:
  *    NS_OK on success, NS_ERROR on error
@@ -233,7 +240,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
     p = strrchr(url, INTCHAR(' '));
     if (likely(p != NULL)) {
         /*
-         * We have a final token. Let see, if this a HTTP-version string.
+         * We have a final token. Let see, if this an HTTP-version string.
          */
         if (likely(strncmp(p + 1, HTTP, sizeof(HTTP) - 1u) == 0)) {
             /*
@@ -484,7 +491,7 @@ SetUrl(Ns_Request *request, char *url)
     if (p == NULL) {
         p = url;
     }
-    (void)Ns_NormalizePath(&ds2, p);
+    (void)Ns_NormalizeUrl(&ds2, p);
     Tcl_DStringSetLength(&ds1, 0);
 
     /*
@@ -784,7 +791,7 @@ GetEncodingFormat(const char *encodingString, const char *encodingFormat, double
  *      identy or default rules.
  *
  * Results:
- *      boolen
+ *      boolean
  *
  * Side effects:
  *      None.
@@ -829,7 +836,6 @@ CompressAllow(double compressQvalue, double identityQvalue, double starQvalue)
              */
             result = NS_TRUE;
         }
-        //fprintf(stderr, "CompressAllow middle compressQvalue %f identity %f result %d\n", compressQvalue, identityQvalue,result);
     }
     return result;
 }

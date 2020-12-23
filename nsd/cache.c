@@ -68,7 +68,7 @@ typedef struct Cache {
     int            keys;
     size_t         maxSize;
     size_t         currentSize;
-    Ns_Callback   *freeProc;
+    Ns_FreeProc   *freeProc;
     Ns_Mutex       lock;
     Ns_Cond        cond;
     Tcl_HashTable  entriesTable;
@@ -96,7 +96,7 @@ typedef struct Cache {
 static bool Expired(const Entry *ePtr, const Ns_Time *nowPtr)
     NS_GNUC_NONNULL(1);
 
-static void Delink(Entry *ePtr)
+static void Remove(Entry *ePtr)
     NS_GNUC_NONNULL(1);
 
 static void Push(Entry *ePtr)
@@ -124,7 +124,7 @@ CacheTransaction(Cache *cachePtr, uintptr_t epoch, bool commit)
  */
 
 Ns_Cache *
-Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_Callback *freeProc)
+Ns_CacheCreateSz(const char *name, int keys, size_t maxSize, Ns_FreeProc *freeProc)
 {
     Cache *cachePtr;
     size_t nameLength;
@@ -216,7 +216,7 @@ Ns_CacheFindEntryT(Ns_Cache *cache, const char *key, const Ns_CacheTransactionSt
 {
     Cache               *cachePtr = (Cache *) cache;
     const Tcl_HashEntry *hPtr;
-    Ns_Entry            *result;
+    Ns_Entry            *result = NULL;
 
     NS_NONNULL_ASSERT(cache != NULL);
     NS_NONNULL_ASSERT(key != NULL);
@@ -227,7 +227,6 @@ Ns_CacheFindEntryT(Ns_Cache *cache, const char *key, const Ns_CacheTransactionSt
          * Entry does not exist at all.
          */
         ++cachePtr->stats.nmiss;
-        result = NULL;
 
     } else {
         Entry *ePtr = Tcl_GetHashValue(hPtr);
@@ -239,7 +238,6 @@ Ns_CacheFindEntryT(Ns_Cache *cache, const char *key, const Ns_CacheTransactionSt
              * Entry is being updated by some other thread.
              */
             ++cachePtr->stats.nmiss;
-            result = NULL;
 
         } else if (unlikely(Expired(ePtr, NULL))) {
             /*
@@ -247,7 +245,6 @@ Ns_CacheFindEntryT(Ns_Cache *cache, const char *key, const Ns_CacheTransactionSt
              */
             Ns_CacheDeleteEntry((Ns_Entry *) ePtr);
             ++cachePtr->stats.nmiss;
-            result = NULL;
 
         } else {
             void *value;
@@ -265,12 +262,10 @@ Ns_CacheFindEntryT(Ns_Cache *cache, const char *key, const Ns_CacheTransactionSt
                  * Entry is valid.
                  */
                 ++cachePtr->stats.nhit;
-                Delink(ePtr);
+                Remove(ePtr);
                 ePtr->count ++;
                 Push(ePtr);
                 result = (Ns_Entry *) ePtr;
-            } else {
-                result = NULL;
             }
         }
     }
@@ -313,6 +308,7 @@ Ns_CacheCreateEntry(Ns_Cache *cache, const char *key, int *newPtr)
         ePtr->hPtr = hPtr;
         ePtr->cachePtr = cachePtr;
         Tcl_SetHashValue(hPtr, ePtr);
+        cachePtr->currentSize += (sizeof(Entry) + sizeof(Tcl_HashEntry) + strlen(key));
         ++cachePtr->stats.nmiss;
     } else {
         ePtr = Tcl_GetHashValue(hPtr);
@@ -324,7 +320,7 @@ Ns_CacheCreateEntry(Ns_Cache *cache, const char *key, int *newPtr)
             ePtr->count ++;
             ++cachePtr->stats.nhit;
         }
-        Delink(ePtr);
+        Remove(ePtr);
     }
     Push(ePtr);
     *newPtr = isNew;
@@ -370,9 +366,23 @@ Ns_CacheWaitCreateEntryT(Ns_Cache *cache, const char *key, int *newPtr,
     NS_NONNULL_ASSERT(newPtr != NULL);
 
     entry = Ns_CacheCreateEntry(cache, key, &isNew);
+
     if (isNew == 0 && Ns_CacheGetValueT(entry, transactionStackPtr) == NULL) {
+        /*
+         * One could condsider setting a default timeout here, or defining max
+         * iterations to avoid definiteky a potential infinite loop.
+         */
         do {
+            if (timeoutPtr == NULL) {
+                Ns_Log(Notice, "ns_cache create entry collision cache %s key '%s', no timeout",
+                       ((Cache*)cache)->name, key);
+            } else {
+                Ns_Log(Notice, "ns_cache create entry collision cache %s key '%s', timeout " NS_TIME_FMT,
+                       ((Cache*)cache)->name, key,
+                       (int64_t)timeoutPtr->sec, timeoutPtr->usec);
+            }
             status = Ns_CacheTimedWait(cache, timeoutPtr);
+
             entry = Ns_CacheCreateEntry(cache, key, &isNew);
         } while (status == NS_OK
                  && isNew == 0
@@ -381,6 +391,30 @@ Ns_CacheWaitCreateEntryT(Ns_Cache *cache, const char *key, int *newPtr,
     *newPtr = isNew;
 
     return status == NS_OK ? entry : NULL;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_CacheName --
+ *
+ *      Gets the name of a cache.
+ *
+ * Results:
+ *      Name as const char*.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_CacheName(const Ns_Cache *cache) {
+
+    NS_NONNULL_ASSERT(cache != NULL);
+
+    return ((Cache*)cache)->name;
 }
 
 
@@ -505,9 +539,9 @@ Ns_CacheGetValueT(const Ns_Entry *entry, const Ns_CacheTransactionStack *transac
 
         result = NULL;
         if (transactionStackPtr != NULL) {
-            unsigned int i;
+            size_t i;
 
-            for (i = 0; i < transactionStackPtr->depth; i++) {
+            for (i = 0u; i < transactionStackPtr->depth; i++) {
                 if (e->transactionEpoch == transactionStackPtr->stack[i]) {
                     result = e->uncommittedValue;
                     break;
@@ -515,6 +549,7 @@ Ns_CacheGetValueT(const Ns_Entry *entry, const Ns_CacheTransactionStack *transac
             }
         }
     }
+
     return result;
 }
 
@@ -643,9 +678,10 @@ Ns_CacheSetValueExpires(Ns_Entry *entry, void *value, size_t size,
          * created.  There might be concurrent updates, since
          * e.g. nscache_eval releases its mutex.
          */
-        while (cachePtr->currentSize > maxSize &&
-               cachePtr->lastEntryPtr != ePtr &&
-               cachePtr->lastEntryPtr->value != NULL) {
+        while (cachePtr->currentSize > maxSize
+               && cachePtr->lastEntryPtr != ePtr
+               && cachePtr->lastEntryPtr->value != NULL
+               ) {
             Ns_CacheDeleteEntry((Ns_Entry *) cachePtr->lastEntryPtr);
             ++cachePtr->stats.npruned;
         }
@@ -747,12 +783,15 @@ Ns_CacheDeleteEntry(Ns_Entry *entry)
 {
     Entry         *ePtr;
     Tcl_HashEntry *hPtr;
+    const char    *key;
 
     NS_NONNULL_ASSERT(entry != NULL);
 
     ePtr = (Entry *) entry;
+    key = Tcl_GetHashKey(&ePtr->cachePtr->entriesTable, ePtr->hPtr);
+    ePtr->cachePtr->currentSize -= (sizeof(Entry) + sizeof(Tcl_HashEntry) + strlen(key));
     Ns_CacheUnsetValue(entry);
-    Delink(ePtr);
+    Remove(ePtr);
     Tcl_DeleteHashEntry(ePtr->hPtr);
 
     hPtr = Tcl_FindHashEntry(&ePtr->cachePtr->uncommittedTable, (const char *)ePtr);
@@ -1337,7 +1376,7 @@ Expired(const Entry *ePtr, const Ns_Time *nowPtr)
 /*
  *----------------------------------------------------------------------
  *
- * Delink --
+ * Remove --
  *
  *      Remove a cache entry from the linked list of entries; this
  *      is used for maintaining the LRU list as well as removing entries
@@ -1353,7 +1392,7 @@ Expired(const Entry *ePtr, const Ns_Time *nowPtr)
  */
 
 static void
-Delink(Entry *ePtr)
+Remove(Entry *ePtr)
 {
     NS_NONNULL_ASSERT(ePtr != NULL);
 

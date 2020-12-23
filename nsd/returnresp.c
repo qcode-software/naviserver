@@ -591,7 +591,7 @@ Ns_ConnReturnRequestURITooLong(Ns_Conn *conn)
         result = Ns_ConnReturnNotice(conn, 414, "Request-URI Too Long",
                                      "The request URI is too long. You might "
                                      "consider to provide a larger value for "
-                                     "maxline in your NaviServer config file.");
+                                     "maxline in your NaviServer configuration file.");
     }
     return result;
 }
@@ -622,7 +622,7 @@ Ns_ConnReturnHeaderLineTooLong(Ns_Conn *conn)
         result = Ns_ConnReturnNotice(conn, 431, "Request Header Fields Too Large",
                                      "A provided request header line is too long. "
                                      "You might consider to provide a larger value "
-                                     "for maxline in your NaviServer config file");
+                                     "for maxline in your NaviServer configuration file");
     }
    return result;
 }
@@ -654,6 +654,46 @@ Ns_ConnReturnNotImplemented(Ns_Conn *conn)
         result = Ns_ConnReturnNotice(conn, 501, "Not Implemented",
                                      "The requested URL or method is not implemented "
                                      "by this server.");
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConnTryReturnInternalError --
+ *
+ *      Call Ns_ConnReturnInternalError() in case the connection is not closed
+ *      yet. We could handle this case also in Ns_ConnReturnInternalError()
+ *      but we want to provide log entries with the calling context for such
+ *      unexpected cases.
+ *
+ * Results:
+ *      Ns_ReturnCode (when the connection is not closed, the result of the
+ *      send operation).
+ *
+ * Side effects:
+ *      Potentially sending message to the client.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+Ns_ConnTryReturnInternalError(Ns_Conn *conn, Ns_ReturnCode status, const char *causeString)
+{
+    Ns_ReturnCode result;
+
+    if (Ns_ConnIsClosed(conn)) {
+        /*
+         * When the connection is already closed, we cannot return
+         * the internal error to the client.
+         */
+        Ns_Log(Warning, "internal error (HTTP status 500) with already closed connection "
+               "(%s, return code %d)",
+               causeString, (int)status);
+        result = status;
+    } else {
+        result = Ns_ConnReturnInternalError(conn);
     }
     return result;
 }
@@ -770,6 +810,11 @@ ReturnRedirect(Ns_Conn *conn, int httpStatus, Ns_ReturnCode *resultPtr)
                        "exceeded recursion limit of %d", httpStatus, MAX_RECURSION);
             } else {
                 connPtr->responseStatus = httpStatus;
+                if (httpStatus >= 400) {
+                    ns_free((char *)connPtr->request.method);
+                    connPtr->request.method = ns_strdup("GET");
+                }
+                Ns_Log(Debug, "ReturnRedirect '%s' to '%s'", connPtr->request.line, (const char *)Tcl_GetHashValue(hPtr));
                 *resultPtr = Ns_ConnRedirect(conn, Tcl_GetHashValue(hPtr));
                 result = NS_TRUE;
             }

@@ -2,7 +2,7 @@
 
 [manpage_begin nsssl n [vset version]]
 [moddesc   {NaviServer Modules}]
-[titledesc {Configuring https socket communications}]
+[titledesc {Configuring HTTPS socket communications}]
 
 [description]
 
@@ -36,6 +36,13 @@ By default nsssl uses all ciphers; recommended cipher
 suites are published on various sources, such as e.g.:
 [uri https://wiki.mozilla.org/Security/Server_Side_TLS]
 
+[def ciphersuites]
+defines which ciphersuites for TLSv1.3 (and probably beyond).
+Due to the major differences between ciphersuites up to TLSv1.2
+OpenSSL has decided to configure ciphersuited for TLSv1.3
+differently, by using this parameter. For details, consult:
+[uri https://wiki.openssl.org/index.php/TLS1.3]
+
 [def protocols]
 defines which protocols are enabled; by default all protocols are
 enabled. It is recommended to deactivate SSLv2 and SSLv3 as shown
@@ -47,6 +54,52 @@ the client. The certificate returned (if any) is checked. If the
 verification process fails, the TLS/SSL handshake is immediately
 terminated with an alert message containing the reason for the
 verification failure.
+
+[def OCSPstapling]
+
+This parameter activates OCSP Stapling for TLS/SSL connections
+(default off).  OCSP Stapling allows a client to check during
+connection startup the state of the server certificate at the server
+of the issuer of the certificate (in particular, whether the
+certificate was revoked or not).
+
+[para] NaviServer performs two level of caching: in-memory caching and
+disk caching. When the server receives the first TLS request with OCSP
+stapling turned on, it checks for an already retrieved OCSP
+response. The disk cache file is saved in the "log" directory of the
+server and uses the serial number of the certificate to be checked as
+filename with ".der" as extension.  When the disk cache file does
+not exist, an HTTP/HTTPS request is made to the server issuing the
+servers certificate as defined by the Authority Information Access
+(AIA) Extension. The names of the file and the HTTP/HTTPS request for
+the OCSP response can be obtained from the system log of the server:
+
+[example_begin]
+...
+... Warning: OCSP cache file does not exist: /usr/local/ns/logs/XXX.der
+...
+... Notice: OCSP command: ns_http run http://ocsp.int-x3.letsencrypt.org/YYYY
+...
+[example_end]
+
+Note that the .der file can be obtained as well by other means,
+e.g. via the program "curl". In case an application requires OCSP
+stapling and the server cannot make requests to the external server
+e.g. a cron tab can refresh the .der file regularly.
+
+[example_begin]
+curl http://ocsp.int-x3.letsencrypt.org/YYYY --output /usr/local/ns/logs/XXX.der
+[example_end]
+
+For more details about OCSP, see:
+[uri https://tools.ietf.org/html/rfc6960]
+
+OCSP support requires OpenSSL 1.1.0 or newer.
+
+[def OCSPstaplingVerbose]
+
+Optionally make OCSP requests more verbose in the log file.
+
 
 [def extraheaders]
 can be used to specify additional header fields be sent on every
@@ -61,23 +114,26 @@ The module is typically loaded per server (specified
 below in the variable "server"):
 
 [example_begin]
-   ns_section    ns/server/${server}/modules {
-      ns_param      nsssl            nsssl.so
-   }
-   ns_section    ns/server/${server}/module/nsssl {
-      ns_param   certificate   /usr/local/ns/modules/nsssl/server.pem
-      ns_param   address       0.0.0.0
-      ns_param   port          443
-      ns_param   ciphers      "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
-      ns_param   protocols    "!SSLv2:!SSLv3"
-      ns_param   verify         0
-    
-      ns_param   extraheaders {
-         Strict-Transport-Security "max-age=31536000; includeSubDomains"
-         X-Frame-Options SAMEORIGIN
-         X-Content-Type-Options nosniff
-      }
-   }
+ ns_section    ns/server/$server/modules {
+    ns_param      nsssl            nsssl.so
+ }
+ 
+ ns_section    ns/server/$server/module/nsssl {
+    ns_param   certificate   /usr/local/ns/modules/nsssl/server.pem
+    ns_param   address       0.0.0.0
+    ns_param   port          443
+    ns_param   ciphers      "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
+    ns_param   ciphersuites "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256"
+    ns_param   protocols    "!SSLv2:!SSLv3:!TLSv1.0:!TLSv1.1"
+    ns_param   OCSPstapling   on
+    ns_param   verify         0
+  
+    ns_param   extraheaders {
+       Strict-Transport-Security "max-age=31536000; includeSubDomains"
+       X-Frame-Options SAMEORIGIN
+       X-Content-Type-Options nosniff
+    }
+ }
 [example_end]
 
 This amount of configuration is sufficient for many installations, but
@@ -88,15 +144,18 @@ ciphers, etc.) or additional settings from [term nssock] such as e.g.
 [para]
 Below is an example, how a web site can create a self-signed
 certificate in PEM format.  The last line with the DH parameters is
-optional but necessary perfect forward secrecy.
+optional but necessary for achieving perfect forward secrecy.
 
 [example_begin]
-    openssl genrsa 1024 > host.key
-    openssl req -new -x509 -nodes -sha1 -days 365 -key host.key > host.cert
-    cat host.cert host.key > server.pem
-    rm -rf host.cert host.key
-    openssl dhparam 2048 >> server.pem
+ openssl req -new -x509 -sha256 -newkey rsa:2048 -days 365 -nodes  -keyout host.key.pem -out host.cert.pem
+ cat host.cert.pem host.key.pem > server.pem
+ rm host.cert.pem host.key.pem
+ openssl dhparam 2048 >> server.pem
 [example_end]
+
+[para]
+For discussion and more examples see
+[uri ../../manual/files/admin-config.html admin-config].
 
 
 [see_also ns_log ns_write ns_http]

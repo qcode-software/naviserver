@@ -66,7 +66,7 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
  *
  * Ns_ConfigString --
  *
- *      Return a config file value, or the default if not found.
+ *      Return a configuration file value, or the default if not found.
  *
  * Results:
  *      Pointer to value string.
@@ -144,7 +144,7 @@ Ns_ConfigSet(const char *section, const char *key)
  *
  * Ns_ConfigBool --
  *
- *      Return a boolean config file value, or the default if not
+ *      Return a boolean configuration file value, or the default if not
  *      found.
  *
  * Results:
@@ -183,7 +183,7 @@ Ns_ConfigBool(const char *section, const char *key, bool defaultValue)
  *
  * Ns_ConfigFlag --
  *
- *      Look for a boolean config file value, and if present OR the
+ *      Look for a boolean configuration file value, and if present OR the
  *      given flag value into the flagsPtr.
  *
  * Results:
@@ -227,7 +227,7 @@ Ns_ConfigFlag(const char *section, const char *key, unsigned int flag, int defau
  *
  * Ns_ConfigInt, Ns_ConfigIntRange --
  *
- *      Return an integer config file value, or the default if not
+ *      Return an integer configuration file value, or the default if not
  *      found. The returned value will be between the given min and max.
  *
  * Results:
@@ -292,10 +292,11 @@ Ns_ConfigIntRange(const char *section, const char *key, int defaultValue,
 /*
  *----------------------------------------------------------------------
  *
- * Ns_Configwide, Ns_ConfigWideRange --
+ * Ns_Configwide, Ns_ConfigWideRange, Ns_ConfigMemUnitRange --
  *
- *      Return a wide integer config file value, or the default if not
- *      found. The returned value will be between the given minValue and maxValue.
+ *      Return a wide integer configuration file value, or the default if not
+ *      found. The returned value will be between the given minValue and
+ *      maxValue.
  *
  * Results:
  *      An Tcl_WideInt integer.
@@ -340,7 +341,7 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
                    const char *kind)
 {
     const char *s;
-    char defstr[TCL_INTEGER_SPACE];
+    char        defstr[TCL_INTEGER_SPACE];
     Tcl_WideInt value;
 
     NS_NONNULL_ASSERT(section != NULL);
@@ -355,6 +356,7 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
         Ns_Log(Dev, "config: %s:%s value=%" TCL_LL_MODIFIER "d min=%" TCL_LL_MODIFIER
                "d max=%" TCL_LL_MODIFIER "d default=%" TCL_LL_MODIFIER "d (wide int)",
                section, key, value, minValue, maxValue, defaultValue);
+
     } else if (s != NULL) {
         /*
          * Parse of parameter failed.
@@ -372,6 +374,7 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
                section, key, minValue, maxValue, defaultValue);
         value = defaultValue;
     }
+
     if (value < minValue) {
         Ns_Log(Warning, "config: %s:%s value=%" TCL_LL_MODIFIER "d, rounded up to %"
                TCL_LL_MODIFIER "d", section, key, value, minValue);
@@ -382,7 +385,98 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
                TCL_LL_MODIFIER "d", section, key, value, maxValue);
         value = maxValue;
     }
+
     return value;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConfigTimeUnitRange --
+ *
+ *      Convert a string with a time unit value to the Ns_Time structure in
+ *      the last value. For convenience, minValue, maxValue and defaultValue
+ *      are specified as a double value representing seconds.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updating the timePtr specified in the last argument.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_ConfigTimeUnitRange(const char *section, const char *key,
+                       const char *defaultString,
+                       long minSec, long minUsec,
+                       long maxSec, long maxUsec,
+                       Ns_Time *timePtr)
+{
+    const char *s;
+    Ns_Time     minTime, maxTime;
+
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(defaultString != NULL);
+    NS_NONNULL_ASSERT(timePtr != NULL);
+
+    minTime.sec  = minSec;
+    minTime.usec = minUsec;
+    maxTime.sec  = maxSec;
+    maxTime.usec = maxUsec;
+
+    s = ConfigGet(section, key, NS_FALSE, defaultString);
+    if (s != NULL && Ns_GetTimeFromString(NULL, s, timePtr) == TCL_OK) {
+        /*
+         * Found and parsed parameter.
+         */
+        Ns_Log(Dev, "config: %s:%s value=" NS_TIME_FMT " secs "
+               "min=" NS_TIME_FMT " max=" NS_TIME_FMT " default=%s",
+               section, key, (int64_t)timePtr->sec, timePtr->usec,
+               (int64_t)minSec, minUsec, (int64_t)maxSec, maxUsec, defaultString);
+
+    } else {
+
+        if (Ns_GetTimeFromString(NULL, defaultString, timePtr) != TCL_OK) {
+            /*
+             * Parse of default parameter failed.
+             */
+            Ns_Log(Error,
+                   "config parameter %s:%s: cannot parse default value '%s' as time value",
+                   section, key, defaultString);
+            timePtr->sec = 0;
+            timePtr->usec = 0;
+        } else if (s != NULL) {
+            /*
+             * Parse of parameter failed.
+             */
+            Ns_Log(Warning,
+                   "config parameter %s:%s: cannot parse '%s' as time value; "
+                   "fall back to default %s",
+                   section, key, s, defaultString);
+        } else {
+            /*
+             * No such parameter configured.
+             */
+            Ns_Log(Dev, "config: %s:%s value=(null) min=" NS_TIME_FMT
+                   " max=" NS_TIME_FMT " default=%s",
+                   section, key,
+                   (int64_t)minSec, minUsec, (int64_t)maxSec, maxUsec,
+                   defaultString);
+        }
+    }
+    if (Ns_DiffTime(timePtr, &minTime, NULL) == -1) {
+        Ns_Log(Warning, "config: %s:%s value=" NS_TIME_FMT " rounded up to " NS_TIME_FMT,
+               section, key, (int64_t)timePtr->sec, timePtr->usec, (int64_t)minSec, minUsec);
+        *timePtr = minTime;
+    }
+    if (Ns_DiffTime(timePtr, &maxTime, NULL) == 1) {
+        Ns_Log(Warning, "config: %s:%s value=" NS_TIME_FMT " rounded down to " NS_TIME_FMT,
+               section, key, (int64_t)timePtr->sec, timePtr->usec, (int64_t)maxSec, maxUsec);
+        *timePtr = maxTime;
+    }
+
 }
 
 
@@ -391,7 +485,7 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
  *
  * Ns_ConfigGetValue --
  *
- *      Return a config file value for a given key
+ *      Return a configuration file value for a given key
  *
  * Results:
  *      char ptr to a value
@@ -521,7 +615,13 @@ Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
     NS_NONNULL_ASSERT(valuePtr != NULL);
 
     s = Ns_ConfigGetValue(section, key);
-    if (s == NULL || sscanf(s, "%24" SCNd64, valuePtr) != 1) {
+    if (s == NULL || sscanf(s, "%24"
+#ifdef _WIN32
+                            "I64d"
+#else
+                            SCNd64
+#endif
+                            , valuePtr) != 1) {
         success = NS_FALSE;
     }
     return success;
@@ -571,11 +671,11 @@ Ns_ConfigGetBool(const char *section, const char *key, bool *valuePtr)
  *
  * Ns_ConfigGetPath --
  *
- *      Get the full name of a config file section if it exists.
+ *      Get the full name of a configuration file section if it exists.
  *
  * Results:
- *      A pointer to an ASCIIZ string of the full path name, or NULL
- *      if that path is not in the config file.
+ *      A pointer to an ASCIIZ string of the full pathname, or NULL
+ *      if that path is not in the configuration file.
  *
  * Side effects:
  *      None.
@@ -614,7 +714,6 @@ Ns_ConfigGetPath(const char *server, const char *module, ...)
     }
     va_end(ap);
     Ns_Log(Dev, "config section: %s", ds.string);
-
     set = Ns_ConfigCreateSection(ds.string);
     Tcl_DStringFree(&ds);
 
@@ -702,7 +801,7 @@ Ns_ConfigGetSection(const char *section)
 Ns_Set *
 Ns_ConfigCreateSection(const char *section)
 {
-    bool create = Ns_InfoStarted() ? NS_FALSE : NS_TRUE;
+    bool create = !Ns_InfoStarted();
     return GetSection(section, create);
 }
 
@@ -748,10 +847,11 @@ Ns_GetVersion(int *majorV, int *minorV, int *patchLevelV, int *type)
  *
  * NsConfigRead --
  *
- *      Read a config file at startup.
+ *      Read a configuration file at startup.
  *
  * Results:
- *      Pointer to the config buffer in an ns_malloc'ed string.
+ *      Configuration file content in an ns_malloc'ed string.
+ *      Caller is responsible to free the content.
  *
  * Side Effects:
  *      Server aborts if the file cannot be read for any reason.
@@ -764,12 +864,12 @@ NsConfigRead(const char *file)
 {
     Tcl_Channel  chan;
     Tcl_Obj     *buf;
-    const char  *call = "open", *conf = NULL;
+    const char  *call = "open", *fileContent = NULL;
 
     NS_NONNULL_ASSERT(file != NULL);
 
     /*
-     * Open the channel for reading the config file
+     * Open the channel for reading the configuration file
      */
     chan = Tcl_OpenFileChannel(NULL, file, "r", 0);
     if (chan == NULL) {
@@ -778,7 +878,7 @@ NsConfigRead(const char *file)
     } else {
 
         /*
-         * Slurp entire file into memory
+         * Slurp entire file into memory.
          */
         buf = Tcl_NewObj();
         Tcl_IncrRefCount(buf);
@@ -789,7 +889,7 @@ NsConfigRead(const char *file)
             int         length;
             const char *data = Tcl_GetStringFromObj(buf, &length);
 
-            conf = ns_strncopy(data, length);
+            fileContent = ns_strncopy(data, length);
         }
     }
 
@@ -799,12 +899,12 @@ NsConfigRead(const char *file)
     if (buf != NULL) {
         Tcl_DecrRefCount(buf);
     }
-    if (conf == NULL) {
-        Ns_Fatal("config: can't %s config file '%s': '%s'",
+    if (fileContent == NULL) {
+        Ns_Fatal("config: can't %s configuration file '%s': '%s'",
                  call, file, strerror(Tcl_GetErrno()));
     }
 
-    return conf;
+    return fileContent;
 }
 
 
@@ -826,10 +926,11 @@ NsConfigRead(const char *file)
  */
 
 void
-NsConfigEval(const char *config, int argc, char *const *argv, int optionIndex)
+NsConfigEval(const char *config, const char *configFileName,
+             int argc, char *const *argv, int optionIndex)
 {
     Tcl_Interp   *interp;
-    Ns_Set *set;
+    Ns_Set *set = NULL;
     int i;
 
     NS_NONNULL_ASSERT(config != NULL);
@@ -838,7 +939,6 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optionIndex)
      * Create an interp with a few config-related commands.
      */
 
-    set = NULL;
     interp = Ns_TclCreateInterp();
     (void)Tcl_CreateObjCommand(interp, "ns_section", SectionObjCmd, &set, NULL);
     (void)Tcl_CreateObjCommand(interp, "ns_param", ParamObjCmd, &set, NULL);
@@ -848,8 +948,13 @@ NsConfigEval(const char *config, int argc, char *const *argv, int optionIndex)
     (void) Tcl_SetVar2Ex(interp, "argc", NULL, Tcl_NewIntObj(argc), TCL_GLOBAL_ONLY);
     (void) Tcl_SetVar2Ex(interp, "optind", NULL, Tcl_NewIntObj(optionIndex), TCL_GLOBAL_ONLY);
     if (Tcl_Eval(interp, config) != TCL_OK) {
-        (void) Ns_TclLogErrorInfo(interp, "\n(context: config eval)");
-        Ns_Fatal("config error");
+        (void) Ns_TclLogErrorInfo(interp, "\n(context: configuration)");
+        if (configFileName != NULL) {
+            Ns_Fatal("error in configuration file %s line %d",
+                     configFileName, Tcl_GetErrorLine(interp));
+        } else {
+            Ns_Fatal("error in configuration");
+        }
     }
     Ns_TclDestroyInterp(interp);
 }
@@ -938,12 +1043,13 @@ SectionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
         result = TCL_ERROR;
 
     } else {
-        Ns_Set  **set = (Ns_Set **) clientData;
+        Ns_Set **set = (Ns_Set **) clientData;
 
+        assert(sectionName != NULL);
         *set = GetSection(sectionName, NS_TRUE);
 
         if (blockObj != NULL) {
-            Tcl_GlobalEvalObj(interp, blockObj);
+            result = Tcl_GlobalEvalObj(interp, blockObj);
         }
     }
 
@@ -970,17 +1076,17 @@ SectionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
 static const char *
 ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
 {
-    const char *s;
+    const char *s = NULL;
     Ns_Set     *set;
 
     NS_NONNULL_ASSERT(section != NULL);
     NS_NONNULL_ASSERT(key != NULL);
 
-    s = NULL;
     set = GetSection(section, NS_FALSE);
 
     if (set != NULL) {
         int  i;
+
         if (exact) {
             i = Ns_SetFind(set, key);
         } else {
@@ -1019,7 +1125,7 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
 static Ns_Set *
 GetSection(const char *section, bool create)
 {
-    Ns_Set        *set;
+    Ns_Set        *set = NULL;
     Tcl_HashEntry *hPtr;
     Tcl_DString    ds;
     int            isNew;
@@ -1057,7 +1163,6 @@ GetSection(const char *section, bool create)
      * Return config set, creating if necessary.
      */
 
-    set = NULL;
     if (likely(!create)) {
         hPtr = Tcl_FindHashEntry(&nsconf.sections, section);
     } else {

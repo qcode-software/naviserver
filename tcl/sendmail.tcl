@@ -48,7 +48,7 @@
 #
 
 proc ns_sendmail args {
-    
+
     lassign $args to from subject body headers bcc cc
     if {![string match "-*" $to]} {
         ns_log warning "Deprecated syntax. Use: [list ns_sendmail -to $to -from $from -subject $subject -body BODY -headers HEADERS -bcc $bcc -cc $cc]"
@@ -233,12 +233,13 @@ proc ns_sendmail args {
     append msg \n $body \n
 
     #
-    # Terminate entire message with a solitary period
-    # converting all "." on a single line to "..".
+    # Converting all leading "." to ".." in the message body.
+    # (see RFC 5321 section 4.5.2). Terminate entire message
+    # with a line with a single period.
     #
 
     foreach line [split $msg "\n"] {
-        if {$line eq {.}} {
+        if {[string range $line 0 0] eq {.}} {
             append data "."
         }
         append data $line \n
@@ -598,7 +599,7 @@ proc _ns_smtp_send {mode sock string} {
 #   The list of lines if any.
 #
 # Side effects:
-#   Depeding on the "error" flag, may or may not throw
+#   Depending on the "error" flag, may or may not throw
 #   Tcl error on constraint test failure. Regardless
 #   of that, it always logs the failure to the server log.
 #

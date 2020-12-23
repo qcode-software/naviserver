@@ -358,8 +358,8 @@ NsInstallService(char *service)
     char       nsd[PATH_MAX], config[PATH_MAX];
     Ns_DString name, cmd;
 
-    if (_fullpath(config, nsconf.config, sizeof(config)) == NULL) {
-        Ns_Log(Error, "nswin32: invalid config path '%s'", nsconf.config);
+    if (_fullpath(config, nsconf.configFile, sizeof(config)) == NULL) {
+        Ns_Log(Error, "nswin32: invalid config path '%s'", nsconf.configFile);
     } else if (GetModuleFileName(NULL, nsd, sizeof(nsd)) == 0u) {
         Ns_Log(Error, "nswin32: failed to find nsd.exe: '%s'", SysErrMsg());
     } else {
@@ -584,7 +584,7 @@ NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
 
     if (mobj == NULL || mobj == INVALID_HANDLE_VALUE) {
         Ns_Log(Error, "CreateFileMapping(%s): %ld", path, GetLastError());
-        CloseHandle(hndl);
+        (void)CloseHandle(hndl);
         status = NS_ERROR;
 
     } else {
@@ -598,13 +598,13 @@ NsMemMap(const char *path, size_t size, int mode, FileMap *mapPtr)
 
         if (addr == NULL) {
             Ns_Log(Warning, "MapViewOfFile(%s): %ld", path, GetLastError());
-            CloseHandle(mobj);
-            CloseHandle(hndl);
+            (void)CloseHandle(mobj);
+            (void)CloseHandle(hndl);
             status = NS_ERROR;
 
         } else {
             mapPtr->mapobj = (void *) mobj;
-            mapPtr->handle = (int) hndl;
+            mapPtr->handle = hndl;
             mapPtr->addr   = (void *) addr;
             mapPtr->size   = size;
         }
@@ -634,8 +634,8 @@ void
 NsMemUmap(const FileMap *mapPtr)
 {
     UnmapViewOfFile((LPCVOID)mapPtr->addr);
-    CloseHandle((HANDLE)mapPtr->mapobj);
-    CloseHandle((HANDLE)mapPtr->handle);
+    (void)CloseHandle((HANDLE)mapPtr->mapobj);
+    (void)CloseHandle((HANDLE)mapPtr->handle);
 }
 
 
@@ -644,7 +644,7 @@ NsMemUmap(const FileMap *mapPtr)
  *
  * ns_socknbclose --
  *
- *      Perform a non-blocking socket close via the socket callback
+ *      Perform a nonblocking socket close via the socket callback
  *      thread.
  *      This is only called by a timeout in Ns_SockTimedConnect.
  *
@@ -710,7 +710,7 @@ ns_sockdup(NS_SOCKET sock)
  *----------------------------------------------------------------------
  * ns_sock_set_blocking --
  *
- *      Set a channel blocking or non-blocking
+ *      Set a channel blocking or nonblocking
  *
  * Results:
  *      None.
@@ -1280,7 +1280,7 @@ ns_poll(struct pollfd *fds, NS_POLL_NFDS_TYPE nfds, long timo)
         }
     }
 
-    return rc;
+    return (rc != SOCKET_ERROR) ? rc : -1;
 }
 
 /*

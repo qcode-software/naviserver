@@ -179,7 +179,7 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
 
     Ns_MutexLock(&ulock);
     reqPtr = NsUrlSpecificGet(NsGetServer(server), method, url, uid,
-                              0u, NS_URLSPACE_DEFAULT);
+                              0u, NS_URLSPACE_DEFAULT, NULL, NULL);
     if (reqPtr != NULL) {
         *procPtr = reqPtr->proc;
         *deletePtr = reqPtr->deleteCallback;
@@ -309,7 +309,7 @@ Ns_ConnRunRequest(Ns_Conn *conn)
             Ns_MutexLock(&ulock);
             reqPtr = NsUrlSpecificGet(connPtr->poolPtr->servPtr,
                                       conn->request.method, conn->request.url, uid,
-                                      0u, NS_URLSPACE_DEFAULT);
+                                      0u, NS_URLSPACE_DEFAULT, NULL, NULL);
             if (reqPtr == NULL) {
                 Ns_MutexUnlock(&ulock);
                 if (STREQ(conn->request.method, "BAD")) {
@@ -386,12 +386,11 @@ Ns_ConnRedirect(Ns_Conn *conn, const char *url)
     case NS_UNAUTHORIZED:
         status = Ns_ConnReturnUnauthorized(conn);
         break;
-    case NS_ERROR:          /* fall through */
-    case NS_FILTER_BREAK:   /* fall through */
-    case NS_FILTER_RETURN:  /* fall through */
-    case NS_TIMEOUT:        /* fall through */
-    default:
-        status = Ns_ConnReturnInternalError(conn);
+    case NS_ERROR:          NS_FALL_THROUGH; /* fall through */
+    case NS_FILTER_BREAK:   NS_FALL_THROUGH; /* fall through */
+    case NS_FILTER_RETURN:  NS_FALL_THROUGH; /* fall through */
+    case NS_TIMEOUT:
+        status = Ns_ConnTryReturnInternalError(conn, status, "redirect, after authorize request");
         break;
     }
 

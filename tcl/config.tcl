@@ -30,7 +30,7 @@
 #
 # config.tcl --
 #
-#   Configure the various sub-systems of the server.
+#   Configure the various subsystems of the server.
 #
 
 
@@ -140,7 +140,7 @@ proc _ns_config_server_adp_pages {server} {
 }
 
 #
-# Rgister Tcl page handlers for GET, HEAD and POST
+# Register Tcl page handlers for GET, HEAD and POST
 # requests, if enabled.
 #
 

@@ -142,7 +142,7 @@ install-doc:
 		echo "\nNo documentation is installed locally; either generate the documentation with" ; \
 		echo "   make build-doc"; \
 		echo "(which requires tcllib to be installed, such that dtplite can be used for the generation)" ; \
-		echo "or use the online documentation from http://naviserver.sourceforge.net/n/toc.html" ; \
+		echo "or use the online documentation from https://naviserver.sourceforge.io/n/toc.html" ; \
 	fi;
 
 install-examples:
@@ -216,10 +216,29 @@ NS_LD_LIBRARY_PATH	= \
    LD_LIBRARY_PATH="$(srcdir)/nsd:$(srcdir)/nsthread:$(srcdir)/nsdb:$(srcdir)/nsproxy:$$LD_LIBRARY_PATH" \
    DYLD_LIBRARY_PATH="$(srcdir)/nsd:$(srcdir)/nsthread:$(srcdir)/nsdb:$(srcdir)/nsproxy:$$DYLD_LIBRARY_PATH"
 
+EXTRA_TEST_DIRS =
+ifneq ($(OPENSSL_LIBS),)
+  #EXTRA_TEST_DIRS += nsssl
+  PEM_FILE        = tests/testserver/etc/server.pem
+  SSLCONFIG       = tests/testserver/etc/openssl.cnf
+  EXTRA_TEST_REQ  = $(PEM_FILE)
+endif
+
+$(PEM_FILE):
+	openssl genrsa 2048 > host.key
+	openssl req -new -config $(SSLCONFIG) -x509 -nodes -sha1 -days 365 -key host.key > host.cert
+	cat host.cert host.key > server.pem
+	rm -rf host.cert host.key
+	openssl dhparam 1024 >> server.pem
+	mv server.pem $(PEM_FILE)
+
 check: test
 
-test: all
+test: all $(EXTRA_TEST_REQ)
 	$(NS_LD_LIBRARY_PATH) ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
+	@for i in $(EXTRA_TEST_DIRS); do \
+		( cd $$i && $(MAKE) test ) || exit 1; \
+	done
 
 runtest: all
 	$(NS_LD_LIBRARY_PATH) ./nsd/nsd $(NS_TEST_CFG)
@@ -247,11 +266,15 @@ helgrind: all
 	$(NS_LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
 cppcheck:
-	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c nsssl/*.c \
 		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
+#CLANG_TIDY_CHECKS=-checks=-*,performance-*,portability-*,cert-*,modernize-*
+CLANG_TIDY_CHECKS=
+#CLANG_TIDY_CHECKS=-checks=-*,bugprone-*
 clang-tidy:
-	clang-tidy-mp-devel nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c -- \
+	clang-tidy-mp-10 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+		$(CLANG_TIDY_CHECKS) -- \
 		-I./include -I/usr/include $(DEFS)
 
 checkexports: all

@@ -120,7 +120,7 @@ GetTls(void)
  */
 
 char *
-ns_inet_ntoa(struct sockaddr *saPtr)
+ns_inet_ntoa(const struct sockaddr *saPtr)
 {
     Tls *tlsPtr = GetTls();
     union {
@@ -174,7 +174,7 @@ ns_readdir(DIR *dir)
 }
 #else
 struct dirent *
-ns_readdir(DIR * dir)
+ns_readdir(DIR *dir)
 {
     struct dirent *ent;
     Tls *tlsPtr = GetTls();
@@ -198,16 +198,16 @@ ns_readdir(DIR * dir)
  *----------------------------------------------------------------------
  */
 struct tm *
-ns_localtime(const time_t *clock)
+ns_localtime(const time_t *timep)
 {
 #ifdef _MSC_VER
 
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    NS_NONNULL_ASSERT(clock != NULL);
+    NS_NONNULL_ASSERT(timep != NULL);
 
-    errNum = localtime_s(&tlsPtr->ltbuf, clock);
+    errNum = localtime_s(&tlsPtr->ltbuf, timep);
     if (errNum != 0) {
         NsThreadFatal("ns_localtime", "localtime_s", errNum);
     }
@@ -215,14 +215,58 @@ ns_localtime(const time_t *clock)
     return &tlsPtr->ltbuf;
 
 #elif defined(_WIN32)
-    NS_NONNULL_ASSERT(clock != NULL);
-    return localtime(clock);
+    NS_NONNULL_ASSERT(timep != NULL);
+    return localtime(timep);
 #else
     Tls *tlsPtr = GetTls();
 
-    NS_NONNULL_ASSERT(clock != NULL);
-    return localtime_r(clock, &tlsPtr->ltbuf);
+    NS_NONNULL_ASSERT(timep != NULL);
 
+    return localtime_r(timep, &tlsPtr->ltbuf);
+#endif
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_localtime_r
+ *
+ *     Same as ns_localtime(), except that the function uses user-provided
+ *     storage buf for the result.
+ *
+ *----------------------------------------------------------------------
+ */
+struct tm *
+ns_localtime_r(const time_t *timer, struct tm *buf)
+{
+#ifdef _MSC_VER
+    /*
+     * Microsoft C (Visual Studio)
+     */
+    int errNum;
+
+    NS_NONNULL_ASSERT(timer != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
+
+    errNum = localtime_s(buf, timer);
+    if (errNum != 0) {
+        NsThreadFatal("ns_localtime_r", "localtime_s", errNum);
+    }
+
+    return buf;
+
+#elif defined(_WIN32)
+    /*
+     * Other win compiler.
+     */
+    NS_NONNULL_ASSERT(timer != NULL);
+    *buf = *localtime(timer);
+    return buf;
+#else
+    NS_NONNULL_ASSERT(timer != NULL);
+    NS_NONNULL_ASSERT(buf != NULL);
+
+    return localtime_r(timer, buf);
 #endif
 }
 
@@ -235,15 +279,15 @@ ns_localtime(const time_t *clock)
  *----------------------------------------------------------------------
  */
 struct tm *
-ns_gmtime(const time_t *clock)
+ns_gmtime(const time_t *timep)
 {
 #ifdef _MSC_VER
 
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    NS_NONNULL_ASSERT(clock != NULL);
-    errNum = gmtime_s(&tlsPtr->gtbuf, clock);
+    NS_NONNULL_ASSERT(timep != NULL);
+    errNum = gmtime_s(&tlsPtr->gtbuf, timep);
     if (errNum != 0) {
         NsThreadFatal("ns_gmtime", "gmtime_s", errNum);
     }
@@ -252,14 +296,14 @@ ns_gmtime(const time_t *clock)
 
 #elif defined(_WIN32)
 
-    NS_NONNULL_ASSERT(clock != NULL);
-    return gmtime(clock);
+    NS_NONNULL_ASSERT(timep != NULL);
+    return gmtime(timep);
 
 #else
 
     Tls *tlsPtr = GetTls();
-    NS_NONNULL_ASSERT(clock != NULL);
-    return gmtime_r(clock, &tlsPtr->gtbuf);
+    NS_NONNULL_ASSERT(timep != NULL);
+    return gmtime_r(timep, &tlsPtr->gtbuf);
 
 #endif
 }
@@ -273,15 +317,15 @@ ns_gmtime(const time_t *clock)
  *----------------------------------------------------------------------
  */
 char *
-ns_ctime(const time_t *clock)
+ns_ctime(const time_t *timep)
 {
 #ifdef _MSC_VER
 
     Tls *tlsPtr = GetTls();
     int errNum;
 
-    NS_NONNULL_ASSERT(clock != NULL);
-    errNum = ctime_s(tlsPtr->ctbuf, sizeof(tlsPtr->ctbuf), clock);
+    NS_NONNULL_ASSERT(timep != NULL);
+    errNum = ctime_s(tlsPtr->ctbuf, sizeof(tlsPtr->ctbuf), timep);
     if (errNum != 0) {
         NsThreadFatal("ns_ctime", "ctime_s", errNum);
     }
@@ -290,13 +334,13 @@ ns_ctime(const time_t *clock)
 
 #elif defined(_WIN32)
 
-    NS_NONNULL_ASSERT(clock != NULL);
-    return ctime(clock);
+    NS_NONNULL_ASSERT(timep != NULL);
+    return ctime(timep);
 
 #else
     Tls *tlsPtr = GetTls();
-    NS_NONNULL_ASSERT(clock != NULL);
-    return ctime_r(clock, tlsPtr->ctbuf);
+    NS_NONNULL_ASSERT(timep != NULL);
+    return ctime_r(timep, tlsPtr->ctbuf);
 #endif
 }
 

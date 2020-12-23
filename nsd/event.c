@@ -73,8 +73,8 @@ typedef struct EventQueue {
  * Local functions defined in this file
  */
 
-#define Call(ep,t,w) ((*((ep)->proc))((Ns_Event *)(ep),(ep)->sock,(ep)->arg,(t),(w)))
-#define Push(x,xs) ((x)->nextPtr = (xs), (xs) = (x))
+#define Call(ep, t, w) ((*((ep)->proc))((Ns_Event *)(ep), (ep)->sock, (ep)->arg, (t), (w)))
+#define Push(x, xs) ((x)->nextPtr = (xs), (xs) = (x))
 
 
 /*
@@ -176,7 +176,7 @@ Ns_EventEnqueue(Ns_EventQueue *queue, NS_SOCKET sock, Ns_EventProc *proc, void *
         evPtr->arg = arg;
         Push(evPtr, queuePtr->firstInitPtr);
     }
-    return (evPtr != NULL) ? NS_TRUE : NS_FALSE;
+    return (evPtr != NULL);
 }
 
 
@@ -262,7 +262,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
     EventQueue       *queuePtr;
     Event            *evPtr, *nextPtr;
     Ns_Time           now;
-    const Ns_Time    *timeoutPtr;
+    const Ns_Time    *timeoutPtr = NULL;
     int               i, n;
     NS_POLL_NFDS_TYPE nfds;
     char              c;
@@ -293,7 +293,6 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
     queuePtr->pfds[0].events = (short)POLLIN;
     queuePtr->pfds[0].revents = 0;
     nfds = 1;
-    timeoutPtr = NULL;
 
     evPtr = queuePtr->firstWaitPtr;
 
@@ -370,7 +369,7 @@ Ns_RunEventQueue(Ns_EventQueue *queue)
         evPtr = nextPtr;
     }
 
-    return (queuePtr->firstWaitPtr != NULL) ? NS_TRUE : NS_FALSE;
+    return (queuePtr->firstWaitPtr != NULL);
 }
 
 

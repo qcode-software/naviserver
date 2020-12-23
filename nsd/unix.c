@@ -51,7 +51,11 @@ typedef enum {
 static int Pipe(int *fds, int sockpair)
     NS_GNUC_NONNULL(1);
 
-static void Abort(int signal);
+static void Abort(int signal)
+#ifndef NS_TCL_PRE86
+    NS_GNUC_NORETURN
+#endif
+    ;
 
 static bool GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, char **freePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5);
@@ -66,7 +70,7 @@ static bool GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPt
 #if !defined(HAVE_GETPWNAM_R) || !defined(HAVE_GETPWUID_R) || !defined(HAVE_GETGRGID_R) || !defined(HAVE_GETGRNAM_R)
 static Ns_Mutex lock = NULL;
 #endif
-static int debugMode = 0;
+static bool debugMode = NS_FALSE;
 
 
 /*
@@ -140,7 +144,7 @@ NsUnblockSignal(int signal)
  */
 
 void
-NsBlockSignals(int debug)
+NsBlockSignals(bool debug)
 {
     sigset_t set;
 
@@ -159,7 +163,7 @@ NsBlockSignals(int debug)
     (void)sigaddset(&set, SIGTERM);
     (void)sigaddset(&set, SIGHUP);
     (void)sigaddset(&set, SIGQUIT);
-    if (debugMode == 0) {
+    if (!debugMode) {
         /* NB: Don't block SIGINT in debug mode for Solaris dbx. */
         (void)sigaddset(&set, SIGINT);
     }
@@ -239,7 +243,7 @@ NsHandleSignals(void)
     (void)sigaddset(&set, SIGTERM);
     (void)sigaddset(&set, SIGHUP);
     (void)sigaddset(&set, SIGQUIT);
-    if (debugMode == 0) {
+    if (!debugMode) {
         (void)sigaddset(&set, SIGINT);
     }
     do {
@@ -298,7 +302,7 @@ NsSendSignal(int sig)
  * NsMemMap --
  *
  *      Maps a file to memory. The file will be mapped as shared
- *      and read or write, depeding on the passed mode.
+ *      and read or write, depending on the passed mode.
  *
  * Results:
  *      NS_OK - file was mapped OK; details of the mapped address
@@ -434,7 +438,7 @@ Pipe(int *fds, int sockpair)
  *----------------------------------------------------------------------
  * ns_sock_set_blocking --
  *
- *      Set a channel blocking or non-blocking
+ *      Set a channel blocking or nonblocking
  *
  * Results:
  *      None.
@@ -462,7 +466,7 @@ ns_sock_set_blocking(NS_SOCKET sock, bool blocking)
         result = fcntl(sock, F_SETFL, flags|O_NONBLOCK);
     }
 
-    if (result == -1 && errno != EAGAIN && errno != NS_EWOULDBLOCK) {
+    if (result == -1 && errno != NS_EAGAIN && errno != EWOULDBLOCK) {
         Ns_Log(Notice, "ns_sock_set_blocking on sock %d blocking %d err %d <%s>",
                sock, blocking, errno, ns_sockstrerror(errno));
     }
@@ -631,7 +635,7 @@ GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **fr
  *----------------------------------------------------------------------
  * Ns_GetNameForUid --
  *
- *      Get the user name given the id
+ *      Get the username given the id
  *
  * Results:
  *      NS_TRUE if id is found; NS_FALSE otherwise.
@@ -704,7 +708,8 @@ Ns_GetNameForGid(Ns_DString *dsPtr, gid_t gid)
     }
     Ns_MutexUnlock(&lock);
 #endif
-    return (grPtr != NULL) ? NS_TRUE : NS_FALSE;
+
+    return (grPtr != NULL);
 }
 
 
@@ -712,10 +717,10 @@ Ns_GetNameForGid(Ns_DString *dsPtr, gid_t gid)
  *----------------------------------------------------------------------
  * Ns_GetUserHome --
  *
- *      Get the home directory name for a user name
+ *      Get the home directory name for a username
  *
  * Results:
- *      Return NS_TRUE if user name is found in /etc/passwd file and
+ *      Return NS_TRUE if username is found in /etc/passwd file and
  *      NS_FALSE otherwise.
  *
  * Side effects:
@@ -744,7 +749,7 @@ Ns_GetUserHome(Ns_DString *dsPtr, const char *user)
  *----------------------------------------------------------------------
  * Ns_GetUserGid --
  *
- *      Get the group id for a user name
+ *      Get the group id for a username
  *
  * Results:
  *      Group id or -1 if not found.
@@ -775,7 +780,7 @@ Ns_GetUserGid(const char *user)
  *----------------------------------------------------------------------
  * Ns_GetUid --
  *
- *      Get user id for a user name.
+ *      Get user id for a username.
  *
  * Results:
  *      User id or -1 if not found.
@@ -798,7 +803,7 @@ Ns_GetUid(const char *user)
     if (ptr != NULL) {
         ns_free(ptr);
     }
-    return (long)retcode;
+    return retcode;
 }
 
 

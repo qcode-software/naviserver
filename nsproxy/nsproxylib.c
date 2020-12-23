@@ -37,11 +37,11 @@
  *      Expand the Req structure to pass:
  *
  *        o. Array of limits as with get/setrlimit
- *        o. Chroot of the slave
- *        o. Limit duration of the execution in the slave
+ *        o. Chroot of the worker process
+ *        o. Limit duration of the execution in the worker process
  *        o. ...
  *
- *      Add -onexit for slave to run on teardown
+ *      Add -onexit for worker process to run on teardown
  *      Add channels to proxy, so we can talk to it
  */
 
@@ -122,10 +122,10 @@ typedef unsigned short uint16;
 #define MINOR_VERSION 1
 
 /*
- * The following structure defines a running proxy slave process.
+ * The following structure defines a running proxy worker process.
  */
 
-typedef struct Slave {
+typedef struct Worker {
     int           rfd;
     int           wfd;
     int           signal;
@@ -134,8 +134,8 @@ typedef struct Slave {
     pid_t         pid;
     Ns_Time       expire;
     struct Pool  *poolPtr;
-    struct Slave  *nextPtr;
-} Slave;
+    struct Worker *nextPtr;
+} Worker;
 
 /*
  * The following structures defines a proxy request and response.
@@ -168,12 +168,13 @@ typedef enum {
 } ProxyState;
 
 typedef struct ProxyConf {
-    int            tget;     /* Timeout (ms) when getting proxy handles */
-    int            teval;    /* Timeout (ms) when evaluating scripts */
-    int            tsend;    /* Timeout (ms) to send data to proxy over pipe */
-    int            trecv;    /* Timeout (ms) to receive results over pipe */
-    int            twait;    /* Timeout (ms) to wait for slaves to die */
-    int            tidle;    /* Timeout (ms) for slave to be idle */
+    Ns_Time        tget;     /* Timeout when getting proxy handles */
+    Ns_Time        teval;    /* Timeout when evaluating scripts */
+    Ns_Time        tsend;    /* Timeout to send data to proxy over pipe */
+    Ns_Time        trecv;    /* Timeout to receive results over pipe */
+    Ns_Time        twait;    /* Timeout to wait for workers to die */
+    Ns_Time        tidle;    /* Timeout for worker to be idle */
+    Ns_Time        logminduration;  /* Log commands taking longer than this duration */
     int            maxruns;  /* Max number of proxy uses */
 } ProxyConf;
 
@@ -185,7 +186,7 @@ typedef struct Proxy {
     int            numruns;  /* Number of runs of this proxy */
     ProxyState     state;    /* Current proxy state (idle, busy etc) */
     ProxyConf      conf;     /* Copy from the pool configuration */
-    Slave         *slavePtr; /* Running slave, if any */
+    Worker        *workerPtr; /* Running worker process, if any */
     Ns_Time        when;     /* Absolute time when the proxy is used */
     Tcl_HashEntry *idPtr;    /* Pointer to proxy table entry */
     Tcl_HashEntry *cntPtr;   /* Pointer to count of proxies allocated */
@@ -202,7 +203,7 @@ typedef struct Proxy {
 typedef enum {
     Stopped,   /* Initial (startup) state */
     Starting,  /* It is in the process of startup */
-    Running,   /* Operating on pools and tearing down slaves */
+    Running,   /* Operating on pools and tearing down workers */
     Sleeping,  /* Sleeping on cond var and waiting for work */
     Awaken,    /* Help state to distinguish from running */
     Stopping   /* Teardown of the thread initiated */
@@ -212,14 +213,14 @@ typedef struct Pool {
     const char    *name;     /* Name of pool */
     struct Proxy  *firstPtr; /* First in list of avail proxies */
     struct Proxy  *runPtr;   /* First in list of running proxies */
-    const char    *exec;     /* Slave executable */
+    const char    *exec;     /* Worker executable */
     const char    *init;     /* Init script to eval on proxy start */
     const char    *reinit;   /* Re-init scripts to eval on proxy put */
     int            waiting;  /* Thread waiting for handles */
-    int            maxslaves;/* Max number of allowed proxies */
+    int            maxworker; /* Max number of allowed worker processes */
     int            nfree;    /* Current number of available proxy handles */
     int            nused;    /* Current number of used proxy handles */
-    uintptr_t      nextid;   /* Next in proxy unique ids; corresponds to nr of slaves */
+    uintptr_t      nextid;   /* Next in proxy unique ids; corresponds to nr of workers */
     ProxyConf      conf;     /* Collection of config options to pass to proxy */
     Ns_Set         *env;     /* Set with environment to pass to proxy */
     Ns_Mutex       lock;     /* Lock around the pool */
@@ -228,7 +229,7 @@ typedef struct Pool {
     uintptr_t      nruns;    /* number of runs in this pool */
 } Pool;
 
-#define MIN_IDLE_TIMEOUT 10000 /* == 10 seconds */
+#define MIN_IDLE_TIMEOUT_SEC 10 /* == 10 seconds */
 
 /*
  * The following enum lists all possible error conditions.
@@ -287,7 +288,7 @@ static const char *errCode[] = {
     NULL
 };
 
-Ns_LogSeverity Ns_LogNsProxyDebug = 0;
+static Ns_LogSeverity Ns_LogNsProxyDebug = 0;
 
 
 /*
@@ -307,57 +308,72 @@ static Tcl_InterpDeleteProc DeleteData;
 
 static Ns_ShutdownProc Shutdown;
 
-static Pool*  GetPool(const char *poolName, InterpData *idataPtr) NS_GNUC_NONNULL(1);
+static Pool*  GetPool(const char *poolName, const InterpData *idataPtr) NS_GNUC_NONNULL(1);
 static void   FreePool(Pool *poolPtr) NS_GNUC_NONNULL(1);
 
 static Proxy* CreateProxy(Pool *poolPtr) NS_GNUC_NONNULL(1);
-static Err    PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
+static Err    PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, const Ns_Time *timePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static void   PushProxy(Proxy *proxyPtr) NS_GNUC_NONNULL(1);
 static Proxy* GetProxy(const char *proxyId, InterpData *idataPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int    Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, int ms)
+static int    Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, const Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static Err    Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Err    Wait(Tcl_Interp *interp, Proxy *proxyPtr, int ms) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Err    Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Err    Wait(Tcl_Interp *interp, Proxy *proxyPtr, const Ns_Time *timeoutPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static Err    Recv(Tcl_Interp *interp, Proxy *proxyPtr, int *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static void   GetStats(Proxy *proxyPtr)  NS_GNUC_NONNULL(1);
+static void   GetStats(const Proxy *proxyPtr)  NS_GNUC_NONNULL(1);
 
 static Err    CheckProxy(Tcl_Interp *interp, Proxy *proxyPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static int    ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static void   CloseProxy(Proxy *proxyPtr) NS_GNUC_NONNULL(1);
-static int    CloseSlaveOfProxy(Proxy *proxyPtr, const char *proxyId, int ms) NS_GNUC_NONNULL(1);
+static int    CloseWorkerOfProxy(Proxy *proxyPtr, const char *proxyId, const Ns_Time *timePtr)
+    NS_GNUC_NONNULL(1);
 
 static void   FreeProxy(Proxy *proxyPtr) NS_GNUC_NONNULL(1);
 static void   ResetProxy(Proxy *proxyPtr) NS_GNUC_NONNULL(1);
 static void   ProxyError(Tcl_Interp *interp, Err err) NS_GNUC_NONNULL(1);
-static void   FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void   FmtActiveProxy(Tcl_Interp *interp, const Proxy *proxyPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static void   ReleaseHandles(Tcl_Interp *interp, InterpData *idataPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Slave* ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Err    CreateSlave(Tcl_Interp *interp, Proxy *proxyPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void   ReleaseHandles(Tcl_Interp *interp, InterpData *idataPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Worker* ExecWorker(Tcl_Interp *interp, const Proxy *proxyPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Err    CreateWorker(Tcl_Interp *interp, Proxy *proxyPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static void   SetExpire(Slave *slavePtr, int ms) NS_GNUC_NONNULL(1);
-static bool   SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
-static bool   RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+static void   SetExpire(Worker *workerPtr, const Ns_Time *timePtr)
+    NS_GNUC_NONNULL(1);
+static bool   SendBuf(const Worker *workerPtr, const Ns_Time *timePtr, const Tcl_DString *dsPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+static bool   RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 static int    WaitFd(int fd, short events, long ms);
 
-static int    Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr) \
+static int    Import(Tcl_Interp *interp, const Tcl_DString *dsPtr, int *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
-static void   Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr) NS_GNUC_NONNULL(3);
+static void   Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
+    NS_GNUC_NONNULL(3);
 
-static void   UpdateIov(struct iovec *iov, size_t n) NS_GNUC_NONNULL(1);
-static void   SetOpt(const char *str, char const **optPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void   UpdateIov(struct iovec *iov, size_t n)
+    NS_GNUC_NONNULL(1);
+static void   SetOpt(const char *str, char const **optPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static void   ReaperThread(void *UNUSED(arg));
-static void   CloseSlave(Slave *slavePtr, int ms) NS_GNUC_NONNULL(1);
+static void   CloseWorker(Worker *workerPtr, const Ns_Time *timePtr)
+    NS_GNUC_NONNULL(1);
 static void   ReapProxies(void);
-static long   GetTimeDiff(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
+static long   GetTimeDiff(const Ns_Time *timePtr)
+    NS_GNUC_NONNULL(1);
 
-static void   AppendStr(Tcl_Obj *listObj, const char *flag, const char *val) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static void   AppendInt(Tcl_Obj *listObj, const char *flag, int i) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void   AppendObj(Tcl_Obj *listObj, const char *flag, Tcl_Obj *obj)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static Tcl_Obj* StringObj(const char* chars);
 
 /*
@@ -366,11 +382,11 @@ static Tcl_Obj* StringObj(const char* chars);
 
 static Tcl_HashTable pools;     /* Tracks proxy pools */
 
-ReaperState reaperState = Stopped;
+static ReaperState reaperState = Stopped;
 
 static Ns_Cond  pcond = NULL;          /* Those are used to control access to */
-static Ns_Mutex plock = NULL;          /* the list of Slave structures of slave */
-static Slave    *firstClosePtr = NULL; /* processes which are being closed. */
+static Ns_Mutex plock = NULL;          /* The list of Worker structures of worker */
+static Worker    *firstClosePtr = NULL; /* Processes which are being closed. */
 
 static Tcl_DString defexec;             /* Stores full path of the proxy executable */
 
@@ -452,9 +468,9 @@ Ns_ProxyTclInit(Tcl_Interp *interp)
  *
  * Ns_ProxyMain --
  *
- *      Main loop for nsproxy slave processes. Initialize Tcl interp
- *      and loop processing requests. On communication errors or
- *      when the peer closes it's write-pipe, slave exits gracefully.
+ *      Main loop for nsproxy worker processes. Initialize Tcl interp and loop
+ *      processing requests. On communication errors or when the peer closes
+ *      it's write-pipe, worker process exits gracefully.
  *
  * Results:
  *      Always zero.
@@ -466,10 +482,10 @@ Ns_ProxyTclInit(Tcl_Interp *interp)
  */
 
 int
-Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
+Ns_ProxyMain(int argc, char *const*argv, Tcl_AppInitProc *init)
 {
     Tcl_Interp  *interp;
-    Slave        proc;
+    Worker        proc;
     int          result, max;
     Tcl_DString  in, out;
     const char  *script, *dots, *uarg = NULL, *user;
@@ -503,7 +519,7 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     }
 
     /*
-     * Initialize Slave structure
+     * Initialize Worker structure
      */
     memset(&proc, 0, sizeof(proc));
 
@@ -594,14 +610,16 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
     Tcl_DStringInit(&in);
     Tcl_DStringInit(&out);
 
-    while (RecvBuf(&proc, -1, &in) == NS_TRUE) {
-        Req *reqPtr;
+    while (RecvBuf(&proc, NULL, &in) == NS_TRUE) {
+        Req      req, *reqPtr = &req;
         uint32_t len;
 
         if (Tcl_DStringLength(&in) < (int)sizeof(Req)) {
             break;
         }
-        reqPtr = (Req *) Tcl_DStringValue(&in);
+
+        memcpy(&req, in.string, sizeof(req));
+
         if (reqPtr->major != major || reqPtr->minor != minor) {
             Ns_Fatal("nsproxy: version mismatch");
         }
@@ -624,12 +642,13 @@ Ns_ProxyMain(int argc, char **argv, Tcl_AppInitProc *init)
             result = Tcl_EvalEx(interp, script, (int)len, 0);
             Export(interp, result, &out);
             if (active != NULL) {
+                assert(max > 0);
                 memset(active, ' ', (size_t)max);
             }
         } else {
             Ns_Fatal("nsproxy: invalid length");
         }
-        if (SendBuf(&proc, -1, &out) == NS_FALSE) {
+        if (SendBuf(&proc, NULL, &out) == NS_FALSE) {
             break;
         }
         Tcl_DStringSetLength(&in, 0);
@@ -718,11 +737,11 @@ Shutdown(const Ns_Time *timeoutPtr, void *UNUSED(arg))
         while (hPtr != NULL) {
             poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
             Ns_MutexLock(&poolPtr->lock);
-            poolPtr->maxslaves = 0; /* Disable creation of new slaves */
+            poolPtr->maxworker = 0; /* Disable creation of new workers */
             proxyPtr = poolPtr->firstPtr;
             while (proxyPtr != NULL) {
-                if (proxyPtr->slavePtr != NULL) {
-                    CloseSlave(proxyPtr->slavePtr, proxyPtr->conf.twait);
+                if (proxyPtr->workerPtr != NULL) {
+                    CloseWorker(proxyPtr->workerPtr, &proxyPtr->conf.twait);
                 }
                 tmpPtr = proxyPtr->nextPtr;
                 FreeProxy(proxyPtr);
@@ -791,7 +810,7 @@ Shutdown(const Ns_Time *timeoutPtr, void *UNUSED(arg))
  *----------------------------------------------------------------------
  */
 int
-Ns_ProxyGet(Tcl_Interp *interp, const char *poolName, PROXY* handlePtr, int ms)
+Ns_ProxyGet(Tcl_Interp *interp, const char *poolName, PROXY* handlePtr, Ns_Time *timePtr)
 {
     Pool  *poolPtr;
     Proxy *proxyPtr;
@@ -803,7 +822,7 @@ Ns_ProxyGet(Tcl_Interp *interp, const char *poolName, PROXY* handlePtr, int ms)
      */
     poolPtr = GetPool(poolName, NULL);
 
-    err = PopProxy(poolPtr, &proxyPtr, 1, ms);
+    err = PopProxy(poolPtr, &proxyPtr, 1, timePtr);
     if (unlikely(err != 0)) {
         Ns_TclPrintfResult(interp, "could not allocate from pool \"%s\": %s",
                            poolPtr->name, errMsg[err]);
@@ -870,20 +889,20 @@ Ns_ProxyPut(PROXY handle)
  *----------------------------------------------------------------------
  */
 
-int Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, const char *script, int ms)
+int Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, const char *script, const Ns_Time *timeoutPtr)
 {
-    return Eval(interp, (Proxy *)handle, script, ms);
+    return Eval(interp, (Proxy *)handle, script, timeoutPtr);
 }
 
 /*
  *----------------------------------------------------------------------
  *
- * ExecSlave --
+ * ExecWorker --
  *
- *      Create a new proxy slave.
+ *      Create a new proxy worker process.
  *
  * Results:
- *      Pointer to new Slave or NULL on error.
+ *      Pointer to new Worker or NULL on error.
  *
  * Side effects:
  *      None.
@@ -891,13 +910,13 @@ int Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, const char *script, int ms)
  *----------------------------------------------------------------------
  */
 
-static Slave *
-ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
+static Worker *
+ExecWorker(Tcl_Interp *interp, const Proxy *proxyPtr)
 {
     Pool  *poolPtr;
     char  *argv[5];
     char   active[100];
-    Slave *slavePtr;
+    Worker *workerPtr;
     int    rpipe[2], wpipe[2];
     size_t len;
     pid_t  pid;
@@ -945,17 +964,17 @@ ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
         return NULL;
     }
 
-    slavePtr = ns_calloc(1u, sizeof(Slave));
-    slavePtr->poolPtr = proxyPtr->poolPtr;
-    slavePtr->pid = pid;
-    slavePtr->rfd = wpipe[0];
-    slavePtr->wfd = rpipe[1];
+    workerPtr = ns_calloc(1u, sizeof(Worker));
+    workerPtr->poolPtr = proxyPtr->poolPtr;
+    workerPtr->pid = pid;
+    workerPtr->rfd = wpipe[0];
+    workerPtr->wfd = rpipe[1];
 
-    SetExpire(slavePtr, proxyPtr->conf.tidle);
+    SetExpire(workerPtr, &proxyPtr->conf.tidle);
 
-    Ns_Log(Ns_LogNsProxyDebug, "nsproxy: slave %ld started", (long) slavePtr->pid);
+    Ns_Log(Ns_LogNsProxyDebug, "nsproxy: worker process %ld started", (long) workerPtr->pid);
 
-    return slavePtr;
+    return workerPtr;
 }
 
 
@@ -964,7 +983,7 @@ ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
  *
  * SetExpire --
  *
- *      Sets the absolute expire time for the slave.
+ *      Sets the absolute expire time for the worker process.
  *
  * Results:
  *      None.
@@ -976,19 +995,20 @@ ExecSlave(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static void
-SetExpire(Slave *slavePtr, int ms)
+SetExpire(Worker *workerPtr, const Ns_Time *timePtr)
 {
-    NS_NONNULL_ASSERT(slavePtr != NULL);
+    NS_NONNULL_ASSERT(workerPtr != NULL);
 
-    Ns_Log(Ns_LogNsProxyDebug, "set expire in %d ms for pool %s slave %ld",
-           ms, slavePtr->poolPtr->name, (long)slavePtr->pid);
+    Ns_Log(Ns_LogNsProxyDebug, "set expire in %ld ms for pool %s worker %ld",
+           timePtr == NULL ? -1 : (long)Ns_TimeToMilliseconds(timePtr),
+           workerPtr->poolPtr->name, (long)workerPtr->pid);
 
-    if (ms > 0) {
-        Ns_GetTime(&slavePtr->expire);
-        Ns_IncrTime(&slavePtr->expire, (ms / 1000), ((ms % 1000) * 1000) );
+    if (timePtr != NULL) {
+        Ns_GetTime(&workerPtr->expire);
+        Ns_IncrTime(&workerPtr->expire, timePtr->sec, timePtr->usec);
     } else {
-        slavePtr->expire.sec  = TIME_T_MAX;
-        slavePtr->expire.usec = 0;
+        workerPtr->expire.sec  = TIME_T_MAX;
+        workerPtr->expire.usec = 0;
     }
 }
 
@@ -1011,17 +1031,20 @@ SetExpire(Slave *slavePtr, int ms)
  */
 
 static int
-Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, int ms)
+Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, const Ns_Time *timeoutPtr)
 {
-    Err err;
-    int status = TCL_ERROR;
+    Err     err;
+    int     status = TCL_ERROR;
+    Ns_Time startTime;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(proxyPtr != NULL);
 
+    Ns_GetTime(&startTime);
+
     err = Send(interp, proxyPtr, script);
     if (err == ENone) {
-        err = Wait(interp, proxyPtr, ms);
+        err = Wait(interp, proxyPtr, timeoutPtr);
         if (err == ENone) {
             (void) Recv(interp, proxyPtr, &status);
         }
@@ -1029,6 +1052,15 @@ Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, int ms)
          * Don't count check-proxy calls (script == NULL)
          */
         if (script != NULL) {
+            Ns_Time endTime, diffTime;
+
+            Ns_GetTime(&endTime);
+            (void)Ns_DiffTime(&endTime, &startTime, &diffTime);
+            if (Ns_DiffTime(&proxyPtr->conf.logminduration, &diffTime, NULL) < 1) {
+                Ns_Log(Notice, "nsproxy %s duration " NS_TIME_FMT " secs: '%s'",
+                       proxyPtr->poolPtr->name, (int64_t)diffTime.sec, diffTime.usec, script);
+            }
+
             Ns_Log(Debug, "Eval calls GetStats <%s>", script);
             GetStats(proxyPtr);
         }
@@ -1043,18 +1075,18 @@ Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, int ms)
  *
  * GetStats --
  *
- *      Obtain runtime statistics
+ *      Obtain run time statistics
  *
  * Results:
  *      None.
  *
  * Side effects:
- *      Update the pool's runtime
+ *      Update the pool's run time
  *
  *----------------------------------------------------------------------
  */
 static void
-GetStats(Proxy *proxyPtr)
+GetStats(const Proxy *proxyPtr)
 {
     Ns_Time now, runTimeSpan;
 
@@ -1091,7 +1123,7 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(proxyPtr != NULL);
 
-    if (proxyPtr->slavePtr == NULL) {
+    if (proxyPtr->workerPtr == NULL) {
         err = EDead;
     } else if (proxyPtr->state != Idle) {
         err = EBusy;
@@ -1099,10 +1131,10 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
         proxyPtr->numruns++;
         if (proxyPtr->conf.maxruns > 0
             && proxyPtr->numruns > proxyPtr->conf.maxruns) {
-            Ns_Log(Notice, "proxy maxrun reached pool %s slave %ld",
-                   proxyPtr->poolPtr->name, (long)proxyPtr->slavePtr->pid);
+            Ns_Log(Notice, "proxy maxrun reached pool %s worker %ld",
+                   proxyPtr->poolPtr->name, (long)proxyPtr->workerPtr->pid);
             CloseProxy(proxyPtr);
-            err = CreateSlave(interp, proxyPtr);
+            err = CreateWorker(interp, proxyPtr);
         }
         if (err == ENone) {
             size_t len = script == NULL ? 0u : strlen(script);
@@ -1130,11 +1162,11 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
             Ns_MutexUnlock(&proxyPtr->poolPtr->lock);
 
             if (script != NULL) {
-                Ns_Log(Ns_LogNsProxyDebug, "proxy send pool %s slave %ld: %s",
-                       proxyPtr->poolPtr->name, (long)proxyPtr->slavePtr->pid, script);
+                Ns_Log(Ns_LogNsProxyDebug, "proxy send pool %s worker %ld: %s",
+                       proxyPtr->poolPtr->name, (long)proxyPtr->workerPtr->pid, script);
             }
 
-            if (SendBuf(proxyPtr->slavePtr, proxyPtr->conf.tsend,
+            if (SendBuf(proxyPtr->workerPtr, &proxyPtr->conf.tsend,
                          &proxyPtr->in) == NS_FALSE) {
                 err = ESend;
             }
@@ -1169,7 +1201,7 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
  */
 
 static Err
-Wait(Tcl_Interp *interp, Proxy *proxyPtr, int ms)
+Wait(Tcl_Interp *interp, Proxy *proxyPtr, const Ns_Time *timeoutPtr)
 {
     Err err = ENone;
 
@@ -1178,16 +1210,23 @@ Wait(Tcl_Interp *interp, Proxy *proxyPtr, int ms)
 
     if (proxyPtr->state == Idle) {
         err = EIdle;
-    } else if (proxyPtr->slavePtr == NULL) {
+    } else if (proxyPtr->workerPtr == NULL) {
         err = EDead;
     } else if (proxyPtr->state != Done) {
+        time_t ms;
+
+        if (timeoutPtr != NULL) {
+            ms = Ns_TimeToMilliseconds(timeoutPtr);
+        } else {
+            ms = -1;
+        }
         if (ms <= 0) {
-            ms = proxyPtr->conf.teval;
+            ms = Ns_TimeToMilliseconds(&proxyPtr->conf.teval);
         }
         if (ms <= 0) {
             ms = -1;
         }
-        if (WaitFd(proxyPtr->slavePtr->rfd, POLLIN, ms) == 0) {
+        if (WaitFd(proxyPtr->workerPtr->rfd, POLLIN, (long)ms) == 0) {
             err = EEvalTimeout;
         } else {
             proxyPtr->state = Done;
@@ -1235,7 +1274,7 @@ Recv(Tcl_Interp *interp, Proxy *proxyPtr, int *resultPtr)
         err = ENoWait;
     } else {
         Tcl_DStringSetLength(&proxyPtr->out, 0);
-        if (RecvBuf(proxyPtr->slavePtr, proxyPtr->conf.trecv,
+        if (RecvBuf(proxyPtr->workerPtr, &proxyPtr->conf.trecv,
                     &proxyPtr->out) == NS_FALSE) {
             err = ERecv;
         } else if (Import(interp, &proxyPtr->out, resultPtr) != TCL_OK) {
@@ -1260,7 +1299,7 @@ Recv(Tcl_Interp *interp, Proxy *proxyPtr, int *resultPtr)
  *
  * SendBuf --
  *
- *      Send a dstring buffer to the specified slave.
+ *      Send a dstring buffer to the specified worker process.
  *
  * Results:
  *      NS_TRUE if sent, NS_FALSE on error.
@@ -1272,7 +1311,7 @@ Recv(Tcl_Interp *interp, Proxy *proxyPtr, int *resultPtr)
  */
 
 static bool
-SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
+SendBuf(const Worker *workerPtr, const Ns_Time *timePtr, const Tcl_DString *dsPtr)
 {
     ssize_t      n;
     uint32       ulen;
@@ -1280,12 +1319,12 @@ SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
     Ns_Time      end;
     bool         success = NS_TRUE;
 
-    NS_NONNULL_ASSERT(slavePtr != NULL);
+    NS_NONNULL_ASSERT(workerPtr != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    if (ms > 0) {
+    if (timePtr != NULL) {
         Ns_GetTime(&end);
-        Ns_IncrTime(&end, ms/1000, (ms % 1000) * 1000);
+        Ns_IncrTime(&end, timePtr->sec, timePtr->usec);
     }
 
     ulen = htonl((unsigned int)dsPtr->length);
@@ -1296,26 +1335,26 @@ SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
 
     while ((iov[0].iov_len + iov[1].iov_len) > 0u) {
         do {
-            n = writev(slavePtr->wfd, iov, 2);
+            n = writev(workerPtr->wfd, iov, 2);
         } while (n == -1 && errno == NS_EINTR);
 
         if (n == -1) {
             long waitMs;
 
-            if ((errno != EAGAIN) && (errno != NS_EWOULDBLOCK)) {
+            if ((errno != NS_EAGAIN) && (errno != NS_EWOULDBLOCK)) {
                 success = NS_FALSE;
                 break;
 
-            } else if (ms > 0) {
+            } else if (timePtr != NULL) {
                 waitMs = GetTimeDiff(&end);
                 if (waitMs < 0) {
                     success = NS_FALSE;
                     break;
                 }
             } else {
-                waitMs = ms;
+                waitMs = -1;
             }
-            if (WaitFd(slavePtr->wfd, POLLOUT, waitMs) == 0) {
+            if (WaitFd(workerPtr->wfd, POLLOUT, waitMs) == 0) {
                 success = NS_FALSE;
                 break;
             }
@@ -1345,7 +1384,7 @@ SendBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
  */
 
 static bool
-RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
+RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
 {
     uint32       ulen = 0u;
     ssize_t      n;
@@ -1354,12 +1393,12 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
     Ns_Time      end;
     bool         success = NS_TRUE;
 
-    NS_NONNULL_ASSERT(slavePtr != NULL);
+    NS_NONNULL_ASSERT(workerPtr != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    if (ms > 0) {
+    if (timePtr != NULL) {
         Ns_GetTime(&end);
-        Ns_IncrTime(&end, ms/1000, (ms % 1000) * 1000);
+        Ns_IncrTime(&end, timePtr->sec, timePtr->usec);
     }
 
     avail = (size_t)dsPtr->spaceAvl - 1u;
@@ -1370,7 +1409,7 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
 
     while (iov[0].iov_len > 0) {
         do {
-            n = readv(slavePtr->rfd, iov, 2);
+            n = readv(workerPtr->rfd, iov, 2);
         } while ((n == -1) && (errno == NS_EINTR));
 
         if (n == 0) {
@@ -1380,20 +1419,20 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
         } else if (n < 0) {
             long  waitMs;
 
-            if (errno != EAGAIN && errno != NS_EWOULDBLOCK) {
+            if (errno != NS_EAGAIN && errno != NS_EWOULDBLOCK) {
                 success = NS_FALSE;
                 break;
 
-            } else if (ms > 0) {
+            } else if (timePtr != NULL) {
                 waitMs = GetTimeDiff(&end);
                 if (waitMs < 0) {
                     success = NS_FALSE;
                     break;
                 }
             } else {
-                waitMs = ms;
+                waitMs = -1;
             }
-            if (WaitFd(slavePtr->rfd, POLLIN, waitMs) == 0) {
+            if (WaitFd(workerPtr->rfd, POLLIN, waitMs) == 0) {
                 success = NS_FALSE;
                 break;
             }
@@ -1414,7 +1453,7 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
 
         while (len > 0) {
             do {
-                n = ns_read(slavePtr->rfd, ptr, (size_t)len);
+                n = ns_read(workerPtr->rfd, ptr, (size_t)len);
             } while ((n == -1) && (errno == NS_EINTR));
 
             if (n == 0) {
@@ -1424,20 +1463,20 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
             } else if (n < 0) {
                 long waitMs;
 
-                if (errno != EAGAIN && errno != NS_EWOULDBLOCK) {
+                if (errno != NS_EAGAIN && errno != NS_EWOULDBLOCK) {
                     success = NS_FALSE;
                     break;
 
-                } else if (ms > 0) {
+                } else if (timePtr != NULL) {
                     waitMs = GetTimeDiff(&end);
                     if (waitMs < 0) {
                         success = NS_FALSE;
                         break;
                     }
                 } else {
-                    waitMs = ms;
+                    waitMs = -1;
                 }
-                if (WaitFd(slavePtr->rfd, POLLIN, waitMs) == 0) {
+                if (WaitFd(workerPtr->rfd, POLLIN, waitMs) == 0) {
                     success = NS_FALSE;
                     break;
                 }
@@ -1457,7 +1496,7 @@ RecvBuf(Slave *slavePtr, int ms, Tcl_DString *dsPtr)
  *
  * WaitFd --
  *
- *      Waits for the given event on the slave pipe.
+ *      Waits for the given event on the worker pipe.
  *
  * Results:
  *      1 if event received, 0 on error.
@@ -1588,7 +1627,7 @@ Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
  *      Import result of Tcl to given interp.
  *
  * Results:
- *      Tcl result code from remote slave.
+ *      Tcl result code from remote worker process.
  *
  * Side effects:
  *      Will set interp result and error data as needed.
@@ -1597,7 +1636,7 @@ Export(Tcl_Interp *interp, int code, Tcl_DString *dsPtr)
  */
 
 static int
-Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr)
+Import(Tcl_Interp *interp, const Tcl_DString *dsPtr, int *resultPtr)
 {
     int result = TCL_OK;
 
@@ -1609,9 +1648,11 @@ Import(Tcl_Interp *interp, Tcl_DString *dsPtr, int *resultPtr)
         result = TCL_ERROR;
 
     } else {
-        Res        *resPtr = (Res *) dsPtr->string;
+        Res         res, *resPtr = &res;
         const char *str    = dsPtr->string + sizeof(Res);
         size_t      rlen, clen, ilen;
+
+        memcpy(&res, dsPtr->string, sizeof(Res));
 
         clen = ntohl(resPtr->clen);
         ilen = ntohl(resPtr->ilen);
@@ -1666,37 +1707,26 @@ StatsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
 
     } else {
         Tcl_DString ds, *dsPtr = &ds;
-        char        buf[100];
         Pool       *poolPtr = GetPool(pool, clientData);
+        int         processes = 0;
+        Proxy      *proxyPtr;
 
         Tcl_DStringInit(dsPtr);
         Ns_MutexLock(&plock);
         Ns_MutexLock(&poolPtr->lock);
 
-        Tcl_DStringAppendElement(dsPtr, "proxies");
-        snprintf(buf, sizeof(buf), "%" PRIuPTR, poolPtr->nextid);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "waiting");
-        snprintf(buf, sizeof(buf), "%d", poolPtr->waiting);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "maxslaves");
-        snprintf(buf, sizeof(buf), "%d", poolPtr->maxslaves);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "free");
-        snprintf(buf, sizeof(buf), "%d", poolPtr->nfree);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "used");
-        snprintf(buf, sizeof(buf), "%d", poolPtr->nused);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
-        Tcl_DStringAppendElement(dsPtr, "requests");
-        snprintf(buf, sizeof(buf), "%" PRIuPTR, poolPtr->nruns);
-        Tcl_DStringAppendElement(dsPtr, buf);
-
+        for (proxyPtr = poolPtr->firstPtr; proxyPtr != NULL; proxyPtr = proxyPtr->nextPtr) {
+            if (proxyPtr->workerPtr != NULL) {
+                processes ++;
+            }
+        }
+        Ns_DStringPrintf(dsPtr, "proxies %" PRIuPTR, poolPtr->nextid);
+        Ns_DStringPrintf(dsPtr, " waiting %d", poolPtr->waiting);
+        Ns_DStringPrintf(dsPtr, " maxworkers %d", poolPtr->maxworker);
+        Ns_DStringPrintf(dsPtr, " free %d", poolPtr->nfree);
+        Ns_DStringPrintf(dsPtr, " used %d", poolPtr->nused);
+        Ns_DStringPrintf(dsPtr, " requests %" PRIuPTR, poolPtr->nruns);
+        Ns_DStringPrintf(dsPtr, " processes %d", processes);
         Tcl_DStringAppend(dsPtr, " runtime ", 9);
         Ns_DStringAppendTime(dsPtr, &poolPtr->runTime);
 
@@ -1754,7 +1784,7 @@ StopObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
 
                 Ns_MutexLock(&poolPtr->lock);
                 for (proxyPtr = poolPtr->runPtr; proxyPtr != NULL; proxyPtr = proxyPtr->runPtr) {
-                    reap += CloseSlaveOfProxy(proxyPtr, handle, proxyPtr->conf.twait);
+                    reap += CloseWorkerOfProxy(proxyPtr, handle, &proxyPtr->conf.twait);
                 }
                 Ns_MutexUnlock(&poolPtr->lock);
                 break;
@@ -1813,7 +1843,7 @@ ClearObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
 
                 Ns_MutexLock(&poolPtr->lock);
                 for (proxyPtr = poolPtr->firstPtr; proxyPtr != NULL; proxyPtr = proxyPtr->nextPtr) {
-                    reap += CloseSlaveOfProxy(proxyPtr, handle, proxyPtr->conf.twait);
+                    reap += CloseWorkerOfProxy(proxyPtr, handle, &proxyPtr->conf.twait);
                 }
                 Ns_MutexUnlock(&poolPtr->lock);
                 break;
@@ -1852,7 +1882,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
     Pool          *poolPtr;
     Proxy         *proxyPtr;
     Err            err;
-    int            ms, opt, result = TCL_OK;
+    int            opt, result = TCL_OK;
     const char    *proxyId;
     Tcl_HashEntry *hPtr;
     Tcl_HashSearch search;
@@ -1880,8 +1910,8 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
     }
 
     switch (opt) {
-    case PReleaseIdx:
-    case PPutIdx:
+    case PReleaseIdx:   NS_FALL_THROUGH; /* fall through */
+    case PPutIdx:       NS_FALL_THROUGH; /* fall through */
     case PPingIdx:
         if (objc != 3) {
             Tcl_WrongNumArgs(interp, 2, objv, "handle");
@@ -1895,7 +1925,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
             } else if (opt == PPutIdx || opt == PReleaseIdx) {
                 result = ReleaseProxy(interp, proxyPtr);
             } else /* opt == PPingIdx */ {
-                result = Eval(interp, proxyPtr, NULL, -1);
+                result = Eval(interp, proxyPtr, NULL, NULL);
             }
         }
         break;
@@ -1939,18 +1969,18 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
             Tcl_WrongNumArgs(interp, 2, objv, "handle ?timeout?");
             result = TCL_ERROR;
         } else {
+            Ns_Time *timeoutPtr = NULL;
+
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
                 Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
                 result = TCL_ERROR;
-            } else if (objc == 3) {
-                ms = -1;
-            } else if (Tcl_GetIntFromObj(interp, objv[3], &ms) != TCL_OK) {
+            } else if (objc > 3 && Ns_TclGetTimePtrFromObj(interp, objv[3], &timeoutPtr) != TCL_OK) {
                 result = TCL_ERROR;
             }
             if (result == TCL_OK) {
-                err = Wait(interp, proxyPtr, ms);
+                err = Wait(interp, proxyPtr, timeoutPtr);
                 result = (err == ENone) ? TCL_OK : TCL_ERROR;
             }
         }
@@ -1981,18 +2011,18 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
             Tcl_WrongNumArgs(interp, 2, objv, "handle script");
             result = TCL_ERROR;
         } else {
+            Ns_Time *timeoutPtr = NULL;
+
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
                 Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
                 result = TCL_ERROR;
-            } else if (objc == 4) {
-                ms = -1;
-            } else if (Tcl_GetIntFromObj(interp, objv[4], &ms) != TCL_OK) {
-                result = TCL_ERROR;
+            } else if (objc > 4 && Ns_TclGetTimePtrFromObj(interp, objv[4], &timeoutPtr) != TCL_OK) {
+                    result = TCL_ERROR;
             }
             if (result == TCL_OK) {
-                result = Eval(interp, proxyPtr, Tcl_GetString(objv[3]), ms);
+                result = Eval(interp, proxyPtr, Tcl_GetString(objv[3]), timeoutPtr);
             }
         }
         break;
@@ -2106,16 +2136,19 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
     InterpData *idataPtr = data;
     Pool       *poolPtr;
     Proxy      *proxyPtr;
-    int         flag, n, result = TCL_OK, reap = 0;
+    int         flag = 0, n, result = TCL_OK, reap = 0;
 
     static const char *flags[] = {
         "-init", "-reinit", "-maxslaves", "-exec", "-env",
         "-gettimeout", "-evaltimeout", "-sendtimeout", "-recvtimeout",
-        "-waittimeout", "-idletimeout", "-maxruns", NULL
+        "-waittimeout", "-idletimeout", "-logminduration", "-maxruns",
+        "-maxworkers",  NULL
     };
     enum {
-        CInitIdx, CReinitIdx, CMaxslaveIdx, CExecIdx, CEnvIdx, CGetIdx,
-        CEvalIdx, CSendIdx, CRecvIdx, CWaitIdx, CIdleIdx, CMaxrunsIdx
+        CInitIdx, CReinitIdx, CMaxslaveIdx, CExecIdx, CEnvIdx,
+        CGetIdx, CEvalIdx, CSendIdx, CRecvIdx,
+        CWaitIdx, CIdleIdx, CLogmindurationIdx, CMaxrunsIdx,
+        CMaxworkerIdx
     };
 
     if (objc < 3) {
@@ -2144,13 +2177,62 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             ++i;
             str = Tcl_GetString(objv[i]);
             switch (flag) {
-            case CGetIdx:
-            case CEvalIdx:
-            case CSendIdx:
-            case CRecvIdx:
-            case CWaitIdx:
-            case CIdleIdx:
-            case CMaxslaveIdx:
+            case CEvalIdx:           NS_FALL_THROUGH; /* fall through */
+            case CGetIdx:            NS_FALL_THROUGH; /* fall through */
+            case CIdleIdx:           NS_FALL_THROUGH; /* fall through */
+            case CLogmindurationIdx: NS_FALL_THROUGH; /* fall through */
+            case CRecvIdx:           NS_FALL_THROUGH; /* fall through */
+            case CSendIdx:           NS_FALL_THROUGH; /* fall through */
+            case CWaitIdx: {
+                Ns_Time timeout;
+
+                if (Ns_TclGetTimeFromObj(interp, objv[i], &timeout) != TCL_OK) {
+                    result = TCL_ERROR;
+                    goto err;
+                }
+                switch (flag) {
+                case CRecvIdx:
+                    poolPtr->conf.trecv = timeout;
+                    break;
+                case CSendIdx:
+                    poolPtr->conf.tsend = timeout;
+                    break;
+                case CEvalIdx:
+                    poolPtr->conf.teval = timeout;
+                    break;
+                case CWaitIdx:
+                    poolPtr->conf.twait = timeout;
+                    break;
+                case CGetIdx:
+                    poolPtr->conf.tget = timeout;
+                    break;
+                case CLogmindurationIdx:
+                    poolPtr->conf.logminduration = timeout;
+                    break;
+                case CIdleIdx:
+                    {
+                        Ns_Time minIdle = { MIN_IDLE_TIMEOUT_SEC, 0 };
+
+                        poolPtr->conf.tidle = timeout;
+                        if (Ns_DiffTime(&poolPtr->conf.tidle, &minIdle, NULL) == -1) {
+                            poolPtr->conf.tidle = minIdle;
+                        }
+                        proxyPtr = poolPtr->firstPtr;
+                        while (proxyPtr != NULL) {
+                            if (proxyPtr->workerPtr != NULL) {
+                                SetExpire(proxyPtr->workerPtr, &proxyPtr->conf.tidle);
+                            }
+                            proxyPtr = proxyPtr->nextPtr;
+                        }
+                        reap = 1;
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case CMaxslaveIdx: NS_FALL_THROUGH; /* fall through */
+            case CMaxworkerIdx: NS_FALL_THROUGH; /* fall through */
             case CMaxrunsIdx:
                 if (Tcl_GetIntFromObj(interp, objv[i], &n) != TCL_OK) {
                     result = TCL_ERROR;
@@ -2162,42 +2244,14 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
                     result = TCL_ERROR;
                     goto err;
                 }
-                switch ((int) flag) {
-                case CGetIdx:
-                    poolPtr->conf.tget = n;
-                    break;
-                case CEvalIdx:
-                    poolPtr->conf.teval = n;
-                    break;
-                case CSendIdx:
-                    poolPtr->conf.tsend = n;
-                    break;
-                case CRecvIdx:
-                    poolPtr->conf.trecv = n;
-                    break;
-                case CWaitIdx:
-                    poolPtr->conf.twait = n;
-                    break;
-                case CMaxslaveIdx:
-                    poolPtr->maxslaves = n;
+                switch (flag) {
+                case CMaxslaveIdx: NS_FALL_THROUGH; /* fall through */
+                case CMaxworkerIdx:
+                    poolPtr->maxworker = n;
                     reap = 1;
                     break;
                 case CMaxrunsIdx:
                     poolPtr->conf.maxruns = n;
-                    break;
-                case CIdleIdx:
-                    poolPtr->conf.tidle = n;
-                    if (poolPtr->conf.tidle < MIN_IDLE_TIMEOUT) {
-                        poolPtr->conf.tidle = MIN_IDLE_TIMEOUT;
-                    }
-                    proxyPtr = poolPtr->firstPtr;
-                    while (proxyPtr != NULL) {
-                        if (proxyPtr->slavePtr != NULL) {
-                            SetExpire(proxyPtr->slavePtr, proxyPtr->conf.tidle);
-                        }
-                        proxyPtr = proxyPtr->nextPtr;
-                    }
-                    reap = 1;
                     break;
                 }
                 break;
@@ -2224,7 +2278,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
          * match the maximum number of configured ones.
          */
 
-        while ((poolPtr->nfree + poolPtr->nused) < poolPtr->maxslaves) {
+        while ((poolPtr->nfree + poolPtr->nused) < poolPtr->maxworker) {
             proxyPtr = CreateProxy(poolPtr);
             proxyPtr->nextPtr = poolPtr->firstPtr;
             poolPtr->firstPtr = proxyPtr;
@@ -2253,17 +2307,18 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
 
         if (result == TCL_OK) {
             Tcl_ListObjAppendElement(interp, listObj, Tcl_GetObjResult(interp));
-            AppendStr(listObj, flags[CExecIdx],     poolPtr->exec);
-            AppendStr(listObj, flags[CInitIdx],     poolPtr->init);
-            AppendStr(listObj, flags[CReinitIdx],   poolPtr->reinit);
-            AppendInt(listObj, flags[CMaxslaveIdx], poolPtr->maxslaves);
-            AppendInt(listObj, flags[CMaxrunsIdx],  poolPtr->conf.maxruns);
-            AppendInt(listObj, flags[CGetIdx],      poolPtr->conf.tget);
-            AppendInt(listObj, flags[CEvalIdx],     poolPtr->conf.teval);
-            AppendInt(listObj, flags[CSendIdx],     poolPtr->conf.tsend);
-            AppendInt(listObj, flags[CRecvIdx],     poolPtr->conf.trecv);
-            AppendInt(listObj, flags[CWaitIdx],     poolPtr->conf.twait);
-            AppendInt(listObj, flags[CIdleIdx],     poolPtr->conf.tidle);
+            AppendObj(listObj, flags[CExecIdx],     StringObj(poolPtr->exec));
+            AppendObj(listObj, flags[CInitIdx],     StringObj(poolPtr->init));
+            AppendObj(listObj, flags[CReinitIdx],   StringObj(poolPtr->reinit));
+            AppendObj(listObj, flags[CMaxworkerIdx], Tcl_NewIntObj(poolPtr->maxworker));
+            AppendObj(listObj, flags[CMaxrunsIdx],  Tcl_NewIntObj(poolPtr->conf.maxruns));
+            AppendObj(listObj, flags[CGetIdx],      Ns_TclNewTimeObj(&poolPtr->conf.tget));
+            AppendObj(listObj, flags[CEvalIdx],     Ns_TclNewTimeObj(&poolPtr->conf.teval));
+            AppendObj(listObj, flags[CSendIdx],     Ns_TclNewTimeObj(&poolPtr->conf.tsend));
+            AppendObj(listObj, flags[CRecvIdx],     Ns_TclNewTimeObj(&poolPtr->conf.trecv));
+            AppendObj(listObj, flags[CWaitIdx],     Ns_TclNewTimeObj(&poolPtr->conf.twait));
+            AppendObj(listObj, flags[CIdleIdx],     Ns_TclNewTimeObj(&poolPtr->conf.tidle));
+            AppendObj(listObj, flags[CLogmindurationIdx], Ns_TclNewTimeObj(&poolPtr->conf.logminduration));
             Tcl_SetObjResult(interp, listObj);
         }
 
@@ -2275,21 +2330,24 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             break;
         case CReinitIdx:   Tcl_SetObjResult(interp, StringObj(poolPtr->reinit));
             break;
-        case CMaxslaveIdx: Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->maxslaves));
+        case CMaxslaveIdx: NS_FALL_THROUGH; /* fall through */
+        case CMaxworkerIdx: Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->maxworker));
             break;
         case CMaxrunsIdx:  Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.maxruns));
             break;
-        case CGetIdx:      Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.tget));
+        case CGetIdx:      Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.tget));
             break;
-        case CEvalIdx:     Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.teval));
+        case CEvalIdx:     Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.teval));
             break;
-        case CSendIdx:     Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.tsend));
+        case CSendIdx:     Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.tsend));
             break;
-        case CRecvIdx:     Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.trecv));
+        case CRecvIdx:     Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.trecv));
             break;
-        case CWaitIdx:     Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.twait));
+        case CWaitIdx:     Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.twait));
             break;
-        case CIdleIdx:     Tcl_SetObjResult(interp, Tcl_NewIntObj(poolPtr->conf.tidle));
+        case CIdleIdx:     Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.tidle));
+            break;
+        case CLogmindurationIdx: Tcl_SetObjResult(interp, Ns_TclNewTimeObj(&poolPtr->conf.logminduration));
             break;
         case CEnvIdx:
             if (poolPtr->env) {
@@ -2356,23 +2414,13 @@ StringObj(const char* chars) {
 }
 
 static void
-AppendInt(Tcl_Obj *listObj, const char *flag, int i)
+AppendObj(Tcl_Obj *listObj, const char *flag, Tcl_Obj *obj)
 {
     NS_NONNULL_ASSERT(listObj != NULL);
     NS_NONNULL_ASSERT(flag != NULL);
 
     Tcl_ListObjAppendElement(NULL, listObj, StringObj(flag));
-    Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewIntObj(i));
-}
-
-static void
-AppendStr(Tcl_Obj *listObj, const char *flag, const char *val)
-{
-    NS_NONNULL_ASSERT(listObj != NULL);
-    NS_NONNULL_ASSERT(flag != NULL);
-
-    Tcl_ListObjAppendElement(NULL, listObj, StringObj(flag));
-    Tcl_ListObjAppendElement(NULL, listObj, StringObj(val));
+    Tcl_ListObjAppendElement(NULL, listObj, obj);
 }
 
 
@@ -2398,12 +2446,13 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
     InterpData    *idataPtr = data;
     Proxy         *proxyPtr, *firstPtr;
     Tcl_HashEntry *cntPtr, *idPtr;
-    int            isNew, nwant = 1, timeoutMs = -1, ms, result = TCL_OK;
+    int            isNew, nwant = 1, result = TCL_OK;
+    Ns_Time        *timeoutPtr = NULL;
     Err            err;
     Pool          *poolPtr;
     Ns_ObjvSpec    lopts[] = {
-        {"-timeout", Ns_ObjvInt, &timeoutMs,  NULL},
-        {"-handles", Ns_ObjvInt, &nwant,      NULL},
+        {"-timeout", Ns_ObjvTime, &timeoutPtr, NULL},
+        {"-handles", Ns_ObjvInt,  &nwant,      NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -2426,19 +2475,17 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
         return TCL_ERROR;
     }
 
-    if (timeoutMs == -1) {
+    if (timeoutPtr == NULL) {
         Ns_MutexLock(&poolPtr->lock);
-        ms = poolPtr->conf.tget;
+        timeoutPtr = &poolPtr->conf.tget;
         Ns_MutexUnlock(&poolPtr->lock);
-    } else {
-        ms = timeoutMs;
     }
 
     /*
      * Get some number of proxies from the pool
      */
 
-    err = PopProxy(poolPtr, &firstPtr, nwant, ms);
+    err = PopProxy(poolPtr, &firstPtr, nwant, timeoutPtr);
     if (err != 0) {
     errout:
         Ns_TclPrintfResult(interp, "could not allocate from pool \"%s\": %s",
@@ -2530,7 +2577,7 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
  */
 
 static Err
-PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
+PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, const Ns_Time *timePtr)
 {
     Proxy        *proxyPtr;
     Err           err;
@@ -2540,14 +2587,14 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
     NS_NONNULL_ASSERT(poolPtr != NULL);
     NS_NONNULL_ASSERT(proxyPtrPtr != NULL);
 
-    if (ms > 0) {
+    if (timePtr != NULL) {
         Ns_GetTime(&waitTimeout);
-        Ns_IncrTime(&waitTimeout, ms/1000, (ms/1000) * 1000);
+        Ns_IncrTime(&waitTimeout, timePtr->sec, timePtr->usec);
     }
 
     Ns_MutexLock(&poolPtr->lock);
     while (status == NS_OK && poolPtr->waiting > 0) {
-        if (ms > 0) {
+        if (timePtr != NULL) {
             status = Ns_CondTimedWait(&poolPtr->cond, &poolPtr->lock, &waitTimeout);
         } else {
             Ns_CondWait(&poolPtr->cond, &poolPtr->lock);
@@ -2558,8 +2605,8 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
     } else {
         poolPtr->waiting = 1;
         while (status == NS_OK
-               && poolPtr->nfree < nwant && poolPtr->maxslaves >= nwant) {
-            if (ms > 0) {
+               && poolPtr->nfree < nwant && poolPtr->maxworker >= nwant) {
+            if (timePtr != NULL) {
                 status = Ns_CondTimedWait(&poolPtr->cond, &poolPtr->lock,
                                           &waitTimeout);
             } else {
@@ -2568,7 +2615,7 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
         }
         if (status != NS_OK) {
             err = EGetTimeout;
-        } else if (poolPtr->maxslaves == 0 || poolPtr->maxslaves < nwant) {
+        } else if (poolPtr->maxworker == 0 || poolPtr->maxworker < nwant) {
             err = ERange;
         } else {
             int i;
@@ -2611,7 +2658,7 @@ PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, int ms)
  */
 
 static void
-FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr)
+FmtActiveProxy(Tcl_Interp *interp, const Proxy *proxyPtr)
 {
     Tcl_DString ds;
 
@@ -2622,9 +2669,9 @@ FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr)
     Tcl_DStringGetResult(interp, &ds);
 
     Tcl_DStringStartSublist(&ds);
-    Ns_DStringPrintf(&ds, "handle %s slave %ld start %" PRId64 ".%06ld script",
+    Ns_DStringPrintf(&ds, "handle %s slave %ld start " NS_TIME_FMT " script",
                      proxyPtr->id,
-                     (long) ((proxyPtr->slavePtr != NULL) ? proxyPtr->slavePtr->pid : 0),
+                     (long) ((proxyPtr->workerPtr != NULL) ? proxyPtr->workerPtr->pid : 0),
                      (int64_t) proxyPtr->when.sec,
                      proxyPtr->when.usec);
 
@@ -2652,7 +2699,7 @@ FmtActiveProxy(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static Pool*
-GetPool(const char *poolName, InterpData *idataPtr)
+GetPool(const char *poolName, const InterpData *idataPtr)
 {
     Tcl_HashEntry *hPtr;
     Pool          *poolPtr;
@@ -2666,38 +2713,60 @@ GetPool(const char *poolName, InterpData *idataPtr)
     if (isNew == 0) {
         poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
     } else {
-        const char *path = NULL, *exec;
+        const char *path = "", *exec;
         int i;
 
         poolPtr = ns_calloc(1u, sizeof(Pool));
         Tcl_SetHashValue(hPtr, poolPtr);
         poolPtr->name = Tcl_GetHashKey(&pools, hPtr);
-        if (idataPtr && idataPtr->server && idataPtr->module) {
+        if (idataPtr != NULL && idataPtr->server != NULL && idataPtr->module != NULL) {
           path = Ns_ConfigGetPath(idataPtr->server, idataPtr->module, (char *)0L);
         }
-        if (path != NULL && (exec = Ns_ConfigGetValue(path, "exec")) != NULL) {
+        if (*path != '\0' && (exec = Ns_ConfigGetValue(path, "exec")) != NULL) {
             SetOpt(exec, &poolPtr->exec);
         } else {
             SetOpt(Tcl_DStringValue(&defexec), &poolPtr->exec);
         }
-        if (path == NULL) {
-            poolPtr->conf.tget  = 0;
-            poolPtr->conf.teval = 0;
-            poolPtr->conf.tsend = 5000;
-            poolPtr->conf.trecv = 5000;
-            poolPtr->conf.twait = 1000;
-            poolPtr->conf.tidle = 5*60*1000;
-            poolPtr->maxslaves = 8;
-        } else {
-            poolPtr->conf.tget  = Ns_ConfigInt(path, "gettimeout",  0);
-            poolPtr->conf.teval = Ns_ConfigInt(path, "evaltimeout", 0);
-            poolPtr->conf.tsend = Ns_ConfigInt(path, "sendtimeout", 5000);
-            poolPtr->conf.trecv = Ns_ConfigInt(path, "recvtimeout", 5000);
-            poolPtr->conf.twait = Ns_ConfigInt(path, "waittimeout", 1000);
-            poolPtr->conf.tidle = Ns_ConfigInt(path, "idletimeout", 5*60*1000);
-            poolPtr->maxslaves  = Ns_ConfigInt(path, "maxslaves", 8);
+        Ns_ConfigTimeUnitRange(path, "gettimeout",
+                               "0ms", 0, 0, INT_MAX, 0,
+                               &poolPtr->conf.tget);
+
+        Ns_ConfigTimeUnitRange(path, "evaltimeout",
+                               "0ms", 0, 0, INT_MAX, 0,
+                               &poolPtr->conf.teval);
+
+        Ns_ConfigTimeUnitRange(path, "sendtimeout",
+                               "5s", 0, 0, INT_MAX, 0,
+                               &poolPtr->conf.tsend);
+
+        Ns_ConfigTimeUnitRange(path, "recvtimeout",
+                               "5s", 0, 0, INT_MAX, 0,
+                               &poolPtr->conf.trecv);
+
+        Ns_ConfigTimeUnitRange(path, "waittimeout",
+                               "1s", 0, 0, INT_MAX, 0,
+                               &poolPtr->conf.twait);
+
+        Ns_ConfigTimeUnitRange(path, "idletimeout",
+                               "5m", MIN_IDLE_TIMEOUT_SEC, 0, INT_MAX, 0,
+                               &poolPtr->conf.tidle);
+
+        {
+            int max = Ns_ConfigInt(path, "maxworker", -1);
+            if (max == -1) {
+                max = Ns_ConfigInt(path, "maxslaves", -1);
+            }
+            if (max == -1) {
+                max = 8;
+            }
+            poolPtr->maxworker  = max;
         }
-        for (i = 0; i < poolPtr->maxslaves; i++) {
+
+        Ns_ConfigTimeUnitRange(path, "logminduration",
+                               "1s", 0, 0, INT_MAX, 0,
+                               &poolPtr->conf.logminduration);
+
+        for (i = 0; i < poolPtr->maxworker; i++) {
             proxyPtr = CreateProxy(poolPtr);
             proxyPtr->nextPtr = poolPtr->firstPtr;
             poolPtr->firstPtr = proxyPtr;
@@ -2792,11 +2861,11 @@ GetProxy(const char *proxyId, InterpData *idataPtr)
  *
  * CheckProxy --
  *
- *      Check a proxy, pinging the proc and creating a new slave
- *      as needed.
+ *      Check a proxy, pinging the proc and creating a new worker processes as
+ *      needed.
  *
  * Results:
- *      ENone if proxy OK, other error if slave couldn't be created.
+ *      ENone if proxy OK, other error if worker process could not be created.
  *
  * Side effects:
  *      None.
@@ -2812,14 +2881,14 @@ CheckProxy(Tcl_Interp *interp, Proxy *proxyPtr)
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(proxyPtr != NULL);
 
-    if ((proxyPtr->slavePtr != NULL)
-        && (Eval(interp, proxyPtr, NULL, -1) != TCL_OK)
+    if ((proxyPtr->workerPtr != NULL)
+        && (Eval(interp, proxyPtr, NULL, NULL) != TCL_OK)
         ) {
         CloseProxy(proxyPtr);
         Tcl_ResetResult(interp);
     }
-    if (proxyPtr->slavePtr == NULL) {
-        err = CreateSlave(interp, proxyPtr);
+    if (proxyPtr->workerPtr == NULL) {
+        err = CreateWorker(interp, proxyPtr);
     }
 
     return err;
@@ -2829,12 +2898,12 @@ CheckProxy(Tcl_Interp *interp, Proxy *proxyPtr)
 /*
  *----------------------------------------------------------------------
  *
- * CreateSlave --
+ * CreateWorker --
  *
- *      Create new proxy slave process
+ *      Create new proxy worker process
  *
  * Results:
- *      ENone if proxy OK, other error if slave couldn't be created.
+ *      ENone if proxy OK, other error if worker could not be created.
  *
  * Side effects:
  *
@@ -2843,7 +2912,7 @@ CheckProxy(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static Err
-CreateSlave(Tcl_Interp *interp, Proxy *proxyPtr)
+CreateWorker(Tcl_Interp *interp, Proxy *proxyPtr)
 {
     Pool        *poolPtr;
     Err          err;
@@ -2862,15 +2931,15 @@ CreateSlave(Tcl_Interp *interp, Proxy *proxyPtr)
         Tcl_DStringAppend(&ds, poolPtr->init, -1);
     }
     Ns_MutexUnlock(&poolPtr->lock);
-    proxyPtr->slavePtr = ExecSlave(interp, proxyPtr);
-    if (proxyPtr->slavePtr == NULL) {
+    proxyPtr->workerPtr = ExecWorker(interp, proxyPtr);
+    if (proxyPtr->workerPtr == NULL) {
         err = EExec;
     } else if (init != 0
-               && (Eval(interp, proxyPtr, Tcl_DStringValue(&ds), -1) != TCL_OK)
+               && (Eval(interp, proxyPtr, Tcl_DStringValue(&ds), NULL) != TCL_OK)
                ) {
         CloseProxy(proxyPtr);
         err = EInit;
-    } else if (Eval(interp, proxyPtr, NULL, -1) != TCL_OK) {
+    } else if (Eval(interp, proxyPtr, NULL, NULL) != TCL_OK) {
         CloseProxy(proxyPtr);
         err = EInit;
     } else {
@@ -2949,7 +3018,7 @@ ResetProxy(Proxy *proxyPtr)
 /*
  *----------------------------------------------------------------------
  *
- * CloseSlave --
+ * CloseWorker --
  *
  *      Close the given proc handle.
  *
@@ -2964,53 +3033,55 @@ ResetProxy(Proxy *proxyPtr)
  */
 
 static void
-CloseSlave(Slave *slavePtr, int ms)
+CloseWorker(Worker *workerPtr, const Ns_Time *timePtr)
 {
-    NS_NONNULL_ASSERT(slavePtr != NULL);
+    NS_NONNULL_ASSERT(workerPtr != NULL);
 
-    Ns_Log(Ns_LogNsProxyDebug, "nsproxy [%s]: close slave %ld (expire %d ms)",
-           slavePtr->poolPtr->name, (long) slavePtr->pid, ms);
+    Ns_Log(Ns_LogNsProxyDebug, "nsproxy [%s]: close worker %ld (expire %ld ms)",
+           workerPtr->poolPtr->name, (long) workerPtr->pid,
+           timePtr != NULL ? (long)Ns_TimeToMilliseconds(timePtr) : -1);
 
     /*
-     * Set the time to kill the slave. Reaper thread will
-     * use passed time to wait for the slave to exit gracefully.
-     * Otherwise, it will start attempts to stop the slave
-     * by sending singnals to it (polite and unpolite).
+     * Set the time to kill the worker process. Reaper thread will use passed
+     * time to wait for the worker process to exit gracefully.  Otherwise, it
+     * will start attempts to stop the worker by sending signals to it (polite
+     * and unpolite).
      */
 
-    SetExpire(slavePtr, ms);
+    SetExpire(workerPtr, timePtr);
 
     /*
      * Closing the write pipe should normally make proxy exit.
      */
 
-    ns_close(slavePtr->wfd);
-    slavePtr->signal  = 0;
-    slavePtr->sigsent = 0;
+    ns_close(workerPtr->wfd);
+    workerPtr->signal  = 0;
+    workerPtr->sigsent = 0;
 
     /*
      * Put on the head of the close list so it's handled by
      * the reaper thread.
      */
 
-    slavePtr->nextPtr = firstClosePtr;
-    firstClosePtr = slavePtr;
+    workerPtr->nextPtr = firstClosePtr;
+    firstClosePtr = workerPtr;
 
-    Ns_Log(Ns_LogNsProxyDebug, "nsproxy [%s]: slave %ld closed", slavePtr->poolPtr->name, (long) slavePtr->pid);
+    Ns_Log(Ns_LogNsProxyDebug, "nsproxy [%s]: worker %ld closed",
+           workerPtr->poolPtr->name, (long) workerPtr->pid);
 }
 
 
 static int
-CloseSlaveOfProxy(Proxy *proxyPtr, const char *proxyId, int ms)
+CloseWorkerOfProxy(Proxy *proxyPtr, const char *proxyId, const Ns_Time *timePtr)
 {
     int reap = 0;
 
     NS_NONNULL_ASSERT(proxyPtr != NULL);
 
     if (proxyId == NULL || STREQ(proxyId, proxyPtr->id)) {
-        if (proxyPtr->slavePtr != NULL) {
-            CloseSlave(proxyPtr->slavePtr, ms);
-            proxyPtr->slavePtr = NULL;
+        if (proxyPtr->workerPtr != NULL) {
+            CloseWorker(proxyPtr->workerPtr, timePtr);
+            proxyPtr->workerPtr = NULL;
             reap = 1;
         }
     }
@@ -3029,7 +3100,7 @@ CloseSlaveOfProxy(Proxy *proxyPtr, const char *proxyId, int ms)
  *      None.
  *
  * Side effects:
- *      Starts the thread which reaps slaves.
+ *      Starts the thread which reaps worker processes.
  *
  *----------------------------------------------------------------------
  */
@@ -3039,10 +3110,10 @@ CloseProxy(Proxy *proxyPtr)
 {
     NS_NONNULL_ASSERT(proxyPtr);
 
-    if (proxyPtr->slavePtr != NULL) {
+    if (proxyPtr->workerPtr != NULL) {
         Ns_MutexLock(&plock);
-        CloseSlave(proxyPtr->slavePtr, proxyPtr->conf.twait);
-        proxyPtr->slavePtr = NULL;
+        CloseWorker(proxyPtr->workerPtr, &proxyPtr->conf.twait);
+        proxyPtr->workerPtr = NULL;
         proxyPtr->numruns  = 0;
         Ns_MutexUnlock(&plock);
         ReapProxies();
@@ -3055,7 +3126,7 @@ CloseProxy(Proxy *proxyPtr)
  *
  * ReaperThread --
  *
- *      Detached thread which closes expired slaves or slaves
+ *      Detached thread which closes expired workers or workers
  *      explicitly put on the close list.
  *
  * Results:
@@ -3073,9 +3144,9 @@ ReaperThread(void *UNUSED(arg))
     Tcl_HashSearch  search;
     Proxy          *proxyPtr, *prevPtr, *nextPtr;
     Pool           *poolPtr;
-    Slave           *slavePtr, *tmpSlavePtr;
+    Worker           *workerPtr, *tmpWorkerPtr;
     Ns_Time         timeout, now, diff;
-    int             ms, ntotal;
+    long            ntotal;
 
     Ns_ThreadSetName("-nsproxy:reap-");
     Ns_Log(Notice, "starting");
@@ -3087,7 +3158,7 @@ ReaperThread(void *UNUSED(arg))
 
     while (1) {
         Tcl_HashEntry *hPtr;
-        Slave          *prevSlavePtr;
+        Worker          *prevWorkerPtr;
 
         Ns_GetTime(&now);
 
@@ -3115,19 +3186,19 @@ ReaperThread(void *UNUSED(arg))
             Ns_Log(Ns_LogNsProxyDebug, "reaper checks pool %s", poolPtr->name);
 
             Ns_MutexLock(&poolPtr->lock);
-            if (poolPtr->conf.tidle != 0) {
+            if (poolPtr->conf.tidle.sec != 0 && poolPtr->conf.tidle.usec != 0) {
                 diff = now;
-                ms = poolPtr->conf.tidle;
-                Ns_IncrTime(&diff, ms/1000, (ms%1000) * 1000);
+                Ns_IncrTime(&diff, poolPtr->conf.tidle.sec, poolPtr->conf.tidle.usec);
                 if (Ns_DiffTime(&diff, &timeout, NULL) < 0) {
                     timeout = diff;
-                    Ns_Log(Ns_LogNsProxyDebug, "reaper sets timeout based on idle diff %ld.%06ld of pool %s",
-                           timeout.sec, timeout.usec, poolPtr->name);
+                    Ns_Log(Ns_LogNsProxyDebug, "reaper sets timeout based on idle "
+                           "diff " NS_TIME_FMT " of pool %s",
+                           (int64_t)timeout.sec, timeout.usec, poolPtr->name);
                 }
             }
 
             /*
-             * Get max time to wait for one of the slaves.
+             * Get max time to wait for one of the worker process.
              * This is less then time for the whole pool.
              */
 
@@ -3137,24 +3208,26 @@ ReaperThread(void *UNUSED(arg))
                 bool expired;
 
                 nextPtr  = proxyPtr->nextPtr;
-                slavePtr = proxyPtr->slavePtr;
+                workerPtr = proxyPtr->workerPtr;
                 ntotal   = poolPtr->nfree + poolPtr->nused;
-                if (slavePtr != NULL) {
-                    expired = (Ns_DiffTime(&slavePtr->expire, &now, NULL) <= 0);
-                    Ns_Log(Ns_LogNsProxyDebug, "pool %s slave %ld expired %d",
-                           poolPtr->name, (long)slavePtr->pid, expired);
+                if (workerPtr != NULL) {
+                    expired = (Ns_DiffTime(&workerPtr->expire, &now, NULL) <= 0);
+                    Ns_Log(Ns_LogNsProxyDebug, "pool %s worker %ld expired %d",
+                           poolPtr->name, (long)workerPtr->pid, expired);
 
-                    if (!expired && Ns_DiffTime(&slavePtr->expire, &timeout, NULL) <= 0) {
-                        timeout = slavePtr->expire;
-                        Ns_Log(Ns_LogNsProxyDebug, "reaper sets timeout based on expire %ld.%06ld pool %s slave %ld",
-                               timeout.sec, timeout.usec, poolPtr->name, (long)slavePtr->pid);
+                    if (!expired && Ns_DiffTime(&workerPtr->expire, &timeout, NULL) <= 0) {
+                        timeout = workerPtr->expire;
+                        Ns_Log(Ns_LogNsProxyDebug, "reaper sets timeout based on "
+                               "expire " NS_TIME_FMT " pool %s worker %ld",
+                               (int64_t)timeout.sec, timeout.usec, poolPtr->name,
+                               (long)workerPtr->pid);
                     }
                 } else {
                     expired = NS_FALSE;
                 }
-                if (poolPtr->maxslaves < ntotal) {
+                if (poolPtr->maxworker < ntotal) {
                     /*
-                     * Prune the excessive proxy and close the slave
+                     * Prune the excessive proxy and close the worker.
                      */
                     if (prevPtr != NULL) {
                         prevPtr->nextPtr = proxyPtr->nextPtr;
@@ -3162,18 +3235,18 @@ ReaperThread(void *UNUSED(arg))
                     if (proxyPtr == poolPtr->firstPtr) {
                         poolPtr->firstPtr = proxyPtr->nextPtr;
                     }
-                    if (slavePtr != NULL) {
-                        CloseSlave(slavePtr, proxyPtr->conf.twait);
+                    if (workerPtr != NULL) {
+                        CloseWorker(workerPtr, &proxyPtr->conf.twait);
                     }
                     FreeProxy(proxyPtr);
                     proxyPtr = NULL;
                     poolPtr->nfree--;
                 } else if (expired) {
                     /*
-                     * Close the slave but leave the proxy
+                     * Close the worker but leave the proxy.
                      */
-                    CloseSlave(proxyPtr->slavePtr, proxyPtr->conf.twait);
-                    proxyPtr->slavePtr = NULL;
+                    CloseWorker(proxyPtr->workerPtr, &proxyPtr->conf.twait);
+                    proxyPtr->workerPtr = NULL;
                 }
                 if (proxyPtr != NULL) {
                     prevPtr = proxyPtr;
@@ -3189,11 +3262,11 @@ ReaperThread(void *UNUSED(arg))
          * to wait until the next run of the loop.
          */
 
-        slavePtr = firstClosePtr;
-        prevSlavePtr = NULL;
+        workerPtr = firstClosePtr;
+        prevWorkerPtr = NULL;
 
-        while (slavePtr != NULL) {
-            if (Ns_DiffTime(&now, &slavePtr->expire, NULL) > 0) {
+        while (workerPtr != NULL) {
+            if (Ns_DiffTime(&now, &workerPtr->expire, NULL) > 0) {
 
                 /*
                  * Stop time expired, add new quantum and signal
@@ -3205,18 +3278,19 @@ ReaperThread(void *UNUSED(arg))
                  * the third quantum, abort - we have a zombie.
                  */
 
-                Ns_IncrTime(&slavePtr->expire, slavePtr->poolPtr->conf.twait/1000,
-                            (slavePtr->poolPtr->conf.twait % 1000) * 1000);
-                switch (slavePtr->signal) {
-                case 0:       slavePtr->signal = SIGTERM; break;
-                case SIGTERM: slavePtr->signal = SIGKILL; break;
-                case SIGKILL: slavePtr->signal = -1;      break;
+                Ns_IncrTime(&workerPtr->expire,
+                            workerPtr->poolPtr->conf.twait.sec,
+                            workerPtr->poolPtr->conf.twait.usec);
+                switch (workerPtr->signal) {
+                case 0:       workerPtr->signal = SIGTERM; break;
+                case SIGTERM: workerPtr->signal = SIGKILL; break;
+                case SIGKILL: workerPtr->signal = -1;      break;
                 }
             }
 
-            if (slavePtr->signal == -1
-                || slavePtr->rfd == NS_INVALID_FD
-                || WaitFd(slavePtr->rfd, POLLIN, 0)) {
+            if (workerPtr->signal == -1
+                || workerPtr->rfd == NS_INVALID_FD
+                || WaitFd(workerPtr->rfd, POLLIN, 0)) {
 
                 /*
                  * We either have timeouted eval (rfd==NS_INVALID_FD), a
@@ -3224,14 +3298,14 @@ ReaperThread(void *UNUSED(arg))
                  * list.
                  */
 
-                if (prevSlavePtr != NULL) {
-                    prevSlavePtr->nextPtr = slavePtr->nextPtr;
+                if (prevWorkerPtr != NULL) {
+                    prevWorkerPtr->nextPtr = workerPtr->nextPtr;
                 } else {
-                    firstClosePtr = slavePtr->nextPtr;
+                    firstClosePtr = workerPtr->nextPtr;
                 }
 
-                if (slavePtr->signal == -1) {
-                    Ns_Log(Warning, "nsproxy: zombie: %ld", (long)slavePtr->pid);
+                if (workerPtr->signal == -1) {
+                    Ns_Log(Warning, "nsproxy: zombie: %ld", (long)workerPtr->pid);
                 } else {
                     int waitStatus = 0;
 
@@ -3245,30 +3319,30 @@ ReaperThread(void *UNUSED(arg))
                      */
 
                     Ns_MutexUnlock(&plock);
-                    (void) Ns_WaitForProcessStatus(slavePtr->pid, NULL, &waitStatus);
+                    (void) Ns_WaitForProcessStatus(workerPtr->pid, NULL, &waitStatus);
                     Ns_MutexLock(&plock);
 #ifdef WTERMSIG
-                    if (slavePtr->signal != 0 && WTERMSIG(waitStatus) != 0) {
+                    if (workerPtr->signal != 0 && WTERMSIG(waitStatus) != 0) {
                         Ns_LogSeverity severity;
 
-                        if (WTERMSIG(waitStatus) != slavePtr->signal) {
+                        if (WTERMSIG(waitStatus) != workerPtr->signal) {
                             severity = Warning;
                         } else {
                             severity = Notice;
                         }
                         Ns_Log(severity, "nsproxy process %d killed with signal %d (%s)",
-                               slavePtr->pid,
+                               workerPtr->pid,
                                WTERMSIG(waitStatus), strsignal(WTERMSIG(waitStatus)));
                     }
 #endif
                 }
 
-                tmpSlavePtr = slavePtr->nextPtr;
-                if (slavePtr->rfd != NS_INVALID_FD) {
-                    ns_close(slavePtr->rfd);
+                tmpWorkerPtr = workerPtr->nextPtr;
+                if (workerPtr->rfd != NS_INVALID_FD) {
+                    ns_close(workerPtr->rfd);
                 }
-                ns_free(slavePtr);
-                slavePtr = tmpSlavePtr;
+                ns_free(workerPtr);
+                workerPtr = tmpWorkerPtr;
 
             } else {
 
@@ -3278,29 +3352,31 @@ ReaperThread(void *UNUSED(arg))
                  * this one again.
                  */
 
-                if (Ns_DiffTime(&slavePtr->expire, &timeout, NULL) < 0) {
-                    Ns_Log(Ns_LogNsProxyDebug, "reaper shortens timeout to %ld.%06ld based on expire in pool %s slave %ld kill %d",
-                           timeout.sec, timeout.usec, slavePtr->poolPtr->name, (long)slavePtr->pid, slavePtr->signal);
-                    timeout = slavePtr->expire;
+                if (Ns_DiffTime(&workerPtr->expire, &timeout, NULL) < 0) {
+                    Ns_Log(Ns_LogNsProxyDebug, "reaper shortens timeout to "
+                           NS_TIME_FMT " based on expire in pool %s worker %ld kill %d",
+                           (int64_t)timeout.sec, timeout.usec, workerPtr->poolPtr->name,
+                           (long)workerPtr->pid, workerPtr->signal);
+                    timeout = workerPtr->expire;
                 }
-                if (slavePtr->signal != slavePtr->sigsent) {
+                if (workerPtr->signal != workerPtr->sigsent) {
                     Ns_Log(Warning, "[%s]: pid %ld won't die, send signal %d",
-                           slavePtr->poolPtr->name, (long)slavePtr->pid,
-                           slavePtr->signal);
-                    if (kill(slavePtr->pid, slavePtr->signal) != 0 && errno != ESRCH) {
+                           workerPtr->poolPtr->name, (long)workerPtr->pid,
+                           workerPtr->signal);
+                    if (kill(workerPtr->pid, workerPtr->signal) != 0 && errno != ESRCH) {
                         Ns_Log(Error, "kill(%ld, %d) failed: %s",
-                               (long)slavePtr->pid, slavePtr->signal, strerror(errno));
+                               (long)workerPtr->pid, workerPtr->signal, strerror(errno));
                     }
-                    slavePtr->sigsent = slavePtr->signal;
+                    workerPtr->sigsent = workerPtr->signal;
                 }
-                prevSlavePtr = slavePtr;
-                slavePtr = slavePtr->nextPtr;
+                prevWorkerPtr = workerPtr;
+                workerPtr = workerPtr->nextPtr;
             }
         }
 
         /*
          * Here we wait until signaled, or at most the
-         * time we need to expire next slave or kill
+         * time we need to expire next worker or kill
          * some of them found on the close list.
          */
 
@@ -3311,8 +3387,8 @@ ReaperThread(void *UNUSED(arg))
                 Ns_Log(Ns_LogNsProxyDebug, "reaper waits unlimited for cond");
                 Ns_CondWait(&pcond, &plock);
             } else {
-                Ns_Log(Ns_LogNsProxyDebug, "reaper waits for cond with timeout %ld.%06ld",
-                       timeout.sec, timeout.usec);
+                Ns_Log(Ns_LogNsProxyDebug, "reaper waits for cond with timeout " NS_TIME_FMT,
+                       (int64_t)timeout.sec, timeout.usec);
                 (void) Ns_CondTimedWait(&pcond, &plock, &timeout);
             }
             if (reaperState == Stopping) {
@@ -3452,11 +3528,11 @@ PushProxy(Proxy *proxyPtr)
 
     Ns_MutexLock(&poolPtr->lock);
     poolPtr->nused--;
-    if ((poolPtr->nused + poolPtr->nfree) <= poolPtr->maxslaves) {
+    if ((poolPtr->nused + poolPtr->nfree) <= poolPtr->maxworker) {
         proxyPtr->nextPtr = poolPtr->firstPtr;
         poolPtr->firstPtr = proxyPtr;
-        if (proxyPtr->slavePtr != NULL) {
-            SetExpire(proxyPtr->slavePtr, proxyPtr->conf.tidle);
+        if (proxyPtr->workerPtr != NULL) {
+            SetExpire(proxyPtr->workerPtr, &proxyPtr->conf.tidle);
         }
         proxyPtr->conf = poolPtr->conf;
         proxyPtr = NULL;
@@ -3513,22 +3589,22 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
         }
         Ns_MutexUnlock(&proxyPtr->poolPtr->lock);
         if (reinit != 0) {
-            result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), -1);
+            result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), NULL);
         }
         Tcl_DStringFree(&ds);
 
-    } else if ( (proxyPtr->state == Busy) && (proxyPtr->slavePtr != NULL) ) {
-        proxyPtr->slavePtr->signal = 0;
+    } else if ( (proxyPtr->state == Busy) && (proxyPtr->workerPtr != NULL) ) {
+        proxyPtr->workerPtr->signal = 0;
         Ns_Log(Notice, "releasing busy proxy %s", proxyPtr->id);
 
         /*
          * In case the proxy is busy, make sure to drain the pipe, otherwise
          * the proxy might be hanging in a send operation. Closing our end
-         * causes in the slave an exception and terminates the potentially
-         * blocking write operation.
+         * causes in the worker process an exception and terminates the
+         * potentially blocking write operation.
          */
-        ns_close(proxyPtr->slavePtr->rfd);
-        proxyPtr->slavePtr->rfd = NS_INVALID_FD;
+        ns_close(proxyPtr->workerPtr->rfd);
+        proxyPtr->workerPtr->rfd = NS_INVALID_FD;
     }
     if (proxyPtr->cmdToken != NULL) {
         /*
@@ -3568,10 +3644,11 @@ static int
 RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     char       *scriptString;
-    int         ms = -1, result;
+    int         result;
+    Ns_Time          *timeoutPtr = NULL;
     Ns_ObjvSpec args[] = {
         {"script",    Ns_ObjvString, &scriptString, NULL},
-        {"?timeout",  Ns_ObjvInt,    &ms,           NULL},
+        {"?timeout",  Ns_ObjvTime,   &timeoutPtr,   NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -3581,7 +3658,7 @@ RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
     } else {
         Proxy *proxyPtr = (Proxy *)clientData;
 
-        result = Eval(interp, proxyPtr, scriptString, ms);
+        result = Eval(interp, proxyPtr, scriptString, timeoutPtr);
     }
     return result;
 }
@@ -3735,14 +3812,15 @@ ReapProxies(void)
  */
 
 static long
-GetTimeDiff(Ns_Time *timePtr)
+GetTimeDiff(const Ns_Time *timePtr)
 {
     Ns_Time now, diff;
 
     NS_NONNULL_ASSERT(timePtr != NULL);
 
     Ns_GetTime(&now);
-    return Ns_DiffTime(timePtr, &now, &diff) * (diff.sec/1000 + diff.usec*1000);
+    Ns_DiffTime(timePtr, &now, &diff);
+    return (long)Ns_TimeToMilliseconds(&diff);
 }
 
 /*
@@ -3764,11 +3842,10 @@ GetTimeDiff(Ns_Time *timePtr)
 static void
 ProxyError(Tcl_Interp *interp, Err err)
 {
-    const char *sysmsg;
+    const char *sysmsg = NULL;
 
     NS_NONNULL_ASSERT(interp != NULL);
 
-    sysmsg = NULL;
     Tcl_SetErrorCode(interp, "NSPROXY", errCode[err], errMsg[err], sysmsg, (char *)0L);
 }
 

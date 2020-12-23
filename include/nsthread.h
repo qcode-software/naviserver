@@ -148,7 +148,7 @@ typedef          long suseconds_t;
 #  define NS_INITGROUPS_GID_T int
 #  define NS_MSG_IOVLEN_T int
 
-#  define NS_SOCKET		SOCKET
+#  define NS_SOCKET             SOCKET
 #  define NS_INVALID_SOCKET     (INVALID_SOCKET)
 #  define NS_INVALID_PID        (0)
 #  define NS_INVALID_FD         (-1)
@@ -175,7 +175,7 @@ MSVC++ 14.1 _MSC_VER == 1910 (Visual Studio 2017 version 15.0)
 MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 */
 
-/* 
+/*
  * Cope with changes in Universal CRT in Visual Studio 2015 where
  * e.g. vsnprintf() is no longer identical to _vsnprintf()
  */
@@ -212,8 +212,8 @@ MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 /*
  * MinGW
  */
-#  define NS_SOCKET 		int
-#  define NS_INVALID_PID 	(-1)
+#  define NS_SOCKET             int
+#  define NS_INVALID_PID        (-1)
 #  define NS_INVALID_SOCKET     (-1)
 #  define NS_INVALID_FD         (-1)
 # endif
@@ -231,7 +231,7 @@ MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 # define NS_SIGPIPE                13
 # define NS_SIGTERM                15
 
-# define DEVNULL	           "nul:"
+# define DEVNULL                   "nul:"
 
 /*
  * For the time being, don't try to be very clever
@@ -332,6 +332,13 @@ struct pollfd {
 # endif
 
 /*
+ * Provide compatibility for MSG_DONTWAIT
+ */
+# ifndef MSG_DONTWAIT
+#  define MSG_DONTWAIT 0
+# endif
+
+/*
  * The following is for supporting opendir/readdir functionality
  */
 
@@ -371,7 +378,7 @@ typedef struct DIR_ *DIR;
 # include <sys/mman.h>
 # include <poll.h>
 
-# define NS_SOCKET	      int
+# define NS_SOCKET            int
 # define NS_INVALID_SOCKET     (-1)
 # define NS_INVALID_PID        (-1)
 # define NS_INVALID_FD         (-1)
@@ -464,12 +471,12 @@ typedef int ns_sockerrno_t;
 # define NS_SIGPIPE                 (SIGPIPE)
 # define NS_SIGTERM                 (SIGTERM)
 
-# define DEVNULL	            "/dev/null"
+# define DEVNULL                   "/dev/null"
 
 # define NS_MMAP_READ               (PROT_READ)
 # define NS_MMAP_WRITE              (PROT_WRITE)
 
-# define ns_mkstemp	 	    mkstemp
+# define ns_mkstemp                 mkstemp
 
 # define ns_recv                    recv
 # define ns_send                    send
@@ -480,11 +487,11 @@ typedef int ns_sockerrno_t;
 # define ns_socknbclose             close
 # define ns_sockstrerror            strerror
 
-# define ns_open		    open
-# define ns_close		    close
+# define ns_open                    open
+# define ns_close                   close
 # define ns_read                    read
 # define ns_write                   write
-# define ns_lseek		    lseek
+# define ns_lseek                   lseek
 
 # if __GNUC__
 #  if __x86_64__ || __ppc64__
@@ -536,10 +543,21 @@ typedef int ns_sockerrno_t;
 # define SOCK_CLOEXEC (0)
 #endif
 
-#if TCL_MAJOR_VERSION<8 && TCL_MINOR_VERSION<5
+#ifndef MSG_NOSIGNAL
+# define MSG_NOSIGNAL 0
+#endif
+
+#if TCL_MAJOR_VERSION<=8 && TCL_MINOR_VERSION<5
 # define NS_TCL_PRE85
 #endif
 
+#if TCL_MAJOR_VERSION<=8 && TCL_MINOR_VERSION<6
+# define NS_TCL_PRE86
+#endif
+
+#if TCL_MAJOR_VERSION<=8 && TCL_MINOR_VERSION<7
+# define NS_TCL_PRE87
+#endif
 
 #if !defined(NS_POLL_NFDS_TYPE)
 # define NS_POLL_NFDS_TYPE unsigned int
@@ -591,6 +609,9 @@ typedef int ns_sockerrno_t;
 # if __STDC_VERSION__ >= 199901L
 #  define NS_HAVE_C99
 # endif
+# if __STDC_VERSION__ >= 201112L
+#  define NS_HAVE_C11
+# endif
 #endif
 
 /*
@@ -639,7 +660,7 @@ typedef int bool;
  *     EWOULDBLOCK != WSAEWOULDBLOCK
  *     EINPROGRESS != WSAEINPROGRESS
  *     EINTR       != WSAEINTR
- * 
+ *
  * However, winsock2 continues to return the WSA values, but defined as well
  * the names without the "WSA" prefix.  So we have to abstract to NS_* to cope
  * with earlier versions and to provide cross_platform support.
@@ -648,6 +669,7 @@ typedef int bool;
  * https://lists.gnu.org/archive/html/bug-gnulib/2011-10/msg00256.html
  */
 # define NS_EWOULDBLOCK              WSAEWOULDBLOCK
+# define NS_EAGAIN                   WSAEWOULDBLOCK
 # define NS_EINPROGRESS              WSAEINPROGRESS
 # define NS_EINTR                    WSAEINTR
 # ifndef ETIMEDOUT
@@ -660,6 +682,7 @@ typedef int bool;
 # define NS_EWOULDBLOCK              EWOULDBLOCK
 # define NS_EINPROGRESS              EINPROGRESS
 # define NS_EINTR                    EINTR
+# define NS_EAGAIN                   EAGAIN
 #endif
 
 #ifndef S_ISREG
@@ -815,6 +838,8 @@ typedef int bool;
 # define PRIiovlen PRIdz
 #endif
 
+#define NS_TIME_FMT "%" PRId64 ".%06ld"
+
 /*
  * Older Solaris version (2.8-) have older definitions
  * of pointer formatting macros.
@@ -866,6 +891,14 @@ typedef int bool;
 #   endif
 #endif
 
+#if defined(HAVE_INTPTR_T) || defined(intptr_t)
+# define LONG2PTR(p) ((void*)(intptr_t)(p))
+# define PTR2LONG(p) ((long)(intptr_t)(p))
+#else
+# define LONG2PTR(p) ((void*)(p))
+# define PTR2LONG(p) ((long)(p))
+#endif
+
 #ifdef _WIN32
 # define PTR2NSSOCK(p) PTR2UINT(p)
 # define NSSOCK2PTR(p) UINT2PTR(p)
@@ -876,11 +909,11 @@ typedef int bool;
 
 
 #if defined(F_DUPFD_CLOEXEC)
-# define ns_dup(fd)	    	    fcntl((fd), F_DUPFD_CLOEXEC, 0)
+# define ns_dup(fd)     fcntl((fd), F_DUPFD_CLOEXEC, 0)
 #else
-# define ns_dup(fd)	    	    dup((fd))
+# define ns_dup(fd)     dup((fd))
 #endif
-# define ns_dup2	    	    dup2
+# define ns_dup2        dup2
 
 #ifdef __cplusplus
 # define NS_EXTERN                   extern "C" NS_STORAGE_CLASS
@@ -901,6 +934,14 @@ typedef enum {
     NS_FILTER_BREAK =     (-5), /* filter result, returned by e.g. Ns_FilterProc */
     NS_FILTER_RETURN =    (-6)  /* filter result, returned by e.g. Ns_FilterProc */
 } Ns_ReturnCode;
+
+/*
+ * The following are the possible values for specifying read/write operations.
+ */
+typedef enum {
+    NS_READ,
+    NS_WRITE
+} NS_RW;
 
 /*
  * Constants for nsthread
@@ -927,7 +968,7 @@ typedef struct Ns_Sema_     *Ns_Sema;
 typedef struct Ns_RWLock_   *Ns_RWLock;
 
 typedef struct Ns_Time {
-    long    sec;
+    time_t  sec;
     long    usec;
 } Ns_Time;
 
@@ -958,13 +999,12 @@ NS_EXTERN void Ns_MasterUnlock(void);
  * memory.c:
  */
 
-NS_EXTERN void *ns_malloc(size_t size) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
-NS_EXTERN void *ns_calloc(size_t num, size_t size) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
+NS_EXTERN void *ns_malloc(size_t size) NS_GNUC_MALLOC NS_ALLOC_SIZE(1) NS_GNUC_WARN_UNUSED_RESULT;
+NS_EXTERN void *ns_calloc(size_t num, size_t size) NS_GNUC_MALLOC NS_ALLOC_SIZE((1,2)) NS_GNUC_WARN_UNUSED_RESULT;
 NS_EXTERN void ns_free(void *buf);
-NS_EXTERN void *ns_realloc(void *buf, size_t size) NS_GNUC_WARN_UNUSED_RESULT;
+NS_EXTERN void *ns_realloc(void *buf, size_t size) NS_ALLOC_SIZE(2) NS_GNUC_WARN_UNUSED_RESULT;
 NS_EXTERN char *ns_strdup(const char *string) NS_GNUC_NONNULL(1) NS_GNUC_MALLOC NS_GNUC_WARN_UNUSED_RESULT;
 NS_EXTERN char *ns_strcopy(const char *string) NS_GNUC_MALLOC;
-NS_EXTERN char *ns_strncopy(const char *string, ssize_t size) NS_GNUC_MALLOC;
 NS_EXTERN char *ns_strncopy(const char *string, ssize_t size) NS_GNUC_MALLOC;
 NS_EXTERN int   ns_uint32toa(char *buffer, uint32_t n) NS_GNUC_NONNULL(1);
 NS_EXTERN int   ns_uint64toa(char *buffer, uint64_t n) NS_GNUC_NONNULL(1);
@@ -996,6 +1036,9 @@ NS_EXTERN void Ns_RWLockDestroy(Ns_RWLock *lockPtr);
 NS_EXTERN void Ns_RWLockRdLock(Ns_RWLock *lockPtr)    NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_RWLockWrLock(Ns_RWLock *lockPtr)    NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_RWLockUnlock(Ns_RWLock *lockPtr)    NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_RWLockList(Tcl_DString *dsPtr)      NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_RWLockSetName2(Ns_RWLock *rwPtr, const char *prefix, const char *name)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * cslock.c;
@@ -1025,12 +1068,13 @@ NS_EXTERN Ns_ReturnCode Ns_CondTimedWait(Ns_Cond *condPtr, Ns_Mutex *lockPtr,
  */
 
 NS_EXTERN struct dirent *ns_readdir(DIR *pDir)           NS_GNUC_NONNULL(1);
-NS_EXTERN struct tm *ns_localtime(const time_t *clock)   NS_GNUC_NONNULL(1);
-NS_EXTERN struct tm *ns_gmtime(const time_t *clock)      NS_GNUC_NONNULL(1);
-NS_EXTERN char *ns_ctime(const time_t *clock)            NS_GNUC_NONNULL(1);
+NS_EXTERN struct tm *ns_localtime(const time_t *timep)   NS_GNUC_NONNULL(1);
+NS_EXTERN struct tm *ns_localtime_r(const time_t *timer, struct tm *buf) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+NS_EXTERN struct tm *ns_gmtime(const time_t *timep)      NS_GNUC_NONNULL(1);
+NS_EXTERN char *ns_ctime(const time_t *timep)            NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_asctime(const struct tm *tmPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_strtok(char *s1, const char *s2)      NS_GNUC_NONNULL(2);
-NS_EXTERN char *ns_inet_ntoa(struct sockaddr *saPtr)     NS_GNUC_NONNULL(1);
+NS_EXTERN char *ns_inet_ntoa(const struct sockaddr *saPtr) NS_GNUC_NONNULL(1);
 
 /*
  * sema.c:
@@ -1056,11 +1100,12 @@ NS_EXTERN int ns_signal(int sig, void (*proc)(int));
  */
 
 NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, ssize_t stackSize,
-			       Ns_Thread *resultPtr) NS_GNUC_NONNULL(1);
-NS_EXTERN void Ns_ThreadExit(void *arg);
+                               Ns_Thread *resultPtr) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_ThreadExit(void *arg)              NS_GNUC_NORETURN;
+NS_EXTERN void* Ns_ThreadResult(void *arg);
 NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadYield(void);
-NS_EXTERN void Ns_ThreadSetName(const char *name, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 2);
+NS_EXTERN void Ns_ThreadSetName(const char *fmt, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 2);
 NS_EXTERN uintptr_t Ns_ThreadId(void);
 NS_EXTERN void Ns_ThreadSelf(Ns_Thread *threadPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN const char *Ns_ThreadGetName(void)       NS_GNUC_RETURNS_NONNULL;
@@ -1069,7 +1114,7 @@ NS_EXTERN ssize_t Ns_ThreadStackSize(ssize_t size);
 NS_EXTERN void Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-
+extern void  *NsThreadResult(void *arg);
 
 /*
  * time.c:
@@ -1077,17 +1122,19 @@ NS_EXTERN void Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSiz
 
 NS_EXTERN void Ns_GetTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_AdjTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
-NS_EXTERN void Ns_IncrTime(Ns_Time *timePtr, long sec, long usec)  NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_IncrTime(Ns_Time *timePtr, time_t sec, long usec)  NS_GNUC_NONNULL(1);
 NS_EXTERN Ns_Time *Ns_AbsoluteTime(Ns_Time *absPtr, Ns_Time *adjPtr)  NS_GNUC_NONNULL(1);
 NS_EXTERN long Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *resultPtr)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+NS_EXTERN time_t Ns_TimeToMilliseconds(const Ns_Time *timePtr)  NS_GNUC_NONNULL(1) NS_GNUC_PURE;
+
 /*
  * tls.c:
  */
 
 NS_EXTERN void Ns_TlsAlloc(Ns_Tls *tlsPtr, Ns_TlsCleanup *cleanup) NS_GNUC_NONNULL(1);
-NS_EXTERN void Ns_TlsSet(Ns_Tls *tlsPtr, void *value) NS_GNUC_NONNULL(1);
-NS_EXTERN void *Ns_TlsGet(Ns_Tls *tlsPtr) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_TlsSet(const Ns_Tls *tlsPtr, void *value) NS_GNUC_NONNULL(1);
+NS_EXTERN void *Ns_TlsGet(const Ns_Tls *tlsPtr) NS_GNUC_NONNULL(1);
 
 /*
  * winthread.c:

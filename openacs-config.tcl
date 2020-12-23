@@ -6,7 +6,7 @@
 # Two servers with default settings cannot run on the same host
 #
 ######################################################################
-ns_log notice "nsd.tcl: starting to read config file..."
+ns_log notice "nsd.tcl: starting to read configuration file..."
 
 #---------------------------------------------------------------------
 # Change the HTTP and HTTPS port to e.g. 80 and 443 for production use.
@@ -133,7 +133,13 @@ ns_section ns/parameters {
     # specified either, a system specific constant us used
     # (compile time macro P_tmpdir)
     #
-    # ns_param        tmpdir          c:/tmp
+    # ns_param        tmpdir    c:/tmp
+
+    # Timeout for shutdown to let existing connections and background
+    # jobs finish.  When this time limit is exceeded the server shuts
+    # down immediately.
+    #
+    # ns_param    shutdowntimeout 20s      ;# 20s is the default
 
     #
     # Configuration of error.log
@@ -141,7 +147,7 @@ ns_section ns/parameters {
     # Rolling of logfile:
     ns_param	logroll		on
     ns_param	logmaxbackup	100      ;# 10 is default
-    ns_param	logrollfmt	%Y-%m-%d ;# format appended to serverlog file name when rolled
+    ns_param	logrollfmt	%Y-%m-%d ;# format appended to serverlog filename when rolled
     #
     # Format of log entries:
     # ns_param  logusec         true     ;# add timestamps in microsecond (usec) resolution (default: false)
@@ -154,11 +160,16 @@ ns_section ns/parameters {
     ns_param	logdebug	$debug    ;# debug messages
     ns_param	logdev		$dev      ;# development message
     ns_param    lognotice       true      ;# informational messages
+    #ns_param   sanitizelogfiles 2        ;# default: 2; 0: none, 1: full, 2: human-friendly
 
-    # ns_param	mailhost	localhost
-    # ns_param	jobsperthread	0
-    # ns_param	jobtimeout	300
-    # ns_param	schedsperthread	0
+    # ns_param	mailhost            localhost
+
+    # ns_param	jobsperthread       0     ;# number of ns_jobs before thread exits
+    # ns_param	jobtimeout          5m    ;# default "ns_job wait" timeout
+    # ns_param	joblogminduration   1s    ;# default: 1s
+
+    # ns_param	schedsperthread     0     ;# number of scheduled jobs before thread exits
+    # ns_param	schedlogminduration 2s    ;# print warnings when scheduled job takes longer than that
 
     # Write asynchronously to log files (access log and error log)
     # ns_param	asynclogwriter	true		;# false
@@ -179,7 +190,7 @@ ns_section ns/parameters {
     # Enforce sequential thread initialization. This is not really
     # desirably in general, but might be useful for hunting strange
     # crashes or for debugging with valgrind.
-    # ns_param	tclinitlock	true	       ;# default: false
+    # ns_param	tclinitlock	true           ;# default: false
 
     #
     # Encoding settings (see http://dqd.com/~mayoff/encoding-doc.html)
@@ -198,12 +209,12 @@ ns_section ns/parameters {
     # DNS configuration parameters
     #
     ns_param dnscache true          ;# default: true
-    ns_param dnswaittimeout 5       ;# time for waiting for a DNS reply in seconds; default: 5
-    ns_param keepwaittimeout 60     ;# time to keep entries in cache in minutes; default: 60
+    ns_param dnswaittimeout 5s      ;# time for waiting for a DNS reply; default: 5s
+    ns_param dnscachetimeout 1h     ;# time to keep entries in cache; default: 1h
     ns_param dnscachemaxsize 500kB  ;# max size of DNS cache in memory units; default: 500kB
 
-    # Running behind proxy? Used by OpenACS...
-    ns_param ReverseProxyMode	$proxy_mode
+    # Running behind proxy? Used also by OpenACS...
+    ns_param reverseproxymode	$proxy_mode
 }
 
 #---------------------------------------------------------------------
@@ -218,7 +229,7 @@ ns_section ns/servers {
 #---------------------------------------------------------------------
 # Global server modules
 #---------------------------------------------------------------------
-ns_section "ns/modules" {
+ns_section ns/modules {
     #
     # Load networking modules named "nssock" and/or "nsssl" depending
     # on existence of Tcl variables "httpport" and "httpsport".
@@ -235,46 +246,46 @@ if {[info exists httpport]} {
     # We have an "httpport" configured, so configure this module.
     #
     ns_section ns/module/nssock {
-	ns_param	defaultserver	$server
-	ns_param	address		$addresses
-	ns_param	hostname	$hostname
-	ns_param	port		$httpport                ;# default 80
-	ns_param	maxinput	${max_file_upload_mb}MB  ;# 1MB, maximum size for inputs (uploads)
-	ns_param	recvwait	[expr {$max_file_upload_min * 60}] ;# 30, timeout for receive operations
-	# ns_param	maxline		8192	;# 8192, max size of a header line
-	# ns_param	maxheaders	128	;# 128, max number of header lines
-	# ns_param	uploadpath	/tmp	;# directory for uploads
-	# ns_param	backlog		256	;# 256, backlog for listen operations
-	# ns_param	maxqueuesize	256	;# 1024, maximum size of the queue
-	# ns_param	acceptsize	10	;# Maximum number of requests accepted at once.
-	# ns_param	deferaccept     true    ;# false, Performance optimization, may cause recvwait to be ignored
-	# ns_param	bufsize		16kB	;# 16kB, buffersize
-	# ns_param	readahead	16kB	;# value of bufsize, size of readahead for requests
-	# ns_param	sendwait	30	;# 30, timeout in seconds for send operations
-	# ns_param	closewait	2	;# 2, timeout in seconds for close on socket
-	# ns_param	keepwait	2	;# 5, timeout in seconds for keep-alive
-	# ns_param	nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
-	# ns_param	keepalivemaxuploadsize	  500kB  ;# 0, don't allow keep-alive for upload content larger than this
-	# ns_param	keepalivemaxdownloadsize  1MB    ;# 0, don't allow keep-alive for download content larger than this
-	# ns_param	spoolerthreads	1	;# 0, number of upload spooler threads
-	ns_param	maxupload	100kB	;# 0, when specified, spool uploads larger than this value to a temp file
-	ns_param	writerthreads	2	;# 0, number of writer threads
-	ns_param	writersize	1kB	;# 1MB, use writer threads for files larger than this value
-	# ns_param	writerbufsize	8kB	;# 8kB, buffer size for writer threads
-	# ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
+        ns_param	defaultserver	$server
+        ns_param	address		$addresses
+        ns_param	hostname	$hostname
+        ns_param	port		$httpport                ;# default 80
+        ns_param	maxinput	${max_file_upload_mb}MB  ;# 1MB, maximum size for inputs (uploads)
+        ns_param	recvwait	${max_file_upload_min}m  ;# 30s, timeout for receive operations
+        # ns_param	maxline		8192	;# 8192, max size of a header line
+        # ns_param	maxheaders	128	;# 128, max number of header lines
+        # ns_param	uploadpath	/tmp	;# directory for uploads
+        # ns_param	backlog		256	;# 256, backlog for listen operations
+        # ns_param	maxqueuesize	256	;# 1024, maximum size of the queue
+        # ns_param	acceptsize	10	;# Maximum number of requests accepted at once.
+        # ns_param	deferaccept     true    ;# false, Performance optimization, may cause recvwait to be ignored
+        # ns_param	bufsize		16kB	;# 16kB, buffersize
+        # ns_param	readahead	16kB	;# value of bufsize, size of readahead for requests
+        # ns_param	sendwait	30s	;# 30s, timeout for send operations
+        # ns_param	closewait	2s	;# 2s, timeout for close on socket
+        # ns_param	keepwait	2s	;# 5s, timeout for keep-alive
+        # ns_param	nodelay         false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
+        # ns_param	keepalivemaxuploadsize    500kB  ;# 0, don't allow keep-alive for upload content larger than this
+        # ns_param	keepalivemaxdownloadsize  1MB    ;# 0, don't allow keep-alive for download content larger than this
+        # ns_param	spoolerthreads	1	;# 0, number of upload spooler threads
+        ns_param	maxupload	100kB	;# 0, when specified, spool uploads larger than this value to a temp file
+        ns_param	writerthreads	2	;# 0, number of writer threads
+        ns_param	writersize	1kB	;# 1MB, use writer threads for files larger than this value
+        # ns_param	writerbufsize	8kB	;# 8kB, buffer size for writer threads
+        # ns_param	writerstreaming	true	;# false;  activate writer for streaming HTML output (when using ns_write)
 
-	#
-	# Options for port reuse (see https://lwn.net/Articles/542629/)
-	# These options require proper OS support.
-	#
-	# ns_param  reuseport       true    ;# false;  normally not needed to be set, set by driverthreads when necessary
-	# ns_param	driverthreads	2	;# 1; use multiple driver threads; activates "reuseport"
+        #
+        # Options for port reuse (see https://lwn.net/Articles/542629/)
+        # These options require proper OS support.
+        #
+        # ns_param  reuseport       true    ;# false;  normally not needed to be set, set by driverthreads when necessary
+        # ns_param	driverthreads	2	;# 1; use multiple driver threads; activates "reuseport"
 
-	#
-	# Extra driver-specific response headers fields to be added for
-	# every request.
-	#
-	ns_param    extraheaders    $nssock_extraheaders
+        #
+        # Extra driver-specific response headers fields to be added for
+        # every request.
+        #
+        ns_param    extraheaders    $nssock_extraheaders
     }
     #
     # Define, which "host" (as supplied by the "host:" header
@@ -282,8 +293,10 @@ if {[info exists httpport]} {
     # which server.
     #
     ns_section ns/module/nssock/servers {
-	ns_param $server $hostname
-	ns_param $server $address
+        ns_param $server $hostname
+        foreach address $addresses {
+            ns_param $server $address
+        }
     }
 }
 
@@ -296,31 +309,35 @@ if {[info exists httpsport]} {
     # We have an "httpsport" configured, so configure this module.
     #
     ns_section ns/module/nsssl {
-	ns_param defaultserver	$server
-	ns_param address	$addresses
-	ns_param port		$httpsport
-	ns_param hostname	$hostname
-	ns_param ciphers	"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
-	ns_param protocols	"!SSLv2:!SSLv3"
-	ns_param certificate	$serverroot/etc/certfile.pem
-	ns_param verify		0
-	ns_param writerthreads	2
-	ns_param writersize	1kB
-	ns_param writerbufsize	16kB	;# 8kB, buffer size for writer threads
-	#ns_param nodelay	false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
-	#ns_param writerstreaming	true	;# false
-	#ns_param deferaccept	true    ;# false, Performance optimization
-	ns_param maxinput	${max_file_upload_mb}MB   ;# Maximum file size for uploads in bytes
-	ns_param extraheaders	$nsssl_extraheaders
+        ns_param defaultserver	$server
+        ns_param address	$addresses
+        ns_param port		$httpsport
+        ns_param hostname	$hostname
+        ns_param ciphers	"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
+        ns_param protocols	"!SSLv2:!SSLv3"
+        ns_param certificate	$serverroot/etc/certfile.pem
+        ns_param verify		0
+        ns_param writerthreads	2
+        ns_param writersize	1kB
+        ns_param writerbufsize	16kB	;# 8kB, buffer size for writer threads
+        #ns_param nodelay	false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
+        #ns_param writerstreaming	true	;# false
+        #ns_param deferaccept	true    ;# false, Performance optimization
+        ns_param maxinput	${max_file_upload_mb}MB   ;# Maximum file size for uploads in bytes
+        ns_param extraheaders	$nsssl_extraheaders
+        ns_param OCSPstapling   on        ;# off; activate OCSP stapling
+        #ns_param OCSPstaplingVerbose  on ;# off; make OCSP stapling more verbose
     }
     #
-    # Define, which "host" (as supplied by the "host:" header
-    # field) accepted over this driver should be associated with
-    # which server.
+    # Define, which "host" (as supplied by the "host:" header field)
+    # accepted over this driver should be associated with which
+    # server. This parameter is for virtual servers. Here we just
+    # register the $hostname and the $address (in case, the server is
+    # addressed via its IP address).
     #
     ns_section ns/module/nsssl/servers {
-	ns_param $server $hostname
-	ns_param $server $address
+        ns_param $server $hostname
+        ns_param $server $address
     }
 }
 
@@ -340,8 +357,8 @@ ns_section ns/mimetypes {
     #  see: /usr/local/src/naviserver/nsd/mimetypes.c
     #  but in case something is missing you can add it here.
 
-    #ns_param	Default		*/*
-    #ns_param	NoExtension	*/*
+    #ns_param	default		*/*
+    #ns_param	noextension	text/html
     #ns_param	.pcd		image/x-photo-cd
     #ns_param	.prc		application/x-pilot
 }
@@ -349,7 +366,7 @@ ns_section ns/mimetypes {
 #---------------------------------------------------------------------
 # Global fastpath parameters
 #---------------------------------------------------------------------
-ns_section      "ns/fastpath" {
+ns_section ns/fastpath {
     #ns_param        cache               true       ;# default: false
     #ns_param        cachemaxsize        10MB       ;# default: 10MB
     #ns_param        cachemaxentry       100kB      ;# default: 8kB
@@ -377,28 +394,31 @@ ns_section      "ns/fastpath" {
 #
 # Server parameters
 #
-ns_section ns/server/${server} {
+ns_section ns/server/$server {
     #
     # Scaling and Tuning Options
     #
     # ns_param	maxconnections	100	;# 100; number of allocated connection structures
+    ns_param    rejectoverrun   true    ;# false (send 503 when queue overruns)
+    #ns_param   retryafter      5s      ;# time for Retry-After in 503 cases
+
     # ns_param	maxthreads	10	;# 10; maximal number of connection threads
     ns_param	minthreads	2	;# 1; minimal number of connection threads
 
     ns_param	connsperthread	1000	;# 10000; number of connections (requests) handled per thread
     ;# Setting connsperthread to > 0 will cause the thread to
-    ;# graciously exit, after processing that many
-    ;# requests, thus initiating kind-of Tcl-level
-    ;# garbage collection.
+    ;# graciously exit, after processing that many requests, thus
+    ;# initiating kind-of Tcl-level garbage collection.
 
-    # ns_param	threadtimeout	120	;# 120; timeout for idle threads.
-    ;# In case, minthreads < maxthreads, threads
-    ;# are shutdown after this idle time until
-    ;# minthreads are reached.
+    # ns_param	threadtimeout	2m	;# 2m; timeout for idle threads.
+    ;# In case, minthreads < maxthreads, threads are shutdown after
+    ;# this idle time until minthreads are reached.
 
-    # ns_param	lowwatermark	10      ;# 10; create additional threads above this queue-full percentage
-    ns_param	highwatermark	100     ;# 80; allow concurrent creates above this queue-is percentage
-    ;# 100 means to disable concurrent creates
+    # ns_param	lowwatermark	10       ;# 10; create additional threads above this queue-full percentage
+    ns_param	highwatermark	100      ;# 80; allow concurrent creates above this queue-is percentage
+                                         ;# 100 means to disable concurrent creates
+    #ns_param    connectionratelimit 200 ;# 0; limit rate per connection to this amount (KB/s); 0 means unlimited
+    #ns_param    poolratelimit   200     ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
 
     # Compress response character data: ns_return, ADP etc.
     #
@@ -426,10 +446,87 @@ ns_section ns/server/${server} {
     #ns_param    extraheaders    {...}
 }
 
+########################################################################
+# Connection thread pools.
+#
+#  Per default, NaviServer uses a "default" connection pool, which
+#  needs no extra configuration.  Optionally, multiple connection
+#  thread pools can be configured using the following parameters.
+#
+#       map
+#       connsperthread
+#       highwatermark
+#       lowwatermark
+#       maxconnections
+#       rejectoverrun
+#       retryafter
+#       maxthreads
+#       minthreads
+#       poolratelimit
+#       connectionratelimit
+#       threadtimeout
+#
+# In order to define thread pools, do the following:
+#
+#  1. Add pool names to "ns/server/$server/pools"
+#  2. Configure pools with the noted parameters
+#  3. Map method/URL combinations for these pools
+#
+#  All unmapped method/URL's will go to the default server pool of the
+#  server.
+#
+########################################################################
+
+ns_section ns/server/$server/pools {
+    #
+    # To activate connection thread pools, uncomment one of the
+    # following lines and/or add other pools.
+
+    #ns_param   monitor	"Monitoring actions to check heathiness of the system"
+    #ns_param   fast	"Fast requests, e.g. less than 10ms"
+    #ns_param   slow 	"Slow lane pool, for request remapping"
+}
+
+ns_section ns/server/$server/pool/monitor {
+    ns_param   minthreads 2
+    ns_param   maxthreads 2
+
+    ns_param   map "GET /SYSTEM"
+    ns_param   map "GET /admin/nsstats"
+    ns_param   map "GET /ds"
+    ns_param   map "GET /request-monitor"
+    ns_param   map "POST /SYSTEM"
+    ns_param   map "POST /admin/nsstats"
+    ns_param   map "POST /ds"
+}
+
+ns_section ns/server/$server/pool/fast {
+    ns_param   minthreads 2
+    ns_param   maxthreads 2
+    ns_param   rejectoverrun true
+
+    ns_param   map "GET /*.png"
+    ns_param   map "GET /*.PNG"
+    ns_param   map "GET /*.jpg"
+    ns_param   map "GET /*.pdf"
+    ns_param   map "GET /*.gif"
+    ns_param   map "GET /*.mp4"
+    ns_param   map "GET /*.ts"
+    ns_param   map "GET /*.m3u8"
+}
+
+ns_section ns/server/$server/pool/slow {
+    ns_param   minthreads 2
+    ns_param   maxthreads 5
+    ns_param   maxconnections 600
+    ns_param   rejectoverrun true
+}
+
+
 #---------------------------------------------------------------------
 # Special HTTP pages
 #---------------------------------------------------------------------
-ns_section ns/server/${server}/redirects {
+ns_section ns/server/$server/redirects {
     ns_param   404 /shared/404
     ns_param   403 /shared/403
     ns_param   503 /shared/503
@@ -439,7 +536,7 @@ ns_section ns/server/${server}/redirects {
 #---------------------------------------------------------------------
 # ADP (AOLserver Dynamic Page) configuration
 #---------------------------------------------------------------------
-ns_section ns/server/${server}/adp {
+ns_section ns/server/$server/adp {
     ns_param	enabledebug	$debug
     ns_param	map		/*.adp		;# Extensions to parse as ADP's
     # ns_param	map		"/*.html"	;# Any extension can be mapped
@@ -467,20 +564,21 @@ ns_section ns/server/${server}/adp {
     #
 }
 
-ns_section ns/server/${server}/adp/parsers {
+ns_section ns/server/$server/adp/parsers {
     ns_param	fancy		".adp"
 }
 
 #
 # Tcl Configuration
 #
-ns_section ns/server/${server}/tcl {
+ns_section ns/server/$server/tcl {
     ns_param	library		${serverroot}/tcl
     ns_param	debug		$debug
     # ns_param	nsvbuckets	16       ;# default: 8
+    # ns_param	nsvrwlocks      false    ;# default: true
 }
 
-ns_section "ns/server/${server}/fastpath" {
+ns_section ns/server/$server/fastpath {
     ns_param	serverdir	${homedir}
     ns_param	pagedir		${pageroot}
     #
@@ -492,13 +590,27 @@ ns_section "ns/server/${server}/fastpath" {
     # ns_param	directorylisting	fancy                 ;# Can be simple or fancy
     #
 }
+
+#---------------------------------------------------------------------
+# HTTP client configuration
+#---------------------------------------------------------------------
+ns_section ns/server/$server/httpclient {
+    ns_param	logging		on ;# default: off
+    ns_param	logfile		${logroot}/httpclient.log
+    ns_param	logrollfmt	%Y-%m-%d ;# format appended to log filename
+    #ns_param	logmaxbackup	100      ;# 10, max number of backup log files
+    #ns_param	logroll		true     ;# true, should server log files automatically
+    #ns_param	logrollonsignal	true     ;# false, perform roll on a sighup
+    #ns_param	logrollhour	0        ;# 0, specify at which hour to roll
+}
+
 #---------------------------------------------------------------------
 # OpenACS specific settings (per server)
 #---------------------------------------------------------------------
 #
 # Define/override kernel parameters in section /acs
 #
-ns_section ns/server/${server}/acs {
+ns_section ns/server/$server/acs {
     ns_param NsShutdownWithNonZeroExitCode 1
     # ns_param WithDeprecatedCode 0
     # ns_param LogIncludeUserId 1
@@ -510,7 +622,7 @@ ns_section ns/server/${server}/acs {
 #
 # Provide tailored sizes for the site node cache in acs-tcl:
 #
-ns_section ns/server/${server}/acs/acs-tcl {
+ns_section ns/server/$server/acs/acs-tcl {
     # ns_param SiteNodesCacheSize        2000000
     # ns_param SiteNodesIdCacheSize       100000
     # ns_param SiteNodesChildenCacheSize  100000
@@ -523,7 +635,7 @@ ns_section ns/server/${server}/acs/acs-tcl {
 # EmailDeliveryMode. Setting this to "log" is useful for developer
 # instances.
 #
-ns_section ns/server/${server}/acs/acs-mail-lite {
+ns_section ns/server/$server/acs/acs-mail-lite {
     # ns_param EmailDeliveryMode log
 }
 
@@ -531,31 +643,31 @@ ns_section ns/server/${server}/acs/acs-mail-lite {
 # API browser configuration: setting IncludeCallingInfo to "true" is
 # useful mostly for developer instances.
 #
-ns_section ns/server/${server}/acs/acs-api-browser {
+ns_section ns/server/$server/acs/acs-api-browser {
     # ns_param IncludeCallingInfo true
 }
 
 #---------------------------------------------------------------------
 # WebDAV Support (optional, requires oacs-dav package to be installed
 #---------------------------------------------------------------------
-ns_section ns/server/${server}/tdav {
-    ns_param	propdir		   ${serverroot}/data/dav/properties
-    ns_param	lockdir		   ${serverroot}/data/dav/locks
+ns_section ns/server/$server/tdav {
+    ns_param	propdir            ${serverroot}/data/dav/properties
+    ns_param	lockdir            ${serverroot}/data/dav/locks
     ns_param	defaultlocktimeout 300
 }
 
-ns_section ns/server/${server}/tdav/shares {
+ns_section ns/server/$server/tdav/shares {
     ns_param	share1		"OpenACS"
     # ns_param	share2		"Share 2 description"
 }
 
-ns_section ns/server/${server}/tdav/share/share1 {
+ns_section ns/server/$server/tdav/share/share1 {
     ns_param	uri		"/dav/*"
     # all WebDAV options
     ns_param	options		"OPTIONS COPY GET PUT MOVE DELETE HEAD MKCOL POST PROPFIND PROPPATCH LOCK UNLOCK"
 }
 
-#ns_section ns/server/${server}/tdav/share/share2 {
+#ns_section ns/server/$server/tdav/share/share2 {
 # ns_param	uri "/share2/path/*"
 # read-only WebDAV options
 # ns_param options "OPTIONS COPY GET HEAD MKCOL POST PROPFIND PROPPATCH"
@@ -565,7 +677,7 @@ ns_section ns/server/${server}/tdav/share/share1 {
 #---------------------------------------------------------------------
 # Access log -- nslog
 #---------------------------------------------------------------------
-ns_section ns/server/${server}/module/nslog {
+ns_section ns/server/$server/module/nslog {
     #
     # General parameters for access.log
     #
@@ -586,11 +698,11 @@ ns_section ns/server/${server}/module/nslog {
     ns_param	maskipv6        ff:ff:ff:ff::  ;# mask for IPv6 addresses
 
     #
-    # Add extra entries to the access log via specifying a comma delimited
+    # Add extra entries to the access log via specifying a Tcl
     # list of request header fields in "extendedheaders"
     #
-    if {[ns_config "ns/server/${server}/acs" LogIncludeUserId 0]} {
-	ns_param   extendedheaders    "X-User-Id"
+    if {[ns_config "ns/server/$server/acs" LogIncludeUserId 0]} {
+        ns_param   extendedheaders    "X-User-Id"
     }
 
     #
@@ -601,60 +713,65 @@ ns_section ns/server/${server}/module/nslog {
     # ns_param	rolllog		true	;# true, should server log files automatically
     # ns_param	rollhour	0	;# 0, specify at which hour to roll
     # ns_param	rollonsignal	true	;# false, perform roll on a sighup
-    ns_param	rollfmt		%Y-%m-%d ;# format appended to log file name
+    ns_param	rollfmt		%Y-%m-%d ;# format appended to log filename
 }
 
 #---------------------------------------------------------------------
 #
-# CGI interface -- nscgi, if you have legacy stuff. Tcl or ADP files inside
-# NaviServer are vastly superior to CGIs. I haven't tested these params but they
-# should be right.
+# CGI interface -- nscgi, if you have legacy stuff. Tcl or ADP files
+# inside NaviServer are vastly superior to CGIs.
 #
 #---------------------------------------------------------------------
-#ns_section "ns/server/${server}/module/nscgi"
-#       ns_param	map	"GET  /cgi-bin ${serverroot}/cgi-bin"
-#       ns_param	map	"POST /cgi-bin ${serverroot}/cgi-bin"
-#       ns_param	Interps CGIinterps
-#       ns_param        allowstaticresources true    ;# default: false
-
-#ns_section "ns/interps/CGIinterps"
-#       ns_param .pl "/usr/bin/perl"
-
+# ns_section ns/server/$server/modules {
+#     ns_param	nscgi ${bindir}/nscgi
+# }
+# ns_section ns/server/$server/module/nscgi {
+#     ns_param  map	"GET  /cgi-bin ${serverroot}/cgi-bin"
+#     ns_param  map	"POST /cgi-bin ${serverroot}/cgi-bin"
+#     ns_param  Interps CGIinterps
+#     ns_param  allowstaticresources true    ;# default: false
+# }
+# ns_section ns/interps/CGIinterps {
+#     ns_param .pl "/usr/bin/perl"
+# }
 
 #---------------------------------------------------------------------
 #
 # PAM authentication
 #
 #---------------------------------------------------------------------
-ns_section ns/server/${server}/module/nspam {
-    ns_param	PamDomain          "pam_domain"
-}
+# ns_section ns/server/$server/modules {
+#     ns_param	nspam ${bindir}/nspam
+# }
+# ns_section ns/server/$server/module/nspam {
+#     ns_param	PamDomain "pam_domain"
+# }
 
 #---------------------------------------------------------------------
 #
-# Database drivers
-# The database driver is specified here.
-# Make sure you have the driver compiled and put it in $bindir.
+# Database drivers:
+#
+# Make sure the drivers are compiled and put it in $bindir.
 #
 #---------------------------------------------------------------------
-ns_section "ns/db/drivers" {
+ns_section ns/db/drivers {
 
     if { $database eq "oracle" } {
-	ns_param	ora8           ${bindir}/ora8
+        ns_param	ora8           ${bindir}/ora8
     } else {
-	ns_param	postgres       ${bindir}/nsdbpg
-	#
-	ns_logctl severity "Debug(sql)" -color blue $verboseSQL
+        ns_param	postgres       ${bindir}/nsdbpg
+        #
+        ns_logctl severity "Debug(sql)" -color blue $verboseSQL
     }
 
     if { $database eq "oracle" } {
-	ns_section "ns/db/driver/ora8"
-	ns_param	maxStringLogLength -1
-	ns_param	LobBufferSize      32768
+        ns_section ns/db/driver/ora8
+        ns_param	maxStringLogLength -1
+        ns_param	LobBufferSize      32768
     } else {
-	ns_section "ns/db/driver/postgres"
-	# Set this parameter, when "psql" is not on your path (OpenACS specific)
-	# ns_param	pgbin	"/usr/local/pg960/bin/"
+        ns_section ns/db/driver/postgres
+        # Set this parameter, when "psql" is not on your path (OpenACS specific)
+        # ns_param	pgbin	"/usr/local/pg960/bin/"
     }
 }
 
@@ -669,7 +786,7 @@ ns_section "ns/db/drivers" {
 #
 #     http://openacs.org/doc/tutorial-second-database
 #
-ns_section ns/server/${server}/db {
+ns_section ns/server/$server/db {
     ns_param	pools              pool1,pool2,pool3
     ns_param	defaultpool        pool1
 }
@@ -680,21 +797,22 @@ ns_section ns/db/pools {
 }
 
 ns_section ns/db/pool/pool1 {
-    # ns_param	maxidle            0
-    # ns_param	maxopen            0
+    # ns_param	maxidle            0     ;# time interval for shut-down of idle connections; default: 5m
+    # ns_param	maxopen            0     ;# time interval for maximum time of open connections; default: 60m
+    # ns_param  checkinterval      5m    ;# check pools for stale handles in this interval
     ns_param	connections        15
-    ns_param    LogMinDuration     0.01   ;# when SQL logging is on, log only statements above this duration
+    ns_param    LogMinDuration     10ms  ;# when SQL logging is on, log only statements above this duration
     ns_param	logsqlerrors       $debug
     if { $database eq "oracle" } {
-	ns_param	driver             ora8
-	ns_param	datasource         {}
-	ns_param	user               $db_name
-	ns_param	password           $db_password
+        ns_param	driver             ora8
+        ns_param	datasource         {}
+        ns_param	user               $db_name
+        ns_param	password           $db_password
     } else {
-	ns_param	driver             postgres
-	ns_param	datasource         ${db_host}:${db_port}:dbname=${db_name}
-	ns_param	user               $db_user
-	ns_param	password           ""
+        ns_param	driver             postgres
+        ns_param	datasource         ${db_host}:${db_port}:dbname=${db_name}
+        ns_param	user               $db_user
+        ns_param	password           ""
     }
 }
 #
@@ -702,44 +820,46 @@ ns_section ns/db/pool/pool1 {
 # consider the two commands (e.g. entered over ds/shell)
 #
 #    ns_logctl severity "Debug(sql)" on
-#    ns_db logminduration pool1  0.01
+#    ns_db logminduration pool1  10ms
 #
 
 ns_section ns/db/pool/pool2 {
     # ns_param	maxidle            0
     # ns_param	maxopen            0
+    # ns_param  checkinterval      5m    ;# check pools for stale handles in this interval
     ns_param	connections        5
-    ns_param    LogMinDuration     0.01   ;# when SQL logging is on, log only statements above this duration
+    ns_param    LogMinDuration     10ms  ;# when SQL logging is on, log only statements above this duration
     ns_param	logsqlerrors       $debug
     if { $database eq "oracle" } {
-	ns_param	driver             ora8
-	ns_param	datasource         {}
-	ns_param	user               $db_name
-	ns_param	password           $db_password
+        ns_param	driver             ora8
+        ns_param	datasource         {}
+        ns_param	user               $db_name
+        ns_param	password           $db_password
     } else {
-	ns_param	driver             postgres
-	ns_param	datasource         ${db_host}:${db_port}:dbname=${db_name}
-	ns_param	user               $db_user
-	ns_param	password           ""
+        ns_param	driver             postgres
+        ns_param	datasource         ${db_host}:${db_port}:dbname=${db_name}
+        ns_param	user               $db_user
+        ns_param	password           ""
     }
 }
 
 ns_section ns/db/pool/pool3 {
     # ns_param	maxidle            0
     # ns_param	maxopen            0
+    # ns_param  checkinterval      5m    ;# check pools for stale handles in this interval
     ns_param	connections        5
-    # ns_param  LogMinDuration     0.00   ;# when SQL logging is on, log only statements above this duration
+    # ns_param  LogMinDuration     0ms  ;# when SQL logging is on, log only statements above this duration
     ns_param	logsqlerrors       $debug
     if { $database eq "oracle" } {
-	ns_param	driver             ora8
-	ns_param	datasource         {}
-	ns_param	user               $db_name
-	ns_param	password           $db_password
+        ns_param	driver             ora8
+        ns_param	datasource         {}
+        ns_param	user               $db_name
+        ns_param	password           $db_password
     } else {
-	ns_param	driver             postgres
-	ns_param	datasource         ${db_host}:${db_port}:dbname=${db_name}
-	ns_param	user               $db_user
-	ns_param	password           ""
+        ns_param	driver             postgres
+        ns_param	datasource         ${db_host}:${db_port}:dbname=${db_name}
+        ns_param	user               $db_user
+        ns_param	password           ""
     }
 }
 
@@ -749,7 +869,7 @@ ns_section ns/db/pool/pool3 {
 # the server, so don't uncomment modules unless they have been
 # installed.
 
-ns_section ns/server/${server}/modules {
+ns_section ns/server/$server/modules {
     ns_param	nslog		${bindir}/nslog
     ns_param	nsdb		${bindir}/nsdb
     ns_param	nsproxy		${bindir}/nsproxy
@@ -759,24 +879,20 @@ ns_section ns/server/${server}/modules {
     #
     set libthread [lindex [lsort [glob -nocomplain $homedir/lib/thread*/libthread*[info sharedlibextension]]] end]
     if {$libthread eq ""} {
-	ns_log notice "No Tcl thread library installed in $homedir/lib/"
+        ns_log notice "No Tcl thread library installed in $homedir/lib/"
     } else {
-	ns_param	libthread $libthread
-	ns_log notice "Use Tcl thread library $libthread"
+        ns_param	libthread $libthread
+        ns_log notice "Use Tcl thread library $libthread"
     }
 
     # authorize-gateway package requires dqd_utils
     # ns_param	dqd_utils dqd_utils[expr {int($tcl_version)}]
-
-    # PAM authentication
-    # ns_param	nspam              ${bindir}/nspam
 
     # LDAP authentication
     # ns_param	nsldap             ${bindir}/nsldap
 
     # These modules aren't used in standard OpenACS installs
     # ns_param	nsperm             ${bindir}/nsperm
-    # ns_param	nscgi              ${bindir}/nscgi
 }
 
 
@@ -784,21 +900,22 @@ ns_section ns/server/${server}/modules {
 #
 # nsproxy configuration
 #
-ns_section ns/server/${server}/module/nsproxy {
-    # ns_param	maxslaves          8
-    # ns_param	sendtimeout        5000
-    # ns_param	recvtimeout        5000
-    # ns_param	waittimeout        100
-    # ns_param	idletimeout        3000000
+ns_section ns/server/$server/module/nsproxy {
+    # ns_param	maxworkers         8
+    # ns_param	sendtimeout        5s
+    # ns_param	recvtimeout        5s
+    # ns_param	waittimeout        100ms
+    # ns_param	idletimeout        5m
+    # ns_param	logminduration     1s
 }
 
 #
 # nsstats configuration (global module)
 #
 # When installed under acs-subsite/www/admin/nsstats.tcl it is due to
-# its /admin/ location save from public access.
+# its /admin/ location safe from public access.
 #
-ns_section "ns/module/nsstats" {
+ns_section ns/module/nsstats {
     ns_param enabled  1
     ns_param user     ""
     ns_param password ""
@@ -811,4 +928,4 @@ ns_section "ns/module/nsstats" {
 #ns_log notice "nsd.tcl: ns_rlimit coresize [ns_rlimit coresize unlimited]"
 
 ns_log notice "nsd.tcl: using threadsafe tcl: [info exists tcl_platform(threaded)]"
-ns_log notice "nsd.tcl: finished reading config file."
+ns_log notice "nsd.tcl: finished reading configuration file."

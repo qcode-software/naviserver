@@ -51,11 +51,11 @@ by the server process.
 statistics and reset whenever the server is signaled.
 
 [example_begin]
-[cmd ns_atsignal] {
-    foreach cache [lb]ns_cache_names[rb] {
-        ns_log notice "cache\[lb]$cache\[rb]: [lb]ns_cache_stats -reset -- $cache[rb]"
-    }
-}
+ [cmd ns_atsignal] {
+   foreach cache [lb]ns_cache_names[rb] {
+      ns_log notice "cache\[lb]$cache\[rb]: [lb]ns_cache_stats -reset -- $cache[rb]"
+   }
+ }
 [example_end]
 
 
@@ -67,11 +67,11 @@ At-shutdown procs are called in LIFO order when the server performs a controlled
 shutdown after all other subsystem have been stopped.
 
 [para]
-Orderly shutdown is attempted within [term shutdowntimeout] seconds, as
+Orderly shutdown is attempted within [term shutdowntimeout], as
 specified in the configuration file. Tcl shutdown procs are called before C
 shutdown tasks are waited on, so should be well-behaved.
 
-[para] Do not attempt to use other sub-systems for shutdown jobs, such
+[para] Do not attempt to use other subsystems for shutdown jobs, such
 as the [cmd ns_job] command.
 
 
@@ -89,7 +89,7 @@ basically the last code to run.
 [list_end]
 
 
-[see_also ns_info ns_atclose ns_ictl]
+[see_also ns_info ns_atclose ns_ictl ns_runonce]
 [keywords "global built-in" signal startup shutdown exit callback]
 
 [manpage_end]

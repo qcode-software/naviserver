@@ -346,8 +346,9 @@ Ns_GetTemp(void)
         /*
          * Create a new temp file
          */
-        int         flags, trys;
-        char       *path, buf[64];
+        int         flags, tries;
+        char        buf[64];
+        const char *path;
         Ns_DString  ds;
 
         Ns_DStringInit(&ds);
@@ -357,19 +358,19 @@ Ns_GetTemp(void)
         flags |= _O_SHORT_LIVED|_O_NOINHERIT|_O_TEMPORARY|_O_BINARY;
 #endif
 
-        trys = 0;
+        tries = 0;
         do {
-            Ns_Time     now;
+            Ns_Time now;
 
             Ns_GetTime(&now);
-            snprintf(buf, sizeof(buf), "nstmp.%" PRId64 ".%06ld", (int64_t)now.sec, now.usec);
+            snprintf(buf, sizeof(buf), "nstmp." NS_TIME_FMT, (int64_t)now.sec, now.usec);
             path = Ns_MakePath(&ds, P_tmpdir, buf, (char *)0L);
 #ifdef _WIN32
             fd = _sopen(path, flags, _SH_DENYRW, _S_IREAD|_S_IWRITE);
 #else
             fd = ns_open(path, flags, 0600);
 #endif
-        } while (fd < 0 && trys++ < 10 && errno == EEXIST);
+        } while (fd < 0 && tries++ < 10 && errno == EEXIST);
 
         if (fd < 0) {
             Ns_Log(Error, "tmp: could not open temp file %s: %s",
@@ -385,6 +386,7 @@ Ns_GetTemp(void)
         }
         Ns_DStringFree(&ds);
     }
+    Ns_Log(Debug, "Ns_GetTemp returns %d", fd);
 
     return fd;
 }
@@ -411,9 +413,13 @@ Ns_ReleaseTemp(int fd)
 {
     Tmp *tmpPtr;
 
+    assert(fd != NS_INVALID_FD);
+
     if (ns_lseek(fd, 0, SEEK_SET) != 0 || ftruncate(fd, 0) != 0) {
         (void) ns_close(fd);
     } else {
+        Ns_Log(Debug, "Ns_ReleaseTemp pushes %d", fd);
+
         tmpPtr = ns_malloc(sizeof(Tmp));
         tmpPtr->fd = fd;
         Ns_MutexLock(&lock);

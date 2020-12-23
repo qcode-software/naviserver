@@ -72,7 +72,7 @@ typedef struct LogEntry {
 
 typedef struct LogFilter {
     Ns_LogFilter      *proc;        /* User-given function for generating logs */
-    Ns_Callback       *freeArgProc; /* User-given function to free passed arg */
+    Ns_FreeProc       *freeArgProc; /* User-given function to free passed arg */
     void              *arg;         /* Argument passed to proc and free */
     int                refcnt;      /* Number of current consumers */
     struct LogFilter  *nextPtr;      /* Maintains double linked list */
@@ -123,7 +123,8 @@ static void  LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count,
                       bool trunc, bool locked)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static Ns_ReturnCode LogOpen(void);
+static Ns_LogCallbackProc LogOpen;
+static Ns_LogCallbackProc LogClose;
 
 static char* LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -147,7 +148,7 @@ static Ns_Mutex     lock;
 static Ns_Cond      cond;
 
 static bool         logOpenCalled = NS_FALSE;
-static const char  *file = NULL;
+static const char  *logfileName = NULL;
 static const char  *rollfmt = NULL;
 static unsigned int flags = 0u;
 static int          maxbackup;
@@ -272,7 +273,7 @@ NsInitLog(void)
     }
 
     /*
-     * Initialize the built-in severities and lower-case aliases.
+     * Initialize the built-in severities and lowercase aliases.
      */
     for (i = 0; i < PredefinedLogSeveritiesCount; i++) {
         size_t labelLength;
@@ -369,7 +370,7 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
  *      None.
  *
  * Side effects:
- *      Depends on config file.
+ *      Depends on configuration file.
  *
  *----------------------------------------------------------------------
  */
@@ -415,16 +416,16 @@ NsConfigLog(void)
 
     maxbackup = Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
 
-    file = Ns_ConfigString(path, "serverlog", "nsd.log");
-    if (Ns_PathIsAbsolute(file) == NS_FALSE) {
+    logfileName = Ns_ConfigString(path, "serverlog", "nsd.log");
+    if (Ns_PathIsAbsolute(logfileName) == NS_FALSE) {
         Ns_DStringInit(&ds);
         if (Ns_HomePathExists("logs", (char *)0L)) {
-            Ns_HomePath(&ds, "logs", file, (char *)0L);
+            (void)Ns_HomePath(&ds, "logs", logfileName, (char *)0L);
         } else {
-            Ns_HomePath(&ds, file, (char *)0L);
+            (void)Ns_HomePath(&ds, logfileName, (char *)0L);
         }
-        file = Ns_DStringExport(&ds);
-        Ns_SetUpdate(set, "serverlog", file);
+        logfileName = Ns_DStringExport(&ds);
+        Ns_SetUpdate(set, "serverlog", logfileName);
     }
 
     rollfmt = Ns_ConfigString(path, "logrollfmt", NS_EMPTY_STRING);
@@ -440,7 +441,7 @@ NsConfigLog(void)
  *      Returns the filename of the log file.
  *
  * Results:
- *      Log file name or NULL if none.
+ *      Log filename or NULL if none.
  *
  * Side effects:
  *      None.
@@ -451,7 +452,7 @@ NsConfigLog(void)
 const char *
 Ns_InfoErrorLog(void)
 {
-    return file;
+    return logfileName;
 }
 
 
@@ -477,7 +478,7 @@ Ns_CreateLogSeverity(const char *name)
 {
     Ns_LogSeverity  severity;
     Tcl_HashEntry  *hPtr;
-    int             isNew;
+    int             isNew = 0;
 
     NS_NONNULL_ASSERT(name != NULL);
 
@@ -791,7 +792,7 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
  */
 
 void
-Ns_AddLogFilter(Ns_LogFilter *procPtr, void *arg, Ns_Callback *freeProc)
+Ns_AddLogFilter(Ns_LogFilter *procPtr, void *arg, Ns_FreeProc *freeProc)
 {
     LogFilter *filterPtr = ns_calloc(1u, sizeof *filterPtr);
 
@@ -1189,7 +1190,7 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
          */
         if (givenEnabled != -1 && severity != Fatal) {
             enabled = severityConfig[severity].enabled;
-            severityConfig[severity].enabled = (givenEnabled == 1 ? NS_TRUE : NS_FALSE);
+            severityConfig[severity].enabled = (givenEnabled == 1);
         } else {
             enabled = Ns_LogSeverityEnabled(severity);
         }
@@ -1313,17 +1314,17 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
         case CPeekIdx:
         case CGetIdx:
-            memset(filterPtr, 0, sizeof *filterPtr);
+            memset(filterPtr, 0, sizeof(*filterPtr));
             filterPtr->proc = LogToDString;
             filterPtr->arg  = &ds;
             Ns_DStringInit(&ds);
-            LogFlush(cachePtr, filterPtr, -1, (opt == CGetIdx) ? NS_TRUE : NS_FALSE, NS_FALSE);
+            LogFlush(cachePtr, filterPtr, -1, (opt == CGetIdx), NS_FALSE);
             Tcl_DStringResult(interp, &ds);
             break;
 
         case CReleaseIdx:
             cachePtr->hold = 0;
-            /* fall through */
+            NS_FALL_THROUGH; /* fall through */
         case CFlushIdx:
             LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
             break;
@@ -1334,10 +1335,17 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
         case CTruncIdx:
             count = 0;
-            if (objc > 2 && Tcl_GetIntFromObj(interp, objv[2], &count) != TCL_OK) {
-                result = TCL_ERROR;
-            } else {
-                memset(filterPtr, 0, sizeof *filterPtr);
+            if (objc > 2) {
+                Ns_ObjvValueRange countRange = {0, INT_MAX};
+                int               oc = 1;
+                Ns_ObjvSpec       spec = {"?count", Ns_ObjvInt, &count, &countRange};
+
+                if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
+                    result = TCL_ERROR;
+                }
+            }
+            if (result == TCL_OK) {
+                memset(filterPtr, 0, sizeof(*filterPtr));
                 LogFlush(cachePtr, filterPtr, count, NS_TRUE, NS_FALSE);
             }
             break;
@@ -1410,11 +1418,11 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * Ns_LogRoll --
  *
- *      Utility function and signal handler for SIGHUP which will roll
- *      the files. When NaviServer is logging to stderr (when
- *      e.g. started with -f) no rolling will be performed. The
- *      function returns potentially errors from opening the log file
- *      as result.
+ *      Function and signal handler for SIGHUP which will roll the
+ *      system log (e.g. "error.log" or stderr). When NaviServer is
+ *      logging to stderr (when e.g. started with -f) no rolling will
+ *      be performed. The function returns potentially errors from
+ *      opening the file named by logfileName as result.
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -1428,46 +1436,18 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 Ns_ReturnCode
 Ns_LogRoll(void)
 {
-    Ns_ReturnCode status = NS_OK;
+    Ns_ReturnCode status;
 
-    if (file != NULL && logOpenCalled) {
-        Tcl_Obj      *pathObj;
-
-        /*
-         * We are already logging to some file
-         */
-
-        NsAsyncWriterQueueDisable(NS_FALSE);
-#ifdef _WIN32
-        /* On Windows you MUST close stdout and stderr now, or
-           Tcl_FSRenameFile() will fail with "Permission denied". */
-        ns_close(STDOUT_FILENO);
-        ns_close(STDERR_FILENO);
-#endif
-
-        pathObj = Tcl_NewStringObj(file, -1);
-        Tcl_IncrRefCount(pathObj);
-
-        if (Tcl_FSAccess(pathObj, F_OK) == 0) {
-            /*
-             * The current logfile exists.
-             */
-            (void) Ns_RollFileFmt(pathObj,
-                                  rollfmt,
-                                  maxbackup);
-        }
-        Tcl_DecrRefCount(pathObj);
-
-        status = LogOpen();
-        /* On Windows, calling Ns_Log() BEFORE LogOpen() crashes the server
-           with a Microsoft assertion failure:  (_osfile(fh) & FOPEN) */
-        Ns_Log(Notice, "log: re-opening log file '%s'", file);
-
-        NsAsyncWriterQueueEnable();
+    if (logfileName != NULL && logOpenCalled) {
+        status = Ns_RollFileCondFmt(LogOpen, LogClose, NULL,
+                                    logfileName, rollfmt, maxbackup);
+    } else {
+        status = NS_OK;
     }
 
     return status;
 }
+
 
 
 /*
@@ -1482,7 +1462,7 @@ Ns_LogRoll(void)
  *
  * Side effects:
  *      Configures this module to use the newly opened log file.  If
- *      LogRoll is turned on in the config file, then it registers a
+ *      LogRoll is turned on in the configuration file, then it registers a
  *      signal callback.
  *
  *----------------------------------------------------------------------
@@ -1495,9 +1475,9 @@ NsLogOpen(void)
      * Open the log and schedule the signal roll.
      */
 
-    if (LogOpen() != NS_OK) {
+    if (LogOpen(NULL) != NS_OK) {
         Ns_Fatal("log: failed to open server log '%s': '%s'",
-                 file, strerror(errno));
+                 logfileName, strerror(errno));
     }
     if ((flags & LOG_ROLL) != 0u) {
         Ns_Callback *proc = (Ns_Callback *)(ns_funcptr_t)Ns_LogRoll;
@@ -1512,9 +1492,9 @@ NsLogOpen(void)
  *
  * LogOpen --
  *
- *      Open the log file name specified in the 'logFile' global. If
- *      it's successfully opened, make that file the sink for stdout
- *      and stderr too.
+ *      Open the log filename specified in the global variable
+ *      'logfileName'. If it's successfully opened, make that file the
+ *      sink for stdout and stderr too.
  *
  * Results:
  *      NS_OK/NS_ERROR.
@@ -1526,7 +1506,7 @@ NsLogOpen(void)
  */
 
 static Ns_ReturnCode
-LogOpen(void)
+LogOpen(void *UNUSED(arg))
 {
     int           fd;
     Ns_ReturnCode status = NS_OK;
@@ -1538,10 +1518,10 @@ LogOpen(void)
     oflags |= O_LARGEFILE;
 #endif
 
-    fd = ns_open(file, (int)oflags, 0644);
+    fd = ns_open(logfileName, (int)oflags, 0644);
     if (fd == NS_INVALID_FD) {
         Ns_Log(Error, "log: failed to re-open log file '%s': '%s'",
-               file, strerror(errno));
+               logfileName, strerror(errno));
         status = NS_ERROR;
     } else {
 
@@ -1680,6 +1660,39 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
     }
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * LogClose --
+ *
+ *      Close the logfile. Since unixes, this happens via stderr
+ *      magic, we need here just the handling for windows.
+ *
+ * Results:
+ *      NS_OK
+ *
+ * Side effects:
+ *      Closing the STDERR+STDOUT on windows.
+ *
+ *----------------------------------------------------------------------
+ */
+static Ns_ReturnCode
+LogClose(void *UNUSED(arg))
+{
+    /*
+     * Probably, LogFlush() should be done here as well, but it was
+     * not used so far at this place.
+     */
+#ifdef _WIN32
+    /* On Windows you MUST close stdout and stderr now, or
+       Tcl_FSRenameFile() will fail with "Permission denied". */
+    (void)ns_close(STDOUT_FILENO);
+    (void)ns_close(STDERR_FILENO);
+#endif
+    return NS_OK;
+}
+
+
 
 /*
  *----------------------------------------------------------------------
@@ -1698,7 +1711,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
  */
 
 static Ns_ReturnCode
-LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
+LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
             const char *msg, size_t len)
 {
     Ns_DString *dsPtr  = (Ns_DString *)arg;
@@ -1780,7 +1793,11 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     if (len == 0u) {
         len = strlen(msg);
     }
-    Ns_DStringNAppend(dsPtr, msg, (int)len);
+    if (nsconf.sanitize_logfiles > 0) {
+        Ns_DStringAppendPrintable(dsPtr, nsconf.sanitize_logfiles == 2, msg, len);
+    } else {
+        Ns_DStringNAppend(dsPtr, msg, (int)len);
+    }
     if ((flags & LOG_COLORIZE) != 0u) {
         Ns_DStringNAppend(dsPtr, (const char *)LOG_COLOREND, 4);
     }
@@ -1810,7 +1827,7 @@ LogToDString(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  */
 
 static Ns_ReturnCode
-LogToFile(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
+LogToFile(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
           const char *msg, size_t len)
 {
     int        fd = PTR2INT(arg);
@@ -1856,7 +1873,7 @@ LogToFile(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  */
 
 static Ns_ReturnCode
-LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
+LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
          const char *msg, size_t len)
 {
     Ns_ReturnCode         status;
@@ -1961,6 +1978,15 @@ LogToTcl(void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
 static LogCache *
 GetCache(void)
 {
+#if defined(NS_THREAD_LOCAL)
+    static NS_THREAD_LOCAL LogCache *cachePtr = NULL;
+
+    if (cachePtr == NULL) {
+        cachePtr = ns_calloc(1u, sizeof(LogCache));
+        Ns_DStringInit(&cachePtr->buffer);
+        Ns_TlsSet(&tls, cachePtr);
+    }
+#else
     LogCache *cachePtr;
 
     cachePtr = Ns_TlsGet(&tls);
@@ -1969,7 +1995,7 @@ GetCache(void)
         Ns_DStringInit(&cachePtr->buffer);
         Ns_TlsSet(&tls, cachePtr);
     }
-
+#endif
     return cachePtr;
 }
 
@@ -2013,7 +2039,7 @@ FreeCache(void *arg)
  *
  * GetSeverityFromObj --
  *
- *      Get the severity level from the Tcl object, possibly setting
+ *      Get the severity level from the Tcl_Obj, possibly setting
  *      it's internal rep.
  *
  * Results:
