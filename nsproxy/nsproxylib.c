@@ -302,8 +302,8 @@ static Tcl_ObjCmdProc StatsObjCmd;
 static Tcl_ObjCmdProc ClearObjCmd;
 static Tcl_ObjCmdProc StopObjCmd;
 
-static Tcl_ObjCmdProc RunProxyCmd;
-static Tcl_CmdDeleteProc DelProxyCmd;
+static Tcl_ObjCmdProc RunProxyObjCmd;
+static Tcl_CmdDeleteProc DelProxyProc;
 static Tcl_InterpDeleteProc DeleteData;
 
 static Ns_ShutdownProc Shutdown;
@@ -354,7 +354,7 @@ static bool   SendBuf(const Worker *workerPtr, const Ns_Time *timePtr, const Tcl
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
 static bool   RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
-static int    WaitFd(int fd, short events, long ms);
+static bool   WaitFd(int fd, short events, long ms);
 
 static int    Import(Tcl_Interp *interp, const Tcl_DString *dsPtr, int *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
@@ -470,7 +470,7 @@ Ns_ProxyTclInit(Tcl_Interp *interp)
  *
  *      Main loop for nsproxy worker processes. Initialize Tcl interp and loop
  *      processing requests. On communication errors or when the peer closes
- *      it's write-pipe, worker process exits gracefully.
+ *      its write-pipe, worker process exits gracefully.
  *
  * Results:
  *      Always zero.
@@ -1226,7 +1226,7 @@ Wait(Tcl_Interp *interp, Proxy *proxyPtr, const Ns_Time *timeoutPtr)
         if (ms <= 0) {
             ms = -1;
         }
-        if (WaitFd(proxyPtr->workerPtr->rfd, POLLIN, (long)ms) == 0) {
+        if (!WaitFd(proxyPtr->workerPtr->rfd, POLLIN, (long)ms)) {
             err = EEvalTimeout;
         } else {
             proxyPtr->state = Done;
@@ -1354,7 +1354,7 @@ SendBuf(const Worker *workerPtr, const Ns_Time *timePtr, const Tcl_DString *dsPt
             } else {
                 waitMs = -1;
             }
-            if (WaitFd(workerPtr->wfd, POLLOUT, waitMs) == 0) {
+            if (!WaitFd(workerPtr->wfd, POLLOUT, waitMs)) {
                 success = NS_FALSE;
                 break;
             }
@@ -1432,7 +1432,7 @@ RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
             } else {
                 waitMs = -1;
             }
-            if (WaitFd(workerPtr->rfd, POLLIN, waitMs) == 0) {
+            if (!WaitFd(workerPtr->rfd, POLLIN, waitMs)) {
                 success = NS_FALSE;
                 break;
             }
@@ -1476,7 +1476,7 @@ RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
                 } else {
                     waitMs = -1;
                 }
-                if (WaitFd(workerPtr->rfd, POLLIN, waitMs) == 0) {
+                if (!WaitFd(workerPtr->rfd, POLLIN, waitMs)) {
                     success = NS_FALSE;
                     break;
                 }
@@ -1499,7 +1499,7 @@ RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
  *      Waits for the given event on the worker pipe.
  *
  * Results:
- *      1 if event received, 0 on error.
+ *      NS_TRUE if event received, NS_FALSE on error.
  *
  * Side effects:
  *      None.
@@ -1507,7 +1507,7 @@ RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 
-static int
+static bool
 WaitFd(int fd, short events, long ms)
 {
     struct pollfd pfd;
@@ -1682,7 +1682,7 @@ Import(Tcl_Interp *interp, const Tcl_DString *dsPtr, int *resultPtr)
  *
  * StatsObjCmd --
  *
- *    Implements the "ns_proxy stats" command.
+ *    Implements "ns_proxy stats".
  *
  * Results:
  *    Tcl result.
@@ -1745,7 +1745,7 @@ StatsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  *
  * StopObjCmd --
  *
- *    Implements the "ns_proxy stop" command.
+ *    Implements "ns_proxy stop".
  *
  * Results:
  *    Tcl result.
@@ -1803,7 +1803,7 @@ StopObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
  *
  * StopObjCmd --
  *
- *    Implements the "ns_proxy clear" command.
+ *    Implements "ns_proxy clear".
  *
  * Results:
  *    Tcl result.
@@ -1864,7 +1864,7 @@ ClearObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  *
  * ProxyObjCmd --
  *
- *      Implement the ns_proxy command.
+ *      Implements "ns_proxy" wrapper.
  *
  * Results:
  *      Standard Tcl result.
@@ -2119,7 +2119,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
  *
  * ConfigureObjCmd --
  *
- *      Sub-command to configure a proxy.
+ *      Implements "ns_proxy configure".
  *
  * Results:
  *      Standard Tcl result.
@@ -2429,7 +2429,7 @@ AppendObj(Tcl_Obj *listObj, const char *flag, Tcl_Obj *obj)
  *
  * GetObjCmd --
  *
- *      Sub-command to handle ns_proxy get option.
+ *      Implements "ns_proxy get".
  *
  * Results:
  *      Standard Tcl result.
@@ -2538,8 +2538,8 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
         proxyPtr = firstPtr;
         while (proxyPtr != NULL) {
             proxyPtr->cmdToken = Tcl_CreateObjCommand(interp, proxyPtr->id,
-                                                      RunProxyCmd, proxyPtr,
-                                                      DelProxyCmd);
+                                                      RunProxyObjCmd, proxyPtr,
+                                                      DelProxyProc);
             if (proxyPtr->cmdToken == NULL) {
                 result = TCL_ERROR;
                 break;
@@ -3059,7 +3059,7 @@ CloseWorker(Worker *workerPtr, const Ns_Time *timePtr)
     workerPtr->sigsent = 0;
 
     /*
-     * Put on the head of the close list so it's handled by
+     * Put on the head of the close list so it is handled by
      * the reaper thread.
      */
 
@@ -3627,7 +3627,7 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
 /*
  *----------------------------------------------------------------------
  *
- * RunProxyCmd --
+ * RunProxyObjCmd --
  *
  *      Activated when somebody calls proxy command.
  *
@@ -3641,7 +3641,7 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static int
-RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+RunProxyObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     char       *scriptString;
     int         result;
@@ -3667,7 +3667,7 @@ RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
 /*
  *----------------------------------------------------------------------
  *
- * DelProxyCmd --
+ * DelProxyProc --
  *
  *      Release a proxy from the per-interp table.
  *
@@ -3681,7 +3681,7 @@ RunProxyCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  */
 
 static void
-DelProxyCmd(ClientData clientData)
+DelProxyProc(ClientData clientData)
 {
     Proxy *proxyPtr = (Proxy *)clientData;
 
@@ -3764,7 +3764,7 @@ DeleteData(ClientData clientData, Tcl_Interp *interp)
  * ReapProxies --
  *
  *      Wakes up the reaper thread and waits until it does
- *      it's job and goes sleeping again.
+ *      its job and goes sleeping again.
  *
  * Results:
  *      None.

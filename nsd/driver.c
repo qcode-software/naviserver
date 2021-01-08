@@ -254,8 +254,10 @@ static bool DriverModuleInitialized(const char *module)
 static const ServerMap *DriverLookupHost(Tcl_DString *hostDs, Driver *drvPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static size_t ParsePorts(Ns_DList *dlPtr, const char *listString, const char *path)
+static size_t PortsParse(Ns_DList *dlPtr, const char *listString, const char *path)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+static char *PortsPrint(Tcl_DString *dsPtr, const Ns_DList *dlPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void  SockSetServer(Sock *sockPtr)
     NS_GNUC_NONNULL(1);
@@ -893,7 +895,7 @@ void NsDriverMapVirtualServers(void)
 
                         if (isNew == 1) {
                             /*
-                             * We have already no sslCtx for this server. This
+                             * We have already an sslCtx for this server. This
                              * entry is most likely an alternate server name.
                              */
                             if (Ns_TLS_CtxServerInit(ds1.string, NULL, 0u, NULL, &ctx) == TCL_OK) {
@@ -1006,7 +1008,7 @@ void NsDriverMapVirtualServers(void)
 /*
  *----------------------------------------------------------------------
  *
- * ParsePorts --
+ * PortsParse --
  *
  *      Parse the configured ports string and check, if it is a valid list and
  *      contains values feasible to be used as ports, In case the values are
@@ -1020,9 +1022,8 @@ void NsDriverMapVirtualServers(void)
  *
  *----------------------------------------------------------------------
  */
-
 static size_t
-ParsePorts(Ns_DList *dlPtr, const char *listString, const char *path)
+PortsParse(Ns_DList *dlPtr, const char *listString, const char *path)
 {
     NS_NONNULL_ASSERT(dlPtr != NULL);
     NS_NONNULL_ASSERT(path != NULL);
@@ -1037,20 +1038,54 @@ ParsePorts(Ns_DList *dlPtr, const char *listString, const char *path)
             Ns_Fatal("specified ports for %s invalid: %s", path, listString);
         }
         for (i= 0; i < nrPorts; i++) {
-            int portValue;
+            int portValue = 0;
 
             result = Tcl_GetIntFromObj(NULL, objv[i], &portValue);
-            if (portValue > 65535 || portValue < 0) {
-                Ns_Fatal("specified ports for %s invalid: value %d out of range (0..65535)",
-                         path, portValue);
+            if (result == TCL_OK) {
+                if (portValue > 65535 || portValue < 0) {
+                    Ns_Fatal("specified ports for %s invalid: value %d out of range (0..65535)",
+                             path, portValue);
+                }
+                Ns_DListAppend(dlPtr, INT2PTR(portValue));
             }
-            Ns_DListAppend(dlPtr, INT2PTR(portValue));
         }
         Tcl_DecrRefCount(portsObj);
     }
     return dlPtr->size;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * PortsPrint --
+ *
+ *      Print the configured ports to the Tcl_DString provided in the first
+ *      argument.
+ *
+ * Results:
+ *      String content fo the Tcl_DString.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static char *
+PortsPrint(Tcl_DString *dsPtr, const Ns_DList *dlPtr)
+{
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(dlPtr != NULL);
+
+    if (dlPtr->size > 0) {
+        size_t i;
+
+        for ( i= 0; i < dlPtr->size; i++) {
+            Ns_DStringPrintf(dsPtr, "%hu ", (unsigned short)PTR2INT(dlPtr->data[i]));
+        }
+        Tcl_DStringSetLength(dsPtr, dsPtr->length - 1);
+    }
+    return dsPtr->string;
+}
 
 
 /*
@@ -1228,7 +1263,7 @@ DriverInit(const char *server, const char *moduleName, const char *threadName,
      * Get list of ports and keep the first port extra in drvPtr->port for the
      * time being.
      */
-    i = (int)ParsePorts(&drvPtr->ports, Ns_ConfigGetValue(path, "port"), path);
+    i = (int)PortsParse(&drvPtr->ports, Ns_ConfigGetValue(path, "port"), path);
     if (i == 0) {
         Ns_DListAppend(&drvPtr->ports, INT2PTR(defport));
     }
@@ -1380,33 +1415,13 @@ NsStopDrivers(void)
     NsAsyncWriterQueueDisable(NS_TRUE);
 
     for (drvPtr = firstDrvPtr; drvPtr != NULL;  drvPtr = drvPtr->nextPtr) {
-        Tcl_HashEntry  *hPtr;
-        Tcl_HashSearch  search;
-        Sock           *sockPtr, *nextPtr;
-
-        if ((drvPtr->flags & DRIVER_STARTED) == 0u) {
-            continue;
-        }
-
-        Ns_MutexLock(&drvPtr->lock);
-        Ns_Log(Notice, "[driver:%s]: stopping", drvPtr->threadName);
-        drvPtr->flags |= DRIVER_SHUTDOWN;
-        Ns_CondBroadcast(&drvPtr->cond);
-        Ns_MutexUnlock(&drvPtr->lock);
-        SockTrigger(drvPtr->trigger[1]);
-
-        hPtr = Tcl_FirstHashEntry(&drvPtr->hosts, &search);
-        while (hPtr != NULL) {
-            ns_free(Tcl_GetHashValue(hPtr));
-            Tcl_DeleteHashEntry(hPtr);
-            hPtr = Tcl_NextHashEntry(&search);
-        }
-
-        /*fprintf(stderr, "==== NsStopDrivers drv %p sock %p\n", (void*)drvPtr, (void*)(drvPtr->sockPtr));*/
-        for (sockPtr = drvPtr->sockPtr; sockPtr != NULL; sockPtr = nextPtr) {
-            nextPtr = sockPtr->nextPtr;
-            /*fprintf(stderr, "==== NsStopDrivers drv %p FREE sock %p\n", (void*)drvPtr, (void*)sockPtr);*/
-            ns_free(sockPtr);
+        if ((drvPtr->flags & DRIVER_STARTED)) {
+            Ns_MutexLock(&drvPtr->lock);
+            Ns_Log(Notice, "[driver:%s]: stopping", drvPtr->threadName);
+            drvPtr->flags |= DRIVER_SHUTDOWN;
+            Ns_CondBroadcast(&drvPtr->cond);
+            Ns_MutexUnlock(&drvPtr->lock);
+            SockTrigger(drvPtr->trigger[1]);
         }
     }
 }
@@ -1419,20 +1434,15 @@ NsStopSpoolers(void)
 
     Ns_Log(Notice, "driver: stopping writer and spooler threads");
 
-    /*
-     * Shutdown all spooler and writer threads
-     */
     for (drvPtr = firstDrvPtr; drvPtr != NULL;  drvPtr = drvPtr->nextPtr) {
-        Ns_Time timeout;
+        if ((drvPtr->flags & DRIVER_STARTED)) {
+            Ns_Time timeout, *shutdown = &nsconf.shutdowntimeout;
 
-        if ((drvPtr->flags & DRIVER_STARTED) == 0u) {
-            continue;
+            Ns_GetTime(&timeout);
+            Ns_IncrTime(&timeout, shutdown->sec, shutdown->usec);
+            SpoolerQueueStop(drvPtr->writer.firstPtr, &timeout, "writer");
+            SpoolerQueueStop(drvPtr->spooler.firstPtr, &timeout, "spooler");
         }
-        Ns_GetTime(&timeout);
-        Ns_IncrTime(&timeout, nsconf.shutdowntimeout.sec, nsconf.shutdowntimeout.usec);
-
-        SpoolerQueueStop(drvPtr->writer.firstPtr, &timeout, "writer");
-        SpoolerQueueStop(drvPtr->spooler.firstPtr, &timeout, "spooler");
     }
 }
 
@@ -1442,7 +1452,7 @@ NsStopSpoolers(void)
  *
  * DriverInfoObjCmd --
  *
- *      Return public info of all drivers.
+ *      Implements "ns_driver info". Returns public info of all drivers.
  *      Subcommand of NsTclDriverObjCmd.
  *
  * Results:
@@ -1495,6 +1505,17 @@ DriverInfoObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
                 Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("address", 7));
                 Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(drvPtr->address, -1));
 
+                {Tcl_DString ds;
+                    Tcl_DStringInit(&ds);
+                    PortsPrint(&ds, &drvPtr->ports);
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("port", 4));
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(ds.string, ds.length));
+                    Tcl_DStringFree(&ds);
+                }
+
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("defaultport",11));
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewIntObj(drvPtr->defport));
+
                 Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("protocol", 8));
                 Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(drvPtr->protocol, -1));
 
@@ -1533,7 +1554,7 @@ DriverInfoObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *
  * DriverStatsObjCmd --
  *
- *      Return statistics of all drivers.
+ *      Implements "ns_driver stats". Returns statistics of all drivers.
  *      Subcommand of NsTclDriverObjCmd.
  *
  * Results:
@@ -1596,7 +1617,7 @@ DriverStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *
  * DriverThreadsObjCmd --
  *
- *      Return the names of driver threads
+ *      Implements "ns_driver threads". Returns the names of driver threads
  *
  * Results:
  *      Standard Tcl Result.
@@ -1635,7 +1656,7 @@ DriverThreadsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *
  * DriverNamesObjCmd --
  *
- *      Return the names of drivers.
+ *      Implements "ns_driver names". Returns the names of drivers.
  *
  * Results:
  *      Standard Tcl Result.
@@ -1683,7 +1704,7 @@ DriverNamesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *
  * NsTclDriverObjCmd -
  *
- *      Give information about drivers. Currently, just the statistics.
+ *      Implements "ns_driver". Give information about drivers.
  *
  * Results:
  *      Standard Tcl result.
@@ -2666,7 +2687,7 @@ DriverThread(void *arg)
         /*
          * Update the timeout for each closing socket and add to the
          * close list if some data has been read from the socket
-         * (i.e., it's not a closing keep-alive connection).
+         * (i.e., it is not a closing keep-alive connection).
          */
         while (sockPtr != NULL) {
             nextPtr = sockPtr->nextPtr;
@@ -2722,7 +2743,22 @@ DriverThread(void *arg)
     }
 
     PollFree(&pdata);
-    Tcl_DeleteHashTable(&drvPtr->hosts);
+
+    {
+        Tcl_HashSearch search;
+        Tcl_HashEntry  *hPtr;
+
+        hPtr = Tcl_FirstHashEntry(&drvPtr->hosts, &search);
+        while (hPtr != NULL) {
+            void *host;
+
+            host = (void*)Tcl_GetHashValue(hPtr);
+            ns_free(host);
+            Tcl_DeleteHashEntry(hPtr);
+            hPtr = Tcl_NextHashEntry(&search);
+        }
+        Tcl_DeleteHashTable(&drvPtr->hosts);
+    }
 
     /*fprintf(stderr, "==== driver exit %p closePtr %p waitPtr %p readPtr %p\n",
       (void*)drvPtr, (void*)closePtr, (void*)waitPtr, (void*)readPtr);*/
@@ -3239,6 +3275,7 @@ SockNew(Driver *drvPtr)
         sockPtr->arg     = NULL;
         sockPtr->poolPtr = NULL;
         sockPtr->recvSockState = NS_SOCK_NONE;
+        sockPtr->recvErrno = 0u;
     }
     return sockPtr;
 }
@@ -4593,7 +4630,7 @@ DriverLookupHost(Tcl_DString *hostDs, Driver *drvPtr)
             /*
              * We found colon, which might be the port separator or inside an
              * IPv6 address. However, we look here for a dot before the colon,
-             * which would be illegal for IPv6 addresses.
+             * which would not be permitted for IPv6 addresses.
              */
             lastChar = *(colon - 1);
             if (lastChar == '.') {
@@ -7442,9 +7479,9 @@ WriterStreamingObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclWriterObjCmd --
  *
- *      Implements "ns_writer" command for submitting data to the writer
- *      threads and to configure and query the state of the writer threads at
- *      run time.
+ *      Implements "ns_writer". This command is used for submitting data to
+ *      the writer threads and to configure and query the state of the writer
+ *      threads at run time.
  *
  * Results:
  *      Standard Tcl result.

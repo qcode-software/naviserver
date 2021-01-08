@@ -96,7 +96,7 @@ static unsigned __stdcall ThreadMain(void *arg);
 
 /*
  * The following single Tls key is used to store the nsthread
- * structure.  It's initialized in DllMain.
+ * structure.  It is initialized in DllMain.
  */
 
 static DWORD tlskey;
@@ -348,7 +348,7 @@ NsLockSet(void *lock)
  *      Try to set a mutex lock once.
  *
  * Results:
- *      1 if lock set, 0 otherwise.
+ *      NS_TRUE if lock set, NS_FALSE otherwise.
  *
  * Side effects:
  *      None.
@@ -356,7 +356,7 @@ NsLockSet(void *lock)
  *----------------------------------------------------------------------
  */
 
-int
+bool
 NsLockTry(void *lock)
 {
     return TryEnterCriticalSection((CRITICAL_SECTION *)lock);
@@ -1019,7 +1019,7 @@ ThreadMain(void *arg)
  *      None.
  *
  * Side effects:
- *      Thread wakeup event is reset in case it's holding
+ *      Thread wakeup event is reset in case it is holding
  *      a lingering wakeup.
  *
  *----------------------------------------------------------------------

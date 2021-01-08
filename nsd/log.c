@@ -520,7 +520,7 @@ Ns_CreateLogSeverity(const char *name)
  *
  * Ns_LogSeverityName --
  *
- *      Given a log severity, return a pointer to it's name.
+ *      Given a log severity, return a pointer to its name.
  *
  * Results:
  *      The severity name.
@@ -1072,7 +1072,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
  *
  * NsTclLogObjCmd --
  *
- *      Implements ns_log as obj command.
+ *      Implements "ns_log".
  *
  * Results:
  *      Tcl result.
@@ -1220,7 +1220,8 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  *
  * NsTclLogCtlObjCmd --
  *
- *      Implements ns_logctl command to manage per-thread log caching.
+ *      Implements "ns_logctl". This command provides control over the
+ *      the activated severities or buffering of log messages.
  *
  * Results:
  *      Tcl result.
@@ -1390,7 +1391,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  * NsTclLogRollObjCmd --
  *
- *      Implements ns_logroll command.
+ *      Implements "ns_logroll".
  *
  * Results:
  *      Tcl result.
@@ -1493,7 +1494,7 @@ NsLogOpen(void)
  * LogOpen --
  *
  *      Open the log filename specified in the global variable
- *      'logfileName'. If it's successfully opened, make that file the
+ *      'logfileName'. If it is successfully opened, make that file the
  *      sink for stdout and stderr too.
  *
  * Results:
@@ -2040,7 +2041,7 @@ FreeCache(void *arg)
  * GetSeverityFromObj --
  *
  *      Get the severity level from the Tcl_Obj, possibly setting
- *      it's internal rep.
+ *      its internal representation.
  *
  * Results:
  *      TCL_OK or TCL_ERROR.

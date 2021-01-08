@@ -102,10 +102,10 @@ NsConfigProgress(void)
 /*
  *----------------------------------------------------------------------
  *
- * NsTclUploadStatsObjCmd --
+ * NsTclProgressObjCmd --
  *
- *      Get the progress so far and total bytes to upload for the given
- *      unique URL as a two element list.
+ *      Implements "ns_upload_stats". Get the progress so far and total bytes
+ *      to upload for the given unique URL as a two element list.
  *
  * Results:
  *      Standard Tcl result.
@@ -235,7 +235,7 @@ NsUpdateProgress(Ns_Sock *sock)
 
             /*
              * Guard against concurrent requests to identical URLs tracking
-             * each others progress. URLs must be unique, and it's your
+             * each others progress. URLs must be unique, and it is your
              * responsibility. Yes, this is ugly.
              */
 

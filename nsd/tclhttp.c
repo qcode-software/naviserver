@@ -765,7 +765,8 @@ Ns_HttpMessageParse(
  *
  * NsTclHttpObjCmd --
  *
- *      Implements the [ns_http] command for handling HTTP requests.
+ *      Implements "ns_http".  This caommand is the general interface for
+ *      handling HTTP client requests.
  *
  * Results:
  *      Standard Tcl result.
@@ -803,7 +804,7 @@ NsTclHttpObjCmd(
  *
  * HttpRunObjCmd
  *
- *      Implements the [ns_http run] command
+ *      Implements "ns_http run".
  *
  * Results:
  *      Standard Tcl result.
@@ -830,7 +831,7 @@ HttpRunObjCmd(
  *
  * HttpQueueObjCmd
  *
- *      Implements the [ns_http queue] command
+ *      Implements "ns_http queue".
  *
  * Results:
  *      Standard Tcl result.
@@ -857,7 +858,7 @@ HttpQueueObjCmd(
  *
  * HttpWaitObjCmd --
  *
- *      Implements [ns_http wait] command.
+ *      Implements "ns_http wait".
  *
  * Results:
  *      Standard Tcl result.
@@ -1100,7 +1101,7 @@ HttpWaitObjCmd(
  *
  * HttpCancelObjCmd --
  *
- *      Implements [ns_http cancel] command.
+ *      Implements "ns_http cancel".
  *
  * Results:
  *      Standard Tcl result.
@@ -1151,7 +1152,7 @@ HttpCancelObjCmd(
  *
  * HttpCleanupObjCmd
  *
- *      Implements the [ns_http cleanup] command
+ *      Implements "ns_http cleanup".
  *
  * Results:
  *      Standard Tcl result.
@@ -1238,7 +1239,7 @@ HttpCleanupObjCmd(
  *
  * HttpListObjCmd
  *
- *      Implements the [ns_http list] command
+ *      Implements "ns_http list".
  *
  * Results:
  *      Standard Tcl result.
@@ -1313,7 +1314,7 @@ HttpListObjCmd(
  *
  * HttpStatsObjCmd
  *
- *      Implements the [ns_http stats] command.
+ *      Implements "ns_http stats".
  *
  * Results:
  *      Standard Tcl result.
@@ -1755,6 +1756,10 @@ HttpClientLogWrite(
          * no servPtr set), use the configuration of the default server.
          */
         servPtr = NsGetServer(nsconf.defaultServer);
+        if (servPtr == NULL) {
+            Ns_Log(Error, "http client log: server could not be determined, logging attempt rejected");
+            return;
+        }
     }
 
     if (servPtr->httpclient.logging
@@ -2526,7 +2531,7 @@ HttpConnect(
         Ns_Log(Ns_LogTaskDebug, "HttpConnect: connecting to [%s]:%hu", host, portNr);
 
         /*
-         * Open the socket to remote, assure it's writable
+         * Open the socket to remote, assure it is writable
          */
         if (timeoutPtr != NULL && expirePtr != NULL) {
             if (Ns_DiffTime(timeoutPtr, expirePtr, NULL) < 0) {
@@ -3172,7 +3177,7 @@ HttpCancel(
     NS_NONNULL_ASSERT(httpPtr->task != NULL);
 
     (void) Ns_TaskCancel(httpPtr->task);
-    (void) Ns_TaskWait(httpPtr->task, NULL);
+    (void) Ns_TaskWaitCompleted(httpPtr->task);
 }
 
 
@@ -3290,8 +3295,9 @@ HttpTaskRecv(
     size_t length,
     Ns_SockState *statePtr
 ) {
-    ssize_t recv = 0;
-    int     nbufs = 1;
+    ssize_t       recv;
+    int           nbufs = 1;
+    unsigned long recvErrorCode;
     struct  iovec iov, *bufs = &iov;
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
@@ -3301,12 +3307,12 @@ HttpTaskRecv(
     iov.iov_len  = length;
 
     if (httpPtr->ssl == NULL) {
-        recv = Ns_SockRecvBufs2(httpPtr->sock, bufs, nbufs, 0u, statePtr);
+        recv = Ns_SockRecvBufs2(httpPtr->sock, bufs, nbufs, 0u, statePtr, &recvErrorCode);
     } else {
 #ifndef HAVE_OPENSSL_EVP_H
         recv = -1;
 #else
-        recv = Ns_SSLRecvBufs2(httpPtr->ssl, bufs, nbufs, statePtr);
+        recv = Ns_SSLRecvBufs2(httpPtr->ssl, bufs, nbufs, statePtr, &recvErrorCode);
 #endif
     }
 
@@ -3811,7 +3817,7 @@ HttpProc(
 
                 /*
                  * Received zero bytes on a readable socket
-                 * but it's not on EOD, it wants us to read more.
+                 * but it is not on EOD, it wants us to read more.
                  */
                 taskDone = NS_FALSE;
 

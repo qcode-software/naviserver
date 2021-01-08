@@ -892,7 +892,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
  *      Stat a file, logging an error on unexpected results.
  *
  * Results:
- *      1 if stat OK, 0 otherwise.
+ *      NS_TRUE if stat() was successful, NS_FALSE otherwise.
  *
  * Side effects:
  *      None.
@@ -1010,9 +1010,9 @@ FreeEntry(void *arg)
  *
  * NsTclFastPathCacheStatsObjCmd --
  *
- *      Returns stats on a cache. The size and expirey time of each
- *      entry in the cache is also appended if the -contents switch
- *      is given.
+ *      Implements "ns_fastpath_cache_stats".  The command returns
+ *      stats on a cache. The size and expiry time of each entry in
+ *      the cache is also appended if the -contents switch is given.
  *
  * Results:
  *      Tcl result.

@@ -235,9 +235,9 @@ static int AddCmds(Tcl_Interp *interp, const void *arg)
 /*
  *----------------------------------------------------------------------
  *
- * PermCmd --
+ * PermObjCmd --
  *
- *      The ns_perm Tcl command
+ *      Implements "ns_perm".
  *
  * Results:
  *      Std Tcl ret val
@@ -652,7 +652,7 @@ ValidateUserAddr(User *userPtr, const char *peer)
         Ns_DString addr;
 
         /*
-         * If we have gotten this far, it's necessary to do a
+         * If we have gotten this far, it is necessary to do a
          * reverse dns lookup and try to make a decision
          * based on that, if possible.
          */
@@ -758,9 +758,9 @@ FreeUserInfo(User *userPtr, const char *name)
 /*
  *----------------------------------------------------------------------
  *
- * AddUserCmd --
+ * AddUserObjCmd --
  *
- *      Implements the Tcl command ns_perm adduser
+ *      Implements "ns_perm adduser".
  *
  * Results:
  *      Tcl resut
@@ -894,9 +894,9 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
 /*
  *----------------------------------------------------------------------
  *
- * DelUserCmd --
+ * DelUserObjCmd --
  *
- *      Implements the Tcl command ns_perm deluser
+ *      Implements "ns_perm deluser".
  *
  * Results:
  *      Tcl resut
@@ -938,9 +938,9 @@ static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
 /*
  *----------------------------------------------------------------------
  *
- * ListUsersCmd --
+ * ListUsersObjCmd --
  *
- *      Implements the Tcl command ns_perm listusers
+ *      Implements "ns_perm listusers".
  *
  * Results:
  *      Tcl resut
@@ -1017,9 +1017,9 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc
 /*
  *----------------------------------------------------------------------
  *
- * AddGroupCmd --
+ * AddGroupObjCmd --
  *
- *      Add a group to the global groups list
+ *      Implements "ns_perm addgroup". Adds a group to the global groups list.
  *
  * Results:
  *      Standard Tcl
@@ -1055,7 +1055,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
 
     /*
      * Loop over each of the users who is to be in the group, make sure
-     * it's ok, and add him. Also put the group into the user's list
+     * it is ok, and add this user. Also put the group into the user's list
      * of groups he's in.
      */
 
@@ -1126,9 +1126,9 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
 /*
  *----------------------------------------------------------------------
  *
- * DelGroupCmd --
+ * DelGroupObjCmd --
  *
- *      Implements the Tcl command ns_perm delgroup
+ *      Implements "ns_perm delgroup".
  *
  * Results:
  *      Tcl resut
@@ -1183,9 +1183,9 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
 /*
  *----------------------------------------------------------------------
  *
- * ListGroupsCmd --
+ * ListGroupsObjCmd --
  *
- *      Implements the Tcl command ns_perm listgroups
+ *      Implements "ns_perm listgroups".
  *
  * Results:
  *      Tcl resut
@@ -1240,7 +1240,15 @@ static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(obj
  *
  * AllowDenyObjCmd --
  *
- *      Add a record that will allow or deny access to the specified url
+ *      Implements:
+ *
+ *         "ns_perm allowuser"
+ *         "nsperm allowgroup"
+ *         "nsperm denyuser"
+ *         "nsperm denygroup"
+ *
+ *      Adds/removes a record that will allow or deny access to
+ *      the specified URL.
  *
  * Results:
  *      Std Tcl
@@ -1341,13 +1349,13 @@ static int AllowDenyObjCmd(
  *
  * DelPermObjCmd --
  *
- *      Remove permission record
+ *      Implements "ns_perm delperm". Removes permission record.
  *
  * Results:
  *      Std Tcl
  *
  * Side effects:
- *      A perm record may be deleted
+ *      A permission record may be deleted.
  *
  *----------------------------------------------------------------------
  */
@@ -1409,9 +1417,9 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
 /*
  *----------------------------------------------------------------------
  *
- * ListPermsCmd --
+ * ListPermsObjCmd --
  *
- *      Implements the Tcl command ns_perm listperms
+ *      Implements "ns_perm listperms".
  *
  * Results:
  *      Tcl resut
@@ -1474,12 +1482,13 @@ static void WalkCallback(Tcl_DString * dsPtr, const void *arg)
 /*
  *----------------------------------------------------------------------
  *
- * CheckPassCmd --
+ * CheckPassObjCmd --
  *
- *      Checks supplied user password against internak database
+ *      Implements "ns_perm checkpass". Checks supplied user password against
+ *      internal database.
  *
  * Results:
- *      1 if verified, 0 if not valid
+ *      Standard Tcl result.
  *
  * Side effects:
  *      None
@@ -1487,7 +1496,8 @@ static void WalkCallback(Tcl_DString * dsPtr, const void *arg)
  *----------------------------------------------------------------------
  */
 
-static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int
+CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
 {
     Server *servPtr = data;
     int rc = TCL_ERROR;
@@ -1532,12 +1542,12 @@ static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
 /*
  *----------------------------------------------------------------------
  *
- * SetPassCmd --
+ * SetPassObjCmd --
  *
- *      Assigns new password to the user
+ *      Implements "ns_perm setpass". Assigns new password to the user.
  *
  * Results:
- *      1 if assigned, 0 if not found
+ *      Standard Tcl result
  *
  * Side effects:
  *      None
@@ -1545,7 +1555,8 @@ static int CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 
-static int SetPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int
+SetPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
 {
     Server        *servPtr = data;
     int            rc = 0;
