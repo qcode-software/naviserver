@@ -1474,7 +1474,11 @@ ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  *      Implements various trace commands
  *
- *          ns_ictl trace|oninit|oncreate|oncleanup|ondelete
+ *          "ns_ictl oncleanup"
+ *          "ns_ictl oncreate
+ *          "ns_ictl ondelete"
+ *          "ns_ictl oninit"
+ *          "ns_ictl trace"
  *
  *      Register script-level interp traces. "ns_ictl trace" is the new
  *      version, the other ones are deprecated 3-argument variants.
@@ -1608,10 +1612,10 @@ ICtlRunTracesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  *
  * NsTclICtlObjCmd --
  *
- *      Implements ns_ictl command to control interp state for
+ *      Implements "ns_ictl". This command is used to control interp state for
  *      virtual server interps.  This command provide internal control
- *      functions required by the init.tcl script and is not intended
- *      to be called by a user directly.  It supports four activities:
+ *      functions required by the init.tcl script and is not intended to be
+ *      called by a user directly.  It supports four activities:
  *
  *      1. Managing the list of "modules" to initialize.
  *      2. Saving the init script for evaluation with new interps.
@@ -1661,7 +1665,7 @@ NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
  *
  * NsTclAtCloseObjCmd --
  *
- *      Implements ns_atclose.
+ *      Implements "ns_atclose".
  *
  * Results:
  *      Tcl result.
@@ -2005,7 +2009,7 @@ PushInterp(NsInterp *itPtr)
     interp = itPtr->interp;
 
     /*
-     * Evaluate the dellocation traces once to perform various garbage
+     * Evaluate the deallocation traces once to perform various garbage
      * collection and then either delete the interp or push it back on the
      * per-thread list.
      */
@@ -2349,8 +2353,7 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
         switch (why) {
         case NS_TCL_TRACE_FREECONN:   NS_FALL_THROUGH; /* fall through */
         case NS_TCL_TRACE_DEALLOCATE: NS_FALL_THROUGH; /* fall through */
-        case NS_TCL_TRACE_DELETE:     NS_FALL_THROUGH; /* fall through */
-        case NS_TCL_TRACE_IDLE:
+        case NS_TCL_TRACE_DELETE:
             /*
              * Run finalization traces in LIFO order.
              */
@@ -2368,7 +2371,8 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
 
         case NS_TCL_TRACE_ALLOCATE:  NS_FALL_THROUGH; /* fall through */
         case NS_TCL_TRACE_CREATE:    NS_FALL_THROUGH; /* fall through */
-        case NS_TCL_TRACE_GETCONN:
+        case NS_TCL_TRACE_GETCONN:   NS_FALL_THROUGH; /* fall through */
+        case NS_TCL_TRACE_IDLE:
             /*
              * Run initialization traces in FIFO order.
              */

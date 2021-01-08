@@ -32,7 +32,7 @@
 /*
  * fork.c --
  *
- *      Implement ns_fork.
+ *      Implements "ns_fork".
  */
 
 #include "thread.h"
@@ -43,7 +43,7 @@
  *
  * ns_fork --
  *
- *      Posix style fork(), using fork1() on Solaris if needed.
+ *      POSIX style fork(), using fork1() on Solaris if needed.
  *
  * Results:
  *      See fork(2) man page.

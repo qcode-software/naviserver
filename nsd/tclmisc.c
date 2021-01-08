@@ -92,7 +92,7 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
  *
  * NsTclRunOnceObjCmd --
  *
- *      Implements ns_runonce.  Run the given script only once.
+ *      Implements "ns_runonce".  Run the given script only once.
  *
  * Results:
  *      Tcl result.
@@ -339,7 +339,7 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
  * NsTclReflowTextObjCmd --
  *
  *      Reflow a text to the specified length.
- *      Implementation of ns_reflow_text.
+ *      Implements "ns_reflow_text".
  *
  * Results:
  *      Tcl result.
@@ -522,7 +522,7 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *      (latter is not really needed but convenient).  Trim leading spaces on
  *      multiple lines.
  *
- *      Implementation of ns_trim.
+ *      Implements "ns_trim".
  *
  * Results:
  *      Tcl result.
@@ -607,7 +607,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *
  * NsTclStripHtmlObjCmd --
  *
- *      Implements ns_striphtml.
+ *      Implements "ns_striphtml".
  *
  * Results:
  *      Tcl result.
@@ -1012,7 +1012,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  * NsTclHrefsObjCmd --
  *
- *      Implements ns_hrefs.
+ *      Implements "ns_hrefs".
  *
  * Results:
  *      Tcl result.
@@ -1109,8 +1109,7 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *
  * Base64EncodeObjCmd --
  *
- *      Worker for ns_uuencode, ns_base64encode, and ns_base64urlencode obj
- *      commands.
+ *      Implements "ns_uuencode", "ns_base64encode", and "ns_base64urlencode".
  *
  * Results:
  *      Tcl result.
@@ -1190,8 +1189,7 @@ NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
  *
  * Base64DecodeObjCmd --
  *
- *      Worker for ns_uudecode, ns_base64decode, and ns_base64urldecode obj
- *      command.
+ *      Implements "ns_uudecode", "ns_base64decode", and "ns_base64urldecode".
  *
  * Results:
  *      Tcl result.
@@ -1266,7 +1264,7 @@ NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
  *
  * NsTclCrashObjCmd --
  *
- *      Crash the server to test exception handling.
+ *      Implements "ns_crash". Crash the server to test exception handling.
  *
  * Results:
  *      None.
@@ -1335,7 +1333,7 @@ WordEndsInSemi(const char *word, size_t *lengthPtr)
  *
  * NsTclCryptObjCmd --
  *
- *      Implements ns_crypt as ObjCommand.
+ *      Implements "ns_crypt".
  *
  * Results:
  *      Tcl result.
@@ -1350,19 +1348,31 @@ int
 NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int  result = TCL_OK;
+    char       *keyString, *saltString;
+    Ns_ObjvSpec args[] = {
+        {"key",  Ns_ObjvString, &keyString, NULL},
+        {"salt", Ns_ObjvString, &saltString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "key salt");
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    } else {
-        char buf[NS_ENCRYPT_BUFSIZE];
 
-        Tcl_SetResult(interp,
-                      Ns_Encrypt(Tcl_GetString(objv[1]),
-                                 Tcl_GetString(objv[2]), buf), TCL_VOLATILE);
+    } else {
+        if (strlen(saltString) != 2 ) {
+           Ns_TclPrintfResult(interp, "salt string must be 2 characters long");
+           result = TCL_ERROR;
+
+       } else {
+            char buf[NS_ENCRYPT_BUFSIZE];
+
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj(Ns_Encrypt(keyString, saltString, buf), -1));
+       }
     }
     return result;
 }
+
 /*
  *  The SHA1 routines are borrowed from libmd:
  *
@@ -1761,7 +1771,10 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
         digest[i * 4u + 3u] = (uint8_t) t;
     }
 
-    memset(ctx, 0, sizeof(Ns_CtxSHA1));                         /* In case it's sensitive */
+    /*
+     * In case it is sensitive
+     */
+    memset(ctx, 0, sizeof(Ns_CtxSHA1));
 }
 
 /*
@@ -1780,36 +1793,40 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
  *
  *----------------------------------------------------------------------
  */
-char *Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUpper)
+char *
+Ns_HexString(const unsigned char *octets, char *outputBuffer, int size, bool isUpper)
 {
     int i;
     static const char hexCharsUpper[] = "0123456789ABCDEF";
     static const char hexCharsLower[] = "0123456789abcdef";
 
+    NS_NONNULL_ASSERT(octets != NULL);
+    NS_NONNULL_ASSERT(outputBuffer != NULL);
+
     if (isUpper) {
         for (i = 0; i < size; ++i) {
-            buf[i * 2] = hexCharsUpper[digest[i] >> 4];
-            buf[i * 2 + 1] = hexCharsUpper[digest[i] & 0xFu];
+            outputBuffer[i * 2] = hexCharsUpper[octets[i] >> 4];
+            outputBuffer[i * 2 + 1] = hexCharsUpper[octets[i] & 0xFu];
         }
     } else {
         for (i = 0; i < size; ++i) {
-            buf[i * 2] = hexCharsLower[digest[i] >> 4];
-            buf[i * 2 + 1] = hexCharsLower[digest[i] & 0xFu];
+            outputBuffer[i * 2] = hexCharsLower[octets[i] >> 4];
+            outputBuffer[i * 2 + 1] = hexCharsLower[octets[i] & 0xFu];
         }
     }
-    buf[size * 2] = '\0';
+    outputBuffer[size * 2] = '\0';
 
-    return buf;
+    return outputBuffer;
 }
 
 
 /*
  *----------------------------------------------------------------------
  *
- * SHA1Cmd --
+ * NsTclSHA1ObjCmd --
  *
- *      Returns a 40-character, hex-encoded string containing the SHA1
- *      hash of the first argument.
+ *      Implements "ns_sha1". Returns a 40-character, hex-encoded string
+ *      containing the SHA1 hash of the first argument.
  *
  * Results:
  *      NS_OK
@@ -1866,12 +1883,12 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 /*
  *----------------------------------------------------------------------
  *
- * FileStatCmd --
+ * NsTclFileStatObjCmd --
  *
- *      Works as file stat command but uses native call when Tcl VFS is
- *      not compiled. The reason for this when native calls are used for speed,
- *      having still slow file stat does not help, need to use native call
- *      and file stat is the most used command
+ *      Implements "ns_filestat". Works as "file stat" command but uses native
+ *      call when Tcl VFS is not compiled. The reason for this when native
+ *      calls are used for speed, having still slow file stat does not help,
+ *      need to use native call and file stat is the most used command
  *
  * Results:
  *      NS_OK
@@ -2248,10 +2265,10 @@ static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
 /*
  *----------------------------------------------------------------------
  *
- * MD5Cmd --
+ * NsTclMD5ObjCmd --
  *
- *      Returns a 32-character, hex-encoded string containing the MD5
- *      hash of the first argument.
+ *      Implements "ns_md5". Returns a 32-character, hex-encoded string
+ *      containing the MD5 hash of the first argument.
  *
  * Results:
  *      NS_OK
@@ -2307,7 +2324,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  *
  * NsTclSetUserObjCmd, NsTclSetGroupObjCmd --
  *
- *      Implements ns_setuser and ns_setgroup.
+ *      Implements "ns_setuser" and "ns_setgroup".
  *
  * Results:
  *      Standard Tcl result code.
@@ -2388,10 +2405,11 @@ GetLimitObj(rlim_t value)
  *
  * NsTclRlimitObjCmd --
  *
- *      Get or Set resource limit in the operating system.
+ *      Implements "ns_rlimit". Get or set a resource limit in the operating
+ *      system.
  *
  * Results:
- *      pair of actual value and maximum value
+ *      Pair of actual value and maximum value
  *
  * Side effects:
  *      Change resource limit with called with a value.
@@ -2516,12 +2534,12 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *             keys.
  *
  *          Note that this function is very weak against malicious strings;
- *          it's very easy to generate multiple keys that have the same
+ *          it is very easy to generate multiple keys that have the same
  *          hashcode. On the other hand, that hardly ever actually occurs and
  *          this function *is* very cheap, even by comparison with
  *          industry-standard hashes like FNV.
  *
- *       Implements the "ns_hash" command.
+ *       Implements "ns_hash".
  *
  * Results:
  *      Numeric hash value.

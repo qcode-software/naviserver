@@ -179,7 +179,7 @@ Ns_ModuleInit(const char *server, const char *module)
         logPtr->filename = ns_strdup(file);
     } else {
         /*
-         * If log file is not given in absolute format, it's expected to
+         * If log file is not given in absolute format, it is expected to
          * exist in the global logs directory if such exists or module
          * specific directory, which is created if necessary.
          */
@@ -431,7 +431,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
  *
  * LogObjCmd --
  *
- *      Implement the ns_accesslog command.
+ *      Implements "ns_accesslog".
  *
  * Results:
  *      Standard Tcl result.

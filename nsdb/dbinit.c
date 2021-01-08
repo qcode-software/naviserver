@@ -96,10 +96,10 @@ typedef struct Handle {
     struct Pool    *poolPtr;
     time_t          otime;           /* open time */
     time_t          atime;           /* last access time */
-    bool            stale;
-    int             stale_on_close;
-    bool            used;
     uintptr_t       sessionId;
+    int             stale_on_close;
+    bool            stale;
+    bool            used;
     bool            active;
 } Handle;
 
@@ -311,7 +311,7 @@ Ns_DbPoolPutHandle(Ns_DbHandle *handle)
     handlePtr->active = NS_FALSE;
 
     /*
-     * Close the handle if it's stale, otherwise update
+     * Close the handle if it is stale, otherwise update
      * the last access time.
      */
 

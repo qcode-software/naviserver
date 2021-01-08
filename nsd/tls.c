@@ -120,9 +120,9 @@ static OCSP_RESPONSE *OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int re
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 #endif
 
-# ifndef HAVE_OPENSSL_PRE_1_1
-static void *NS_CRYPTO_malloc(size_t num, const char *UNUSED(file), int UNUSED(line)) NS_GNUC_MALLOC NS_ALLOC_SIZE(1) NS_GNUC_RETURNS_NONNULL;
-static void *NS_CRYPTO_realloc(void *addr, size_t num, const char *UNUSED(file), int UNUSED(line)) NS_ALLOC_SIZE(2);
+# if !defined(HAVE_OPENSSL_PRE_1_1) && !defined(LIBRESSL_VERSION_NUMBER)
+static void *NS_CRYPTO_malloc(size_t num, const char *UNUSED(file), int UNUSED(line)) NS_GNUC_MALLOC NS_ALLOC_SIZE1(1) NS_GNUC_RETURNS_NONNULL;
+static void *NS_CRYPTO_realloc(void *addr, size_t num, const char *UNUSED(file), int UNUSED(line)) NS_ALLOC_SIZE1(2);
 static void NS_CRYPTO_free(void *addr, const char *UNUSED(file), int UNUSED(line));
 # endif
 
@@ -143,8 +143,21 @@ static DH *get_dh1024(void);
 
 # if  defined(HAVE_OPENSSL_PRE_1_1) || defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x20700000L
 /*
- * Compatibility function for libressl < 2.7; DH_set0_pqg is used just by the
- * Diffie-Hellman parameters in dhparams.h.
+ *----------------------------------------------------------------------
+ *
+ * DH_set0_pqg --
+ *
+ *      Compatibility function for libressl < 2.7; DH_set0_pqg is used
+ *      just by the Diffie-Hellman parameters in dhparams.h. Obsoleted
+ *      by OPENSSL_HAVE_DH_AUTO.
+ *
+ * Results:
+ *      Returns walways 1.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
  */
 static int
 DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g)
@@ -174,8 +187,23 @@ DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g)
  *----------------------------------------------------------------------
  * Callback implementations.
  *----------------------------------------------------------------------
+ */
+
+/*
+ *----------------------------------------------------------------------
  *
- * Callback used for ephemeral DH keys
+ * SSL_dhCB --
+ *
+ *      OpenSSL callback used for ephemeral DH keys.
+ *      Obsoleted by OPENSSL_HAVE_DH_AUTO.
+ *
+ * Results:
+ *      Returns always 1.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
  */
 static DH *
 SSL_dhCB(SSL *ssl, int isExport, int keyLength) {
@@ -210,12 +238,26 @@ SSL_dhCB(SSL *ssl, int isExport, int keyLength) {
 }
 #endif /* OPENSSL_HAVE_DH_AUTO */
 
+
 #ifdef HAVE_OPENSSL_PRE_1_1
 /*
- * The renegotiation issue was fixed in recent versions of OpenSSL,
- * and the flag was removed, therefore, this function is just for
- * compatibility with old version of OpenSSL (flag removed in OpenSSL
- * 1.1.*).
+ *----------------------------------------------------------------------
+ *
+ * SSL_infoCB --
+ *
+ *      OpenSSL callback used for renegotiation in earlier versions of
+ *      OpenSSL.  The renegotiation issue was fixed in recent versions
+ *      of OpenSSL, and the flag was removed, therefore, this function
+ *      is just for compatibility with old version of OpenSSL (flag
+ *      removed in OpenSSL 1.1.*).
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
  */
 static void
 SSL_infoCB(const SSL *ssl, int where, int UNUSED(ret)) {
@@ -228,6 +270,23 @@ SSL_infoCB(const SSL *ssl, int where, int UNUSED(ret)) {
 }
 #endif
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * SSL_serverNameCB --
+ *
+ *      OpenSSL callback used for server-ide server name indication
+ *      (SNI). The callback is controlled by the driver option
+ *      NS_DRIVER_SNI.
+ *
+ * Results:
+ *      SSL_TLSEXT_ERR_NOACK or SSL_TLSEXT_ERR_OK.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
 /*
  * ServerNameCallback for SNI
  */
@@ -421,7 +480,7 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
  *      OCSP_CERTID pointer or NULL in cases of failure.
  *
  * Side effects:
- *      None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -525,12 +584,12 @@ OCSP_ResponseIsValid(OCSP_RESPONSE *resp, OCSP_CERTID *id)
  *      Try to load OCSP_RESPONSE from cache file.
  *
  * Results:
- *      Tcl result code (NS_OK, NS_CONTINUE, NS_ERROR).  NS_CONTINUE means
- *      that there is no cache entry yet, but the filename of the cache file
- *      is returned in the first argument.
+ *      A standard Tcl result (TCL_OK, TCL_CONTINUE, TCL_ERROR).
+ *      TCL_CONTINUE means that there is no cache entry yet, but the
+ *      filename of the cache file is returned in the first argument.
  *
  * Side effects:
- *      None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -619,7 +678,7 @@ OCSP_FromCacheFile(Tcl_DString *dsPtr, OCSP_CERTID *id, OCSP_RESPONSE **resp)
  *      argument.
  *
  * Side effects:
- *      None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -863,7 +922,9 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
     return rsp;
 }
 
-# ifndef HAVE_OPENSSL_PRE_1_1
+#endif /* Of OPENSSL_NO_OCSP */
+
+# if !defined(HAVE_OPENSSL_PRE_1_1) && !defined(LIBRESSL_VERSION_NUMBER)
 static void *NS_CRYPTO_malloc(size_t num, const char *UNUSED(file), int UNUSED(line))
 {
     return ns_malloc(num);
@@ -878,14 +939,12 @@ static void NS_CRYPTO_free(void *addr, const char *UNUSED(file), int UNUSED(line
 }
 # endif
 
-#endif
-
 
 
 /*
  *----------------------------------------------------------------------
  *
- * NsOpenSSLInit --
+ * NsInitOpenSSL --
  *
  *      Library entry point for OpenSSL. This routine calls various
  *      initialization functions for OpenSSL. OpenSSL cannot be used
@@ -900,7 +959,8 @@ static void NS_CRYPTO_free(void *addr, const char *UNUSED(file), int UNUSED(line
  *----------------------------------------------------------------------
  */
 
-void NsInitOpenSSL(void)
+void
+NsInitOpenSSL(void)
 {
 # ifdef HAVE_OPENSSL_EVP_H
     static int initialized = 0;
@@ -915,7 +975,7 @@ void NsInitOpenSSL(void)
          * function prototypes were introduced CRYPTO_malloc_fn,
          * CRYPTO_realloc_fn and CRYPTO_free_fn.
          */
-#  ifdef HAVE_OPENSSL_PRE_1_1
+#  if defined(HAVE_OPENSSL_PRE_1_1) || defined(LIBRESSL_VERSION_NUMBER)
         CRYPTO_set_mem_functions(ns_malloc, ns_realloc, ns_free);
 #  else
         CRYPTO_set_mem_functions(NS_CRYPTO_malloc, NS_CRYPTO_realloc, NS_CRYPTO_free);
@@ -946,13 +1006,13 @@ void NsInitOpenSSL(void)
  *
  * Ns_TLS_CtxClientCreate --
  *
- *   Create and Initialize OpenSSL context
+ *      Create and Initialize OpenSSL context
  *
  * Results:
- *   Result code.
+ *      A standard Tcl result.
  *
  * Side effects:
- *  None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1014,13 +1074,13 @@ Ns_TLS_CtxClientCreate(Tcl_Interp *interp,
  *
  * Ns_TLS_CtxFree --
  *
- *   Free OpenSSL context
+ *      Free OpenSSL context
  *
  * Results:
- *   none
+ *      None.
  *
  * Side effects:
- *  None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1038,15 +1098,15 @@ Ns_TLS_CtxFree(NS_TLS_SSL_CTX *ctx)
  *
  * WaitFor --
  *
- *   Wait 10ms (currently hardcoded) for a state change on a socket.
- *   This is used for handling OpenSSL's states SSL_ERROR_WANT_READ
- *   and SSL_ERROR_WANT_WRITE.
+ *      Wait 10ms (currently hardcoded) for a state change on a socket.
+ *      This is used for handling OpenSSL's states SSL_ERROR_WANT_READ
+ *      and SSL_ERROR_WANT_WRITE.
  *
  * Results:
- *   Result code.
+ *      NaviServer return code.
  *
  * Side effects:
- *   None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1063,14 +1123,14 @@ WaitFor(NS_SOCKET sock, unsigned int st)
  *
  * Ns_TLS_SSLConnect --
  *
- *   Initialize a socket as ssl socket and wait until the socket is
- *   usable (is connected, handshake performed)
+ *      Initialize a socket as ssl socket and wait until the socket is
+ *      usable (is connected, handshake performed)
  *
  * Results:
- *   Result code.
+ *      A standard Tcl result.
  *
  * Side effects:
- *   None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1153,7 +1213,6 @@ Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
  *
  *----------------------------------------------------------------------
  */
-
 static int
 SSLPassword(char *buf, int num, int UNUSED(rwflag), void *UNUSED(userdata))
 {
@@ -1164,6 +1223,25 @@ SSLPassword(char *buf, int num, int UNUSED(rwflag), void *UNUSED(userdata))
     return (pwd != NULL ? (int)strlen(buf) : 0);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * ReportError --
+ *
+ *      Error reporting function for this file.  The function has the
+ *      fprintf interface (format string plus arguments) and leaves an
+ *      error message in the interpreter's result object, when an
+ *      interpreter is provided. Otherwise, it outputs a warning to
+ *      the system log.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Error reporting.
+ *
+ *----------------------------------------------------------------------
+ */
 static void
 ReportError(Tcl_Interp *interp, const char *fmt, ...)
 {
@@ -1187,15 +1265,16 @@ ReportError(Tcl_Interp *interp, const char *fmt, ...)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_TLS_CtxServerInit --
+ * NsSSLConfigNew --
  *
- *   Read config information, vreate and initialize OpenSSL context.
+ *      Creates a new NsSSLConfig structure and sets standard
+ *      configuration parameters ("deferaccept" and "verify").
  *
  * Results:
- *   Result code.
+ *      Pointer to a new NsSSLConfig.
  *
  * Side effects:
- *  None
+ *      Allocating memory.
  *
  *----------------------------------------------------------------------
  */
@@ -1210,6 +1289,21 @@ NsSSLConfigNew(const char *path)
     return cfgPtr;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TLS_CtxServerInit --
+ *
+ *      Read config information, vreate and initialize OpenSSL context.
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
 int
 Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
                      unsigned int flags,
@@ -1401,13 +1495,13 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
  *
  * Ns_TLS_CtxServerCreate --
  *
- *   Create and Initialize OpenSSL context
+ *      Create and Initialize OpenSSL context
  *
  * Results:
- *   Result code.
+ *      A standard Tcl result.
  *
  * Side effects:
- *  None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1451,7 +1545,7 @@ Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
         }
     }
 
-#ifndef HAVE_OPENSSL_PRE_1_1
+#if !defined(HAVE_OPENSSL_PRE_1_1) && defined(TLS1_3_VERSION) && !defined(OPENSSL_NO_TLS1_3)
     if (ciphersuites != NULL) {
         rc = SSL_CTX_set_ciphersuites(ctx, ciphersuites);
         if (rc == 0) {
@@ -1563,14 +1657,14 @@ Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
  *
  * Ns_TLS_SSLAccept --
  *
- *   Initialize a socket as ssl socket and wait until the socket
- *   is usable (is accepted, handshake performed)
+ *      Initialize a socket as ssl socket and wait until the socket
+ *      is usable (is accepted, handshake performed)
  *
  * Results:
- *   Tcl result code.
+ *      A standard Tcl result.
  *
  * Side effects:
- *   None
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1641,8 +1735,8 @@ Ns_TLS_SSLAccept(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
  * Ns_SSLRecvBufs2 --
  *
  *      Read data from a nonblocking socket into a vector of buffers.
- *      Ns_SockRecvBufs2() is similar to Ns_SockRecvBufs() with the following
- *      differences:
+ *      Ns_SockRecvBufs2() is similar to Ns_SockRecvBufs() with the
+ *      following differences:
  *        a) the first argument is an SSL *
  *        b) it performs no timeout handliong
  *        c) it returns the sockstate in its last argument
@@ -1662,12 +1756,12 @@ Ns_TLS_SSLAccept(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
 
 ssize_t
 Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
-                Ns_SockState *sockStatePtr)
+                Ns_SockState *sockStatePtr, unsigned long *errnoPtr)
 {
     ssize_t       nRead = 0;
     int           got = 0, sock, n, err;
     char         *buf = NULL;
-    unsigned long sslError;
+    unsigned long sslERRcode = 0u;
     char          errorBuffer[256];
     Ns_SockState  sockState = NS_SOCK_READ;
 
@@ -1713,11 +1807,11 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
 
     case SSL_ERROR_SYSCALL:
 
-        sslError = ERR_get_error();
-        Ns_Log(Debug, "SSL_read(%d) SSL_ERROR_SYSCALL got:%d sslError %lu: %s", sock, got,
-               sslError, ERR_error_string(sslError, errorBuffer));
+        sslERRcode = ERR_get_error();
+        Ns_Log(Debug, "SSL_read(%d) SSL_ERROR_SYSCALL got:%d sslERRcode %lu: %s", sock, got,
+               sslERRcode, ERR_error_string(sslERRcode, errorBuffer));
 
-        if (sslError == 0) {
+        if (sslERRcode == 0) {
             Ns_Log(Debug, "SSL_read(%d) ERROR_SYSCALL (eod?), got:%d", sock, got);
             nRead = got;
             sockState = NS_SOCK_DONE;
@@ -1731,18 +1825,18 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
         NS_FALL_THROUGH; /* fall through */
 
     default:
-        sslError = ERR_get_error();
+        sslERRcode = ERR_get_error();
 
-        Ns_Log(Debug, "SSL_read(%d) error handler err %d sslError %lu",
-               sock, err, sslError);
+        Ns_Log(Debug, "SSL_read(%d) error handler err %d sslERRcode %lu",
+               sock, err, sslERRcode);
         /*
          * Starting with the commit in OpenSSL 1.1.1 branch
          * OpenSSL_1_1_1-stable below, at least HTTPS client requests
          * answered without an explicit content length start to
          * fail. This can be tested with:
          *
-         *       ns_logctl severity Debug(task) on
-         *       ns_http run https://www.google.com/
+         *      ns_logctl severity Debug(task) on
+         *      ns_http run https://www.google.com/
          *
          * The fix below just triggers for exactly this condition to
          * provide a graceful end for these requests.
@@ -1750,10 +1844,10 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
          * https://github.com/openssl/openssl/commit/db943f43a60d1b5b1277e4b5317e8f288e7a0a3a
          */
         if (err == SSL_ERROR_SSL) {
-            int reasonCode = ERR_GET_REASON(sslError);
+            int reasonCode = ERR_GET_REASON(sslERRcode);
 
-            Ns_Log(Debug, "SSL_read(%d) error handler SSL_ERROR_SSL sslError %lu reason code %d",
-                   sock, sslError, reasonCode);
+            Ns_Log(Debug, "SSL_read(%d) error handler SSL_ERROR_SSL sslERRcode %lu reason code %d",
+                   sock, sslERRcode, reasonCode);
 #ifdef SSL_R_UNEXPECTED_EOF_WHILE_READING
             if (reasonCode == SSL_R_UNEXPECTED_EOF_WHILE_READING) {
                 Ns_Log(Notice, "SSL_read(%d) ERROR_SYSCALL sees UNEXPECTED_EOF_WHILE_READING", sock);
@@ -1764,14 +1858,14 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
 #endif
         }
         /*
-         * Report all sslErrors from the OpenSSL error stack as
+         * Report all sslERRcodes from the OpenSSL error stack as
          * "notices" in the system log file.
          */
-        while (sslError != 0u) {
+        while (sslERRcode != 0u) {
             Ns_Log(Notice, "SSL_read(%d) error received:%d, got:%d, err:%d,"
-                   " get_error:%lu, %s", sock, n, got, err, sslError,
-                   ERR_error_string(sslError, errorBuffer));
-            sslError = ERR_get_error();
+                   " get_error:%lu, %s", sock, n, got, err, sslERRcode,
+                   ERR_error_string(sslERRcode, errorBuffer));
+            sslERRcode = ERR_get_error();
         }
 
         SSL_set_shutdown(sslPtr, SSL_RECEIVED_SHUTDOWN);
@@ -1783,6 +1877,7 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
 
     if (nRead < 0) {
         sockState = NS_SOCK_EXCEPTION;
+        *errnoPtr = sslERRcode;
     }
 
     *sockStatePtr = sockState;
@@ -1810,7 +1905,7 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
  *      or -1 on error.
  *
  * Side effects:
- *      none
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -1847,6 +1942,49 @@ Ns_SSLSendBufs2(SSL *ssl, const struct iovec *bufs, int nbufs)
 
     return sent;
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SSLSetErrorCode --
+ *
+ *      Set the Tcl error code in the interpreter based on the
+ *      provided numeric value (OpenSSL error value) and return the
+ *      error message.
+ *
+ * Results:
+ *      Error message in form of a string.
+ *
+ * Side effects:
+ *      Sets Tcl error code.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_SSLSetErrorCode(Tcl_Interp *interp, unsigned long sslERRcode)
+{
+    const char *errorMsg;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+
+    if (ERR_GET_LIB(sslERRcode) == ERR_LIB_SYS) {
+        errorMsg = Ns_PosixSetErrorCode(interp, ERR_GET_REASON(sslERRcode));
+    } else {
+        char errorBuf[256];
+        /*
+         * Get long human readable error message from OpenSSL (including
+         * hex error code, library, and reason string).
+         */
+        ERR_error_string_n(sslERRcode, errorBuf, sizeof(errorBuf));
+
+        Tcl_SetErrorCode(interp, "OPENSSL", errorBuf, NULL);
+        errorMsg = ERR_reason_error_string(sslERRcode);
+    }
+
+    return errorMsg;
+}
+
+
 
 #else
 

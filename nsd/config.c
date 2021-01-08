@@ -615,15 +615,20 @@ Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
     NS_NONNULL_ASSERT(valuePtr != NULL);
 
     s = Ns_ConfigGetValue(section, key);
-    if (s == NULL || sscanf(s, "%24"
-#ifdef _WIN32
-                            "I64d"
-#else
-                            SCNd64
-#endif
-                            , valuePtr) != 1) {
+    if (s == NULL) {
         success = NS_FALSE;
+    } else {
+        Tcl_WideInt  lval;
+        char        *endPtr = NULL;
+
+        lval = strtoll(s, &endPtr, 10);
+        if (endPtr != s) {
+            *valuePtr = lval;
+        } else {
+            success = NS_FALSE;
+        }
     }
+
     return success;
 }
 
@@ -965,8 +970,8 @@ NsConfigEval(const char *config, const char *configFileName,
  *
  * ParamObjCmd --
  *
- *      Add a single entry to the current section of the config.  This
- *      command may only be run from within an ns_section.
+ *      Implements "ns_param". Add a single entry to the current section of
+ *      the config.  This command may only be run from within an "ns_section".
  *
  * Results:
  *      Standard Tcl Result.
@@ -1014,9 +1019,9 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  *
  * SectionObjCmd --
  *
- *      This creates a new config section and sets a shared variable
- *      to point at a newly-allocated set for holding config data.
- *      ns_param stores config data in the set.
+ *      Impelements "ns_section". This command creates a new config section in
+ *      form of a newly-allocated "ns_set" for holding config data.
+ *      "ns_param" stores config data in the set.
  *
  * Results:
  *      Standard Tcl result.
