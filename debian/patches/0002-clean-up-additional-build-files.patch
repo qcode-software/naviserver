@@ -1,0 +1,23 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Fri, 8 Jan 2021 11:23:34 +0000
+Subject: clean up additional build files
+
+---
+ Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index fcca795..1184811 100644
+--- a/Makefile
++++ b/Makefile
+@@ -295,8 +295,8 @@ clean-bak: clean
+ 
+ distclean: clean
+ 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
+-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
++	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1,nsconfig.h,nsversion.h} \
++	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl naviserver.rdf version_include.man
+ 
+ config.guess:
+ 	wget -O config.guess 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD'
