@@ -47,12 +47,12 @@
 #  define be32toh(x) betoh32(x)
 #  define be64toh(x) betoh64(x)
 # endif
-#elif defined(__APPLE__) || defined(_MSC_VER)
+#elif defined(__APPLE__) || defined(_WIN32)
 # define be16toh(x) ntohs(x)
 # define htobe16(x) htons(x)
 # define be32toh(x) ntonl(x)
 # define htobe32(x) htonl(x)
-# if defined(_MSC_VER)
+# if defined(_WIN32)
 /*
  * Not sure, why htonll() and ntohll() are undefined in Visual Studio 2019:
  *
@@ -638,8 +638,18 @@ NsTclConnChanProc(NS_SOCKET UNUSED(sock), void *arg, unsigned int why)
                          * keeping the connchan specific structures
                          * alive (postponing cleanup to a "close"
                          * operation).
+                         *
+                         * We cannot pass "callbackFree" and "cbPtr"
+                         * to Ns_SockCancelCallbackEx(), so the
+                         * callback structure will stay around until
+                         * the callback is reset or the channel is
+                         * finally cleaned. We might consider changing
+                         * the condition flags (also from the
+                         * scripting level) to turn callbacks for
+                         * certain conditions on or off.
                          */
                         (void) Ns_SockCancelCallbackEx(localsock, NULL, NULL, NULL);
+
                     }
                 } else {
                     Tcl_DStringInit(&ds);
