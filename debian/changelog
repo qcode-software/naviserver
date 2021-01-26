@@ -1,3 +1,9 @@
+naviserver (4.99.20-20200124-1+deb9u1) stretch; urgency=medium
+
+  * Import from upstream 4.99.20 bugfix release from 20200124
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 26 Jan 2021 10:27:24 +0000
+
 naviserver (4.99.20~rc4-1+deb9u1) stretch; urgency=medium
 
   * Fix version number
