@@ -1820,7 +1820,7 @@ HttpGetResult(
             *fileNameObj     = NULL,
             *resultObj       = NULL,
             *replyHeadersObj = NULL,
-            *elapsedTimeObj  = NULL;
+            *elapsedTimeObj;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(httpPtr != NULL);
@@ -3177,7 +3177,7 @@ HttpCancel(
     NS_NONNULL_ASSERT(httpPtr->task != NULL);
 
     (void) Ns_TaskCancel(httpPtr->task);
-    (void) Ns_TaskWaitCompleted(httpPtr->task);
+    Ns_TaskWaitCompleted(httpPtr->task);
 }
 
 

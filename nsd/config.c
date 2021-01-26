@@ -745,7 +745,7 @@ Ns_ConfigGetPath(const char *server, const char *module, ...)
 
     Tcl_DStringInit(&ds);
     va_start(ap, module);
-    (void)PathAppend(&ds, server, module, ap);
+    PathAppend(&ds, server, module, ap);
     va_end(ap);
 
     Ns_Log(Dev, "config section: %s", ds.string);
@@ -784,7 +784,7 @@ Ns_ConfigSectionPath(Ns_Set **setPtr, const char *server, const char *module, ..
 
     Tcl_DStringInit(&ds);
     va_start(ap, module);
-    (void)PathAppend(&ds, server, module, ap);
+    PathAppend(&ds, server, module, ap);
     va_end(ap);
 
     Ns_Log(Dev, "config section: %s", ds.string);
@@ -1173,12 +1173,25 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
             i = Ns_SetIFind(set, key);
         }
         if (i >= 0) {
+            /*
+             * The configuration value was found in the ns_set for this
+             * section.
+             */
             s = Ns_SetValue(set, i);
-        } else {
+        } else if (!nsconf.state.started) {
+            /*
+             * The configuration value was NOT found. Since we want to be able
+             * to retrieve all current configuration values via introspection
+             * (e.g. as used by nsstats), add new entries to the set. This is
+             * only possible during startup when we there is a single
+             * thread. Changing ns_sets is not thread safe.
+             */
             i = (int)Ns_SetPut(set, key, defstr);
             if (defstr != NULL) {
                 s = Ns_SetValue(set, i);
             }
+        } else {
+            s = defstr;
         }
     }
     return s;
