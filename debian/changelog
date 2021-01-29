@@ -1,3 +1,10 @@
+naviserver (4.99.20-20200128-1+deb9u1) stretch; urgency=medium
+
+  * Import from upstream. Fixed computation of "location" for non-global
+    drivers
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 29 Jan 2021 11:54:35 +0000
+
 naviserver (4.99.20-20200124-1+deb9u1) stretch; urgency=medium
 
   * Import from upstream 4.99.20 bugfix release from 20200124
