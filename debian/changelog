@@ -1,3 +1,9 @@
+naviserver (4.99.20-20210128-1+deb9u1) stretch; urgency=medium
+
+  * Fixed version number
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 02 Feb 2021 10:46:53 +0000
+
 naviserver (4.99.20-20200128-1+deb9u1) stretch; urgency=medium
 
   * Import from upstream. Fixed computation of "location" for non-global
