@@ -1,3 +1,9 @@
+naviserver (4.99.23-1+deb10u1) buster; urgency=medium
+
+  * Import 4.99.23 from upstream
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Tue, 05 Apr 2022 15:52:05 +0100
+
 naviserver (4.99.20~20201215-1+deb10u1) buster; urgency=medium
 
   * Import from upstream
