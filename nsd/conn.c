@@ -459,7 +459,7 @@ Ns_ConnPeerAddr(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
 
-    return ((const Conn *)conn)->reqPtr->peer;
+    return ((const Conn *)conn)->peer;
 }
 
 const char *
@@ -467,7 +467,7 @@ Ns_ConnForwardedPeerAddr(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
 
-    return ((const Conn *)conn)->reqPtr->proxypeer;
+    return ((const Conn *)conn)->proxypeer;
 }
 
 /*
@@ -531,15 +531,7 @@ Ns_ConnCurrentAddr(const Ns_Conn *conn)
 
     connPtr = (Conn *)conn;
     if (connPtr->sockPtr != NULL) {
-        struct NS_SOCKADDR_STORAGE sa;
-        socklen_t len = (socklen_t)sizeof(sa);
-        int retVal = getsockname(connPtr->sockPtr->sock, (struct sockaddr *) &sa, &len);
-
-        if (retVal == -1) {
-            result = NULL;
-        } else {
-            result = ns_inet_ntoa((struct sockaddr *)&sa);
-        }
+        result = Ns_SockGetAddr((Ns_Sock *)connPtr->sockPtr);
     } else {
         result = NULL;
     }
@@ -626,7 +618,7 @@ Ns_ConnPeer(const Ns_Conn *conn)
 const char *
 Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr, const struct sockaddr *clientsaPtr)
 {
-    const Conn *connPtr;
+    Conn *connPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(saPtr != NULL);
@@ -635,15 +627,15 @@ Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr, const struct s
     connPtr = (Conn *)conn;
 
     connPtr->reqPtr->port = Ns_SockaddrGetPort(saPtr);
-    (void)ns_inet_ntop(saPtr, connPtr->reqPtr->peer, NS_IPADDR_SIZE);
+    (void)ns_inet_ntop(saPtr, connPtr->peer, NS_IPADDR_SIZE);
 
     if (clientsaPtr->sa_family != 0) {
-        (void)ns_inet_ntop(clientsaPtr, connPtr->reqPtr->proxypeer, NS_IPADDR_SIZE);
+        (void)ns_inet_ntop(clientsaPtr, connPtr->proxypeer, NS_IPADDR_SIZE);
     } else {
-        connPtr->reqPtr->proxypeer[0] = '\0';
+        connPtr->proxypeer[0] = '\0';
     }
 
-    return connPtr->reqPtr->peer;
+    return connPtr->peer;
 }
 
 
@@ -838,22 +830,41 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
                && ((host = Ns_SetIGet(headers, "Host")) != NULL)
                && (*host != '\0')) {
         /*
-         * Construct a location string from the HTTP host header.
+         * Construct a location string from the HTTP "host" header field
+         * without using port and default port.
          */
-        if (Ns_StrIsHost(host)) {
-            /*
-             * We have here no port and no default port
-             */
+        if (Ns_StrIsValidHostHeaderContent(host)) {
             location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0u, 0u);
         }
-
     }
 
     /*
-     * If everything else fails, append the static driver location.
+     * If everything above failed, try the location form the connPtr. This is
+     * actually determine from sockPtr->location which comes from
+     * mapPtr->location, which comes from the virtual hosts mapping table.
      */
-    if (location == NULL) {
+    if ((location == NULL) && (connPtr->location != NULL)) {
         location = Ns_DStringAppend(dest, connPtr->location);
+    }
+
+    /*
+     * If everything above failed, try the static driver location or - as last
+     * resort - use the configured address.
+     */
+
+    if (location == NULL) {
+        unsigned short port;
+        const char    *addr;
+
+        if (connPtr->sockPtr != NULL) {
+            port = Ns_SockGetPort((Ns_Sock*)connPtr->sockPtr);
+            addr = Ns_SockGetAddr((Ns_Sock*)connPtr->sockPtr);
+        } else {
+            port = connPtr->drvPtr->port;
+            addr = connPtr->drvPtr->address;
+        }
+        location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol,
+                                         addr, port, connPtr->drvPtr->defport);
     }
 
     return location;
@@ -1502,7 +1513,7 @@ Ns_ConnSetCompression(Ns_Conn *conn, int level)
  *
  * NsTclConnObjCmd --
  *
- *      Implements ns_conn as an obj command.
+ *      Implements "ns_conn".
  *
  * Results:
  *      Standard Tcl result.
@@ -2304,7 +2315,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
  *
  * NsTclLocationProcObjCmd --
  *
- *      Implements ns_locationproc as obj command.
+ *      Implements "ns_locationproc".
  *
  * Results:
  *      Tcl result.
@@ -2345,7 +2356,7 @@ NsTclLocationProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
  *
  * NsTclWriteContentObjCmd --
  *
- *      Implements ns_conncptofp as obj command.
+ *      Implements "ns_conncptofp".
  *
  * Results:
  *      Standard Tcl result.

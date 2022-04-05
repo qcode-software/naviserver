@@ -29,18 +29,22 @@ ns_section ns/parameters {
     #ns_param   logdebug            true     ;# default: false
     #ns_param   logroll             false    ;# default: true
     #ns_param	logrollfmt          %Y-%m-%d ;# format appended to log filename
+
+    # Format of log entries in serverlog:
+    #ns_param   logsec              false    ;# add timestamps in second resolution (default: true)
     #ns_param   logusec             true     ;# add timestamps in microsecond (usec) resolution (default: false)
     #ns_param   logusecdiff         true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
-    #ns_param   sanitizelogfiles    2        ;# default: 2; 0: none, 1: full, 2: human-friendly
+    #ns_param   logthread           false    ;# add thread-info the log file lines (default: true)
+    #ns_param   sanitizelogfiles    1        ;# default: 2; 0: none, 1: full, 2: human-friendly
 
     #ns_param   dbcloseonexit       off      ;# default: off; from nsdb
     ns_param    jobsperthread       1000     ;# default: 0
     #ns_param   jobtimeout          0s       ;# default: 5m
-    ns_param	joblogminduration   100s       ;# default: 1s
+    ns_param	joblogminduration   100s     ;# default: 1s
     ns_param    schedsperthread     10       ;# default: 0
     #ns_param	schedlogminduration 2s       ;# print warnings when scheduled job takes longer than that
     ns_param    progressminsize     1MB      ;# default: 0
-    #ns_param   concurrentinterpcreate true  ;# default: false
+    #ns_param   concurrentinterpcreate false ;# default: true
     #ns_param   listenbacklog       256      ;# default: 32; backlog for ns_socket commands
     #ns_param   mutexlocktrace      true     ;# default false; print durations of long mutex calls to stderr
 
@@ -144,6 +148,7 @@ ns_section ns/module/nssock/servers {
 
 ns_section ns/server/default {
     ns_param    enabletclpages      true  ;# default: false
+    #ns_param   filterrwlocks       false ;# default: true
     ns_param    checkmodifiedsince  false ;# default: true, check modified-since before returning files from cache. Disable for speedup
     ns_param    connsperthread      1000  ;# default: 0; number of connections (requests) handled per thread
     ns_param    minthreads          5     ;# default: 1; minimal number of connection threads
@@ -196,7 +201,7 @@ ns_section ns/server/default/adp {
 
 ns_section ns/server/default/tcl {
     ns_param    nsvbuckets          16       ;# default: 8
-    ns_param    nsvrwlicks          false    ;# default: true
+    ns_param    nsvrwlocks          false    ;# default: true
     ns_param    library             modules/tcl
     #
     # Example for initcmds (to be executed, when this server is fully initialized).

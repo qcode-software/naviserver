@@ -187,8 +187,7 @@ Ns_ModuleInit(const char *server, const char *module)
     /*
      * Config basic options.
      */
-
-    path = Ns_ConfigGetPath(server, module, (char *)0L);
+    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
     modPtr = ns_calloc(1u, sizeof(Mod));
     modPtr->module = module;
     modPtr->server = server;
@@ -204,7 +203,6 @@ Ns_ModuleInit(const char *server, const char *module)
     /*
      * Configure the various interp and env options.
      */
-
     Ns_DStringInit(&ds);
     section = Ns_ConfigGetValue(path, "interps");
     if (section != NULL) {
@@ -747,7 +745,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
 {
     int           i, opipe[2];
     Ns_ReturnCode status;
-    char         *s, *e, *p;
+    char         *s, *e;
     Ns_DString   *dsPtr;
     const Mod    *modPtr;
     const char   *value;
@@ -847,24 +845,31 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     s = Ns_ConnLocationAppend(conn, dsPtr);
     s = strchr(s, INTCHAR(':'));
     s += 3;                        /* Get past the protocol "://"  */
-    Ns_HttpParseHost(s, NULL, &p); /* Get to the port number    */
+    {
+        char *end, *portString;
+        bool  hostParsedOk = Ns_HttpParseHost2(s, NS_FALSE, NULL, &portString, &end);
 
-    if (p != NULL) {
-        int j;
-
-        p++;
-        Ns_SetUpdate(cgiPtr->env, "SERVER_PORT", p);
-        for (j = 0; *p != '\0'; ++p, ++j) {
-            ;
+        if (!hostParsedOk) {
+            Ns_Log(Warning, "nscgi: invalid hostname: '%s'", s);
         }
-        Ns_DStringSetLength(dsPtr, j);
-    }
-    Ns_SetUpdate(cgiPtr->env, "SERVER_NAME", dsPtr->string);
-    Ns_DStringSetLength(dsPtr, 0);
-    if (p == NULL) {
-        Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
-        Ns_SetUpdate(cgiPtr->env, "SERVER_PORT", dsPtr->string);
+
+        if (portString != NULL) {
+            int j;
+
+            portString++;
+            Ns_SetUpdate(cgiPtr->env, "SERVER_PORT", portString);
+            for (j = 0; *portString != '\0'; ++portString, ++j) {
+                ;
+            }
+            Ns_DStringSetLength(dsPtr, j);
+        }
+        Ns_SetUpdate(cgiPtr->env, "SERVER_NAME", dsPtr->string);
         Ns_DStringSetLength(dsPtr, 0);
+        if (portString == NULL) {
+            Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
+            Ns_SetUpdate(cgiPtr->env, "SERVER_PORT", dsPtr->string);
+            Ns_DStringSetLength(dsPtr, 0);
+        }
     }
 
     /*

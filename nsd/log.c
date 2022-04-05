@@ -45,9 +45,11 @@
 
 #define LOG_ROLL      0x01u
 #define LOG_EXPAND    0x02u
-#define LOG_USEC      0x04u
-#define LOG_COLORIZE  0x08u
+#define LOG_SEC       0x04u
+#define LOG_USEC      0x08u
 #define LOG_USEC_DIFF 0x10u
+#define LOG_THREAD    0x20u
+#define LOG_COLORIZE  0x40u
 
 /*
  * The following struct represents a log entry header as stored in the
@@ -75,7 +77,7 @@ typedef struct LogFilter {
     Ns_FreeProc       *freeArgProc; /* User-given function to free passed arg */
     void              *arg;         /* Argument passed to proc and free */
     int                refcnt;      /* Number of current consumers */
-    struct LogFilter  *nextPtr;      /* Maintains double linked list */
+    struct LogFilter  *nextPtr;     /* Maintains double linked list */
     struct LogFilter  *prevPtr;
 } LogFilter;
 
@@ -86,7 +88,8 @@ typedef struct LogFilter {
  */
 
 typedef struct LogCache {
-    int         hold;         /* Flag: keep log entries in cache */
+    bool        hold;         /* Flag: keep log entries in cache */
+    bool        finalizing;   /* Flag: log is finalizing, no more ops allowed */
     int         count;        /* Number of entries held in the cache */
     time_t      gtime;        /* For GMT time calculation */
     time_t      ltime;        /* For local time calculations */
@@ -95,7 +98,7 @@ typedef struct LogCache {
     size_t      gbufSize;
     size_t      lbufSize;
     LogEntry   *firstEntry;   /* First in the list of log entries */
-    LogEntry   *currEntry;    /* Current in the list of log entries */
+    LogEntry   *currentEntry; /* Current in the list of log entries */
     Ns_DString  buffer;       /* The log entries cache text-cache */
 } LogCache;
 
@@ -389,6 +392,9 @@ NsConfigLog(void)
     if (Ns_ConfigBool(path, "logroll", NS_TRUE) == NS_TRUE) {
         flags |= LOG_ROLL;
     }
+    if (Ns_ConfigBool(path, "logsec", NS_TRUE) == NS_TRUE) {
+        flags |= LOG_SEC;
+    }
     if (Ns_ConfigBool(path, "logusec", NS_FALSE) == NS_TRUE) {
         flags |= LOG_USEC;
     }
@@ -397,6 +403,9 @@ NsConfigLog(void)
     }
     if (Ns_ConfigBool(path, "logexpanded", NS_FALSE) == NS_TRUE) {
         flags |= LOG_EXPAND;
+    }
+    if (Ns_ConfigBool(path, "logthread", NS_TRUE) == NS_TRUE) {
+        flags |= LOG_THREAD;
     }
     if (Ns_ConfigBool(path, "logcolorize", NS_FALSE) == NS_TRUE) {
         flags |= LOG_COLORIZE;
@@ -520,7 +529,7 @@ Ns_CreateLogSeverity(const char *name)
  *
  * Ns_LogSeverityName --
  *
- *      Given a log severity, return a pointer to it's name.
+ *      Given a log severity, return a pointer to its name.
  *
  * Results:
  *      The severity name.
@@ -730,7 +739,8 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
         size_t    length, offset;
         LogEntry *entryPtr;
         /*
-         * Track usage to provide statistics.
+         * Track usage to provide statistics.  The next line can lead
+         * potentially to data races (dirty reads).
          */
         severityConfig[severity].count ++;
 
@@ -738,22 +748,26 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
          * Append new or reuse log entry record.
          */
         cachePtr = GetCache();
-        if (cachePtr->currEntry != NULL) {
-            entryPtr = cachePtr->currEntry->nextPtr;
+        if (cachePtr->finalizing) {
+            fprintf(stderr, "Log cache is already finalized, ignore logging attempt\n");
+            return;
+        }
+        if (cachePtr->currentEntry != NULL) {
+            entryPtr = cachePtr->currentEntry->nextPtr;
         } else {
             entryPtr = cachePtr->firstEntry;
         }
         if (entryPtr == NULL) {
             entryPtr = ns_malloc(sizeof(LogEntry));
             entryPtr->nextPtr = NULL;
-            if (cachePtr->currEntry != NULL) {
-                cachePtr->currEntry->nextPtr = entryPtr;
+            if (cachePtr->currentEntry != NULL) {
+                cachePtr->currentEntry->nextPtr = entryPtr;
             } else {
                 cachePtr->firstEntry = entryPtr;
             }
         }
 
-        cachePtr->currEntry = entryPtr;
+        cachePtr->currentEntry = entryPtr;
         cachePtr->count++;
 
         offset = (size_t)Ns_DStringLength(&cachePtr->buffer);
@@ -768,8 +782,8 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
         /*
          * Flush it out if not held or severity is "Fatal"
          */
-        if (cachePtr->hold == 0 || severity == Fatal) {
-            LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
+        if (!cachePtr->hold || severity == Fatal) {
+            LogFlush(cachePtr, filters, -1, NS_TRUE, NS_FALSE);
         }
     }
 }
@@ -967,6 +981,11 @@ Ns_LogTime2(char *timeBuf, bool gmt)
 
     NS_NONNULL_ASSERT(timeBuf != NULL);
 
+    if (cachePtr->finalizing) {
+        timeBuf[0] = 0;
+        return timeBuf;
+    }
+
     /*
      * Add the log stamp
      */
@@ -1072,7 +1091,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
  *
  * NsTclLogObjCmd --
  *
- *      Implements ns_log as obj command.
+ *      Implements "ns_log".
  *
  * Results:
  *      Tcl result.
@@ -1220,7 +1239,8 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  *
  * NsTclLogCtlObjCmd --
  *
- *      Implements ns_logctl command to manage per-thread log caching.
+ *      Implements "ns_logctl". This command provides control over the
+ *      the activated severities or buffering of log messages.
  *
  * Results:
  *      Tcl result.
@@ -1280,6 +1300,12 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
                             &opt) != TCL_OK) {
         result = TCL_ERROR;
 
+    } else if (cachePtr->finalizing) {
+        /*
+         * Silent Fail.
+         */
+        return TCL_OK;
+
     } else {
 
         switch (opt) {
@@ -1309,7 +1335,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             break;
 
         case CHoldIdx:
-            cachePtr->hold = 1;
+            cachePtr->hold = NS_TRUE;
             break;
 
         case CPeekIdx:
@@ -1323,7 +1349,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             break;
 
         case CReleaseIdx:
-            cachePtr->hold = 0;
+            cachePtr->hold = NS_FALSE;
             NS_FALL_THROUGH; /* fall through */
         case CFlushIdx:
             LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
@@ -1346,7 +1372,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             }
             if (result == TCL_OK) {
                 memset(filterPtr, 0, sizeof(*filterPtr));
-                LogFlush(cachePtr, filterPtr, count, NS_TRUE, NS_FALSE);
+                LogFlush(cachePtr, filterPtr, count, NS_TRUE, NS_TRUE);
             }
             break;
 
@@ -1390,7 +1416,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  * NsTclLogRollObjCmd --
  *
- *      Implements ns_logroll command.
+ *      Implements "ns_logroll".
  *
  * Results:
  *      Tcl result.
@@ -1493,7 +1519,7 @@ NsLogOpen(void)
  * LogOpen --
  *
  *      Open the log filename specified in the global variable
- *      'logfileName'. If it's successfully opened, make that file the
+ *      'logfileName'. If it is successfully opened, make that file the
  *      sink for stdout and stderr too.
  *
  * Results:
@@ -1579,13 +1605,16 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
     NS_NONNULL_ASSERT(cachePtr != NULL);
     NS_NONNULL_ASSERT(listPtr != NULL);
 
-    ePtr = cachePtr->firstEntry;
-    while (ePtr != NULL && cachePtr->currEntry != NULL) {
-        const char *logString = Ns_DStringValue(&cachePtr->buffer) + ePtr->offset;
+    /*fprintf(stderr, "#### %s cachePtr %p locked %d count %d cachePtr->count %d\n",
+      Ns_ThreadGetName(), (void*)cachePtr, locked, count, cachePtr->count);*/
 
-        if (locked) {
-            Ns_MutexLock(&lock);
-        }
+    if (locked) {
+        Ns_MutexLock(&lock);
+    }
+
+    ePtr = cachePtr->firstEntry;
+    while (ePtr != NULL && cachePtr->currentEntry != NULL) {
+        const char *logString = Ns_DStringValue(&cachePtr->buffer) + ePtr->offset;
 
         /*
          * Since listPtr is never NULL, a repeat-unil loop is
@@ -1610,7 +1639,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
                 }
                 if (status == NS_ERROR) {
                     /*
-                     * Callback signalized error. Per definition we
+                     * Callback signaled an error. Per definition we
                      * will skip invoking other registered filters. In
                      * such case we must assure that the current log
                      * entry eventually gets written into some log
@@ -1624,11 +1653,8 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
             cPtr = cPtr->prevPtr;
         } while (cPtr != NULL);
 
-        if (locked) {
-            Ns_MutexUnlock(&lock);
-        }
         nentry++;
-        if ((count > 0 && nentry >= count) || ePtr == cachePtr->currEntry) {
+        if ((count > 0 && nentry >= count) || ePtr == cachePtr->currentEntry) {
             break;
         }
         ePtr = ePtr->nextPtr;
@@ -1638,25 +1664,34 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
         if (count > 0) {
             size_t length = (ePtr != NULL) ? (ePtr->offset + ePtr->length) : 0u;
             cachePtr->count = (length != 0u) ? nentry : 0;
-            cachePtr->currEntry = ePtr;
+            cachePtr->currentEntry = ePtr;
             Ns_DStringSetLength(&cachePtr->buffer, (int)length);
         } else {
             LogEntry *entryPtr, *tmpPtr;
 
             /*
              * The cache is reset (count <= 0). If there are log
-             * entries in the cache, flush these before setting the
-             * pointers to zero.
+             * entries in the cache, first zero the pointers
+             * to minimize free memory reads probability when
+             * no locks are applied, then flush the memory.
              */
-            for (entryPtr = cachePtr->firstEntry; entryPtr != NULL; entryPtr = tmpPtr) {
-                tmpPtr = entryPtr->nextPtr;
-                ns_free(entryPtr);
-            }
+            entryPtr = cachePtr->firstEntry;
+
             cachePtr->count = 0;
-            cachePtr->currEntry = NULL;
+            cachePtr->currentEntry = NULL;
             cachePtr->firstEntry = NULL;
             Ns_DStringSetLength(&cachePtr->buffer, 0);
+
+            for (; entryPtr != NULL; entryPtr = tmpPtr) {
+                tmpPtr = entryPtr->nextPtr;
+                memset(entryPtr, 0, sizeof(LogEntry));
+                ns_free(entryPtr);
+            }
         }
+    }
+
+    if (locked) {
+        Ns_MutexUnlock(&lock);
     }
 }
 
@@ -1716,33 +1751,44 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
 {
     Ns_DString *dsPtr  = (Ns_DString *)arg;
     LogCache   *cachePtr = GetCache();
-    const char *timeString;
-    size_t      timeStringLength;
     char        buffer[COLOR_BUFFER_SIZE];
 
     NS_NONNULL_ASSERT(arg != NULL);
     NS_NONNULL_ASSERT(stamp != NULL);
     NS_NONNULL_ASSERT(msg != NULL);
 
-    /*
-     * Add the log stamp
-     */
-    timeString = LogTime(cachePtr, stamp, NS_FALSE);
-    timeStringLength = cachePtr->lbufSize;
+    if (cachePtr->finalizing) {
+        /*
+         * Silent fail.
+         */
+        return NS_OK;
+    }
 
     /*
-     * In case colorization was configured, add the escape necessary
+     * In case colorization was configured, add the necessary escape
      * sequences.
      */
     if ((flags & LOG_COLORIZE) != 0u) {
         Ns_DStringPrintf(dsPtr, "%s%d;%dm", LOG_COLORSTART, prefixIntensity, prefixColor);
     }
 
-    Ns_DStringNAppend(dsPtr, timeString, (int)timeStringLength);
+    if ((flags & LOG_SEC) != 0u) {
+        const char *timeString;
+        size_t      timeStringLength;
+
+        /*
+         * Add the log stamp
+         */
+        timeString = LogTime(cachePtr, stamp, NS_FALSE);
+        timeStringLength = cachePtr->lbufSize;
+        Ns_DStringNAppend(dsPtr, timeString, (int)timeStringLength);
+    }
+
     if ((flags & LOG_USEC) != 0u) {
         Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
         Ns_DStringPrintf(dsPtr, ".%06ld]", stamp->usec);
     }
+
     if ((flags & LOG_USEC_DIFF) != 0u) {
         Ns_Time        now;
         static Ns_Time last = {0, 0};
@@ -1770,15 +1816,18 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
         }
         last.usec = now.usec;
     }
+    if ((flags & LOG_THREAD) != 0u) {
+        Ns_DStringPrintf(dsPtr, "[%d.%" PRIxPTR "]", (int)Ns_InfoPid(), Ns_ThreadId());
+    }
     if ((flags & LOG_COLORIZE) != 0u) {
-        Ns_DStringPrintf(dsPtr, "[%d.%" PRIxPTR "][%s] %s%s%s: ",
-                         (int)Ns_InfoPid(), Ns_ThreadId(), Ns_ThreadGetName(),
+        Ns_DStringPrintf(dsPtr, "[%s] %s%s%s: ",
+                         Ns_ThreadGetName(),
                          (const char *)LOG_COLOREND,
                          LogSeverityColor(buffer, severity),
                          Ns_LogSeverityName(severity));
     } else {
-        Ns_DStringPrintf(dsPtr, "[%d.%" PRIxPTR "][%s] %s: ",
-                         (int)Ns_InfoPid(), Ns_ThreadId(), Ns_ThreadGetName(),
+        Ns_DStringPrintf(dsPtr, "[%s] %s: ",
+                         Ns_ThreadGetName(),
                          Ns_LogSeverityName(severity));
     }
 
@@ -2020,17 +2069,28 @@ static void
 FreeCache(void *arg)
 {
     LogCache *cachePtr = (LogCache *)arg;
-    LogEntry *entryPtr, *tmpPtr;
 
-    LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
-    entryPtr = cachePtr->firstEntry;
-    while (entryPtr != NULL) {
-        tmpPtr = entryPtr->nextPtr;
-        ns_free(entryPtr);
-        entryPtr = tmpPtr;
+    if (!cachePtr->finalizing) {
+
+        cachePtr->finalizing = NS_TRUE;
+
+        LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
+#if 0
+        {
+            LogEntry *entryPtr, *tmpPtr;
+
+            // FIXME AW - this is already done in LogFlush, so why repeat it again?
+            entryPtr = cachePtr->firstEntry;
+            while (entryPtr != NULL) {
+                tmpPtr = entryPtr->nextPtr;
+                ns_free(entryPtr);
+                entryPtr = tmpPtr;
+            }
+        }
+#endif
+        Ns_DStringFree(&cachePtr->buffer);
+        ns_free(cachePtr);
     }
-    Ns_DStringFree(&cachePtr->buffer);
-    ns_free(cachePtr);
 }
 
 
@@ -2040,7 +2100,7 @@ FreeCache(void *arg)
  * GetSeverityFromObj --
  *
  *      Get the severity level from the Tcl_Obj, possibly setting
- *      it's internal rep.
+ *      its internal representation.
  *
  * Results:
  *      TCL_OK or TCL_ERROR.

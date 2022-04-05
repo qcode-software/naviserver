@@ -214,7 +214,9 @@ NsThreadMain(void *arg)
 {
     Thread  *thrPtr = (Thread *) arg;
 
+    Ns_MasterLock();
     thrPtr->tid = Ns_ThreadId();
+    Ns_MasterUnlock();
     Ns_TlsSet(&key, thrPtr);
     Ns_ThreadSetName("-thread:%" PRIxPTR "-", thrPtr->tid);
     SetBottomOfStack(&thrPtr);
@@ -410,7 +412,7 @@ Ns_ThreadExit(void *arg)
      * augmenting the TLS cleanup invoked automatically by
      * the system's thread exit machinery. It is at this place
      * that we have the thread completely initialized, so an
-     * proper cleanup has better chance to finish it's work.
+     * proper cleanup has better chance to finish its work.
      */
 
     NsCleanupTls(NsGetTls());
@@ -551,7 +553,9 @@ NsThreadShutdownStarted(void)
 {
     Thread *thisPtr = GetThread();
 
+    Ns_MasterLock();
     thisPtr->flags |= NS_THREAD_EXITED;
+    Ns_MasterUnlock();
 }
 
 

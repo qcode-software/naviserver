@@ -1,0 +1,88 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_localtime - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_localtime.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_localtime.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_localtime(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_localtime - Return current time in local timezone</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_localtime</b> <i class="arg">seconds</i></a></li>
+<li><a href="#2"><b class="cmd">ns_localtime</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command returns a nine-element Tcl list representing the current time in the
+system's current timezone.  The structure of the list corresponds to the Unix struct tm time structure:</p>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_localtime</b> <i class="arg">seconds</i></a></dt>
+<dd></dd>
+<dt></dt>
+<dd><p>minutes (0-59)</p></dd>
+<dt></dt>
+<dd><p>hours (0-23)</p></dd>
+<dt></dt>
+<dd><p>dayofmonth (1-31)</p></dd>
+<dt></dt>
+<dd><p>monthofyear (0-11)</p></dd>
+<dt></dt>
+<dd><p>year (year-1900)</p></dd>
+<dt></dt>
+<dd><p>dayofweek (0-6, Sunday=0)</p></dd>
+<dt></dt>
+<dd><p>dayofyear (0-365)</p></dd>
+<dt></dt>
+<dd><p>isdst (&gt;0 if Daylight Savings Time is in effect)</p></dd>
+</dl>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="2"><b class="cmd">ns_localtime</b></a></dt>
+<dd></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ % ns_localtime
+ 33 33 22 11 5 104 5 162 1
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_fmttime.html">ns_fmttime</a>, <a href="ns_gmtime.html">ns_gmtime</a>, <a href="ns_httptime.html">ns_httptime</a>, <a href="ns_parsehttptime.html">ns_parsehttptime</a>, <a href="ns_parsetime.html">ns_parsetime</a>, <a href="ns_time.html">ns_time</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#time">time</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

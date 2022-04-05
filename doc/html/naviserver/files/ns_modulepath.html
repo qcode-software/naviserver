@@ -1,0 +1,69 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_modulepath - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_modulepath.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_modulepath.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_modulepath(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_modulepath - Get the paths to a server's modules</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_modulepath</b> <i class="arg">server</i> <span class="opt">?<i class="arg">module ...</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command returns the path to a server's directory and optionally to its modules. 
+The command does no validation on the server to see if it is actually defined.
+The server directory is a subdirectory of &quot;servers&quot; under the path returned from ns_info home.
+ Modules are relative to that directory in the subdirectory &quot;modules&quot;.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+ 
+<dt><a name="1"><b class="cmd">ns_modulepath</b> <i class="arg">server</i> <span class="opt">?<i class="arg">module ...</i>?</span></a></dt>
+<dd></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ % ns_modulepath exampleServer
+ /home/ns/servers/exampleServer
+</pre>
+<pre class="doctools_example">
+ % file join 
+</pre>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#module">module</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

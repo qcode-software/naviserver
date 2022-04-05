@@ -247,7 +247,7 @@ this function.
 ns_db sp_setparam sets a parameter for a call to a stored procedure. The varname
 is the name of the variable, for example "@name". The vartype is the data type
 of this parameter, for example "varchar". The inout argument indicates whether
-it's an input or output parameter. It must be set to either "in" or "out".
+it is an input or output parameter. It must be set to either "in" or "out".
 The value is the parameter value to send. This function returns 1 on success and
 throws an error on failure. This function is implemented only for the Sybase
 database driver. See the Examples section, below, for an example of
@@ -284,12 +284,6 @@ for the database pool.
 Change the verbose setting (the Verbose parameter in the configuration file) for
 the given pool.
 
-
-[call [cmd "ns_quotelisttolist"] [arg string]]
-
-Transform a string with single quoted elements into a proper Tcl
-list. In this step, remove space, backslash and single quote
-characters in the given string.
 
 [call [cmd "ns_dberrorcode"] [arg handle]]
 
@@ -478,7 +472,7 @@ ns_section ns/db/pool/pool2 {
 [example_end]
 
 
-[see_also ns_buildsqldate ns_dbquotevalue]
+[see_also ns_buildsqldate ns_dbquotevalues]
 [keywords "server built-in" module nsdb database SQL pools]
 
 

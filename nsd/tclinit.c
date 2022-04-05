@@ -217,7 +217,13 @@ Nsd_Init(Tcl_Interp *interp)
 void
 NsConfigTcl(void)
 {
-    concurrent_interp_create = Ns_ConfigBool(NS_CONFIG_PARAMETERS, "concurrentinterpcreate", NS_FALSE);
+    concurrent_interp_create = Ns_ConfigBool(NS_CONFIG_PARAMETERS, "concurrentinterpcreate",
+#ifdef NS_TCL_PRE86
+                                             NS_FALSE
+#else
+                                             NS_TRUE
+#endif
+                                             );
     maxConcurrentUpdates = Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "maxconcurrentupdates", 1000, 1, INT_MAX);
 }
 
@@ -275,13 +281,12 @@ ConfigServerTcl(const char *server)
         Ns_DString  ds;
         const char *path, *p, *initFileString;
         int         n;
-        Ns_Set     *set;
+        Ns_Set     *set = NULL;
         bool        initFileStringCopied = NS_FALSE;
 
         Ns_ThreadSetName("-main:%s-", server);
 
-        path = Ns_ConfigGetPath(server, NULL, "tcl", (char *)0L);
-        set = Ns_ConfigCreateSection(path);
+        path = Ns_ConfigSectionPath(&set, server, NULL, "tcl", (char *)0L);
 
         Ns_DStringInit(&ds);
 
@@ -804,7 +809,7 @@ Ns_TclRegisterTrace(const char *server, Ns_TclTraceProc *proc,
         if ((when == NS_TCL_TRACE_CREATE) || (when == NS_TCL_TRACE_ALLOCATE)) {
             Tcl_Interp *interp = NsTclAllocateInterp(servPtr);
 
-            if ((*proc)(interp, arg) != TCL_OK) {
+            if ((*proc)(interp, arg) != NS_OK) {
                 (void) Ns_TclLogErrorInfo(interp, "\n(context: register trace)");
             }
             Ns_TclDeAllocateInterp(interp);
@@ -1474,7 +1479,11 @@ ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  *      Implements various trace commands
  *
- *          ns_ictl trace|oninit|oncreate|oncleanup|ondelete
+ *          "ns_ictl oncleanup"
+ *          "ns_ictl oncreate
+ *          "ns_ictl ondelete"
+ *          "ns_ictl oninit"
+ *          "ns_ictl trace"
  *
  *      Register script-level interp traces. "ns_ictl trace" is the new
  *      version, the other ones are deprecated 3-argument variants.
@@ -1608,10 +1617,10 @@ ICtlRunTracesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  *
  * NsTclICtlObjCmd --
  *
- *      Implements ns_ictl command to control interp state for
+ *      Implements "ns_ictl". This command is used to control interp state for
  *      virtual server interps.  This command provide internal control
- *      functions required by the init.tcl script and is not intended
- *      to be called by a user directly.  It supports four activities:
+ *      functions required by the init.tcl script and is not intended to be
+ *      called by a user directly.  It supports four activities:
  *
  *      1. Managing the list of "modules" to initialize.
  *      2. Saving the init script for evaluation with new interps.
@@ -1661,7 +1670,7 @@ NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
  *
  * NsTclAtCloseObjCmd --
  *
- *      Implements ns_atclose.
+ *      Implements "ns_atclose".
  *
  * Results:
  *      Tcl result.
@@ -2005,7 +2014,7 @@ PushInterp(NsInterp *itPtr)
     interp = itPtr->interp;
 
     /*
-     * Evaluate the dellocation traces once to perform various garbage
+     * Evaluate the deallocation traces once to perform various garbage
      * collection and then either delete the interp or push it back on the
      * per-thread list.
      */
@@ -2263,16 +2272,16 @@ UpdateInterp(NsInterp *itPtr)
      * state. The Rd lock is here, since we are just reading the protected
      * variables.
      *
-     * In the codeblock below, we want to avoid running the blueprint update
+     * In the code block below, we want to avoid running the blueprint update
      * under the lock. Therefore, we copy the blueprint script with ns_strdup.
      */
     Ns_RWLockRdLock(&servPtr->tcl.lock);
     if (itPtr->epoch != servPtr->tcl.epoch) {
-        epoch        = servPtr->tcl.epoch;
+        epoch = servPtr->tcl.epoch;
         /*
          * The epoch has changed. Perform the interpreter update now, when
-         * either (a) the interpreter is fresh, or when the concurrently
-         * running updates are below maxConcurrentUpdates.
+         * either (a) the interpreter is fresh, or (b) when the concurrently
+         * running updates are below "maxConcurrentUpdates".
          */
         doUpdateNow = (itPtr->epoch < 1) || (concurrentUpdates < maxConcurrentUpdates);
         if (doUpdateNow) {
@@ -2289,12 +2298,14 @@ UpdateInterp(NsInterp *itPtr)
         if (doUpdateNow) {
             Ns_Time startTime, now, diffTime;
 
+            Ns_Log(Notice, "start update interpreter %s to epoch %d, concurrent %d",
+                   servPtr->server, epoch, concurrentUpdates);
             Ns_GetTime(&startTime);
             result = Tcl_EvalEx(itPtr->interp, script,
                                 scriptLength, TCL_EVAL_GLOBAL);
             Ns_GetTime(&now);
             Ns_DiffTime(&now, &startTime, &diffTime);
-            Ns_Log(Notice, "update interpreter %s to epoch %d, trace %s, time "
+            Ns_Log(Notice, "update interpreter %s to epoch %d done, trace %s, time "
                    NS_TIME_FMT " secs concurrent %d",
                    servPtr->server, epoch,
                    GetTraceLabel(itPtr->currentTrace),
@@ -2308,8 +2319,8 @@ UpdateInterp(NsInterp *itPtr)
             concurrentUpdates--;
             Ns_MutexUnlock(&updateLock);
         } else {
-            Ns_Log(Notice, "========= postponed update, %s epoch %d interpreter",
-                   servPtr->server, epoch);
+            Ns_Log(Notice, "postponed update, %s epoch %d interpreter (concurrent %d max %d)",
+                   servPtr->server, epoch, concurrentUpdates, maxConcurrentUpdates);
         }
     }
 
@@ -2349,8 +2360,7 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
         switch (why) {
         case NS_TCL_TRACE_FREECONN:   NS_FALL_THROUGH; /* fall through */
         case NS_TCL_TRACE_DEALLOCATE: NS_FALL_THROUGH; /* fall through */
-        case NS_TCL_TRACE_DELETE:     NS_FALL_THROUGH; /* fall through */
-        case NS_TCL_TRACE_IDLE:
+        case NS_TCL_TRACE_DELETE:
             /*
              * Run finalization traces in LIFO order.
              */
@@ -2368,7 +2378,8 @@ RunTraces(NsInterp *itPtr, Ns_TclTraceType why)
 
         case NS_TCL_TRACE_ALLOCATE:  NS_FALL_THROUGH; /* fall through */
         case NS_TCL_TRACE_CREATE:    NS_FALL_THROUGH; /* fall through */
-        case NS_TCL_TRACE_GETCONN:
+        case NS_TCL_TRACE_GETCONN:   NS_FALL_THROUGH; /* fall through */
+        case NS_TCL_TRACE_IDLE:
             /*
              * Run initialization traces in FIFO order.
              */

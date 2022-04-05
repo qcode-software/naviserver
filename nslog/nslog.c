@@ -168,7 +168,7 @@ Ns_ModuleInit(const char *server, const char *module)
     Ns_MutexSetName2(&logPtr->lock, "nslog", server);
     Tcl_DStringInit(&logPtr->buffer);
 
-    path = Ns_ConfigGetPath(server, module, (char *)0L);
+    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
 
     /*
      * Determine the name of the log file
@@ -179,7 +179,7 @@ Ns_ModuleInit(const char *server, const char *module)
         logPtr->filename = ns_strdup(file);
     } else {
         /*
-         * If log file is not given in absolute format, it's expected to
+         * If log file is not given in absolute format, it is expected to
          * exist in the global logs directory if such exists or module
          * specific directory, which is created if necessary.
          */
@@ -306,7 +306,7 @@ Ns_ModuleInit(const char *server, const char *module)
     return result;
 }
 
-static int
+static Ns_ReturnCode
 AddCmds(Tcl_Interp *interp, const void *arg)
 {
     const Log *logPtr = arg;
@@ -431,7 +431,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
  *
  * LogObjCmd --
  *
- *      Implement the ns_accesslog command.
+ *      Implements "ns_accesslog".
  *
  * Results:
  *      Standard Tcl result.
@@ -833,7 +833,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
     if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
         /*
-         * This branch of the if is deprecated and kept only for backward
+         * This branch is deprecated and kept only for backward
          * compatibility (added Dec 2020).
          */
         p = Ns_ConnForwardedPeerAddr(conn);
@@ -951,13 +951,14 @@ LogTrace(void *arg, Ns_Conn *conn)
     Ns_DStringPrintf(dsPtr, "%d %" PRIdz, (n != 0) ? n : 200, Ns_ConnContentSent(conn));
 
     /*
-     * Append the referrer and user-agent headers (if any)
+     * Append the referrer (using the misspelled header field "Referer") and
+     * user-agent headers (if any)
      */
 
     if ((logPtr->flags & LOG_COMBINED)) {
 
         Tcl_DStringAppend(dsPtr, " \"", 2);
-        p = Ns_SetIGet(conn->headers, "referrer");
+        p = Ns_SetIGet(conn->headers, "referer");
         if (p != NULL) {
             AppendEscaped(dsPtr, p);
         }

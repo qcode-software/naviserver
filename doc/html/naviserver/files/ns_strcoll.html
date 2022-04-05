@@ -1,0 +1,89 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_strcoll - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_strcoll.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_strcoll.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_strcoll(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_strcoll - Compare strings according to the current locale collation</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_strcoll</b> <span class="opt">?<b class="option">-locale <i class="arg">locale</i></b>?</span> <i class="arg">string1</i> <i class="arg">string2</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_strcoll</b> <span class="opt">?<b class="option">-locale <i class="arg">locale</i></b>?</span> <i class="arg">string1</i> <i class="arg">string2</i></a></dt>
+<dd><p>This command compares lexicographically string1 with string2
+  according to the current locale collation and returns an integer
+  greater than, equal to, or less than 0, depending on whether string1
+  is greater than, equal to, or less than string2. The command is
+  necessary in cases, where e.g. the sorting order from the database
+  (normally based on local collation) is different from default Tcl
+  sorting order to provide a uniform interface with same sorting
+  orders. The name of the function is derived from the baseline POSIX
+  function call.</p>
+<p>When the option <b class="option">-locale</b> is not set, the LC_COLLATE
+value is determined by the operating system (looking into the settings
+of LC_ALL, LC_COLLATE and LANG). When locale is specified, it is
+recommended to use the specification consisting of language, territory
+and charset (e.g. <i class="term">en_US.UTF-8</i>.</p>
+<p>Note that the output of the command depends on correct
+installation of locales on the host. Furthermore, the output of the
+command varies depending on the C library's implementation. Some
+implementations support further advanced sorting features such as
+case-folding collation, ignoring preceding dashes etc. especially for
+UTF-8 locales, other implementations don't. Future versions of the
+function might consider using the ICU library (International
+Components for Unicode) for further cross-platform compatibility.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>The command is suitable for usage in the Tcl lsort command:</p>
+<pre class="doctools_example">
+ % set l {Bor Bar B&auml;r}
+ % lsort -command ns_strcoll $l
+ Bar B&auml;r Bor
+ 
+ % lsort $l
+ Bar Bor B&auml;r 
+ % lsort -command {ns_strcoll -locale en_US.UTF-8} $l
+ Bar B&auml;r Bor
+</pre>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#lc_collate">LC_COLLATE</a>, <a href="../../index.html#compare">compare</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#i18n">i18n</a>, <a href="../../index.html#locale">locale</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

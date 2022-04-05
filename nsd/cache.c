@@ -194,7 +194,7 @@ Ns_CacheDestroy(Ns_Cache *cache)
  *
  * Ns_CacheFindEntry --
  *
- *      Find a cache entry given it's key.
+ *      Find a cache entry given its key.
  *
  * Results:
  *      A pointer to an Ns_Entry cache entry, or NULL if the key does
@@ -539,7 +539,7 @@ Ns_CacheGetValueT(const Ns_Entry *entry, const Ns_CacheTransactionStack *transac
 
         result = NULL;
         if (transactionStackPtr != NULL) {
-            size_t i;
+            unsigned int i;
 
             for (i = 0u; i < transactionStackPtr->depth; i++) {
                 if (e->transactionEpoch == transactionStackPtr->stack[i]) {
@@ -589,7 +589,7 @@ Ns_CacheGetNrUncommittedEntries(const Ns_Cache *cache)
  *
  *      Free the cache entry's previous contents, set it to the new
  *      contents, increase the size of the cache, and prune until
- *      it's back under the maximum size.
+ *      it is back under the maximum size.
  *
  * Results:
  *      None.
@@ -1098,7 +1098,7 @@ Ns_CacheLock(Ns_Cache *cache)
  *----------------------------------------------------------------------
  */
 
-int
+Ns_ReturnCode
 Ns_CacheTryLock(Ns_Cache *cache)
 {
     Cache *cachePtr = (Cache *) cache;

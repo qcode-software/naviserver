@@ -93,14 +93,14 @@ Ns_ModuleInit(const char *server, const char *module)
     Tcl_DString        ds;
     int                num, result;
     const char        *path;
-    NsSSLConfig       *cfgPtr;
+    NsSSLConfig       *drvCfgPtr;
     Ns_DriverInitData  init;
 
     memset(&init, 0, sizeof(init));
     Tcl_DStringInit(&ds);
 
-    path = Ns_ConfigGetPath(server, module, (char *)0L);
-    cfgPtr = NsSSLConfigNew(path);
+    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
+    drvCfgPtr = NsSSLConfigNew(path);
 
     init.version = NS_DRIVER_VERSION_4;
     init.name = "nsssl";
@@ -114,14 +114,14 @@ Ns_ModuleInit(const char *server, const char *module)
     init.closeProc = Close;
     init.clientInitProc = ClientInit;
     init.opts = NS_DRIVER_SSL|NS_DRIVER_ASYNC;
-    init.arg = cfgPtr;
+    init.arg = drvCfgPtr;
     init.path = path;
     init.protocol = "https";
     init.defaultPort = 443;
 
     if (Ns_DriverInit(server, module, &init) != NS_OK) {
         Ns_Log(Error, "nsssl: driver init failed.");
-        ns_free(cfgPtr);
+        ns_free(drvCfgPtr);
         return NS_ERROR;
     }
 
@@ -141,9 +141,9 @@ Ns_ModuleInit(const char *server, const char *module)
 #endif
     Ns_Log(Notice, "OpenSSL %s initialized", SSLeay_version(SSLEAY_VERSION));
 
-    result = Ns_TLS_CtxServerInit(path, NULL, NS_DRIVER_SNI, cfgPtr, &cfgPtr->ctx);
+    result = Ns_TLS_CtxServerInit(path, NULL, NS_DRIVER_SNI, drvCfgPtr, &drvCfgPtr->ctx);
     if (result != TCL_OK) {
-        Ns_Log(Error, "nsssl: init error: %s", strerror(errno));
+        Ns_Log(Error, "nsssl: could not initialize OpenSSL context (section %s): %s", path, strerror(errno));
         return NS_ERROR;
     }
 
@@ -193,10 +193,10 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 
     sock = Ns_SockListenEx(address, port, backlog, reuseport);
     if (sock != NS_INVALID_SOCKET) {
-        NsSSLConfig *cfgPtr = driver->arg;
+        NsSSLConfig *drvCfgPtr = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
-        if (cfgPtr->deferaccept) {
+        if (drvCfgPtr->deferaccept) {
             Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
         }
     }
@@ -223,10 +223,11 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 static NS_DRIVER_ACCEPT_STATUS
 Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, socklen_t *socklenPtr)
 {
-    NsSSLConfig *cfgPtr = sock->driver->arg;
+    NsSSLConfig *drvCfgPtr = sock->driver->arg;
     SSLContext  *sslCtx = sock->arg;
 
     sock->sock = Ns_SockAccept(listensock, sockaddrPtr, socklenPtr);
+
     if (sock->sock != NS_INVALID_SOCKET) {
 #ifdef __APPLE__
       /*
@@ -238,10 +239,13 @@ Accept(Ns_Sock *sock, NS_SOCKET listensock, struct sockaddr *sockaddrPtr, sockle
         setsockopt(sock->sock, SOL_SOCKET, SO_SNDLOWAT, &value, sizeof(value));
 #endif
         (void)Ns_SockSetNonBlocking(sock->sock);
+        if (drvCfgPtr->nodelay != 0) {
+            Ns_SockSetNodelay(sock->sock);
+        }
 
         if (sslCtx == NULL) {
             sslCtx = ns_calloc(1, sizeof(SSLContext));
-            sslCtx->ssl = SSL_new(cfgPtr->ctx);
+            sslCtx->ssl = SSL_new(drvCfgPtr->ctx);
             if (sslCtx->ssl == NULL) {
                 char ipString[NS_IPADDR_SIZE];
                 Ns_Log(Error, "%d: SSL session init error for %s: [%s]",
@@ -288,16 +292,16 @@ static ssize_t
 Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
      Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
 {
-    NsSSLConfig *cfgPtr = sock->driver->arg;
+    NsSSLConfig *drvCfgPtr = sock->driver->arg;
     SSLContext  *sslCtx = sock->arg;
     Ns_SockState sockState = NS_SOCK_NONE;
     ssize_t      nRead = 0;
-
+    unsigned long sslERRcode = 0u;
     /*
      * Verify client certificate, driver may require valid cert
      */
 
-    if (cfgPtr->verify && sslCtx->verified == 0) {
+    if (drvCfgPtr->verify && sslCtx->verified == 0) {
         X509 *peer;
 #ifdef HAVE_OPENSSL_3
         peer = SSL_get0_peer_certificate(sslCtx->ssl);
@@ -330,9 +334,9 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
     }
 
     if (nRead > -1) {
-        nRead = Ns_SSLRecvBufs2(sslCtx->ssl, bufs, nbufs, &sockState);
+        nRead = Ns_SSLRecvBufs2(sslCtx->ssl, bufs, nbufs, &sockState, &sslERRcode);
     }
-    Ns_SockSetReceiveState(sock, sockState);
+    Ns_SockSetReceiveState(sock, sockState, sslERRcode);
 
     return nRead;
 }
@@ -441,10 +445,14 @@ Keep(Ns_Sock *sock)
 
     if (SSL_get_shutdown(sslCtx->ssl) == 0) {
         BIO *bio = SSL_get_wbio(sslCtx->ssl);
-        if (bio != NULL && BIO_flush(bio) == 1) {
-            return NS_TRUE;
+        if (likely(bio != NULL)) {
+            int flush = BIO_flush(bio);
+            if (likely(flush == 1)) {
+                return NS_TRUE;
+            }
         }
     }
+    /*fprintf(stderr, "##### Keep (%d) => 0\n", sock->sock);*/
     return NS_FALSE;
 }
 
@@ -480,8 +488,8 @@ Close(Ns_Sock *sock)
         if (!Ns_SockInErrorState(sock) && SSL_in_init(sslCtx->ssl) != 1) {
             int r = SSL_shutdown(sslCtx->ssl);
 
-            Ns_Log(Debug, "### SSL close(%d) err %d", SSL_get_fd(sslCtx->ssl),
-                   SSL_get_error(sslCtx->ssl, r));
+            Ns_Log(Debug, "### SSL close(%d) shutdown returned %d err %d",
+                   SSL_get_fd(sslCtx->ssl), r, SSL_get_error(sslCtx->ssl, r));
 
             if (r == 0) {
                 /*

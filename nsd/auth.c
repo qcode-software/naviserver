@@ -120,7 +120,7 @@ Ns_SetRequestAuthorizeProc(const char *server, Ns_RequestAuthorizeProc *procPtr)
  *
  * NsTclRequestAuthorizeObjCmd --
  *
- *      Implements ns_requestauthorize as obj command.
+ *      Implements "ns_requestauthorize".
  *
  * Results:
  *      Tcl result.
@@ -316,7 +316,7 @@ NsParseAuth(Conn *connPtr, const char *auth)
                 q++;
             }
 
-            while (q != NULL && *q != '\0') {
+            while (*q != '\0') {
                 size_t idx;
                 char   save2;
 

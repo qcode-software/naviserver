@@ -46,9 +46,14 @@ threads to avoid resource leaks and/or missed state changes.
 	 [arg script] \
 	 [opt [arg args]] ]
 
-Evaluate the given script and args and arrange for it's side effects to
-propagate to all interpreters in all threads for the current virtual server. Use
-this to define new procs once the server has started.
+Evaluate the given script and args and arrange for its side effects
+to propagate to all interpreters in all threads for the current
+virtual server. Use this to define new procs or to redefine existing
+procs once the server has started. A modified blueprint can be
+reloaded via [cmd "ns_ictl update"] which is also called by the
+default init.tcl script of NaviServer during cleanup (i.e. by the
+[term deallocate] traces).
+
 
 [para]
 If the script evaluates without error then it is appended to the interpreter
@@ -107,7 +112,7 @@ Return the script of the specified trace.
 
 [call [cmd "ns_ictl markfordelete"] ]
 Mark the interpreter for deletion after the [term deallocate] interpreter traces
-and have run. This is useful when it's necessary to delete an interp after it
+and have run. This is useful when it is necessary to delete an interp after it
 has been modified in a way that cannot be safely cleaned up, such as by the
 TclPro debugger.
 
@@ -153,9 +158,11 @@ interpreters. Existing interpreters will be reinitialized when
 Register an interpreter [term trace] [arg script].
 
 [para]
-[option create], [option allocate] and [option getconn] traces are called in FIFO (first
-in, first out) order; [option freeconn], [option deallocate] and [option delete] traces
-are called in LIFO (last in, first out) order.
+
+[option create], [option allocate], [option getconn],
+and [option idle] traces are called in FIFO (first in, first out)
+order; [option freeconn], [option deallocate] and [option delete]
+traces are called in LIFO (last in, first out) order.
 
 [para]
 All traces must be registered before server start up completes.  Valid
@@ -198,6 +205,15 @@ Tcl proc is registered as a connection filter, that will trigger the
 [option getconn] interpreter trace, otherwise it will fire later in the process
 when the registered proc, [term ADP], or Tcl page runs.
 
+[opt_def idle]
+Idle traces fire, when a connection thread is idle (received no
+requests within the thread's timeout and when [term minthreads]
+is already reached, such that the timeouted thread is kept
+around. The timeout can be configured by the parameter [term threadtimeout]
+in the [term ns/server/\$servername] section of the configuration
+file. This callback can be used e.g. for maintenance work on
+connection threads.
+
 [list_end]
 
 
@@ -224,13 +240,13 @@ interpreter was last initialized.
 
 [section {Configuration}]
 
-The following global configuration parameter influence the default
+The following global configuration parameters can influence the default
 behavior of [cmd ns_ictl]
 
 [example_begin]
  ns_section  ns/server {
    # Activate/Deactivate concurrent interpreter create commands
-   ns_param concurrentinterpcreate true ;# default: false
+   #ns_param concurrentinterpcreate false ;# default: true
 
    # Define maximum number of concurrent automatic update commands
    # when epoch in incresed (e.g. on "ns_eval" commands)
@@ -240,6 +256,7 @@ behavior of [cmd ns_ictl]
 
 
 [see_also ns_atclose]
-[keywords "server built-in" interpreter trace module ns_eval ns_reinit ns_cleanup callback]
+[keywords "server built-in" interpreter trace module ns_eval ns_reinit \
+ns_cleanup callback configuration]
 
 [manpage_end]

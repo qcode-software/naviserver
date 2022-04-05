@@ -40,6 +40,22 @@ integrity, and authenticity. Currently, only GCM mode (Galois/Counter
 Mode) is supported. For details about AEAD in GCM mode, see
 e.g. https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf
 
+[para]
+AEAD has the following properties:
+
+[list_begin definitions]
+[def Secrecy] Nobody will be able to get any information about the
+     encrypted plaintext, except the length.
+[def Authenticity] Without the key it is impossible to change the
+     plaintext underlying the ciphertext undetected.
+[def Symmetric] Encrypting the message and decrypting the ciphertext
+     is done with the same key.
+[def Randomization] The encryption is randomized. Two messages with
+     the same plaintext will not yield the same ciphertext. This prevents
+     attackers from knowing which ciphertext corresponds to a given
+     plaintext.
+[list_end]
+
 [para] The function returns a dict consisting of [term bytes] and the
 authentication [term tag] used for decryption.
 
@@ -126,7 +142,7 @@ This function requires OpenSSL compiled with EC support enabled.
      [opt [option "-passphrase [arg passphrase]"]] \
      ]
 
-Obtain the private key in various encodings from an elliptic curves
+Obtain the private key in various encodings from an elliptic curve
 PEM file. When the .pem-file is secured by a passphrase, this has
 to be provided via [option "-passphrase"].
 
@@ -331,7 +347,7 @@ Return the specified number of random bytes in the specified encoding
      [opt [option "-encoding [arg encoding]"]] \
      [arg nrbytes]]
 
-Compute a password has based on the scrypt Password-Based Key
+Compute a password hash based on the scrypt Password-Based Key
 Derivation Function (RFC 7914) and return the specified number of
 random bytes in the specified encoding (default hex).
 
@@ -339,7 +355,7 @@ random bytes in the specified encoding (default hex).
 The scrypt function is a modern replacement for crypt and bcrypt and
 derives more secret keys from a secret string.  It is based on memory-hard
 functions, which offer added protection against attacks using custom hardware
-and GPU arrays. The functions requires the compilation of NaviServer against
+and GPU arrays. The function requires the compilation of NaviServer against
 OpenSSL 3.0 or newer.
 
 [para]
@@ -347,7 +363,7 @@ The scrypt function is as well used in many cryptocurrencies as a
 proof-of-work algorithm.
 
 [para] Colin Percival. 2009. Stronger key derivation via
-sequential memory-hard functions. In BSDCan ’09: The Technical BSD
+sequential memory-hard functions. In BSDCan 09: The Technical BSD
 Conference.
 
 [para]
@@ -355,10 +371,58 @@ When the option [option -binary] is specified, it applies to
 [option -salt] and [option -secret].
 
 [example_begin]
- % ns_crypto::randombytes 20
- 3191eb4360a3dc9b5ef667641b264d43aa1019aa
+ % ::ns_crypto::scrypt -secret "password" -salt NaCl -n 1024 -r 8 -p 16
+ fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b373162
+ 2eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640
+ 
+ % time {::ns_crypto::scrypt -secret "password" -salt NaCl -n 1024 -r 8 -p 16}
+  42011 microseconds per iteration
 [example_end]
 
+
+[call [cmd "ns_crypto::pbkdf2_hmac"] \
+     [opt [option -binary]] \
+     [opt [option "-digest [arg digest]"]] \
+     [opt [option "-dklen [arg dklen]"]] \
+     [opt [option "-iterations [arg iterations]"]] \
+     [opt [option "-salt [arg salt]"]] \
+     [opt [option "-secret [arg secret]"]] \
+     [opt [option "-encoding [arg encoding]"]] \
+     [arg nrbytes]]
+
+Compute a password hash based on PBKDF2 (Password-Based
+Key Derivation Function 2, RFC 2898). This function is used to reduce
+vulnerabilities of brute-force attacks against password hashes and is
+used e.g. in SCRAM (Salted Challenge Response Authentication
+Mechanism). It can be used e.g. for SCRAM-sha1 and SCRAM-sha-256.
+The hash function of SCRAM is PBKDF2 (RFC2898) with HMAC as the
+pseudorandom function (PRF) and with dkLen == output length of
+HMAC == output length of the digest function.
+
+[para]
+The function has less requirements on the version of
+OpenSSL than [cmd "ns_crypto::scrypt"].
+
+[para]
+When the option [option -binary] is specified, it applies to
+[option -salt] and [option -secret].
+
+[para]
+The option [option -dklen] specifies the length of the output key and
+is by default the same as the output length of the used digest.
+
+[para]
+The option [option -iterations] specifies the number of iterations
+(repeated HMAC operations) and defaults to 4096. RFC 7677 recommends
+15K iterations.
+
+[example_begin]
+ % ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 4096 -salt "salt" -digest sha1
+ 4b007901b765489abead49d926f721d065a429c1
+ 
+ % time {::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 15000 -salt "sa\0lt" -dklen 16}
+ 16027 microseconds per iteration
+[example_end]
 
 
 [list_end]

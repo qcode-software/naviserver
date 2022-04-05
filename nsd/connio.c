@@ -115,11 +115,14 @@ Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fl
     Ns_DStringInit(&gzDs);
 
     /*
-     * Transcode from utf8 if necessary.
+     * Transcode to charset if necessary. In earlier versions, the
+     * transcoding was guarded by "!NsEncodingIsUtf8()", which was an
+     * optimization. However, we cannot assume that the internal Tcl
+     * UTF-8 is the same as an external, especially for emoji and
+     * other multibyte characters.
      */
 
     if (connPtr->outputEncoding != NULL
-        && ! NsEncodingIsUtf8(connPtr->outputEncoding)
         && nbufs > 0
         && bufs[0].iov_len > 0u) {
         int i;
@@ -476,7 +479,6 @@ ConnSend(Ns_Conn *conn, ssize_t nsend, Tcl_Channel chan, FILE *fp, int fd)
         struct iovec vbuf;
 
         vbuf.iov_base = (void *)buf;
-        vbuf.iov_len = 0;
 
         /*
          * Turn-on http-streaming for unknown content/data length
@@ -1024,29 +1026,29 @@ Ns_ConnReadLine(const Ns_Conn *conn, Ns_DString *dsPtr, size_t *nreadPtr)
     if ((connPtr->sockPtr == NULL) || (eol == NULL)) {
         status = NS_ERROR;
     } else {
-        size_t nread = (size_t)(eol - reqPtr->next);
+        ptrdiff_t nread = eol - reqPtr->next;
 
-        if (nread > (size_t)drvPtr->maxline) {
+        if (nread > drvPtr->maxline) {
             status = NS_ERROR;
         } else {
-            size_t ncopy = nread;
+            ptrdiff_t ncopy = nread;
 
             ++nread;
             if (nreadPtr != NULL) {
-                *nreadPtr = nread;
+                *nreadPtr = (size_t)nread;
             }
 
             /*
              * Read from the end of the buffer until we either reach
              * ncopy == 0 (this means the start of the buffer), or
-             * until we fine a '\r'.
+             * until we find a '\r'.
              */
             if (ncopy > 0u && *(eol-1) == '\r') {
                 --ncopy;
             }
             Ns_DStringNAppend(dsPtr, reqPtr->next, (int)ncopy);
             reqPtr->next  += nread;
-            reqPtr->avail -= nread;
+            reqPtr->avail -= (size_t)nread;
 
             status = NS_OK;
         }

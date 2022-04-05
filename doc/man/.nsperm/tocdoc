@@ -1,0 +1,4 @@
+[toc_begin {Table Of Contents} nsperm]
+[item nsperm/files/ns_perm.nroff ns_perm {Add users, groups, and permissions}]
+[item nsperm/files/nsperm.nroff  nsperm  {NaviServer Permissions and Access Control Guide}]
+[toc_end]

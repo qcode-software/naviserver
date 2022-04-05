@@ -46,6 +46,8 @@ static Tcl_ObjCmdProc ParamObjCmd;
 
 static Ns_Set* GetSection(const char *section, bool create)
     NS_GNUC_NONNULL(1);
+static void PathAppend(Tcl_DString *dsPtr, const char *server, const char *module, va_list ap)
+    NS_GNUC_NONNULL(1);
 
 static const char* ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -615,15 +617,20 @@ Ns_ConfigGetInt64(const char *section, const char *key, int64_t *valuePtr)
     NS_NONNULL_ASSERT(valuePtr != NULL);
 
     s = Ns_ConfigGetValue(section, key);
-    if (s == NULL || sscanf(s, "%24"
-#ifdef _WIN32
-                            "I64d"
-#else
-                            SCNd64
-#endif
-                            , valuePtr) != 1) {
+    if (s == NULL) {
         success = NS_FALSE;
+    } else {
+        Tcl_WideInt  lval;
+        char        *endPtr = NULL;
+
+        lval = strtoll(s, &endPtr, 10);
+        if (endPtr != s) {
+            *valuePtr = lval;
+        } else {
+            success = NS_FALSE;
+        }
     }
+
     return success;
 }
 
@@ -669,56 +676,128 @@ Ns_ConfigGetBool(const char *section, const char *key, bool *valuePtr)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConfigGetPath --
+ * PathAppend --
  *
- *      Get the full name of a configuration file section if it exists.
+ *      Construct a path based on "server" and "module" and the provided
+ *      var args list.
  *
  * Results:
- *      A pointer to an ASCIIZ string of the full pathname, or NULL
- *      if that path is not in the configuration file.
+ *      None. Appends resulting string to the Tcl_DString in the first
+ *      argument.
  *
  * Side effects:
  *      None.
  *
  *----------------------------------------------------------------------
  */
+static void
+PathAppend(Tcl_DString *dsPtr, const char *server, const char *module, va_list ap)
+{
+    const char *s;
 
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+
+    Tcl_DStringAppend(dsPtr, "ns", 2);
+    if (server != NULL) {
+        Tcl_DStringAppend(dsPtr, "/server/", 8);
+        Tcl_DStringAppend(dsPtr, server, -1);
+    }
+    if (module != NULL) {
+        Tcl_DStringAppend(dsPtr, "/module/", 8);
+        Tcl_DStringAppend(dsPtr, module, -1);
+    }
+
+    for (s = va_arg(ap, char *); s != NULL; s = va_arg(ap, char *)) {
+        Tcl_DStringAppend(dsPtr, "/", 1);
+        while (*s != '\0' && ISSLASH(*s)) {
+            ++s;
+        }
+        Tcl_DStringAppend(dsPtr, s, -1);
+        while (ISSLASH(dsPtr->string[dsPtr->length - 1])) {
+            dsPtr->string[--dsPtr->length] = '\0';
+        }
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConfigGetPath --
+ *
+ *      Get the full name of a configuration file section if it exists.
+ *
+ * Results:
+ *      A pointer to an ASCIIZ string of the full pathname, or NULL if
+ *      there are no configured parameters for this path in the
+ *      configuration file.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
 const char *
 Ns_ConfigGetPath(const char *server, const char *module, ...)
 {
     va_list         ap;
-    const char     *s;
     Tcl_DString     ds;
     const Ns_Set   *set;
 
     Tcl_DStringInit(&ds);
-    Tcl_DStringAppend(&ds, "ns", 2);
-    if (server != NULL) {
-        Tcl_DStringAppend(&ds, "/server/", 8);
-        Tcl_DStringAppend(&ds, server, -1);
-    }
-    if (module != NULL) {
-        Tcl_DStringAppend(&ds, "/module/", 8);
-        Tcl_DStringAppend(&ds, module, -1);
-    }
     va_start(ap, module);
-    for (s = va_arg(ap, char *); s != NULL; s = va_arg(ap, char *)) {
-        Tcl_DStringAppend(&ds, "/", 1);
-        while (*s != '\0' && ISSLASH(*s)) {
-            ++s;
-        }
-        Tcl_DStringAppend(&ds, s, -1);
-        while (ISSLASH(ds.string[ds.length - 1])) {
-            ds.string[--ds.length] = '\0';
-        }
-    }
+    PathAppend(&ds, server, module, ap);
     va_end(ap);
+
     Ns_Log(Dev, "config section: %s", ds.string);
     set = Ns_ConfigCreateSection(ds.string);
     Tcl_DStringFree(&ds);
 
     return (set != NULL) ? Ns_SetName(set) : NULL;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConfigSectionPath --
+ *
+ *      Get the full name of a configuration file section and return
+ *      optionally the Ns_Set*. This function is similar to
+ *      Ns_ConfigGetPath() but returns the Ns_Set and the section path
+ *      also in cases, where no parameters for this path are provided in
+ *      the configuration file.
+ *
+ * Results:
+ *      A pointer to an ASCIIZ string of the full pathname.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_ConfigSectionPath(Ns_Set **setPtr, const char *server, const char *module, ...)
+{
+    va_list       ap;
+    Tcl_DString   ds;
+    Ns_Set       *set;
+
+    Tcl_DStringInit(&ds);
+    va_start(ap, module);
+    PathAppend(&ds, server, module, ap);
+    va_end(ap);
+
+    Ns_Log(Dev, "config section: %s", ds.string);
+    set = GetSection(ds.string, NS_TRUE);
+    Tcl_DStringFree(&ds);
+
+    if (setPtr != NULL) {
+        *setPtr = set;
+    }
+
+    return Ns_SetName(set);
+}
+
 
 
 /*
@@ -748,6 +827,9 @@ Ns_ConfigGetSections(void)
 
     n = nsconf.sections.numEntries + 1;
     sets = ns_malloc(sizeof(Ns_Set *) * (size_t)n);
+    if (unlikely(sets == NULL)) {
+        Ns_Fatal("config: out of memory while allocating section");
+    }
     n = 0;
     hPtr = Tcl_FirstHashEntry(&nsconf.sections, &search);
     while (hPtr != NULL) {
@@ -765,10 +847,11 @@ Ns_ConfigGetSections(void)
  *
  * Ns_ConfigGetSection --
  *
- *      Return the Ns_Set of a config section called section.
+ *      Returns the Ns_Set of a config section called section.
  *
  * Results:
- *      An Ns_Set containing the section's parameters, or NULL.
+ *      An Ns_Set containing the section's parameters, or NULL, when no
+ *      parameters for this section are found.
  *
  * Side effects:
  *      None.
@@ -965,8 +1048,8 @@ NsConfigEval(const char *config, const char *configFileName,
  *
  * ParamObjCmd --
  *
- *      Add a single entry to the current section of the config.  This
- *      command may only be run from within an ns_section.
+ *      Implements "ns_param". Add a single entry to the current section of
+ *      the config.  This command may only be run from within an "ns_section".
  *
  * Results:
  *      Standard Tcl Result.
@@ -1014,9 +1097,9 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  *
  * SectionObjCmd --
  *
- *      This creates a new config section and sets a shared variable
- *      to point at a newly-allocated set for holding config data.
- *      ns_param stores config data in the set.
+ *      Impelements "ns_section". This command creates a new config section in
+ *      form of a newly-allocated "ns_set" for holding config data.
+ *      "ns_param" stores config data in the set.
  *
  * Results:
  *      Standard Tcl result.
@@ -1093,12 +1176,25 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
             i = Ns_SetIFind(set, key);
         }
         if (i >= 0) {
+            /*
+             * The configuration value was found in the ns_set for this
+             * section.
+             */
             s = Ns_SetValue(set, i);
-        } else {
+        } else if (!nsconf.state.started) {
+            /*
+             * The configuration value was NOT found. Since we want to be able
+             * to retrieve all current configuration values via introspection
+             * (e.g. as used by nsstats), add new entries to the set. This is
+             * only possible during startup when we there is a single
+             * thread. Changing ns_sets is not thread safe.
+             */
             i = (int)Ns_SetPut(set, key, defstr);
             if (defstr != NULL) {
                 s = Ns_SetValue(set, i);
             }
+        } else {
+            s = defstr;
         }
     }
     return s;

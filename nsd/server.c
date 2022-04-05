@@ -215,7 +215,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     NsServer          *servPtr;
     const ServerInit  *initPtr;
     const char        *path, *p;
-    const Ns_Set      *set;
+    Ns_Set            *set = NULL;
     size_t             i;
     int                n;
 
@@ -249,7 +249,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
         initPtr = initPtr->nextPtr;
     }
 
-    path = Ns_ConfigGetPath(server, NULL, (char *)0L);
+    path = Ns_ConfigSectionPath(NULL, server, NULL, (char *)0L);
 
     /*
      * Set some server options.
@@ -259,6 +259,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     servPtr->opts.modsince = Ns_ConfigBool(path, "checkmodifiedsince", NS_TRUE);
     servPtr->opts.noticedetail = Ns_ConfigBool(path, "noticedetail", NS_TRUE);
     servPtr->opts.errorminsize = (int)Ns_ConfigMemUnitRange(path, "errorminsize", 514, 0, INT_MAX);
+    servPtr->filter.rwlocks = Ns_ConfigBool(path, "filterrwlocks", NS_TRUE);
 
     servPtr->opts.hdrcase = Preserve;
     p = Ns_ConfigString(path, "headercase", "preserve");
@@ -301,8 +302,13 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     Ns_MutexInit(&servPtr->pools.lock);
     Ns_MutexSetName2(&servPtr->pools.lock, "nsd:pools", server);
 
-    Ns_RWLockInit(&servPtr->filter.lock);
-    Ns_RWLockSetName2(&servPtr->filter.lock, "nsd:filter", server);
+    if (servPtr->filter.rwlocks) {
+        Ns_RWLockInit(&servPtr->filter.lock.rwlock);
+        Ns_RWLockSetName2(&servPtr->filter.lock.rwlock, "nsd:filter", server);
+    } else {
+        Ns_MutexInit(&servPtr->filter.lock.mlock);
+        Ns_MutexSetName2(&servPtr->filter.lock.mlock, "nsd:filter", server);
+    }
 
     Ns_MutexInit(&servPtr->tcl.synch.lock);
     Ns_MutexSetName2(&servPtr->tcl.synch.lock, "nsd:tcl:synch", server);
@@ -315,8 +321,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      */
 
     CreatePool(servPtr, NS_EMPTY_STRING);
-    path = Ns_ConfigGetPath(server, NULL, "pools", (char *)0L);
-    set = Ns_ConfigGetSection(path);
+    (void) Ns_ConfigSectionPath(&set, server, NULL, "pools", (char *)0L);
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
     }
@@ -397,17 +402,16 @@ CreatePool(NsServer *servPtr, const char *pool)
     poolPtr->servPtr = servPtr;
     if (*pool == '\0') {
         /* NB: Default options from pre-4.0 ns/server/server1 section. */
-        path = Ns_ConfigGetPath(servPtr->server, NULL, (char *)0L);
+        path = Ns_ConfigSectionPath(NULL, servPtr->server, NULL, (char *)0L);
         servPtr->pools.defaultPtr = poolPtr;
     } else {
-        const Ns_Set *set;
-        size_t        i;
+        Ns_Set *set;
+        size_t  i;
         /*
          * Map requested method/URL's to this pool.
          */
 
-        path = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool, (char *)0L);
-        set = Ns_ConfigGetSection(path);
+        path = Ns_ConfigSectionPath(&set, servPtr->server, NULL, "pool", pool, (char *)0L);
         for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
             if (strcasecmp(Ns_SetKey(set, i), "map") == 0) {
                 NsMapPool(poolPtr, Ns_SetValue(set, i), 0u);

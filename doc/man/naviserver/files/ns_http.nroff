@@ -1,0 +1,674 @@
+'\"
+'\" Generated from file 'ns_http\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_http" n 4\&.99\&.23 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_http \- Simple HTTP client functionality
+.SH SYNOPSIS
+\fBns_http queue\fR ?\fB-binary\fR? ?\fB-body_size \fIsize\fR\fR? ?\fB-body \fIB\fR\fR? ?\fB-body_file \fIfn\fR\fR? ?\fB-body_chan \fIchan\fR\fR? ?\fB-cafile \fICA\fR\fR? ?\fB-capath \fICP\fR\fR? ?\fB-cert \fIC\fR\fR? ?\fB-raw\fR? ?\fB-donecallback \fIcall\fR\fR? ?\fB-headers \fIns_set\fR\fR? ?\fB-hostname \fIHOSTNAME\fR\fR? ?\fB-keep_host_header\fR? ?\fB-method \fIM\fR\fR? ?\fB-spoolsize \fIint\fR\fR? ?\fB-outputfile \fIfn\fR\fR? ?\fB-outputchan \fIchan\fR\fR? ?\fB-timeout \fIT\fR\fR? ?\fB-expire \fIT\fR\fR? ?\fB-proxy \fIdict\fR\fR? ?\fB-verify\fR? \fIurl\fR
+.sp
+\fBns_http run\fR ?\fB-binary\fR? ?\fB-body_size \fIsize\fR\fR? ?\fB-body \fIB\fR\fR? ?\fB-body_file \fIfn\fR\fR? ?\fB-body_chan \fIchan\fR\fR? ?\fB-cafile \fICA\fR\fR? ?\fB-capath \fICP\fR\fR? ?\fB-cert \fIC\fR\fR? ?\fB-raw\fR? ?\fB-donecallback \fIcall\fR\fR? ?\fB-headers \fIns_set\fR\fR? ?\fB-hostname \fIHOSTNAME\fR\fR? ?\fB-keep_host_header\fR? ?\fB-method \fIM\fR\fR? ?\fB-spoolsize \fIint\fR\fR? ?\fB-outputfile \fIfn\fR\fR? ?\fB-outputchan \fIchan\fR\fR? ?\fB-timeout \fIT\fR\fR? ?\fB-expire \fIT\fR\fR? ?\fB-verify\fR? \fIurl\fR
+.sp
+\fBns_http wait\fR ?\fB-timeout \fIT\fR\fR? \fIid\fR
+.sp
+\fBns_http cancel\fR \fIid\fR
+.sp
+\fBns_http cleanup\fR
+.sp
+\fBns_http list\fR ?\fIid\fR?
+.sp
+\fBns_http stats\fR ?\fIid\fR?
+.sp
+.BE
+.SH DESCRIPTION
+This command provides a simple HTTP and HTTPS client functionality\&.
+It can be used to create, dispatch, wait on and/or cancel requests
+and process replies from web servers\&.
+.SH COMMANDS
+.TP
+\fBns_http queue\fR ?\fB-binary\fR? ?\fB-body_size \fIsize\fR\fR? ?\fB-body \fIB\fR\fR? ?\fB-body_file \fIfn\fR\fR? ?\fB-body_chan \fIchan\fR\fR? ?\fB-cafile \fICA\fR\fR? ?\fB-capath \fICP\fR\fR? ?\fB-cert \fIC\fR\fR? ?\fB-raw\fR? ?\fB-donecallback \fIcall\fR\fR? ?\fB-headers \fIns_set\fR\fR? ?\fB-hostname \fIHOSTNAME\fR\fR? ?\fB-keep_host_header\fR? ?\fB-method \fIM\fR\fR? ?\fB-spoolsize \fIint\fR\fR? ?\fB-outputfile \fIfn\fR\fR? ?\fB-outputchan \fIchan\fR\fR? ?\fB-timeout \fIT\fR\fR? ?\fB-expire \fIT\fR\fR? ?\fB-proxy \fIdict\fR\fR? ?\fB-verify\fR? \fIurl\fR
+.sp
+The command \fBns_http queue\fR opens a connection to the web server
+denoted in the \fIurl\fR and returns (unless a \fB-donecallback\fR is
+specified) an \fIid\fR, which might be used later in \fBns_http wait\fR
+or \fBns_http cancel\fR to refer to this request\&. The command supports
+both HTTP and HTTPS URIs\&.  The request is run in the default task queue
+in a dedicated per-queue thread\&.
+.RS
+.TP
+\fB-binary\fR
+transmit the content in binary form (as a Tcl byte-array) no matter
+what the content-type specifies\&.
+.TP
+\fB-body_size\fR \fIsize\fR
+specifies the expected size of the data which will be sent as the HTTP
+request body\&. This option must be used when sending body data via Tcl
+channels which are not capable of seeking\&. It is optional if sending
+body data from memory or from a named file\&.
+.TP
+\fB-body\fR \fIbody\fR
+transmit the content of the passed string as the request body\&.
+This option is mutualy exclusive with \fB-body_file\fR and \fB-body_chan\fR\&.
+Implementation will try to guess the "Content-Type" of the body by checking
+the type of the passed \fBbody\fR\&.
+.TP
+\fB-body_file\fR \fIfn\fR
+transmit the file specified via filename as the request body\&.
+This option is mutualy exclusive with \fB-body\fR and \fB-body_chan\fR\&.
+Implementation will try to guess the "Content-Type" of the body by checking
+the extension of the passed \fBfn\fR\&.
+.TP
+\fB-body_chan\fR \fIchan\fR
+transmit the content specified via Tcl channel, which must be opened for
+reading, as the request body\&. The channel must be in blocking mode and
+should be seekable (unless the \fB-body_size\fR is specified)\&.
+This option is mutualy exclusive with \fB-body\fR and \fB-body_file\fR\&.
+Caller should put "Content-Type" header in passed \fB-headers\fR set
+since the implementation cannot guess the correct value\&. If none found,
+the "application/octet-stream" will be assumed\&.
+For \fBns_http queue\fR command, the \fB-body_chan\fR channel will be
+dissociated from the current interpreter/thread and the ownership will be
+transferred to the thread that runs the request\&. Upon \fBns_http wait\fR
+the channel is tossed back to the running interpreter and can be manipulated\&.
+It is the caller responsibility to close the channel when not needed any more\&.
+The implementation will not do that (see \fBns_http cleanup\fR for exception)\&.
+.TP
+\fB-cafile\fR \fICA\fR
+used for HTTPS URIs to specify the locations, at which CA
+certificates for verification purposes are located\&. The certificates
+available via \fIcafile\fR and \fIcapath\fR are trusted\&.
+The \fIcafile\fR points to a file of CA certificates in PEM format\&.
+The file can contain several CA certificates\&.
+.TP
+\fB-capath\fR \fICP\fR
+allows for HTTPS URIs to specify the locations, at which CA
+certificates for verification purposes are located\&. \fIcapath\fR points to a
+directory containing CA certificates in PEM format\&. The files each
+contain one CA certificate\&. For more details, see
+https://www\&.openssl\&.org/docs/manmaster/ssl/SSL_CTX_load_verify_locations\&.html
+.TP
+\fB-cert\fR \fIC\fR
+used for HTTPS URIs to use the specified client certificate\&. The
+certificates must be in PEM format and must be sorted starting with
+the subject's certificate (actual client or server certificate),
+followed by intermediate CA certificates if applicable, and ending at
+the highest level (root) CA\&.
+.TP
+\fB-raw\fR
+delivers the content as-is (unmodified), regardless of the content encoding\&.
+.TP
+\fB-donecallback\fR \fIcall\fR
+this callback argument will be executed as Tcl script when the requests
+is completed\&.  The provided \fIcall\fR is appended with two arguments,
+a flag indicating a Tcl error or not (integer value 1 or 0), and the
+dictionary as returned by \fBns_http run\fR\&. When this option is used,
+\fBns_http queue\fR returns empty so user has no further control
+(wait, cancel) on the task\&.
+.TP
+\fB-headers\fR \fIns_set\fR
+headers is the ns_set ID containing the additional headers to include
+in the request\&.
+.TP
+\fB-hostname\fR \fIHOSTNAME\fR
+used for HTTPS URIs to specify the hostname for the server
+certificate\&. This option has to be used, when the host supports
+virtual hosting, is configured with multiple certificates and supports
+the SNI (Server Name Indication) extension of TLS\&.
+.TP
+\fB-keep_host_header\fR
+allows the Host: header field for the request to be passed in via
+the \fB-headers\fR arg, otherwise it is overwritten\&.
+.TP
+\fB-method\fR \fImethod\fR
+Standard HTTP/HTTPS request method such as GET, POST, HEAD, PUT etc\&.
+.TP
+\fB-spoolsize\fR \fIint\fR
+In case the result is larger than given value, it will be spooled to a
+temporary file, a named file (see \fB-outputfile\fR) or the Tcl
+channel (see \fB-outputchan\fR)\&.
+The value can be specified in memory units (kB, MB, GB, KiB, MiB, GiB)\&.
+.TP
+\fB-outputfile\fR \fIfn\fR
+receive the response content into the specified filename\&.
+This option is mutualy exclusive with \fB-outputchan\fR\&.
+.TP
+\fB-outputchan\fR \fIchan\fR
+receive the response content into the specified Tcl channel, which must be
+opened for writing\&. The channel must be in blocking mode\&.
+This option is mutualy exclusive with \fB-outputfile\fR\&.
+For \fBns_http queue\fR command, the \fB-outputchan\fR channel will be
+dissociated from the current interpreter/thread and the ownership will be
+transferred to the thread that runs the request\&. Upon \fBns_http wait\fR
+the channel is tossed back to the running interpreter and can be manipulated\&.
+It is the caller responsibility to close the channel when not needed any more\&.
+The implementation will not do that (see \fBns_http cleanup\fR for exception)\&.
+.TP
+\fB-expire\fR \fIT\fR
+time to wait for the whole request to complete\&. Upon expiry of this timer,
+request processing is unconditionally stopped, regardless of whether the
+connection or some data to read/write is still pending\&. The time can be
+specified in any supported ns_time format\&.
+.TP
+\fB-timeout\fR \fIT\fR
+time to wait for connection setup and socket readable/writable state\&.
+The time can be specified in any supported ns_time format\&.
+.TP
+\fB-verify\fR
+used for HTTPS URIs to specify that the server certificate should be
+verified\&. If the verification process fails, the TLS/SSL handshake is
+immediately terminated with an alert message containing the reason for
+the verification failure\&. If no server certificate is sent, because an
+anonymous cipher is used, this option is ignored\&.
+.TP
+\fB-proxy\fR \fIdict\fR
+Controls whether to handle HTTP/HTTPS requests over an intermediate proxy\&.
+The argument must be a valid Tcl dictionary with (at least) following
+keys: \fIhost\fR, \fIport\fR\&. Optionally, an \fItunnel\fR boolean key
+may be specified\&.
+The \fIhost\fR must hold the hostname or IP address of the proxy
+server\&. The \fIport\fR the TCP port of the proxy server\&. If \fIhost\fR
+is omitted, no other keys from the dictionary are evaluated and the proxy
+connection is suppressed; the request is handled as if the option was
+not specified\&.  If, however, \fIhost\fR is specified, it will require
+the presence of the \fIport\fR, otherwise an error is thrown\&.
+The optional \fItunnel\fR controls when to use HTTP-tunnel facility\&.
+Without it, or if set to false, the HTTP connections are handled over
+the caching-proxy and HTTPS connections over the HTTP-tunnel\&.
+With the \fItunnel\fR set to true, the HTTP-tunneling is used for both
+HTTP and HTTPS connections\&.
+Currently, no proxy authentication is supported\&. This will be added later\&.
+.RE
+.TP
+\fBns_http run\fR ?\fB-binary\fR? ?\fB-body_size \fIsize\fR\fR? ?\fB-body \fIB\fR\fR? ?\fB-body_file \fIfn\fR\fR? ?\fB-body_chan \fIchan\fR\fR? ?\fB-cafile \fICA\fR\fR? ?\fB-capath \fICP\fR\fR? ?\fB-cert \fIC\fR\fR? ?\fB-raw\fR? ?\fB-donecallback \fIcall\fR\fR? ?\fB-headers \fIns_set\fR\fR? ?\fB-hostname \fIHOSTNAME\fR\fR? ?\fB-keep_host_header\fR? ?\fB-method \fIM\fR\fR? ?\fB-spoolsize \fIint\fR\fR? ?\fB-outputfile \fIfn\fR\fR? ?\fB-outputchan \fIchan\fR\fR? ?\fB-timeout \fIT\fR\fR? ?\fB-expire \fIT\fR\fR? ?\fB-verify\fR? \fIurl\fR
+.sp
+Send an HTTP request and wait for the result\&.  The command \fBns_http run\fR
+is similar to \fBns_http queue\fR followed by \fBns_http wait\fR\&.
+The http request is run in the same thread as the caller\&.
+.TP
+\fBns_http wait\fR ?\fB-timeout \fIT\fR\fR? \fIid\fR
+.sp
+Waits for the queued command specified by the \fIid\fR returned from
+\fBns_http queue\fR to complete\&. Returns a Tcl dictionary with the
+following keys: \fIstatus\fR, \fItime\fR, \fIheaders\fR\&.
+The \fIstatus\fR contains HTTP/HTTPS status code (200, 201, 400, etc)\&.
+The \fItime\fR contains elapsed request ns_time\&.
+The \fIheaders\fR contains name of the set with response headers\&.
+If the request body was given over a Tcl channel, it will add key
+\fIbody_chan\fR in the passed result dictionary\&.
+If the response was not spooled in the file nor channel, it will return
+\fIbody\fR key with the response data\&. Otherwise it will return either
+\fIfile\fR if the response was spooled into the named (or temporary) file
+or \fIoutputchan\fR if the request was spooled into a Tcl channel\&.
+For HTTPS requests it will add \fIhttps\fR with some low-level TLS
+parameters in a Tcl dictionary format\&.
+The specified \fB-timeout\fR specified the maximum duration of
+the request to complete\&. The time can be specified
+in any supported ns_time format\&.
+.sp
+On success \fBns_http wait\fR returns the same dictionary as the
+\fBns_http run\fR\&. On error, leaves descriptive error message
+in the interpreter result\&. On timeout, sets the Tcl
+variable to NS_TIMEOUT in addition to leaving the error message\&.
+.RS
+.TP
+\fIid\fR
+ID of the HTTP request to wait for\&.
+.RE
+.TP
+\fBns_http cancel\fR \fIid\fR
+Cancel queued HTTP/HTTPS request by the ID (of the request)
+as returned by \fBns_http queue\fR command\&. The command returns
+empty result\&. The sense behind this command is to be able to
+terminate runaway requests or requests that have been timed out\&.
+Even completed requests can be cancelled if nobody is interested
+in the request result\&.
+.RS
+.TP
+\fIid\fR
+ID of the HTTP request to cancel\&.
+.RE
+.TP
+\fBns_http cleanup\fR
+Cancel all pending HTTP/HTTPS requests issued in the current
+interpreter\&. At this point, any Tcl channels that have been
+optionally assigned to a task, will be automatically closed\&.
+.TP
+\fBns_http list\fR ?\fIid\fR?
+If \fIid\fR was specified, returns a single list in form
+of: "id url status"\&.
+If \fIid\fR was not specified, returns a list of N elements
+where each element is in itself a list in form of: "id url status"\&.
+The status can be one of: "done", "running", "error"\&.
+.RS
+.TP
+\fIid\fR
+Optional ID of the HTTP request to list\&.
+.RE
+.TP
+\fBns_http stats\fR ?\fIid\fR?
+Returns statistics from the currently running request in the form of
+a list of Tcl dictionares\&.  If optional \fIid\fR was specified, just
+one dictionary containing details about the requested task will be
+returned, or empty if the task cannot be found\&. Otherwise a list of
+dictionaries will be returned\&.
+One returned dictionary contains following keys:
+\fItask\fR, \fIurl\fR, \fIrequestlength\fR, \fIreplylength\fR,
+\fIsent\fR, \fIreceived\fR, \fIsendbodysize\fR, \fIreplybodysize\fR,
+\fIreplysize\fR\&.
+The \fItask\fR returns the ID of the Http task\&.
+The \fIurl\fR returns the URL for the given task\&.
+The \fIrequestlength\fR returns the length of the complete http request,
+including header line, all of the headers plus optional request body\&.
+The \fIreplylength\fR returns the value of the Content-Length as
+returned by the remote\&. This can be zero if the length of returned data
+is not known in advance\&.
+The \fIsent\fR returns number of bytes sent to the remote\&. This includes
+the header line, all of the headers plus optional request body\&.
+The \fIreceived\fR returns number of bytes received from the remote\&. This
+includes status line, all of the headers plus the optional reply body\&.
+The \fIsendbodysize\fR returns number of bytes of the request body sent
+to the remote so far\&.
+The \fIreplybodysize\fR returns number of bvtes of the reply body received
+from the remote so far\&.
+The \fIreplysize\fR returns number of bytes of the body received from the
+remote so far\&. Difference to the \fIreplybodysize\fR is that this element
+tracks number of body bytes prior optional deflate step for compressed contents,
+whereas the \fIreplybodysize\fR tracks the number of body bytes of the
+deflated contents\&.  For uncompressed reply content, both \fIreplysize\fR
+and \fIreplybodysize\fR will have the same value\&.
+.RS
+.TP
+\fIid\fR
+Optional ID of the HTTP request to get statistics for\&.
+.RE
+.PP
+.SH EXAMPLES
+First, a minimal GET example:
+.CS
+
+
+ % ns_http queue http://www\&.google\&.com
+ http0
+
+ % ns_http wait http0
+ status 302 time 0:97095 headers d0 body { \&.\&.\&. }
+
+.CE
+.PP
+The second example is a code snippet making a requests via HTTPS
+(note that HTTPS is supported only if the NaviServer was compiled
+with OpenSSL support\&.
+.CS
+
+
+ % set result [ns_http run https://www\&.google\&.com]
+ % dict get $result status
+ 302
+
+.CE
+If the returned data is too large to be retained in memory
+you can use the \fB-spoolsize\fR to control when the
+content should be spooled to file\&. The spooled filename
+is contained in the resulting dict under the key \fIfile\fR\&.
+.CS
+
+
+ % set result [ns_http run -spoolsize 1kB https://www\&.google\&.com]
+ % dict get $result file
+ /tmp/http\&.83Rfc5
+
+.CE
+For connecting to a server with virtual hosting that provides
+multiple certificates via SNI (Server Name Indication) the
+option \fB-hostname\fR is required\&.
+.PP
+The third example is a code snippet making a POST requests via
+HTTPS and provides url-encoded POST data\&. The examples sets a
+larger timeout on the request, provides requests headers and
+returns reply-headers\&.
+.CS
+
+
+ #######################
+ # construct POST data
+ #######################
+ set post_data {}
+ foreach {key value} {q NaviServer} {
+   lappend post_data "[ns_urlencode $key]=[ns_urlencode $value]"
+ }
+ set post_data [join $post_data &]
+
+ #######################
+ # submit POST request
+ #######################
+ set requestHeaders [ns_set create]
+ set replyHeaders [ns_set create]
+ ns_set update $requestHeaders "Content-type" "application/x-www-form-urlencoded"
+
+ set h [ns_http queue -method POST \\
+   -headers $requestHeaders \\
+   -timeout 10\&.0 \\
+   -body $post_data https://duckduckgo\&.com/]
+ set r [ns_http wait $h]
+
+ #######################
+ # output results
+ #######################
+ ns_log notice "status [dict get $r status]"
+ ns_log notice "reply "[dict get $r ]
+ ns_log notice "headers "[dict get $r headers]
+
+.CE
+The forth example is a code snippet that sets a larger timeout on the
+request, provides an ns_set for the reply headers, and spools
+results to a file if the result is larger than 1000 bytes\&.
+.CS
+
+
+ set replyHeaders [ns_set create]
+ ns_set update $requestHeaders Host localhost
+
+ set h [ns_http queue -timeout 10\&.0 http://www\&.google\&.com]
+ ns_http wait -result R -headers $replyHeaders -status S -spoolsize 1Kb -file F $h
+
+ if {[info exists F]} {
+   ns_log notice "Spooled [file size $F] bytes to $F"
+   file delete -- $F
+ } else {
+   ns_log notice "Got [string length $R] bytes"
+ }
+
+.CE
+Example for downloading a file from the web into a named file
+or passed Tcl channel\&. Note the \fB-spoolsize\fR of zero
+which will redirect all received data into the file/channel\&.
+Without the \fB-spoolsize\fR set, all the data would be
+otherwise stored in memory\&.
+.CS
+
+
+ % ns_http run -outputfile /tmp/reply\&.html -spoolsize 0 http://www\&.google\&.com
+ status 302 time 0:132577 headers d2 file /tmp/reply\&.html
+
+.CE
+.CS
+
+
+ % set chan [open /tmp/file\&.dat w]
+ % ns_http run -outputchan $chan -spoolsize 0 http://www\&.google\&.com
+ status 302 time 0:132577 headers d2 outputchan file22
+ % close $chan
+
+.CE
+.SH "SEE ALSO"
+ns_httptime, ns_set, ns_urlencode
+.SH KEYWORDS
+GET, HTTP, HTTPS, POST, SNI, global built-in, http-client, nssock, spooling

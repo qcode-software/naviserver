@@ -1,0 +1,124 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_mutex - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_mutex.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_mutex.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_mutex(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_mutex - Operate on mutexes</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_mutex</b> <i class="arg">option</i> <span class="opt">?<i class="arg">arg arg ...</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_mutex</b> <b class="cmd">create</b> <span class="opt">?<i class="arg">name</i>?</span></a></li>
+<li><a href="#3"><b class="cmd">ns_mutex</b> <b class="cmd">destroy</b> <i class="arg">mutexid</i></a></li>
+<li><a href="#4"><b class="cmd">ns_mutex</b> <b class="cmd">lock</b> <i class="arg">mutexid</i></a></li>
+<li><a href="#5"><b class="cmd">ns_mutex</b> <b class="cmd">eval</b> <i class="arg">mutexid</i> <i class="arg">script</i></a></li>
+<li><a href="#6"><b class="cmd">ns_mutex</b> <b class="cmd">trylock</b> <i class="arg">mutexid</i></a></li>
+<li><a href="#7"><b class="cmd">ns_mutex</b> <b class="cmd">unlock</b> <i class="arg">mutexid</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides a mechanism to manipulate mutexes.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+ 
+<dt><a name="1"><b class="cmd">ns_mutex</b> <i class="arg">option</i> <span class="opt">?<i class="arg">arg arg ...</i>?</span></a></dt>
+<dd></dd>
+</dl>
+<dl class="doctools_definitions">
+<dt><a name="2"><b class="cmd">ns_mutex</b> <b class="cmd">create</b> <span class="opt">?<i class="arg">name</i>?</span></a></dt>
+<dd><p>Initializes a new mutual exclusion (mutex) lock and returns a handle to it. 
+If name is provided the mutex name will be set to this value. The
+command returns a mutex ID which used as argument for the commands operating
+on this mutex.</p></dd>
+<dt><a name="3"><b class="cmd">ns_mutex</b> <b class="cmd">destroy</b> <i class="arg">mutexid</i></a></dt>
+<dd><p>Destroys the mutex and frees any resources it was using. 
+NOTE: The mutex must be unlocked, or else the behavior is undefined and will likely 
+crash the server.  Before using this, you should probably look at</p></dd>
+<dt><a name="4"><b class="cmd">ns_mutex</b> <b class="cmd">lock</b> <i class="arg">mutexid</i></a></dt>
+<dd><p>ns_mutex lock acquires the specified mutual exclusion lock.</p></dd>
+<dt><a name="5"><b class="cmd">ns_mutex</b> <b class="cmd">eval</b> <i class="arg">mutexid</i> <i class="arg">script</i></a></dt>
+<dd><p>A convenience function to lock the specified mutex, run the 
+<i class="arg">script</i> and unlock the mutex finally. The result and error condition of
+the <i class="arg">script</i> are returned by the command.</p></dd>
+<dt><a name="6"><b class="cmd">ns_mutex</b> <b class="cmd">trylock</b> <i class="arg">mutexid</i></a></dt>
+<dd><p>ns_mutex trylock tries to acquire the specified mutual exclusion lock. If the mutex is locked
+successfully, return value of 0 is returned. Non-zero return value indicates that the mutex is
+already locked by someone else.</p></dd>
+<dt><a name="7"><b class="cmd">ns_mutex</b> <b class="cmd">unlock</b> <i class="arg">mutexid</i></a></dt>
+<dd><p>ns_mutex unlock unlocks the specified mutual exclusion lock.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>At startup (for example, in your init.tcl procedure), create a mutex
+named &quot;foo&quot; and remember it in a shared variable.</p>
+<pre class="doctools_example">
+ nsv_set mutex foo [<b class="cmd">ns_mutex create</b>]
+</pre>
+<p>Later (for example, in a request procedure), you might use this mutex
+to lock the access to the file:</p>
+<pre class="doctools_example">
+ set mutex [nsv_get mutex foo]
+ ...
+ <b class="cmd">ns_mutex lock</b> $mutex
+ catch {
+ ... access file foo ...
+ }
+ <b class="cmd">ns_mutex unlock</b> $mutex
+</pre>
+<p>Note: The <b class="cmd">catch</b> in the snipped above is important so the lock
+isn't held if Tcl unwinds due to an error accessing the file.
+Alternatively, one can use the following shorter version, where the
+<b class="cmd">eval</b> subcommand takes care of locking/unlocking of the mutex
+without the need for the <b class="cmd">catch</b> operation.</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_mutex eval</b> $mutex {
+    ... access file foo ...
+ }
+</pre>
+<p>At shutdown (for example, in your shutdown procedure registered with
+<b class="cmd">ns_atshutdown</b>), one can destroy the mutex (not strictly necessary).</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_mutex destroy</b> [nsv_get mutex foo]
+ nsv_unset mutex foo
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_atsignal.html">ns_atsignal</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#mutex">mutex</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#thread">thread</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

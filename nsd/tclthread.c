@@ -54,8 +54,8 @@ static Ns_Tls argtls = NULL;
  * Local functions defined in this file
  */
 
-static void CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
-                            const char *threadName, Ns_Thread *thrPtr)
+static Ns_ReturnCode CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
+                                     const char *threadName, Ns_Thread *thrPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
 static void *CreateSynchObject(const NsInterp *itPtr,
@@ -88,7 +88,7 @@ static const char *const threadType = "ns:thread";
  *      Run a Tcl script in a new thread and wait for the result.
  *
  * Results:
- *      NS_OK.  String result of script available via thrPtr.
+ *      NS_OK or NS_ERROR.  String result of script available via thrPtr.
  *
  * Side effects:
  *      None.
@@ -102,9 +102,8 @@ Ns_TclThread(Tcl_Interp *interp, const char *script, Ns_Thread *thrPtr)
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(script != NULL);
 
-    CreateTclThread(NsGetInterpData(interp), script, (thrPtr == NULL),
-                    "tcl", thrPtr);
-    return NS_OK;
+    return CreateTclThread(NsGetInterpData(interp), script, (thrPtr == NULL),
+                           "tcl", thrPtr);
 }
 
 
@@ -139,10 +138,11 @@ Ns_TclDetachedThread(Tcl_Interp *interp, const char *script)
  *
  * NsTclThreadObjCmd --
  *
- *      Implements ns_thread to get data on the current thread and
- *      create and wait on new Tcl-script based threads.  New threads
- *      will be created in the virtual-server context of the current
- *      interp, if any.
+ *      Implements "ns_thread". This command provides a script
+ *      interface to get data on the current thread and create and
+ *      wait on new Tcl-script based threads.  New threads will be
+ *      created in the virtual-server context of the current interp,
+ *      if any.
  *
  * Results:
  *      Standard Tcl result.
@@ -189,7 +189,8 @@ NsTclThreadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             NS_FALL_THROUGH; /* fall through */
         case TBeginDetachedIdx:
             {
-                char       *threadName = (char *)"nsthread", *script;
+                char          *threadName = (char *)"nsthread", *script;
+                Ns_ReturnCode  status;
                 Ns_ObjvSpec lopts[] = {
                     {"-name", Ns_ObjvString, &threadName, NULL},
                     {"--",    Ns_ObjvBreak,  NULL,    NULL},
@@ -202,11 +203,18 @@ NsTclThreadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
                 if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
                     result = TCL_ERROR;
+                    status = NS_ERROR;
                 } else if (opt == TBeginDetachedIdx) {
-                    CreateTclThread(itPtr, script, NS_TRUE, threadName, NULL);
+                    status = CreateTclThread(itPtr, script, NS_TRUE, threadName, NULL);
                 } else {
-                    CreateTclThread(itPtr, script, NS_FALSE, threadName, &tid);
-                    Ns_TclSetAddrObj(Tcl_GetObjResult(interp), threadType, tid);
+                    status = CreateTclThread(itPtr, script, NS_FALSE, threadName, &tid);
+                    if (status == NS_OK) {
+                        Ns_TclSetAddrObj(Tcl_GetObjResult(interp), threadType, tid);
+                    }
+                }
+                if (status != NS_OK) {
+                    Ns_TclPrintfResult(interp, "cannot create thread");
+                    result = TCL_ERROR;
                 }
                 break;
             }
@@ -297,7 +305,7 @@ NsTclThreadObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  * NsTclMutexObjCmd --
  *
- *      Implements ns_mutex.
+ *      Implements "ns_mutex".
  *
  * Results:
  *      Tcl result.
@@ -392,7 +400,7 @@ NsTclMutexObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *c
  *
  * NsTclCritSecObjCmd --
  *
- *      Implements ns_critsec.
+ *      Implements "ns_critsec".
  *
  * Results:
  *      Tcl result.
@@ -475,7 +483,7 @@ NsTclCritSecObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *
  * NsTclSemaObjCmd --
  *
- *      Implements ns_sema.
+ *      Implements "ns_sema".
  *
  * Results:
  *      Tcl result.
@@ -561,7 +569,7 @@ NsTclSemaObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
  *
  * NsTclCondObjCmd --
  *
- *      Implements ns_cond.
+ *      Implements "ns_cond".
  *
  * Results:
  *      Tcl result.
@@ -695,7 +703,7 @@ NsTclCondObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
  *
  * NsTclRWLockObjCmd --
  *
- *      Implements ns_rwlock.
+ *      Implements "ns_rwlock".
  *
  * Results:
  *      Tcl result.
@@ -886,7 +894,7 @@ NsTclThread(void *arg)
     }
 
     /*
-     * Need to ensure that the server has completed it's
+     * Need to ensure that the server has completed its
      * initialization prior to initiating TclEval.
      */
     (void) Ns_WaitForStartup();
@@ -943,7 +951,7 @@ NsTclThreadArgProc(Tcl_DString *dsPtr, const void *arg)
  *      Create a new Tcl thread.
  *
  * Results:
- *      None.
+ *      Ns_ReturnCode (NS_OK or NS_ERROR).
  *
  * Side effects:
  *      Depends on Tcl script.
@@ -951,12 +959,13 @@ NsTclThreadArgProc(Tcl_DString *dsPtr, const void *arg)
  *----------------------------------------------------------------------
  */
 
-static void
+static Ns_ReturnCode
 CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
                 const char *threadName, Ns_Thread *thrPtr)
 {
     TclThreadArg *argPtr;
-    size_t scriptLength;
+    size_t        scriptLength;
+    Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(script != NULL);
@@ -964,16 +973,22 @@ CreateTclThread(const NsInterp *itPtr, const char *script, bool detached,
 
     scriptLength = strlen(script);
     argPtr = ns_malloc(sizeof(TclThreadArg) + scriptLength);
-    argPtr->detached = detached;
-    argPtr->threadName = ns_strdup(threadName);
-    memcpy(argPtr->script, script, scriptLength + 1u);
+    if (likely(argPtr != NULL)) {
+        argPtr->detached = detached;
+        argPtr->threadName = ns_strdup(threadName);
+        memcpy(argPtr->script, script, scriptLength + 1u);
 
-    if (itPtr->servPtr != NULL) {
-        argPtr->server = itPtr->servPtr->server;
+        if (itPtr->servPtr != NULL) {
+            argPtr->server = itPtr->servPtr->server;
+        } else {
+            argPtr->server = NULL;
+        }
+        Ns_ThreadCreate(NsTclThread, argPtr, 0, thrPtr);
+        result = NS_OK;
     } else {
-        argPtr->server = NULL;
+        result = NS_ERROR;
     }
-    Ns_ThreadCreate(NsTclThread, argPtr, 0, thrPtr);
+    return result;
 }
 
 

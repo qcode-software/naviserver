@@ -41,6 +41,7 @@ endif
 
 distfiles = $(dirs) doc tcl contrib include tests win win32 configure m4 \
 	Makefile autogen.sh install-sh missing aclocal.m4 configure.ac \
+	config.guess config.sub \
 	README NEWS sample-config.tcl.in simple-config.tcl openacs-config.tcl \
 	nsd-config.tcl index.adp license.terms naviserver.rdf naviserver.rdf.in \
 	version_include.man.in bitbucket-install.tcl
@@ -130,13 +131,15 @@ install-include: all
 	done
 
 install-tests:
-	$(CP) -r tests $(INSTSRVPAG)
+	$(CP) tests $(INSTSRVPAG)
 
 install-doc:
 	@if [ -d doc/html ]; then \
 		$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver ; \
 		$(CP) doc/html/* $(DESTDIR)$(NAVISERVER)/pages/doc ; \
 		$(CP) contrib/banners/*.png $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		$(CP) doc/src/man.css $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver/ ; \
 		echo "\nThe documentation is installed under: $(DESTDIR)$(NAVISERVER)/pages/doc" ; \
 	else \
 		echo "\nNo documentation is installed locally; either generate the documentation with" ; \
@@ -220,17 +223,23 @@ EXTRA_TEST_DIRS =
 ifneq ($(OPENSSL_LIBS),)
   #EXTRA_TEST_DIRS += nsssl
   PEM_FILE        = tests/testserver/etc/server.pem
+  PEM_PRIVATE     = tests/testserver/etc/myprivate.pem
+  PEM_PUBLIC      = tests/testserver/etc/mypublic.pem
   SSLCONFIG       = tests/testserver/etc/openssl.cnf
   EXTRA_TEST_REQ  = $(PEM_FILE)
 endif
 
-$(PEM_FILE):
+$(PEM_FILE): $(PEM_PRIVATE)
 	openssl genrsa 2048 > host.key
 	openssl req -new -config $(SSLCONFIG) -x509 -nodes -sha1 -days 365 -key host.key > host.cert
 	cat host.cert host.key > server.pem
 	rm -rf host.cert host.key
 	openssl dhparam 1024 >> server.pem
 	mv server.pem $(PEM_FILE)
+
+$(PEM_PRIVATE):
+	openssl genrsa -out $(PEM_PRIVATE) 512
+	openssl rsa -in $(PEM_PRIVATE) -pubout > $(PEM_PUBLIC)
 
 check: test
 
@@ -269,11 +278,12 @@ cppcheck:
 	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c nsssl/*.c \
 		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
 
-#CLANG_TIDY_CHECKS=-checks=-*,performance-*,portability-*,cert-*,modernize-*
 CLANG_TIDY_CHECKS=
+#CLANG_TIDY_CHECKS=-checks=-*,performance-*,portability-*,cert-*,modernize-*
+#CLANG_TIDY_CHECKS=-checks=-*,modernize-*,performance-*,portability-*,cert-*
 #CLANG_TIDY_CHECKS=-checks=-*,bugprone-*
 clang-tidy:
-	clang-tidy-mp-10 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	clang-tidy-mp-11 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		$(CLANG_TIDY_CHECKS) -- \
 		-I./include -I/usr/include $(DEFS)
 
@@ -295,21 +305,27 @@ distclean: clean
 	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
 	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
 
-dist: clean
+config.guess:
+	wget -O config.guess 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD'
+config.sub:
+	wget -O config.sub 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD'
+
+dist: config.guess config.sub clean
 	$(RM) naviserver-$(NS_PATCH_LEVEL)
 	$(MKDIR) naviserver-$(NS_PATCH_LEVEL)
 	$(CP) $(distfiles) naviserver-$(NS_PATCH_LEVEL)
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/include/{config.h,Makefile.global,Makefile.module,stamp-h1}
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/*/*-{debug,gn}
 	$(RM) naviserver-$(NS_PATCH_LEVEL)/tests/testserver/access.log
-	hg log --style=changelog > naviserver-$(NS_PATCH_LEVEL)/ChangeLog
+	git log --date-order --name-status --date=short  >naviserver-$(NS_PATCH_LEVEL)/ChangeLog
 	if [ -f $(HOME)/scripts/fix-typos.tcl ]; then \
 		(cd naviserver-$(NS_PATCH_LEVEL)/; tclsh $(HOME)/scripts/fix-typos.tcl -name Change\*) \
 	fi;
-	find naviserver-$(NS_PATCH_LEVEL) -name '.[a-zA-Z_]*' -exec rm \{} \;
+	find naviserver-$(NS_PATCH_LEVEL) -type f -name '.[a-zA-Z_]*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*-original' -exec rm \{} \;
-	find naviserver-$(NS_PATCH_LEVEL) -name '*.orig' -exec rm \{} \;
-	find naviserver-$(NS_PATCH_LEVEL) -name '*-ok' -exec rm \{} \;
+	find naviserver-$(NS_PATCH_LEVEL) -name '[a-z]*.pem' -exec rm \{} \;
+	find naviserver-$(NS_PATCH_LEVEL) -name '*.c-*' -exec rm \{} \;
+	find naviserver-$(NS_PATCH_LEVEL) -name '*.h-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*~' -exec rm \{} \;
 	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
 	$(RM) naviserver-$(NS_PATCH_LEVEL)

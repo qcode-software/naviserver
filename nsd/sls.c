@@ -319,7 +319,7 @@ Ns_SlsUnsetKeyed(Ns_Sock *sock, const char *key)
  *
  * NsTclSlsObjCmd --
  *
- *      Implements the ns_sls command.
+ *      Implements "ns_sls".
  *
  * Results:
  *      Tcl result.
@@ -423,9 +423,9 @@ NsTclSlsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  *
  * NsSlsCleanup --
  *
- *      Cleanup socket local storage in LIFO order for a closing comm
- *      socket.  Iterate up to 5 times to catch cases where a cleanup
- *      callback inadvertently resets a SLS value after it's been destroyed.
+ *      Cleanup socket local storage in LIFO order for a closing comm socket.
+ *      Iterate up to 5 times to catch cases where a cleanup callback
+ *      inadvertently resets a SLS value after it has been destroyed.
  *
  * Results:
  *      None.

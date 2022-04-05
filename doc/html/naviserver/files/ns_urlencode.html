@@ -1,0 +1,106 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_urlencode - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_urlencode.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_urlencode.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_urlencode(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_urlencode - Encode a string to its URL-encoded representation</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_urlencode</b> <span class="opt">?<b class="option">-charset <i class="arg">charset</i></b>?</span> <span class="opt">?<b class="option">-part <i class="arg">part</i></b>?</span> <span class="opt">?<i class="arg">--</i>?</span> <i class="arg">components</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command encodes a string according to the rules for URL encoding
+ defined in RFC 3986 Uniform Resource Identifier (URI), (or RFC 1738,
+ when NaviServer was configured to use this older standard).
+ ns_urlencode codes essentially all non-alphanumeric characters in the
+ specified components.  The epcial octets are encoded by a &quot;%&quot;
+ followed by the two-character hexa- decimal representation for the
+ octet.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+ 
+<dt><a name="1"><b class="cmd">ns_urlencode</b> <span class="opt">?<b class="option">-charset <i class="arg">charset</i></b>?</span> <span class="opt">?<b class="option">-part <i class="arg">part</i></b>?</span> <span class="opt">?<i class="arg">--</i>?</span> <i class="arg">components</i></a></dt>
+<dd></dd>
+</dl>
+<p>The option <i class="arg">charset</i> can be used to specify the character set of
+the encode operation. Option <i class="arg">part</i> is used to specify the
+<i class="arg">query</i> (default) or <i class="arg">path</i> encoding. In the query mode, the
+components will be concatenated via &quot;&amp;&quot;, in the path mode the
+components are concatenated with &quot;/&quot;.</p>
+<p>The part argument can be as well used for more percent
+encodings such as the cookie encoding (value &quot;cookie&quot;, RFC 6265) or
+the oauth1 encoding (value &quot;oauth1&quot;) as defined in RFC 5849 Section
+3.6 for the construction of the * signature base string and the
+&quot;Authorization&quot; header field.</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>The following example encodes the Tcl dict as
+application/x-www-form-urlencoded POST data
+(https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4)</p>
+<pre class="doctools_example">
+ set data {
+   first_name  John
+   second_name Doe
+   data        &quot;Hello World&quot;
+ }
+ 
+ set post_data {}
+ foreach {key value} $data {
+     lappend post_data &quot;[ns_urlencode -part query $key]=[ns_urlencode $value]&quot;
+ }
+ set post_data [join $post_data &amp;]
+</pre>
+<p>The second example shows encodings of path segments based on example 1
+and 2 of https://www.w3.org/Addressing/URL/4_URI_Recommentations.html</p>
+<pre class="doctools_example">
+ % set e1 {albert bertram marie-claude}
+ % ns_urlencode -part path {*}$e1
+ albert/bertram/marie-claude
+ 
+ % set e2 {albert bertram/marie-claude}
+ % ns_urlencode -part path {*}$e2
+ albert/bertram%2fmarie-claude
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_charsets.html">ns_charsets</a>, <a href="ns_http.html">ns_http</a>, <a href="ns_urlcharset.html">ns_urlcharset</a>, <a href="ns_urldecode.html">ns_urldecode</a>, <a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#charset">charset</a>, <a href="../../index.html#encoding">encoding</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#url">url</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

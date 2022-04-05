@@ -157,7 +157,7 @@ ConfigServerAdp(const char *server)
     NsServer   *servPtr = NsGetServer(server);
     const char *path;
 
-    path = Ns_ConfigGetPath(server, NULL, "adp", (char *)0L);
+    path = Ns_ConfigSectionPath(NULL, server, NULL, "adp", (char *)0L);
 
     /*
      * Initialize the page and tag tables and locks.
@@ -778,8 +778,8 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
  *
  * NsTclAdpStatsObjCmd --
  *
- *      Implement the ns_adp_stats command to return stats on cached
- *      ADP pages.
+ *      Implements "ns_adp_stats". This command returns statistics about
+ *      cached ADP pages.
  *
  * Results:
  *      Standard Tcl result.
@@ -996,7 +996,9 @@ NsAdpLogError(NsInterp *itPtr)
                 dot = "...";
             }
             while (((unsigned char)adp[len] & 0xC0u) == 0x80u) {
-                /* NB: Avoid truncating multi-byte UTF-8 character. */
+                /*
+                 * Avoid truncating multi-byte UTF-8 character.
+                 */
                 len--;
                 dot = "...";
             }

@@ -139,7 +139,7 @@ NS_EXTERN const char *NS_EMPTY_STRING;
 NS_EXTERN Ns_ReturnCode Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs);
 NS_EXTERN char         *Ns_DbDriverName(Ns_DbHandle *handle);
 NS_EXTERN char         *Ns_DbDriverDbType(Ns_DbHandle *handle);
-NS_EXTERN int           Ns_DbDML(Ns_DbHandle *handle, const char *sql);
+NS_EXTERN int           Ns_DbDML(Ns_DbHandle *handle, const char *sql)    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN Ns_Set       *Ns_DbSelect(Ns_DbHandle *handle, const char *sql) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN int           Ns_DbExec(Ns_DbHandle *handle, const char *sql)   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN Ns_Set       *Ns_DbBindRow(Ns_DbHandle *handle)                 NS_GNUC_NONNULL(1);
@@ -209,7 +209,7 @@ NS_EXTERN Tcl_Obj *Ns_DbListMinDurations(Tcl_Interp *interp, const char *server)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN int Ns_DbGetMinDuration(Tcl_Interp *interp, const char *pool, Ns_Time **minDuration)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+    NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 NS_EXTERN int Ns_DbSetMinDuration(Tcl_Interp *interp, const char *pool, const Ns_Time *minDuration)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);

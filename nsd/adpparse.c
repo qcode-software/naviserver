@@ -106,11 +106,12 @@ static void AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flag
 /*
  *----------------------------------------------------------------------
  *
- * NsTclAdpRegisterAdpObjCmd, NsTclAdpRegisterProcObjCmd,
- * NsTclAdpRegisterScriptObjCmd --
+ * NsTclAdpRegisterAdpObjCmd, NsTclAdpRegisterTagObjCmd, NsTclAdpRegisterProcObjCmd,
+ * NsTclAdpRegisterScriptObjCmd, NsTclAdpRegisterAdptagObjCmd --
  *
- *      Register a proc, script, are ADP string tag.
- *
+ *      Implements "ns_adp_registeradp", "ns_adp_registertag",
+ *      "ns_adp_registerproc", "ns_adp_registerscript", and
+ *      "ns_register_adptag".
  *
  * Results:
  *      Standard Tcl result.
@@ -204,6 +205,10 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
          *   - tag end string
          */
         tagPtr = ns_malloc(sizeof(Tag) + (size_t)slen + (size_t)elen);
+        if (unlikely(tagPtr == NULL)) {
+            return TCL_ERROR;
+        }
+
         tagPtr->type = type;
         tagPtr->content = (char *)tagPtr + sizeof(Tag);
         memcpy(tagPtr->content, content, (size_t) slen);

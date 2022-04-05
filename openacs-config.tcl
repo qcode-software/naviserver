@@ -9,37 +9,53 @@
 ns_log notice "nsd.tcl: starting to read configuration file..."
 
 #---------------------------------------------------------------------
-# Change the HTTP and HTTPS port to e.g. 80 and 443 for production use.
-set httpport		8000
-
+# Port settings:
+#    Change the HTTP and HTTPS port to e.g. 80 and 443 for production
+#    use.  Setting the HTTPS port to 0 means to active the https
+#    driver for ns_http, but do not listen on this port.
 #
-# Setting the HTTPS port to 0 means to active the https driver for
-# ns_http, but do not listen on this port.
-#
-#set httpsport		0
-#set httpsport		8443
-
-# The hostname and address should be set to actual values.
-# setting the address to 0.0.0.0 means NaviServer listens on all interfaces
-set hostname		localhost
-set address_v4		127.0.0.1  ;# listen on loopback via IPv4
-#set address_v4		0.0.0.0    ;# listen on all IPv4 addresses
-#set address_v6		::1        ;# listen on loopback via IPv6
-#set address_v6		::0        ;# listen on all IPv6 addresses
-
 # Note: If port is privileged (usually < 1024), OpenACS must be
-# started by root, and the run script must contain the flag
-# '-b address:port' which matches the address and port
-# as specified above.
+# started by root, and the run script must contain the flag '-b
+# address:port' which matches the address and port as specified below.
+#
+#     httpsport		0
+#     httpsport		8443
+#
+# The "hostname" and "ipaddress" should be set to actual values such
+# that the server is reachable over the Internet. The default values
+# are fine for testing purposes. One can specify for the "ipaddress"
+# also multiple values (e.g. IPv4 and IPv6).
+#
+#    hostname		localhost
+#    ipaddress		127.0.0.1  ;# listen on loopback via IPv4
+#    ipaddress		0.0.0.0    ;# listen on all IPv4 addresses
+#    ipaddress  	::1        ;# listen on loopback via IPv6
+#    ipaddress		::0        ;# listen on all IPv6 addresses
 
-set server		"openacs"
+# All default variables in defaultConfig can be overloaded by
+# 1) setting these variables in this file (highest precedence)
+# 2) setting these variables as environment variables with
+#    the "oacs_" prefix (suitable for e.g. docker setups)
+# 3) set the variables from the default values.
+#
+set defaultConfig {
+    hostname	localhost
+    ipaddress	127.0.0.1
+    httpport	8000
+    httpsport	""
+
+    server     "openacs"
+    serverroot	/var/www/$server
+    logroot	$serverroot/log/
+    homedir	/usr/local/ns
+    bindir	$homedir/bin
+    db_name	$server
+    db_user	$server
+    db_host	localhost
+    db_port	""
+}
+
 set servername		"New OpenACS Installation - Development"
-
-set serverroot		/var/www/$server
-set logroot		$serverroot/log/
-
-set homedir		/usr/local/ns
-set bindir		$homedir/bin
 
 # Are we running behind a proxy?
 set proxy_mode		false
@@ -47,14 +63,9 @@ set proxy_mode		false
 #---------------------------------------------------------------------
 # Which database do you want? PostgreSQL or Oracle?
 set database              postgres
-set db_name               $server
 
 if { $database eq "oracle" } {
     set db_password           "mysitepassword"
-} else {
-    set db_host               localhost
-    set db_port               ""
-    set db_user               $server
 }
 
 #---------------------------------------------------------------------
@@ -65,14 +76,6 @@ set verboseSQL false
 
 set max_file_upload_mb        20
 set max_file_upload_min        5
-
-#---------------------------------------------------------------------
-# Set environment variables HOME and LANG. HOME is needed since
-# otherwise some programs called via exec might try to write into the
-# root home directory.
-#
-set env(HOME) $homedir
-set env(LANG) en_US.UTF-8
 
 #---------------------------------------------------------------------
 # Set headers that should be included in every response from the
@@ -97,18 +100,23 @@ append nsssl_extraheaders $nssock_extraheaders
 # Nothing below this point need be changed in a default install.
 #
 ######################################################################
+#
+# For all potential variables, allow environment variables such as
+# "oacs_httpport" or "oacs_ipaddress" to override local values.
+#
+source [file dirname [ns_info nsd]]/../tcl/init.tcl
+ns_configure_variables "oacs_" $defaultConfig
+
+#---------------------------------------------------------------------
+# Set environment variables HOME and LANG. HOME is needed since
+# otherwise some programs called via exec might try to write into the
+# root home directory.
+#
+set env(HOME) $homedir
+set env(LANG) en_US.UTF-8
 
 
 ns_logctl severity "Debug(ns:driver)" $debug
-
-set addresses {}
-if {[info exists address_v4]} {lappend addresses $address_v4}
-if {[info exists address_v6]} {lappend addresses $address_v6}
-
-if {[llength $addresses] == 0} {
-    ns_log error "Either an IPv4 or IPv6 address must be specified"
-    exit
-}
 
 #---------------------------------------------------------------------
 #
@@ -149,15 +157,17 @@ ns_section ns/parameters {
     ns_param	logmaxbackup	100      ;# 10 is default
     ns_param	logrollfmt	%Y-%m-%d ;# format appended to serverlog filename when rolled
     #
-    # Format of log entries:
+    # Format of log entries in serverlog:
+    # ns_param  logsec          false    ;# add timestamps in second resolution (default: true)
     # ns_param  logusec         true     ;# add timestamps in microsecond (usec) resolution (default: false)
     # ns_param  logusecdiff     true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
+    # ns_param  logthread       false    ;# add thread-info the log file lines (default: true)
     ns_param	logcolorize	true     ;# colorize log file with ANSI colors (default: false)
     ns_param	logprefixcolor	green    ;# black, red, green, yellow, blue, magenta, cyan, gray, default
     # ns_param  logprefixintensity normal;# bright or normal
     #
     # Severities to be logged (can be controlled at runtime via ns_logctl)
-    ns_param	logdebug	$debug    ;# debug messages
+    #ns_param	logdebug	$debug    ;# debug messages
     ns_param	logdev		$dev      ;# development message
     ns_param    lognotice       true      ;# informational messages
     #ns_param   sanitizelogfiles 2        ;# default: 2; 0: none, 1: full, 2: human-friendly
@@ -183,9 +193,9 @@ ns_section ns/parameters {
     # Versions up to at least Tcl 8.5 are known that these might
     # crash in case two threads create interpreters at the same
     # time. These crashes were hard to reproduce, but serializing
-    # interpreter creation helped. Probably it is possible to
-    # allow concurrent interpreter create operations in Tcl 8.6.
-    #ns_param        concurrentinterpcreate true   ;# default: false
+    # interpreter creation helped. Starting with Tcl 8.6,
+    # the default is set to "true".
+    #ns_param        concurrentinterpcreate false   ;# default: true
 
     # Enforce sequential thread initialization. This is not really
     # desirably in general, but might be useful for hunting strange
@@ -234,8 +244,8 @@ ns_section ns/modules {
     # Load networking modules named "nssock" and/or "nsssl" depending
     # on existence of Tcl variables "httpport" and "httpsport".
     #
-    if {[info exists httpport]}  { ns_param nssock ${bindir}/nssock }
-    if {[info exists httpsport]} { ns_param nsssl  ${bindir}/nsssl }
+    if {[info exists httpport] && $httpport ne ""}  { ns_param nssock ${bindir}/nssock }
+    if {[info exists httpsport] && $httpsport ne ""} { ns_param nsssl  ${bindir}/nsssl }
 }
 
 #---------------------------------------------------------------------
@@ -247,7 +257,7 @@ if {[info exists httpport]} {
     #
     ns_section ns/module/nssock {
         ns_param	defaultserver	$server
-        ns_param	address		$addresses
+        ns_param	address		$ipaddress
         ns_param	hostname	$hostname
         ns_param	port		$httpport                ;# default 80
         ns_param	maxinput	${max_file_upload_mb}MB  ;# 1MB, maximum size for inputs (uploads)
@@ -257,7 +267,7 @@ if {[info exists httpport]} {
         # ns_param	uploadpath	/tmp	;# directory for uploads
         # ns_param	backlog		256	;# 256, backlog for listen operations
         # ns_param	maxqueuesize	256	;# 1024, maximum size of the queue
-        # ns_param	acceptsize	10	;# Maximum number of requests accepted at once.
+        # ns_param	acceptsize	10	;# backlog; Maximum number of requests accepted at once.
         # ns_param	deferaccept     true    ;# false, Performance optimization, may cause recvwait to be ignored
         # ns_param	bufsize		16kB	;# 16kB, buffersize
         # ns_param	readahead	16kB	;# value of bufsize, size of readahead for requests
@@ -294,7 +304,7 @@ if {[info exists httpport]} {
     #
     ns_section ns/module/nssock/servers {
         ns_param $server $hostname
-        foreach address $addresses {
+        foreach address $ipaddress {
             ns_param $server $address
         }
     }
@@ -310,23 +320,25 @@ if {[info exists httpsport]} {
     #
     ns_section ns/module/nsssl {
         ns_param defaultserver	$server
-        ns_param address	$addresses
+        ns_param address	$ipaddress
         ns_param port		$httpsport
         ns_param hostname	$hostname
-        ns_param ciphers	"ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
-        ns_param protocols	"!SSLv2:!SSLv3"
+        ns_param ciphers	"ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
+        ns_param protocols	"!SSLv2:!SSLv3:!TLSv1.0:!TLSv1.1"
         ns_param certificate	$serverroot/etc/certfile.pem
         ns_param verify		0
         ns_param writerthreads	2
         ns_param writersize	1kB
         ns_param writerbufsize	16kB	;# 8kB, buffer size for writer threads
-        #ns_param nodelay	false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
-        #ns_param writerstreaming	true	;# false
-        #ns_param deferaccept	true    ;# false, Performance optimization
+        # ns_param writerstreaming	true	;# false
+        # ns_param spoolerthreads	1	;# 0, number of upload spooler threads
+        # ns_param maxupload	100kB	;# 0, when specified, spool uploads larger than this value to a temp file
+        # ns_param deferaccept	true    ;# false, Performance optimization
+        # ns_param nodelay	false   ;# true; deactivate TCP_NODELAY if Nagle algorithm is wanted
         ns_param maxinput	${max_file_upload_mb}MB   ;# Maximum file size for uploads in bytes
         ns_param extraheaders	$nsssl_extraheaders
         ns_param OCSPstapling   on        ;# off; activate OCSP stapling
-        #ns_param OCSPstaplingVerbose  on ;# off; make OCSP stapling more verbose
+        # ns_param OCSPstaplingVerbose  on ;# off; make OCSP stapling more verbose
     }
     #
     # Define, which "host" (as supplied by the "host:" header field)
@@ -337,10 +349,11 @@ if {[info exists httpsport]} {
     #
     ns_section ns/module/nsssl/servers {
         ns_param $server $hostname
-        ns_param $server $address
+        foreach address $ipaddress {
+            ns_param $server $address
+        }
     }
 }
-
 
 
 #---------------------------------------------------------------------
@@ -398,19 +411,20 @@ ns_section ns/server/$server {
     #
     # Scaling and Tuning Options
     #
-    # ns_param	maxconnections	100	;# 100; number of allocated connection structures
-    ns_param    rejectoverrun   true    ;# false (send 503 when queue overruns)
-    #ns_param   retryafter      5s      ;# time for Retry-After in 503 cases
+    # ns_param	maxconnections	100      ;# 100; number of allocated connection structures
+    ns_param    rejectoverrun   true     ;# false (send 503 when queue overruns)
+    #ns_param   retryafter      5s       ;# time for Retry-After in 503 cases
+    #ns_param   filterrwlocks   false    ;# default: true
 
-    # ns_param	maxthreads	10	;# 10; maximal number of connection threads
-    ns_param	minthreads	2	;# 1; minimal number of connection threads
+    # ns_param	maxthreads	10       ;# 10; maximal number of connection threads
+    ns_param	minthreads	2        ;# 1; minimal number of connection threads
 
-    ns_param	connsperthread	1000	;# 10000; number of connections (requests) handled per thread
+    ns_param	connsperthread	1000     ;# 10000; number of connections (requests) handled per thread
     ;# Setting connsperthread to > 0 will cause the thread to
     ;# graciously exit, after processing that many requests, thus
     ;# initiating kind-of Tcl-level garbage collection.
 
-    # ns_param	threadtimeout	2m	;# 2m; timeout for idle threads.
+    # ns_param	threadtimeout	2m       ;# 2m; timeout for idle threads.
     ;# In case, minthreads < maxthreads, threads are shutdown after
     ;# this idle time until minthreads are reached.
 
@@ -422,10 +436,10 @@ ns_section ns/server/$server {
 
     # Compress response character data: ns_return, ADP etc.
     #
-    ns_param	compressenable	on	;# false, use "ns_conn compress" to override
-    # ns_param	compresslevel	4	;# 4, 1-9 where 9 is high compression, high overhead
-    # ns_param	compressminsize	512	;# Compress responses larger than this
-    # ns_param	compresspreinit true	;# false, if true then initialize and allocate buffers at startup
+    ns_param	compressenable	on       ;# false, use "ns_conn compress" to override
+    # ns_param	compresslevel	4        ;# 4, 1-9 where 9 is high compression, high overhead
+    # ns_param	compressminsize	512      ;# Compress responses larger than this
+    # ns_param	compresspreinit true     ;# false, if true then initialize and allocate buffers at startup
 
     # Enable nicer directory listing (as handled by the OpenACS request processor)
     # ns_param	directorylisting	fancy	;# Can be simple or fancy
@@ -482,9 +496,9 @@ ns_section ns/server/$server/pools {
     # To activate connection thread pools, uncomment one of the
     # following lines and/or add other pools.
 
-    #ns_param   monitor	"Monitoring actions to check heathiness of the system"
+    #ns_param   monitor	"Monitoring actions to check healthiness of the system"
     #ns_param   fast	"Fast requests, e.g. less than 10ms"
-    #ns_param   slow 	"Slow lane pool, for request remapping"
+    #ns_param   slow    "Slow lane pool, for request remapping"
 }
 
 ns_section ns/server/$server/pool/monitor {
@@ -921,6 +935,39 @@ ns_section ns/module/nsstats {
     ns_param password ""
     ns_param bglocks  {oacs:sched_procs}
 }
+
+
+#
+# Sample letsencrypt configuration.
+#
+# To use this, it is necessary to install the NaviServer letsencrypt
+# module first, uncomment the two "ns_param" lines, and provide your
+# desired domain names.
+#
+ns_section "ns/server/${server}/modules" {
+    #ns_param letsencrypt tcl
+}
+ns_section ns/server/${server}/module/letsencrypt {
+
+    # Provide one or more domain names (latter for multi-domain SAN
+    # certificates). These values are a default in case the domains
+    # are not provided by other means (e.g. "letsencrypt.tcl").  In
+    # case multiple NaviServer virtual hosts are in used, this
+    # definition must be on the ${server}, which is used for
+    # obtaining updates (e.g. main site) although it retrieves a
+    # certificate for many subsites.
+
+    #ns_param domains { openacs.org openacs.net fisheye.openacs.org cvs.openacs.org }
+}
+
+
+
+#ns_logctl severity Debug(ns:driver) on
+#ns_logctl severity Debug(request) on
+#ns_logctl severity Debug(task) on
+#ns_logctl severity Debug(connchan) on
+ns_logctl severity debug $debug
+ns_logctl severity "Debug(sql)" $verboseSQL
 
 #
 # If you want to activate core dumps, one can use the following command

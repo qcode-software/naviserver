@@ -2206,7 +2206,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
     //fprintf(stderr, "...   JunctionAdd '%s' last word '%s' contextSpec %p\n", seq, p, contextSpec);
 
     /*
-     * If it's a valid sequence that has a wildcard in its last
+     * If it is a valid sequence that has a wildcard in its last
      * element, append the whole string to dsWord, then cut off the
      * last word from p.
      *
@@ -2355,8 +2355,8 @@ JunctionFind(const Junction *juncPtr, char *seq, NsUrlSpaceContextFilterProc pro
 #endif
         if (doit) {
             /*
-             * We got here because this url matches the filter
-             * (for example, it's *.adp).
+             * We got here because this URL matches the filter
+             * (for example, "*.adp").
              */
 
             if (data == NULL) {
@@ -2824,7 +2824,7 @@ WalkCallback(Ns_DString *dsPtr, const void *arg)
  *
  * UrlSpaceGetObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements the "ns_urlspace get" command.
+ *    Implements "ns_urlspace get".
  *
  * Results:
  *    Tcl result.
@@ -2931,7 +2931,7 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  * UrlSpaceListObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements the "ns_urlspace list" command.
+ *    Implements "ns_urlspace list".
  *
  * Results:
  *    Tcl result.
@@ -2978,7 +2978,7 @@ UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *
  * UrlSpaceNewObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements the "ns_urlspace new" command.
+ *    Implements "ns_urlspace new".
  *
  * Results:
  *    Tcl result.
@@ -3018,7 +3018,7 @@ UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  * UrlSpaceSetObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements the "ns_urlspace set" command.
+ *    Implements "ns_urlspace set".
  *
  * Results:
  *    Tcl result.
@@ -3099,7 +3099,7 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *
  * UrlSpaceUnsetObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements the "ns_urlspace unset" command.
+ *    Implements "ns_urlspace unset".
  *
  * Results:
  *    Tcl result.
@@ -3174,7 +3174,7 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  *
  * NsTclUrlSpaceObjCmd --
  *
- *    Implements the ns_urlspace command.
+ *    Implements "ns_urlspace".
  *
  * Results:
  *    Tcl result.
