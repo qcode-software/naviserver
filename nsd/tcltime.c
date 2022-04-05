@@ -240,7 +240,7 @@ Ns_TclGetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time *timePtr)
  * Ns_TclGetTimePtrFromObj --
  *
  *      Convert the Tcl_Obj to an Ns_Time type and return a pointer to
- *      it's internal rep.
+ *      its internal representation.
  *
  * Results:
  *      TCL_OK or TCL_ERROR if not a valid Ns_Time.
@@ -278,7 +278,7 @@ Ns_TclGetTimePtrFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time **timePtrPt
  *
  * NsTclTimeObjCmd --
  *
- *      Implements ns_time.
+ *      Implements "ns_time".
  *
  * Results:
  *      Tcl result.
@@ -450,7 +450,7 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *
  * NsTclLocalTimeObjCmd, NsTclGmTimeObjCmd --
  *
- *      Implements ns_gmtime and ns_localtime.
+ *      Implements "ns_gmtime" and "ns_localtime".
  *
  * Results:
  *      Tcl result.
@@ -516,7 +516,7 @@ NsTclLocalTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  * NsTclSleepObjCmd --
  *
  *      Sleep with millisecond resolution.
- *      Implementation of ns_sleep command.
+ *      Implements "ns_sleep".
  *
  * Results:
  *      Tcl Result.
@@ -540,9 +540,10 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         rc = TCL_ERROR;
     } else {
-        time_t ms = Ns_TimeToMilliseconds(tPtr);
+        time_t ms;
 
         assert(tPtr != NULL);
+        ms = Ns_TimeToMilliseconds(tPtr);
         if (ms > 0) {
             Tcl_Sleep((int)ms);
         }
@@ -557,7 +558,7 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *
  * NsTclStrftimeObjCmd --
  *
- *      Implements ns_fmttime.
+ *      Implements "ns_fmttime".
  *
  * Results:
  *      Tcl result.
@@ -651,13 +652,15 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
  *
  * ParseTimeUnit --
  *
- *      Parse time units specified after an integer or a float.
+ *      Parse time units specified after an integer or a float.  Note
+ *      that the smallest possible time value is 1 μs based on the
+ *      internal representation.
  *
  *      Accepted time units are:
- *         ms, s, m, h, d
+ *         μs, ms, s, m, h, d, w, y
  *
  * Results:
- *      Multiplier relative to seconds
+ *      Multiplier relative to seconds.
  *
  * Side effects:
  *      None.
@@ -683,6 +686,10 @@ static double ParseTimeUnit(const char *str)
         multiplier = 3600.0;
     } else if (*str == 'd' && *(str+1) == '\0') {
         multiplier = 86400.0;
+    } else if (*str == 'w' && *(str+1) == '\0') {
+        multiplier = 604800.0;
+    } else if (*str == 'y' && *(str+1) == '\0') {
+        multiplier = 31536000.0;
     } else if (*str == 'm' && *(str+1) == 's' && *(str+2) == '\0') {
         multiplier = 0.001;
     } else if (*str == '\xce' && *(str+1) == '\xbc' && *(str+2) == 's' && *(str+3) == '\0') {

@@ -1,0 +1,83 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_library - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_library.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_library.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_library(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_library - Get the paths to the private and shared Tcl libraries</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_library</b> <i class="arg">library</i> <span class="opt">?<i class="arg">module</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command returns the path to the private and shared Tcl libraries, optionally specifying a module as well.
+library must either be &quot;private&quot; or &quot;shared&quot;.  The private library is the same
+as what's returned from ns_info tcllib as defined in the config .tcl at server
+start-up.  The shared library is relative to the path specified by ns_info home,
+in the &quot;modules/tcl&quot; subdirectory.
+The optional module is simply concatenated to the path returned from ns_library.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_library</b> <i class="arg">library</i> <span class="opt">?<i class="arg">module</i>?</span></a></dt>
+<dd></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ % ns_library shared
+ /home/ns/modules/tcl
+</pre>
+<pre class="doctools_example">
+ % file join [ns_info home] modules tcl
+ /home/ns/modules/tcl
+</pre>
+<pre class="doctools_example">
+ % ns_library private exampleModule
+ /home/ns/servers/exampleServer/tcl/exampleModule
+</pre>
+<pre class="doctools_example">
+ % file join [ns_info tcllib] exampleModule
+ /home/ns/servers/exampleServer/tcl/exampleModule
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#home">home</a>, <a href="../../index.html#ns_info">ns_info</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#tcllib">tcllib</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

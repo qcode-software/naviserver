@@ -273,7 +273,7 @@ CurrentHandles( Tcl_Interp *interp, Tcl_HashTable *tablePtr, Tcl_Obj *dictObj)
  *
  * DbObjCmd --
  *
- *      Implement the NaviServer ns_db Tcl command.
+ *      Implements "ns_db".
  *
  * Results:
  *      Return TCL_OK upon success and TCL_ERROR otherwise.
@@ -757,6 +757,8 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
     case INTERPRETSQLFILE:
         {
             const char *value;
+            int         valueLength = 0;
+            Tcl_DString ds;
 
             /*
              * The following commands require a 3rd argument.
@@ -780,7 +782,15 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
             }
             Ns_DStringFree(&handlePtr->dsExceptionMsg);
             handlePtr->cExceptionCode[0] = '\0';
-            value = Tcl_GetString(objv[3]);
+            value = Tcl_GetStringFromObj(objv[3], &valueLength);
+
+            /*
+             * Convert data to external UTF-8... and lets hope, the
+             * driver can handle this. We might have to tailor this by
+             * driver (needs additional configuration options).
+             */
+            Tcl_UtfToExternalDString(NULL, value, valueLength, &ds);
+            value = ds.string;
 
             /*if (cmd != GETROW) {
                 fprintf(stderr, "CMD %s: <%s> (%s)\n", Tcl_GetString(objv[1]), value,
@@ -876,6 +886,8 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
                 /* should not happen */
                 assert(cmd && 0);
             }
+
+            Tcl_DStringFree(&ds);
         }
         break;
 
@@ -975,9 +987,10 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
 
 /*
  *----------------------------------------------------------------------
- * DbErrorCodeCmd --
+ * DbErrorCodeObjCmd --
  *
- *      Get database exception code for the database handle.
+ *      Implements "ns_dberrorcode".
+ *      Returns database exception code for the database handle.
  *
  * Results:
  *      Returns TCL_OK and database exception code is set as Tcl result
@@ -1028,9 +1041,10 @@ DbErrorMsgObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *c
 
 /*
  *----------------------------------------------------------------------
- * DbConfigPathCmd --
+ * DbConfigPathObjCmd --
  *
- *      Get the database section name from the configuration file.
+ *      Implements "ns_dbconfigpath". Get the database section name
+ *      from the configuration file.
  *
  * Results:
  *      TCL_OK and the database section name is set as the Tcl result
@@ -1052,7 +1066,7 @@ DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
         result = TCL_ERROR;
     } else {
         const InterpData *idataPtr = clientData;
-        const char *section = Ns_ConfigGetPath(idataPtr->server, NULL, "db", (char *)0L);
+        const char *section = Ns_ConfigSectionPath(NULL, idataPtr->server, NULL, "db", (char *)0L);
 
         Tcl_SetObjResult(interp, Tcl_NewStringObj(section, -1));
     }
@@ -1062,9 +1076,10 @@ DbConfigPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 
 /*
  *----------------------------------------------------------------------
- * PoolDescriptionCmd --
+ * PoolDescriptionObjCmd --
  *
- *      Get the pool's description string.
+ *      Implements "ns_pooldescription". Returns the pool's
+ *      description string.
  *
  * Results:
  *      Return TCL_OK and the pool's description string is set as the
@@ -1094,9 +1109,10 @@ PoolDescriptionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
 /*
  *----------------------------------------------------------------------
- * QuoteListToListCmd --
+ * QuoteListToListObjCmd --
  *
- *      Remove space, \ and ' characters in a string.
+ *      Implements "ns_quotelisttolist". Removes space, \ and '
+ *      characters in a string.
  *
  * Results:
  *      TCL_OK and set the stripped string as the Tcl result or TCL_ERROR
@@ -1218,6 +1234,7 @@ QuoteSqlValue(Tcl_DString *dsPtr, Tcl_Obj *valueObj, int valueType)
  *----------------------------------------------------------------------
  * QuoteValueObjCmd --
  *
+ *      Implements "ns_dbquotevalue".
  *      Prepare a value string for inclusion in an SQL statement:
  *      -  "" is translated into NULL.
  *      -  All values of any numeric type are left alone.
@@ -1273,6 +1290,7 @@ QuoteValueObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *----------------------------------------------------------------------
  * QuoteListObjCmd --
  *
+ *      Implements "ns_dbquotelist".
  *      Prepare a value string for inclusion in an SQL statement:
  *      -  "" is translated into NULL.
  *      -  All values of any numeric type are left alone.
@@ -1331,10 +1349,10 @@ QuoteListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 /*
  *----------------------------------------------------------------------
  *
- * GetCsvCmd --
+ * GetCsvObjCmd --
  *
- *      Implement the ns_getcsv command to read a single line from a CSV file
- *      and parse the results into a Tcl list variable.
+ *      Implements "ns_getcsv". The command reads a single line from a
+ *      CSV file and parses the results into a Tcl list variable.
  *
  * Results:
  *      A standard Tcl result.
@@ -1347,7 +1365,6 @@ QuoteListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 static void
 FinishElement(Tcl_DString *elemPtr, Tcl_DString *colsPtr, bool quoted)
 {
-    /*Ns_Log(Notice, "FinishElement appends '%s' quoted %d", elemPtr->string, quoted);*/
     if (!quoted) {
         Tcl_DStringAppendElement(colsPtr, Ns_StrTrim(elemPtr->string));
     } else {
@@ -1459,7 +1476,7 @@ GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Ob
             }
             if (inquote) {
                 Tcl_DStringAppend(&elem, "\n", 1);
-                Tcl_DStringTrunc(&line, 0);
+                Tcl_DStringSetLength(&line, 0);
                 continue;
             }
             break;

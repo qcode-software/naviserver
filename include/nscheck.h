@@ -131,10 +131,15 @@
 #if __GNUC_PREREQ(4, 9)
 # define NS_GNUC_RETURNS_NONNULL __attribute__((returns_nonnull))
 # define NS_GNUC_PURE __attribute__((__pure__))
+# define NS_ALLOC_SIZE1(ARG) __attribute__((__alloc_size__(ARG)))
+# define NS_ALLOC_SIZE2(ARG1,ARG2) __attribute__((__alloc_size__(ARG1,ARG2)))
 #else
 # define NS_GNUC_RETURNS_NONNULL
 # define NS_GNUC_PURE
+# define NS_ALLOC_SIZE1(ARG)
+# define NS_ALLOC_SIZE2(ARG1,ARG2)
 #endif
+
 
 /*
  * In earlier version of GCC6, it complained when there was a nonnull
@@ -149,7 +154,7 @@
 #define NS_NONNULL_ASSERT(assertion) assert((assertion))
 
 #if __GNUC_PREREQ(7, 0)
-# define NS_FALL_THROUGH __attribute__((fallthrough))
+# define NS_FALL_THROUGH ;__attribute__((fallthrough))
 #else
 # define NS_FALL_THROUGH ((void)0)
 #endif
@@ -187,7 +192,19 @@
 # define NS_INLINE inline
 #endif
 
+#if defined(__cplusplus)
+# define NS_RESTRICT
+#else
+# ifdef _MSC_VER
+#  define NS_RESTRICT __restrict
+# else
+#  define NS_RESTRICT restrict
+# endif
+#endif
+
 #if defined(__GNUC__) && !defined(__OpenBSD__)
+# define NS_THREAD_LOCAL __thread
+#elif defined(__clang__)
 # define NS_THREAD_LOCAL __thread
 #elif defined NS_HAVE_C11
 # include <threads.h>

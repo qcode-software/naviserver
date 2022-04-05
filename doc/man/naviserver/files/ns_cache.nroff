@@ -1,0 +1,578 @@
+'\"
+'\" Generated from file 'ns_cache\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_cache" n 4\&.99\&.23 naviserver "NaviServer Built-In Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_cache \- Cache manipulation
+.SH SYNOPSIS
+\fBns_cache_configure\fR \fIname\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB-maxentry \fIs\fR\fR? ?\fB-maxsize \fIs\fR\fR?
+.sp
+\fBns_cache_create\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB-maxentry \fIs\fR\fR? ?\fB--\fR? \fIname\fR \fIsize\fR
+.sp
+\fBns_cache_exists\fR \fIname\fR
+.sp
+\fBns_cache_names\fR
+.sp
+\fBns_cache_keys\fR ?\fB-exact\fR? ?\fB--\fR? \fIname\fR ?\fIpattern\fR?
+.sp
+\fBns_cache_eval\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB-force \fIbool\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR \fIscript\fR ?\fIargs\fR?
+.sp
+\fBns_cache_get\fR \fIname\fR \fIkey\fR ?\fIvarName\fR?
+.sp
+\fBns_cache_incr\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR ?\fIincr\fR?
+.sp
+\fBns_cache_append\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR \fIargs\fR
+.sp
+\fBns_cache_lappend\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR \fIargs\fR
+.sp
+\fBns_cache_flush\fR ?\fB-glob\fR? ?\fB--\fR? \fIname\fR ?\fIargs\fR?
+.sp
+\fBns_cache_stats\fR ?\fB-contents\fR? ?\fB-reset\fR? ?\fB--\fR? \fIname\fR
+.sp
+\fBns_cache_transaction_begin\fR
+.sp
+\fBns_cache_transaction_commit\fR ?\fB-all\fR?
+.sp
+\fBns_cache_transaction_rollback\fR ?\fB-all\fR?
+.sp
+\fBns_fastpath_cache_stats\fR ?\fB-contents\fR? ?\fB-reset\fR? ?\fB--\fR? \fIname\fR
+.sp
+.BE
+.SH DESCRIPTION
+The cache commands store key-value data in memory for quick access, like
+\fBnsv\fR\&. Unlike \fBnsv\fR, a limit is placed on the amount of memory used for
+each cache, and additional limits can be placed on the expire time of cache
+entries, timeouts waiting for updates, etc\&.
+.PP
+The cache commands try to be efficient\&. For example, if two threads are
+simultaneously accessing the same entry in a cache, and the cache entry does not
+exist or has expired, then the first thread will evaluate its script to
+generate the new value\&.  The second thread will recognize this and wait for the
+first thread to finish, and then return the value computed by the first thread\&.
+.PP
+A cache will tend to grow to its maximum specified size\&.  Unused entries will
+move towards the end of the Least Recently Used list and be deleted to make room
+for new entries\&. Similarly, expired entries will remain in the cache and only be
+deleted when they reach the end of the LRU list, or are accessed and it is
+noticed that they have expired\&.
+.SH OPTIONS
+The following options are used for several commands below\&.
+.TP
+\fB-timeout\fR \fIt\fR
+The time to wait for some other thread to compute the cache value\&.
+The value \fIt\fR can be specified in the form
+\fIsecs?:microsecs?\fR, or \fIsecs\&.fraction\fR,
+or as a number with a time unit\&.
+.TP
+\fB-expires\fR \fIt\fR
+A time in the future when the cache entry expires\&. The expired entry will be
+deleted only when retrieved, e\&.g\&. via \fBns_cache_eval\fR\&.
+.sp
+The value \fIt\fR can be specified in the form
+\fIsecs?:microsecs?\fR, or \fIsecs\&.fraction\fR,
+or as a number with a time unit\&.
+Small values of \fIt\fR are treated as offsets, large values as absolute times\&.
+.PP
+.SH COMMANDS
+.TP
+\fBns_cache_configure\fR \fIname\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB-maxentry \fIs\fR\fR? ?\fB-maxsize \fIs\fR\fR?
+Query or change the parameters of a previously created cache\&.  If none
+of the options are used, the current settings are returned in form of
+an attribute value list\&.  \fB-maxentry\fR and \fB-maxsize\fR can
+be specified in memory units (kB, MB, GB, KiB, MiB, GiB)\&.
+.TP
+\fBns_cache_create\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB-maxentry \fIs\fR\fR? ?\fB--\fR? \fIname\fR \fIsize\fR
+Create a new Tcl cache identified by \fIname\fR with maximum size
+\fIsize\fR\&. The size determines the number of entries that can be kept in
+the cache\&. The size of a single entry is the size of the key plus the
+size of the value and the internal overhead per cache entry (about 126
+bytes on a 64-bit machine)\&.  Optionally, a \fB-timeout\fR, an
+\fB-expires\fR time and the maximum size of the cache entry value of a
+single entry (parameter \fB-maxentry\fR) can be specified\&.
+The values for \fIsize\fR and \fB-maxentry\fR can be specified in
+memory units (kB, MB, GB, KiB, MiB, GiB)\&.
+.sp
+The function returns 1 when the cache is newly created\&. When
+the cache exists already, the function return 0 and leaves the
+existing cache unmodified\&.
+.TP
+\fBns_cache_exists\fR \fIname\fR
+Check for the existence of a cache and return 0 (failure) or 1 (success)\&.
+.TP
+\fBns_cache_names\fR
+Return the list of all caches for the current virtual server\&.
+.TP
+\fBns_cache_keys\fR ?\fB-exact\fR? ?\fB--\fR? \fIname\fR ?\fIpattern\fR?
+Return a list of all keys in the named cache\&. If \fIpattern\fR is
+given then each key is matched against the globbing pattern, and only
+those which match are included in the list\&. When the option
+\fB-exact\fR is used, \fIpattern\fR is interpreted
+literally,  either a key with a literally exact match or empty is returned\&.
+.TP
+\fBns_cache_eval\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB-force \fIbool\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR \fIscript\fR ?\fIargs\fR?
+Return the data identified by \fIkey\fR from the named cache\&. If the key does
+not exist then \fIscript\fR is executed, its value is returned and inserted
+into the cache\&.
+.sp
+The \fIscript\fR is also executed if a cached value exists but has expired\&.
+.sp
+If the \fB-force\fR option is set then any existing cached entry is removed
+whether it has expired or not, and the \fIscript\fR is run to regenerate it\&.
+.TP
+\fBns_cache_get\fR \fIname\fR \fIkey\fR ?\fIvarName\fR?
+Get the cached value for the provided key from the cache\&.
+If the optional variable name is not provided, it returns
+the associated value on success or it raises an error,
+if the key does not exist\&. If the optional variable name is
+provided it returns 1 or 0 on success / failure and sets
+the provided variable with the associated value (similar to
+nsv_get)\&.
+.TP
+\fBns_cache_incr\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR ?\fIincr\fR?
+Increment the integer value in the cache by 1, or by \fIincr\fR if specified,
+and return it\&.
+.TP
+\fBns_cache_append\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR \fIargs\fR
+Append the given \fIargs\fR to the value in the cache and return the new
+value\&. The \fIargs\fR and the cache value are treated as simple strings\&.
+.sp
+If the cache value does not already exist it is created\&.
+.TP
+\fBns_cache_lappend\fR ?\fB-timeout \fIt\fR\fR? ?\fB-expires \fIt\fR\fR? ?\fB--\fR? \fIname\fR \fIkey\fR \fIargs\fR
+Append the given \fIargs\fR to the value in the cache and return the new
+value\&. The cache value is as a Tcl list and the \fIargs\fR are appended to
+maintain its well-formed-list format\&.
+.sp
+If the cache value does not already exist it is created\&.
+.TP
+\fBns_cache_flush\fR ?\fB-glob\fR? ?\fB--\fR? \fIname\fR ?\fIargs\fR?
+Flush the entries in a cache and return the number of flushed entries\&.
+If the optional \fIargs\fR are given these are used as the keys in the
+cache to be flushed\&. If the \fB-glob\fR option is given then the
+keys are treated as globbing patterns and only the entries with
+matching keys are flushed\&.
+.TP
+\fBns_cache_stats\fR ?\fB-contents\fR? ?\fB-reset\fR? ?\fB--\fR? \fIname\fR
+Return the accumulated statistics for the given cache \fIname\fR in dict
+format since the cache was created or was last reset\&.
+.sp
+If the \fB-reset\fR option is given then the statistics will be reset
+to zero after the command returns\&.
+.sp
+If the \fB-contents\fR option is given then a list of all
+entries is returned containing the key, size, hits and expire time for
+each entry in the cache\&. The time is in \fBns_time\fR timespec format\&.
+The cache statistics track the following items:
+.RS
+.TP
+maxsize
+The maximum size in bytes this cache can grow to, as specified by the
+\fB-size\fR option to \fBns_cache_create\fR\&.
+.TP
+size
+The current size of the cache, in bytes\&.
+.TP
+entries
+The current number of entries the cache contains\&.
+.TP
+flushed
+Number of entries which were explicitly flushed by the \fBns_cache_flush\fR
+command\&.
+.TP
+hits
+Number of times cache was queried and entry was present and valid\&.
+.TP
+missed
+Number of times cache was queried and entry was not present or valid\&.
+.TP
+hitrate
+The successful hit rate expressed as a percentage of total hits\&. Higher is better\&.
+.TP
+expired
+Number of times an entry was found to be present but expired when requested and
+so not returned\&.
+.TP
+pruned
+Number of times an entry reached the end of the LRU list and was removed to make
+way for a new entry\&.
+.RE
+.TP
+\fBns_cache_transaction_begin\fR
+Begin a cache transaction\&. A cache transaction provides in essence the
+ability to rollback the added/updated values, while providing cache
+isolations to other transactions\&. The cached values from incomplete
+cache transactions are just visible from the current thread, but not
+from other threads\&. Cache transactions effect always all caches\&.
+.sp
+Typically, cache transactions are used in accordance with
+database transactions\&.
+.TP
+\fBns_cache_transaction_commit\fR ?\fB-all\fR?
+Successfully terminate a cache transaction\&. All added values are made
+visible to other threads\&. The option \fB-all\fR can be used to
+commit all nested transactions currently open in this thread\&.
+.TP
+\fBns_cache_transaction_rollback\fR ?\fB-all\fR?
+Terminate a cache transaction and undo changes in all caches since
+the matching \fBns_cache_transaction_begin\fR\&.
+The option \fB-all\fR can be used to
+rollback all nested transactions currently open in this thread\&.
+.TP
+\fBns_fastpath_cache_stats\fR ?\fB-contents\fR? ?\fB-reset\fR? ?\fB--\fR? \fIname\fR
+Return the accumulated statistics for fastpath cache in array-get
+format since the cache was created or was last reset\&. For details, see
+\fBns_cache_stats\fR above\&.
+.PP
+.SH "CACHE TRANSACTIONS"
+Background: when ns_cache_* commands are used within a database
+transaction (e\&.g\&. in OpenACS), it might occur, that partial results of
+the transaction are cached before the transaction is committed\&.  When
+the transaction is rolled back, invalid values might be kept in the
+stack leading to erroneous and hard to debug behavior\&.  Furthermore,
+information about changes might leak into other concurrent threads via
+the cache, even before the transaction is committed\&.
+.PP
+The cache transaction semantics is implemented via the three
+commands:
+.IP \(bu
+\fBns_cache_transaction_begin\fR
+.IP \(bu
+\fBns_cache_transaction_commit\fR
+.IP \(bu
+\fBns_cache_transaction_rollback\fR
+.PP
+When no ns_cache_transaction* commands are used, the behavior is
+exactly as before, the caches are not transactions aware\&. When cache
+transactions are used, which are initiated by a
+\fBns_cache_transaction_begin\fR call and ended via
+\fBns_cache_transaction_commit\fR or
+\fBns_cache_transaction_rollback\fR,
+the ns_cache commands provide in essence the following
+functionalities:
+.IP [1]
+The ability to rollback of the values since the matching
+ns_cache_transaction_begin
+.IP [2]
+Isolation of behavior: cached values from incomplete cache
+transactions are just visible from the current thread, but not from
+other threads\&.
+.IP [3]
+Nesting: transactions can be nested (up to a compile time
+constant, per default: 16)
+.IP [4]
+Introspection: the statistics about cache commits and rollbacks are
+included in the cache statistics\&.
+.PP
+Note that the cache transactions span over all defined caches\&.
+.SH EXAMPLES
+In the following example our goal is to serve a web page within 5 seconds\&. The
+web page requires two sets of data: the user's name and email address, and a
+personalized advert, both of which are stored in a database\&.
+.PP
+The data doesn't change often so a cache is used to speed up access\&. Even so,
+the server may become so busy that database queries take longer than our target
+response time of 5 seconds so we specify a \fB-timeout\fR to both calls
+to the \fBns_cache_eval\fR command\&.
+.PP
+In this case, a time 5 seconds into the future is constructed once and passed to
+both cache calls\&. The second call will use the remainder of the time once the
+first completes\&.
+.CS
+
+
+ set timeout [ns_time incr [ns_time get] 5]
+
+ if {[catch {
+    set user [\fBns_cache_eval\fR \fB-timeout\fR $timeout -- users $userid {
+        db_query {
+            select name, email
+            from users
+            where userid = :userid
+        }
+    }]
+    set ad [\fBns_cache_eval\fR \fB-timeout\fR $timeout \fB-expires\fR 120 -- ads $userid {
+        db_query {
+            select advert from
+            personalized_adverts
+            where userid = :userid
+        }
+    }]
+ } errmsg]} {
+    ns_returnunavailable "Sorry, our web server is too busy\&."
+ }
+
+ ns_return 200 text/html [example_personalized_page $user $ad]
+
+.CE
+.SH "SEE ALSO"
+ns_memoize, ns_time, ns_urlspace, nsv
+.SH KEYWORDS
+cache, fastpath, global built-in, server built-in

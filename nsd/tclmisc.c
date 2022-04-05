@@ -52,7 +52,6 @@ static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
 static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
 static int Base64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
 
-
 
 /*
  *----------------------------------------------------------------------
@@ -92,7 +91,7 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
  *
  * NsTclRunOnceObjCmd --
  *
- *      Implements ns_runonce.  Run the given script only once.
+ *      Implements "ns_runonce".  Run the given script only once.
  *
  * Results:
  *      Tcl result.
@@ -339,7 +338,7 @@ Ns_SetNamedVar(Tcl_Interp *interp, Tcl_Obj *varPtr, Tcl_Obj *valPtr)
  * NsTclReflowTextObjCmd --
  *
  *      Reflow a text to the specified length.
- *      Implementation of ns_reflow_text.
+ *      Implements "ns_reflow_text".
  *
  * Results:
  *      Tcl result.
@@ -393,15 +392,16 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
         Tcl_DString ds, *dsPtr = &ds;
         size_t      k, inputPos, outputPos, textLength, prefixLength, currentWidth, nrPrefixes, nrNewLines = 1u;
         bool        done = NS_FALSE;
+        const char *p;
 
         textLength   = strlen(textString);
         prefixLength = (prefixString == NULL ? 0u : strlen(prefixString));
         Tcl_DStringInit(dsPtr);
 
-        for (k = 0u; k < textLength; k++) {
-            if (textString[k] == '\n') {
-                nrNewLines++;
-            }
+        p = textString;
+        while( (p = strchr(p, INTCHAR('\n'))) != NULL) {
+            nrNewLines++;
+            p++;
         }
 
         inputPos = 0u;
@@ -522,7 +522,7 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *      (latter is not really needed but convenient).  Trim leading spaces on
  *      multiple lines.
  *
- *      Implementation of ns_trim.
+ *      Implements "ns_trim".
  *
  * Results:
  *      Tcl result.
@@ -538,10 +538,11 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 {
     int               result = TCL_OK, substInt = 0;
     Tcl_Obj          *textObj;
-    char             *delimiterString = NULL;
+    char             *delimiterString = NULL, *prefixString = NULL;
     Ns_ObjvSpec       opts[] = {
         {"-subst",     Ns_ObjvBool,   &substInt,     INT2PTR(NS_TRUE)},
         {"-delimiter", Ns_ObjvString, &delimiterString, NULL},
+        {"-prefix",    Ns_ObjvString, &prefixString, NULL},
         {"--",         Ns_ObjvBreak,  NULL,         NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -552,6 +553,14 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (delimiterString != NULL && prefixString != NULL) {
+        Ns_TclPrintfResult(interp, "invalid arguments: either -prefix or -delimiter can be specified");
+        result = TCL_ERROR;
+
+    } else if (delimiterString != NULL && strlen(delimiterString) != 1) {
+        Ns_TclPrintfResult(interp, "invalid arguments: -delimiter must be a single character");
         result = TCL_ERROR;
 
     } else {
@@ -568,32 +577,59 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
         p = Tcl_GetStringFromObj(textObj, &textLength);
         endOfString = p + textLength;
 
-        while(likely(p < endOfString)) {
-            const char *to;
-            char       *j;
-            ptrdiff_t   length;
+        if (prefixString != NULL) {
+            size_t prefixLength = strlen(prefixString);
 
-            for (j = p; likely(j < endOfString); j++) {
-                if (CHARTYPE(space, *j) != 0) {
-                    continue;
+            while(likely(p < endOfString)) {
+                const char *eolString;
+                char       *j;
+                ptrdiff_t   length;
+
+                if (strncmp(p, prefixString, prefixLength) == 0) {
+                    j = p + prefixLength;
+                } else {
+                    j = p;
                 }
-                if (delimiterString != NULL && *j == *delimiterString) {
-                    j++;
+                eolString = strchr(j, INTCHAR('\n'));
+                if (likely(eolString != NULL)) {
+                    length = (eolString - j) + 1;
+                } else {
+                    length = (endOfString - j);
+                }
+                Tcl_DStringAppend(dsPtr, j, (int)length);
+
+                p = j + length;
+            }
+        } else {
+            /*
+             * No "-prefix"
+             */
+            while(likely(p < endOfString)) {
+                const char *eolString;
+                char       *j;
+                ptrdiff_t   length;
+
+                for (j = p; likely(j < endOfString); j++) {
+                    if (CHARTYPE(space, *j) != 0) {
+                        continue;
+                    }
+                    if (delimiterString != NULL && *j == *delimiterString) {
+                        j++;
+                        break;
+                    }
                     break;
                 }
-                break;
-            }
-            to = strchr(j, INTCHAR('\n'));
-            if (likely(to != NULL)) {
-                length = (to - j) + 1;
-            } else {
-                length = (endOfString - j);
-            }
-            Tcl_DStringAppend(dsPtr, j, (int)length);
+                eolString = strchr(j, INTCHAR('\n'));
+                if (likely(eolString != NULL)) {
+                    length = (eolString - j) + 1;
+                } else {
+                    length = (endOfString - j);
+                }
+                Tcl_DStringAppend(dsPtr, j, (int)length);
 
-            p = j + length;
+                p = j + length;
+            }
         }
-
         Tcl_DStringResult(interp, dsPtr);
 
     }
@@ -607,7 +643,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *
  * NsTclStripHtmlObjCmd --
  *
- *      Implements ns_striphtml.
+ *      Implements "ns_striphtml".
  *
  * Results:
  *      Tcl result.
@@ -1012,7 +1048,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  * NsTclHrefsObjCmd --
  *
- *      Implements ns_hrefs.
+ *      Implements "ns_hrefs".
  *
  * Results:
  *      Tcl result.
@@ -1109,8 +1145,7 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *
  * Base64EncodeObjCmd --
  *
- *      Worker for ns_uuencode, ns_base64encode, and ns_base64urlencode obj
- *      commands.
+ *      Implements "ns_uuencode", "ns_base64encode", and "ns_base64urlencode".
  *
  * Results:
  *      Tcl result.
@@ -1190,8 +1225,7 @@ NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
  *
  * Base64DecodeObjCmd --
  *
- *      Worker for ns_uudecode, ns_base64decode, and ns_base64urldecode obj
- *      command.
+ *      Implements "ns_uudecode", "ns_base64decode", and "ns_base64urldecode".
  *
  * Results:
  *      Tcl result.
@@ -1266,7 +1300,7 @@ NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
  *
  * NsTclCrashObjCmd --
  *
- *      Crash the server to test exception handling.
+ *      Implements "ns_crash". Crash the server to test exception handling.
  *
  * Results:
  *      None.
@@ -1335,7 +1369,7 @@ WordEndsInSemi(const char *word, size_t *lengthPtr)
  *
  * NsTclCryptObjCmd --
  *
- *      Implements ns_crypt as ObjCommand.
+ *      Implements "ns_crypt".
  *
  * Results:
  *      Tcl result.
@@ -1350,19 +1384,31 @@ int
 NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int  result = TCL_OK;
+    char       *keyString, *saltString;
+    Ns_ObjvSpec args[] = {
+        {"key",  Ns_ObjvString, &keyString, NULL},
+        {"salt", Ns_ObjvString, &saltString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "key salt");
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    } else {
-        char buf[NS_ENCRYPT_BUFSIZE];
 
-        Tcl_SetResult(interp,
-                      Ns_Encrypt(Tcl_GetString(objv[1]),
-                                 Tcl_GetString(objv[2]), buf), TCL_VOLATILE);
+    } else {
+        if (strlen(saltString) != 2 ) {
+           Ns_TclPrintfResult(interp, "salt string must be 2 characters long");
+           result = TCL_ERROR;
+
+        } else {
+            char buf[NS_ENCRYPT_BUFSIZE];
+
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj(Ns_Encrypt(keyString, saltString, buf), -1));
+       }
     }
     return result;
 }
+
 /*
  *  The SHA1 routines are borrowed from libmd:
  *
@@ -1761,7 +1807,10 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
         digest[i * 4u + 3u] = (uint8_t) t;
     }
 
-    memset(ctx, 0, sizeof(Ns_CtxSHA1));                         /* In case it's sensitive */
+    /*
+     * In case it is sensitive
+     */
+    memset(ctx, 0, sizeof(Ns_CtxSHA1));
 }
 
 /*
@@ -1780,36 +1829,40 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
  *
  *----------------------------------------------------------------------
  */
-char *Ns_HexString(const unsigned char *digest, char *buf, int size, bool isUpper)
+char *
+Ns_HexString(const unsigned char *octets, char *outputBuffer, int size, bool isUpper)
 {
     int i;
     static const char hexCharsUpper[] = "0123456789ABCDEF";
     static const char hexCharsLower[] = "0123456789abcdef";
 
+    NS_NONNULL_ASSERT(octets != NULL);
+    NS_NONNULL_ASSERT(outputBuffer != NULL);
+
     if (isUpper) {
         for (i = 0; i < size; ++i) {
-            buf[i * 2] = hexCharsUpper[digest[i] >> 4];
-            buf[i * 2 + 1] = hexCharsUpper[digest[i] & 0xFu];
+            outputBuffer[i * 2] = hexCharsUpper[octets[i] >> 4];
+            outputBuffer[i * 2 + 1] = hexCharsUpper[octets[i] & 0xFu];
         }
     } else {
         for (i = 0; i < size; ++i) {
-            buf[i * 2] = hexCharsLower[digest[i] >> 4];
-            buf[i * 2 + 1] = hexCharsLower[digest[i] & 0xFu];
+            outputBuffer[i * 2] = hexCharsLower[octets[i] >> 4];
+            outputBuffer[i * 2 + 1] = hexCharsLower[octets[i] & 0xFu];
         }
     }
-    buf[size * 2] = '\0';
+    outputBuffer[size * 2] = '\0';
 
-    return buf;
+    return outputBuffer;
 }
 
 
 /*
  *----------------------------------------------------------------------
  *
- * SHA1Cmd --
+ * NsTclSHA1ObjCmd --
  *
- *      Returns a 40-character, hex-encoded string containing the SHA1
- *      hash of the first argument.
+ *      Implements "ns_sha1". Returns a 40-character, hex-encoded string
+ *      containing the SHA1 hash of the first argument.
  *
  * Results:
  *      NS_OK
@@ -1866,12 +1919,12 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 /*
  *----------------------------------------------------------------------
  *
- * FileStatCmd --
+ * NsTclFileStatObjCmd --
  *
- *      Works as file stat command but uses native call when Tcl VFS is
- *      not compiled. The reason for this when native calls are used for speed,
- *      having still slow file stat does not help, need to use native call
- *      and file stat is the most used command
+ *      Implements "ns_filestat". Works as "file stat" command but uses native
+ *      call when Tcl VFS is not compiled. The reason for this when native
+ *      calls are used for speed, having still slow file stat does not help,
+ *      need to use native call and file stat is the most used command
  *
  * Results:
  *      NS_OK
@@ -2248,10 +2301,10 @@ static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
 /*
  *----------------------------------------------------------------------
  *
- * MD5Cmd --
+ * NsTclMD5ObjCmd --
  *
- *      Returns a 32-character, hex-encoded string containing the MD5
- *      hash of the first argument.
+ *      Implements "ns_md5". Returns a 32-character, hex-encoded string
+ *      containing the MD5 hash of the first argument.
  *
  * Results:
  *      NS_OK
@@ -2307,7 +2360,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  *
  * NsTclSetUserObjCmd, NsTclSetGroupObjCmd --
  *
- *      Implements ns_setuser and ns_setgroup.
+ *      Implements "ns_setuser" and "ns_setgroup".
  *
  * Results:
  *      Standard Tcl result code.
@@ -2388,10 +2441,11 @@ GetLimitObj(rlim_t value)
  *
  * NsTclRlimitObjCmd --
  *
- *      Get or Set resource limit in the operating system.
+ *      Implements "ns_rlimit". Get or set a resource limit in the operating
+ *      system.
  *
  * Results:
- *      pair of actual value and maximum value
+ *      Pair of actual value and maximum value
  *
  * Side effects:
  *      Change resource limit with called with a value.
@@ -2516,12 +2570,12 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *             keys.
  *
  *          Note that this function is very weak against malicious strings;
- *          it's very easy to generate multiple keys that have the same
+ *          it is very easy to generate multiple keys that have the same
  *          hashcode. On the other hand, that hardly ever actually occurs and
  *          this function *is* very cheap, even by comparison with
  *          industry-standard hashes like FNV.
  *
- *       Implements the "ns_hash" command.
+ *       Implements "ns_hash".
  *
  * Results:
  *      Numeric hash value.
@@ -2557,6 +2611,217 @@ NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
     }
     return result;
 
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclValidUtf8ObjCmd --
+ *
+ *      Check, if the input string is valid UTF-8.
+ *
+ *      Implements "ns_valid_utf8".
+ *
+ * Results:
+ *      Tcl result code
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int                result;
+    Tcl_Obj           *stringObj = NULL;
+    Ns_ObjvSpec args[] = {
+        {"string",    Ns_ObjvObj, &stringObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_DString          stringDS;
+        int                  stringLength;
+        const unsigned char *bytes;
+
+        Tcl_DStringInit(&stringDS);
+        bytes = Ns_GetBinaryString(stringObj, 1, &stringLength, &stringDS);
+
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_Valid_UTF8(bytes, (size_t)stringLength)));
+        Tcl_DStringFree(&stringDS);
+        result = TCL_OK;
+    }
+    return result;
+}
+
+#if 0
+set s "hello world"
+time {time {ns_valid_utf8 $s} 1000} 1000  ;# 251mms ;# 229
+set s [string repeat x 1000]
+time {time {ns_valid_utf8 $s} 1000} 1000  ;# 4328.282139999999 ; 1535.6498230000002
+
+ns_valid_utf8 [encoding convertto utf-8 motörhead]
+ns_valid_utf8 "foo\x85"
+ns_valid_utf8 [encoding convertto utf-8 "foo\x85"]
+ns_valid_utf8 "foo\xc3\x85"
+
+#endif
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclBaseUnitObjCmd --
+ *
+ *      Convert the provided argument to its base unit
+ *
+ *      Implements "ns_baseunit".
+ *
+ * Results:
+ *      Tcl result code
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclBaseUnitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int          result;
+    Tcl_WideInt  memUnitValue = -1;
+    Ns_Time     *tPtr = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-size",  Ns_ObjvMemUnit, &memUnitValue, NULL},
+        {"-time",  Ns_ObjvTime, &tPtr,  NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, NULL, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (objc != 3) {
+        Ns_TclPrintfResult(interp, "either -size or -time must be specified");
+        result = TCL_ERROR;
+
+    } else {
+        const char *argString = Tcl_GetString(objv[1]);
+
+        if (argString[1] == 's') {
+            Tcl_SetObjResult(interp, Tcl_NewWideIntObj(memUnitValue));
+            result = TCL_OK;
+
+        } else if (argString[1] == 't') {
+            Tcl_DString ds, *dsPtr = &ds;
+
+            Tcl_DStringInit(dsPtr);
+            Ns_DStringAppendTime(dsPtr, tPtr);
+            Tcl_DStringResult(interp, dsPtr);
+            result = TCL_OK;
+
+        } else {
+            Ns_TclPrintfResult(interp, "either -size or -time must be specified");
+            result = TCL_ERROR;
+        }
+    }
+    return result;
+}
+#if 0
+ns_baseunit -size 1KB
+#endif
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclStrcollObjCmd --
+ *
+ *      Compare two strings based on the POSIX strcoll_l() command.
+ *
+ *      Implements "ns_strcoll".
+ *
+ * Results:
+ *      Tcl result code
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int          result = TCL_OK;
+    Tcl_Obj     *arg1Obj, *arg2Obj;
+    char        *localeString = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-locale", Ns_ObjvString, &localeString, NULL},
+        {"--",      Ns_ObjvBreak,  NULL,          NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    Ns_ObjvSpec args[] = {
+        {"string1",  Ns_ObjvObj, &arg1Obj, NULL},
+        {"string2",  Ns_ObjvObj, &arg2Obj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        locale_t    locale = 0;
+
+        if (localeString != NULL) {
+#ifdef _WIN32
+            locale = _create_locale(LC_COLLATE, localeString);
+#else
+            locale = newlocale(LC_COLLATE_MASK, localeString, (locale_t)0);
+#endif
+            if (locale == 0) {
+                Ns_TclPrintfResult(interp, "specified locale '%s' is not available", localeString);
+                result = TCL_ERROR;
+            }
+        }
+
+        if (result == TCL_OK) {
+            Tcl_DString ds1, ds2, *ds1Ptr = &ds1, *ds2Ptr = &ds2;
+            int         length1, length2, comparisonValue;
+            const char *string1, *string2;
+
+            Tcl_DStringInit(ds1Ptr);
+            Tcl_DStringInit(ds2Ptr);
+
+            string1 = Tcl_GetStringFromObj(arg1Obj, &length1);
+            string2 = Tcl_GetStringFromObj(arg2Obj, &length2);
+            Tcl_UtfToExternalDString(NULL, string1, length1, ds1Ptr);
+            Tcl_UtfToExternalDString(NULL, string2, length2, ds2Ptr);
+
+            errno = 0;
+            comparisonValue = strcoll_l(ds1Ptr->string, ds2Ptr->string,
+                                        locale != 0 ? locale : nsconf.locale);
+
+            Ns_Log(Debug, "ns_collate: compare '%s' and '%s' using %s (%p) -> %d (%d)",
+                   ds1Ptr->string, ds2Ptr->string,
+                   localeString == NULL ? "default locale" : localeString,
+                   (void*)locale, comparisonValue, errno);
+
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(comparisonValue));
+
+            Tcl_DStringFree(ds1Ptr);
+            Tcl_DStringFree(ds2Ptr);
+        }
+
+        if (locale != 0) {
+#ifdef _WIN32
+            _free_locale(locale);
+#else
+            freelocale(locale);
+#endif
+        }
+    }
+    return result;
 }
 
 

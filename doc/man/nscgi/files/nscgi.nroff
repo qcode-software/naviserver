@@ -1,0 +1,1303 @@
+'\"
+'\" Generated from file 'nscgi\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "nscgi" n 4\&.99\&.23 nscgi "NaviServer Modules"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+nscgi \- NaviServer CGI Interface Guide
+.SH DESCRIPTION
+.SH "WHAT IS CGI AND HOW DOES IT WORK?"
+.PP
+CGI (Common Gateway Interface) is a standard way of running programs
+from a Web server\&. Often, CGI programs are used to generate pages
+dynamically or to perform some other action when someone fills out an
+HTML form and clicks the submit button\&. NaviServer provides full
+support for CGI v1\&.1\&.
+.PP
+Basically, CGI works like this:
+.PP
+A reader sends a URL that causes the NaviServer to use CGI to run a
+program\&. The NaviServer passes input from the reader to the program
+and output from the program back to the reader\&. CGI acts as a
+"gateway" between the NaviServer and the program you write\&.
+.PP
+The program run by CGI can be any type of executable file on the
+server platform\&. For example, you can use C, C++, Perl, Unix shell
+scripts, Fortran, or any other compiled or interpreted language\&. You
+can also use Tcl scripts with CGI, though the NaviServer API will not
+be available to them\&.
+.PP
+With NaviServer, you have the option of using the embedded Tcl and C
+interfaces instead of CGI\&. Typically, the Tcl and C interfaces provide
+better performance than CGI (see the NaviServer Tcl Developer's Guide
+for information on the Tcl interface and the NaviServer C Developer's
+Guide for information on the C interface)\&.
+.PP
+You may want to use CGI for existing, shareware, or freeware programs
+that use the standard CGI input, output, and environment variables\&.
+Since CGI is a standard interface used by many Web servers, there are
+lots of example programs and function libraries available on the World
+Wide Web and by ftp\&. This chapter describes the interface and points
+you to locations where you can download examples\&.
+.PP
+For example, suppose you have a form that lets people comment on your
+Web pages\&. You want the comments emailed to you and you want to
+automatically generate a page and send it back to your reader\&.
+.IP [1]
+The reader fills out your form and clicks the "Submit" button\&.
+The FORM tag in your page might look like this:
+.CS
+
+
+ <FORM METHOD="POST" ACTION="/cgi-bin/myprog">
+
+.CE
+.sp
+The METHOD controls how the information typed into the form is
+passed to your program\&. It can be "GET" or "POST"\&. The ACTION
+determines which program should be run\&.
+.sp
+Other ways for a reader to run a program are by providing a direct
+link to the program without allowing the reader to supply any
+variables through a form, or by using the ISINDEX tag\&.
+.IP [2]
+When NaviServer gets a request for a URL that maps to a CGI
+directory or a CGI file extension (as defined in the configuration
+file), it starts a separate process and runs the
+program within that process\&. The NaviServer also sets up a number of
+environment variable within that process\&. These environment variables
+include some standard CGI variables, and optionally
+any variables you define in the configuration file for this type of
+program\&.
+.IP [3]
+The program runs\&. The program can be any type of
+executable program\&. For example, you can use C, C++, Perl, Unix shell
+scripts, or Fortran\&.
+.sp
+In this example, the program takes the comments from the form as
+input and sends them to you as email\&. If
+the form method is "GET", it gets the input from an
+environment variable\&. If the form method is "POST", it
+gets the input from standard input\&. It also assembles an
+HTML page and sends it to standard output\&.
+.IP [4]
+Any information the program passes to standard output is
+automatically sent to the NaviServer when the program finishes running\&.
+.IP [5]
+The server adds any header information needed to identify the
+output and sends it back to the reader's browser, which displays the
+output\&.
+.PP
+.SH "CONFIGURING CGI WITH NAVISERVER"
+.PP
+You can control the behavior of NaviServer's CGI interface by setting
+parameters in a configuration file\&. For example, you can control which
+files and directories are treated as CGI programs, you can determine
+how to run various types of programs, and you can set a group of
+environment variables for each type of program you use\&.
+.PP
+Note that if you're defining multiple servers, you will need to
+configure the CGI interface for each server\&.
+.PP
+To enable and configure CGI:
+.IP [1]
+Edit your NaviServer configuration file, usually named nsd\&.tcl\&.
+.IP [2]
+Choose the server for which you want to enable CGI (such as for
+example the server named \fBServer1\fR)\&. Then add the CGI
+module to that server such it will be loaded at start time\&.
+For example:
+.CS
+
+
+ ns_section "ns/server/Server1/modules"
+ ns_param nscgi nscgi\&.so
+
+.CE
+.IP [3]
+Add a section for the server with the suffix
+\fBmodule/nscgi\fR to configure the modules
+with certain parameters\&. One has to define typically the
+mappings via the parameter \fBMap\fR to
+indicate, what HTTP-method with which path
+should be directed to a corresponding CGI program\&. Typically,
+the mapping will point to a directory on the machine in which the
+CGI scripts are located\&.
+.sp
+The value specified via the parameter \fBmap\fR is of the form
+.sp
+\fImethod\fR \fIpattern\fR \fI?path?\fR
+.sp
+where \fImethod\fR refers to the HTTP request method (i\&.e\&., HEAD,
+GET, POST, etc\&.), \fIpattern\fR refers to either a relative
+URL or a glob pattern to match on the HTTP request\&.  This is how nscgi
+determines whether a request is a CGI request\&.
+\fIpath\fR is optional and indicates either
+the directory where the CGI executables can be found, or the
+executable that should be used to fulfill the CGI request\&.
+.sp
+If
+\fIpath\fR is not specified, then the URL must refer a file
+which is the CGI executable\&.  If \fIpath\fR is specified and is a
+directory, then the filename portion of the URL must refer to a
+CGI executable in that directory\&.  Otherwise, \fIpath\fR must
+refer to a CGI executable which will handle all requests for this
+\fIpattern\fR\&.
+For example:
+.CS
+
+
+ ns_section "ns/server/Server1/module/nscgi" {
+   ns_param Map  "GET /cgi /usr/local/cgi"
+   ns_param Map  "POST /*\&.cgi"
+ }
+
+.CE
+.IP [4]
+If you want to call a CGI program (script) which requires an interpreter (e\&.g\&.,
+Perl or bash), you will need to define the CGI interpreters via
+the module parameter \fBInterps\fR\&.
+.RS
+.IP \(bu
+Add a definition for the \fBInterps\fR parameter to your CGI
+configuration section using e\&.g\&. the name \fBCGIinterps\fR\&.
+.CS
+
+
+ ns_section "ns/server/Server1/module/nscgi" {
+   ns_param Map    "GET /cgi /usr/local/cgi"
+   ns_param Map    "POST /*\&.cgi"
+   ns_param Interps CGIinterps
+ }
+
+.CE
+.IP \(bu
+Then add a section under \fBns/interps\fR for the chosen
+name (here \fBcgi\fR) and add there the mappings
+from file extensions to the
+script interpreters\&. When a CGI script with a specified extension
+is to be executed (below \&.pl and \&.sh), NaviServer will call
+the script via the named executables\&.
+.CS
+
+
+ ns_section "ns/interps/CGIinterps" {
+   ns_param \&.pl  "c:\\perl\\bin\\perl\&.exe"
+   ns_param \&.sh  "c:\\mks\\mksnt\\sh\&.exe(MKSenv)"
+ }
+
+.CE
+.IP
+If no mapping of extensions to script interpreters is provided,
+the called script must have executable permissions\&.
+.sp
+Files in the cgi directory without execute
+permissions are served as plain files when the parameter
+\fBallowstaticresources\fR is set to true\&. This way
+images and such in can be served directly from
+a cgi bin directory\&.
+.RE
+.IP [5]
+In case the CGI script or the script interpreter requires additional
+environment variables, one can define this via the module parameter
+\fBEnvironment\fR and a matching section for the detail definitions\&.
+.RS
+.IP \(bu
+Add a definition for the \fBEnvironment\fR parameter to your CGI
+configuration section\&.
+.CS
+
+
+ ns_section "ns/server/Server1/module/nscgi" {
+   ns_param Map         "GET /cgi /usr/local/cgi"
+   ns_param Map         "POST /*\&.cgi"
+   ns_param Interps     cgi
+   ns_param Environment cgi
+ }
+
+.CE
+.IP \(bu
+Then add a section under \fBns/environment\fR for the chosen
+name (here \fBcgi\fR)
+containing the required environment variable definitions\&.
+.CS
+
+
+ ns_section "ns/environment/cgi" {
+   ns_param FOO BAR     ;# defines environment variable "FOO=BAR"
+   ns_param TMP /tmp    ;# defines environment variable "TMP=/tmp"
+ }
+
+.CE
+.RE
+.IP [6]
+Further configuration parameter for \fBmodule/nscgi\fR are:
+.RS
+.IP \(bu
+\fBgethostbyaddr\fR is a boolean parameter to indicate
+whether to resolve the peer IP address to its hostname when setting
+the REMOTE_HOST environment variable\&.  If \fBfalse\fR, the peer IP address
+will be used instead\&.  Caution: turning this option on can negatively
+impact performance due to the overhead of having to perform a DNS
+look-up on every CGI request\&. Default: \fBoff\fR
+.IP \(bu
+\fBlimit\fR is an integer parameter to indicate the maximum
+number of concurrent CGI requests to execute\&. \fB0\fR means
+unlimited\&. Default: \fB0\fR
+.IP \(bu
+\fBmaxinput\fR is an integer parameter to indicate the
+maximum in bytes to accept in the HTTP request\&. \fB0\fR means unlimited\&.
+Mostly useful to limit the size of POST'ed data\&. Default: \fB1024000\fR
+.IP \(bu
+\fBmaxwait\fR is an integer parameter to indicate the amount
+of time to wait in seconds in the queue when the concurrency
+limit has been reached\&.  Server will respond with a "503 Service
+Unavailable" error on timeout\&.  If \fBlimit\fR is set to \fB0\fR,
+this setting will have no effect\&. Default: \fB30\fR
+.IP \(bu
+\fBsystemenvironment\fR is a boolean parameter to controls
+whether the CGI will inherit the server process's environment
+variables or not\&.  Enabling this could potentially leak
+sensitive information from the parent's environment if the CGI
+displays its environment variables which is the behavior of some
+common error-handling code\&. Default: \fBfalse\fR
+.IP \(bu
+\fBallowstaticresources\fR is a boolean parameter to controls
+whether static resources (e\&.g\&. images) can be served directly
+from the CGI bin directory\&.
+Default: \fBfalse\fR
+.RE
+.PP
+.SH "HOW WEB PAGES RUN CGI PROGRAMS"
+There are several ways a Web page can run a CGI program:
+.IP \(bu
+\fIDirect Link:\fR A link in your page can reference a CGI program
+directly\&. Normally, such links are used when you do not need to
+send any variables to the program\&.
+.IP \(bu
+\fI\fBISINDEX\fR Tag:\fR This tag can be included in the \fB<HEAD>\fR section of
+the page\&. For example, you could add this tag:
+.CS
+
+
+ <ISINDEX HREF="/cgi-bin/search\&.pl" PROMPT="Search for:">
+
+.CE
+.IP
+Normally, the \fBISINDEX\fR tag is used to run search programs, but
+this is not a requirement\&. You can use this tag to run CGI programs
+if you don't care where the field is located in your page and your
+program accepts a single variable\&.
+.sp
+When you use this tag, the browser adds a field to the Web page\&.
+Readers can type a string in this field\&. The server
+decodes the text the reader typed and sends it to your
+CGI program as separate command-line arguments\&. The
+advantage is you don't need to decode the input\&.
+.IP \(bu
+\fIForm:\fR You can create a form with multiple fields\&. Use forms to run
+CGI programs when your readers can choose or type values for one
+or more variables\&. The \fBMETHOD\fR attribute of the HTML
+form can be either \fBGET\fR or \fBPOST\fR\&.
+.RS
+.IP \(bu
+The \fBGET\fR method causes the field names and values to be
+passed to the program in the \fBQUERY_STRING\fR environment
+variable\&.
+.IP \(bu
+The \fBPOST\fR method causes the field names and values to be
+passed to the program through standard input\&. If the input
+from your form may be long, it is best to use the POST method
+because long strings can be truncated when they are assigned
+to an environment variable\&.
+.RE
+.PP
+.SS "URLS THAT RUN CGI PROGRAMS"
+For each method of running a CGI program described in the previous
+section, the browser software sends a URL to the server\&. (In addition,
+the HTTP header sent with the URL includes some environment
+variables)\&.
+.PP
+Generally the URL to run a CGI program can have these parts:
+.PP
+\fICGI path[/extra path information ][?query string]\fR
+.IP \(bu
+The \fICGI path\fR is the location of the CGI program to run\&. The path
+can be a relative or absolute reference to the program file\&.
+.IP \(bu
+The optional \fIextra path\fR information can be included in the URL to
+provide either a directory location the CGI program should use or
+some extra information for the CGI program\&. The path is relative
+to the root directory for Web pages\&. The extra path information is
+available to the CGI program in the PATH_INFO environment
+variable\&.
+.IP \(bu
+The optional \fIquery string\fR is preceded by a question mark (?) and
+contains either a single variable or a set of field names and
+variables for the CGI program to use\&. The query string is
+available to the CGI program in either the \fBQUERY_STRING\fR
+environment variable or the standard input location (if the form
+method is \fBPOST\fR)\&.
+.PP
+.PP
+For example, the query string from a form with 3 fields could be:
+.PP
+\fBField1=Value1&Field2=Value2&Field3=Value3\fR
+.PP
+Spaces in the query string are replaced with plus signs (+)\&. Any
+special characters (such as ?, =, &, +) are replaced with %xx, where
+xx is the hexadecimal value for that character\&.
+.PP
+Here are some examples of URLs that could run a CGI program:
+.IP \(bu
+\fBhttp://www\&.mysite\&.com/cgi-bin/gettime\fR
+.sp
+This URL runs the gettime program, which could return a page with
+the current time\&. There are no variables, so you might
+use this as a direct link\&.
+.IP \(bu
+\fBhttp://www\&.mysite\&.com/cgi-bin/listdir/misc/mydir\fR
+.sp
+This URL runs the listdir program and passes it /misc/mydir as
+extra path information\&. This might be a direct link in a page\&.
+.IP \(bu
+\fBhttp://www\&.mysite\&.com/cgi-bin/search?navigate\fR
+.sp
+This URL runs the search program and passes it the word
+"navigate" as input\&. This URL doesn't include any field
+names, so it might be passed by pages with an ISINDEX tag\&.
+.IP \(bu
+\fBhttp://www\&.webcrawler\&.com/cgi-bin/WebQuery?searchText=word\fR
+.sp
+This is a real URL that runs the WebCrawler search program and
+passes a value for the searchText field of "word"\&.
+Normally, CGI programs that accept field values like
+these are run from a form\&.
+.PP
+.PP
+If your programs are not executed, make sure the program file allows
+read and execute access\&.
+.SH "INPUT TO CGI PROGRAMS"
+.PP
+CGI programs can get input from these sources:
+.IP \(bu
+Command line: The only type of input that go to the command line
+of a CGI program are values typed into an ISINDEX field and
+query strings that do not contain an "=" sign (from a direct
+link)\&. Forms cannot send variables to the command line\&.
+.IP \(bu
+Environment variables: A number of standard environment variables
+are always available to the CGI program\&. You can
+specify additional environment variables in the NaviServer
+configuration file\&. And, if the METHOD for a form
+is GET, the field names and values are stored in the QUERY_STRING
+environment variable\&.
+.IP \(bu
+Standard input: If the METHOD for a form is POST, the field names
+and values are sent to standard input\&.
+.PP
+.SS "ACCESSING ENVIRONMENT VARIABLES"
+Different languages allow you to access environment variables in
+different ways\&. Here are some examples:
+.PP
+\fIC or C++\fR
+.CS
+
+
+ #include <stdlib\&.h>;
+
+ char *browser = getenv("HTTP_USER_AGENT");
+
+.CE
+\fIPerl\fR
+.CS
+
+
+ $browser = $ENV{'HTTP_USER_AGENT'};
+
+.CE
+\fIBourne shell\fR
+.CS
+
+
+ BROWSER=$HTTP_USER_AGENT
+
+.CE
+\fIC shell\fR
+.CS
+
+
+ set BROWSER = $HTTP_USER_AGENT
+
+.CE
+.SS "STANDARD ENVIRONMENT VARIABLES"
+These standard environment variables are defined for all CGI programs
+by the NaviServer:
+.PP
+\fIAUTH_TYPE:\fR
+.PP
+If the server supports user authentication, and the script is
+protected, this is the protocol-specific authentication method used to
+validate the user\&. For CGI programs run by NaviServer, this is always
+"Basic"\&.
+.PP
+Example: Basic
+.PP
+\fICONTENT_LENGTH:\fR
+.PP
+If the CGI program is run by a form with the POST method, this
+variable contains the length of the contents of standard input in
+bytes\&. There is no null or EOF character at the end of standard input,
+so in some languages (such as C and Perl) you should check this
+variable to find out how many bytes to read from standard input\&.
+.PP
+Example: 442
+.PP
+\fICONTENT_TYPE:\fR
+.PP
+If the CGI program is run by a form with the POST method, this
+variable contains the MIME type of the information sent by the
+browser\&. Currently, all browsers should send the information as
+\fBapplication/x-www-form-urlencoded\fR\&.
+Other types may be added in the future\&.
+.PP
+\fIGATEWAY_INTERFACE:\fR
+.PP
+The version number of the CGI specification this server supports\&.
+.PP
+Example: CGI/1\&.1
+.PP
+\fIHTTP_ACCEPT:\fR
+.PP
+A comma-separated list of the MIME types the browser will accept, as
+specified in the HTTP header the browser sends\&. Many browsers do not
+send complete lists, and the list does not include external viewers
+the user has installed\&. If you want to send browser-specific output,
+you may also want to check the browser name, which is specified by the
+HTTP_USER_AGENT variable\&.
+.PP
+Examples:
+.CS
+
+
+ */*, application/x-navidoc
+ */*, image/gif, image/x-xbitmap, image/jpeg
+
+.CE
+.PP
+\fIHTTP_FROM:\fR
+.PP
+This variable may contain the email address of the reader who caused
+the CGI program to run\&. However, some browsers do not send the email
+address for privacy reasons\&. And, users may enter false email
+addresses in their preferences settings\&.
+.PP
+Example: \fBitsme@mydomain\&.com\fR
+.PP
+\fIHTTP_IF_MODIFIED_SINCE:\fR
+.PP
+This variable contains a date and time if the browser wants a response
+only if the data has been modified since the specified date and time\&.
+The date is in GMT standard time\&. Many browsers do not send this
+information\&.
+.PP
+Example: \fBThursday, 23-Nov-95 17:00:00 GMT\fR
+.PP
+\fIHTTP_REFERER:\fR
+.PP
+This variable contains the URL of the page or other location from
+which the reader sent the request to run the CGI program\&. For example,
+if the reader runs the program from a form, this variable contains the
+URL of that form\&.
+.PP
+Example: \fBhttp://www\&.mydomain\&.com/mydir/feedback\&.htm\fR
+.PP
+\fIHTTP_USER_AGENT:\fR
+.PP
+This variable tells which browser the reader is using to send the
+request\&. Normally, the format is "browser name/version"\&.
+.PP
+Example: \fBMozilla/1\&.2N (Windows; I; 16-bit)\fR
+.PP
+\fIPATH_INFO:\fR
+.PP
+This variable contains any extra path information included in the URL
+sent by the browser\&. Commonly, this type of URL is used to pass a
+relative directory location to your program\&. For example, the
+following URL runs the listdir program and passes it /misc/mydir as
+extra path information:
+.PP
+\fBhttp://www\&.mysite\&.com/cgi-bin/listdir/misc/mydir\fR
+.PP
+Another use for this type of URL is to pass information to the program
+without using a form or to pass form-specific variables in addition to
+the user-specified variables\&. For example:
+.PP
+\fBhttp://www\&.mysite\&.com/cgi-bin/search/keyword=navigate\fR
+.PP
+Examples: \fB/misc/mydir/keyword=navigate\fR
+.PP
+\fIPATH_TRANSLATED:\fR
+.PP
+This variable translates the relative path from PATH_INFO into the
+absolute path by prepending the server's root directory for Web
+documents\&. This is useful because PATH_INFO, which the reader can
+view, need not reveal the physical location of your files on the
+server\&.
+.PP
+Example: \fB/NaviServer/pages/misc/mydir\fR
+.PP
+\fIQUERY_STRING:\fR
+.PP
+This variable contains information passed by a form or link to the
+program\&. The QUERY_STRING contains information in the following
+situations:
+.IP \(bu
+The reader submitted a form that uses the GET method\&.
+.IP \(bu
+The reader submitted a query in a page with the ISINDEX tag\&.
+(The text the user types is also decoded and sent to the program's
+command line in this situation\&. The QUERY_STRING provides the
+non-decoded information\&.)
+.IP \(bu
+A direct link included information after a "?" in the URL\&.
+.PP
+.PP
+The QUERY_STRING is encoded in a format like this:
+.PP
+\fBField1=Value1&Field2=Value2&Field3=Value3\fR
+.PP
+Your CGI program should decode the QUERY_STRING\&. Functions that decode
+this string are publicly available functions for most languages\&. The
+string encoding follows these rules:
+.IP \(bu
+Field name/value pairs are separated by an "&" sign\&.
+.IP \(bu
+A field's name and its value are separated by an "=" sign\&. Field
+names are specified by the NAME attribute\&. Field values depend on
+the type of field:
+.PP
+.PP
+Text field and text area: The value is the text typed into the
+field\&. Multiline text is sent as one line with the return
+character encoded as described below\&.
+.PP
+Radio Buttons: The value is the value of the button that is
+selected\&.
+.PP
+Checkbox: The name and value usually appear in the list only if
+the box is checked\&. Some browsers may send the name of
+the checkbox only\&.
+.PP
+Selection List: The value of a selection list is the text of the
+item that is selected\&. If multiple items can be selected,
+there is a name/value pair with the same name for each
+item that is selected\&.
+.PP
+Image Field: Two name value pairs are sent\&. "\&.x" and "\&.y" are
+added to the field name and the values are the x and y
+coordinates (measured in pixels from an origin at the
+upper-left corner of the image)\&. For example:
+.PP
+\fBFigfield\&.x=185&Figfield\&.y=37\fR
+.PP
+Hidden Fields: You can use hidden fields with fixed values (or values
+set when a CGI program generated the page)\&. The value is set
+with the VALUE attribute\&. Some older browsers make hidden
+fields visible\&.
+.PP
+Range Fields: The value is the numeric value of the field (sent as a
+string)\&. Some browsers do not support range fields\&.
+.PP
+Named Submit Buttons: You can place multiple Submit buttons in a form\&.
+If you add a NAME attribute to the Submit button, that name
+will be sent, along with the label of the button as the value\&.
+All the Submit buttons in a form run the same CGI program, but
+the CGI program can perform different actions based on which
+button was clicked\&. Some browsers do not support named submit
+buttons\&.
+.PP
+.IP \(bu
+Spaces are replaced by "+" signs\&.
+.IP \(bu
+Special characters are replaced by a "%" sign followed by the
+hexadecimal value of the character\&. Here are some common
+characters and their hex values:
+.PP
+.PP
+.CS
+
+
+ # -- %23
+ = -- %3D
+ / -- %2F
+ % -- %25
+ : -- %3A
+ \\ -- %5C
+ & -- %26
+ ; -- %3B
+ tab -- %0A
+ + -- %2B
+ ? -- %3F
+ return -- %09
+
+.CE
+\fIREMOTE_ADDR:\fR
+.PP
+The IP address of the machine from which or through which the browser
+is making the request\&. This information is always available\&.
+.PP
+Example: \fB199\&.221\&.53\&.76\fR
+.PP
+\fIREMOTE_HOST:\fR
+.PP
+The full domain name of the machine from which or through which the
+browser is making the request\&. If this variable is blank because the
+browser did not send the information, use the REMOTE_ADDR variable
+instead\&.
+.PP
+Example: \fBmybox\&.company\&.com\fR
+.PP
+\fIREMOTE_USER:\fR
+.PP
+If the server prompted the reader for a username and password because
+the script is protected by the NaviServer's access control, this
+variable contains the username the reader provided\&.
+.PP
+Example: \fBnsadmin\fR
+.PP
+\fIREQUEST_METHOD:\fR
+.PP
+The method used to send the request to the server\&. For direct links,
+the method is "GET"\&. For requests from forms, the method may be "GET"
+or "POST"\&. Another method is "HEAD", which CGI programs can treat like
+"GET" or can provide header information without page contents\&.
+.PP
+\fISCRIPT_NAME:\fR
+.PP
+The virtual path to the CGI script or program being executed from the
+URL used to execute the script\&. You may want to use this variable if
+the program generates a page that contains a form that can be used to
+run the program again -- for example, to search for another string\&.
+.PP
+Example: \fB/cgi-bin/search\fR
+.PP
+\fISERVER_NAME:\fR
+.PP
+The full hostname, domain name alias, or IP address of the server that
+ran the CGI program\&.
+.PP
+Example: \fBwww\&.mysite\&.com\fR
+.PP
+\fISERVER_PORT:\fR
+.PP
+The server port number to which the request was sent\&. This may be any
+number between 1 and 65,535 (that is not already a well-known port)\&.
+The default is 80\&.
+.PP
+Example: \fB80\fR
+.PP
+\fISERVER_PROTOCOL:\fR
+.PP
+The name and version number of the information protocol used to pass
+this request from the client to the server\&.
+.PP
+Example: \fBHTTP/1\&.0\fR
+.PP
+\fISERVER_SOFTWARE:\fR
+.PP
+The name and version number of the server software running the CGI
+program\&.
+.PP
+Example: \fBNaviServer/4\&.99\&.22\fR
+.PP
+Other Environment Variables:
+.PP
+In addition to the preceding environment variables, the HTTP header
+lines received from the client, if any, are placed into the
+environment with the prefix HTTP_ followed by the header name\&. Any
+spaces in the header name are changed to underscores (_)\&. The server
+may exclude any headers it has already processed, such as
+Content-type, and Content-length\&.
+.PP
+Also, you can specify environment variables to be passed to a CGI
+program in the NaviServer configuration file\&.
+.PP
+Accessing Standard Input
+.PP
+If a form uses the POST method to send a request, the field names and
+values are sent to standard input and the length of this string is
+provided in the CONTENT_LENGTH environment variable\&. The format of the
+standard input string is the same as the format of the QUERY_STRING
+environment variable when the GET method is used\&.
+.PP
+Different languages allow you to access the standard input in
+different ways\&. Here are some simplified examples\&. Your programs
+should also do some error checking\&.
+.PP
+\fIC or C++\fR
+.CS
+
+
+ #include <stdio\&.h>
+ #include <stdlib\&.h>
+ #define MAX_CONTENT_LENGTH 10000
+
+ char *inputlenstr;
+ int inputlen;
+ int status;
+ char inputtext[MAX_INPUT_LENGTH+1];
+
+ inputlenstr = getenv("CONTENT_LENGTH");
+ inputlen = strtol(inputlenstr, NULL, 10);
+ status = fread(inputtext, 1, inputlen, stdin);
+
+.CE
+.PP
+\fIBourne shell\fR
+.CS
+
+
+ read input (reads contents to $input variable)
+
+.CE
+.SH "OUTPUT FROM CGI PROGRAMS"
+.PP
+To send output from a CGI program to the reader's browser, you send
+the output to the standard output location\&. Different languages allow
+you to send text to standard output in different ways\&. Here are some
+examples:
+.PP
+\fIC or C++\fR
+.CS
+
+
+ #include <stdio\&.h>
+ #include <stdlib\&.h>
+
+ printf("Content-type: text/html\\r\\n\\r\\n");
+ printf("<HEAD><TITLE>Hello</TITLE></HEAD>");
+ printf("<BODY>You are using %s\&.</BODY>",
+ getenv("HTTP_USER_AGENT") );
+
+.CE
+\fIPerl\fR
+.CS
+
+
+ #!/opt/local/bin/perl
+ print "Content-type: text/plain\\r\\n\\r\\n";
+ for my $var ( sort keys %ENV ) {
+    printf "%s = \\"%s\\"\\r\\n", $var, $ENV{$var};
+ }
+
+.CE
+\fIBourne shell\fR
+.CS
+
+
+ echo Content-type: text/html
+ echo
+ echo \\<HEAD\\>\\<TITLE\\>Hello\\</TITLE\\>\\</HEAD\\>
+ echo \\<BODY\\>
+ echo You are using $HTTP_USER_AGENT\&.\\</BODY\\>
+
+.CE
+.PP
+HTTP Headers
+.PP
+Messages sent between a Web browser and a Web server contain header
+information that the software uses to determine how to display or
+interpret the information\&. The header information is not displayed by
+the browser\&.
+.PP
+The NaviServer automatically generates some HTTP header information and
+your program can add other information to the header\&.
+.PP
+Header Information Generated by NaviServer
+.PP
+When your CGI program sends output to the standard output location,
+the server automatically adds the following HTTP header information
+before sending the output to the reader's browser:
+.CS
+
+
+ HTTP/1\&.0 200 OK
+ MIME-Version: 1\&.0
+ Server: NaviServer/3\&.0
+ Date: Monday, 06-Nov-95 17:50:15 GMT
+ Content-length: 20134
+
+.CE
+.PP
+However, if the name of your CGI program begins with "nph-", the
+NaviServer will not parse the output you send\&. Instead, the output is
+sent directly to the client\&. In this case, you must include the
+information above in your output\&. Generally, it is best to avoid using
+this "non-parsed header" feature because any errors may be sent to
+standard output and could make the header information incorrect\&. Also,
+with non-parsed headers, the server does not interpret the output, so
+the response code and content length are written out as 0 (zero) and 0
+(zero) in the access log file\&.
+.PP
+Header Information Generated by Your Program
+.PP
+You can specify header information at the beginning of the output you
+send back to the client\&. After the header, add a blank line and then
+start the output you want the reader to see\&. The blank line is
+required\&. Your program should always send the Content-type header
+(unless you are using the Location header)\&. The other headers listed
+below it are optional\&. For example,
+.PP
+.CS
+
+
+ Content-type: text/html
+
+ <HTML>
+ <HEAD><TITLE>My title</TITLE></HEAD>
+ <BODY>text goes here\&.\&.\&.</BODY>
+ </HTML>
+
+.CE
+\fBContent-type:\fR
+.PP
+You should always use this header to specify the MIME type of the
+output you are sending (unless you are using the Location header)\&. If
+you are sending an HTML page as output, use a Content-type of
+text/html\&. If you are sending untagged text, send a Content-type of
+text/plain\&. If you send images, you might use a Content-type of
+image/gif or image/jpeg\&. You can send any type of output from your CGI
+program -- just be sure to specify the correct MIME type\&.
+.PP
+Example: \fBContent-type: text/html\fR
+.PP
+\fBContent-encoding:\fR
+.PP
+Use this header if the output you are sending is compressed\&. The
+Content-type should specify the type of the uncompressed file\&. For
+example, use x-gzip for GNU zip compression and x-compress for
+standard UNIX compression\&.
+.PP
+Example: \fBContent-encoding: x-compress\fR
+.PP
+\fBExpires:\fR
+.PP
+Use this header to specify when the browser should consider the file
+"out-of-date"\&. Browsers can use this date to determine whether to load
+the page from their local cache of pages or to reload the file from
+the server\&.
+.PP
+Example: \fBExpires: Monday, 06-Nov-95 17:50:15 GMT\fR
+.PP
+\fBLocation:\fR
+.PP
+Use this header if you want to send an existing document as output\&.
+The server automatically sends the document you specify to the
+browser\&. You will probably want to specify a full URL for the
+Location\&. If you specify a complete URL (such as,
+http://www\&.mysite\&.com/out/response\&.htm), relative references in that
+file will be resolved using the information in the URL you specify\&. If
+you specify a relative URL (such as /out/response\&.htm), references in
+that file will be resolved using the directory that contains the CGI
+program\&.
+.PP
+If you send a Location header, you do not need to send a Content-type
+header\&. However, you may want to send HTML-tagged text including a
+link to the location for browsers that do not support this type of
+redirection\&. You can specify any type of URL as the output location\&.
+For example, you can send an FTP, Gopher, or News URL\&.
+.PP
+Example: \fBLocation: http://www\&.my\&.org/outbox/accepted\&.html\fR
+.PP
+\fBStatus:\fR
+.PP
+The NaviServer sends a status code to the browser in the first line of
+every HTTP header\&. The default status code for success is "200 OK"\&.
+You can send other status codes by specifying the Status header\&.
+.PP
+Some browsers may not know how to handle all HTTP status codes, so
+your program should also send HTML output after the header to describe
+error situations that occur\&.
+.PP
+Example: \fBStatus: 401 Unauthorized\fR
+.PP
+Sending HTML
+.PP
+To send a Web page to a reader's browser from a CGI program, first
+output this line followed by a blank line:
+.PP
+\fBContent-type: text/html\fR
+.PP
+Then, generate and output the HTML tags and content that make up the
+page\&. You can send any HTML tags you would normally use when creating
+pages\&.
+.PP
+If the file you want to send already exists, you can use the Location
+header described in the previous section to send that file as output
+from the CGI program\&.
+.PP
+.SH "ADVICE FOR CGI PROGRAMMING"
+.PP
+.IP \(bu
+Which language should I use? You can use any language you feel
+comfortable programming in\&. Of course, programs usually run faster
+in compiled language, so if your program is computationally
+intensive, you might want to use C or another compiled language\&.
+Most of the examples and shareware programs available on the Web
+are written in C or Perl\&.
+.IP \(bu
+How can I prevent CGI programs from causing security problems? A
+CGI program is basically a program that you let anyone else in the
+world run on your system\&. Someone with bad intentions could cause
+you some problems if you don't follow these rules:
+.RS
+.IP \(bu
+Keep your CGI programs in a separate CGI directory or give
+them the file extension you specify in the configuration
+file\&. Don't give outsiders write access to these files and
+directories This should prevent casual users from reading,
+modifying, or adding CGI programs\&.
+.IP \(bu
+Don't allow server-parsed HTML to run on your CGI directory
+or on files with extensions mapped as CGI programs\&.
+.IP \(bu
+Don't trust the data the browser sends to your program\&. Parse
+the QUERY_STRING or standard input\&. If your program is a
+non-compiled script, characters with special meanings in that
+language can cause problems if the browser fails to encode
+them as hexadecimal values\&.
+.IP \(bu
+Check for odd filenames and directory paths in the input\&.
+For example, you should be careful about allow paths
+containing: \&., \&.\&./, //, or the name of the directory that
+contains your CGI programs\&.
+.IP \(bu
+Be careful with statements that construct and execute a
+command line or system call using input from the reader\&. For
+example, be careful using the eval statement in Perl and the
+Bourne shell\&. If the reader sends input that begins with a
+semicolon (;), they may be able to get your system to perform
+any command they like\&. Likewise, if you use calls to popen()
+and system(), make sure you put a backslash (\\) before any
+characters with special meaning in the shell that will run\&.
+.RE
+.IP \(bu
+How can I debug my CGI programs? Errors that go to the stderr
+location will be available in the NaviServer's server\&.log file\&.
+.sp
+One simple way to debug CGI programs is to temporarily include
+print statements that send additional diagnostic
+information to the client or to a file\&. If your program
+is written in C and you have a debugging tool on your
+system, you can call sleep (or use a long loop) at the
+beginning of the program\&. Then, you can attach to the
+program with the debugger while the program is sleeping\&.
+.sp
+If your programs are not executed, make sure the program file
+allows read and execute access\&.
+.IP \(bu
+How can I debug my nscgi configuration?
+.sp
+For debugging the nsgci configuration, you one can turn on
+logging for the error\&.log via the command:
+.CS
+
+
+ ns_logctl severity Debug(cgi) on
+
+.CE
+.PP
+.PP
+.SH "CGI EXAMPLES"
+.PP
+You can download lots of examples and working CGI programs from the Web\&. Here are some places to look:
+.IP \(bu
+Yahoo's page of links to CGI information:
+http://www\&.yahoo\&.com/Computers_and_Internet/Internet/World_Wide_Web/CGI___Common_Gateway_Interface/
+.IP \(bu
+NCSA's ftp site:
+ftp://ftp\&.ncsa\&.uiuc\&.edu/Web/httpd/Unix/ncsa_httpd/cgi/
+.sp
+This site includes set of functions for decoding the QUERY_STRING
+environment variable or standard input to your program in C
+(ncsa-default\&.tar\&.Z), (cgi-lib\&.pl\&.Z), and Bourne shell scripts (AA-1\&.2\&.tar\&.Z)\&.
+.IP \(bu
+List of Perl archives:
+http://www\&.seas\&.upenn\&.edu/~mengwong/perlhtml\&.html
+.IP \(bu
+Virtual Library list of CGI resources:
+http://www\&.charm\&.net/~web/Vlib/Providers/CGI\&.html
+.IP \(bu
+Various script examples at MIT:
+http://www-genome\&.wi\&.mit\&.edu/WWW/tools/scripting/
+.PP
+.SH KEYWORDS
+module, nscgi

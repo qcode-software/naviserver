@@ -125,6 +125,10 @@ NsTclCreateBuckets(const NsServer *servPtr, int nbuckets)
     NS_NONNULL_ASSERT(servPtr != NULL);
 
     buckets = ns_malloc(sizeof(Bucket) * (size_t)nbuckets);
+    if (unlikely(buckets == NULL)) {
+        Ns_Fatal("nsv: out of memory while creating buckets");
+    }
+
     /*fprintf(stderr, "=== %d buckets require %lu bytes, array needs %ld bytes\n",
       nbuckets, sizeof(Bucket) * (size_t)nbuckets, sizeof(Array));*/
     memcpy(buf, "nsv:", 4);
@@ -152,7 +156,7 @@ NsTclCreateBuckets(const NsServer *servPtr, int nbuckets)
  *
  * NsTclNsvGetObjCmd --
  *
- *      Implements nsv_get.
+ *      Implements "nsv_get".
  *
  * Results:
  *      Tcl result.
@@ -215,7 +219,7 @@ NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclNsvExistsObjCmd --
  *
- *      Implements nsv_exists.
+ *      Implements "nsv_exists".
  *
  * Results:
  *      Tcl result.
@@ -280,7 +284,7 @@ SetResultToOldValue(Tcl_Interp *interp, Array *arrayPtr, const char *key)
  *
  * NsTclNsvSetObjCmd --
  *
- *      Implements nsv_set.
+ *      Implements "nsv_set".
  *
  * Results:
  *      Tcl result.
@@ -423,7 +427,7 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclNsvIncrObjCmd --
  *
- *      Implements nsv_incr as an obj command.
+ *      Implements "nsv_incr".
  *
  * Results:
  *      Tcl result.
@@ -470,7 +474,7 @@ NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclNsvLappendObjCmd --
  *
- *      Implements nsv_lappend command.
+ *      Implements "nsv_lappend".
  *
  * Results:
  *      Tcl result.
@@ -524,7 +528,7 @@ NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclNsvAppendObjCmd --
  *
- *      Implements nsv_append command.
+ *      Implements "nsv_append".
  *
  * Results:
  *      Tcl result.
@@ -582,7 +586,7 @@ NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclNsvUnsetObjCmd --
  *
- *      Implements nsv_unset as an obj command.
+ *      Implements "nsv_unset".
  *
  * Results:
  *      Tcl result.
@@ -669,7 +673,7 @@ NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclNsvNamesObjCmd --
  *
- *      Implements nsv_names as an obj command.
+ *      Implements "nsv_names".
  *
  * Results:
  *      Tcl result.
@@ -746,7 +750,7 @@ NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  *
  * NsTclNsvArrayObjCmd --
  *
- *      Implements nsv_array as an obj command.
+ *      Implements "nsv_array".
  *
  * Results:
  *      Tcl result.
@@ -943,7 +947,7 @@ GetArrayAndKey(Tcl_Interp *interp, Tcl_Obj *arrayObj, const char *keyString,
  *
  * NsTclNsvDictObjCmd --
  *
- *      Implements nsv_dict as an obj command.
+ *      Implements "nsv_dict".
  *
  * Results:
  *      Tcl result.
@@ -1181,6 +1185,7 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                                 } else {
                                     Tcl_SetObjResult(interp, dictValueObj);
                                 }
+                                Tcl_DecrRefCount(dictObj);
 
                             } else if (opt == CExistsIdx) {
                                 /*
@@ -1459,10 +1464,10 @@ Ns_VarGet(const char *server, const char *array, const char *keyString, Ns_DStri
  *
  * Ns_VarExists
  *
- *      Return 1 if the key exists in the given array.
+ *      Check if the key exists in the provided array.
  *
  * Results:
- *      NS_TRUE or NS_FALSE.
+ *      Return NS_TRUE if the key exists in the given array.
  *
  * Side effects:
  *      None.
@@ -2076,16 +2081,15 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create, NS_RW rw)
  *
  * NsTclNsvBucketObjCmd --
  *
- *      TclObjCommand to return the names of the arrays kept in
- *      various buckets of the current interp.  If called a bucket
- *      number it returns a list array kept in that bucket. If called
- *      with no arguments, it returns a list of every bucket (list of
- *      lists).
+ *      Implements "nsv_bucket".
  *
- *      Implementation of nsv_bucket.
+ *      Returns the names of the arrays kept in various buckets of the current
+ *      interp.  If called a bucket number it returns a list array kept in
+ *      that bucket. If called with no arguments, it returns a list of every
+ *      bucket (list of lists).
  *
  * Results:
- *      Tcl result code
+ *      Tcl result code.
  *
  * Side effects;
  *      None.

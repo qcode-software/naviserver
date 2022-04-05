@@ -73,7 +73,16 @@ typedef enum {
     RESULT_ENCODING_BASE64URL = 2,
     RESULT_ENCODING_BASE64    = 3,
     RESULT_ENCODING_BINARY    = 4
-} Ns_ResultEncoding;
+} Ns_BinaryEncoding;
+
+static Ns_ObjvTable binaryencodings[] = {
+    {"hex",      RESULT_ENCODING_HEX},
+    {"base64url",RESULT_ENCODING_BASE64URL},
+    {"base64",   RESULT_ENCODING_BASE64},
+    {"binary",   RESULT_ENCODING_BINARY},
+    {NULL,       0u}
+};
+
 
 /*
  * Static functions defined in this file.
@@ -82,7 +91,7 @@ static Tcl_Obj *EncodedObj(
     unsigned char *octects,
     size_t octectLength,
     char *outputBuffer,
-    Ns_ResultEncoding encoding
+    Ns_BinaryEncoding encoding
 ) NS_GNUC_RETURNS_NONNULL NS_GNUC_NONNULL(1);
 
 static int GetDigest(Tcl_Interp *interp, const char *digestName, const EVP_MD **mdPtr)
@@ -99,7 +108,7 @@ SetResultFromEC_POINT(
     EC_KEY           *eckey,
     const EC_POINT   *ecpoint,
     BN_CTX           *bn_ctx,
-    Ns_ResultEncoding encoding)
+    Ns_BinaryEncoding encoding)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 # endif /* OPENSSL_NO_EC */
 
@@ -142,9 +151,9 @@ static const char * const hmacCtxType  = "ns:hmacctx";
 static Ns_ObjvValueRange posIntRange0 = {0, INT_MAX};
 # endif
 # ifdef HAVE_OPENSSL_3
-static Ns_ObjvValueRange posIntRange1 = {1, INT_MAX};
 #include <openssl/core_names.h>
 # endif
+static Ns_ObjvValueRange posIntRange1 = {1, INT_MAX};
 
 /*
  *----------------------------------------------------------------------
@@ -173,7 +182,7 @@ static void hexPrint(const char *msg, const unsigned char *octects, size_t octec
 /*
  *----------------------------------------------------------------------
  *
- * GetResultEncoding, EncodedObj --
+ * EncodedObj --
  *
  *      Helper function result encodings.
  *
@@ -186,35 +195,9 @@ static void hexPrint(const char *msg, const unsigned char *octects, size_t octec
  *----------------------------------------------------------------------
  */
 
-static int
-GetResultEncoding(Tcl_Interp *interp, const char *name, Ns_ResultEncoding *encodingPtr)
-{
-    int result = TCL_OK;
-
-    NS_NONNULL_ASSERT(interp != NULL);
-    NS_NONNULL_ASSERT(name != NULL);
-    NS_NONNULL_ASSERT(encodingPtr != NULL);
-
-    if (strcmp(name, "hex") == 0) {
-        *encodingPtr = RESULT_ENCODING_HEX;
-    } else if (strcmp(name, "base64url") == 0) {
-        *encodingPtr = RESULT_ENCODING_BASE64URL;
-    } else if (strcmp(name, "base64") == 0) {
-        *encodingPtr = RESULT_ENCODING_BASE64;
-    } else if (strcmp(name, "binary") == 0) {
-        *encodingPtr = RESULT_ENCODING_BINARY;
-    } else {
-        Ns_TclPrintfResult(interp, "Unknown value for output encoding \"%s\", "
-                           "valid: hex, base64url, base64, binary",
-                           name);
-        result = TCL_ERROR;
-    }
-    return result;
-}
-
 static Tcl_Obj*
 EncodedObj(unsigned char *octects, size_t octectLength,
-           char *outputBuffer, Ns_ResultEncoding encoding) {
+           char *outputBuffer, Ns_BinaryEncoding encoding) {
     char    *origOutputBuffer = outputBuffer;
     Tcl_Obj *resultObj = NULL; /* enumeration is complete, quiet some older compilers */
 
@@ -256,7 +239,6 @@ EncodedObj(unsigned char *octects, size_t octectLength,
 
     return resultObj;
 }
-
 
 /*
  *----------------------------------------------------------------------
@@ -640,9 +622,9 @@ CryptoHmacNewObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *
  * CryptoHmacAddObjCmd -- Subcommand of NsTclCryptoHmacObjCmd
  *
- *        Incremental command to add a message chunk to a predefined
- *        HMAC context, which was previously created via the "new"
- *        subcommand.
+ *        Implements "ns_crypto::hmac add", an incremental command to
+ *        add a message chunk to a predefined HMAC context, which was
+ *        previously created via the "new" subcommand.
  *
  * Results:
  *      Tcl Result Code.
@@ -696,8 +678,8 @@ CryptoHmacAddObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *
  * CryptoHmacGetObjCmd -- Subcommand of NsTclCryptoHmacObjCmd
  *
- *        Incremental command to get the (maybe partial) HMAC result
- *        in form of a hex string.
+ *        Implements "ns_crypto::hmac get", an incremental command to
+ *        get the (maybe partial) HMAC result in form of a hex string.
  *
  * Results:
  *      Tcl Result Code.
@@ -713,11 +695,10 @@ CryptoHmacGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
     int                result = TCL_OK;
     HMAC_CTX          *ctx;
     Tcl_Obj           *ctxObj;
-    char              *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec    lopts[] = {
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
+        {"-encoding", Ns_ObjvIndex,  &encoding,  binaryencodings},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec    args[] = {
@@ -730,13 +711,6 @@ CryptoHmacGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 
     } else if (Ns_TclGetOpaqueFromObj(ctxObj, hmacCtxType, (void **)&ctx) != TCL_OK) {
         Ns_TclPrintfResult(interp, "argument is not of type \"%s\"", hmacCtxType);
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -765,7 +739,8 @@ CryptoHmacGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *
  * CryptoHmacFreeObjCmd -- Subcommand of NsTclCryptoHmacObjCmd
  *
- *        Free a previously allocated HMAC context.
+ *        Implements "ns_crypto::hmac free". Frees a previously
+ *        allocated HMAC context.
  *
  * Results:
  *      Tcl Result Code.
@@ -807,11 +782,12 @@ CryptoHmacFreeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  * CryptoHmacStringObjCmd -- Subcommand of NsTclCryptoHmacObjCmd
  *
- *        Single command to obtain an HMAC from the provided data.
- *        Technically, this is a combination of the other subcommands,
- *        but requires that the all data for the HMAC computation is
- *        provided in the contents of a Tcl_Obj in memory. The command
- *        returns the HMAC in form of a hex string.
+ *        Implements "ns_crypto::hmac string". Single command to
+ *        obtain an HMAC from the provided data.  Technically, this is
+ *        a combination of the other subcommands, but requires that
+ *        the all data for the HMAC computation is provided in the
+ *        contents of a Tcl_Obj in memory. The command returns the
+ *        HMAC in form of a hex string.
  *
  * Results:
  *      Tcl Result Code.
@@ -827,14 +803,13 @@ CryptoHmacStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     int                result, isBinary = 0;
     Tcl_Obj           *keyObj, *messageObj;
     char              *digestName = (char *)"sha256";
-    char              *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec    lopts[] = {
-        {"-binary",   Ns_ObjvBool,   &isBinary,   INT2PTR(NS_TRUE)},
-        {"-digest",   Ns_ObjvString, &digestName, NULL},
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
-        {"--",        Ns_ObjvBreak,  NULL,        NULL},
+        {"-binary",   Ns_ObjvBool,     &isBinary,   INT2PTR(NS_TRUE)},
+        {"-digest",   Ns_ObjvString,   &digestName, NULL},
+        {"-encoding", Ns_ObjvIndex,    &encoding,   binaryencodings},
+        {"--",        Ns_ObjvBreak,    NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec    args[] = {
@@ -844,13 +819,6 @@ CryptoHmacStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     };
 
     if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -907,8 +875,8 @@ CryptoHmacStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  *
  * NsTclCryptoHmacObjCmd --
  *
- *      Various subcmds for handling Hash-based message authentications codes
- *      (HMAC)
+ *      Implements "ns_crypto::hmac" with various subcmds for handling
+ *      Hash-based message authentications codes (HMAC)
  *
  * Results:
  *      NS_OK
@@ -946,10 +914,10 @@ NsTclCryptoHmacObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
  *
  * CryptoMdNewObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Incremental command to initialize a MD context. This
- *        command is typically followed by a sequence of "add"
- *        subcommands until the content is read with the "get"
- *        subcommand and then freed.
+ *        Implements "ns_crypto::md new". Incremental command to
+ *        initialize a MD context. This command is typically followed
+ *        by a sequence of "add" subcommands until the content is read
+ *        with the "get" subcommand and then freed.
  *
  * Results:
  *      Tcl Result Code.
@@ -996,9 +964,9 @@ CryptoMdNewObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *
  * CryptoMdAddObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Incremental command to add a message chunk to a predefined
- *        MD context, which was previously created via the "new"
- *        subcommand.
+ *        Implements "ns_crypto::md add". Incremental command to add a
+ *        message chunk to a predefined MD context, which was
+ *        previously created via the "new" subcommand.
  *
  * Results:
  *      Tcl Result Code.
@@ -1053,8 +1021,8 @@ CryptoMdAddObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *
  * CryptoMdGetObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Incremental command to get the (maybe partial) MD result in
- *        form of a hex string.
+ *        Implements "ns_crypto::md get". Incremental command to get
+ *        the (maybe partial) MD result.
  *
  * Results:
  *      Tcl Result Code.
@@ -1070,11 +1038,10 @@ CryptoMdGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
     int                result = TCL_OK;
     EVP_MD_CTX        *mdctx;
     Tcl_Obj           *ctxObj;
-    char              *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec lopts[] = {
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
+        {"-encoding", Ns_ObjvIndex, &encoding, binaryencodings},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec    args[] = {
@@ -1089,14 +1056,7 @@ CryptoMdGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
         Ns_TclPrintfResult(interp, "argument is not of type \"%s\"", mdCtxType);
         result = TCL_ERROR;
 
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
-        result = TCL_ERROR;
-
-    } else {
+     } else {
         unsigned char  digest[EVP_MAX_MD_SIZE];
         char           digestChars[EVP_MAX_MD_SIZE*2 + 1];
         unsigned int   mdLength;
@@ -1122,7 +1082,8 @@ CryptoMdGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *
  * CryptoMdFreeObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Free a previously allocated MD context.
+ *        Implements "ns_crypto::md free". Frees a previously
+ *        allocated MD context.
  *
  * Results:
  *      Tcl Result Code.
@@ -1163,11 +1124,12 @@ CryptoMdFreeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *
  * CryptoMdStringObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Single command to obtain a MD (message digest) from the
- *        provided data.  Technically, this is a combination of the
- *        other subcommands, but requires that the all data for the MD
- *        computation is provided in the contents of a Tcl_Obj in
- *        memory. The command returns the MD in form of a hex string.
+ *        Implements "ns_crypto::md string", a command to obtain a MD
+ *        (message digest) from the provided data.  Technically, this
+ *        is a combination of the other subcommands, but requires that
+ *        the all data for the MD computation is provided in the
+ *        contents of a Tcl_Obj in memory. The command returns the MD
+ *        in form of a hex string.
  *
  * Results:
  *      Tcl Result Code.
@@ -1185,19 +1147,18 @@ CryptoMdStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
     char              *digestName = (char *)"sha256",
                       *passPhrase = (char *)NS_EMPTY_STRING,
                       *signKeyFile = NULL,
-                      *verifyKeyFile = NULL,
-                      *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+                      *verifyKeyFile = NULL;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec lopts[] = {
-        {"-binary",     Ns_ObjvBool,   &isBinary,             INT2PTR(NS_TRUE)},
-        {"-digest",     Ns_ObjvString, &digestName,           NULL},
-        {"-encoding",   Ns_ObjvString, &outputEncodingString, NULL},
-        {"-passphrase", Ns_ObjvString, &passPhrase,           NULL},
-        {"-sign",       Ns_ObjvString, &signKeyFile,          NULL},
-        {"-signature",  Ns_ObjvObj,    &signatureObj,         NULL},
-        {"-verify",     Ns_ObjvString, &verifyKeyFile,        NULL},
-        {"--",          Ns_ObjvBreak,  NULL,                  NULL},
+        {"-binary",     Ns_ObjvBool,     &isBinary,         INT2PTR(NS_TRUE)},
+        {"-digest",     Ns_ObjvString,   &digestName,       NULL},
+        {"-encoding",   Ns_ObjvIndex,    &encoding,         binaryencodings},
+        {"-passphrase", Ns_ObjvString,   &passPhrase,       NULL},
+        {"-sign",       Ns_ObjvString,   &signKeyFile,      NULL},
+        {"-signature",  Ns_ObjvObj,      &signatureObj,     NULL},
+        {"-verify",     Ns_ObjvString,   &verifyKeyFile,    NULL},
+        {"--",          Ns_ObjvBreak,    NULL,              NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -1206,13 +1167,6 @@ CryptoMdStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
     };
 
     if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else if (signKeyFile != NULL && verifyKeyFile != NULL) {
@@ -1246,7 +1200,7 @@ CryptoMdStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
             keyFile = verifyKeyFile;
         }
         if (result != TCL_ERROR && keyFile != NULL) {
-            pkey = GetPkeyFromPem(interp, keyFile, passPhrase, NS_TRUE);
+            pkey = GetPkeyFromPem(interp, keyFile, passPhrase, (signKeyFile != NULL));
             if (pkey == NULL) {
                 result = TCL_ERROR;
             }
@@ -1409,8 +1363,9 @@ CryptoMdStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  * CryptoMdVapidSignObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Subcommand to sign a message according to the
- *        Voluntary Application Server Identification (VAPID) for Web Push
+ *        Implements "ns_crypto::md vapidsign". Aubcommand to sign a
+ *        message according to the Voluntary Application Server
+ *        Identification (VAPID) for Web Push
  *        https://tools.ietf.org/id/draft-ietf-webpush-vapid-03.html
  *
  *        See also: Generic Event Delivery Using HTTP Push
@@ -1432,17 +1387,17 @@ CryptoMdVapidSignObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
 {
     int                result, isBinary = 0;
     Tcl_Obj           *messageObj;
-    char              *digestName = (char *)"sha256", *pemFile = NULL, *outputEncodingString = NULL,
+    char              *digestName = (char *)"sha256", *pemFile = NULL,
                       *passPhrase = (char *)NS_EMPTY_STRING;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec lopts[] = {
-        {"-binary",     Ns_ObjvBool,   &isBinary,   INT2PTR(NS_TRUE)},
-        {"-digest",     Ns_ObjvString, &digestName, NULL},
-        {"-encoding",   Ns_ObjvString, &outputEncodingString, NULL},
-        {"-passphrase", Ns_ObjvString, &passPhrase, NULL},
-        {"-pem",        Ns_ObjvString, &pemFile,    NULL},
-        {"--",          Ns_ObjvBreak,  NULL,        NULL},
+        {"-binary",     Ns_ObjvBool,        &isBinary,   INT2PTR(NS_TRUE)},
+        {"-digest",     Ns_ObjvString,      &digestName, NULL},
+        {"-encoding",   Ns_ObjvIndex,       &encoding,   binaryencodings},
+        {"-passphrase", Ns_ObjvString,      &passPhrase, NULL},
+        {"-pem",        Ns_ObjvString,      &pemFile,    NULL},
+        {"--",          Ns_ObjvBreak,       NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -1478,13 +1433,6 @@ CryptoMdVapidSignObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
 
     } else if (pemFile == NULL) {
         Ns_TclPrintfResult(interp, "no pem file specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -1572,7 +1520,8 @@ CryptoMdVapidSignObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
  *
  * CryptoMdHkdfObjCmd -- Subcommand of NsTclCryptoMdObjCmd
  *
- *        Subcommand of ns_crypto::md to derive keys based on message digests.
+ *        Implements "ns_crypto::md hkdf", a command md to derive keys
+ *        based on message digests.
  *
  *        See: RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
  *        https://tools.ietf.org/html/rfc5869
@@ -1591,16 +1540,16 @@ CryptoMdHkdfObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 {
     int                result, isBinary = 0, outLength = 0;
     Tcl_Obj           *saltObj = NULL, *secretObj = NULL, *infoObj = NULL;
-    char              *digestName = (char *)"sha256", *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    char              *digestName = (char *)"sha256";
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
     Ns_ObjvSpec lopts[] = {
-        {"-binary",   Ns_ObjvBool,   &isBinary,  INT2PTR(NS_TRUE)},
-        {"-digest",   Ns_ObjvString, &digestName, NULL},
-        {"-salt",     Ns_ObjvObj,    &saltObj,    NULL},
-        {"-secret",   Ns_ObjvObj,    &secretObj,  NULL},
-        {"-info",     Ns_ObjvObj,    &infoObj,    NULL},
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
-        {"--",        Ns_ObjvBreak,  NULL,        NULL},
+        {"-binary",   Ns_ObjvBool,           &isBinary,  INT2PTR(NS_TRUE)},
+        {"-digest",   Ns_ObjvString,         &digestName, NULL},
+        {"-salt",     Ns_ObjvObj,            &saltObj,    NULL},
+        {"-secret",   Ns_ObjvObj,            &secretObj,  NULL},
+        {"-info",     Ns_ObjvObj,            &infoObj,    NULL},
+        {"-encoding", Ns_ObjvIndex,          &encoding,   binaryencodings},
+        {"--",        Ns_ObjvBreak,          NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -1648,13 +1597,6 @@ CryptoMdHkdfObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 
     } else if (infoObj == NULL) {
         Ns_TclPrintfResult(interp, "no -info specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -1746,7 +1688,8 @@ CryptoMdHkdfObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *
  * NsTclCryptoMdObjCmd --
  *
- *      Returns a Hash-based message authentication code of the provided message
+ *      Implements "ns_crypto::md" with subcommands for Hash-based
+ *      message authentication codes.
  *
  * Results:
  *      NS_OK
@@ -1795,9 +1738,9 @@ NsTclCryptoMdObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  * NsTclCryptoScryptObjCmd --
  *
  *      Compute a "password hash" using the scrypt Password-Based
- *      Key Derivation Function (RFC 7914) as defined in OpenSSL 3
+ *      Key Derivation Function (RFC 7914) as defined in OpenSSL 3.
  *
- *      Implementation of ::ns_crypto::scrypt
+ *      Implements "ns_crypto::scrypt".
  *
  * Results:
  *      Tcl result code
@@ -1812,16 +1755,15 @@ NsTclCryptoScryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
 {
     int                result, isBinary = 0, nValue = 1024, rValue = 8, pValue = 16;
     Tcl_Obj           *saltObj = NULL, *secretObj = NULL;
-    char              *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
     Ns_ObjvSpec lopts[] = {
-        {"-binary",   Ns_ObjvBool,   &isBinary,  INT2PTR(NS_TRUE)},
-        {"-salt",     Ns_ObjvObj,    &saltObj,    NULL},
-        {"-secret",   Ns_ObjvObj,    &secretObj,  NULL},
-        {"-n",        Ns_ObjvInt,    &nValue,     &posIntRange1},
-        {"-p",        Ns_ObjvInt,    &pValue,     &posIntRange1},
-        {"-r",        Ns_ObjvInt,    &rValue,     &posIntRange1},
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
+        {"-binary",   Ns_ObjvBool,    &isBinary,  INT2PTR(NS_TRUE)},
+        {"-salt",     Ns_ObjvObj,     &saltObj,    NULL},
+        {"-secret",   Ns_ObjvObj,     &secretObj,  NULL},
+        {"-n",        Ns_ObjvInt,     &nValue,     &posIntRange1},
+        {"-p",        Ns_ObjvInt,     &pValue,     &posIntRange1},
+        {"-r",        Ns_ObjvInt,     &rValue,     &posIntRange1},
+        {"-encoding", Ns_ObjvIndex,   &encoding,   binaryencodings},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -1863,13 +1805,6 @@ NsTclCryptoScryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
     */
 
     if (Ns_ParseObjv(lopts, args, interp, 1, objc, objv) != NS_OK) {
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else if (saltObj == NULL) {
@@ -1919,7 +1854,7 @@ NsTclCryptoScryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
             Ns_TclPrintfResult(interp, "could not set parameters");
             result = TCL_ERROR;
 
-        } else if (EVP_KDF_derive(kctx, out, sizeof(out)) <= 0) {
+        } else if (EVP_KDF_derive(kctx, out, sizeof(out), NULL) <= 0) {
             Ns_TclPrintfResult(interp, "could not derive key");
             result = TCL_ERROR;
 
@@ -1953,6 +1888,159 @@ NsTclCryptoScryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int U
 # endif
 
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclCryptoPbkdf2hmacObjCmd --
+ *
+ *      Compute a password hash using PBKDF2 (Password-Based Key
+ *      Derivation Function 2). This function is used to reduce
+ *      vulnerabilities of brute-force attacks against password hashes
+ *      and is used e.g. in SCRAM (Salted Challenge Response
+ *      Authentication Mechanism).
+ *
+ *      The hash function of SCRAM is PBKDF2 [RFC2898] with HMAC() as the
+ *      pseudorandom function (PRF) and with dkLen == output length of
+ *      HMAC() == output length of H().
+ *
+ *      Implements "ns_crypto::pbkdf2_hmac".
+ *
+ * Results:
+ *      Tcl result code
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclCryptoPbkdf2hmacObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int                result, isBinary = 0, iter = 4096, dkLength = -1;
+    Tcl_Obj           *saltObj = NULL, *secretObj = NULL;
+    char              *digestName = (char *)"sha256";
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_ObjvSpec opts[] = {
+        {"-binary",     Ns_ObjvBool,    &isBinary,   INT2PTR(NS_TRUE)},
+        {"-digest",     Ns_ObjvString,  &digestName, NULL},
+        {"-dklen",      Ns_ObjvInt,     &dkLength,   &posIntRange1},
+        {"-iterations", Ns_ObjvInt,     &iter,       &posIntRange1},
+        {"-salt",       Ns_ObjvObj,     &saltObj,    NULL},
+        {"-secret",     Ns_ObjvObj,     &secretObj,  NULL},
+        {"-encoding",   Ns_ObjvIndex,   &encoding,   binaryencodings},
+        {NULL, NULL, NULL, NULL}
+    };
+    /*
+      ############################################################################
+      # Test Cases for pbkdf2-hmac-sha1 based on RFC 6070
+      # (PKCS #5_ Password-Based Key Derivation Function 2 (PBKDF2) Test Vectors)
+      ############################################################################
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 1 -salt "salt" -digest sha1
+      0c60c80f961f0e71f3a9b524af6012062fe037a6
+
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 2 -salt "salt" -digest sha1
+      ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957
+
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 4096 -salt "salt" -digest sha1
+      4b007901b765489abead49d926f721d065a429c1
+
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 16777216 -salt "salt" -digest sha1
+      eefe3d61cd4da4e4e9945b3d6ba2158c2634e984
+
+      ::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 4096 -salt "sa\0lt" -digest sha1 -dklen 16
+      56fa6aa75548099dcc37d7f03425e0c3
+
+
+      ############################################################################
+      # Test Cases for pbkdf2-hmac-sha2 from
+      * https://stackoverflow.com/questions/5130513/pbkdf2-hmac-sha2-test-vectors
+      ############################################################################
+
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 1 -salt "salt"
+      120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b
+
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 2 -salt "salt"
+      ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43
+
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 4096 -salt "salt"
+      c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a
+
+      ::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 4096 -salt "sa\0lt" -dklen 16
+      89b69d0516f829893c696226650a8687
+
+      ############################################################################
+      # Performance considerations
+      ############################################################################
+
+      # PostgreSQL 10 uses 4096 (very low value)
+      time {::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 4096 -salt "sa\0lt" -dklen 16}
+      4172 microseconds per iteration
+
+      # Recommendation from RFC 7677
+      time {::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 15000 -salt "sa\0lt" -dklen 16}
+      16027 microseconds per iteration
+
+      # Comparison with higher value
+      time {::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 65536 -salt "sa\0lt" -dklen 16}
+      65891 microseconds per iteration
+   */
+
+    if (Ns_ParseObjv(opts, NULL, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (saltObj == NULL) {
+        Ns_TclPrintfResult(interp, "no -salt specified");
+        result = TCL_ERROR;
+
+    } else if (secretObj == NULL) {
+        Ns_TclPrintfResult(interp, "no -secret specified");
+        result = TCL_ERROR;
+
+    } else {
+        const EVP_MD  *md;
+
+        /*
+         * Look up the Message Digest from OpenSSL
+         */
+        result = GetDigest(interp, digestName, &md);
+        if (result == TCL_OK) {
+            Tcl_DString          saltDs, secretDs;
+            int                  saltLength, secretLength;
+            const unsigned char *saltString, *secretString;
+            unsigned char       *out = NULL;
+
+            /*
+             * All input parameters are valid, get salt and secret
+             */
+            Tcl_DStringInit(&saltDs);
+            Tcl_DStringInit(&secretDs);
+            if (dkLength == -1) {
+                dkLength = EVP_MD_size(md);
+            }
+            out = ns_malloc((size_t)dkLength);
+
+            saltString   = Ns_GetBinaryString(saltObj,   isBinary == 1, &saltLength,   &saltDs);
+            secretString = Ns_GetBinaryString(secretObj, isBinary == 1, &secretLength, &secretDs);
+
+            if (PKCS5_PBKDF2_HMAC((const char *)secretString, secretLength,
+                                  saltString, saltLength,
+                                  iter, md,
+                                  dkLength, out) == 1) {
+                Tcl_SetObjResult(interp, EncodedObj(out, (size_t)dkLength, NULL, encoding));
+                result = TCL_OK;
+            } else {
+                Ns_TclPrintfResult(interp, "could not derive key");
+                result = TCL_ERROR;
+            }
+            if (out != NULL) {
+                ns_free(out);
+            }
+        }
+    }
+    return result;
+}
+
+
 
 # ifndef OPENSSL_NO_EC
 #  ifdef HAVE_OPENSSL_EC_PRIV2OCT
@@ -1961,8 +2049,9 @@ NsTclCryptoScryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int U
  *
  * CryptoEckeyPrivObjCmd -- Subcommand of NsTclCryptoEckeyObjCmd
  *
- *        Subcommand of ns_crypto::eckey to obtain the private key in
- *        various encodings from an elliptic curves PEM file.
+ *        Implements "ns_crypto::eckey priv". Subcommand to obtain the
+ *        private key in various encodings from an elliptic curves PEM
+ *        file.
  *
  * Results:
  *      Tcl Result Code.
@@ -1976,14 +2065,14 @@ static int
 CryptoEckeyPrivObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int                result;
-    char              *pemFile = NULL, *outputEncodingString = NULL,
+    char              *pemFile = NULL,
                       *passPhrase = (char *)NS_EMPTY_STRING;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec lopts[] = {
-        {"-encoding",   Ns_ObjvString, &outputEncodingString, NULL},
-        {"-passphrase", Ns_ObjvString, &passPhrase,           NULL},
-        {"-pem",        Ns_ObjvString, &pemFile,              NULL},
+        {"-encoding",   Ns_ObjvIndex,   &encoding,   binaryencodings},
+        {"-passphrase", Ns_ObjvString,  &passPhrase, NULL},
+        {"-pem",        Ns_ObjvString,  &pemFile,    NULL},
         {NULL, NULL, NULL, NULL}
     };
     /*
@@ -1996,13 +2085,6 @@ CryptoEckeyPrivObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
     } else if (pemFile == NULL) {
         Ns_TclPrintfResult(interp, "no pem file specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -2053,7 +2135,7 @@ SetResultFromEC_POINT(
     EC_KEY           *eckey,
     const EC_POINT   *ecpoint,
     BN_CTX           *bn_ctx,
-    Ns_ResultEncoding encoding)
+    Ns_BinaryEncoding encoding)
 {
     size_t   octLength = EC_POINT_point2oct(EC_KEY_get0_group(eckey), ecpoint,
                                             POINT_CONVERSION_UNCOMPRESSED, NULL, 0, NULL);
@@ -2072,8 +2154,9 @@ SetResultFromEC_POINT(
  *
  * CryptoEckeyPubObjCmd -- Subcommand of NsTclCryptoEckeyObjCmd
  *
- *        Subcommand of ns_crypto::eckey to obtain the public key in
- *        various encodings from an elliptic curves PEM file.
+ *        Implements "ns_crypto::eckey pub". Subcommand to obtain the
+ *        public key in various encodings from an elliptic curves PEM
+ *        file.
  *
  * Results:
  *      Tcl Result Code.
@@ -2087,14 +2170,14 @@ static int
 CryptoEckeyPubObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int                result;
-    char              *pemFile = NULL, *outputEncodingString = NULL,
+    char              *pemFile = NULL,
                       *passPhrase = (char *)NS_EMPTY_STRING;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
 
     Ns_ObjvSpec lopts[] = {
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
-        {"-passphrase", Ns_ObjvString, &passPhrase,         NULL},
-        {"-pem",      Ns_ObjvString, &pemFile,              NULL},
+        {"-encoding",   Ns_ObjvIndex,   &encoding,   binaryencodings},
+        {"-passphrase", Ns_ObjvString,  &passPhrase, NULL},
+        {"-pem",        Ns_ObjvString,  &pemFile,    NULL},
         {NULL, NULL, NULL, NULL}
     };
     /*
@@ -2107,13 +2190,6 @@ CryptoEckeyPubObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 
     } else if (pemFile == NULL) {
         Ns_TclPrintfResult(interp, "no pem file specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -2161,9 +2237,9 @@ CryptoEckeyPubObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *
  * CryptoEckeyImportObjCmd -- Subcommand of NsTclCryptoEckeyObjCmd
  *
- *        Subcommand of ns_crypto::eckey to import a public key
- *        into the OpenSSL EC_KEY structure in order to apply
- *        conversions of it. Can be most likely dropped.
+ *        Implements "ns_crypto::eckey import". Subcommand to import a
+ *        public key into the OpenSSL EC_KEY structure in order to
+ *        apply conversions of it. Can be most likely dropped.
  *
  * Results:
  *      Tcl Result Code.
@@ -2177,13 +2253,12 @@ static int
 CryptoEckeyImportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int                result, isBinary = 0;
-    char              *outputEncodingString = NULL;
     Tcl_Obj           *importObj = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
     Ns_ObjvSpec lopts[] = {
-        {"-binary",   Ns_ObjvBool,   &isBinary, INT2PTR(NS_TRUE)},
-        {"-string",   Ns_ObjvObj,    &importObj, NULL},
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
+        {"-binary",   Ns_ObjvBool,    &isBinary,  INT2PTR(NS_TRUE)},
+        {"-string",   Ns_ObjvObj,     &importObj, NULL},
+        {"-encoding", Ns_ObjvIndex,   &encoding,  binaryencodings},
         {NULL, NULL, NULL, NULL}
     };
     /*
@@ -2199,13 +2274,6 @@ CryptoEckeyImportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
 
     } else if (importObj == NULL) {
         Ns_TclPrintfResult(interp, "no import string specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -2261,8 +2329,9 @@ CryptoEckeyImportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
  *
  * CryptoEckeyGenerateObjCmd -- Subcommand of NsTclCryptoEckeyObjCmd
  *
- *        Subcommand of ns_crypto::eckey to generate an EC pemfile
- *        without the need of an external command.
+ *        Implements "ns_crypto::eckey generate". Subcommand to
+ *        generate an EC pemfile without the need of an external
+ *        command.
  *
  * Results:
  *      Tcl Result Code.
@@ -2337,9 +2406,9 @@ CryptoEckeyGenerateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
  *
  * CryptoEckeySharedsecretObjCmd -- Subcommand of NsTclCryptoEckeyObjCmd
  *
- *        Subcommand of ns_crypto::eckey to generate a shared secret
- *        based on the private key from the .pem file and the provided
- *        public key.
+ *        Implements "ns_crypto::eckey sharedsecret". Subcommand to
+ *        generate a shared secret based on the private key from the
+ *        .pem file and the provided public key.
  *
  * Results:
  *      Tcl Result Code.
@@ -2353,18 +2422,18 @@ static int
 CryptoEckeySharedsecretObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int                result, isBinary = 0;
-    char              *outputEncodingString = NULL, *pemFileName = NULL,
+    char              *pemFileName = NULL,
                       *passPhrase = (char *)NS_EMPTY_STRING;
     Tcl_Obj           *pubkeyObj = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
     EC_KEY            *eckey = NULL;
 
     Ns_ObjvSpec lopts[] = {
-        {"-binary",   Ns_ObjvBool,   &isBinary, INT2PTR(NS_TRUE)},
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
-        {"-passphrase", Ns_ObjvString, &passPhrase,           NULL},
-        {"-pem",      Ns_ObjvString, &pemFileName, NULL},
-        {"--",        Ns_ObjvBreak,  NULL,         NULL},
+        {"-binary",     Ns_ObjvBool,    &isBinary,    INT2PTR(NS_TRUE)},
+        {"-encoding",   Ns_ObjvIndex,   &encoding,    binaryencodings},
+        {"-passphrase", Ns_ObjvString,  &passPhrase,  NULL},
+        {"-pem",        Ns_ObjvString,  &pemFileName, NULL},
+        {"--",          Ns_ObjvBreak,   NULL,         NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -2382,13 +2451,6 @@ CryptoEckeySharedsecretObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
     } else if (pemFileName == NULL) {
         Ns_TclPrintfResult(interp, "no pem file specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {
@@ -2570,7 +2632,8 @@ CryptoEckeySharedsecretObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  *
  * NsTclCryptoEckeyObjCmd --
  *
- *      Provide subcommands to handle EC (elliptic curve) cryptography
+ *      Implements "ns_crypto::eckey" with various subcommands to
+ *      provide subcommands to handle EC (elliptic curve) cryptography
  *      related commands.
  *
  * Results:
@@ -2638,33 +2701,32 @@ CryptoAeadStringGetArguments(
     const unsigned char **aadStringPtr,   int *aadLengthPtr,
     char                **tagStringPtr,   int *tagLengthPtr,
     const unsigned char **inputStringPtr, int *inputLengthPtr,
-    const EVP_CIPHER    **cipherPtr, Ns_ResultEncoding *encodingPtr, EVP_CIPHER_CTX **ctxPtr
+    const EVP_CIPHER    **cipherPtr, Ns_BinaryEncoding *encodingPtr, EVP_CIPHER_CTX **ctxPtr
 ) {
     Tcl_Obj      *ivObj = NULL, *keyObj = NULL, *aadObj = NULL, *tagObj = NULL, *inputObj;
     int           result, isBinary = 0;
     char         *cipherName = (char *)"aes-128-gcm";
     Tcl_DString   ivDs, inputDs;
-    char         *outputEncodingString = NULL;
 
     Ns_ObjvSpec lopts_encrypt[] = {
-        {"-binary",   Ns_ObjvBool,    &isBinary,   INT2PTR(NS_TRUE)},
-        {"-aad",      Ns_ObjvObj,     &aadObj,     NULL},
-        {"-cipher",   Ns_ObjvString,  &cipherName, NULL},
-        {"-encoding", Ns_ObjvString,  &outputEncodingString, NULL},
-        {"-iv",       Ns_ObjvObj,     &ivObj,      NULL},
-        {"-key",      Ns_ObjvObj,     &keyObj,     NULL},
-        {"--",        Ns_ObjvBreak,   NULL,        NULL},
+        {"-binary",   Ns_ObjvBool,           &isBinary,   INT2PTR(NS_TRUE)},
+        {"-aad",      Ns_ObjvObj,            &aadObj,     NULL},
+        {"-cipher",   Ns_ObjvString,         &cipherName, NULL},
+        {"-encoding", Ns_ObjvIndex,          encodingPtr, binaryencodings},
+        {"-iv",       Ns_ObjvObj,            &ivObj,      NULL},
+        {"-key",      Ns_ObjvObj,            &keyObj,     NULL},
+        {"--",        Ns_ObjvBreak,          NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec lopts_decrypt[] = {
-        {"-binary",   Ns_ObjvBool,    &isBinary,   INT2PTR(NS_TRUE)},
-        {"-aad",      Ns_ObjvObj,     &aadObj,     NULL},
-        {"-cipher",   Ns_ObjvString,  &cipherName, NULL},
-        {"-encoding", Ns_ObjvString,  &outputEncodingString, NULL},
-        {"-iv",       Ns_ObjvObj,     &ivObj,      NULL},
-        {"-key",      Ns_ObjvObj,     &keyObj,     NULL},
-        {"-tag",      Ns_ObjvObj,     &tagObj,     NULL},
-        {"--",        Ns_ObjvBreak,   NULL,        NULL},
+        {"-binary",   Ns_ObjvBool,           &isBinary,   INT2PTR(NS_TRUE)},
+        {"-aad",      Ns_ObjvObj,            &aadObj,     NULL},
+        {"-cipher",   Ns_ObjvString,         &cipherName, NULL},
+        {"-encoding", Ns_ObjvIndex,          encodingPtr, binaryencodings},
+        {"-iv",       Ns_ObjvObj,            &ivObj,      NULL},
+        {"-key",      Ns_ObjvObj,            &keyObj,     NULL},
+        {"-tag",      Ns_ObjvObj,            &tagObj,     NULL},
+        {"--",        Ns_ObjvBreak,          NULL,        NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -2682,13 +2744,6 @@ CryptoAeadStringGetArguments(
 
     } else if (keyObj == NULL) {
         Ns_TclPrintfResult(interp, "no key in specified");
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, encodingPtr) != TCL_OK) {
-        /*
-         * Function cares about error message.
-         */
         result = TCL_ERROR;
 
     } else if ((result = GetCipher(interp, cipherName, EVP_CIPH_GCM_MODE, "gcm", cipherPtr)) == TCL_OK) {
@@ -2747,9 +2802,10 @@ CryptoAeadStringGetArguments(
  *
  * CryptoAeadStringObjCmd -- Subcommand of NsTclCryptoAeadObjCmd
  *
- *        Sub command of NsTclCryptoAeadObjCmd to encrypt or decrypt
- *        string data. Encryption returns a dict with "bytes" and the
- *        "tag" necessary for decoding.
+ *        Implements "ns_crypto::aead::encrypt string" and
+ *        "ns_crypto::aead::decrypt string". Subcommand to encrypt or
+ *        decrypt string data. Encryption returns a dict with "bytes"
+ *        and the "tag" necessary for decoding.
  *
  * Results:
  *      Tcl Result Code.
@@ -2766,7 +2822,7 @@ CryptoAeadStringObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     int                  result;
     const EVP_CIPHER    *cipher = NULL;
     Tcl_DString          ivDs, keyDs, aadDs, tagDs, inputDs;
-    Ns_ResultEncoding    encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding    encoding = RESULT_ENCODING_HEX;
     EVP_CIPHER_CTX      *ctx;
     const unsigned char *inputString = NULL, *ivString, *aadString, *keyString = NULL;
     char                *tagString = NULL;
@@ -2967,7 +3023,8 @@ CryptoAeadDecryptStringObjCmd(ClientData clientData, Tcl_Interp *interp, int obj
  *
  * NsTclCryptoAeadEncryptObjCmd, NsTclCryptoAeadDecryptObjCmd --
  *
- *      returns encrypted/decrypted data
+ *      Implements "ns_crypto::aead::encrypt" and
+ *      "ns_crypto::aead::dncrypt". Returns encrypted/decrypted data.
  *
  * Results:
  *      NS_OK
@@ -3003,7 +3060,8 @@ NsTclCryptoAeadDecryptObjCmd(ClientData clientData, Tcl_Interp *interp, int objc
  *
  * NsTclCryptoRandomBytesObjCmd --
  *
- *        Command to obtain random bytes from OpenSSL.
+ *        Implements "ns_crypto::randombytes". Returns random bytes
+ *        from OpenSSL.
  *
  *        Example: ns_crypto::randombytes 20
  *
@@ -3019,11 +3077,10 @@ int
 NsTclCryptoRandomBytesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int                result, nrBytes = 0;
-    char              *outputEncodingString = NULL;
-    Ns_ResultEncoding  encoding = RESULT_ENCODING_HEX;
+    Ns_BinaryEncoding  encoding = RESULT_ENCODING_HEX;
     Ns_ObjvValueRange  lengthRange = {1, INT_MAX};
     Ns_ObjvSpec lopts[] = {
-        {"-encoding", Ns_ObjvString, &outputEncodingString, NULL},
+        {"-encoding",   Ns_ObjvIndex,   &encoding,    binaryencodings},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -3032,13 +3089,6 @@ NsTclCryptoRandomBytesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, 
     };
 
     if (Ns_ParseObjv(lopts, args, interp, 1, objc, objv) != NS_OK) {
-        result = TCL_ERROR;
-
-    } else if (outputEncodingString != NULL
-               && GetResultEncoding(interp, outputEncodingString, &encoding) != TCL_OK) {
-        /*
-         * Function cares about error message
-         */
         result = TCL_ERROR;
 
     } else {

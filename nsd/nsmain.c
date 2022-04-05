@@ -112,7 +112,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     const char    *root = NULL, *garg = NULL, *uarg = NULL, *server = NULL;
     const char    *bindargs = NULL, *bindfile = NULL;
     Ns_Set        *servers;
-    struct rlimit  rl;
     Ns_ReturnCode  status;
 #else
     /*
@@ -516,15 +515,16 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
 #ifndef _WIN32
 
-    /*
-     * Pre-bind any sockets now, before a possible setuid from root
-     * or chroot which may hide /etc/resolv.conf required to resolve
-     * name-based addresses.
-     */
-
-    status = NsPreBind(bindargs, bindfile);
-    if (status != NS_OK) {
-        Ns_Fatal("nsmain: prebind failed");
+    if (bindargs != NULL || bindfile != NULL) {
+        /*
+         * Pre-bind any sockets now, before a possible setuid from root
+         * or chroot which may hide /etc/resolv.conf required to resolve
+         * name-based addresses.
+         */
+        status = NsPreBind(bindargs, bindfile);
+        if (status != NS_OK) {
+            Ns_Fatal("nsmain: prebind failed");
+        }
     }
 
     /*
@@ -556,8 +556,9 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
          * Before setuid, fork the background binder process to
          * listen on ports which were not pre-bound above.
          */
-
-        NsForkBinder();
+        if (bindargs != NULL || bindfile != NULL) {
+            NsForkBinder();
+        }
 
         if (Ns_SetUser(uarg) == NS_ERROR) {
             Ns_Fatal("nsmain: failed to switch to user %s", uarg);
@@ -597,6 +598,32 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * can't access NS_mutexlocktrace from here (unknown external symbol),
      * although it is defined exactly like NS_finalshutdown;
      */
+
+    /*
+     * Internationalized programs must call setlocale() to initiate specific
+     * language operations.
+     */
+    { char *localeString =  getenv("LC_ALL");
+        if (localeString == NULL) {
+            localeString =  getenv("LC_COLLATE");
+        }
+        if (localeString == NULL) {
+            localeString =  getenv("LANG");
+        }
+        if (localeString == NULL) {
+            localeString =  setlocale(LC_COLLATE, NULL);
+        }
+
+        Ns_Log(Notice, "initialized locale %s", localeString);
+        (void) setlocale(LC_COLLATE, localeString);
+#ifdef _WIN32
+            nsconf.locale = _create_locale(LC_COLLATE, localeString);
+#else
+            nsconf.locale = newlocale(LC_COLLATE_MASK, localeString, (locale_t)0);
+#endif
+    }
+
+
 #ifndef _WIN32
     NS_mutexlocktrace = Ns_ConfigBool(NS_CONFIG_PARAMETERS, "mutexlocktrace", NS_FALSE);
 #endif
@@ -635,23 +662,22 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     nsconf.home = Ns_ConfigGetValue(NS_CONFIG_PARAMETERS, "home");
-    if (mode != 'c' && nsconf.home == NULL) {
+    if (nsconf.home == NULL && mode != 'c') {
 
         /*
          *  We will try to figure out our installation directory from
-         *  executable binary.
-         *  Check if nsd is in bin/ subdirectory according to our make install,
-         *  if true make our home one level up, otherwise make home directory
-         *  where executable binary resides.
-         *  All custom installation will require "home" config parameter to be
-         *  specified in the nsd.tcl
+         *  executable binary.  Check if nsd is in bin/ subdirectory according
+         *  to our make install, if true make our home one level up, otherwise
+         *  make home directory where executable binary resides.  All custom
+         *  installation will require "home" config parameter to be specified
+         *  in the nsd.tcl
          */
 
         nsconf.home = MakePath("");
         if (nsconf.home == NULL) {
             Ns_Fatal("nsmain: missing: [%s]home", NS_CONFIG_PARAMETERS);
         }
-    } else if (mode == 'c' && nsconf.configFile == NULL) {
+    } else if (nsconf.home == NULL /* && mode == 'c' */) {
         /*
          * Try to get HOME from environment variable NAVISERVER. If
          * this is not defined, take the value from the path. Using
@@ -688,6 +714,19 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         Ns_ConfigIntRange(NS_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 2);
     nsconf.reverseproxymode =
         Ns_ConfigBool(NS_CONFIG_PARAMETERS, "reverseproxymode", NS_FALSE);
+
+    {
+        /*
+         * Allow values like "none", or abbreviated to "no"), but be open for
+         * future enhancements like e.g. "cluster".
+         */
+        const char *cacheConfig = Ns_ConfigGetValue(NS_CONFIG_PARAMETERS, "cachingmode");
+        if (cacheConfig == NULL) {
+            nsconf.nocache = NS_FALSE;
+        } else {
+            nsconf.nocache = (strncmp(cacheConfig, "no", 2) == 0);
+        }
+    }
 
     /*
      * Make the result queryable.
@@ -770,31 +809,36 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     LogTclVersion();
 
 #ifndef _WIN32
+    {
+        struct rlimit rl;
 
-    /*
-     * Log the current open file limit.
-     */
+        /*
+         * Log the current open file limit.
+         */
+        memset(&rl, 0, sizeof(rl));
 
-    if (getrlimit(RLIMIT_NOFILE, &rl)) {
-        Ns_Log(Warning, "nsmain: "
-               "getrlimit(RLIMIT_NOFILE) failed: '%s'", strerror(errno));
-    } else {
-        if (rl.rlim_max == RLIM_INFINITY) {
-            Ns_Log(Notice, "nsmain: "
-                   "max files: soft limit %u, hard limit %s",
-                   (unsigned int)rl.rlim_cur, "infinity");
+        if (getrlimit(RLIMIT_NOFILE, &rl) != 0) {
+            Ns_Log(Warning, "nsmain: "
+                   "getrlimit(RLIMIT_NOFILE) failed: '%s'", strerror(errno));
         } else {
-            Ns_Log(Notice, "nsmain: "
-                   "max files: soft limit %u, hard limit %u",
-                   (unsigned int)rl.rlim_cur, (unsigned int)rl.rlim_max);
-        }
-        if (rl.rlim_cur > FD_SETSIZE) {
-            Ns_Log(Warning, "nsmain: rl_cur (%ld) > FD_SETSIZE (%d), select() calls should not be used",
-                   (long)rl.rlim_cur, FD_SETSIZE);
-        }
-        /* fprintf(stderr, "FD_SETSIZE %d\n", FD_SETSIZE); */
-    }
+            char curBuffer[TCL_INTEGER_SPACE], maxBuffer[TCL_INTEGER_SPACE];
 
+            snprintf(curBuffer, sizeof(curBuffer), "%" PRIuMAX, (uintmax_t)rl.rlim_cur);
+            snprintf(maxBuffer, sizeof(maxBuffer), "%" PRIuMAX, (uintmax_t)rl.rlim_max);
+            Ns_Log(Notice, "nsmain: "
+                   "max files: soft limit %s, hard limit %s",
+                   (rl.rlim_cur == RLIM_INFINITY ? "infinity" : curBuffer),
+                   (rl.rlim_max == RLIM_INFINITY ? "infinity" : maxBuffer)
+                   );
+            if (rl.rlim_cur == RLIM_INFINITY
+                || rl.rlim_cur > FD_SETSIZE) {
+                Ns_Log(Warning, "nsmain: current limit "
+                       "of maximum number of files > FD_SETSIZE (%d), "
+                       "select() calls should not be used",
+                       FD_SETSIZE);
+            }
+        }
+    }
 #endif
 
     /*
@@ -1038,8 +1082,8 @@ Ns_StopServer(char *server)
  *
  * NsTclShutdownObjCmd --
  *
- *      Shutdown the server, waiting at most timeout seconds for threads to
- *      exit cleanly before giving up. Implements "ns_shutdown".
+ *      Implements "ns_shutdown". Shutdown the server, waiting at most timeout
+ *      seconds for threads to exit cleanly before giving up.
  *
  * Results:
  *      Tcl result.

@@ -56,6 +56,40 @@ static const char *GetEncodingFormat(const char *encodingString,
                                      const char *encodingFormat, double *qValue)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
+static void RequestCleanupMembers(Ns_Request *request)
+    NS_GNUC_NONNULL(1);
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * RequestCleanupMembers --
+ *
+ *    Frees the members of the provided Ns_Request structure.
+ *
+ * Results:
+ *    None.
+ *
+ * Side effects:
+ *    Freeing memory.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+RequestCleanupMembers(Ns_Request *request)
+{
+    NS_NONNULL_ASSERT(request != NULL);
+
+    if (request->line != NULL) {
+        Ns_Log(Ns_LogRequestDebug, "end %s", request->line);
+    }
+    ns_free((char *)request->line);
+    ns_free((char *)request->method);
+    ns_free((char *)request->protocol);
+    ns_free((char *)request->host);
+    ns_free(request->query);
+    FreeUrl(request);
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -80,21 +114,11 @@ Ns_ResetRequest(Ns_Request *request)
 {
     NS_NONNULL_ASSERT(request != NULL);
 
-    if (request->line != NULL) {
-        Ns_Log(Ns_LogRequestDebug, "end %s", request->line);
-    }
-    ns_free((char *)request->line);
-    ns_free((char *)request->method);
-    ns_free((char *)request->protocol);
-    ns_free((char *)request->host);
-    ns_free(request->query);
-    FreeUrl(request);
-
     /*
-     * There is no need to clear the full structuce, since
-     * Ns_ParseRequest() clears all fields. However, we have to protect
-     * against multiple invocations.
+     * There is no need to free the full structure, just clean the members and
+     * reset it to NULL.
      */
+    RequestCleanupMembers(request);
     memset(request, 0, sizeof(Ns_Request));
 }
 
@@ -118,17 +142,7 @@ void
 Ns_FreeRequest(Ns_Request *request)
 {
     if (request != NULL) {
-
-        if (request->line != NULL) {
-            Ns_Log(Ns_LogRequestDebug, "end %s", request->line);
-        }
-
-        ns_free((char *)request->line);
-        ns_free((char *)request->method);
-        ns_free((char *)request->protocol);
-        ns_free((char *)request->host);
-        ns_free(request->query);
-        FreeUrl(request);
+        RequestCleanupMembers(request);
         ns_free(request);
     }
 }
@@ -137,7 +151,7 @@ Ns_FreeRequest(Ns_Request *request)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ParseRequests --
+ * Ns_ParseRequest --
  *
  *    Parse a request from the client into an Ns_Request structure.
  *    On success, it fills the following Ns_Request members:
@@ -158,7 +172,7 @@ Ns_FreeRequest(Ns_Request *request)
  */
 
 Ns_ReturnCode
-Ns_ParseRequest(Ns_Request *request, const char *line)
+Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
 {
     char       *url, *l, *p;
     Ns_DString  ds;
@@ -167,6 +181,36 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
 
     if (request == NULL) {
         return NS_ERROR;
+    }
+
+    /*
+     * Check, if the request looks like a TLS handshake. If yes, there is no
+     * need to try to parse the received buffer. There is no need to complain
+     * about binary content in this case.
+     */
+    if (line[0] == (char)0x16 && line[1] >= 3 && line[2] == 1) {
+        return NS_ERROR;
+    }
+
+    /*
+     * We could check here the validity UTF-8 of the request line, in case we
+     * would know it is supposed to be UTF8. Unfortunately, this is known
+     * ownly after the server is determined. We could use the ns/param
+     * encoding, but then, the per-server urlEncoding does not make sense.
+     *
+     * RFC 7230 (Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and
+     * Routing) states: Parsing an HTTP message as a stream of Unicode
+     * characters, without regard for the specific encoding, creates security
+     * vulnerabilities due to the varying ways that string processing
+     * libraries handle invalid multibyte character sequences that contain the
+     * octet LF (%x0A).
+     *
+     * W3C recommends only URLs with proper encodings (subset of US ASCII):
+     * https://www.w3.org/Addressing/URL/4_URI_Recommentations.html
+     */
+    if (!Ns_Is7bit(line, len)) {
+        Ns_Log(Warning, "Ns_ParseRequest: line <%s> contains 8-bit "
+               "character data. Future versions might reject it.", line);
     }
 
 #if !defined(NDEBUG)
@@ -183,7 +227,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
      * Make a copy of the line to chop up. Make sure it isn't blank.
      */
 
-    Ns_DStringAppend(&ds, line);
+    Ns_DStringNAppend(&ds, line, (int)len);
     l = Ns_StrTrim(ds.string);
     if (*l == '\0') {
         goto done;
@@ -295,9 +339,13 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
             *p++ = '\0';
             request->protocol = ns_strdup(url);
             url = p;
-            if ((strlen(url) > 3u) && (*p++ == '/')
-                && (*p++ == '/') && (*p != '\0') && (*p != '/')) {
-                char *h = p;
+            if ((strlen(url) > 3u)
+                && (*p++ == '/')
+                && (*p++ == '/')
+                && (*p != '\0')
+                && (*p != '/') ) {
+                bool  hostParsedOk;
+                char *h = p, *end;
 
                 while ((*p != '\0') && (*p != '/')) {
                     p++;
@@ -310,12 +358,18 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
                 /*
                  * Check for port
                  */
-                Ns_HttpParseHost(h, NULL, &p);
-                if (p != NULL) {
-                    *p++ = '\0';
-                    request->port = (unsigned short)strtol(p, NULL, 10);
+                hostParsedOk = Ns_HttpParseHost2(h, NS_FALSE, NULL, &p, &end);
+                if (hostParsedOk) {
+                    if (p != NULL) {
+                        *p++ = '\0';
+                        request->port = (unsigned short)strtol(p, NULL, 10);
+                    }
+                    request->host = ns_strdup(h);
+                } else {
+                    ns_free((char*)request->protocol);
+                    request->protocol = NULL;
+                    goto done;
                 }
-                request->host = ns_strdup(h);
             }
         }
     }
@@ -487,7 +541,10 @@ SetUrl(Ns_Request *request, char *url)
      */
     encodedPath = url;
     encoding = Ns_GetUrlEncoding(NULL);
+    Ns_Log(Debug, "### Request SetUrl calls Ns_UrlPathDecode '%s'", encodedPath);
     p = Ns_UrlPathDecode(&ds1, encodedPath, encoding);
+    Ns_Log(Debug, " ### decoded path '%s'", p);
+
     if (p == NULL) {
         p = url;
     }

@@ -1,0 +1,68 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_setuser - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_setprivileges.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_setuser.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_setuser(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_setuser - Set the current procces privileges</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_setuser</b> <i class="arg">user</i></a></li>
+<li><a href="#2"><b class="cmd">ns_setgroup</b> <i class="arg">group</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>Sets the effective user or group ID of the current process.  If the effective UID
+of the caller is root, the real UID and saved set-user-ID are also set.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_setuser</b> <i class="arg">user</i></a></dt>
+<dd></dd>
+<dt><a name="2"><b class="cmd">ns_setgroup</b> <i class="arg">group</i></a></dt>
+<dd></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ % ns_setuser nobody
+ % ns_setuser 99
+ % ns_setgroup nogroup
+ % ns_setgroup 99
+</pre>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#gid">GID</a>, <a href="../../index.html#uid">UID</a>, <a href="../../index.html#group">group</a>, <a href="../../index.html#permissions">permissions</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#user">user</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

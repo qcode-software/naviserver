@@ -1,0 +1,165 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>nscp - NaviServer Modules</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'nscp.man' by tcllib/doctools with format 'html'
+   -->
+<!-- nscp.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">nscp(n) 4.99.23 nscp &quot;NaviServer Modules&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>nscp - NaviServer Control Port Guide</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">Introduction</a></li>
+<li class="doctools_section"><a href="#section3">Configuring the Control Port Interface</a></li>
+<li class="doctools_section"><a href="#section4">Using the Control Port Interface</a></li>
+<li class="doctools_section"><a href="#section5">Useful Commands</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">Introduction</a></h2>
+<p>NaviServer includes a control port interface that can be enabled with
+the nscp module. This control port interface allows you to telnet to a
+specified host and port where you can administer the server and
+execute database commands while the server is running.</p>
+<p>The control port interface is a Tcl interface. Within it, you can
+execute any Tcl command that Tcl libraries and ADP can; the only
+exceptions being the ns_conn commands.</p>
+<p>To administer a server with the control port interface while it is
+running, the nscp module must be loaded into the server. To set
+permissions for the server, the nsperm module must also be loaded. To
+execute database commands while the server is running, you must also
+configure database services for the server, including database drivers
+and pools.</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Configuring the Control Port Interface</a></h2>
+<p>An example configuration for the control port interface is shown
+below. Three sections of the configuration file are included. The nscp
+module is loaded into the /modules section for $server. The
+/module/nscp section defines the control port parameters, and the
+/module/nscp/users section defines the users who can log into the
+control port.</p>
+<pre class="doctools_example">
+ #
+ # Control port -- nscp
+ #
+ ns_section ns/server/${server}/module/nscp {
+   ns_param   port            9999        ;# Control port listens on port 9999
+   ns_param   address         &quot;127.0.0.1&quot; ;# For security, use 127.0.0.1 only
+ }
+ 
+ # Control port users
+ ns_section ns/server/${server}/module/nscp/users {
+   #
+   # The default password for nsadmin is &quot;x&quot;. You should change it.
+   # type &quot;ns_crypt newpassword salt&quot; and put the encrypted string
+   # below.
+   
+   ns_param user &quot;nsadmin:t2GqvvaiIUbF2:&quot; ;# sample user=&quot;nsadmin&quot;, pw=&quot;x&quot;.
+ }
+ 
+ ns_section ns/server/${server}/modules {
+   # ...
+   ns_param nscp nscp.so
+ }
+</pre>
+<p>Some things to notice about the configuration are:</p>
+<ul class="doctools_itemized">
+<li><p>The port parameter defines the port that the interface will listen
+     on. The default is 9999.</p></li>
+<li><p>The address parameter defines the hostname to bind to. The default
+     is 127.0.0.1 so that you can only connect to the control port if
+     you are already logged on to the computer where the server is
+     running.</p></li>
+<li><p>The user parameter defines users who can log into the control
+     port. There are three semicolon-separated fields. The first is
+     username (nsadmin); the second is a Unix-like password hash.  You
+     can create a password by typing &quot;ns_crypt mypasswd salt&quot;.  As with
+     Unix, only the first four characters are used.</p></li>
+</ul>
+<p>See the Configuration Reference for complete information on
+configuration.</p>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">Using the Control Port Interface</a></h2>
+<p>To use the control port interface, follow these steps:</p>
+<ol class="doctools_enumerated">
+<li><p>Telnet to the address and port number defined in the
+     /module/nscp section for the server. For example:</p>
+<pre class="doctools_example">
+ telnet localhost 9999
+</pre>
+<p>The session responds with:</p>
+<pre class="doctools_example">
+ Trying 127.0.0.1...
+ Connected to localhost.
+ Escape character is '^]'.
+ login:
+</pre>
+</li>
+<li><p>At the login prompt, type a valid username. The username must be
+     one of the usernames defined in the /module/nscp/users section of
+     the configuration file. For example:</p>
+<pre class="doctools_example">
+  login: nsadmin
+</pre>
+<p>The session responds with:</p>
+<pre class="doctools_example">
+ password:
+</pre>
+</li>
+<li><p>At the password prompt, type the password associated with the
+     username you specified.  The default is &quot;x&quot;.</p>
+<p>The session responds with:</p>
+<pre class="doctools_example">
+ Welcome to server1 running at /usr/local/ns/bin/nsd (pid 22413)
+ NaviServer/4.99.22 for linux built on Aug 25 2021 at 18:38:59
+ server1:nscp 1&gt;
+</pre>
+</li>
+<li><p>At the prompt you can type nearly any Tcl command
+     available to NaviServer Tcl libraries and ADPs.</p></li>
+<li><p>When you're done, just type &quot;exit&quot; and you will be logged off.</p></li>
+</ol>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Useful Commands</a></h2>
+<p>Type &quot;lsort [info commands]&quot; for a complete list of commands available
+to you.  You can type nearly any Tcl command available to NaviServer
+Tcl libraries and ADPs, including the complete Tcl core and
+nearly any ns_* commands.  Type &quot;lsort [info commands ns*]&quot; for a
+sorted list of available NaviServer Tcl commands.</p>
+<p>Useful commands:</p>
+<ul class="doctools_itemized">
+<li><p>ns_shutdown  -- Shuts down the server.</p></li>
+<li><p>ns_info uptime  -- How long the server has been running.</p></li>
+<li><p>ns_info threads  -- How many threads are running</p></li>
+<li><p>exit -- Exit the control port.</p></li>
+</ul>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../manual/files/admin-maintenance.html">admin-maintenance</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#configuration">configuration</a>, <a href="../../index.html#module">module</a>, <a href="../../index.html#nscp">nscp</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

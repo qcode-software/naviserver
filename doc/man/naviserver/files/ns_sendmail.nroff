@@ -1,0 +1,488 @@
+'\"
+'\" Generated from file 'ns_sendmail\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_sendmail" 3 1\&.0 naviserver "NaviServer Built-In Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_sendmail \- Sending mail via SMTP
+.SH SYNOPSIS
+\fBns_sendmail\fR \fB-to\fR \fB-from from\fR \fB-subject subject\fR \fB-body body\fR ?\fB-headers headers\fR? ?\fB-bcc bcc\fR? ?\fB-cc cc\fR?
+.sp
+\fBns_sendmail_config\fR ?log?
+.sp
+.BE
+.SH DESCRIPTION
+\fIns_sendmail\fR is a procedure for sending email from a Tcl script through a remote
+SMTP server\&. It now supports character encoding of subject and body,
+message-id creation, quoted printable text, AUTH PLAIN and LOGIN mechanisms\&. It is backwards
+compatible\&.
+.PP
+The helper command \fIns_sendmail_config\fR returns or logs the current configuration
+for ns_sendmail\&.
+.PP
+In the default configuration mail is sent to "localhost" on port 25\&. Usually, "localhost"
+resolves to the host where NaviServer is deployed and the running SMTP server accepts mail
+from the local machine\&.
+.PP
+In order to send mail directly to a specified SMTP server other than
+localhost some form of authentication may be required\&. The AUTH PLAIN and
+LOGIN mechanisms are supported as they are offered by most SMTP servers and
+easy to implement\&. Note, however, they are plaintext
+mechanisms and not secure\&. Also note that ns_sendmail does not verify if AUTH
+PLAIN or LOGIN are offered by the SMTP server at all\&.
+In case of an error the error code and message are returned\&.
+.SH COMMANDS
+.TP
+\fBns_sendmail\fR \fB-to\fR \fB-from from\fR \fB-subject subject\fR \fB-body body\fR ?\fB-headers headers\fR? ?\fB-bcc bcc\fR? ?\fB-cc cc\fR?
+\fB-to\fR
+Email address of recipient\&. To send a real name along with the address
+give the name and place the latter between "<" and ">" like "John Foo <j\&.foo@example\&.com>"\&.
+This also applies to \fIfrom\fR, \fIcc\fR and \fIbcc\fR\&.
+Can be a comma-separated string with multiple recipients\&.
+.sp
+\fB-from\fR
+Email address of sender\&.
+.sp
+\fB-subject\fR
+Subject of the mail\&.
+.sp
+\fB-body\fR
+Body of the mail\&.
+.sp
+?\fB-headers\fR?
+An ns_set of key-value pairs\&. The set will become part of the email header\&.
+May be left empty\&.
+.sp
+?\fB-bcc\fR?
+Email address of undisclosed recipient\&.
+Can be a comma-separated string with multiple undisclosed recipients\&.
+.sp
+?\fB-cc\fR?
+Email address of additional recipient\&.
+Can be a comma-separated string with multiple recipients\&.
+.TP
+\fBns_sendmail_config\fR ?log?
+ns_sendmail_config returns the current configuration that is
+set up in the configuration file\&. Returns either an
+array usable by "array get" or logs to the server logfile\&.
+.PP
+.SH CONFIGURATION
+.PP
+\fIBasic configuration options:\fR
+.TP
+smtphost = mail\&.domain\&.tld
+The hostname or IP of the mail server\&. Default is localhost\&.
+Full qualified hostname is a good choice (mail\&.example\&.com)\&.
+.TP
+smtpport = 25
+The port for the connection\&. Default is 25\&.
+.TP
+smtptimeout = 60
+After smtptimeout seconds of inactivity (no answer from server) connection is closed\&.
+.PP
+.PP
+\fIExtended configuration options:\fR
+.PP
+Note: "boolean" in NaviServer configuration means value can be one of "true", "false", "on", "off", "0" or "1"\&.
+.TP
+smtplogmode = false (boolean)
+If true no attempt to set up a connection to smtphost:smtpport is made,
+every part of the connection process is just logged to the server logfile\&.
+Default is false\&.
+.TP
+smtpmsgid = on (boolean)
+If true ns_sendmail creates a message_id\&. If a key "message_id" is user
+defined in the optional "headers"-set the latter is used\&.
+Default is false\&.
+.TP
+smtpmsgidhostname = host\&.domain\&.tld
+This string is used when ns_sendmail tells the server that it wants to use
+SMTP (HELO host\&.domain\&.tld) or ESMTP (EHLO host\&.domain\&.tld) communication\&.
+Some servers have restrictive rules and expect fully qualified domain names here\&.
+It is further used as right part of the message-id\&.
+.TP
+smtpencodingmode = on (boolean)
+Message subject and body are by default sent in the default server encoding\&.
+If this is set true
+(a) the encoding defined in smtpencoding will be used and
+(b) Subject and body will be transformed to QUOTED PRINTABLE format\&.
+Default is false\&.
+.TP
+smtpencoding = utf-8
+If smtpencodingmode is set true subject and body will be encoded with
+the encoding defined in smtpencoding, e\&.g\&. "iso8859-15"\&.
+.TP
+smtpauthmode = mode
+Where mode is either PLAIN or LOGIN\&. If left empty but smtpauthuser and smtpauthpassword defined, PLAIN is assumed as default\&.
+.TP
+smtpauthuser = account--0123
+ns_sendmail supports now the simple PLAIN AUTH and LOGIN mechanisms to authenticate
+against a SMTP server\&. It should be sufficient to provide
+a mailbox account or email address ("smtpauthuser") and a password (see "smtpauthpassword")\&.
+It is possible to give a different authorization identifier (userid) and
+authentication identifier (authid/realm) by separating them with a nullbyte ("userid\\0realm")\&.
+Default is empty string to not use SMTP authentication\&.
+.TP
+smtpauthpassword = mysecret
+The password to use for PLAIN AUTHentication or LOGIN if smtpauthuser is set\&.
+.PP
+.SH ALTERNATIVES
+See the excellent Tcl Standard Library smtp and mime packages\&.
+.SH EXAMPLES
+\fILog current configuration to server log:\fR
+.CS
+
+
+ % ns_sendmail_config log
+ smtpconfiguration:
+      smtphost = mail\&.domain\&.tld
+      smtpport = 25
+      smtptimeout = 60
+      smtplogmode = false
+      smtpmsgid = on
+      smtpmsgidhostname = host\&.domain\&.tld
+      smtpencodingmode = on
+      smtpencoding = iso8859-15
+      smtpauthmode = PLAIN
+      smtpauthuser = account--0123
+      smtpauthpassword = mysecret
+
+.CE
+.PP
+\fIDefault use:\fR
+.CS
+
+
+ % ns_sendmail to@example\&.com from@example\&.com "My subject" "My body"
+
+.CE
+.PP
+\fISeparate multiple recipients with a comma (to,cc,bcc):\fR
+.CS
+
+
+ % ns_sendmail "to1@example\&.com,to2@example\&.com" \\
+ 	from@example\&.com "My subject" "My body"
+
+.CE
+.PP
+\fIYou may give real names along with email address:\fR
+.CS
+
+
+ % ns_sendmail "Jo Foo <to1@example\&.com>,Pete Bar <to2@example\&.com>" \\
+ 	from@example\&.com "My subject" "My body"
+
+.CE
+.PP
+\fIFor cc and bcc, leave header field empty, if you don't need it anyway:\fR
+.CS
+
+
+ % ns_sendmail "Jo Foo <to1@example\&.com>,Pete Bar <to2@example\&.com>" \\
+ 	from@example\&.com "My subject" "My body" "" "Ben Care <bencare@example\&.com>"
+
+.CE
+.PP
+\fIHeader field is an ns_set array:\fR
+.CS
+
+
+ % set SMTP_setid [ns_set create SMTPHeaders "Reply-To" "marketing@example\&.com"]
+ % ns_sendmail "Jo Foo <to1@example\&.com>,Pete Bar <to2@example\&.com>" \\
+ 	from@example\&.com "My subject" "My body" $SMTP_setid \\
+ 	"Ben Care <bencare@example\&.com>"
+
+.CE
+.PP
+\fIUse smtplogmode to not send mail but watch transaction in server log:\fR
+.CS
+
+
+ % ns_sendmail "Mr\&. White <white@example\&.com>" "Mr\&. Black <black@example\&.com>" "log" "this message"
+ Notice: S: Helo sock12 HELO devserver 60
+ Notice: S: Mail black@example\&.com sock12 MAIL FROM:<black@example\&.com> 60
+ Notice: S: Rcpt white@example\&.com sock12 RCPT TO:<white@example\&.com> 60
+ Notice: S: Data sock12 DATA 60
+ Notice: S: Data sock12 To: Mr\&. White <white@example\&.com>
+ From: Mr\&. Black <black@example\&.com>
+ Subject: log
+ Date: Mon, 23 Jan 2006 09:25:22 GMT
+
+ this message
+
+ \&. 60
+ Notice: S: Quit sock12 QUIT 60
+
+.CE
+.SH "SEE ALSO"
+nsd
+.SH KEYWORDS
+NaviServer, RFC822, configuration, mail, sendmail, smtp

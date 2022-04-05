@@ -13,12 +13,12 @@ entries, timeouts waiting for updates, etc.
 [para]
 The cache commands try to be efficient. For example, if two threads are
 simultaneously accessing the same entry in a cache, and the cache entry does not
-exist or has expired, then the first thread will evaluate it's script to
+exist or has expired, then the first thread will evaluate its script to
 generate the new value.  The second thread will recognize this and wait for the
 first thread to finish, and then return the value computed by the first thread.
 
 [para]
-A cache will tend to grow to it's maximum specified size.  Unused entries will
+A cache will tend to grow to its maximum specified size.  Unused entries will
 move towards the end of the Least Recently Used list and be deleted to make room
 for new entries. Similarly, expired entries will remain in the cache and only be
 deleted when they reach the end of the LRU list, or are accessed and it is
@@ -34,16 +34,16 @@ The following options are used for several commands below.
 The time to wait for some other thread to compute the cache value.
 The value [arg t] can be specified in the form
 [arg secs[opt :microsecs]], or [arg secs.fraction],
-or as a number with the time units ms, s, m, d.
+or as a number with a time unit.
 
 [opt_def -expires [arg t]]
-A time in the future when the cache value expires. The expired value will be
+A time in the future when the cache entry expires. The expired entry will be
 deleted only when retrieved, e.g. via [cmd ns_cache_eval].
 
 [para]
 The value [arg t] can be specified in the form
 [arg secs[opt :microsecs]], or [arg secs.fraction],
-or as a number with the time units ms, s, m, d.
+or as a number with a time unit.
 Small values of [arg t] are treated as offsets, large values as absolute times.
 
 [list_end]
@@ -78,7 +78,7 @@ Create a new Tcl cache identified by [arg name] with maximum size
 the cache. The size of a single entry is the size of the key plus the
 size of the value and the internal overhead per cache entry (about 126
 bytes on a 64-bit machine).  Optionally, a [option -timeout], an
-[option -expires] time and the maximum size of the cache value of a
+[option -expires] time and the maximum size of the cache entry value of a
 single entry (parameter [option -maxentry]) can be specified.
 The values for [arg size] and [option -maxentry] can be specified in
 memory units (kB, MB, GB, KiB, MiB, GiB).
@@ -129,7 +129,7 @@ into the cache.
 The [arg script] is also executed if a cached value exists but has expired.
 
 [para]
-If the [option -force] option is set then any existing cached value is removed
+If the [option -force] option is set then any existing cached entry is removed
 whether it has expired or not, and the [arg script] is run to regenerate it.
 
 
@@ -185,7 +185,7 @@ If the cache value does not already exist it is created.
 
 Append the given [arg args] to the value in the cache and return the new
 value. The cache value is as a Tcl list and the [arg args] are appended to
-maintain it's well-formed-list format.
+maintain its well-formed-list format.
 
 [para]
 If the cache value does not already exist it is created.
@@ -253,7 +253,7 @@ Number of times an entry was found to be present but expired when requested and
 so not returned.
 
 [def pruned]
-Number of time an entry reached the end of the LRU list and was removed to make
+Number of times an entry reached the end of the LRU list and was removed to make
 way for a new entry.
 
 [list_end]
@@ -391,7 +391,7 @@ first completes.
 [example_end]
 
 
-[see_also ns_memoize nsv ns_time ns_urlspace]
+[see_also ns_memoize nsv ns_time ns_urlspace ns_time]
 [keywords "server built-in" "global built-in" cache fastpath]
 
 [manpage_end]

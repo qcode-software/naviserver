@@ -249,7 +249,7 @@ Ns_ParseHttpTime(const char *chars)
          timeInfo.tm_hour < 0  || timeInfo.tm_hour > 23 ||
          timeInfo.tm_mday < 1  || timeInfo.tm_mday > 31 ||
          timeInfo.tm_mon  < 0  || timeInfo.tm_mon  > 11 ||
-         timeInfo.tm_year < 70 || timeInfo.tm_year > 120)) {
+         timeInfo.tm_year < 70)) {
 
         timeInfo.tm_isdst = 0;
 #ifdef HAVE_TIMEGM
@@ -281,7 +281,7 @@ Ns_ParseHttpTime(const char *chars)
  *
  * NsTclParseHttpTimeObjCmd --
  *
- *      Implements ns_parsehttptime as obj command.
+ *      Implements "ns_parsehttptime".
  *
  * Results:
  *      Tcl result.
@@ -326,7 +326,7 @@ NsTclParseHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int 
  *
  * NsTclHttpTimeObjCmd --
  *
- *      Implements ns_httptime as obj command.
+ *      Implements "ns_httptime".
  *
  * Results:
  *      Tcl result.
@@ -420,7 +420,7 @@ MakeMonth(const char *s)
     NS_NONNULL_ASSERT(s != NULL);
 
     /*
-     * Make sure it's capitalized like this:
+     * Make sure it is capitalized like this:
      * "Jan"
      */
 

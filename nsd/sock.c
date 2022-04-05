@@ -60,6 +60,8 @@ static NS_SOCKET SockConnect(const char *host, unsigned short port,
                              const char *lhost, unsigned short lport,
                              bool async) NS_GNUC_NONNULL(1);
 
+static Ns_ReturnCode WaitForConnect(NS_SOCKET sock);
+
 static NS_SOCKET SockSetup(NS_SOCKET sock);
 
 static ssize_t SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs,
@@ -77,6 +79,7 @@ static NS_INLINE bool Retry(int errorCode) NS_GNUC_CONST;
 
 static Ns_SockProc CloseLater;
 
+static const char *ErrorCodeString(int errorCode) NS_GNUC_PURE;
 
 
 /*
@@ -90,7 +93,7 @@ static Ns_SockProc CloseLater;
  *      "ns_sockerrno" under windows.
  *
  * Results:
- *      Boolean value
+ *      Boolean value.
  *
  * Side effects:
  *      None.
@@ -98,7 +101,8 @@ static Ns_SockProc CloseLater;
  *----------------------------------------------------------------------
  */
 
-static NS_INLINE bool Retry(int errorCode)
+static NS_INLINE bool
+Retry(int errorCode)
 {
     return (errorCode == NS_EAGAIN
             || errorCode == NS_EINTR
@@ -146,8 +150,9 @@ Ns_SetVec(struct iovec *bufs, int i, const void *data, size_t len)
  *
  * Ns_ResetVec --
  *
- *      Zero the bufs which have had their data sent and adjust
- *      the remainder.
+ *      Reduce the size in the iovec by the number of bytes sent (last
+ *      argument). Zero the bufs which have had their data sent and
+ *      adjust the remainder.
  *
  * Results:
  *      Index of first buf to send.
@@ -161,9 +166,9 @@ Ns_SetVec(struct iovec *bufs, int i, const void *data, size_t len)
 int
 Ns_ResetVec(struct iovec *bufs, int nbufs, size_t sent)
 {
-    int     i;
+    int i;
 
-    for (i = 0; i < nbufs && sent > 0u; i++) {
+    for (i = 0; (i < nbufs) && (sent > 0u); i++) {
         const char *data = bufs[i].iov_base;
         size_t      len  = bufs[i].iov_len;
 
@@ -230,14 +235,30 @@ Ns_SumVec(const struct iovec *bufs, int nbufs)
  *----------------------------------------------------------------------
  */
 void
-Ns_SockSetReceiveState(Ns_Sock *sock, Ns_SockState sockState)
+Ns_SockSetReceiveState(Ns_Sock *sock, Ns_SockState sockState, unsigned long recvErrno)
 {
     NS_NONNULL_ASSERT(sock != NULL);
 
     ((Sock *)sock)->recvSockState = sockState;
+    ((Sock *)sock)->recvErrno = recvErrno;
 }
 
-
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockGetPort --
+ *
+ *      Get the port of the provided Sock structure from the IPv4 or
+ *      IPv6 sock addr.
+ *
+ * Results:
+ *      Port or 0 on errors.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
 unsigned short
 Ns_SockGetPort(const Ns_Sock *sock)
 {
@@ -257,6 +278,43 @@ Ns_SockGetPort(const Ns_Sock *sock)
 
     return result;
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockGetLocalAddr --
+ *
+ *      Get the IP Address in form of a string from the provided NS_SOCKET.
+ *
+ * Results:
+ *      String or NULL
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_SockGetAddr(const Ns_Sock *sock)
+{
+    const char *result;
+    struct NS_SOCKADDR_STORAGE sa;
+    socklen_t len = (socklen_t)sizeof(sa);
+    int       retVal;
+
+    NS_NONNULL_ASSERT(sock != NULL);
+
+    retVal = getsockname(sock->sock, (struct sockaddr *) &sa, &len);
+    if (retVal == -1) {
+        result = NULL;
+    } else {
+        result = ns_inet_ntoa((struct sockaddr *)&sa);
+    }
+
+    return result;
+}
+
+
 /*
  *----------------------------------------------------------------------
  *
@@ -264,9 +322,9 @@ Ns_SockGetPort(const Ns_Sock *sock)
  *
  *      Check the error State of an ns_sock structure.
  *
- *      Background: SSL_shutdown() must not be called if a previous fatal error
- *      has occurred on a connection i.e. if SSL_get_error() has returned
- *      SSL_ERROR_SYSCALL or SSL_ERROR_SSL.
+ *      Background: SSL_shutdown() must not be called if a previous
+ *      fatal error has occurred on a connection i.e. if SSL_get_error()
+ *      has returned SSL_ERROR_SYSCALL or SSL_ERROR_SSL.
  *
  *      Note: For the time being, we have just the read error state.
  *
@@ -299,9 +357,10 @@ Ns_SockInErrorState(const Ns_Sock *sock)
  *      the data is readable.
  *
  * Results:
- *      Number of bytes read or -1 on error (including timeout).  The return
- *      value will be 0 when the peer has performed an orderly shutdown. The
- *      resulting sockstate has one of the following codes:
+ *      Number of bytes read or -1 on error (including timeout).  The
+ *      return value will be 0 when the peer has performed an orderly
+ *      shutdown. The resulting sockstate is set in sockPtr and has one
+ *      of the following codes:
  *
  *      NS_SOCK_READ, NS_SOCK_DONE, NS_SOCK_AGAIN, NS_SOCK_EXCEPTION,
  *      NS_SOCK_TIMEOUT
@@ -315,35 +374,38 @@ ssize_t
 Ns_SockRecvBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
                 const Ns_Time *timeoutPtr, unsigned int flags)
 {
-    ssize_t      n;
-    Ns_SockState sockState = NS_SOCK_READ;
-    Sock        *sockPtr = (Sock *)sock;
+    ssize_t        nrBytes;
+    Ns_SockState   sockState = NS_SOCK_READ;
+    unsigned long  recvErrno = 0u;
+    Sock          *sockPtr = (Sock *)sock;
 
     NS_NONNULL_ASSERT(sock != NULL);
 
-    n = Ns_SockRecvBufs2(sock->sock, bufs, nbufs, flags, &sockState);
-    if (sockState == NS_SOCK_AGAIN) {
+    nrBytes = Ns_SockRecvBufs2(sock->sock, bufs, nbufs, flags, &sockState, &recvErrno);
+    if (sockState == NS_SOCK_AGAIN && timeoutPtr != NULL) {
         /*
-         * If a timeoutPtr was provided, perform timeout handling.
+         * When a timeoutPtr is provided, perform timeout handling.
          */
-        if (timeoutPtr != NULL) {
-            Ns_ReturnCode status;
+        Ns_ReturnCode status;
 
-            status = Ns_SockTimedWait(sock->sock,
-                                      (unsigned int)NS_SOCK_READ,
-                                      timeoutPtr);
-            if (status == NS_OK) {
-                n = SockRecv(sock->sock, bufs, nbufs, flags);
-            } else if (status == NS_TIMEOUT) {
-                sockState = NS_SOCK_TIMEOUT;
-            } else {
-                sockState = NS_SOCK_EXCEPTION;
-            }
+        status = Ns_SockTimedWait(sock->sock,
+                                  (unsigned int)NS_SOCK_READ,
+                                  timeoutPtr);
+        if (status == NS_OK) {
+            nrBytes = SockRecv(sock->sock, bufs, nbufs, flags);
+        } else if (status == NS_TIMEOUT) {
+            sockState = NS_SOCK_TIMEOUT;
+        } else {
+            sockState = NS_SOCK_EXCEPTION;
+            recvErrno = (unsigned long)ns_sockerrno;
         }
     }
     sockPtr->recvSockState = sockState;
+    if (sockState == NS_SOCK_EXCEPTION) {
+        sockPtr->recvErrno = recvErrno;
+    }
 
-    return n;
+    return nrBytes;
 }
 
 
@@ -353,16 +415,17 @@ Ns_SockRecvBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  * Ns_SockRecvBufs2 --
  *
  *      Read data from a nonblocking socket into a vector of buffers.
- *      Ns_SockRecvBufs2() is similar to Ns_SockRecvBufs() with the following
- *      differences:
+ *      Ns_SockRecvBufs2() is similar to Ns_SockRecvBufs() with the
+ *      following differences:
+ *
  *        a) the first argument is an NS_SOCKET
  *        b) it performs no timeout handliong
  *        c) it returns the sockstate in its last argument
  *
  * Results:
- *      Number of bytes read or -1 on error.  The return
- *      value will be 0 when the peer has performed an orderly shutdown. The
- *      resulting sockstate has one of the following codes:
+ *      Number of bytes read or -1 on error.  The return value will be 0
+ *      when the peer has performed an orderly shutdown. The resulting
+ *      sockstate has one of the following codes:
  *
  *      NS_SOCK_READ, NS_SOCK_DONE, NS_SOCK_AGAIN, NS_SOCK_EXCEPTION
  *
@@ -373,17 +436,21 @@ Ns_SockRecvBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  */
 ssize_t
 Ns_SockRecvBufs2(NS_SOCKET sock, struct iovec *bufs, int nbufs,
-                 unsigned int flags, Ns_SockState *sockStatePtr)
+                 unsigned int flags, Ns_SockState *sockStatePtr,
+                 unsigned long *errnoPtr)
 {
     ssize_t      n;
     Ns_SockState sockState = NS_SOCK_READ;
 
     NS_NONNULL_ASSERT(bufs != NULL);
+    NS_NONNULL_ASSERT(errnoPtr != NULL);
 
     n = SockRecv(sock, bufs, nbufs, flags);
 
     if (unlikely(n == -1)) {
-        if (Retry(ns_sockerrno)) {
+        int sockerrno = ns_sockerrno;
+
+        if (Retry(sockerrno)) {
             /*
              * Resource is temporarily unavailable.
              */
@@ -392,8 +459,11 @@ Ns_SockRecvBufs2(NS_SOCKET sock, struct iovec *bufs, int nbufs,
             /*
              * Some other error.
              */
+            Ns_Log(Debug, "Ns_SockRecvBufs2 errno %d on sock %d: %s",
+                   sockerrno, sock, strerror(sockerrno));
             sockState = NS_SOCK_EXCEPTION;
         }
+        *errnoPtr = (unsigned long)sockerrno;
     } else if (unlikely(n == 0)) {
         /*
          * Peer has performed an orderly shutdown.
@@ -442,7 +512,6 @@ Ns_SockSendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
     sbufLen = UIO_MAXIOV;
 
     while (bufIdx < nbufs || toWrite > 0u) {
-
         ssize_t sent;
 
         /*
@@ -534,7 +603,7 @@ Ns_SockSendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
  *      or -1 on error.
  *
  * Side effects:
- *      none
+ *      None.
  *
  *----------------------------------------------------------------------
  */
@@ -565,7 +634,7 @@ Ns_SockSendBufs2(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
 /*
  *----------------------------------------------------------------------
  *
- * NsSockRecv --
+ * Ns_SockRecv --
  *
  *      Timed recv operation from a nonblocking socket.
  *
@@ -701,26 +770,49 @@ Ns_SockTimedWait(NS_SOCKET sock, unsigned int what, const Ns_Time *timeoutPtr)
     }
 
     if (count > 1) {
-        Ns_Log(Debug, "Ns_SockTimedWait on sock %d tried %d times, returns n %d",
+        Ns_Log(Debug, "Ns_SockTimedWait on sock %d: tried %d times, returns n %d",
                sock, count, n);
     }
 
     if (likely(n > 0)) {
         if ((pfd.revents & requestedEvents) == 0) {
-            Ns_Log(Debug, "Ns_SockTimedWait on sock %d event mismatch, expected"
+            Ns_Log(Debug, "Ns_SockTimedWait on sock %d: event mismatch, expected"
                    " %.4x received %.4x", sock, requestedEvents, pfd.revents);
             result = NS_ERROR;
         } else {
-            int       err, sockerrno = 0;
-            socklen_t len = sizeof(sockerrno);
 
-            err = getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)&sockerrno, &len);
-            if (err == -1 || sockerrno != 0) {
-                Ns_Log(Debug, "Ns_SockTimedWait on sock %d received events"
-                       " %.4x, errno %d <%s>",
-                       sock, pfd.revents, sockerrno, strerror(sockerrno));
+            Ns_Log(Debug, "Ns_SockTimedWait on sock %d: poll returned %d,"
+                   " requested 0x%.2x"
+                   " expected 0x%.4x received 0x%.4x", sock, n, what, requestedEvents, pfd.revents);
 
-                result = NS_ERROR;
+            if (((what & (unsigned int)NS_SOCK_READ) != 0u && ((pfd.events & POLLIN) != 0u))
+                || ((what & (unsigned int)NS_SOCK_WRITE) != 0u && ((pfd.events & POLLOUT) != 0u))
+                ) {
+                /*
+                 * We got a "readable" for a "read" request or a "writable"
+                 * for a "write" request, so everything is fine.
+                 */
+                Ns_Log(Debug, "Ns_SockTimedWait on sock %d got what we wanted", sock);
+            } else {
+                int       err, sockerrno = 0;
+                socklen_t len = sizeof(sockerrno);
+
+                /*
+                 * We did not get, what we wanted, so it must be some error.
+                 */
+                err = getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)&sockerrno, &len);
+                if (err == -1) {
+                    Ns_Log(Debug, "Ns_SockTimedWait getsockopt on sock %d failed "
+                           "errno %d <%s>",
+                           sock, errno, strerror(errno));
+                    result = NS_ERROR;
+                } else if (sockerrno != 0) {
+                    Ns_Log(Debug, "Ns_SockTimedWait getsockopt on sock %d retrieved error "
+                           "errno %d <%s>",
+                           sock, sockerrno, strerror(sockerrno));
+
+                    result = NS_ERROR;
+                }
             }
         }
     } else if (n == 0) {
@@ -820,13 +912,12 @@ Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
     return sock;
 }
 
-
 /*
  *----------------------------------------------------------------------
  *
- * Ns_SockBind --
+ * Ns_BindSock --
  *
- *      Create a TCP socket and bind it to the passed-in address.
+ *      Deprecated version of Ns_SockBind().
  *
  * Results:
  *      A socket or NS_INVALID_SOCKET on error.
@@ -844,6 +935,23 @@ Ns_BindSock(const struct sockaddr *saPtr)
     return Ns_SockBind(saPtr, NS_FALSE);
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockBind --
+ *
+ *      Create a TCP socket and bind it to the passed-in address.
+ *
+ * Results:
+ *      A socket or NS_INVALID_SOCKET on error.
+ *
+ * Side effects:
+ *      Will set SO_REUSEADDR always on the socket, SO_REUSEPORT
+ *      optionally.
+ *
+ *----------------------------------------------------------------------
+ */
 NS_SOCKET
 Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
 {
@@ -874,10 +982,10 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
             setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const void *) &n, (socklen_t)sizeof(n));
 #ifdef HAVE_IPV6
             /*
-             * IPv4 connectivity through AF_INET6 can be disabled by default, for
-             * example by /proc/sys/net/ipv6/bindv6only to 1 on Linux. We
-             * explicitly enable IPv4 so we don't need to bind separate sockets
-             * for v4 and v6.
+             * IPv4 connectivity through AF_INET6 can be disabled by
+             * default, for example by /proc/sys/net/ipv6/bindv6only to
+             * 1 on Linux. We explicitly enable IPv4 so we don't need to
+             * bind separate sockets for v4 and v6.
              */
             n = 0;
             setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const void *) &n, (socklen_t)sizeof(n));
@@ -888,7 +996,8 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
         if (bind(sock, (const struct sockaddr *)saPtr,
                  Ns_SockaddrGetSockLen((const struct sockaddr *)saPtr)) != 0) {
 
-            Ns_Log(Notice, "bind operation on sock %d lead to error: %s", sock, ns_sockstrerror(ns_sockerrno));
+            Ns_Log(Notice, "bind operation on sock %d lead to error: %s",
+                   sock, ns_sockstrerror(ns_sockerrno));
             Ns_LogSockaddr(Warning, "bind on", (const struct sockaddr *) saPtr);
             ns_sockclose(sock);
             sock = NS_INVALID_SOCKET;
@@ -912,7 +1021,7 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_SockConnect --
+ * Ns_SockConnect, Ns_SockConnect2 --
  *
  *      Open a TCP connection to a host/port.
  *
@@ -945,7 +1054,7 @@ Ns_SockConnect2(const char *host, unsigned short port, const char *lhost, unsign
 /*
  *----------------------------------------------------------------------
  *
- * Ns_SockAsyncConnect --
+ * Ns_SockAsyncConnect, Ns_SockAsyncConnect2 --
  *
  *      Like Ns_SockConnect, but uses a nonblocking socket.
  *
@@ -978,7 +1087,7 @@ Ns_SockAsyncConnect2(const char *host, unsigned short port, const char *lhost, u
 /*
  *----------------------------------------------------------------------
  *
- * Ns_SockTimedConnect --
+ * Ns_SockTimedConnect, Ns_SockTimedConnect2 --
  *
  *      Like Ns_SockConnect, but with an optional timeout in seconds.
  *
@@ -1023,12 +1132,13 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost,
         status = NS_ERROR;
 
     } else {
-        /*Ns_Log(Notice, "SockConnect returned socket %d, wait for write (errno %d <%s>)",
-          sock, errno, ns_sockstrerror(errno));*/
+        /*Ns_Log(Notice, "SockConnect for %s:%hu returned socket %d, wait for write (errno %d <%s>)",
+          host, port, sock, errno, ns_sockstrerror(errno));*/
 
         status = Ns_SockTimedWait(sock, (unsigned int)NS_SOCK_WRITE, timeoutPtr);
-        /*Ns_Log(Notice, "Ns_SockTimedWait on %d returned status %d error %d <%s>",
-          sock, status, errno, ns_sockstrerror(errno));*/
+        /*Ns_Log(Notice, "Ns_SockTimedWait for %s:%hu on %d returned error %d <%s> -> status %d",
+          host, port, sock, errno, ns_sockstrerror(errno), status);*/
+
         switch (status) {
         case NS_OK:
             {
@@ -1081,12 +1191,12 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost,
  *
  * Ns_SockConnectError --
  *
- *      Leave a consistent error message in the interpreter result in case
- *      a connect attempt failed. For timeout cases, set the Tcl error code to
+ *      Leave a consistent error message in the interpreter result in case a
+ *      connect attempt failed. For timeout cases, set the Tcl error code to
  *      "NS_TIMEOUT".
  *
  * Results:
- *      NONE
+ *      None.
  *
  * Side effects:
  *      None.
@@ -1101,16 +1211,26 @@ Ns_SockConnectError(Tcl_Interp *interp, const char *host, unsigned short portNr,
     NS_NONNULL_ASSERT(host != NULL);
 
     if (status == NS_TIMEOUT) {
-        Ns_TclPrintfResult(interp, "timeout while connecting to %s port %hu", host, portNr);
-        Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
-        Ns_Log(Ns_LogTimeoutDebug, "socket connect to %s port %hu runs into timeout", host, portNr);
-    } else {
+
         /*
-         * Tcl_PosixError() sets as well the Tcl error code.
+         * Watch: Ns_TclPrintfResult() destroys errorCode variable
          */
-        Ns_TclPrintfResult(interp, "can't connect to %s port %hu: %s",
-                           host, portNr,
-                           (Tcl_GetErrno() != 0) ?  Tcl_PosixError(interp) : "reason unknown");
+        Ns_TclPrintfResult(interp, "timeout while connecting to %s port %hu",
+                           host, portNr);
+        Ns_Log(Ns_LogTimeoutDebug, "connect to %s port %hu runs into timeout",
+               host, portNr);
+        Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+    } else {
+        const char *err;
+        char buf[16];
+
+        /*
+         * Tcl_PosixError() maintains errorCode variable
+         */
+        err = (Tcl_GetErrno() != 0) ? Tcl_PosixError(interp) : "reason unknown";
+        sprintf(buf, "%hu", portNr);
+        Tcl_AppendResult(interp, "can't connect to ", host, " port ", buf,
+                         ": ", err, (char *)0L);
     }
 }
 
@@ -1123,7 +1243,7 @@ Ns_SockConnectError(Tcl_Interp *interp, const char *host, unsigned short portNr,
  *      Set a socket nonblocking.
  *
  * Results:
- *      NS_OK/NS_ERROR.
+ *      NS_OK or NS_ERROR.
  *
  * Side effects:
  *      None.
@@ -1153,7 +1273,7 @@ Ns_SockSetNonBlocking(NS_SOCKET sock)
  *      Set a socket blocking.
  *
  * Results:
- *      NS_OK/NS_ERROR.
+ *      NS_OK or NS_ERROR.
  *
  * Side effects:
  *      None.
@@ -1172,6 +1292,37 @@ Ns_SockSetBlocking(NS_SOCKET sock)
         status = NS_OK;
     }
     return status;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockSetNodelay --
+ *
+ *      Set socket option TCP_NODELAY when defined.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_SockSetNodelay(NS_SOCKET sock)
+{
+#ifdef TCP_NODELAY
+    int value = 1;
+
+    if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
+                   (const void *)&value, sizeof(value)) == -1) {
+        Ns_Log(Error, "nssock(%d): setsockopt(TCP_NODELAY): %s",
+               sock, ns_sockstrerror(ns_sockerrno));
+    } else {
+        Ns_Log(Debug, "nssock(%d): option TCP_NODELAY activated", sock);
+    }
+#endif
 }
 
 
@@ -1211,7 +1362,7 @@ Ns_SockSetDeferAccept(NS_SOCKET sock, long secs)
         Ns_Log(Error, "deferaccept setsockopt(TCP_FASTOPEN): %s",
                ns_sockstrerror(ns_sockerrno));
     } else {
-        Ns_Log(Notice, "deferaccept: socket option TCP_FASTOPEN activated");
+        Ns_Log(Notice, "nssock(%d): option TCP_FASTOPEN activated", sock);
     }
     (void)secs;
 #else
@@ -1309,7 +1460,7 @@ Ns_SockSetKeepalive(NS_SOCKET sock, int optval)
  *      Create a pair of unix-domain sockets.
  *
  * Results:
- *      See socketpair(2)
+ *      See socketpair(2).
  *
  * Side effects:
  *      None.
@@ -1368,7 +1519,7 @@ Ns_SockCloseLater(NS_SOCKET sock)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ClearSockErrno, Ns_GetSockErrno, Ns_SetSockErrno, Ns_SockStrError  --
+ * Ns_ClearSockErrno, Ns_GetSockErrno, Ns_SetSockErrno, Ns_SockStrError --
  *
  *      Errno/GetLastError utility routines.
  *
@@ -1488,17 +1639,17 @@ NsPoll(struct pollfd *pfds, NS_POLL_NFDS_TYPE nfds, const Ns_Time *timeoutPtr)
  *
  * BindToSameFamily --
  *
- *       We have to make sure that the local address (where the local bind
- *       happens) is of the same address family, which is especially important
- *       for (lhost == NULL), where the caller has no chance to influence the
- *       behavior, and we assume per default AF_INET6.
+ *      We have to make sure that the local address (where the local
+ *      bind happens) is of the same address family, which is especially
+ *      important for (lhost == NULL), where the caller has no chance to
+ *      influence the behavior, and we assume per default AF_INET6.
  *
  * Results:
  *      A socket or NS_INVALID_SOCKET on error.
  *
  * Side effects:
  *
- *      Pententially updating sockat address info pointed by lsaPtr.
+ *      Potentially updating socket address info pointed by lsaPtr.
  *
  *----------------------------------------------------------------------
  */
@@ -1555,15 +1706,122 @@ BindToSameFamily(struct sockaddr *saPtr, struct sockaddr *lsaPtr,
     return sock;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * WaitForConnect --
+ *
+ *      Handle EINPROGRESS and friends in async connect attempts.  We check
+ *      after the connect, whether the socket is writable.  This works
+ *      sometimes, but in some cases, poll() returns that the socket is
+ *      writable, but it is still not connected. So, we double check, if we
+ *      can get the peer address for this socket via getpeername(), which is
+ *      only possible when connection succeeded.  Otherwise we retry a couple
+ *      of times.
+ *
+ * Results:
+ *      NS_OK on success or NS_ERROR on failure.
+ *
+ * Side effects:
+ *
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Ns_ReturnCode
+WaitForConnect(NS_SOCKET sock)
+{
+    struct pollfd sockfd;
+    Ns_ReturnCode result;
+    int count = 20;
+
+    for (;;) {
+        int nfds;
+
+        sockfd.events = POLLOUT;
+        sockfd.revents = 0;
+        sockfd.fd = sock;
+
+        /*
+         * Wait for max 100ms for the socket to become
+         * writable, otherwise use the next offered IP
+         * address. TODO: The waiting timespan should be
+         * probably configurable.
+         */
+        nfds = ns_poll(&sockfd, 1, 100);
+        Ns_Log(Debug, "WaitForConnect: poll returned 0x%.4x, nsfds %d", sockfd.revents, nfds);
+
+        if ((sockfd.revents & POLLOUT) != 0) {
+            struct NS_SOCKADDR_STORAGE sa;
+            socklen_t socklen = (socklen_t)sizeof(sa);
+
+            /*
+             * The socket is writable, but does it really mean, we are connected?
+             */
+            Ns_Log(Debug, "WaitForConnect: sock %d is writable", sock);
+
+            /*
+             * We know this for sure, when getpeername() on the socket succeeds.
+             */
+            if (getpeername(sock, (struct sockaddr *)&sa, &socklen) != 0) {
+                if (ns_sockerrno == ENOTCONN) {
+                    /*
+                     * The socket is not yet connected.
+                     */
+                    if (count-- > 0) {
+                        struct pollfd timeoutfd;
+                        /*
+                         * Wait 1ms and retry
+                         */
+                        (void) ns_poll(&timeoutfd, 0, 1);
+                        Ns_Log(Debug, "WaitForConnect: sock %d ENOTCONN, left retries %d",
+                               sock, count);
+                        continue;
+                    } else {
+                        Ns_Log(Debug, "WaitForConnect: sock %d ENOTCONN, giving up", sock);
+                    }
+                } else {
+                    Ns_Log(Debug, "WaitForConnect on sock %d: getpeername() returned error %s",
+                           sock, ns_sockstrerror(ns_sockerrno));
+                }
+                result = NS_ERROR;
+            } else {
+                /*
+                 * Everything is fine: socket is writable, and getpeername()
+                 * returned success.
+                 */
+                result = NS_OK;
+            }
+        } else {
+            /*
+             * The socket is NOT writable. The behaviour on macOS differs from
+             * Linux: while we see a writable socket during in-progress
+             * states, we do not get this under macOS. In case, we have no
+             * error state, we retry.
+             */
+            if (sockfd.revents == 0 && Ns_SockErrorCode(NULL, sock) == 0) {
+                Ns_Log(Debug, "WaitForConnect: sock %d retry", sock);
+                continue;
+            }
+            result = NS_ERROR;
+        }
+        break;
+    }
+    Ns_Log(Debug, "WaitForConnect: sock %d connect success %d", sock, result);
+
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
  *
  * SockConnect --
  *
- *      Open a TCP connection to a host/port sync or async.  "host" and "port"
- *      refer to the remote, "lhost" and "lport" to the local communication
- *      endpoint.
+ *      Open a TCP connection to a host/port sync or async.  "host" and
+ *      "port" refer to the remote, "lhost" and "lport" to the local
+ *      communication endpoint.
  *
  * Results:
  *      A socket or NS_INVALID_SOCKET on error.
@@ -1574,7 +1832,6 @@ BindToSameFamily(struct sockaddr *saPtr, struct sockaddr *lsaPtr,
  *
  *----------------------------------------------------------------------
  */
-
 
 static NS_SOCKET
 SockConnect(const char *host, unsigned short port, const char *lhost,
@@ -1612,17 +1869,17 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
 
         for (;;) {
             Ns_ReturnCode  result;
-            const char    *address = ns_strtok(addresses, " ");
+            const char    *address;
 
+            address = ns_strtok(addresses, " ");
             /*
              * In the next iteration, process the next address.
              */
             addresses = NULL;
             if (address == NULL) {
+                Ns_Log(Debug, "SockConnect to %s: addresses exhausted", host);
                 break;
             }
-
-            Ns_Log(Debug, "SockConnect to %s: try address <%s> async %d", host, address, async);
 
             result = Ns_GetSockAddr(saPtr, address, port);
             if (result == NS_OK) {
@@ -1661,8 +1918,6 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                          * but the handling is this way much easier.
                          */
                         if (multipleIPs) {
-                            struct pollfd sockfd;
-                            socklen_t     len;
 
                             if (err == NS_EWOULDBLOCK) {
                                 Ns_Log(Debug, "async connect to %s on sock %d returned NS_EWOULDBLOCK",
@@ -1671,41 +1926,25 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                                 Ns_Log(Debug, "async connect to %s on sock %d returned EINPROGRESS",
                                        address, sock);
                             }
-                            sockfd.events = POLLOUT;
-                            sockfd.revents = 0;
-                            sockfd.fd = sock;
-                            /*
-                             * Wait for max 100ms for the socket to become
-                             * writable, otherwise use the next offered IP
-                             * address. TODO: The waiting timespan should be
-                             * probably configurable.
-                             */
-                            (void) ns_poll(&sockfd, 1, 100);
-
-                            {
-                                int error;
+                            if (WaitForConnect(sock) == NS_OK) {
                                 /*
-                                 * poll() finished - either with a timeout or
-                                 * success. Actually we don't care, since the
-                                 * getsockopt() for returning out the error helps
-                                 * us to decide, whether to continue with this IP
-                                 * address or not.
+                                 * The socket is connected, we can use this IP address.
                                  */
-                                len = sizeof(error);
-                                getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)&error, &len);
+                                /*Ns_Log(Notice, "async connect multipleIPs INPROGRESS "
+                                       "sock %d socket writable (address %s)",
+                                       sock, address);*/
+                                break;
 
-                                /*Ns_Log(Notice, "async connect on sock %d, poll returned %d revents %.4x, extraerr %d <%s>",
-                                  sock, n, sockfd.revents, error, ns_sockstrerror(error));*/
-                                if (error != 0) {
-                                    Ns_Log(Notice, "multiple & async on connect to %s fails on sock %d err %d <%s>",
-                                           address, sock, error, ns_sockstrerror(error));
-                                    ns_sockclose(sock);
-                                    sock = NS_INVALID_SOCKET;
-                                    continue;
-                                } else {
-                                    Ns_Log(Debug, "async connect multipleIPs INPROGRESS sock %d continue", sock);
-                                    break;
-                                }
+                            } else {
+                                /*
+                                 * The socket could not be connected, try a next IP address.
+                                 */
+                                /* Ns_Log(Notice, "async connect multipleIPs INPROGRESS "
+                                       "sock %d connect failed (address %s), try next",
+                                       sock, address); */
+                                ns_sockclose(sock);
+                                sock = NS_INVALID_SOCKET;
+                                continue;
                             }
                         }
                     } else if (err != 0) {
@@ -1729,6 +1968,9 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
         }
     }
     Tcl_DStringFree(&ds);
+
+    Ns_Log(Debug, "SockConnect to %s: returns sock %d", host, sock);
+
     return sock;
 }
 
@@ -1777,9 +2019,9 @@ SockSetup(NS_SOCKET sock)
  *      Read data from a nonblocking socket into a vector of buffers.
  *
  * Results:
- *
- *      Number of bytes read or -1 on error.  The return value will be 0 when
- *      the peer has performed an orderly shutdown (as defined by POSIX).
+ *      Number of bytes read or -1 on error.  The return value will be 0
+ *      when the peer has performed an orderly shutdown (as defined by
+ *      POSIX).
  *
  * Side effects:
  *      None.
@@ -1826,9 +2068,8 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
  *      Send data to a nonblocking socket from a vector of buffers.
  *
  * Results:
- *
- *      Number of bytes written
- *      -1 on error, partial write or write to non-writable socket
+ *      Number of bytes written or -1 on error, partial write or write to
+ *      non-writable socket
  *
  * Side effects:
  *      None.
@@ -1864,6 +2105,551 @@ SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags
     }
 
     return numBytes;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockErrorCode --
+ *
+ *      Get the error from a socket and return it. In case, an interp is
+ *      given set as well the Tcl error code.
+ *
+ * Results:
+ *      Numeric error code or 0.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_SockErrorCode(Tcl_Interp *interp, NS_SOCKET sock) {
+    int       err, sockerrno = 0;
+    socklen_t len = sizeof(sockerrno);
+
+    err = getsockopt(sock, SOL_SOCKET, SO_ERROR, (void*)&sockerrno, &len);
+    if (interp != NULL && (err == -1 || sockerrno != 0)) {
+        (void)Ns_PosixSetErrorCode(interp, sockerrno);
+    }
+    return sockerrno;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_PosixSetErrorCode --
+ *
+ *      Set the Tcl error code in the interpreter based on the provided
+ *      numeric value (POSIX errno) and return the error message.
+ *
+ * Results:
+ *      Error message in form of a string.
+ *
+ * Side effects:
+ *      Sets Tcl error code.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_PosixSetErrorCode(Tcl_Interp *interp, int errorNum) {
+    const char *errorMsg;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+
+    errorMsg = Tcl_ErrnoMsg(errorNum);
+    Tcl_SetErrorCode(interp, "POSIX",
+                     ErrorCodeString(errorNum),
+                     Tcl_ErrnoMsg(errorNum),
+                     (char *)0L);
+    return errorMsg;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsSockSetRecvErrorCode --
+ *
+ *      Set the Tcl error code in the interpreter based on the
+ *      information provided by Sock* (actually by recvErrno); the
+ *      function works for OpenSSL and plain POSIX style error codes.
+ *
+ * Results:
+ *      Error message in form of a string.
+ *
+ * Side effects:
+ *      Sets Tcl error code.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+NsSockSetRecvErrorCode(const Sock *sockPtr, Tcl_Interp *interp) {
+
+    NS_NONNULL_ASSERT(interp != NULL);
+    NS_NONNULL_ASSERT(sockPtr != NULL);
+
+#ifdef HAVE_OPENSSL_EVP_H
+
+    if (STREQ(sockPtr->drvPtr->protocol, "https")) {
+        return Ns_SSLSetErrorCode(interp, sockPtr->recvErrno);
+    }
+#endif
+    return Ns_PosixSetErrorCode(interp, (int)sockPtr->recvErrno);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ErrorCodeString --
+ *
+ *      Map errorCode integer to a language independent string.  This
+ *      function is practically a copy of the Tcl implementation, except
+ *      that the error code is passed-in instead of relying to a global
+ *      variable (which is not a good idea in multithreaded programs).
+ *
+ * Results:
+ *      Error code string.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static const char *
+ErrorCodeString(int errorCode)
+{
+    switch (errorCode) {
+#if defined(E2BIG) && (!defined(EOVERFLOW) || (E2BIG != EOVERFLOW))
+    case E2BIG: return "E2BIG";
+#endif
+#ifdef EACCES
+    case EACCES: return "EACCES";
+#endif
+#ifdef EADDRINUSE
+    case EADDRINUSE: return "EADDRINUSE";
+#endif
+#ifdef EADDRNOTAVAIL
+    case EADDRNOTAVAIL: return "EADDRNOTAVAIL";
+#endif
+#ifdef EADV
+    case EADV: return "EADV";
+#endif
+#ifdef EAFNOSUPPORT
+    case EAFNOSUPPORT: return "EAFNOSUPPORT";
+#endif
+#ifdef EAGAIN
+    case EAGAIN: return "EAGAIN";
+#endif
+#ifdef EALIGN
+    case EALIGN: return "EALIGN";
+#endif
+#if defined(EALREADY) && (!defined(EBUSY) || (EALREADY != EBUSY))
+    case EALREADY: return "EALREADY";
+#endif
+#ifdef EBADE
+    case EBADE: return "EBADE";
+#endif
+#ifdef EBADF
+    case EBADF: return "EBADF";
+#endif
+#ifdef EBADFD
+    case EBADFD: return "EBADFD";
+#endif
+#ifdef EBADMSG
+    case EBADMSG: return "EBADMSG";
+#endif
+#ifdef ECANCELED
+    case ECANCELED: return "ECANCELED";
+#endif
+#ifdef EBADR
+    case EBADR: return "EBADR";
+#endif
+#ifdef EBADRPC
+    case EBADRPC: return "EBADRPC";
+#endif
+#ifdef EBADRQC
+    case EBADRQC: return "EBADRQC";
+#endif
+#ifdef EBADSLT
+    case EBADSLT: return "EBADSLT";
+#endif
+#ifdef EBFONT
+    case EBFONT: return "EBFONT";
+#endif
+#ifdef EBUSY
+    case EBUSY: return "EBUSY";
+#endif
+#ifdef ECHILD
+    case ECHILD: return "ECHILD";
+#endif
+#ifdef ECHRNG
+    case ECHRNG: return "ECHRNG";
+#endif
+#ifdef ECOMM
+    case ECOMM: return "ECOMM";
+#endif
+#ifdef ECONNABORTED
+    case ECONNABORTED: return "ECONNABORTED";
+#endif
+#ifdef ECONNREFUSED
+    case ECONNREFUSED: return "ECONNREFUSED";
+#endif
+#ifdef ECONNRESET
+    case ECONNRESET: return "ECONNRESET";
+#endif
+#if defined(EDEADLK) && (!defined(EWOULDBLOCK) || (EDEADLK != EWOULDBLOCK))
+    case EDEADLK: return "EDEADLK";
+#endif
+#if defined(EDEADLOCK) && (!defined(EDEADLK) || (EDEADLOCK != EDEADLK))
+    case EDEADLOCK: return "EDEADLOCK";
+#endif
+#ifdef EDESTADDRREQ
+    case EDESTADDRREQ: return "EDESTADDRREQ";
+#endif
+#ifdef EDIRTY
+    case EDIRTY: return "EDIRTY";
+#endif
+#ifdef EDOM
+    case EDOM: return "EDOM";
+#endif
+#ifdef EDOTDOT
+    case EDOTDOT: return "EDOTDOT";
+#endif
+#ifdef EDQUOT
+    case EDQUOT: return "EDQUOT";
+#endif
+#ifdef EDUPPKG
+    case EDUPPKG: return "EDUPPKG";
+#endif
+#ifdef EEXIST
+    case EEXIST: return "EEXIST";
+#endif
+#ifdef EFAULT
+    case EFAULT: return "EFAULT";
+#endif
+#ifdef EFBIG
+    case EFBIG: return "EFBIG";
+#endif
+#ifdef EHOSTDOWN
+    case EHOSTDOWN: return "EHOSTDOWN";
+#endif
+#ifdef EHOSTUNREACH
+    case EHOSTUNREACH: return "EHOSTUNREACH";
+#endif
+#if defined(EIDRM) && (!defined(EINPROGRESS) || (EIDRM != EINPROGRESS))
+    case EIDRM: return "EIDRM";
+#endif
+#ifdef EINIT
+    case EINIT: return "EINIT";
+#endif
+#ifdef EINPROGRESS
+    case EINPROGRESS: return "EINPROGRESS";
+#endif
+#ifdef EINTR
+    case EINTR: return "EINTR";
+#endif
+#ifdef EINVAL
+    case EINVAL: return "EINVAL";
+#endif
+#ifdef EIO
+    case EIO: return "EIO";
+#endif
+#ifdef EISCONN
+    case EISCONN: return "EISCONN";
+#endif
+#ifdef EISDIR
+    case EISDIR: return "EISDIR";
+#endif
+#ifdef EISNAME
+    case EISNAM: return "EISNAM";
+#endif
+#ifdef ELBIN
+    case ELBIN: return "ELBIN";
+#endif
+#ifdef EL2HLT
+    case EL2HLT: return "EL2HLT";
+#endif
+#ifdef EL2NSYNC
+    case EL2NSYNC: return "EL2NSYNC";
+#endif
+#ifdef EL3HLT
+    case EL3HLT: return "EL3HLT";
+#endif
+#ifdef EL3RST
+    case EL3RST: return "EL3RST";
+#endif
+#ifdef ELIBACC
+    case ELIBACC: return "ELIBACC";
+#endif
+#ifdef ELIBBAD
+    case ELIBBAD: return "ELIBBAD";
+#endif
+#ifdef ELIBEXEC
+    case ELIBEXEC: return "ELIBEXEC";
+#endif
+#if defined(ELIBMAX) && (!defined(ECANCELED) || (ELIBMAX != ECANCELED))
+    case ELIBMAX: return "ELIBMAX";
+#endif
+#ifdef ELIBSCN
+    case ELIBSCN: return "ELIBSCN";
+#endif
+#ifdef ELNRNG
+    case ELNRNG: return "ELNRNG";
+#endif
+#if defined(ELOOP) && (!defined(ENOENT) || (ELOOP != ENOENT))
+    case ELOOP: return "ELOOP";
+#endif
+#ifdef EMFILE
+    case EMFILE: return "EMFILE";
+#endif
+#ifdef EMLINK
+    case EMLINK: return "EMLINK";
+#endif
+#ifdef EMSGSIZE
+    case EMSGSIZE: return "EMSGSIZE";
+#endif
+#ifdef EMULTIHOP
+    case EMULTIHOP: return "EMULTIHOP";
+#endif
+#ifdef ENAMETOOLONG
+    case ENAMETOOLONG: return "ENAMETOOLONG";
+#endif
+#ifdef ENAVAIL
+    case ENAVAIL: return "ENAVAIL";
+#endif
+#ifdef ENET
+    case ENET: return "ENET";
+#endif
+#ifdef ENETDOWN
+    case ENETDOWN: return "ENETDOWN";
+#endif
+#ifdef ENETRESET
+    case ENETRESET: return "ENETRESET";
+#endif
+#ifdef ENETUNREACH
+    case ENETUNREACH: return "ENETUNREACH";
+#endif
+#ifdef ENFILE
+    case ENFILE: return "ENFILE";
+#endif
+#ifdef ENOANO
+    case ENOANO: return "ENOANO";
+#endif
+#if defined(ENOBUFS) && (!defined(ENOSR) || (ENOBUFS != ENOSR))
+    case ENOBUFS: return "ENOBUFS";
+#endif
+#ifdef ENOCSI
+    case ENOCSI: return "ENOCSI";
+#endif
+#if defined(ENODATA) && (!defined(ECONNREFUSED) || (ENODATA != ECONNREFUSED))
+    case ENODATA: return "ENODATA";
+#endif
+#ifdef ENODEV
+    case ENODEV: return "ENODEV";
+#endif
+#ifdef ENOENT
+    case ENOENT: return "ENOENT";
+#endif
+#ifdef ENOEXEC
+    case ENOEXEC: return "ENOEXEC";
+#endif
+#ifdef ENOLCK
+    case ENOLCK: return "ENOLCK";
+#endif
+#ifdef ENOLINK
+    case ENOLINK: return "ENOLINK";
+#endif
+#ifdef ENOMEM
+    case ENOMEM: return "ENOMEM";
+#endif
+#ifdef ENOMSG
+    case ENOMSG: return "ENOMSG";
+#endif
+#ifdef ENONET
+    case ENONET: return "ENONET";
+#endif
+#ifdef ENOPKG
+    case ENOPKG: return "ENOPKG";
+#endif
+#ifdef ENOPROTOOPT
+    case ENOPROTOOPT: return "ENOPROTOOPT";
+#endif
+#ifdef ENOSPC
+    case ENOSPC: return "ENOSPC";
+#endif
+#if defined(ENOSR) && (!defined(ENAMETOOLONG) || (ENAMETOOLONG != ENOSR))
+    case ENOSR: return "ENOSR";
+#endif
+#if defined(ENOSTR) && (!defined(ENOTTY) || (ENOTTY != ENOSTR))
+    case ENOSTR: return "ENOSTR";
+#endif
+#ifdef ENOSYM
+    case ENOSYM: return "ENOSYM";
+#endif
+#ifdef ENOSYS
+    case ENOSYS: return "ENOSYS";
+#endif
+#ifdef ENOTBLK
+    case ENOTBLK: return "ENOTBLK";
+#endif
+#ifdef ENOTCONN
+    case ENOTCONN: return "ENOTCONN";
+#endif
+#ifdef ENOTRECOVERABLE
+    case ENOTRECOVERABLE: return "ENOTRECOVERABLE";
+#endif
+#ifdef ENOTDIR
+    case ENOTDIR: return "ENOTDIR";
+#endif
+#if defined(ENOTEMPTY) && (!defined(EEXIST) || (ENOTEMPTY != EEXIST))
+    case ENOTEMPTY: return "ENOTEMPTY";
+#endif
+#ifdef ENOTNAM
+    case ENOTNAM: return "ENOTNAM";
+#endif
+#ifdef ENOTSOCK
+    case ENOTSOCK: return "ENOTSOCK";
+#endif
+#ifdef ENOTSUP
+    case ENOTSUP: return "ENOTSUP";
+#endif
+#ifdef ENOTTY
+    case ENOTTY: return "ENOTTY";
+#endif
+#ifdef ENOTUNIQ
+    case ENOTUNIQ: return "ENOTUNIQ";
+#endif
+#ifdef ENXIO
+    case ENXIO: return "ENXIO";
+#endif
+#if defined(EOPNOTSUPP) &&  (!defined(ENOTSUP) || (ENOTSUP != EOPNOTSUPP))
+    case EOPNOTSUPP: return "EOPNOTSUPP";
+#endif
+#ifdef EOTHER
+    case EOTHER: return "EOTHER";
+#endif
+#if defined(EOVERFLOW) && (!defined(EFBIG) || (EOVERFLOW != EFBIG)) && (!defined(EINVAL) || (EOVERFLOW != EINVAL))
+    case EOVERFLOW: return "EOVERFLOW";
+#endif
+#ifdef EOWNERDEAD
+    case EOWNERDEAD: return "EOWNERDEAD";
+#endif
+#ifdef EPERM
+    case EPERM: return "EPERM";
+#endif
+#if defined(EPFNOSUPPORT) && (!defined(ENOLCK) || (ENOLCK != EPFNOSUPPORT))
+    case EPFNOSUPPORT: return "EPFNOSUPPORT";
+#endif
+#ifdef EPIPE
+    case EPIPE: return "EPIPE";
+#endif
+#ifdef EPROCLIM
+    case EPROCLIM: return "EPROCLIM";
+#endif
+#ifdef EPROCUNAVAIL
+    case EPROCUNAVAIL: return "EPROCUNAVAIL";
+#endif
+#ifdef EPROGMISMATCH
+    case EPROGMISMATCH: return "EPROGMISMATCH";
+#endif
+#ifdef EPROGUNAVAIL
+    case EPROGUNAVAIL: return "EPROGUNAVAIL";
+#endif
+#ifdef EPROTO
+    case EPROTO: return "EPROTO";
+#endif
+#ifdef EPROTONOSUPPORT
+    case EPROTONOSUPPORT: return "EPROTONOSUPPORT";
+#endif
+#ifdef EPROTOTYPE
+    case EPROTOTYPE: return "EPROTOTYPE";
+#endif
+#ifdef ERANGE
+    case ERANGE: return "ERANGE";
+#endif
+#if defined(EREFUSED) && (!defined(ECONNREFUSED) || (EREFUSED != ECONNREFUSED))
+    case EREFUSED: return "EREFUSED";
+#endif
+#ifdef EREMCHG
+    case EREMCHG: return "EREMCHG";
+#endif
+#ifdef EREMDEV
+    case EREMDEV: return "EREMDEV";
+#endif
+#ifdef EREMOTE
+    case EREMOTE: return "EREMOTE";
+#endif
+#ifdef EREMOTEIO
+    case EREMOTEIO: return "EREMOTEIO";
+#endif
+#ifdef EREMOTERELEASE
+    case EREMOTERELEASE: return "EREMOTERELEASE";
+#endif
+#ifdef EROFS
+    case EROFS: return "EROFS";
+#endif
+#ifdef ERPCMISMATCH
+    case ERPCMISMATCH: return "ERPCMISMATCH";
+#endif
+#ifdef ERREMOTE
+    case ERREMOTE: return "ERREMOTE";
+#endif
+#ifdef ESHUTDOWN
+    case ESHUTDOWN: return "ESHUTDOWN";
+#endif
+#ifdef ESOCKTNOSUPPORT
+    case ESOCKTNOSUPPORT: return "ESOCKTNOSUPPORT";
+#endif
+#ifdef ESPIPE
+    case ESPIPE: return "ESPIPE";
+#endif
+#ifdef ESRCH
+    case ESRCH: return "ESRCH";
+#endif
+#ifdef ESRMNT
+    case ESRMNT: return "ESRMNT";
+#endif
+#ifdef ESTALE
+    case ESTALE: return "ESTALE";
+#endif
+#ifdef ESUCCESS
+    case ESUCCESS: return "ESUCCESS";
+#endif
+#if defined(ETIME) && (!defined(ELOOP) || (ETIME != ELOOP))
+    case ETIME: return "ETIME";
+#endif
+#if defined(ETIMEDOUT) && (!defined(ENOSTR) || (ETIMEDOUT != ENOSTR))
+    case ETIMEDOUT: return "ETIMEDOUT";
+#endif
+#ifdef ETOOMANYREFS
+    case ETOOMANYREFS: return "ETOOMANYREFS";
+#endif
+#ifdef ETXTBSY
+    case ETXTBSY: return "ETXTBSY";
+#endif
+#ifdef EUCLEAN
+    case EUCLEAN: return "EUCLEAN";
+#endif
+#ifdef EUNATCH
+    case EUNATCH: return "EUNATCH";
+#endif
+#ifdef EUSERS
+    case EUSERS: return "EUSERS";
+#endif
+#ifdef EVERSION
+    case EVERSION: return "EVERSION";
+#endif
+#if defined(EWOULDBLOCK) && (!defined(EAGAIN) || (EWOULDBLOCK != EAGAIN))
+    case EWOULDBLOCK: return "EWOULDBLOCK";
+#endif
+#ifdef EXDEV
+    case EXDEV: return "EXDEV";
+#endif
+#ifdef EXFULL
+    case EXFULL: return "EXFULL";
+#endif
+    }
+    return "unknown error";
 }
 
 /*

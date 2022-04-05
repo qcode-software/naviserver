@@ -52,6 +52,7 @@ typedef struct Mod {
 } Mod;
 
 static Ns_ThreadProc EvalThread;
+static Mod          *modPtr = NULL;
 
 /*
  * The following structure is allocated for each session.
@@ -74,10 +75,11 @@ static Tcl_ObjCmdProc ExitObjCmd;
 static bool Login(const Sess *sessPtr, Tcl_DString *unameDSPtr);
 static bool GetLine(NS_SOCKET sock, const char *prompt, Tcl_DString *dsPtr, bool echo)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
-static void LoadUsers(Mod *modPtr, const char *server, const char *module)
+static void LoadUsers(Mod *localModPtr, const char *server, const char *module)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 static Ns_ArgProc ArgProc;
-
+static Ns_TclTraceProc NscpAddCmds;
+static Tcl_ObjCmdProc NsTclNscpObjCmd;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 /*
@@ -130,26 +132,25 @@ NS_EXPORT const int Ns_ModuleVersion = 1;
  */
 
 static void
-LoadUsers(Mod *modPtr, const char *server, const char *module)
+LoadUsers(Mod *localModPtr, const char *server, const char *module)
 {
-    Ns_Set     *set;
-    const char *path;
+    Ns_Set     *set = NULL;
     size_t      i;
 
-    NS_NONNULL_ASSERT(modPtr != NULL);
+    NS_NONNULL_ASSERT(localModPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(module != NULL);
 
-    Tcl_InitHashTable(&modPtr->users, TCL_STRING_KEYS);
-    path = Ns_ConfigGetPath(server, module, "users", (char *)0L);
-    set = Ns_ConfigGetSection(path);
+    Tcl_InitHashTable(&localModPtr->users, TCL_STRING_KEYS);
+    (void) Ns_ConfigSectionPath(&set, server, module, "users", (char *)0L);
 
     /*
-     * In default local mode just create empty user without password
+     * In case, no users are configured and nscp is listening on the loopback
+     * address, create empty user without password.
      */
-
-    if (set == NULL && STREQ(modPtr->addr, NS_IP_LOOPBACK)) {
-        Ns_DString ds;
+    if (Ns_SetSize(set) == 0u && STREQ(localModPtr->addr, NS_IP_LOOPBACK)) {
+        Ns_DString  ds;
+        const char *path;
 
         Ns_DStringInit(&ds);
         path = Ns_ModulePath(&ds, server, module, "users", (char *)0L);
@@ -190,7 +191,7 @@ LoadUsers(Mod *modPtr, const char *server, const char *module)
         userLength = (size_t)(passPart - user);
         *(p + userLength) = '\0';
 
-        hPtr = Tcl_CreateHashEntry(&modPtr->users, p, &isNew);
+        hPtr = Tcl_CreateHashEntry(&localModPtr->users, p, &isNew);
         if (isNew != 0) {
             Ns_Log(Notice, "nscp[%s]: added user: \"%s\"", server, p);
         } else {
@@ -217,7 +218,7 @@ LoadUsers(Mod *modPtr, const char *server, const char *module)
 
         ns_free(scratch);
     }
-    if (modPtr->users.numEntries == 0) {
+    if (localModPtr->users.numEntries == 0) {
         Ns_Log(Warning, "nscp[%s]: no authorized users", server);
     }
 }
@@ -254,8 +255,7 @@ Ns_ModuleInit(const char *server, const char *module)
     /*
      * Create the listening socket and callback.
      */
-
-    path = Ns_ConfigGetPath(server, module, (char *)0L);
+    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
     addr = Ns_ConfigString(path, "address", NS_IP_LOOPBACK);
     port = (unsigned short)Ns_ConfigInt(path, "port", 2080);
 
@@ -265,7 +265,6 @@ Ns_ModuleInit(const char *server, const char *module)
         result = NS_ERROR;
 
     } else {
-        Mod           *modPtr;
 
         Ns_Log(Notice, "nscp[%s]: listening on [%s]:%hu", server, addr, port);
 
@@ -291,6 +290,16 @@ Ns_ModuleInit(const char *server, const char *module)
 #else
         if (result == NS_OK) Ns_RegisterProcInfo((ns_funcptr_t)AcceptProc, "nscp", ArgProc);
 #endif
+
+        if (server != NULL) {
+            if (Ns_TclRegisterTrace(server, NscpAddCmds, server, NS_TCL_TRACE_CREATE) != NS_OK) {
+                result = NS_ERROR;
+            } else {
+                Ns_RegisterProcInfo((ns_funcptr_t)NscpAddCmds, "nscp:initinterp", NULL);
+            }
+        } else {
+            Ns_Log(Notice, "nscp: the command 'nscp' cannot be registered when the module is loaded globally");
+        }
     }
 
     return result;
@@ -314,9 +323,10 @@ Ns_ModuleInit(const char *server, const char *module)
  */
 
 static void
-ArgProc(Tcl_DString *dsPtr, const void *arg)
+ArgProc(Tcl_DString *dsPtr, const void *UNUSED(arg))
 {
-    const Mod *modPtr = arg;
+    /*const Mod *modPtr = arg;*/
+    assert(modPtr != NULL);
 
     Tcl_DStringStartSublist(dsPtr);
     Ns_DStringPrintf(dsPtr, "%s %d", modPtr->addr, modPtr->port);
@@ -341,7 +351,7 @@ ArgProc(Tcl_DString *dsPtr, const void *arg)
  */
 
 static bool
-AcceptProc(NS_SOCKET sock, void *arg, unsigned int why)
+AcceptProc(NS_SOCKET sock, void *UNUSED(arg), unsigned int why)
 {
     bool success = NS_TRUE;
 
@@ -351,7 +361,7 @@ AcceptProc(NS_SOCKET sock, void *arg, unsigned int why)
         success = NS_FALSE;
 
     } else {
-        Mod       *modPtr = arg;
+        /*Mod       *modPtr = arg;*/
         Sess      *sessPtr;
         socklen_t  len;
 
@@ -680,7 +690,7 @@ Login(const Sess *sessPtr, Tcl_DString *unameDSPtr)
  *
  * ExitObjCmd --
  *
- *      Special exit command for nscp.
+ *      Implements "exit", a special exit command for nscp.
  *
  * Results:
  *      Standard Tcl result.
@@ -706,6 +716,99 @@ ExitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
         Ns_TclPrintfResult(interp, "\nGoodbye!");
     }
     return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsNscpAddCmds --
+ *
+ *      Add the nscp commands.
+ *
+ * Results:
+ *      TCL_OK.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Ns_ReturnCode
+NscpAddCmds(Tcl_Interp *interp, const void *UNUSED(arg))
+{
+    /*const char *server = arg;*/
+
+    (void)Tcl_CreateObjCommand(interp, "nscp", NsTclNscpObjCmd, NULL, NULL);
+
+    return NS_OK;
+}
+/*
+ *----------------------------------------------------------------------
+ *
+ * NscpUsersObjCmd --
+ *
+ *      Implements "nscp users".
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+NscpUsersObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_HashSearch  search;
+        Tcl_HashEntry  *hPtr = Tcl_FirstHashEntry(&modPtr->users, &search);
+        Tcl_Obj        *resultObj = Tcl_NewListObj(0, NULL);
+
+        while (hPtr != NULL) {
+            char *userName = Tcl_GetHashKey(&modPtr->users, hPtr);
+
+            Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(userName, -1));
+            hPtr = Tcl_NextHashEntry(&search);
+        }
+
+        Tcl_SetObjResult(interp, resultObj);
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclNscpObjCmd --
+ *
+ *      Implements "nscp".
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+NsTclNscpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    const Ns_SubCmdSpec subcmds[] = {
+        {"users", NscpUsersObjCmd},
+        {NULL, NULL}
+    };
+    return Ns_SubcmdObjv(subcmds, clientData, interp, objc, objv);
 }
 
 /*

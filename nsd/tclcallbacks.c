@@ -81,21 +81,24 @@ Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr
 
     cbPtr = ns_malloc(sizeof(Ns_TclCallback) +
                       + (objc > 1 ? (size_t)(objc-1) * sizeof(char *) : 0u) );
+    if (unlikely(cbPtr == NULL)) {
+        Ns_Fatal("tclcallback: out of memory while creating callback");
+    } else {
 
-    cbPtr->cbProc = cbProc;
-    cbPtr->server = Ns_TclInterpServer(interp);
-    cbPtr->script = ns_strdup(Tcl_GetString(scriptObjPtr));
-    cbPtr->argc   = objc;
-    cbPtr->argv   = (char **)&cbPtr->args;
+        cbPtr->cbProc = cbProc;
+        cbPtr->server = Ns_TclInterpServer(interp);
+        cbPtr->script = ns_strdup(Tcl_GetString(scriptObjPtr));
+        cbPtr->argc   = objc;
+        cbPtr->argv   = (char **)&cbPtr->args;
 
-    if (objc > 0) {
-        int i;
+        if (objc > 0) {
+            int i;
 
-        for (i = 0; i < objc; i++) {
-            cbPtr->argv[i] = ns_strdup(Tcl_GetString(objv[i]));
+            for (i = 0; i < objc; i++) {
+                cbPtr->argv[i] = ns_strdup(Tcl_GetString(objv[i]));
+            }
         }
     }
-
     return cbPtr;
 }
 
@@ -261,7 +264,8 @@ Ns_TclCallbackArgProc(Tcl_DString *dsPtr, const void *arg)
  *
  * AtObjCmd --
  *
- *      Implements ns_atprestartup, ns_atstartup, ns_atsignal, ns_atexit.
+ *      Implements "ns_atprestartup", "ns_atstartup", "ns_atsignal",
+ *      and "ns_atexit".
  *
  * Results:
  *      Tcl result.
@@ -323,7 +327,7 @@ NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *
  * NsTclAtShutdownObjCmd --
  *
- *      Implements ns_atshutdown.  The callback timeout parameter is
+ *      Implements "ns_atshutdown".  The callback timeout parameter is
  *      ignored.
  *
  * Results:

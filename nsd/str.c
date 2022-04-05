@@ -100,7 +100,10 @@ Ns_StrTrimLeft(char *chars)
  *
  * Ns_StrTrimRight --
  *
- *      Trim trailing white space from a string.
+ *      Trim trailing white space from a string. Do NOT trim potential
+ *      parts of UTF-8 characters such we do not damage a string like
+ *      "test\xc3\x85", where \x85 is a UTF-8 whitespace; fortunately,
+ *      byte 2-4 in UTF-8 follows the pattern 10xxxxxx.
  *
  * Results:
  *      A pointer to the trimmed string, which will be in the
@@ -120,8 +123,8 @@ Ns_StrTrimRight(char *chars)
     NS_NONNULL_ASSERT(chars != NULL);
 
     len = (int)strlen(chars);
-
     while ((--len >= 0)
+           && (chars[len] > 0)
            && (CHARTYPE(space, chars[len]) != 0
                || chars[len] == '\n')) {
         chars[len] = '\0';
@@ -536,7 +539,7 @@ Ns_StrCaseFind(const char *chars, const char *subString)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_StrIsHost --
+ * Ns_StrIsValidHostHeaderContent --
  *
  *      Does the given string contain only characters permitted in a
  *      Host header? Letters, digits, single periods and the colon port
@@ -552,7 +555,7 @@ Ns_StrCaseFind(const char *chars, const char *subString)
  */
 
 bool
-Ns_StrIsHost(const char *chars)
+Ns_StrIsValidHostHeaderContent(const char *chars)
 {
     register const char *p;
     bool result = NS_TRUE;
@@ -657,8 +660,9 @@ Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *
         //fprintf(stderr, "NsTclObjIsByteArray\n");
         result = (unsigned char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
     } else {
-        int stringLength;
+        int         stringLength;
         const char *charInput;
+
         charInput = Tcl_GetStringFromObj(obj, &stringLength);
 
         //if (NsTclObjIsEncodedByteArray(obj)) {
@@ -675,6 +679,178 @@ Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *
     return result;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_Valid_UTF8 --
+ *
+ *      Check the validity of the UTF-8 input string.
+ *
+ *      This implementation is fully platform independent and
+ *      based on the code from Daniel Lemire, but not using
+ *      the SIMD operations from
+ *
+ *         John Keiser, Daniel Lemire, Validating UTF-8 In Less Than
+ *         One Instruction Per Byte, Software: Practice &
+ *         Experience 51 (5), 2021
+ *         https://github.com/lemire/fastvalidate-utf-8
+ *
+ *      If necessary, more performance can be squeezed
+ *      out. This might be the case, when this function would
+ *      be used internally for validating.
+ *
+ * Results:
+ *      Boolean value.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+bool Ns_Valid_UTF8(const unsigned char *bytes, size_t nrBytes)
+{
+    size_t index = 0;
+
+    for (;;) {
+        unsigned char byte1, byte2;
+
+        /*
+         * First a loop over 7-bit ASCII characters.
+         *
+         * In most cases, the strings are longer. Reduce the number of
+         * loops by processing eight characters at a time.
+         */
+        if (likely(index + 8 < nrBytes)) {
+            const uint64_t *p = (const uint64_t*)&bytes[index];
+
+            if ((*p & 0x8080808080808080u) == 0u) {
+                index += 8;
+                continue;
+            }
+        } else if (unlikely(index >= nrBytes)) {
+            /*
+             * Successful end of string.
+             */
+            return NS_TRUE;
+        }
+
+        /*Ns_Log(Notice, "[%ld] work on %.2x %c", index, bytes[index], bytes[index]);*/
+        byte1 = bytes[index++];
+        if (byte1 < 0x80) {
+            continue;
+
+        } else if (byte1 < 0xE0) {
+            /*
+             * Two-byte UTF-8.
+             */
+            if (index == nrBytes) {
+                /*
+                 * Premature end of string.
+                 */
+                Ns_Log(Debug, "UTF8 decode '%s': 2byte premature", bytes);
+                return NS_FALSE;
+            }
+            byte2 = bytes[index++];
+            if (byte1 < 0xC2 || ((/*bytes[index++]*/ byte2 & 0xC0u) != 0x80u)) {
+                Ns_Log(Debug, "UTF8 decode '%s': 2-byte invalid 2nd byte %.2x", bytes, byte2);
+                return NS_FALSE;
+            }
+        } else if (byte1 < 0xF0) {
+            /*
+             * Three-byte UTF-8.
+             */
+            if (index + 1 >= nrBytes) {
+                /*
+                 * Premature end of string.
+                 */
+                Ns_Log(Debug, "UTF8 decode '%s': 3-byte premature", bytes);
+                return NS_FALSE;
+            }
+            byte2 = bytes[index++];
+            if (byte2 > 0xBF
+                /* Overlong? 5 most significant bits must not all be zero. */
+                || (byte1 == 0xE0 && byte2 < 0xA0)
+                /* Check for illegal surrogate codepoints. */
+                || (byte1 == 0xED && 0xA0 <= byte2)
+                /* Third byte trailing-byte test. */
+                || bytes[index++] > 0xBF) {
+                return NS_FALSE;
+            }
+        } else {
+            /*
+             * Four-byte UTF-8.
+             */
+            if (index + 2 >= nrBytes) {
+                /*
+                 * Premature end of string.
+                 */
+                Ns_Log(Debug, "UTF8 decode '%s': 3-byte premature", bytes);
+                return NS_FALSE;
+            }
+            byte2 = bytes[index++];
+            if (byte2 > 0xBF
+                /* Check that 1 <= plane <= 16. Tricky optimized form of:
+                 * if (byte1 > (byte) 0xF4
+                 *     || byte1 == (unsigned char) 0xF0 && byte2 < (unsigned char) 0x90
+                 *     || byte1 == (unsigned char) 0xF4 && byte2 > (unsigned char) 0x8F)
+                 */
+                || (((unsigned)(byte1 << 28) + (byte2 - 0x90u)) >> 30) != 0
+                /* Third byte trailing byte test */
+                || bytes[index++] > 0xBF
+                /*  Fourth byte trailing byte test */
+                || bytes[index++] > 0xBF) {
+                return NS_FALSE;
+            }
+        }
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_Is7-bit --
+ *
+ *      Checks whether the input string is 7-bit. This functions tries to
+ *      perform this test with a low number of iterations for
+ *      performance reasons.
+ *
+ * Results:
+ *      Boolean value.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+bool Ns_Is7bit(const char *bytes, size_t nrBytes)
+{
+    const char *current = bytes, *end = bytes + nrBytes;
+    uint64_t mask1 = 0u, mask2 = 0u, mask3 = 0u, mask4 = 0u, last_mask = 0u;
+
+    /*
+     * An unsigned 64-bit integral type is not guaranteed by the C
+     * standard but is typically available on 32-bit machines, and on
+     * virtually all machines running Linux. ... and since we use this
+     * as well on other places, this should be ok.
+     */
+    for (; current < end - 32; current += 32) {
+        const uint64_t* p = (const uint64_t*)current;
+        mask1 |= p[0];
+        mask2 |= p[1];
+        mask3 |= p[2];
+        mask4 |= p[3];
+    }
+
+    for (; current < end - 8; current += 8) {
+        const uint64_t* p = (const uint64_t*)current;
+        mask1 |= p[0];
+    }
+
+    for (; current < end; current++) {
+        last_mask |= *(const uint8_t*)current;
+    }
+    return ((mask1 | mask2 | mask3 | mask4 | last_mask) & 0x8080808080808080u) == 0u;
+}
 
 /*
  * Local Variables:

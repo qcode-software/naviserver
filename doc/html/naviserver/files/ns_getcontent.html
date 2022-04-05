@@ -1,0 +1,98 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_getcontent - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_getcontent.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_getcontent.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_getcontent(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_getcontent - Return the message body of a received request</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDs</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_getcontent</b> <span class="opt">?<b class="option">-as_file</b> <i class="arg">bool</i>?</span> <span class="opt">?<b class="option">-binary</b> <i class="arg">bool</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command returns the content of a request as file or as string, no matter,
+whether it was spooled during upload into a file or not. The user
+can specify, whether the result should treated as binary or not.
+the default is &quot;-as_file true&quot;, since this will not run into
+memory problems on huge files.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDs</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_getcontent</b> <span class="opt">?<b class="option">-as_file</b> <i class="arg">bool</i>?</span> <span class="opt">?<b class="option">-binary</b> <i class="arg">bool</i>?</span></a></dt>
+<dd><p>Returns as result the filename of the temporary file (when spooled to
+a file, default) or the content of the file (when <b class="option">-as_file</b> is false).
+When <b class="option">-binary</b> is true (default) the result is returned
+literally, otherwise the content is translated to the active charset.</p>
+<p>Typically this command is used on POST, PUT, PROPFIND or similar requests.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>The following script checks, whether the received request was a POST
+or POST requests, it checks the provided content type, and in case it
+was a JSON type, it retrieves the payload of the request and converts
+it to a Tcl dict. Note that the json package form tcllib has some
+restrictions. There are several alternative JSON parsers available for
+Tcl.</p>
+<pre class="doctools_example">
+ if {[ns_conn method] in {PUT POST}
+    &amp;&amp; [ns_set iget [ns_conn headers] Content-Type] eq &quot;application/json&quot;
+ } {
+    package req json
+ 
+    set dict [json::json2dict [ns_getcontent -as_file false -binary false]]
+    ns_return 200 text/plain $dict\n
+ 
+ } else {
+    ad_return_complaint 1 &quot;unsupported HTTP method: [ns_conn method]&quot;
+ }
+</pre>
+<p>When the script above is saved in the page directory under the name
+json_receiver.tcl, and the server is running under port 8100 on
+localhost, the example above can be tested e.g. with the following
+command from the shell.</p>
+<pre class="doctools_example">
+ curl --header &quot;Content-Type: application/json&quot; --request POST --data '{
+   &quot;username&quot;:&quot;xyz&quot;,&quot;password&quot;:&quot;xyz&quot;
+ }' http://localhost:8100/json-receiver.tcl
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_conn.html">ns_conn</a>, <a href="ns_getform.html">ns_getform</a>, <a href="ns_return.html">ns_return</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#form">form</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

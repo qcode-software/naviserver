@@ -151,11 +151,11 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
      */
 
     Ns_DStringVarAppend(&ds, "GET ", url, " HTTP/1.0", (char *)0L);
-    status = Ns_ParseRequest(&request, ds.string);
-    if (status == NS_ERROR ||
-        request.protocol == NULL ||
-        !STREQ(request.protocol, "http") ||
-        request.host == NULL) {
+    status = Ns_ParseRequest(&request, ds.string, (size_t)ds.length);
+    if (status == NS_ERROR
+        || request.protocol == NULL
+        || !STREQ(request.protocol, "http")
+        || request.host == NULL) {
         Ns_Log(Notice, "urlopen: invalid url '%s'", url);
         goto done;
     }
@@ -259,7 +259,7 @@ Ns_FetchURL(Ns_DString *dsPtr, const char *url, Ns_Set *headers)
  *
  * NsTclGetUrlObjCmd --
  *
- *      Implements ns_geturl.
+ *      Implements "ns_geturl".
  *      This function is deprecated, use ns_http instead.
  *
  * Results:
@@ -335,7 +335,7 @@ NsTclGetUrlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *      Fill the socket stream buffer.
  *
  * Results:
- *      1 if fill ok, 0 otherwise.
+ *      NS_TRUE if fill ok, NS_FALSE otherwise.
  *
  * Side effects:
  *      None.

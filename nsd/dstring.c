@@ -102,7 +102,7 @@ Ns_DStringExport(Ns_DString *dsPtr)
      * was allocated with the same memory allocator from Tcl as used for
      * freeing in NaviServer. This is the case, when both Tcl (+ SYSTEM_MALLOC
      * patch) and NaviServer were compiled with SYSTEM_MALLOC, or both without
-     * it. The save assumption is that we cannot trust on this ans we do not
+     * it. The save assumption is that we cannot trust on this and we do not
      * define this flag.
      */
     if (dsPtr->string != dsPtr->staticSpace) {
@@ -116,7 +116,9 @@ Ns_DStringExport(Ns_DString *dsPtr)
 #else
     size = (size_t)dsPtr->length + 1u;
     s = ns_malloc(size);
-    memcpy(s, dsPtr->string, size);
+    if (likely(s != NULL)) {
+        memcpy(s, dsPtr->string, size);
+    }
 #endif
     Ns_DStringFree(dsPtr);
 
@@ -223,7 +225,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
     Ns_DStringSetLength(dsPtr, newLength);
 
     /*
-     * Now that any dstring buffer relocation has taken place it's
+     * Now that any dstring buffer relocation has taken place it is
      * safe to point into the middle of it at the end of the
      * existing data.
      */
@@ -239,7 +241,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
      * Check for overflow and retry. For win32 just double the buffer size
      * and iterate, otherwise we should get this correct first time.
      */
-#if defined(_WIN32) && defined(_MSC_VER) && _MSC_VER < 1900
+#if defined(_WIN32) && (!defined(_MSC_VER) || _MSC_VER < 1900)
     while (result == -1 && errno == ERANGE) {
         newLength = dsPtr->spaceAvl * 2;
 #else

@@ -1,0 +1,636 @@
+'\"
+'\" Generated from file 'main-features\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "main-features" n 4\&.99\&.23 manual "NaviServer Manual"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+main-features \- NaviServer Features
+.SH DESCRIPTION
+.SH "WHAT IS NAVISERVER?"
+NaviServer is a World Wide Web server that provides access control and
+database connections and runs on multiple UNIX platforms\&. NaviServer
+can access SQL databases including Sybase, SOLID, Postgres, and some
+third-party database drivers\&.
+.PP
+NaviServer is extendable with both C and Tcl APIs that expose core
+functions and provide primitives for accessing the database\&. NaviServer
+also provides optional CGI support, although the C and Tcl APIs are
+more powerful, offer superior performance, and are easier to use\&.
+.PP
+You can configure multiple servers within one NaviServer configuration
+file, and then specify which server to run when you run NaviServer\&.
+NaviServer also uses a multi-threaded design on all supported
+platforms\&. You can configure the number of threads each server can
+use\&.
+.PP
+NaviServer offers direct connections to SQL databases such as Postgres, Sybase, MS SQLServer\&.
+Third-party database drivers are provided for Oracle, Informix, and Interbase\&. You
+can even configure NaviServer to have connections to multiple databases
+and specify which databases are available to each server\&.
+.PP
+NaviServer also includes server administration capabilities\&. An access
+control system allows you to specify separate permissions for each
+combination of URL and HTTP method (GET, PUT, or POST)\&. You can also
+specify users and groups who are allowed access to NaviServer\&.
+.PP
+.SH FEATURES
+NaviServer Administration Features
+.PP
+.IP \(bu
+Access Control:
+.sp
+NaviServer's access control system allows you to define users, assign
+users to groups, and set permissions for users, groups, and hosts\&.
+.sp
+When defining permissions for the NaviServer, you can specify lists of
+users to allow or disallow, lists of groups to allow or disallow, and
+hosts (specified either by hostname or IP address) to allow or
+disallow for each method/URL combination\&.\&.
+.sp
+.IP \(bu
+Multi-homing:
+.sp
+NaviServer allows you to run multiple servers on one host by attaching
+them to different port and/or IP address combinations\&.
+.sp
+See the "Configuration for Multiple IP Addresses" section for
+information on configuring NaviServer for multi-homing\&.
+.sp
+.IP \(bu
+Database Services Features
+.sp
+NaviServer manages pools of open connections to databases\&. These pools
+let NaviServer quickly service simultaneous database requests (without
+continuously opening and closing the database), and to prevent a large
+number of HTTP requests from overloading the system\&. Both the Tcl and
+C APIs provide access to these database pools\&.
+.sp
+.IP \(bu
+Programming Interface Features
+.sp
+.IP \(bu
+Tcl Interface:
+.sp
+NaviServer can be extended using the Tcl scripting language\&. NaviServer
+provides a powerful Tcl API containing a full array of functions and
+primitives that give you access to all of NaviServer's core
+functionality and SQL databases\&. Tcl functions are available to
+interact with the connection, implement scheduled procedures, maintain
+state, access the sockets and threads interfaces, roll access logs,
+maintain permissions, access the database, and much more\&.
+.sp
+You can create scripts in a private Tcl library for each server, or in
+a library shared by multiple servers\&. Since Tcl is embedded in
+NaviServer, a separate process is not required to run a Tcl script,
+making Tcl extensions much more efficient than CGI-based extensions\&.
+.sp
+.IP \(bu
+NaviServer Dynamic Pages (ADPs)
+.sp
+ADPs allow you to embed Tcl scripts directly into HTML pages\&. The
+script(s) are interpreted dynamically when the page is accessed\&.
+.sp
+.IP \(bu
+C Interface:
+.sp
+NaviServer can also be extended with the C API\&. The C API lets you
+write your own logging routines, access control system, communications
+drivers, or database drivers\&. It provides all the necessary functions
+and structures you need to access NaviServer's core functionality and
+the database\&.
+.sp
+To use the C API, you compile your C module into a Unix shared
+library\&. NaviServer will dynamically load the module and call your
+initialization function\&.
+.sp
+.IP \(bu
+CGI Support, Including CGI File Type Activation:
+.sp
+NaviServer provides full CGI support\&. Because running a CGI program
+requires a separate process to be created, it is less efficient than
+extending NaviServer with Tcl or C\&.
+.sp
+You can configure NaviServer to look for CGI programs in a specific
+directory, or you can store CGI programs near the HTML files and refer
+to them using the \&.cgi file type\&. Any file with the \&.cgi extension
+will be interpreted as a CGI program by NaviServer\&. You can configure
+NaviServer to activate the \&.cgi file type in specific directories or
+groups of directories\&.
+.PP
+.PP
+.SS "HIGH PERFORMANCE"
+Fast and efficient handling of simultaneous connections through a combination
+of multi-threading, in-memory caching, and single-threaded asynchronous I/O\&.
+NaviServer has an advanced multithreaded architecture\&.  Multithreading
+features include:
+.IP \(bu
+Fast response without having to fork for each connection\&.
+.sp
+.IP \(bu
+Multiple, simultaneous servicing of connections\&.
+.sp
+.IP \(bu
+Ability to keep state in the address space of the single
+NaviServer process - no need to maintain slow and messy external
+files!
+.sp
+.IP \(bu
+Simple programming model where each request is handled in its own
+thread, freeing the programmer from the worry of a long running
+request blocking the server\&.
+.sp
+.IP \(bu
+Fully configurable minimum and maximum number of threads on a
+per-virtual server basis\&. Threads are transparently added when
+demand rises and then slowly exit as demand falls\&.
+.sp
+.IP \(bu
+The Tcl interface is fully multi-threaded aware - no special steps
+are required to ensure proper concurrent script evaluation\&.
+.sp
+.IP \(bu
+The nsthread platform-independent C API for multithreaded programming which
+includes:
+.RS
+.IP \(bu
+Functions to create and wait for new threads
+.IP \(bu
+Mutex, critical section, semaphore, and event objects to protect shared resources
+.IP \(bu
+Thread local storage for maintaining per-thread data
+.RE
+.sp
+.IP \(bu
+The nsthread interface allows the NaviServer programmer to write
+new C functions which use advanced multithreaded locking and
+synchronization techniques independent of the host platform\&. In
+fact, the NaviServer is written entirely using the nsthread
+interface - no platform specific multithreading code is used
+anywhere in the NaviServer or in any NaviServer module\&. No other Web
+server provides this level of multithreaded programming support!
+.sp
+.IP \(bu
+NaviServer performs in-memory caching of pages and scripts, and
+single-threaded asynchronous I/O for returning static content\&.
+.sp
+.PP
+.SS "TCL SCRIPTING"
+Quickly add dynamic content to your website:
+.IP \(bu
+Integrated multi-threaded interpreter runs scripts in parallel in one process
+with complete access to server state
+.IP \(bu
+NaviServer Dynamic Pages (ADP's) allow embedding of Tcl scripts in HTML pages
+.IP \(bu
+Rich, easy-to-use scripting language loaded with new NaviServer-specific
+extensions for building web applications
+.IP \(bu
+Ability to add your own C commands to the language
+.PP
+NaviServer includes the Tcl (Tool Command Language) scripting language
+as an integral part of its architecture:
+.IP \(bu
+The Tcl interface allows you to quickly build custom Web
+applications without C code or messy CGIs\&.
+.sp
+.IP \(bu
+The Tcl interface is multithreaded, allowing more than one Tcl
+script to operate in one or more virtual servers simultaneously\&.
+.sp
+.IP \(bu
+Built-in Tcl scripts operate up to 10 times faster than comparable
+Perl-based CGIs\&.
+.sp
+.IP \(bu
+The Tcl interface can be extended to include your own custom Tcl
+commands written as Tcl procedures or as C primitives\&.
+.sp
+.IP \(bu
+NaviServer extends Tcl to include commands for accessing one more
+open databases without writing any C code or executing slow
+external CGIs\&.
+.sp
+.IP \(bu
+The Tcl interface includes useful commands for accessing HTML form
+data and information about the active connection\&.
+.sp
+.IP \(bu
+The Tcl interface provides a command for opening a TCP/IP socket
+which can be used to implement a quick HTTP transaction to another
+Web server or send Email using SMTP (a procedure for sending email
+is included)\&.
+.sp
+.IP \(bu
+Resources allocated during evaluation of a Tcl script (e\&.g\&., open
+database handles, open files, ns_Set data) are automatically
+garbage collected after the script returns, freeing the script
+developer of these tedious tasks\&.
+.sp
+.IP \(bu
+Tcl scripts can be in the pages directory along with the HTML
+pages and images or in a special Tcl library directory:
+.sp
+.RS
+.IP \(bu
+Scripts in the pages directory are evaluated on each
+transaction which is ideal for quick script development\&.
+.IP \(bu
+Scripts in the library directories are evaluated at startup
+time for fast response without having to open and read the
+script file\&.
+.RE
+.sp
+.IP \(bu
+NaviServer includes an HTML-forms based interface for creating and
+updating Tcl scripts which are located in the Tcl library
+directory\&. Also included is a simple HTML form for ad-hoc
+evaluation of a Tcl script typed directly into a text area box\&.
+.sp
+.IP \(bu
+Tcl, unlike Java, has been in use by a large user community for
+years (join the comp\&.lang\&.tcl newsgroup) and is well documented by
+the creator of Tcl, John Ousterhout of Sun Microsystems\&.
+.sp
+.IP \(bu
+NaviServer Dynamic Pages (ADP's) are HTML pages that are parsed and
+run on the server when the page is accessed -- ADPs contain HTML
+tags and Tcl scripts\&.  ADPs are ideal in situations where you want
+to generate part or all of a specific page dynamically\&.
+.sp
+.PP
+.PP
+.SS "COMPLETE C API"
+Write custom dynamically loaded modules for:
+.IP \(bu
+Handling requests
+.IP \(bu
+Translating URLs
+.IP \(bu
+Logging
+.IP \(bu
+Database access
+.IP \(bu
+Thread creation and synchronization
+.IP \(bu
+And much more!
+.PP
+The NaviServer includes a complete C API\&. Using the C API you can write:
+.IP \(bu
+Custom request functions to handle HTTP request to a URL or a
+complete hierarchy of URLs\&.
+.sp
+.IP \(bu
+Custom URL-to-file translation routines to convert an HTTP URL to
+a file in the local filesystem\&. This can be used to map URLs to
+one or more filesystem directories as required for maintenance or
+load balancing\&.
+.sp
+.IP \(bu
+Rich Tcl API for use in your Tcl scripts\&. NaviServer provides
+initialization functions to ensure your command is available in
+all the Tcl interpreters in a virtual server Tcl interpreter pool\&.
+.sp
+.IP \(bu
+Database drivers to interface NaviServer to your own DBMS\&.
+.sp
+.IP \(bu
+Communications drivers so NaviServer can implement HTTP over a new
+underlying protocol:
+.RS
+.IP \(bu
+The included nssock module implements HTTP over
+regular TCP/IP sockets just like other basic Web servers such
+as NCSA, CERN, or WebSite\&.
+.IP \(bu
+Multi-Protocol support (e\&.g\&. smtp, nameserver, udp, \&.\&.\&.)
+.sp
+.IP \(bu
+Filter functions which run at any stage of each HTTP request\&. A
+filter can be used to implement logging - in fact, this is how the
+nslog Common Log Format logging module works\&.
+.sp
+.IP \(bu
+Scheduled procedures which run in the background at regular
+intervals\&. A scheduled procedure can be used in conjunction with a filter function to
+implement a statistics gathering system, or is often used for
+house-cleaning functions (similar to cron-jobs or at-jobs)\&.
+.sp
+.IP \(bu
+Configuratble job queues for heavy duty background work\&.
+.RE
+.PP
+.PP
+No other Web server C API is as complete and powerful as the NaviServer
+C API!
+.PP
+.SS "SQL DATABASE SERVICES"
+Powerful and easy access to a variety of SQL databases\&. Driver source
+for PostgreSQL and Sybase/MSSQLServer are included with others available from third
+parties\&.
+.PP
+NaviServer includes loads of features to help you connect your website
+to SQL databases:
+.IP \(bu
+Provides a platform independent interface to SQL relational databases\&.
+.sp
+.IP \(bu
+Connects to underlying database servers through plug-in database
+drivers:
+.sp
+.RS
+.IP \(bu
+Included are drivers for Sybase, MS SQLserver, and PostgreSQL\&.
+.sp
+.IP \(bu
+The NaviServer/AOLserver Communities have also contributed drivers for
+Informix, Oracle, Interbase, and MySQL\&.
+.sp
+.RE
+.IP \(bu
+NaviServer maintains one or more pools with one or
+more open database connections\&. By maintaining open connections,
+HTTP requests have instant access to the database instead of
+incurring the expensive startup time of a CGI-based solution\&.
+.sp
+.IP \(bu
+Requests are queued in first in, first out order to ensure
+efficient and fair use of database resources\&.
+.sp
+.IP \(bu
+Database operations are available through both the C and Tcl API's\&.
+.sp
+.PP
+.PP
+.SS "SECURE SOCKETS LAYER"
+SSL enables network encryption for e-commerce applications via nsssl module\&.
+.PP
+.SS "HIERARCHICAL ACCESS CONTROL"
+Restrict access to all or part of your Web through lists of users,
+groups, and/or client address\&.

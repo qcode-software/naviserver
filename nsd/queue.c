@@ -308,7 +308,7 @@ NsPoolAllocateThreadSlot(ConnPool *poolPtr, uintptr_t UNUSED(threadID))
     Ns_DListAppend(dlPtr, 0u);
     Ns_MutexUnlock(&poolPtr->rate.lock);
 
-    return (dlPtr->size -1u);
+    return (dlPtr->size - 1u);
 }
 
 /*
@@ -458,6 +458,7 @@ neededAdditionalConnectionThreads(const ConnPool *poolPtr) {
 void
 NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     bool create;
+    int  waitnum;
 
     NS_NONNULL_ASSERT(servPtr != NULL);
 
@@ -477,6 +478,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
         poolPtr->threads.current ++;
         poolPtr->threads.creating ++;
     }
+    waitnum = poolPtr->wqueue.wait.num;
 
     Ns_MutexUnlock(&poolPtr->threads.lock);
     Ns_MutexUnlock(&poolPtr->wqueue.lock);
@@ -484,7 +486,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     if (create) {
         Ns_Log(Notice, "NsEnsureRunningConnectionThreads wantCreate %d waiting %d idle %d current %d",
                (int)create,
-               poolPtr->wqueue.wait.num,
+               waitnum,
                poolPtr->threads.idle,
                poolPtr->threads.current);
         CreateConnThread(poolPtr);
@@ -677,9 +679,9 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
 
         if ((sockPtr->flags & NS_CONN_SOCK_WAITING) == 0u) {
             /*
-             * The flag NS_CONN_SOCK_WAITING is just used to avalid reporting
-             * the same request multiple times as unsuccessful queueing attempts
-             * (when rejectoverrun is false).
+             * The flag NS_CONN_SOCK_WAITING is just used to avoid reporting
+             * the same request multiple times as unsuccessful queueing
+             * attempts (when rejectoverrun is false).
              */
             sockPtr->flags |= NS_CONN_SOCK_WAITING;
             Ns_Log(Notice, "[%s pool %s] All available connections are used, waiting %d idle %d current %d",
@@ -815,7 +817,7 @@ SetPoolAttribute(Tcl_Interp *interp, int nargs, ConnPool *poolPtr, int *valuePtr
  *
  * ServerMaxThreadsObjCmd, subcommand of NsTclServerObjCmd --
  *
- *    Implements the "ns_server ... maxthreads ..." command.
+ *    Implements "ns_server ... maxthreads ...".
  *
  * Results:
  *    Tcl result.
@@ -855,7 +857,7 @@ ServerMaxThreadsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  *
  * ServerMinThreadsObjCmd, subcommand of NsTclServerObjCmd --
  *
- *    Implements the "ns_server ... minthreads ..." command.
+ *    Implements "ns_server ... minthreads ...".
  *
  * Results:
  *    Tcl result.
@@ -1001,7 +1003,7 @@ MapspecParse(Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url,
  *
  * ServerMapObjCmd, subcommand of NsTclServerObjCmd --
  *
- *    Implements the "ns_server ... map ..." command.
+ *    Implements "ns_server ... map ...".
  *
  * Results:
  *    Tcl result.
@@ -1149,7 +1151,7 @@ ServerMapObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *
  * ServerMappedObjCmd, subcommand of NsTclServerObjCmd --
  *
- *    Implements the "ns_server ... mapped " command.
+ *    Implements "ns_server ... mapped ".
  *
  * Results:
  *    Tcl result.
@@ -1219,7 +1221,7 @@ ServerMappedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *
  * ServerUnmapObjCmd, subcommand of NsTclServerObjCmd --
  *
- *    Implements the "ns_server ... unmap ..." command.
+ *    Implements "ns_server ... unmap ...".
  *
  * Results:
  *    Tcl result.
@@ -1420,8 +1422,8 @@ ServerListAllCmd(Tcl_DString *dsPtr, Tcl_Interp *interp, int objc, Tcl_Obj *cons
  *
  * NsTclServerObjCmd --
  *
- *      Implement the ns_server Tcl command to return simple statistics
- *      about the running server.
+ *      Implements "ns_server". This command provides configuration and status
+ *      information about a server.
  *
  * Results:
  *      A standard Tcl result.
@@ -2031,7 +2033,7 @@ NsConnThread(void *arg)
         /*
          * We are ready to process requests. Pick it either a request
          * from the waiting queue, or go to a waiting state and add
-         * jourself to the conn thread queue.
+         * yourself to the conn thread queue.
          */
         assert(argPtr->connPtr == NULL);
         assert(argPtr->state == connThread_ready);
@@ -2084,17 +2086,17 @@ NsConnThread(void *arg)
             poolPtr->tqueue.nextPtr = argPtr;
             Ns_MutexUnlock(tqueueLockPtr);
 
-            /*
-             * Wait until someone wakes us up, or a timeout happens.
-             */
             while (!servPtr->pools.shutdown) {
 
                 Ns_GetTime(timePtr);
                 Ns_IncrTime(timePtr, timeout.sec, timeout.usec);
 
+                /*
+                 * Wait until someone wakes us up, or a timeout happens.
+                 */
                 status = Ns_CondTimedWait(&argPtr->cond, &argPtr->lock, timePtr);
 
-                if (status == NS_TIMEOUT) {
+                if (unlikely(status == NS_TIMEOUT)) {
                     if (unlikely(argPtr->connPtr != NULL)) {
                         /*
                          * This should not happen: we had a timeout, but there
@@ -2115,15 +2117,15 @@ NsConnThread(void *arg)
 
                     } else {
                         /*
-                         * We have a timeout, and the thread can exit
+                         * We have a timeout, and the thread can exit.
                          */
                         break;
                     }
                 }
 
-                if (argPtr->connPtr != NULL) {
+                if (likely(argPtr->connPtr != NULL)) {
                     /*
-                     * We got something to do
+                     * We got something to do; therefore, leave this loop.
                      */
                     break;
                 }
@@ -2147,6 +2149,9 @@ NsConnThread(void *arg)
                      aPtr != NULL;
                      prevPtr = &aPtr->nextPtr, aPtr = aPtr->nextPtr) {
                     if (aPtr == argPtr) {
+                        /*
+                         * This request is for us.
+                         */
                         *prevPtr = aPtr->nextPtr;
                         argPtr->nextPtr = NULL;
                         break;

@@ -334,9 +334,13 @@ Ns_DbDriverDbType(Ns_DbHandle *handle)
 int
 Ns_DbDML(Ns_DbHandle *handle, const char *sql)
 {
-    const DbDriver *driverPtr = NsDbGetDriver(handle);
+    const DbDriver *driverPtr;
     int             status = NS_ERROR;
 
+    NS_NONNULL_ASSERT(handle != NULL);
+    NS_NONNULL_ASSERT(sql != NULL);
+
+    driverPtr = NsDbGetDriver(handle);
     if (driverPtr != NULL && handle->connected) {
 
         if (driverPtr->execProc != NULL) {
@@ -740,7 +744,7 @@ NsDbLoadDriver(const char *driver)
         if (module == NULL) {
             Ns_Log(Error, "dbdrv: no such driver '%s'", driver);
         } else {
-            const char *path = Ns_ConfigGetPath(NULL, NULL, "db", "driver", driver, (char *)0L);
+            const char *path = Ns_ConfigSectionPath(NULL, NULL, NULL, "db", "driver", driver, (char *)0L);
 
             /*
              * For unknown reasons, Ns_ModuleLoad is called with a

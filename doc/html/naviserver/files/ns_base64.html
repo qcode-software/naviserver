@@ -1,0 +1,121 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_base64 - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_base64.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_base64.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_base64(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_base64 - Binary-to-text and text-to-binary encoding</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_base64encode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></li>
+<li><a href="#2"><b class="cmd">ns_base64decode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></li>
+<li><a href="#3"><b class="cmd">ns_base64urlencode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></li>
+<li><a href="#4"><b class="cmd">ns_base64urldecode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>These commands perform a binary-to-text encoding and vice versa.  The
+ encoded text string will be approximately 33% longer than the
+ potentially (binary) original.
+ These commands use either the classical alphabet (see e.g. RFC 2045)
+ referred to as &quot;base64&quot; or the newer URL and filename safe alphabet,
+ referred to as &quot;base64url&quot; (see RFC 4648). The latter does not use
+ padding and inserts no linebreaks.</p>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_base64encode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></dt>
+<dd><p>Encode the potentially binary argument to classical base64 encoding.
+When the option <b class="option">-binary</b> is used, the Tcl byte array value
+of the provided input argument is used and no UTF-8 interpretation
+is performed.</p></dd>
+<dt><a name="2"><b class="cmd">ns_base64decode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></dt>
+<dd><p>Decode the argument containing only characters of the classical
+base64 alphabet. In case, the result might contain binary content,
+it is recommend to use the option <b class="option">-binary</b>, which causes the
+result to be a Tcl byte array.</p></dd>
+<dt><a name="3"><b class="cmd">ns_base64urlencode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></dt>
+<dd><p>Encode the potentially binary argument to the
+URL and filename safe alphabet. No padding with &quot;=&quot; signs is
+performed, no line breaks are inserted in the text.
+When the option <b class="option">-binary</b> is used, the Tcl byte array value
+of the provided input argument is used and no UTF-8 interpretation
+is performed.</p></dd>
+<dt><a name="4"><b class="cmd">ns_base64urldecode</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">string</i></a></dt>
+<dd><p>Decode the argument containing only characters of the URL and
+filename safe alphabet.
+In case, the result might contain binary content,
+it is recommend to use the option <b class="option">-binary</b>, which causes the
+result to be a Tcl byte array.</p></dd>
+</dl>
+<p>Classical base64 alphabet:</p>
+<pre class="doctools_example">
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+  'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
+</pre>
+<p>URL and filename safe alphabet:</p>
+<pre class="doctools_example">
+  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+  'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '_'
+</pre>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">EXAMPLES</a></h2>
+<p>Encoding and decoding with classical base64 alphabet:</p>
+<pre class="doctools_example">
+ % ns_base64encode Lorem?ipsum=1
+ TG9yZW0/aXBzdW09MQ==
+ 
+ % ns_base64decode TG9yZW0/aXBzdW09MQ==
+ Lorem?ipsum=1
+</pre>
+<p>Encoding and decoding with URL and filename safe alphabet:</p>
+<pre class="doctools_example">
+ % ns_base64urlencode Lorem?ipsum=1
+ TG9yZW0_aXBzdW09MQ
+ 
+ % ns_base64urldecode TG9yZW0_aXBzdW09MQ
+ Lorem?ipsum=1
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_uudecode.html">ns_uudecode</a>, <a href="ns_uuencode.html">ns_uuencode</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#encoding">encoding</a>, <a href="../../index.html#global_built_in">global built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

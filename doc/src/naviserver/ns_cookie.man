@@ -42,7 +42,7 @@ during subsequent requests for which the [arg domain] and [arg path] match,
 if it has not expired. If the provided domain is empty, it is ignored.
 
 [para]
-A cookie is identified by a signature which is made up of it's name, domain,
+A cookie is identified by a signature which is made up of its name, domain,
 path and secure flag. A cookie named [term foo] with path [term /x/y] is a
 different cookie than one named [term foo] with path [term /x/y/z]. During a
 request for the URL [term /x/y/z] both cookies named [term foo] are sent.
@@ -112,7 +112,7 @@ The cookie will expire the given [arg time], after which the client will no
 longer send the cookie back to the server.
 The [arg time] value can be specified in the form
 [arg secs[opt :microsecs]], or [arg secs.fraction],
-or as a number with the time units ms, s, m, d.
+or as a number with a time unit.
 If [arg time] is large it is treated
 as the absolute time in the future when the cookie should expire. The special
 value [emph -1] may be used to indicate that the cookie should never
@@ -170,7 +170,7 @@ Track all user agents which ever vist out site:
  ns_register_filter preauth GET /* browser_tracking_filter
 [example_end]
 
-[see_also ns_cookiecharset ]
+[see_also ns_cookiecharset ns_time]
 [keywords "server built-in" cookie session]
 
 [manpage_end]

@@ -1,0 +1,1079 @@
+'\"
+'\" Generated from file 'admin-maintenance\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "admin-maintenance" n 4\&.99\&.23 manual "NaviServer Manual"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+admin-maintenance \- NaviServer Maintenance Guide
+.SH DESCRIPTION
+.SH "RUNNING NAVISERVER"
+bin/nsd [-h|V] [-c|f|i|w] [-d] [-u <user>] [-g <group>] [-r <path>] [-b <prebindinfo>|-B <file>] [-s <server>] -t <file>
+.PP
+Options:
+.PP
+.IP \(bu
+\fI-h\fR
+.sp
+Print short help message
+.IP \(bu
+\fI-V\fR
+.sp
+Print the version number of NaviServer\&.
+.IP \(bu
+\fI-c\fR
+.sp
+Run in command (interactive) mode, when started Tcl shell will be provided
+same way as tclsh
+.IP \(bu
+\fI-f\fR
+.sp
+Run NaviServer in the foreground\&.
+.IP \(bu
+\fI-i\fR
+.sp
+Run NaviServer from /etc/inittab\&. This option is similar to -f except
+that stdout goes to the server\&.log file\&.
+.IP \(bu
+\fI-w\fR
+.sp
+Run under watchdog (restart a failed server)
+.IP \(bu
+\fI-d\fR
+.sp
+Run in debugger-friendly mode (ignore SIGINT)
+.IP \(bu
+\fI-u\fR
+.sp
+Run under the specified user id
+.IP \(bu
+\fI-g\fR
+.sp
+Run under the specified group id
+.IP \(bu
+\fI-r directory\fR
+.sp
+Change root directory (chroot) to the specified path\&.
+.IP \(bu
+\fI-b prebindinfo\fR
+.sp
+Prebind to the specified address during startup\&. This is
+necessary when starting the server with a privileged port running with
+a non-root user-id\&.  Typically, the addresses are of the form
+ipaddr:port, where the IP address can be either an IPv4 address in the
+dotted notation or an IPv6 address between square brackets (IP-literal
+notation)\&. When the IP address is followed by "#" and a positive
+number, the server binds the specified number of sockets to the same
+address\&. This is necessary, when multiple driver threads listen to the
+same port (and the system supports SO_REUSEPORT)\&.  Furthermore,
+multiple prebind addresses might be specified separated by a comma\&.
+.IP \(bu
+\fI-B file\fR
+.sp
+Prebind to address:port list from the specified file
+.IP \(bu
+\fI-s servername\fR
+.sp
+Specify the server to run, if the configuration file defines multiple
+servers\&. The Server1 server will be run by default\&.
+.IP \(bu
+\fI-t configuration-file\fR
+.sp
+Required\&. Specify the path to the configuration file\&.
+.IP \(bu
+\fI-T\fR
+.sp
+Don't run NaviServer, just test the configuration file
+specified by \fI-t\fR\&.  This option should be used on production
+sites to reduce the downtime of a server in case of typos\&.
+.PP
+.SS "USING WATCHDOG"
+NaviServer has implemented a quite useful \fIwatchdog\fR feature that allows the server to
+restart if it fails\&. In many situations you are now freed from setting up a special way of
+handling a server failure that would be solved with a simple restart\&.
+.PP
+Just start the server with the new \fI-w\fR switch\&.
+.PP
+Technically speaking the nsd process is forked twice and the first forked instance
+(the watchdog) controls the second (the worker)\&. The first instance reacts on exit
+codes and signals caught during the watch and correspondingly restarts the second instance\&.
+.PP
+\fIRestarting the Server\fR
+To restart the server from within your Tcl code:
+.CS
+
+
+ ns_shutdown -restart
+
+.CE
+To restart the server from the shell you can send the server the SIGINT\&.
+.PP
+\fIPro:\fR
+.IP \(bu
+Built-in feature\&. No need to setup something else\&.
+.IP \(bu
+Ability to restart from within your application\&.
+.PP
+\fICon:\fR
+.IP \(bu
+First step of implementation\&. You may need more options for the watchdog as
+it offers you now\&.
+.PP
+.SS SYSTEMD
+Most Unix-like systems tends to use systemd (see
+e\&.g\&. https://www\&.freedesktop\&.org/wiki/Software/systemd)\&. System admins might find
+the following sample configuration file for NaviServer helpful, which
+might be saved under \fI/etc/systemd/system/nsd\&.service\fR or
+\fI/usr/lib/systemd/system/nsd\&.service\fR\&.
+.CS
+
+
+ [Unit]
+ Description=NaviServer
+ After=network\&.target
+ # After=network\&.target postgresql\&.service
+ # Wants=postgresql\&.service
+
+ [Service]
+ Type=forking
+ PIDFile=/usr/local/ns/logs/nsd\&.pid
+ Environment="LANG=en_US\&.UTF-8"
+ # In case, a site is using Google Perfortools malloc with the system-malloc patch for Tcl:
+ # Environment="LD_PRELOAD=/usr/lib/libtcmalloc\&.so"
+ ExecStartPre=/bin/rm -f /usr/local/ns/logs/nsd\&.pid
+
+ # Standard startup with a non-privileged port (like 8000)
+ ExecStart=/usr/local/ns/bin/nsd -u nsadmin -g nsadmin -t /usr/local/ns/conf/nsd-config\&.tcl
+
+ # Startup for privileged port, like 80; the IPv6 address is bound to 2 sockets\&.
+ # ExecStart=/usr/local/ns/bin/nsd -u nsadmin -g nsadmin -t /usr/local/ns/conf/nsd-config\&.tcl -b YOUR-IPv4-ADDRESS:80,YOUR-IPv6-ADDRESS:80#2
+
+ Restart=on-abnormal
+ KillMode=process
+
+ [Install]
+ #WantedBy=multi-user\&.target
+
+.CE
+.SS "OTHER APPROACHES"
+There are several ways to keep your server running\&. Depending on your particular
+requirements the watchdog may not be the right thing for you\&.
+Common approaches are listed below\&.
+\fIUsing init with /etc/inittab\fR
+.PP
+Very easy to setup but with its own limitations\&. \fIinit\fR is the parent of all processes\&.
+It creates processes from the script \fI/etc/inittab\fR\&. Add a line like
+.CS
+
+
+ ns1:345:respawn:/usr/local/ns/bin/nsd -i -u nsadmin -g www -t /usr/local/ns/config\&.tcl
+
+.CE
+and init does the job of restarting the server if it crashes\&.
+\fIPro:\fR
+.IP \(bu
+Very easy to configure\&.
+.IP \(bu
+Some kind of built-in feature of your OS\&.
+.PP
+\fICon:\fR
+.IP \(bu
+You need to be root to edit /etc/inittab and make changes\&.
+.IP \(bu
+If there's an error during startup init tries to restart the
+server and then waits for some time\&. Repeats endlessly\&.
+.IP \(bu
+There's no simple way to just stop the server if you want to as
+init tries to keep it up\&.
+.PP
+.SS "USING CRON"
+As you already have (or may have) a rc-script for starting your server during boot
+time you simply could run a cronjob that checks the status of something like
+.CS
+
+
+ rcnaviserver status || rcnaviserver start
+
+.CE
+as part of a script every 5 minutes by adding a crontab line (crontab -e) like
+.CS
+
+
+ */5 * * * *		/root/cronjobs/nsd_crontab
+
+.CE
+\fIPro:\fR
+.IP \(bu
+If you wrap the status check in your own script you are more
+flexible in choosing the right action for the job, e\&.g\&. E-Mail
+notifications\&.
+.IP \(bu
+Works fine if you don't have a requirement of virtually no downtime\&.
+.PP
+\fICon:\fR
+.IP \(bu
+Slightly more work if you have the situation to just stop the
+server for maintenance etc\&. (E\&.g\&. just restart if a certain status
+file does not exist)
+.IP \(bu
+You have to touch at least three files: the rc-script, crontab
+list and restart script\&.
+.PP
+.SS "USING DAEMONTOOLS"
+Daemontools is a collection of software to control other processes\&.
+.PP
+\fIPro:\fR
+.IP \(bu
+Allows more users to control the process, e\&.g\&. users of a specific group\&.
+.PP
+\fICon:\fR
+.IP \(bu
+Extra package, you need to compile it\&.
+.IP \(bu
+You need to be root\&.
+.PP
+.SS "RUNNING AS ROOT"
+\fIPLEASE NOTE THAT THIS IS NOT RECOMMENDED FOR WEBSERVER USAGE\&.\fR
+The situations where you might want to run NaviServer as user root are rare to none\&.
+But NaviServer as a tool is so flexible that it cannot only be used as webserver\&.
+It is possible (and has been done) to use it as some kind of application where serving
+webpages is not the primary target\&.
+.PP
+So it is possible to tell NaviServer to run as root using the -u switch at startup from the command line\&.
+.PP
+Of course, you have to be root to do that:
+.CS
+
+
+ \&./nsd -f -u root -g www -t \&.\&./sample-config\&.tcl
+
+.CE
+You can see the result in the security info:
+.CS
+
+
+ \&.\&.\&.
+ [-main-] Notice: nsmain: NaviServer/4\&.99\&.22 (naviserver-4\&.99\&.20-160-gb0a76028caa2+) starting
+ [-main-] Notice: nsmain: security info: uid=0, euid=0, gid=8, egid=8
+ \&.\&.\&.
+
+.CE
+It is simply a convenience for people that need it to not have to rewrite code to achieve this\&.
+.SS "RUNNING INSIDE CHROOT ENVIRONMENT"
+Chrooting NaviServer effectively means to run it with a special root directory\&.
+When using Tcl commands like file, glob or exec only files "below" the specified
+path are visible, limiting access to critical files and devices\&. This is an important
+means to limit the access attackers of a website might gain\&.
+.PP
+You don't have to use the command line chroot command (see man page), NaviServer comes with built-in chroot capability\&.
+.PP
+There are scripts available (http://sourceforge\&.net/projects/nsdinstallers) with the intention
+to simplify and speed up the task of creating a chroot environment\&.
+.PP
+\fIBenefits\fR
+.IP \(bu
+Usually, strong barrier for attackers
+.IP \(bu
+Access to the filesystem is limited
+.IP \(bu
+Hopefully limits the damage of previously unknown, new security holes
+.PP
+\fIDisadvantages\fR
+.IP \(bu
+The setup of a chroot cage is a cumbersome task, you have to find out every library used, absolute paths might be compiled into the code, strace will become your friend\&.\&.\&.
+.IP \(bu
+Every other application used (e\&.g\&. ImageMagick) must be chrooted
+.IP \(bu
+When using a database network support must be enabled or the socket placed into the chroot environment (?)
+.IP \(bu
+Updates and patches for NaviServer or any other chrooted tool becomes more difficult
+.PP
+.PP
+\fIAlternatives\fR
+Use Novell AppArmor (http://www\&.novell\&.com/products/apparmor/) and create a Profile for NaviServer
+.SS "COMMAND (INTERACTIVE) MODE"
+Usually, you start the server and it waits for signals\&. With testing in mind, a new mode was
+added for developers: The interactive 'Command mode'\&.
+.PP
+If you start NaviServer with
+.CS
+
+
+ \&./nsd -c <other args>
+
+.CE
+it runs a Tcl shell and waits for commands\&. You are then able to do more comprehensive
+tests than going the other way with using a Tcl shell and loading libnsd\&.so\&.
+.PP
+\fINote:\fR
+.PP
+This mode is not intended to be used for a production system\&. If you need insight on a running server
+the control port (module nscp) might be the right thing for you\&.
+.PP
+Just a quick example: The server is started and two commands are
+issued, \fBns_info threads\fR
+and \fBns_server requestprocs\fR\&.
+.CS
+
+
+ buckel@tulpe:/usr/local/ns/bin> \&./nsd -c -u nsadmin -g www -t \&.\&./sample-config\&.tcl
+ [-main:conf-] Notice: nsmain: NaviServer/4\&.99\&.22 (naviserver-4\&.99\&.20-160-gb0a76028caa2+) starting
+ [-main:conf-] Notice: nsmain: security info: uid=500, euid=500, gid=100, egid=100
+ [-main:conf-] Notice: nsmain: max files: soft limit 10240, hard limit 10240
+ [-main:default-] Notice: nsd/init\&.tcl [default]: booting virtual server:  Tcl system encoding: "utf-8"
+ [-main:default-] Notice: modload: loading '/usr/local/ns/bin/nssock\&.so'
+ [-main:default-] Notice: modload: loading '/usr/local/ns/bin/nslog\&.so'
+ [-main:default-] Notice: nslog: opened '/usr/local/ns/servers/server1/modules/nslog/access\&.log'
+ [-main:default-] Notice: conf: [ns/server/server1]enabletclpages = 0
+ [-main:default-] Notice: nsmain: NaviServer/4\&.99\&.22 (naviserver-4\&.99\&.20-160-gb0a76028caa2+) running
+ [-main:default-] Notice: nsmain: security info: uid=500, euid=500, gid=100, egid=100
+ [-sched-] Notice: sched: starting
+ [-driver:nssock:0-] Notice: starting
+ [-driver:nssock:0-] Notice: nssock:0: listening on [0\&.0\&.0\&.0]:8080
+ [-driver:nssock:0-] Notice: driver: accepting connections
+
+ % ns_info threads
+ {-driver- -main- 1084140464 0 1119862183 p:0x40037cfb a:0x0}
+ {-sched- -main- 1082039216 0 1119862183 p:0x4004a09a a:0x0}
+ {-main- {} 1076887680 1 1119862183 p:0x0 a:0x0}
+
+ % ns_server requestprocs
+ {GET / * inherit ns:fastget a:0x0} {HEAD / * inherit ns:fastget a:0x0} {POST / * inherit ns:fastget a:0x0}
+ %
+
+.CE
+.SS EXAMPLES
+.CS
+
+
+ nsd -t nsd\&.tcl
+
+.CE
+.PP
+This is the simplest form of the command line\&.
+.PP
+.CS
+
+
+ nsd -ft nsd\&.tcl
+
+.CE
+.PP
+NaviServer will be run in the foreground\&.
+.CS
+
+
+ nsd -fkt nsd\&.tcl -r /newroot
+
+.CE
+.PP
+NaviServer will be run in a chroot environment, and any
+currently-running server will be killed\&.
+.SH "MAINTENANCE TASKS"
+An NaviServer installation requires regular maintenance as follows:
+.IP [1]
+Make regular backups of pages and associated files for each virtual server\&.
+.IP [2]
+Make regular backups of the access log\&.
+.IP [3]
+Make regular backups of the server log, especially if verbose
+messages are enabled\&.
+.IP [4]
+Make regular backups of the Tcl directory(ies)\&.
+.IP [5]
+Make regular backups of the bin directory, especially if you have
+customized loadable modules\&.
+.PP
+.PP
+Each of these maintenance tasks is described in the following sections\&.
+.SH "MAINTAIN THE DIRECTORIES"
+The NaviServer directories described below should be backed up
+regularly to ensure against filesystem failure\&.
+.SS "BACK UP THE PAGES DIRECTORY"
+The location of the pages directory for each virtual server is
+determined by the server-specific PageDir entry in the NaviServer
+configuration file\&. Normally, it is the /pages subdirectory under
+the NaviServer home directory\&.
+.PP
+Use whatever filesystem backup procedure you have in place at your
+site\&. To schedule nightly backups, use the Unix cron facility\&.
+.SS "BACK UP THE ACCESS LOG"
+The access log file needs to be backed up regularly\&. By default, the
+access log for each virtual server is in the
+/logs/access\&.log file under the NaviServer home directory\&.
+.PP
+The access log can be configured to limit the number of old logs
+maintained (with the MaxBackup parameter)\&. This parameter sets an
+upper limit on the amount of disk space the access logs take\&. However,
+because old logs beyond the limit configured to be saved by the
+NaviServer are deleted automatically, you must back up old logs if you
+require a complete history of access to your site\&. For example, if the
+MaxBackup parameter in the configuration file is set to 5, only five
+old access log files will remain on disk\&. When a sixth log file needs
+to be opened, the oldest log is removed\&.
+.SS "BACK UP THE SERVER LOG"
+Ordinarily, the server log file grows at a slow rate and does not need
+regular truncation\&. However, while debugging new applications, you
+should set the Verbose parameter in the ns/module/nsdb/pool/pool-name
+section in the configuration file to on instead of off (the
+default)\&. Every SQL statement sent to the database is logged in the
+error log and causes the file to grow much more quickly\&. In this case
+you may want to back up the error log\&.
+.SS "BACK UP THE TCL SCRIPTS DIRECTORY"
+The Tcl scripts directory contains the source to the Tcl scripts that
+provide the server with much of its advanced functionality\&. Tcl
+scripts for each virtual server are stored in the
+/tcl subdirectory by default, and global Tcl scripts are
+stored in the /modules/tcl subdirectory by default\&.
+.PP
+If you write new Tcl scripts or edit the existing ones, you must
+ensure your changes are saved regularly to a safe place\&. Also, be sure
+that any external files utilized by your Tcl scripts are backed up
+too, including files outside the NaviServer home directory\&.
+.SS "BACK UP THE BIN DIRECTORY"
+The /bin subdirectory of the NaviServer home is the location of the
+NaviServer binary and the default location of any dynamically loadable
+C modules\&. If your site maintains several interesting loadable
+modules, you must make sure copies of the modules are backed up to
+avoid having to recompile them after a filesystem failure\&. Also, be
+sure to back up your module source code\&.
+.SH "DIRECTORY MAP"
+This table describes all of the directories that are created under the
+NaviServer installation directory when you install NaviServer\&. It lists
+the files or types of files that are stored in each directory, the
+configuration parameters that affect the directory or the files in the
+directory, and references to where you can find more information on
+the associated NaviServer features\&.
+.SS /CONF
+.PP
+Directory containing the NaviServer configuration files\&. This
+is convention and convenience, the configuration files can be located
+anywhere as nsd process requires path to configuration file\&.
+.PP
+Files:
+.CS
+
+
+ \&.tcl files nsd\&.tcl sample-config\&.tcl simple-config\&.tcl
+
+.CE
+.SS /BIN
+.PP
+Directory containing the NaviServer binary and the default directory
+for any dynamically-loadable C modules\&.
+.PP
+Files:
+.CS
+
+
+ \&.so files, nsd, tclsh, \&.\&.\&.
+
+.CE
+.SS /INCLUDE
+.PP
+Directory containing header files for NaviServer\&. These files are
+primarily needed for compiling additional C modules\&.
+.PP
+Files:
+.CS
+
+
+ \&.h files
+
+.CE
+.SS /LIB
+.PP
+Directory containing static libraries used for building customized
+components to NaviServer\&. This directory currently only includes the
+libnspd\&.a file that can be used to build database proxy daemons
+(external database drivers)\&.
+.PP
+Files:
+.CS
+
+
+ libnsd\&.so,
+ libnsdb\&.so,
+ libnsthread\&.so,
+ libnsproxy\&.so,
+ \&.\&.\&.
+
+.CE
+.SS /LOGS
+.PP
+Directory containing log files and the server pid file\&.
+.PP
+Files:
+.CS
+
+
+ access\&.log,
+ server\&.log,
+ nsd\&.pid
+
+.CE
+.SS /MODULES
+.PP
+Contains directories for each configured module that operates across
+servers, such as the "tcl" or "nsperm" folders\&.
+.SS /MODULES/NSPERM
+.PP
+Directory containing user, group, and permissions files which
+is used to provide access control for NaviServer\&.
+.PP
+Files:
+.CS
+
+
+ passwd, group, hosts\&.allow, hosts\&.deny, perms
+
+.CE
+.SS /MODULES/TCL
+.PP
+Default directory for private Tcl script library for this server\&.
+.PP
+Files:
+.CS
+
+
+ \&.tcl
+
+.CE
+.SS /PAGES
+.PP
+Default directory where pages and images for the server are
+stored\&.  Users define typically various subdirectories of this
+directory\&.
+.PP
+Files (typically):
+.CS
+
+
+ \&.htm, \&.html, \&.shtml, and \&.adp
+
+.CE
+.SS /TCL
+.PP
+Default directory for shared Tcl script library\&. Also contains
+subdirectories containing Tcl examples and Tcl scripts for various
+modules\&. The top-level files of this directory are loaded into
+NaviServer during startup\&.
+.PP
+Files:
+.CS
+
+
+ \&.tcl
+
+.CE
+.SH "SECURITY GUIDE"
+This chapter provides guidelines for ensuring the security of systems
+running NaviServer\&. It describes the issues that must be considered and
+the associated modifications that should be made to NaviServer
+installations\&.
+.SS "GENERAL NSADMIN PASSWORDS"
+.PP
+By default, the nsadmin password for NaviServer is either set
+to NULL or to a poor password\&. Set an acceptable password for nsadmin
+as described below\&.
+.PP
+Edit the nsadmin entry in the "\fI/modules/nsperm/passwd\fR"
+file\&. For example, the default passwd file contains this nsadmin
+entry:
+.CS
+
+
+ nsadmin:CUdnvgBYocLSI:::::
+
+.CE
+.PP
+Substitute an alternate encrypted password in place of
+\fICUdnvgBYocLSI\fR\&.
+.PP
+To produce a hash for a new password, use \fBns_crypt\fR in
+Command mode (using "nsd -c"):
+.CS
+
+
+ % ns_crypt MyNewPassword xx
+ xxhR1Y2vt4OOY
+
+.CE
+Alternatively, the same hash can be produced from the command line
+using e\&.g\&. Perl:
+.CS
+
+
+ $ perl -le 'print crypt("MyNewPassword","xx");'
+ xxhR1Y2vt4OOY
+
+.CE
+.PP
+For more information about the passwd file, see the "Defining
+Users" section\&.
+.PP
+.SS "PERMISSION SETTINGS"
+.PP
+It is more secure to avoid using the \fInsperm\fR module and use file-level
+security for ADPs\&. If you must use the \fInsperm\fR module, set appropriate
+permissions records as follows:
+.PP
+.IP [1]
+Maintain the same permission records for GET and POST; they
+actually provide the same permissions\&.
+.IP [2]
+Remove any permission records related to network publishing (PUT,
+DELETE, MKDIR, and BROWSE) for all users except nsadmin\&.
+.IP [3]
+Keep in mind the inheritance rules for permission records\&. In
+general, a permission record for a directory also applies to the
+directories underneath it\&.
+.PP
+.PP
+To define NaviServer permissions, create permission entries for them in
+the perms file, which resides in the /modules/nsperm directory\&. The
+default perms file does not contain any permission entries, but it
+contains comments that explain how to add entries to the file\&.
+.PP
+For more information about setting permissions, see the "Permissions"
+section\&.
+.PP
+.SH "RECOMMENDED SECURITY MODIFICATIONS"
+The actions described in this section are recommended, but not
+required, to ensure the security of systems running NaviServer\&.
+.PP
+.SS "NAVISERVER VERSION"
+In general, NaviServer versions 4\&.99 and higher should be used whenever
+possible, because they are more secure than earlier versions of
+NaviServer\&.
+.PP
+.IP \(bu
+NaviServer can be run in a chroot environment\&.
+.IP \(bu
+The configuration file, which has a new Tcl format, is executed in
+a separate, temporary interpreter that is destroyed before startup
+begins\&. The configuration file memory buffer is then zeroed after
+parsing\&.
+.IP \(bu
+The nsd binary can be stored outside the root directory because
+NaviServer no longer locates and re-executes itself\&.
+.IP \(bu
+The configuration file can be stored outside the root directory,
+because NaviServer opens and reads the configuration file before
+running chroot()\&.
+.IP \(bu
+The \fInscp\fR module, which allows connections only from localhost,
+provides a secure control port interface that allows ad hoc Tcl
+evaluation and other server administration features\&. For more
+information about the control port interface, see the "NaviServer's
+Control Port Interface" section\&.
+.PP
+.PP
+.SS "SECURE CHROOT ENVIRONMENT"
+NaviServer should be run in a secure chroot() environment whenever
+possible\&.
+.PP
+In Versions 4\&.99 or higher, NaviServer supports a -r command line option
+to run NaviServer in a chroot() environment\&. It provides the following
+benefits:
+.PP
+.IP \(bu
+The chroot() system call updates the process such that all
+absolute filenames are relative to a new root directory instead of
+the actual mounted filesystem\&.
+.IP \(bu
+The chroot() call is irrevocable\&. Once chroot() returns, the
+server cannot access any file above the new root directory\&.
+.IP \(bu
+Although it does not actually protect any of the underlying
+content, scripts, or protected databases, chroot() is the single
+most effective tool for protecting the server machine and
+sensitive information, such as user passwords and configuration
+files, from view\&.
+.PP
+.PP
+To run NaviServer in a chroot() environment, you need only copy a few
+files and directories to the new root directory\&. For example, on the
+SGI platform, you would execute the following commands to create new
+directories and copy the necessary files to them:
+.CS
+
+
+ mkdir $root/dev $root/tmp $root/etc
+ chmod 1777 $root/tmp
+ $root/dev; /dev/MAKEDEV generic usema
+ cp /etc/passwd /etc/resolve\&.conf $root/etc
+
+.CE
+Then, you can run NaviServer with the -r option as in this example:
+nsd -t nsd\&.tcl -r $root
+.PP
+For more information about the nsd command line, see the "NaviServer
+Command Line" section\&.
+.PP
+.SS "RESTRICTED CONTENT"
+Determine whether any of the content available to a NaviServer in a
+chroot() environment would be restricted\&. In general, NaviServer should
+be read-only and everything it can read should be world-readable\&.
+.PP
+If any of the content available to NaviServer is restricted, the
+NaviServer administrator needs to define the appropriate permissions
+with the \fInsperm\fR module\&. The administrator should be very clear which
+areas are blocked off and know both the URL and METHOD for the
+restricted areas\&.
+.PP
+It is preferable to allow the GET method for all URLs and have nothing
+restricted accessible through NaviServer\&.
+.PP
+.SS "TCL LIBRARY"
+Limit the available Tcl functions to just those functions that are
+necessary by that particular NaviServer installation\&. Purge the Tcl
+library of unnecessary functions\&. For example, if the site doesn't
+send e-mail, remove the ns_sendmail procedures\&.
+.PP
+Some potentially unsafe commands you may want to consider removing
+are:
+.PP
+.IP \(bu
+File system related functions, such as open, read, and puts
+.IP \(bu
+The NaviServer ns_sock* Tcl functions
+.IP \(bu
+The Tcl socket routines
+.IP \(bu
+The exec command
+.IP \(bu
+The file command, or at least the delete and rename features
+.IP \(bu
+The exit command
+.PP
+.PP
+This code example disables the open command:
+.PP
+.CS
+
+
+ static int
+ AddCmds(Tcl_Interp, void *arg) {
+     Tcl_CreateCommand(interp, "open", BadCmd, NULL, NULL);
+     return TCL_OK;
+ }
+
+ static int
+ BadCmd(ClientData dummy, Tcl_Interp *interp, int argc, char **argv) {
+     Tcl_AppendResult(interp, "disabled command: ", argv[0], NULL);
+     return TCL_ERROR;
+ }
+
+.CE
+.SS "STACK SIZE"
+Apart from the specific details of integration of your favored
+language you may have to take a look at the \fIstacksize\fR parameter of
+your configuration file\&.
+.PP
+As a rule of thumb the default stack size (in bytes)
+.CS
+
+
+ #
+ # Thread library (nsthread) parameters
+ #
+ ns_section ns/threads {
+   ns_param   stacksize 64kB   ;# Per-thread stack size\&.
+ }
+
+.CE
+is almost always not enough\&. Use e\&.g\&. 512kB for the start:
+.CS
+
+
+ #
+ # Thread library (nsthread) parameters
+ #
+ ns_section ns/threads {
+   ns_param   stacksize 512kB  ;# Per-thread stack size\&.
+ }
+
+.CE
+If the size of the stack is not enough you may encounter crashes without real explanation\&.
+.SS "DATABASE ACCESS"
+Database access should be restricted with read-only logins to the
+server and queries through stored procedures\&.
+.SS "CONTROL PORT INTERFACE"
+The control port interface (module \fInscp\fR) should not be used unless absolutely
+necessary\&. A user connected to his interface can issue arbitrary
+commands\&. When the module is activated, it is recommended to accept
+only commands via the loopback interface\&.
+.PP
+For more information about the control port interface, see the
+documentation of the \fInscp\fR ("NaviServer's Control Port") module\&.
+.SH "SEE ALSO"
+admin-install, commandlist, ns_server
+.SH KEYWORDS
+command-line-options, nscp, nsd, nsdb, nsperm, prebind

@@ -473,6 +473,7 @@ static const struct exttype {
     { ".jsonld",  "application/vnd.ims.lis.v2.result+json"},
     { ".jtd",     "text/vnd.esmertec.theme-descriptor"},
     { ".jut",     "image/jutvision" },
+    { ".jxl",     "image/jxl" },                             /* IANA provisional */
     { ".kar",     "audio/midi" },
     { ".kia",     "application/vnd.kidspiration"},
     { ".kml",     "application/vnd.google-earth.kml+xml"},
@@ -1317,7 +1318,7 @@ Ns_GetMimeType(const char *file)
  *
  * NsTclGuessTypeObjCmd --
  *
- *      Implements ns_guesstype.
+ *      Implements "ns_guesstype".
  *
  * Results:
  *      Tcl result.

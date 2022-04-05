@@ -1,0 +1,184 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<title>ns_adp_register - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_adp_register.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_adp_register.n
+   -->
+<body><div id="man-header">
+  <a href="https://wiki.tcl-lang.org/page/NaviServer"><span class="logo">&nbsp;</span><strong>NaviServer</strong></a>
+  - programmable web server
+</div>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+<h1 class="doctools_title">ns_adp_register(n) 4.99.23 naviserver &quot;NaviServer Built-in Commands&quot;</h1>
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_adp_register - Creating custom ADP tags</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_adp_registeradp</b> <i class="arg">tag</i> <span class="opt">?<i class="arg">endtag</i>?</span> <i class="arg">adpstring</i></a></li>
+<li><a href="#2"><b class="cmd">ns_adp_registerproc</b> <i class="arg">tag</i> <span class="opt">?<i class="arg">endtag</i>?</span> <i class="arg">proc</i></a></li>
+<li><a href="#3"><b class="cmd">ns_adp_registerscript</b> <i class="arg">tag</i> <span class="opt">?<i class="arg">endtag</i>?</span> <i class="arg">script</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>These commands enable definition of HTML tags within an ADP file
+which are expanded and evaluated by the server before returning output
+to the client. Tags are defined as either a single tag with
+options, e.g.,  &lt;mytag a=b c=d&gt;  or as an
+opening/closing tag pair, e.g.,  &lt;mytag&gt; text
+&lt;/mytag&gt; . This approach is an alternative to
+direct calls via the  &lt;% script %&gt;  syntax as
+described in the  ns_adp  man page.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_adp_registeradp</b> <i class="arg">tag</i> <span class="opt">?<i class="arg">endtag</i>?</span> <i class="arg">adpstring</i></a></dt>
+<dd><p>This command registers an ADP
+code fragment to be invoked when the specified tag is
+encountered while parsing an ADP. The  <i class="arg">tag</i>  argument
+specifies the tag that will trigger invocation of the ADP
+fragment, which is specified by the  <i class="arg">adpstring</i>  argument.</p>
+<p>If the  endtag  argument is specified, then the ADP fragment
+will be invoked with two arguments: The first will be the
+enclosed content, and the second will be the name of an
+ns_set with any attributes specified in the tag. If no
+endtag  argument is specified, the ADP fragment will
+only be passed the name of the ns_set. The arguments may be
+retrieved using  ns_adp_bindargs  or  ns_adp_argc
+and  ns_adp_argv .</p>
+<p>When the ADP fragment is invoked, its result is inserted in the output
+instead of the tag (or, if the  endtag  was specified,
+in place of the tag, end tag, and the enclosed content).</p>
+<p>Note: Care must be taken when using this function from inside an ADP, because
+the ADP string  is likely to contain script delimiters
+( &lt;% ... %&gt; ) which will prematurely terminate
+script fragments. It is probably easier to restrict use of
+this function to .tcl files.</p>
+<pre class="doctools_example">
+ ns_adp_registeradp example example.adp
+ 
+ ns_adp_registeradp printdate {
+      The current date is: &lt;% ns_adp_puts [ns_httptime [ns_time]] %&gt;
+ }
+</pre>
+<p>Once defined, typically in a startup script, you could simple include  &lt;example&gt; or
+&lt;printdate&gt; in ADP pages.</p></dd>
+<dt><a name="2"><b class="cmd">ns_adp_registerproc</b> <i class="arg">tag</i> <span class="opt">?<i class="arg">endtag</i>?</span> <i class="arg">proc</i></a></dt>
+<dd><p>This command registers a Tcl procedure to be evaluated when the given
+tag is encountered. The tag argument specifies the tag that will
+trigger a call to the procedure specified by the proc argument.</p>
+<p>The procedure will be called with a variable number of arguments,
+one for each of the attributes provided in the tag. If the  endtag
+argument is specified, the procedure will also receive a
+final argument with the contents of the text enclosed
+between the tags. No evaluation of the content will be
+performed, it will be passed as a single text block.</p>
+<p>When the procedure is invoked, its result is inserted in the
+output instead of the tag (or, if the  endtag  was specified, in place of
+the tag, end tag, and the enclosed content).</p></dd>
+<dt><a name="3"><b class="cmd">ns_adp_registerscript</b> <i class="arg">tag</i> <span class="opt">?<i class="arg">endtag</i>?</span> <i class="arg">script</i></a></dt>
+<dd><p>This command registers a Tcl script to be evaluated when the
+given tag is encountered. The  tag  argument specifies the tag that
+will trigger evaluation of the script specified by the
+script  argument.</p>
+<p>If the  endtag  argument is specified, then the script will be
+modified with two arguments appended: The first will be the
+enclosed content, and the second will be the name of an
+ns_set with any attributes specified in the tag. If no
+ endtag  argument is specified, the script will be
+modified with just the name of the ns_set appended.</p>
+<p>When the script is evaluated, its result is inserted in the output
+instead of the tag (or, if the  endtag  was specified, in place of
+the tag, end tag, and the enclosed content).</p>
+<p>The following is a simple way of handling conditional content in ADPs:</p>
+<pre class="doctools_example">
+ proc remember {input tagset} {
+ 
+   set tagname [ns_set iget $tagset name]
+   if {[string match &quot;&quot; $tagname]} {
+     set ::_adp_memory($tagname) $input
+     return &quot;&quot;
+   } else {
+     return $input
+   }
+ }
+ 
+ proc recall {name} {
+ 
+   if {[info exists ::_adp_memory($name)]} {
+     set parsecommand [list ns_adp_parse -string]
+     lappend parsecommand $::_adp_memory($name)
+     ns_puts -nonewline [uplevel $parsecommand]
+   } else {
+     ns_log Error &quot;[ns_adp_argv 0]: Unable to recall&quot;
+   }
+ }
+</pre>
+<p>If the preceding Tcl has been executed (perhaps during server startup),
+then the following ADP fragment displays the results of a
+database query in a table, or shows &quot;No rows in
+result.&quot; if there are no rows:</p>
+<pre class="doctools_example">
+ &lt;%
+  set rows {}
+  set db [ns_db gethandle]
+  ns_db exec &quot;select somecolumn from sometable&quot;
+  set row [ns_db bindargs $db]
+  while {[ns_db getrow $db $row]}  {
+      lappend rows [ns_set get $row &quot;somecolumn&quot;]
+  }
+  ns_db releasehandle $db
+ %&gt;
+ 
+ &lt;remember name=&quot;has-rows_header&quot;&gt; &lt;table&gt; &lt;/remember&gt;
+ &lt;remember name=&quot;hasrows_rows&quot;&gt; &lt;tr&gt;&lt;td&gt;&lt;%=$column%&gt;&lt;/td&gt;&lt;/tr&gt; &lt;/remember&gt;
+ &lt;remember name=&quot;hasrows_footer&quot;&gt; &lt;/table&gt; &lt;/remember&gt;
+ No rows in result.
+ &lt;remember name=&quot;norows&quot;&gt;
+ 
+ &lt;%
+  if {[llength $rows]  &gt;  0}  {
+    recall  &quot;hasrows_header&quot;
+    foreach row $rows {
+      set column $row
+      recall &quot;hasrows_rows&quot;
+    }
+    recall &quot;hasrows_footer&quot;
+  } else {
+    recall &quot;norows&quot;
+  }
+ %&gt;
+</pre>
+</dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_adp.html">ns_adp</a>, <a href="ns_adp_include.html">ns_adp_include</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#adp">ADP</a>, <a href="../../index.html#server_built_in">server built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>
