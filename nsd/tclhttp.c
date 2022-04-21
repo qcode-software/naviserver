@@ -982,7 +982,7 @@ Ns_HttpMessageParse(
                 }
                 hdrPtr->name = ns_strdup(p);
                 firsthdr = 0;
-            } else if (len < 2 || Ns_ParseHeader(hdrPtr, p, ToLower) != NS_OK) {
+            } else if (len < 2 || Ns_ParseHeader(hdrPtr, p, NULL, ToLower, NULL) != NS_OK) {
                 break;
             }
             p = eol;
@@ -3384,7 +3384,7 @@ HttpAppendContent(
  *        machine by simply invoking the registered procs.
  *
  *        Due to its universal nature, this code can be made
- *        independent from NsHttp and re-used elsewhere.
+ *        independent of NsHttp and re-used elsewhere.
  *
  * Results:
  *        Tcl result code
@@ -3870,7 +3870,7 @@ HttpProc(
                 if (remain > 0) {
 
                     /*
-                     * We still have something to be send
+                     * We still have something to be sent
                      * left in memory.
                      */
                     Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE"
@@ -4067,7 +4067,7 @@ HttpProc(
                         } else {
 
                             /*
-                             * We read less then chunksize bytes, the source
+                             * We read less than chunksize bytes, the source
                              * is on EOF, so what to do?  Since we can't
                              * rectify Content-Length, receiver expects us
                              * to send more...
@@ -4923,7 +4923,7 @@ ParseTrailerProc(
             Ns_Set *headersPtr = httpPtr->replyHeaders;
             char   *trailer = dsPtr->string;
 
-            if (Ns_ParseHeader(headersPtr, trailer, ToLower) != NS_OK) {
+            if (Ns_ParseHeader(headersPtr, trailer, NULL, ToLower, NULL) != NS_OK) {
                 result = TCL_ERROR;
             }
         }

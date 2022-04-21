@@ -1,6 +1,0 @@
-[toc_begin {Table Of Contents} nsdb]
-[item nsdb/files/ns_buildsqldate.html  ns_buildsqldate  {SQL date and time manipulation commands}]
-[item nsdb/files/ns_db.html            ns_db            {Database access API}]
-[item nsdb/files/ns_dbquotevalues.html ns_dbquotevalues {Quote database names and values}]
-[item nsdb/files/ns_getcsv.html        ns_getcsv        {Parse CSV Files}]
-[toc_end]

@@ -359,7 +359,7 @@
 2013-01-18 10:56 +0100  Gustaf Neumann  <neumann@wu-wien.ac.at>  (60b45c18e323)
 
 	* nsssl.c:
-	enable partial write operations on a per-connection basis (value in
+	enable parital write operations on a per-connection basis (value in
 	CTX does not seem to propergate)
 
 2013-01-18 09:26 +0100  Gustaf Neumann  <neumann@wu-wien.ac.at>  (03e063926a22)
@@ -418,7 +418,7 @@
 
 	* README, nsssl.c:
 	Define driver properly as NS_DRIVER_ASYNC; don't enter eventloop via
-	Ns_SockTimedWait() since this might interact badly with the top-level
+	Ns_SockTimedWait() since this might interact badly with the toplevel
 	event loop in driver.c. Various small cleanups. Tagged old version
 	as 0.1 and incremented version number to 0.2. Tested on Linux and
 	macOS.
