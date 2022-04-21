@@ -18,6 +18,32 @@ test ns_striphtml-2.0.2 {bare less sign} -body {
 test ns_striphtml-2.0.3 {bare greater sign} -body {
     ns_striphtml {hello&gt;world}
 } -result "hello>world"
+test ns_striphtml-2.0.4 {two entities next to each other} -body {
+    ns_striphtml {&lt;&gt;}
+} -result "<>"
+test ns_striphtml-2.0.5 {two entities next to each other, embedded} -body {
+    ns_striphtml {hello&lt;&gt;world}
+} -result "hello<>world"
+test ns_striphtml-2.0.6 {with decimal numeric entity} -body {
+    ns_striphtml [ns_quotehtml {hello "world"}]
+} -result {hello "world"}
+test ns_striphtml-2.0.7 {with decomal numeric entity} -body {
+    ns_striphtml [ns_quotehtml {hello 'world'}]
+} -result "hello 'world'"
+test ns_striphtml-2.0.8 {with hex entity} -body {
+    ns_striphtml {hello &#x22;world&#x22;}
+} -result {hello "world"}
+
+test ns_striphtml-2.0.9 {two entity next to each other} -body {
+    ns_striphtml {a&lt;b&lt;&gt;c}
+} -result "a<b<>c"
+test ns_striphtml-2.0.10 {entity immediately followed by opening tag} -body {
+    ns_striphtml {a<a href='h'>b</a>c&amp;<a href='h'>d</a>e}
+} -result "abc&de"
+test ns_striphtml-2.0.11 {unknown entity} -body {
+    ns_striphtml {a&ltxxx;b}
+} -result "ab"
+
 
 test ns_striphtml-2.1 {euro entity} -body {
     ns_striphtml {hello&euro;world}
@@ -27,21 +53,21 @@ test ns_striphtml-2.2 {cent entity} -body {
     ns_striphtml {hello&cent;world}
 } -result "hello¢world"
 test ns_striphtml-2.2b {cent entity} -body {
-    ns_striphtml {hello&162;world}
+    ns_striphtml {hello&#162;world}
 } -result "hello¢world"
 
 test ns_striphtml-2.3 {pound entity} -body {
     ns_striphtml {hello&pound;world}
 } -result "hello£world"
 test ns_striphtml-2.3b {pound numeric entity} -body {
-    ns_striphtml {hello&163;world}
+    ns_striphtml {hello&#163;world}
 } -result "hello£world"
 
 test ns_striphtml-2.4 {yen entity} -body {
     ns_striphtml {hello&yen;world}
 } -result "hello¥world"
 test ns_striphtml-2.4b {yen numeric entity} -body {
-    ns_striphtml {'hello&165;world'}
+    ns_striphtml {'hello&#165;world'}
 } -result "'hello¥world'"
 
 
@@ -112,6 +138,7 @@ test ns_striphtml-3.0 {table} -body {
                                 {"amp",     3, "&", 2},
                                 {"and",     3, "∧", 2},
                                 {"ang",     3, "∠", 2},
+                                {"apos",    4, "'", 1},
                                 {"aring",   5, "å", 2},
                                 {"asymp",   5, "≈", 2},
                                 {"atilde",  6, "ã", 2},
@@ -223,6 +250,7 @@ test ns_striphtml-3.0 {table} -body {
                                 {"prod",    4, "∏", 2},
                                 {"prop",    4, "∝", 2},
                                 {"psi",     3, "ψ", 2},
+                                {"quot",    4, "\"", 1},
                                 {"rArr",    4, "⇒", 2},
                                 {"radic",   5, "√", 2},
                                 {"rang",    4, "〉", 2},
@@ -299,6 +327,51 @@ test ns_striphtml-3.0 {table} -body {
 test ns_striphtml-4.0 {strip HTML comment} -body {
     ns_striphtml {hello<!-- SOME COMMENT -->World}
 } -result "helloWorld"
+
+
+#######################################################################################
+#  test ns_quotehtml
+#######################################################################################
+
+test ns_quotehtml-1.0 {ns_quotehtml with typical value} -body {
+    return [ns_quotehtml {<span class="foo">}]
+} -result {&lt;span class=&#34;foo&#34;&gt;}
+
+#######################################################################################
+#  test ns_unquotehtml
+#######################################################################################
+
+test ns_unquotehtml-1.0 {ns_unquotehtml with typical value} -body {
+    return [ns_unquotehtml [ns_quotehtml {<span class="foo">...</span>}]]
+} -result {<span class="foo">...</span>}
+
+test ns_unquotehtml-1.1 {ns_unquotehtml with typical value} -body {
+    return [ns_unquotehtml [ns_quotehtml {aaa<span class='foo'>...</span>zzz}]]
+} -result {aaa<span class='foo'>...</span>zzz}
+
+test ns_unquotehtml-1.2 {ns_unquotehtml with named UTF-8 entity} -body {
+    return [ns_unquotehtml {a&otimes;b}]
+} -result {a⊗b}
+test ns_unquotehtml-1.3 {two entities next to each other} -body {
+    ns_unquotehtml {&lt;&gt;}
+} -result "<>"
+test ns_unquotehtml-1.4 {two entities next to each other. embedded} -body {
+    ns_unquotehtml {hello&lt;&gt;world}
+} -result "hello<>world"
+
+
+test ns_unquotehtml-2.0 {ns_unquotehtml with numeric entities (US ASCII)} -body {
+    ns_unquotehtml {&#104;&#x65;&#108;&#x6C;&#x6F;}
+} -result {hello}
+
+test ns_unquotehtml-2.1 {ns_unquotehtml with numeric euro sign as (code point U+20AC)} -body {
+    ns_unquotehtml {give me &#x20AC;&#8364;!}
+} -result {give me €€!}
+
+test ns_unquotehtml-2.2 {ns_unquotehtml with mermaids with different skin tones} -body {
+    ns_unquotehtml {&#129500;&#127995; Light skin tone; &#129500;&#127998; Medium Dark skin tone.}
+} -result {🧜🏻 Light skin tone; 🧜🏾 Medium Dark skin tone.}
+
 
 
 #

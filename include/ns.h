@@ -275,9 +275,9 @@ typedef struct Ns_CacheSearch {
 
 typedef struct Ns_Cache         Ns_Cache;
 typedef struct Ns_Entry         Ns_Entry;
-typedef struct Ns_Cls          *Ns_Cls;
-typedef struct Ns_Sls          *Ns_Sls;
-typedef void                     Ns_OpContext;
+typedef uintptr_t               Ns_Cls;
+typedef uintptr_t               Ns_Sls;
+typedef void                    Ns_OpContext;
 typedef struct Ns_TaskQueue     Ns_TaskQueue;
 typedef struct Ns_Task          Ns_Task;
 typedef struct Ns_EventQueue    Ns_EventQueue;
@@ -2282,7 +2282,8 @@ Ns_SetRequestUrl(Ns_Request *request, const char *url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
+Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseDisposition disp,
+               size_t *fieldNumberPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
@@ -3390,7 +3391,7 @@ Ns_UrlQueryEncode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encodi
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN char *
-Ns_UrlQueryDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding)
+Ns_UrlQueryDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, int *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN char *
@@ -3574,7 +3575,7 @@ Ns_ConnClearQuery(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_QueryToSet(char *query, Ns_Set *set)
+Ns_QueryToSet(char *query, Ns_Set *set, Tcl_Encoding encoding)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
