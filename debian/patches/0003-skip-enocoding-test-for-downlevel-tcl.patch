@@ -1,0 +1,35 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Thu, 21 Apr 2022 15:09:30 +0100
+Subject: skip enocoding test for downlevel tcl
+
+---
+ tests/ns_http_charsets.test | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/tests/ns_http_charsets.test b/tests/ns_http_charsets.test
+index d918b75..65e7e81 100644
+--- a/tests/ns_http_charsets.test
++++ b/tests/ns_http_charsets.test
+@@ -299,6 +299,13 @@ unset -nocomplain charset encoding char1 char2 content i j
+ 
+ unset charsets
+ 
++# Skip emoji tests for Tcl versions less than 8.6.11
++if { [info tclversion] eq "8.6" && [lindex [split [info patchlevel] "."] end] < 11} {
++    puts "Downlevel Tcl [info patchlevel] detected, skipping some UTF tests"
++    testConstraint tclUtfBug false
++} else {
++    testConstraint tclUtfBug true
++}
+ 
+ #
+ # test ns_return with different charsets (also default)
+@@ -306,7 +313,7 @@ unset charsets
+ 
+ test encoding_ns_http-1.1 {
+     Send body with ns_return and charset utf-8
+-} -constraints usingExternalToUtf -setup {
++} -constraints [list !tclUtfBug usingExternalToUtf] -setup {
+     ns_register_proc GET /encoding {
+         ns_return 200 "text/plain; charset=utf-8" "äöü😃"
+     }
