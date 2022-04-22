@@ -1,2 +1,2 @@
 usr/sbin/naviserver-nsd usr/lib/naviserver/bin/nsd
-usr/bin/naviserver-nsproxy usr/lib/naviserver/bin/nsproxy
+usr/bin/naviserver-nsproxy usr/lib/naviserver/bin/nsproxy-helper
