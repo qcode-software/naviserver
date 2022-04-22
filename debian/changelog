@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1-1+deb10u2) buster; urgency=medium
+
+  * Package bugfix to properly link nsproxy-helper to naviserver-nsproxy
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 22 Apr 2022 10:33:54 +0100
+
 naviserver (4.99.24~rc1-1+deb10u1) buster; urgency=medium
 
   * Import 4.99.24~rc1 from upstream
