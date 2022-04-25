@@ -7,10 +7,10 @@ Subject: clean up additional build files
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index fcca795..1184811 100644
+index 6060321..a1ba04b 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -295,8 +295,8 @@ clean-bak: clean
+@@ -303,8 +303,8 @@ clean-bak: clean
  
  distclean: clean
  	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
