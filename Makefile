@@ -136,8 +136,10 @@ install-tests:
 install-doc:
 	@if [ -d doc/html ]; then \
 		$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver ; \
 		$(CP) doc/html/* $(DESTDIR)$(NAVISERVER)/pages/doc ; \
 		$(CP) contrib/banners/*.png $(DESTDIR)$(NAVISERVER)/pages/doc ; \
+		$(CP) doc/src/man.css $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver/ ; \
 		echo "\nThe documentation is installed under: $(DESTDIR)$(NAVISERVER)/pages/doc" ; \
 	else \
 		echo "\nNo documentation is installed locally; either generate the documentation with" ; \
@@ -221,17 +223,23 @@ EXTRA_TEST_DIRS =
 ifneq ($(OPENSSL_LIBS),)
   #EXTRA_TEST_DIRS += nsssl
   PEM_FILE        = tests/testserver/etc/server.pem
+  PEM_PRIVATE     = tests/testserver/etc/myprivate.pem
+  PEM_PUBLIC      = tests/testserver/etc/mypublic.pem
   SSLCONFIG       = tests/testserver/etc/openssl.cnf
   EXTRA_TEST_REQ  = $(PEM_FILE)
 endif
 
-$(PEM_FILE):
+$(PEM_FILE): $(PEM_PRIVATE)
 	openssl genrsa 2048 > host.key
 	openssl req -new -config $(SSLCONFIG) -x509 -nodes -sha1 -days 365 -key host.key > host.cert
 	cat host.cert host.key > server.pem
 	rm -rf host.cert host.key
 	openssl dhparam 1024 >> server.pem
 	mv server.pem $(PEM_FILE)
+
+$(PEM_PRIVATE):
+	openssl genrsa -out $(PEM_PRIVATE) 512
+	openssl rsa -in $(PEM_PRIVATE) -pubout > $(PEM_PUBLIC)
 
 check: test
 
@@ -315,7 +323,7 @@ dist: config.guess config.sub clean
 	fi;
 	find naviserver-$(NS_PATCH_LEVEL) -type f -name '.[a-zA-Z_]*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*-original' -exec rm \{} \;
-	find naviserver-$(NS_PATCH_LEVEL) -name '*.pem' -exec rm \{} \;
+	find naviserver-$(NS_PATCH_LEVEL) -name '[a-z]*.pem' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*.c-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*.h-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*~' -exec rm \{} \;

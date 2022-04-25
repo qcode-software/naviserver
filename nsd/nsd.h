@@ -37,6 +37,11 @@
 
 #include "ns.h"
 
+#if defined(HAVE_XLOCALE_H)
+# include <xlocale.h>
+#endif
+#include "locale.h"
+
 /*
  * Constants
  */
@@ -146,6 +151,7 @@ struct nsconf {
     const char *tmpDir;
     const char *configFile;
     const char *build;
+    locale_t    locale;
     pid_t       pid;
     time_t      boot_t;
     char        hostname[255];
@@ -155,6 +161,7 @@ struct nsconf {
     int         sanitize_logfiles;
     bool        reject_already_closed_connection;
     bool        reverseproxymode;
+    bool        nocache;
 
     /*
      * Slot IDs for socket local storage.
@@ -317,11 +324,9 @@ typedef struct Ns_DList {
 
 typedef struct Request {
     struct Request *nextPtr;     /* Next on free list */
-    Ns_Request request;          /* Parsed request line */
+    Ns_Request request;          /* Parsed request structure */
     Ns_Set *headers;             /* Input headers */
     Ns_Set *auth;                /* Auth user/password and parameters */
-    char peer[NS_IPADDR_SIZE];   /* Client peer address */
-    char proxypeer[NS_IPADDR_SIZE]; /* Prody peer address */
     unsigned short port;         /* Client peer port */
 
     /*
@@ -357,7 +362,7 @@ typedef struct Request {
 } Request;
 
 /*
- * The following structure maitains data for each instance of
+ * The following structure maintains data for each instance of
  * a driver initialized with Ns_DriverInit.
  */
 
@@ -583,6 +588,9 @@ typedef struct Conn {
     struct Conn *prevPtr;
     struct Conn *nextPtr;
     struct Sock *sockPtr;
+
+    char peer[NS_IPADDR_SIZE];   /* Client peer address */
+    char proxypeer[NS_IPADDR_SIZE]; /* Proxy peer address */
 
     NsLimits *limitsPtr; /* Per-connection limits */
     Ns_Time   timeout;   /* Absolute timeout (startTime + limit) */
@@ -1139,11 +1147,15 @@ typedef struct _NsHttpChunk {
     NsHttpParseProc  **parsers;          /* Array of chunked encoding parsers */
 } NsHttpChunk;
 
-#define NS_HTTP_FLAG_DECOMPRESS    (1<<0)
-#define NS_HTTP_FLAG_GZIP_ENCODING (1<<1)
-#define NS_HTTP_FLAG_CHUNKED       (1<<2)
-#define NS_HTTP_FLAG_CHUNKED_END   (1<<3)
-#define NS_HTTP_FLAG_BINARY        (1<<4)
+/*
+ * Flags controlling how we handle received content
+ */
+#define NS_HTTP_FLAG_DECOMPRESS    (1u<<0)
+#define NS_HTTP_FLAG_GZIP_ENCODING (1u<<1)
+#define NS_HTTP_FLAG_CHUNKED       (1u<<2)
+#define NS_HTTP_FLAG_CHUNKED_END   (1u<<3)
+#define NS_HTTP_FLAG_BINARY        (1u<<4)
+#define NS_HTTP_FLAG_EMPTY         (1u<<5)
 
 #define NS_HTTP_FLAG_GUNZIP (NS_HTTP_FLAG_DECOMPRESS|NS_HTTP_FLAG_GZIP_ENCODING)
 
@@ -1196,6 +1208,7 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclBase64EncodeObjCmd,
     NsTclBase64UrlDecodeObjCmd,
     NsTclBase64UrlEncodeObjCmd,
+    NsTclBaseUnitObjCmd,
     NsTclCacheAppendObjCmd,
     NsTclCacheConfigureObjCmd,
     NsTclCacheCreateObjCmd,
@@ -1229,6 +1242,7 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclCryptoEckeyObjCmd,
     NsTclCryptoHmacObjCmd,
     NsTclCryptoMdObjCmd,
+    NsTclCryptoPbkdf2hmacObjCmd,
     NsTclCryptoRandomBytesObjCmd,
     NsTclCryptoScryptObjCmd,
     NsTclDeleteCookieObjCmd,
@@ -1289,6 +1303,7 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclParseArgsObjCmd,
     NsTclParseFieldvalue,
     NsTclParseHeaderObjCmd,
+    NsTclParseHostportObjCmd,
     NsTclParseHttpTimeObjCmd,
     NsTclParseQueryObjCmd,
     NsTclParseUrlObjCmd,
@@ -1358,8 +1373,10 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclSockSetNonBlockingObjCmd,
     NsTclSocketPairObjCmd,
     NsTclStartContentObjCmd,
+    NsTclStrcollObjCmd,
     NsTclStrftimeObjCmd,
     NsTclStripHtmlObjCmd,
+    NsTclSubnetmatchObjCmd,
     NsTclSymlinkObjCmd,
     NsTclThreadObjCmd,
     NsTclTimeObjCmd,
@@ -1367,11 +1384,13 @@ NS_EXTERN Tcl_ObjCmdProc
     NsTclTruncateObjCmd,
     NsTclUnRegisterOpObjCmd,
     NsTclUnRegisterUrl2FileObjCmd,
+    NsTclUnquoteHtmlObjCmd,
     NsTclUnscheduleObjCmd,
     NsTclUrl2FileObjCmd,
     NsTclUrlDecodeObjCmd,
     NsTclUrlEncodeObjCmd,
     NsTclUrlSpaceObjCmd,
+    NsTclValidUtf8ObjCmd,
     NsTclWriteContentObjCmd,
     NsTclWriteFpObjCmd,
     NsTclWriteObjCmd,
@@ -1814,7 +1833,6 @@ NS_EXTERN bool NsTclObjIsEncodedByteArray(const Tcl_Obj *objPtr)
 
 NS_EXTERN bool NsTclTimeoutException(Tcl_Interp *interp)
     NS_GNUC_NONNULL(1);
-
 
 /*
  * (HTTP) Proxy support

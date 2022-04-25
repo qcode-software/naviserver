@@ -458,6 +458,7 @@ neededAdditionalConnectionThreads(const ConnPool *poolPtr) {
 void
 NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     bool create;
+    int  waitnum;
 
     NS_NONNULL_ASSERT(servPtr != NULL);
 
@@ -477,6 +478,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
         poolPtr->threads.current ++;
         poolPtr->threads.creating ++;
     }
+    waitnum = poolPtr->wqueue.wait.num;
 
     Ns_MutexUnlock(&poolPtr->threads.lock);
     Ns_MutexUnlock(&poolPtr->wqueue.lock);
@@ -484,7 +486,7 @@ NsEnsureRunningConnectionThreads(const NsServer *servPtr, ConnPool *poolPtr) {
     if (create) {
         Ns_Log(Notice, "NsEnsureRunningConnectionThreads wantCreate %d waiting %d idle %d current %d",
                (int)create,
-               poolPtr->wqueue.wait.num,
+               waitnum,
                poolPtr->threads.idle,
                poolPtr->threads.current);
         CreateConnThread(poolPtr);
@@ -2031,7 +2033,7 @@ NsConnThread(void *arg)
         /*
          * We are ready to process requests. Pick it either a request
          * from the waiting queue, or go to a waiting state and add
-         * jourself to the conn thread queue.
+         * yourself to the conn thread queue.
          */
         assert(argPtr->connPtr == NULL);
         assert(argPtr->state == connThread_ready);

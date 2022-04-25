@@ -35,7 +35,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.20],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[4.99.24rc1],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -50,8 +50,8 @@ AC_CONFIG_HEADERS([include/nsconfig.h])
 
 AC_SUBST([NS_MAJOR_VERSION],  [4])
 AC_SUBST([NS_MINOR_VERSION],  [99])
-AC_SUBST([NS_RELEASE_SERIAL], [20])
-AC_SUBST([NS_RELEASE_LEVEL],  [NS_FINAL_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
+AC_SUBST([NS_RELEASE_SERIAL], [24])
+AC_SUBST([NS_RELEASE_LEVEL],  [NS_ALPHA_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
 
 AC_SUBST([NS_VERSION],     [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}\"])
 AC_SUBST([NS_PATCH_LEVEL], [\"$PACKAGE_VERSION\"])
@@ -111,8 +111,8 @@ test "x$prefix" = "xNONE" && prefix="/usr/local/ns"
 system=`uname`
 case "$system" in
   Darwin)
-    LDLIB="cc -dynamiclib -install_name \$(INSTLIB)/\$(LIBFILE)"
-    LDSO="cc -bundle"
+    LDLIB="\$(CC) -dynamiclib -install_name \$(INSTLIB)/\$(LIBFILE)"
+    LDSO="\$(CC) -bundle"
     CCRFLAG=
     LDRFLAG=
     CCRPATHS=
@@ -173,7 +173,7 @@ AC_SUBST([NAVISERVER])
 # Additional checks.
 #
 
-AC_CHECK_HEADERS([inttypes.h uio.h sys/uio.h stdint.h netinet/tcp.h sys/sendfile.h])
+AC_CHECK_HEADERS_ONCE([inttypes.h uio.h sys/uio.h stdint.h netinet/tcp.h sys/sendfile.h xlocale.h])
 AC_CHECK_HEADER([mach-o/dyld.h], AC_DEFINE([USE_DYLD], [1], [Define to 1 if the <mach-o/dyld.h> header should be used.]),)
 AC_CHECK_HEADER([dl.h], AC_DEFINE([USE_DLSHL], [1], [Define to 1 if the <dl.h> header should be used.]),)
 
@@ -338,7 +338,6 @@ fi
 AC_CHECK_MEMBERS([struct sockaddr_in.sin_len],,,[
 #include <sys/types.h>
 #include <netinet/in.h>])
-
 
 
 AC_CHECK_LIB([crypt], [crypt],

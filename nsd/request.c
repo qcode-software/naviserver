@@ -151,7 +151,7 @@ Ns_FreeRequest(Ns_Request *request)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ParseRequests --
+ * Ns_ParseRequest --
  *
  *    Parse a request from the client into an Ns_Request structure.
  *    On success, it fills the following Ns_Request members:
@@ -172,7 +172,7 @@ Ns_FreeRequest(Ns_Request *request)
  */
 
 Ns_ReturnCode
-Ns_ParseRequest(Ns_Request *request, const char *line)
+Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
 {
     char       *url, *l, *p;
     Ns_DString  ds;
@@ -181,6 +181,36 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
 
     if (request == NULL) {
         return NS_ERROR;
+    }
+
+    /*
+     * Check, if the request looks like a TLS handshake. If yes, there is no
+     * need to try to parse the received buffer. There is no need to complain
+     * about binary content in this case.
+     */
+    if (line[0] == (char)0x16 && line[1] >= 3 && line[2] == 1) {
+        return NS_ERROR;
+    }
+
+    /*
+     * We could check here the validity UTF-8 of the request line, in case we
+     * would know it is supposed to be UTF8. Unfortunately, this is known
+     * ownly after the server is determined. We could use the ns/param
+     * encoding, but then, the per-server urlEncoding does not make sense.
+     *
+     * RFC 7230 (Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and
+     * Routing) states: Parsing an HTTP message as a stream of Unicode
+     * characters, without regard for the specific encoding, creates security
+     * vulnerabilities due to the varying ways that string processing
+     * libraries handle invalid multibyte character sequences that contain the
+     * octet LF (%x0A).
+     *
+     * W3C recommends only URLs with proper encodings (subset of US ASCII):
+     * https://www.w3.org/Addressing/URL/4_URI_Recommentations.html
+     */
+    if (!Ns_Is7bit(line, len)) {
+        Ns_Log(Warning, "Ns_ParseRequest: line <%s> contains 8-bit "
+               "character data. Future versions might reject it.", line);
     }
 
 #if !defined(NDEBUG)
@@ -197,7 +227,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
      * Make a copy of the line to chop up. Make sure it isn't blank.
      */
 
-    Ns_DStringAppend(&ds, line);
+    Ns_DStringNAppend(&ds, line, (int)len);
     l = Ns_StrTrim(ds.string);
     if (*l == '\0') {
         goto done;
@@ -309,9 +339,13 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
             *p++ = '\0';
             request->protocol = ns_strdup(url);
             url = p;
-            if ((strlen(url) > 3u) && (*p++ == '/')
-                && (*p++ == '/') && (*p != '\0') && (*p != '/')) {
-                char *h = p;
+            if ((strlen(url) > 3u)
+                && (*p++ == '/')
+                && (*p++ == '/')
+                && (*p != '\0')
+                && (*p != '/') ) {
+                bool  hostParsedOk;
+                char *h = p, *end;
 
                 while ((*p != '\0') && (*p != '/')) {
                     p++;
@@ -324,12 +358,18 @@ Ns_ParseRequest(Ns_Request *request, const char *line)
                 /*
                  * Check for port
                  */
-                Ns_HttpParseHost(h, NULL, &p);
-                if (p != NULL) {
-                    *p++ = '\0';
-                    request->port = (unsigned short)strtol(p, NULL, 10);
+                hostParsedOk = Ns_HttpParseHost2(h, NS_FALSE, NULL, &p, &end);
+                if (hostParsedOk) {
+                    if (p != NULL) {
+                        *p++ = '\0';
+                        request->port = (unsigned short)strtol(p, NULL, 10);
+                    }
+                    request->host = ns_strdup(h);
+                } else {
+                    ns_free((char*)request->protocol);
+                    request->protocol = NULL;
+                    goto done;
                 }
-                request->host = ns_strdup(h);
             }
         }
     }
@@ -501,7 +541,10 @@ SetUrl(Ns_Request *request, char *url)
      */
     encodedPath = url;
     encoding = Ns_GetUrlEncoding(NULL);
+    Ns_Log(Debug, "### Request SetUrl calls Ns_UrlPathDecode '%s'", encodedPath);
     p = Ns_UrlPathDecode(&ds1, encodedPath, encoding);
+    Ns_Log(Debug, " ### decoded path '%s'", p);
+
     if (p == NULL) {
         p = url;
     }
@@ -589,9 +632,11 @@ SetUrl(Ns_Request *request, char *url)
  */
 
 Ns_ReturnCode
-Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
+Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseDisposition disp,
+               size_t *fieldNumberPtr)
 {
-    Ns_ReturnCode   status = NS_OK;
+    Ns_ReturnCode status = NS_OK;
+    size_t        idx = 0u;
 
     /*
      * Header lines are first checked if they continue a previous
@@ -610,7 +655,10 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
             status = NS_ERROR;
 
         } else {
-            size_t idx = Ns_SetLast(set);
+            idx = Ns_SetLast(set);
+            /*
+             * Append to the last entry.
+             */
             while (CHARTYPE(space, *line) != 0) {
                 ++line;
             }
@@ -626,6 +674,14 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
         }
     } else {
         char *sep;
+        Tcl_DString ds, *dsPtr = &ds;
+
+        if (prefix != NULL) {
+            Tcl_DStringInit(dsPtr);
+            Tcl_DStringAppend(dsPtr, prefix, -1);
+            Tcl_DStringAppend(dsPtr, line, -1);
+            line = dsPtr->string;
+        }
 
         sep = strchr(line, INTCHAR(':'));
         if (sep == NULL) {
@@ -637,7 +693,6 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
         } else {
             const char *value;
             char       *key;
-            size_t      idx;
 
             *sep = '\0';
             for (value = sep + 1; (*value != '\0') && CHARTYPE(space, *value) != 0; value++) {
@@ -662,8 +717,15 @@ Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
             }
             *sep = ':';
         }
+
+        if (prefix != NULL) {
+            Tcl_DStringFree(dsPtr);
+        }
     }
 
+    if (fieldNumberPtr != NULL && status == NS_OK) {
+        *fieldNumberPtr = idx;
+    }
     return status;
 }
 

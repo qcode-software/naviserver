@@ -102,7 +102,7 @@ Ns_DStringExport(Ns_DString *dsPtr)
      * was allocated with the same memory allocator from Tcl as used for
      * freeing in NaviServer. This is the case, when both Tcl (+ SYSTEM_MALLOC
      * patch) and NaviServer were compiled with SYSTEM_MALLOC, or both without
-     * it. The save assumption is that we cannot trust on this ans we do not
+     * it. The save assumption is that we cannot trust on this and we do not
      * define this flag.
      */
     if (dsPtr->string != dsPtr->staticSpace) {
@@ -116,7 +116,9 @@ Ns_DStringExport(Ns_DString *dsPtr)
 #else
     size = (size_t)dsPtr->length + 1u;
     s = ns_malloc(size);
-    memcpy(s, dsPtr->string, size);
+    if (likely(s != NULL)) {
+        memcpy(s, dsPtr->string, size);
+    }
 #endif
     Ns_DStringFree(dsPtr);
 

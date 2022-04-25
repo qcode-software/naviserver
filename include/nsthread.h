@@ -92,12 +92,15 @@
 # endif
 
 /*
- * 0x0400  Windows NT
- * 0x0500  Windows XP
- * 0x0600  Windows Vista
+ * 0x0400  Windows NT 4.0
+ * 0x0500  Windows 2000
+ * 0x0501  Windows XP
+ * 0x0502  Windows Server 2003
+ * 0x0600  Windows Vista / Windows Server 2008
  * 0x0601  Windows 7
  * 0x0602  Windows 8
  * 0x0603  Windows 8.1
+ * 0x0A00  Windows 10
  */
 # ifndef _WIN32_WINNT
 #  define _WIN32_WINNT                0x0600
@@ -185,6 +188,10 @@ MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 #  endif
 
 #  define strtoll                     _strtoi64
+
+#  define strcoll_l                   _strcoll_l
+#  define locale_t                    _locale_t
+#  define freelocale                  _free_locale
 
 #  define access                      _access
 #  define chsize                      _chsize
@@ -499,7 +506,7 @@ typedef int ns_sockerrno_t;
 # define ns_lseek                   lseek
 
 # if __GNUC__
-#  if __x86_64__ || __ppc64__
+#  if defined(__x86_64__) || defined(__ppc64__)
 #   define HAVE_64BIT 1
 #  endif
 # endif
@@ -1021,7 +1028,7 @@ NS_EXTERN int   ns_uint64toa(char *buffer, uint64_t n) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_MutexInit(Ns_Mutex *mutexPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_MutexDestroy(Ns_Mutex *mutexPtr);
 NS_EXTERN void Ns_MutexLock(Ns_Mutex *mutexPtr)       NS_GNUC_NONNULL(1);
-NS_EXTERN int  Ns_MutexTryLock(Ns_Mutex *mutexPtr)    NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_ReturnCode Ns_MutexTryLock(Ns_Mutex *mutexPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_MutexUnlock(Ns_Mutex *mutexPtr)     NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_MutexList(Tcl_DString *dsPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN const char *Ns_MutexGetName(Ns_Mutex *mutexPtr) NS_GNUC_NONNULL(1);
@@ -1076,8 +1083,6 @@ NS_EXTERN struct dirent *ns_readdir(DIR *pDir)           NS_GNUC_NONNULL(1);
 NS_EXTERN struct tm *ns_localtime(const time_t *timep)   NS_GNUC_NONNULL(1);
 NS_EXTERN struct tm *ns_localtime_r(const time_t *timer, struct tm *buf) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN struct tm *ns_gmtime(const time_t *timep)      NS_GNUC_NONNULL(1);
-NS_EXTERN char *ns_ctime(const time_t *timep)            NS_GNUC_NONNULL(1);
-NS_EXTERN char *ns_asctime(const struct tm *tmPtr)       NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_strtok(char *s1, const char *s2)      NS_GNUC_NONNULL(2);
 NS_EXTERN char *ns_inet_ntoa(const struct sockaddr *saPtr) NS_GNUC_NONNULL(1);
 

@@ -127,7 +127,9 @@ Ns_GetTime(Ns_Time *timePtr)
  *
  * Ns_AdjTime --
  *
- *      Adjust an Ns_Time so the values are in range.
+ *      Adjust an Ns_Time so the values are in range. "usec" is only allowed
+ *      to be negative, when "sec" == 0 (to express e.g. -0.1sec).
+ *      "usec" is kept in the range <1mio.
  *
  * Results:
  *      None.
@@ -143,7 +145,6 @@ Ns_AdjTime(Ns_Time *timePtr)
 {
     NS_NONNULL_ASSERT(timePtr != NULL);
 
-    //fprintf(stderr, "Ns_AdjTime call " NS_TIME_FMT "\n", timePtr->sec, timePtr->usec);
     if (unlikely(timePtr->usec < 0) && unlikely(timePtr->sec > 0)) {
         timePtr->sec += (timePtr->usec / 1000000L) - 1;
         timePtr->usec = (timePtr->usec % 1000000L) + 1000000L;
@@ -151,7 +152,6 @@ Ns_AdjTime(Ns_Time *timePtr)
         timePtr->sec += timePtr->usec / 1000000L;
         timePtr->usec = timePtr->usec % 1000000L;
     }
-    //fprintf(stderr, "Ns_AdjTime done " NS_TIME_FMT "\n", timePtr->sec, timePtr->usec);
 }
 
 
@@ -218,7 +218,6 @@ Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *diffPtr)
             /*
              * Subtract POS - POS
              */
-            //fprintf(stderr, "sub POS - POS\n");
             subtract = NS_TRUE;
             isNegative = t1p.sec < t0p.sec
                 || (t1p.sec == t0p.sec && (t1p.usec < t0p.usec));
@@ -233,7 +232,6 @@ Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *diffPtr)
             /*
              * Add POS - NEG
              */
-            //fprintf(stderr, "add POS - NEG\n");
             subtract = NS_FALSE;
             isNegative = NS_FALSE;
             t0Ptr = &t1p;
@@ -244,14 +242,12 @@ Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *diffPtr)
             /*
              * ADD NEG - POS
              */
-            //fprintf(stderr, "add NEG - POS\n");
             subtract = NS_FALSE;
             isNegative = NS_TRUE;
         } else {
             /*
              * Subtract NEG - NEG
              */
-            //fprintf(stderr, "sub NEG - NEG\n");
             subtract = NS_TRUE;
             isNegative = t0p.sec < t1p.sec
                 || (t1p.sec == t0p.sec && (t0p.usec < t1p.usec));
@@ -264,10 +260,6 @@ Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *diffPtr)
             }
         }
     }
-
-
-    //fprintf(stderr, "%s t1pos %d t0pos %d isNegative %d\n",
-    //        subtract ? "subtract" : "add", t1pos, t0pos, isNegative);
 
     if (subtract) {
 
@@ -297,13 +289,7 @@ Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *diffPtr)
         }
     }
 
-    //fprintf(stderr, "Ns_DiffTime res " NS_TIME_FMT " - " NS_TIME_FMT "\n",
-    //        t1->sec, t1->usec, t0->sec, t0->usec, diffPtr->sec, diffPtr->usec);
-
     Ns_AdjTime(diffPtr);
-
-    //fprintf(stderr, "Ns_DiffTime adj " NS_TIME_FMT " - " NS_TIME_FMT " = " NS_TIME_FMT "\n",
-    //        t1->sec, t1->usec, t0->sec, t0->usec, diffPtr->sec, diffPtr->usec);
 
     if (diffPtr->sec < 0) {
         return -1;
@@ -341,12 +327,15 @@ void
 Ns_IncrTime(Ns_Time *timePtr, time_t sec, long usec)
 {
     NS_NONNULL_ASSERT(timePtr != NULL);
-    assert(sec >= 0);
-    assert(usec >= 0);
 
-    timePtr->sec += sec;
-    timePtr->usec += usec;
-    Ns_AdjTime(timePtr);
+    if (unlikely(usec < 0) || unlikely(sec < 0)) {
+        fprintf(stderr, "Ns_IncrTime ignores negative increment sec %" PRId64
+                " or usec %ld\n", (int64_t)sec, usec);
+    } else {
+        timePtr->sec += sec;
+        timePtr->usec += usec;
+        Ns_AdjTime(timePtr);
+    }
 }
 
 

@@ -6,8 +6,8 @@ namespace import -force ::tcltest::*
 ::tcltest::configure {*}$argv
 
 test ns_parseurl-1.0 {basic syntax: plain call} -body {
-     ns_parseurl 
-} -returnCodes error -result {wrong # args: should be "ns_parseurl url"}
+     ns_parseurl
+} -returnCodes error -result {wrong # args: should be "ns_parseurl ?-strict? url"}
 
 test ns_parseurl-1.1 {full URL, no port} -body {
     ns_parseurl http://openacs.org/www/t.html
@@ -15,7 +15,7 @@ test ns_parseurl-1.1 {full URL, no port} -body {
 
 test ns_parseurl-1.2 {full URL, no port} -body {
     ns_parseurl http://openacs.org:80/www/t.html
-} -result {proto http host openacs.org port 80 path www tail t.html}
+} -returnCodes {error ok} -result {proto http host openacs.org port 80 path www tail t.html}
 
 test ns_parseurl-1.3 {full URL, no port, no component} -body {
     ns_parseurl http://openacs.org/
@@ -25,25 +25,261 @@ test ns_parseurl-1.4 {full URL, no port, no component, no trailing slash} -body 
     ns_parseurl http://openacs.org
 } -result {proto http host openacs.org path {} tail {}}
 
-test ns_parseurl-1.5 {full URL, no port, one component} -body {
+test ns_parseurl-1.5.1 {full URL, no port, one component} -body {
     ns_parseurl http://openacs.org/t.html
 } -result {proto http host openacs.org path {} tail t.html}
+
+test ns_parseurl-1.5.2.1 {full URL, no port, one component, query} -body {
+    ns_parseurl http://openacs.org/t.html?x=1
+} -result {proto http host openacs.org path {} tail t.html query x=1}
+
+test ns_parseurl-1.5.2.2 {full URL, no port, one component, query} -body {
+    ns_parseurl http://openacs.org/t.html?x=1/2
+} -result {proto http host openacs.org path {} tail t.html query x=1/2}
+
+test ns_parseurl-1.5.3 {full URL, no port, one component, query, fragment} -body {
+    ns_parseurl http://openacs.org/t.html?x=1/2&y=http://www.org#foo
+} -result {proto http host openacs.org path {} tail t.html query x=1/2&y=http://www.org fragment foo}
+
+test ns_parseurl-1.6 {full URL with userinfo, no port, one component} -body {
+    ns_parseurl http://foo@openacs.org/t.html
+} -result {proto http userinfo foo host openacs.org path {} tail t.html}
+
+test ns_parseurl-1.6.1 {full URL with slash (RFC 3986), no port, query} -body {
+    ns_parseurl http://openacs.org/?x=1
+} -result {proto http host openacs.org path {} tail {} query x=1}
+
+test ns_parseurl-1.6.2.1 {full URL with slash (RFC 3986), with port, query} -body {
+    ns_parseurl http://openacs.org:80/?x=1
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1}
+
+test ns_parseurl-1.6.2.2 {full URL with slash (RFC 3986), with port, query} -body {
+    ns_parseurl http://openacs.org:80/?x=1/2
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1/2}
+
+test ns_parseurl-1.6.3.1 {full URL with slash (RFC 3986), with port, query, fragment} -body {
+    ns_parseurl http://openacs.org:80/?x=1#foo
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1 fragment foo}
+
+test ns_parseurl-1.6.3.2 {full URL with slash (RFC 3986), with port, query, fragment} -body {
+    ns_parseurl http://openacs.org:80/?x=1/2#foo
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1/2 fragment foo}
+
+test ns_parseurl-1.6.3.3 {full URL with slash (RFC 3986), with port, query, fragment} -body {
+    ns_parseurl http://openacs.org:80/?x=1/2&url=http://www.org#foo
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1/2&url=http://www.org fragment foo}
+
+test ns_parseurl-1.6.4 {full URL with slash (RFC 3986), with port, fragment} -body {
+    ns_parseurl http://openacs.org:80/#foo
+} -result {proto http host openacs.org port 80 path {} tail {} fragment foo}
+
+
+test ns_parseurl-1.7.1 {full URL without slash (RFC 3986), no port, query} -body {
+    ns_parseurl http://openacs.org?x=1
+} -result {proto http host openacs.org path {} tail {} query x=1}
+
+test ns_parseurl-1.7.2 {full URL without slash (RFC 3986), with port, query} -body {
+    ns_parseurl http://openacs.org:80?x=1
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1}
+
+test ns_parseurl-1.7.3 {full URL without slash (RFC 3986), with port, query, fragment} -body {
+    ns_parseurl http://openacs.org:80?x=1#foo
+} -result {proto http host openacs.org port 80 path {} tail {} query x=1 fragment foo}
+
+test ns_parseurl-1.7.4 {full URL without slash (RFC 3986), with port, fragment} -body {
+    ns_parseurl http://openacs.org:80#foo
+} -result {proto http host openacs.org port 80 path {} tail {} fragment foo}
+
+
+#
+# URLs with IP literal
+#
+
+test ns_parseurl-1.8.1 {full URL, IP literal with slash (RFC 3986), no port, query} -body {
+    ns_parseurl {http://[::1]/?x=1}
+} -returnCodes {error ok} -result {proto http host ::1 path {} tail {} query x=1}
+
+test ns_parseurl-1.8.2 {full URL, IP literal with slash (RFC 3986), with port, query} -body {
+    ns_parseurl {http://[::1]:80/?x=1}
+} -returnCodes {error ok} -result {proto http host ::1 port 80 path {} tail {} query x=1}
+
+test ns_parseurl-1.8.3 {full URL, IP literal with slash (RFC 3986), with port, query, fragment} -body {
+    ns_parseurl {http://[::1]:80/?x=1#foo}
+} -returnCodes {error ok} -result {proto http host ::1 port 80 path {} tail {} query x=1 fragment foo}
+
+test ns_parseurl-1.8.4 {full URL, IP literal with slash (RFC 3986), with port, fragment} -body {
+    ns_parseurl {http://[::1]:80/#foo}
+} -returnCodes {error ok} -result {proto http host ::1 port 80 path {} tail {} fragment foo}
+
+
+test ns_parseurl-1.9.1 {full URL, IP literal without slash (RFC 3986), no port, query} -body {
+    ns_parseurl {http://[::1]?x=1}
+} -returnCodes {error ok} -result {proto http host ::1 path {} tail {} query x=1}
+
+test ns_parseurl-1.9.2 {full URL, IP literal without slash (RFC 3986), with port, query} -body {
+    ns_parseurl {http://[::1]:80?x=1}
+} -returnCodes {error ok} -result {proto http host ::1 port 80 path {} tail {} query x=1}
+
+test ns_parseurl-1.9.3 {full URL, IP literal without slash (RFC 3986), with port, query, fragment} -body {
+    ns_parseurl {http://[::1]:80?x=1#foo}
+} -returnCodes {error ok} -result {proto http host ::1 port 80 path {} tail {} query x=1 fragment foo}
+
+test ns_parseurl-1.9.4 {full URL, IP literal without slash (RFC 3986), with port, fragment} -body {
+    ns_parseurl {http://[::1]:80#foo}
+} -returnCodes {error ok} -result {proto http host ::1 port 80 path {} tail {} fragment foo}
+
+
+#
+# Invalid URLs.
+#
+test ns_parseurl-1.10.1 {scheme contains space} -body {
+    ns_parseurl "ht tp://openacs .org/t.html"
+} -returnCodes error -result {Could not parse URL "ht tp://openacs .org/t.html": invalid scheme}
+test ns_parseurl-1.10.2 {authority contains space} -body {
+    ns_parseurl -strict "http://openacs .org/t.html"
+} -returnCodes error -result {Could not parse URL "http://openacs .org/t.html": invalid authority}
+
+test ns_parseurl-1.10.3 {strict misc valid} -body {
+    lmap url {
+        http://[::1]:8000/helloworld.tcl
+        https://[::]:8000/some/path/helloworld.tcl?x=1&y=2#some-anchor
+        file://
+        http://
+        https://?foo
+        http://foo.com/?x=1&y=2
+        http://foo.com?x=1&y=2
+        http://userid@example.com/
+        some-scheme://userid@example.com/
+    } {catch {ns_parseurl -strict $url}}
+} -result {0 0 0 0 0 0 0 0 0}
+
+test ns_parseurl-1.10.4 {strict misc invalid} -body {
+    lmap url {
+        http://foo.com:/index.html
+        https://[::]:8000/some/path/helloworld.tcl?x=1&y=2#some-anchor#with-2nd-invalid-hash
+        https://.a.b.c
+        https://a.b/motörhead
+        https://a.b/motörhead/x
+        https://a.b/motörhead/foo/bar
+        ":// should fail"
+        "http://foo.bar/breeble booz"
+        some@scheme://userid@example.com/
+        1.2.3.4:80
+        :80
+        /
+        .
+        "a b:"
+    } {catch {ns_parseurl -strict $url}}
+} -result {1 1 1 1 1 1 1 1 1 1 1 0 0 1}
+
+test ns_parseurl-1.10.5 {non-strict misc invalid} -body {
+    lmap url {
+        http://foo.com:/index.html
+        https://[::]:8000/some/path/helloworld.tcl?x=1&y=2#some-anchor#with-2nd-invalid-hash
+        https://.a.b.c
+        https://a.b/motörhead
+        https://a.b/motörhead/x
+        https://a.b/motörhead/foo/bar
+        ":// should fail"
+        "http://foo.bar/breeble booz"
+        some@scheme://userid@example.com/
+        1.2.3.4:80
+        :80
+        /
+        .
+        "a b:"
+    } {catch {ns_parseurl $url}}
+} -result {1 0 1 0 0 0 1 0 1 1 1 0 0 1}
 
 #
 # relative URLs
 #
 
-test ns_parseurl-2.1 {relative URL} -body {
+test ns_parseurl-2.1.0 {relative URL} -body {
     ns_parseurl /www/t.html
-} -result {path www tail t.html}
+} -returnCodes {error ok} -result {path www tail t.html}
 
-# legacy NaviServer, desired?
-test ns_parseurl-2.2 {relative URL, no leading /} -body {
+test ns_parseurl-2.1.1 {relative URL} -body {
+    ns_parseurl /
+} -returnCodes {error ok} -result {path {} tail {}}
+
+test ns_parseurl-2.1.2 {relative URL} -body {
+    ns_parseurl /?x=1
+} -returnCodes {error ok} -result {path {} tail {} query x=1}
+
+test ns_parseurl-2.1.2 {relative URL} -body {
+    ns_parseurl index?url=http://www.test.com
+} -returnCodes {error ok} -result {tail index query url=http://www.test.com}
+
+
+#
+# Legacy NaviServer behavior (putting remainder into "tail"), kept for
+# compatibility.
+#
+
+test ns_parseurl-2.2.0 {relative URL, no leading /} -body {
     ns_parseurl www/t.html
 } -result {tail www/t.html}
 
+test ns_parseurl-2.2.1 {relative URL, no leading /} -body {
+    ns_parseurl .
+} -result {tail .}
+
+test ns_parseurl-2.2.2 {relative URL, no leading /} -body {
+    ns_parseurl ./a
+} -result {tail ./a}
+
+test ns_parseurl-2.2.3 {relative URL, no leading /} -body {
+    ns_parseurl ./a?x=1
+} -result {tail ./a query x=1}
+
 #
-# protocol relative (protocol agnostic) URLs (contained in RFC 3986)
+# Testing (relative) URLs containing colons
+#
+
+test ns_parseurl-2.3.1 {relative URL containing colon - legacy behavior} -body {
+    ns_parseurl ./foo:bar
+} -result {tail ./foo:bar}
+
+test ns_parseurl-2.3.2 {relative URL containing colon} -body {
+    ns_parseurl /foo:bar
+} -result {path {} tail foo:bar}
+
+test ns_parseurl-2.3.3 {URL starting with other char containing colon} -body {
+    ns_parseurl foo:bar
+} -result {proto foo tail bar}
+
+test ns_parseurl-2.3.4 {URL starting with other char containing colon} -body {
+    ns_parseurl ./foo:bar
+} -result {tail ./foo:bar}
+
+test ns_parseurl-2.3.4.1 {relative URL starting with dot containing colon - legacy behavior} -body {
+    ns_parseurl ./foo:bar/baz
+} -result {tail ./foo:bar/baz}
+
+test ns_parseurl-2.3.4.2 {relative URL starting with dot containing colon - legacy behavior} -body {
+    ns_parseurl ./foo/bar:baz
+} -result {tail ./foo/bar:baz}
+
+test ns_parseurl-2.3.5.1 {relative URL starting with slash containing colon} -body {
+    ns_parseurl /foo:bar/baz
+} -result {path foo:bar tail baz}
+
+test ns_parseurl-2.3.5.2 {relative URL starting with slash containing colon} -body {
+    ns_parseurl /foo/bar:baz
+} -result {path foo tail bar:baz}
+
+test ns_parseurl-2.3.6.1 {URL starting with other char containing colon before slash} -body {
+    ns_parseurl foo:bar/baz
+} -result {proto foo tail bar/baz}
+
+test ns_parseurl-2.3.6.2 {URL starting with other char containing colon after slash - legacy behavior} -body {
+    ns_parseurl foo/bar:baz
+} -result {tail foo/bar:baz}
+
+
+#
+# Protocol relative (protocol agnostic) URLs (contained in RFC 3986)
 #
 test ns_parseurl-3.1 {protocol relative URL with port} -body {
     ns_parseurl //openacs.org/www/t.html
@@ -77,7 +313,7 @@ test ns_parseurl-5.0 {URL with colon in the path, but no port provided} -body {
 #
 
 test ns_absoluteurl-1.0 {basic syntax} -body {
-     ns_absoluteurl 
+     ns_absoluteurl
 } -returnCodes error -result {wrong # args: should be "ns_absoluteurl partialurl baseurl"}
 
 test ns_absoluteurl-1.1 {invalid syntax for base URL} -body {
@@ -87,7 +323,7 @@ test ns_absoluteurl-1.1 {invalid syntax for base URL} -body {
 
 test ns_absoluteurl-2.1a {replace just the last part} -body {
     ns_absoluteurl foo.html http://openacs.org/www/t.html
-} -result {http://openacs.org/www/foo.html}
+} -returnCodes {error ok} -result {http://openacs.org/www/foo.html}
 
 test ns_absoluteurl-2.1b {replace just the last part, use ip literal notation} -body {
     ns_absoluteurl foo.html {http://[::1]/www/t.html}
@@ -97,10 +333,14 @@ test ns_absoluteurl-2.1c {replace just the last part, use ip literal notation} -
     ns_absoluteurl foo.html {http://[::1]:80/www/t.html}
 } -result {http://[::1]:80/www/foo.html}
 
+test ns_absoluteurl-2.1d {reaplace just the last part} -body {
+    ns_absoluteurl icon.png https://img.icons8.com/color/24/000000/
+} -result {https://img.icons8.com/color/24/000000/icon.png}
 
 test ns_absoluteurl-2.2 {replace the whole path} -body {
     ns_absoluteurl /foo.html http://openacs.org/www/t.html
 } -result {http://openacs.org/foo.html}
+
 
 test ns_absoluteurl-2.3a {replace the protocol} -body {
     ns_absoluteurl //google.com http://openacs.org/www/t.html
@@ -115,9 +355,11 @@ test ns_absoluteurl-2.3c {replace the protocol} -body {
 } -result {https://google.com/test.html}
 
 
-test ns_absoluteurl-3.0 {incomplete base URL} -body {
+test ns_absoluteurl-3.0a {incomplete base URL} -body {
     ns_absoluteurl //google.com/test.html //openacs.org/www/t.html
 } -returnCodes error -result {Could not parse base URL into protocol, host and path}
+
+
 
 test ns_absoluteurl-3.1a {base URL containing just protocol and host} -body {
     ns_absoluteurl //google.com/test.html http://openacs.org/
@@ -140,6 +382,47 @@ test ns_absoluteurl-3.2c {base URL containing just protocol and host, no slash} 
 } -result {http://google.com:80/test.html}
 
 
+#
+# Parse host and port
+#
+
+test ns_parsehostport-1.0 {basic syntax: plain call} -body {
+     ns_parsehostport
+} -returnCodes error -result {wrong # args: should be "ns_parsehostport ?-strict? hostport"}
+
+test ns_parsehostport-1.1 {full URL, no port} -body {
+    ns_parsehostport openacs.org
+} -result {host openacs.org}
+
+test ns_parsehostport-1.2 {full URL, no port} -body {
+    ns_parsehostport openacs.org:80
+} -returnCodes {error ok} -result {host openacs.org port 80}
+
+test ns_parsehostport-1.3 {full URL, no port} -body {
+    ns_parsehostport {[::1]:80}
+} -returnCodes {error ok} -result {host ::1 port 80}
+
+test ns_parsehostport-1.4 {strict misc invalid} -body {
+    lmap hostport {
+        foo.com:
+        :80
+        motörhead
+        motörhead.com:8000
+        "a b:80"
+        ""
+    } {catch {ns_parsehostport -strict $hostport}}
+} -result {1 1 1 1 1 1}
+
+test ns_parsehostport-1.5 {non-strict misc invalid} -body {
+    lmap hostport {
+        foo.com:
+        :80
+        motörhead
+        motörhead.com:8000
+        "a b:80"
+        ""
+    } {catch {ns_parsehostport $hostport}}
+} -result {1 1 0 0 1 1}
 
 
 cleanupTests

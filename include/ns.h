@@ -273,15 +273,15 @@ typedef struct Ns_CacheSearch {
     Tcl_HashSearch hsearch;
 } Ns_CacheSearch;
 
-typedef struct _Ns_Cache         Ns_Cache;
-typedef struct _Ns_Entry         Ns_Entry;
-typedef struct _Ns_Cls          *Ns_Cls;
-typedef struct _Ns_Sls          *Ns_Sls;
-typedef void                     Ns_OpContext;
-typedef struct _Ns_TaskQueue     Ns_TaskQueue;
-typedef struct _Ns_Task          Ns_Task;
-typedef struct _Ns_EventQueue    Ns_EventQueue;
-typedef struct _Ns_Event         Ns_Event;
+typedef struct Ns_Cache         Ns_Cache;
+typedef struct Ns_Entry         Ns_Entry;
+typedef uintptr_t               Ns_Cls;
+typedef uintptr_t               Ns_Sls;
+typedef void                    Ns_OpContext;
+typedef struct Ns_TaskQueue     Ns_TaskQueue;
+typedef struct Ns_Task          Ns_Task;
+typedef struct Ns_EventQueue    Ns_EventQueue;
+typedef struct Ns_Event         Ns_Event;
 
 #define NS_CACHE_MAX_TRANSACTION_DEPTH 16
 
@@ -350,7 +350,7 @@ typedef Ns_ReturnCode (Ns_LogCallbackProc)(void *arg);
 typedef void          (Ns_FreeProc)(void *arg);
 typedef void          (Ns_ShutdownProc)(const Ns_Time *toPtr, void *arg);
 typedef int           (Ns_TclInterpInitProc)(Tcl_Interp *interp, const void *arg);
-typedef int           (Ns_TclTraceProc)(Tcl_Interp *interp, const void *arg);
+typedef Ns_ReturnCode (Ns_TclTraceProc)(Tcl_Interp *interp, const void *arg);
 typedef void          (Ns_TclDeferProc)(Tcl_Interp *interp, void *arg);
 typedef bool          (Ns_SockProc)(NS_SOCKET sock, void *arg, unsigned int why);
 typedef void          (Ns_TaskProc)(Ns_Task *task, NS_SOCKET sock, void *arg,
@@ -420,6 +420,20 @@ typedef struct Ns_Request {
     unsigned short  port;
     double          version;
 } Ns_Request;
+
+/*
+ * Typedef for URL components
+ */
+typedef struct Ns_URL {
+    char *protocol;
+    char *userinfo;
+    char *host;
+    char *port;
+    char *path;
+    char *tail;
+    char *query;
+    char *fragment;
+} Ns_URL;
 
 /*
  * The connection structure.
@@ -901,7 +915,7 @@ NS_EXTERN void
 Ns_CacheLock(Ns_Cache *cache)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN int
+NS_EXTERN Ns_ReturnCode
 Ns_CacheTryLock(Ns_Cache *cache)
     NS_GNUC_NONNULL(1);
 
@@ -2256,7 +2270,7 @@ Ns_ResetRequest(Ns_Request *request)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ParseRequest(Ns_Request *request, const char *line)
+Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
     NS_GNUC_NONNULL(2);
 
 NS_EXTERN const char *
@@ -2268,7 +2282,8 @@ Ns_SetRequestUrl(Ns_Request *request, const char *url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ParseHeader(Ns_Set *set, const char *line, Ns_HeaderCaseDisposition disp)
+Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseDisposition disp,
+               size_t *fieldNumberPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
@@ -2890,6 +2905,9 @@ NS_EXTERN Ns_ReturnCode
 Ns_SockSetBlocking(NS_SOCKET sock);
 
 NS_EXTERN void
+Ns_SockSetNodelay(NS_SOCKET sock);
+
+NS_EXTERN void
 Ns_SockSetDeferAccept(NS_SOCKET sock, long secs);
 
 NS_EXTERN void
@@ -2949,7 +2967,7 @@ ns_inet_pton(struct sockaddr *saPtr, const char *addr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN const char *
-ns_inet_ntop(const struct sockaddr *saPtr, char *buffer, size_t size)
+ns_inet_ntop(const struct sockaddr *NS_RESTRICT saPtr, char *NS_RESTRICT buffer, size_t size)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN Ns_ReturnCode
@@ -3060,6 +3078,14 @@ Ns_StrIsValidHostHeaderContent(const char *chars)
 NS_EXTERN const unsigned char *
 Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *dsPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+
+NS_EXTERN bool
+Ns_Valid_UTF8(const unsigned char *bytes, size_t nrBytes)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN bool
+Ns_Is7bit(const char *bytes, size_t nrBytes)
+    NS_GNUC_NONNULL(1);
 
 /*
  * tclcallbacks.c:
@@ -3191,9 +3217,14 @@ Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
 /*
  * tclhttp.c
  */
+NS_EXTERN bool
+Ns_HttpParseHost2(char *hostString, bool strict, char **hostStart, char **portStart, char **end)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
+
 NS_EXTERN void
 Ns_HttpParseHost(char *hostString, char **hostStart, char **portStart)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3)
+    NS_GNUC_DEPRECATED_FOR(Ns_HttpParseHost2);
 
 NS_EXTERN char *
 Ns_HttpLocationString(Tcl_DString *dsPtr, const char *protoString,
@@ -3307,10 +3338,8 @@ NS_EXTERN const char *
 Ns_RelativeUrl(const char *url, const char *location);
 
 NS_EXTERN Ns_ReturnCode
-Ns_ParseUrl(char *url, char **pprotocol, char **phost, char **pport,
-            char **ppath, char **ptail)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4)
-    NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6);
+Ns_ParseUrl(char *url, bool strict, Ns_URL *urlPtr, const char **errorMsg)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
 NS_EXTERN Ns_ReturnCode
 Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *url, const char *base)
@@ -3362,7 +3391,7 @@ Ns_UrlQueryEncode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encodi
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN char *
-Ns_UrlQueryDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding)
+Ns_UrlQueryDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding, int *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 NS_EXTERN char *
@@ -3546,7 +3575,7 @@ Ns_ConnClearQuery(Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN Ns_ReturnCode
-Ns_QueryToSet(char *query, Ns_Set *set)
+Ns_QueryToSet(char *query, Ns_Set *set, Tcl_Encoding encoding)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 

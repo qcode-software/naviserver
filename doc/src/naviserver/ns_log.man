@@ -188,7 +188,7 @@ Unregister the previously registered log filter script identified by
 
 [call [cmd ns_logroll] ]
 
-Roll the server error log. The behavior is independent from the
+Roll the server error log. The behavior is independent of the
 configuration parameter [emph logroll]. See [cmd ns_rollfile] for
 details of log rolling.
 
@@ -260,6 +260,14 @@ relative to the server home directory ([lb][cmd ns_info] home[rb]). All the comp
 the path must exist. The server will fail to start if the log file cannot be
 opened.
 Default: logs/nsd.log
+
+[def logsec]
+If true, log entries will have seconds timestamps.
+Default: true.
+
+[def logthread]
+If true, log entries will have thread ids included.
+Default: true.
 
 [def logusec]
 If true, log entries will have timestamps with microsecond (usec) resolution.

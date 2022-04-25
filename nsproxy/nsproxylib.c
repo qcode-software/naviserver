@@ -406,7 +406,7 @@ static Tcl_DString defexec;             /* Stores full path of the proxy executa
  *
  *----------------------------------------------------------------------
  */
-
+#define stringify(s) #s
 void
 Nsproxy_LibInit(void)
 {
@@ -421,9 +421,9 @@ Nsproxy_LibInit(void)
         Nsd_LibInit();
 
         Tcl_DStringInit(&defexec);
-        Ns_BinPath(&defexec, "nsproxy", (char *)0L);
-        Tcl_InitHashTable(&pools, TCL_STRING_KEYS);
+        Ns_BinPath(&defexec, NSPROXY_HELPER, (char *)0L);
 
+        Tcl_InitHashTable(&pools, TCL_STRING_KEYS);
         Ns_RegisterAtShutdown(Shutdown, NULL);
         Ns_RegisterProcInfo((ns_funcptr_t)Shutdown, "nsproxy:shutdown", NULL);
 
@@ -3182,7 +3182,7 @@ ReaperThread(void *UNUSED(arg))
     reaperState = Running;
     Ns_CondSignal(&pcond); /* Wakeup starter thread */
 
-    while (1) {
+    for (;;) {
         Tcl_HashEntry *hPtr;
         Worker          *prevWorkerPtr;
 
@@ -3225,7 +3225,7 @@ ReaperThread(void *UNUSED(arg))
 
             /*
              * Get max time to wait for one of the worker process.
-             * This is less then time for the whole pool.
+             * This is less than the time for the whole pool.
              */
 
             proxyPtr = poolPtr->firstPtr;

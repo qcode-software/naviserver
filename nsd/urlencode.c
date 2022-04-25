@@ -58,7 +58,7 @@ static char *UrlEncode(Ns_DString *dsPtr, const char *urlSegment,
                        Tcl_Encoding encoding, char part, bool upperCase)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static char *UrlDecode(Ns_DString *dsPtr, const char *urlSegment,
-                       Tcl_Encoding encoding, char part)
+                       Tcl_Encoding encoding, char part, int *resultPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
@@ -833,7 +833,7 @@ Ns_UrlPathDecode(Ns_DString *dsPtr, const char *urlSegment,
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(urlSegment != NULL);
 
-    return UrlDecode(dsPtr, urlSegment, encoding, 'p');
+    return UrlDecode(dsPtr, urlSegment, encoding, 'p', NULL);
 }
 
 
@@ -846,7 +846,7 @@ Ns_UrlPathDecode(Ns_DString *dsPtr, const char *urlSegment,
  *      If encoding is NULL, UTF8 is assumed.
  *
  * Results:
- *      A pointer to the dstring's value, containing the transformed
+ *      A pointer to the Tcl_DString's value, containing the transformed
  *      query string component.
  *
  * Side effects:
@@ -868,12 +868,12 @@ Ns_UrlQueryEncode(Ns_DString *dsPtr, const char *urlSegment,
 
 char *
 Ns_UrlQueryDecode(Ns_DString *dsPtr, const char *urlSegment,
-                  Tcl_Encoding encoding)
+                  Tcl_Encoding encoding, int *resultPtr)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(urlSegment != NULL);
 
-    return UrlDecode(dsPtr, urlSegment, encoding, 'q');
+    return UrlDecode(dsPtr, urlSegment, encoding, 'q', resultPtr);
 }
 
 /*
@@ -915,9 +915,9 @@ Ns_CookieDecode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
     NS_NONNULL_ASSERT(cookie != NULL);
 
 #ifdef RFC1738
-    return UrlDecode(dsPtr, cookie, encoding, 'q');
+    return UrlDecode(dsPtr, cookie, encoding, 'q', NULL);
 #else
-    return UrlDecode(dsPtr, cookie, encoding, 'c');
+    return UrlDecode(dsPtr, cookie, encoding, 'c', NULL);
 #endif
 }
 
@@ -936,7 +936,7 @@ Ns_Oauth1Decode(Ns_DString *dsPtr, const char *cookie, Tcl_Encoding encoding)
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(cookie != NULL);
 
-    return UrlDecode(dsPtr, cookie, encoding, 'o');
+    return UrlDecode(dsPtr, cookie, encoding, 'o', NULL);
 
 }
 
@@ -978,7 +978,6 @@ Ns_EncodeUrlCharset(Ns_DString *dsPtr, const char *urlSegment,
     NS_NONNULL_ASSERT(urlSegment != NULL);
 
     return Ns_UrlQueryEncode(dsPtr, urlSegment, encoding);
-
 }
 
 char *
@@ -988,7 +987,7 @@ Ns_DecodeUrlWithEncoding(Ns_DString *dsPtr, const char *urlSegment,
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(urlSegment != NULL);
 
-    return Ns_UrlQueryDecode(dsPtr, urlSegment, encoding);
+    return Ns_UrlQueryDecode(dsPtr, urlSegment, encoding, NULL);
 }
 
 char *
@@ -1000,7 +999,7 @@ Ns_DecodeUrlCharset(Ns_DString *dsPtr, const char *urlSegment,
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(urlSegment != NULL);
 
-    return Ns_UrlQueryDecode(dsPtr, urlSegment, encoding);
+    return Ns_UrlQueryDecode(dsPtr, urlSegment, encoding, NULL);
 }
 
 
@@ -1133,8 +1132,14 @@ NsTclUrlDecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             encoding = Ns_GetUrlEncoding(NULL);
         }
 
-        (void)UrlDecode(&ds, chars, encoding, (char)part);
-        Tcl_DStringResult(interp, &ds);
+        (void)UrlDecode(&ds, chars, encoding, (char)part, &result);
+        if (result == TCL_OK) {
+            Tcl_DStringResult(interp, &ds);
+        } else {
+            Ns_TclPrintfResult(interp, "input string '%s' cannot be converted to UTF-8",
+                               chars);
+            Ns_DStringFree(&ds);
+        }
     }
     return result;
 }
@@ -1325,21 +1330,22 @@ PercentDecode(char *dest, const char *source, char part)
  *      Decode the given URL component according to part.
  *
  * Results:
- *      A pointer to the dstring's value, containing the decoded
- *          URL.
+ *      A pointer to the Tcl_DString's value, containing the decoded
+ *      URL.
  *
  * Side effects:
- *          Decoded URL will be copied to given dstring.
+ *      Decoded URL will be copied to given Tcl_DString.
  *
  *----------------------------------------------------------------------
  */
 
 static char *
 UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
-          char part)
+          char part, int *resultPtr)
 {
     const char      *firstCode;
     size_t           inputLength;
+    int              result = TCL_OK;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(urlSegment != NULL);
@@ -1367,9 +1373,10 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
          * 2x.
          */
         Ns_DStringNAppend(dsPtr, urlSegment, (int)inputLength);
+        //Ns_Log(Notice, "### UrlDecode plain append <%s> len %ld", dsPtr->string, inputLength);
     } else {
-        int          oldLength, decodedLength;
-        char        *decoded;
+        int   oldLength, decodedLength;
+        char *decoded;
 
         oldLength = dsPtr->length;
 
@@ -1381,21 +1388,51 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
         decoded = dsPtr->string + oldLength;
 
         if (firstCode != NULL) {
-            decodedLength = PercentDecode(decoded, urlSegment, part);
+            ptrdiff_t offset = firstCode - urlSegment;
+
+            memcpy(decoded, urlSegment, (size_t)offset);
+            decodedLength = (int)offset;
+            dsPtr->length += decodedLength;
+            decodedLength += PercentDecode(decoded+offset, urlSegment+offset, part);
         } else {
             memcpy(decoded, urlSegment, inputLength);
             decodedLength = (int)inputLength;
         }
 
         if (likely(encoding != NULL)) {
-            Tcl_DString  ds;
+            bool validByteSequence = NS_TRUE;
 
-            (void)Tcl_ExternalToUtfDString(encoding, decoded, decodedLength,
-                                           &ds);
+            if (encoding == NS_utf8Encoding) {
+                validByteSequence = Ns_Valid_UTF8((const unsigned char *)decoded, (size_t)decodedLength);
+            }
+            Ns_Log(Debug, "### UrlDecode external '%s' encoding %s valid %d", decoded,
+                   Tcl_GetEncodingName(encoding), validByteSequence);
 
-            Ns_DStringSetLength(dsPtr, oldLength);
-            Ns_DStringAppend(dsPtr, Tcl_DStringValue(&ds));
-            Tcl_DStringFree(&ds);
+            if (validByteSequence) {
+                Tcl_DString ds;
+
+                (void)Tcl_ExternalToUtfDString(encoding, decoded, decodedLength, &ds);
+                Ns_DStringSetLength(dsPtr, oldLength);
+                Ns_DStringAppend(dsPtr, Tcl_DStringValue(&ds));
+                Tcl_DStringFree(&ds);
+            } else {
+                /*
+                 * The input byte sequence is not valid. We could simply
+                 * reject to convert the percentcodes
+                 *
+                 *    Ns_DStringSetLength(dsPtr, oldLength);
+                 *    Ns_DStringNAppend(dsPtr, urlSegment, inputLength);
+                 *
+                 * but that could break some existing code. For the time
+                 * being, we just provided a warning message.
+                 */
+
+                Ns_Log(Warning, "decoded string is invalid UTF-8: '%s' len %d", decoded, decodedLength);
+                Ns_DStringSetLength(dsPtr, (oldLength));
+
+                result = TCL_ERROR;
+            }
+            Ns_Log(Debug, "### UrlDecode utf8     '%s'", dsPtr->string);
 
         } else {
             /*
@@ -1406,7 +1443,9 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
             Ns_DStringSetLength(dsPtr, (oldLength + decodedLength));
         }
     }
-
+    if (resultPtr != NULL) {
+        *resultPtr = result;
+    }
     return dsPtr->string;
 }
 
