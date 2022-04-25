@@ -316,8 +316,12 @@ Ns_IndexFindMultiple(const Ns_Index *indexPtr, const void *key)
          * Build array of values to return
          */
         retPtrPtr = ns_malloc((i + 1u) * sizeof(void *));
-        memcpy(retPtrPtr, firstPtrPtr, i * sizeof(void *));
-        retPtrPtr[i] = NULL;
+        if (unlikely(retPtrPtr == NULL)) {
+            Ns_Fatal("IndexFindMultiple: out of memory while allocating result");
+        } else {
+            memcpy(retPtrPtr, firstPtrPtr, i * sizeof(void *));
+            retPtrPtr[i] = NULL;
+        }
     }
 
     return retPtrPtr;

@@ -40,6 +40,8 @@
 #include <openssl/err.h>
 #endif
 
+#define TCLHTTP_USE_EXTERNALTOUTF 1
+
 /*
  * The maximum number of bytes we can send to TLS
  * in one operation is 2^14 => 16384 (see RFC 5246).
@@ -52,9 +54,10 @@
 #define CHUNK_SIZE 16384
 
 /*
- * String equivalents of some header keys
+ * String equivalents of some methods, header keys
  */
 static const char *transferEncodingHeader = "Transfer-Encoding";
+static const char *acceptEncodingHeader   = "Accept-Encoding";
 static const char *contentEncodingHeader  = "Content-Encoding";
 static const char *contentTypeHeader      = "Content-Type";
 static const char *contentLengthHeader    = "Content-Length";
@@ -62,12 +65,18 @@ static const char *connectionHeader       = "Connection";
 static const char *trailersHeader         = "Trailers";
 static const char *hostHeader             = "Host";
 static const char *userAgentHeader        = "User-Agent";
+static const char *connectMethod          = "CONNECT";
 
 /*
  * Attempt to maintain Tcl errorCode variable.
  * This is still not done thoroughly through the code.
  */
 static const char *errorCodeTimeoutString = "NS_TIMEOUT";
+
+/*
+ * For http task mutex naming
+ */
+static uint64_t httpClientRequestCount = 0u; /* MT: static variable! */
 
 /*
  * Local functions defined in this file
@@ -85,6 +94,7 @@ static int HttpConnect(
     NsInterp *itPtr,
     const char *method,
     const char *url,
+    Tcl_Obj *proxyObj,
     Ns_Set *hdrPtr,
     ssize_t bodySize,
     Tcl_Obj *bodyObj,
@@ -98,7 +108,7 @@ static int HttpConnect(
     Ns_Time *timeoutPtr,
     Ns_Time *expirePtr,
     NsHttpTask **httpPtrPtr
-) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(16);
+) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(17);
 
 static bool HttpGet(
     NsInterp *itPtr,
@@ -201,6 +211,15 @@ static void HttpClientLogWrite(
     const char       *causeString
 ) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
+static NS_SOCKET HttpTunnel(
+    NsInterp *itPtr,
+    const char *proxyhost,
+    unsigned short proxyport,
+    const char *host,
+    unsigned short port,
+    const Ns_Time *timeout
+) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
+
 static Ns_LogCallbackProc HttpClientLogOpen;
 static Ns_LogCallbackProc HttpClientLogClose;
 static Ns_LogCallbackProc HttpClientLogRoll;
@@ -228,6 +247,8 @@ static NsHttpParseProc ParseBodyProc;
 static NsHttpParseProc TrailerInitProc;
 static NsHttpParseProc ParseTrailerProc;
 static NsHttpParseProc ParseEndProc;
+
+static char* SkipDigits(char *chars) NS_GNUC_NONNULL(1);
 
 /*
  * Callbacks for the chunked-encoding state machine
@@ -525,13 +546,37 @@ NsStopHttp(NsServer *servPtr)
     (void)HttpClientLogClose(servPtr);
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * SkipDigits --
+ *
+ *    Helper function of Ns_HttpParseHost() to skip digits in a string.
+ *
+ * Results:
+ *    First non-digit character.
+ *
+ * Side effects:
+ *    none
+ *
+ *----------------------------------------------------------------------
+ */
+static char*
+SkipDigits(char *chars)
+{
+    for (; *chars  >= '0' && *chars <= '9'; chars++) {
+        ;
+    }
+    return chars;
+}
 
 
 
 /*
  *----------------------------------------------------------------------
  *
- * Ns_HttpParseHost --
+ * Ns_HttpParseHost2, Ns_HttpParseHost --
  *
  *      Obtain the hostname from a writable string
  *      using syntax as specified in RFC 3986 section 3.2.2.
@@ -541,43 +586,158 @@ NsStopHttp(NsServer *servPtr)
  *          [2001:db8:1f70::999:de8:7648:6e8]:8000 (IP-literal notation)
  *          openacs.org:80                         (reg-name notation)
  *
- * Results:
- *      If a port is indicated after the hostname, the "portStart"
- *      will contain a string starting with ":", otherwise NULL.
+ *      Ns_HttpParseHost() is the legacy version of Ns_HttpParseHost2().
  *
- *      If "hostStart" is non-null, a pointer will point to the hostname,
- *      which will be terminated by '\0' in case of an IPv6 address in
- *      IP-literal notation.
+ * Results:
+ *      Boolean value indicating success.
+ *
+ *      In addition, parts of the parsed content is returned via the
+ *      provided pointers:
+ *
+ *      - If a port is indicated after the hostname, the "portStart"
+ *        will contain a string starting with ":", otherwise NULL.
+ *
+ *      - If "hostStart" is non-null, a pointer will point to the
+ *        hostname, which will be terminated by '\0' in case of an IPv6
+ *        address in IP-literal notation.
+ *
+ *      Note: Ns_HttpParseHost2 can be used to parse empty host/port
+ *      values. To detect these cases, use a test like
+ *
+ *        if (hostParsedOk && hostString != end && hostStart != portStart) ...
  *
  * Side effects:
- *      May write a '\0' into the passed hostSting.
+ *      May write NUL character '\0' into the passed hostString.
  *
  *----------------------------------------------------------------------
  */
-
 void
 Ns_HttpParseHost(
     char *hostString,
     char **hostStart,
     char **portStart
 ) {
-    bool ipLiteral = NS_FALSE;
+    char *end;
 
     NS_NONNULL_ASSERT(hostString != NULL);
     NS_NONNULL_ASSERT(portStart != NULL);
 
+    (void) Ns_HttpParseHost2(hostString, NS_FALSE, hostStart, portStart, &end);
+    if (*portStart != NULL) {
+        /*
+         * The old version was returning in portStart the position of the
+         * character BEFORE the port (usually ':'). So, keep compatibility.
+         */
+        *portStart = *portStart-1;
+    }
+}
+
+bool
+Ns_HttpParseHost2(
+    char *hostString,
+    bool strict,
+    char **hostStart,
+    char **portStart,
+    char **end
+) {
+    bool ipLiteral = NS_FALSE, success = NS_TRUE;
+
+    /*
+     * RFC 3986 defines
+     *
+     *   reg-name    = *( unreserved / pct-encoded / sub-delims )
+     *   unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
+     *   sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
+     *               / "*" / "+" / "," / ";" / "="
+     *
+     *   ALPHA   = (%41-%5A and %61-%7A)
+     *   DIGIT   = (%30-%39),
+     *   hyphen (%2D), period (%2E), underscore (%5F), tilde (%7E)
+     *   exclam (%21) dollar (%24) amp (%26) singlequote (%27)
+     *   lparen (%28) lparen (%29) asterisk (%2A) plus (%2B)
+     *   comma (%2C) semicolon (%3B) equals (%3D)
+     *
+     * However, errata #4942 of RFC 3986 says:
+     *
+     *   reg-name    = *( unreserved / pct-encoded / "-" / ".")
+     *
+     * A reg-name consists of a sequence of domain labels separated by ".",
+     * each domain label starting and ending with an alphanumeric character
+     * and possibly also containing "-" characters.  The rightmost domain
+     * label of a fully qualified domain name in DNS may be followed by a
+     * single "." and should be if it is necessary to distinguish between the
+     * complete domain name and some local domain.
+     *
+     * Percent-encoded is just checked by the character range, but does not
+     * check the two following (number) chars.
+     *
+     *   percent (%25) ... for percent-encoded
+     */
+    static const bool regname_table[256] = {
+        /*          0  1  2  3   4  5  6  7   8  9  a  b   c  d  e  f */
+        /* 0x00 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0x10 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0x20 */  0, 0, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  0, 1, 1, 0,
+        /* 0x30 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 0, 0,  0, 0, 0, 0,
+        /* 0x40 */  0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x50 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 0,  0, 0, 0, 1,
+        /* 0x60 */  0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x70 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 0,  0, 0, 1, 0,
+        /* 0x80 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0x90 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0xa0 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0xb0 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0xc0 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0xd0 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0xe0 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+        /* 0xf0 */  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0
+    };
+
+    /*
+     * Host name delimiters ":/?#" and NUL
+     */
+    static const bool delimiter_table[256] = {
+        /*          0  1  2  3   4  5  6  7   8  9  a  b   c  d  e  f */
+        /* 0x00 */  0, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x10 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x20 */  0, 1, 1, 0,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 0,
+        /* 0x30 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 0, 1,  1, 1, 1, 0,
+        /* 0x40 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x50 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x60 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x70 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x80 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0x90 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0xa0 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0xb0 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0xc0 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0xd0 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0xe0 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,
+        /* 0xf0 */  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1
+    };
+
+    NS_NONNULL_ASSERT(hostString != NULL);
+    NS_NONNULL_ASSERT(portStart != NULL);
+    NS_NONNULL_ASSERT(end != NULL);
+
+    /*
+     * RFC 3986 defines
+     *
+     *   host       = IP-literal / IPv4address / reg-name
+     *   IP-literal = "[" ( IPv6address / IPvFuture  ) "]"
+     */
     if (*hostString == '[') {
         char *p;
 
         /*
-         * Maybe this is an address in IP-literal notation in square braces
+         * This looks like an address in IP-literal notation in square brackets.
          */
         p = strchr(hostString + 1, INTCHAR(']'));
         if (p != NULL) {
             ipLiteral = NS_TRUE;
 
             /*
-             * Terminate the IP-literal if hostStart is given.
+             * Zero-byte terminate the IP-literal if hostStart is given.
              */
             if (hostStart != NULL) {
                 *p = '\0';
@@ -585,28 +745,110 @@ Ns_HttpParseHost(
             }
             p++;
             if (*p == ':') {
+                *(p++) = '\0';
                 *portStart = p;
+                *end = SkipDigits(p);
             } else {
                 *portStart = NULL;
+                *end = p;
             }
+            /*fprintf(stderr, "==== IP literal portStart '%s' end '%s'\n", *portStart, *end);*/
+        } else {
+            /*
+             * There is no closing square bracket
+             */
+            success = NS_FALSE;
+            *portStart = NULL;
+            if (hostStart != NULL) {
+                *hostStart = NULL;
+            }
+            *end = p;
         }
     }
-    if (ipLiteral == NS_FALSE) {
-        char *slash = strchr(hostString, INTCHAR('/')),
-             *colon = strchr(hostString, INTCHAR(':'));
-        if (slash != NULL && colon != NULL && slash < colon) {
+    if (success && !ipLiteral) {
+        char *p;
 
+        /*
+         * Still to handle from the RFC 3986 "host" rule:
+         *
+         *   host        = .... / IPv4address / reg-name
+         *
+         * Character-wise, IPv4address is a special case of reg-name.
+         *
+         *   reg-name    = *( unreserved / pct-encoded / sub-delims )
+         *   unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
+         *   sub-delims  = "!" / "$" / "&" / "'" / "(" / ")"
+         *               / "*" / "+" / "," / ";" / "="
+         *
+         * However: errata #4942 of RFC 3986 says:
+         *
+         *   reg-name    = *( unreserved / pct-encoded / "-" / ".")
+         *
+         * which is more in sync with reality. In the errata, the two
+         * explicitly mentioned characters are not needed, since these are
+         * already part of "unreserved". Probably, there are characters in
+         * "unreserved", which are not desired either.
+         *
+         * RFC 3986 sec 3.2: The authority component is preceded by a double
+         * slash ("//") and is terminated by the next slash ("/"), question
+         * mark ("?"), or number sign ("#") character, or by the end of the
+         * URI.
+         *
+         */
+
+        if (strict) {
             /*
-             * Found a colon after the first slash, ignore this colon.
+             * Use the table based on regname + errata in RFC 3986.
              */
-            *portStart = NULL;
+            for (p = hostString; regname_table[UCHAR(*p)]; p++) {
+                ;
+            }
         } else {
-            *portStart = colon;
+            /*
+             * Just scan for the bare necessity based on delimiters.
+             */
+            for (p = hostString; delimiter_table[UCHAR(*p)]; p++) {
+                ;
+            }
+
         }
+        /*
+         * The host is not allowed to start with a dot ("dots are separators
+         * for labels"), and it has to be at least one character long.
+         *
+         * Colon is not part of the allowed characters in reg-name, so we can
+         * use it to determine the (optional) port.
+         *
+         */
+        success = (*hostString != '.'
+                   && (*p == '\0' || *p == ':' || *p == '/' || *p == '?' || *p == '#'));
+        if (*p == ':') {
+            *(p++) = '\0';
+            *portStart = p;
+            *end = SkipDigits(p);
+        } else {
+            *portStart = NULL;
+            *end = p;
+        }
+
+        /* fprintf(stderr, "==== p %.2x, success %d '%s'\n", *p, success, hostString); */
+
         if (hostStart != NULL) {
             *hostStart = hostString;
         }
     }
+
+    /*
+     * When a port is found, make sure, the port is at least one digit.
+     * We could consider making the test only in the non-strict case,
+     * but it is hard to believe that zero-byte ports make sense in any
+     * scenario.
+     */
+    if (success && *portStart != NULL) {
+        success = (*portStart != *end);
+    }
+
+    return success;
 }
 
 
@@ -740,7 +982,7 @@ Ns_HttpMessageParse(
                 }
                 hdrPtr->name = ns_strdup(p);
                 firsthdr = 0;
-            } else if (len < 2 || Ns_ParseHeader(hdrPtr, p, ToLower) != NS_OK) {
+            } else if (len < 2 || Ns_ParseHeader(hdrPtr, p, NULL, ToLower, NULL) != NS_OK) {
                 break;
             }
             p = eol;
@@ -977,9 +1219,9 @@ HttpWaitObjCmd(
             Ns_Log(Warning, "ns_http_wait: -headers option is deprecated");
         }
         if (decompress != 0) {
-            Ns_Log(Warning, "ns_http_wait: -decompress option is deprecated");
-            httpPtr->flags |= NS_HTTP_FLAG_DECOMPRESS;
+            Ns_Log(Warning, "ns_http_wait: ignore obsolete flag -decompress");
         }
+
         if (binary != 0) {
             Ns_Log(Warning, "ns_http_wait: -binary option is deprecated");
             httpPtr->flags |= NS_HTTP_FLAG_BINARY;
@@ -999,6 +1241,11 @@ HttpWaitObjCmd(
             }
             Ns_MutexUnlock(&httpPtr->lock);
         }
+        /*
+         * Always decompress unless told differently. Here we do not have the
+         * "-raw" option, since we do not need backward compatibility.
+         */
+        httpPtr->flags |= NS_HTTP_FLAG_DECOMPRESS;
 
         if (elapsedVarObj != NULL) {
             Ns_Log(Warning, "ns_http_wait: -elapsed option is deprecated");
@@ -1489,7 +1736,7 @@ HttpQueue(
     bool run
 ) {
     Tcl_Interp *interp;
-    int         result = TCL_OK, decompress = 0, binary = 0;
+    int         result = TCL_OK, decompress = 0, raw = 0, binary = 0;
     Tcl_WideInt spoolLimit = -1;
     int         verifyCert = 0, keepHostHdr = 0;
     NsHttpTask *httpPtr = NULL;
@@ -1505,9 +1752,8 @@ HttpQueue(
                *bodyChanName = NULL,
                *bodyFileName = NULL;
     Ns_Set     *requestHdrPtr = NULL;
-    Tcl_Obj    *bodyObj = NULL;
-    Ns_Time    *timeoutPtr = NULL;
-    Ns_Time    *expirePtr = NULL;
+    Tcl_Obj    *bodyObj = NULL, *proxyObj = NULL;
+    Ns_Time    *timeoutPtr = NULL, *expirePtr = NULL;
     Tcl_WideInt bodySize = 0;
     Tcl_Channel bodyChan = NULL, spoolChan = NULL;
     Ns_ObjvValueRange sizeRange = {0, LLONG_MAX};
@@ -1521,9 +1767,9 @@ HttpQueue(
         {"-cafile",           Ns_ObjvString,  &caFile,         NULL},
         {"-capath",           Ns_ObjvString,  &caPath,         NULL},
         {"-cert",             Ns_ObjvString,  &cert,           NULL},
+        {"-raw",              Ns_ObjvBool,    &raw,            INT2PTR(NS_TRUE)},
         {"-decompress",       Ns_ObjvBool,    &decompress,     INT2PTR(NS_TRUE)},
         {"-donecallback",     Ns_ObjvString,  &doneCallback,   NULL},
-        {"-expire",           Ns_ObjvTime,    &expirePtr,      NULL},
         {"-headers",          Ns_ObjvSet,     &requestHdrPtr,  NULL},
         {"-hostname",         Ns_ObjvString,  &sniHostname,    NULL},
         {"-keep_host_header", Ns_ObjvBool,    &keepHostHdr,    INT2PTR(NS_TRUE)},
@@ -1531,8 +1777,10 @@ HttpQueue(
         {"-outputchan",       Ns_ObjvString,  &outputChanName, NULL},
         {"-outputfile",       Ns_ObjvString,  &outputFileName, NULL},
         {"-spoolsize",        Ns_ObjvMemUnit, &spoolLimit,     NULL},
+        {"-expire",           Ns_ObjvTime,    &expirePtr,      NULL},
         {"-timeout",          Ns_ObjvTime,    &timeoutPtr,     NULL},
         {"-verify",           Ns_ObjvBool,    &verifyCert,     INT2PTR(NS_FALSE)},
+        {"-proxy",            Ns_ObjvObj,     &proxyObj,       NULL},
         {NULL, NULL,  NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -1557,6 +1805,10 @@ HttpQueue(
         Ns_TclPrintfResult(interp, "only one of -body, -body_chan or -body_file"
                            " options are allowed");
         result = TCL_ERROR;
+    } else if (unlikely(decompress != 0)) {
+        Ns_Log(Warning, "ignore obsolete flag -decompress");
+    } else if (raw != 1) {
+        decompress = 1;
     }
 
     if (result == TCL_OK && bodyFileName != NULL) {
@@ -1597,6 +1849,7 @@ HttpQueue(
         result = HttpConnect(itPtr,
                              method,
                              url,
+                             proxyObj,
                              requestHdrPtr,
                              bodySize,
                              bodyObj,
@@ -1647,8 +1900,10 @@ HttpQueue(
         if (doneCallback != NULL) {
             httpPtr->doneCallback = ns_strdup(doneCallback);
         }
-        if (decompress != 0) {
+        if (likely(decompress != 0) && likely(raw == 0)) {
             httpPtr->flags |= NS_HTTP_FLAG_DECOMPRESS;
+        } else {
+            httpPtr->flags = (httpPtr->flags & ~NS_HTTP_FLAG_DECOMPRESS);
         }
         if (binary != 0) {
             httpPtr->flags |= NS_HTTP_FLAG_BINARY;
@@ -1868,8 +2123,8 @@ HttpGetResult(
          * We have a choice between binary and string objects.
          * Unfortunately, this is mostly whole lotta guess-work...
          */
-        if ((httpPtr->flags & NS_HTTP_FLAG_GZIP_ENCODING) != 0u) {
-            if ((httpPtr->flags & NS_HTTP_FLAG_DECOMPRESS) == 0) {
+        if (unlikely((httpPtr->flags & NS_HTTP_FLAG_GZIP_ENCODING) != 0u)) {
+            if (unlikely((httpPtr->flags & NS_HTTP_FLAG_DECOMPRESS) == 0u)) {
 
                 /*
                  * Gzipped but not inflated content
@@ -1893,6 +2148,11 @@ HttpGetResult(
                  * i.e. to perform no charset conversion.
                  */
                 binary = Ns_IsBinaryMimeType(cType);
+                /*
+                 * When the MIME type does not indicate binary treatment, a
+                 * charset encoding is required. (e.g. "text/plain;
+                 * charset=iso-8859-2")
+                 */
 #if defined(TCLHTTP_USE_EXTERNALTOUTF)
                 if (binary == NS_FALSE) {
                     encoding = Ns_GetTypeEncoding(cType);
@@ -2152,7 +2412,7 @@ HttpCheckSpool(
         header = Ns_SetIGet(httpPtr->replyHeaders, contentEncodingHeader);
         if (header != NULL && Ns_Match(header, "gzip") != NULL) {
             httpPtr->flags |= NS_HTTP_FLAG_GZIP_ENCODING;
-            if ((httpPtr->flags & NS_HTTP_FLAG_GUNZIP) != 0u) {
+            if ((httpPtr->flags & NS_HTTP_FLAG_DECOMPRESS) != 0u) {
                 httpPtr->compress = ns_calloc(1u, sizeof(Ns_CompressStream));
                 (void) Ns_InflateInit(httpPtr->compress);
                 Ns_Log(Ns_LogTaskDebug, "HttpCheckSpool: %s: %s",
@@ -2379,6 +2639,7 @@ HttpConnect(
     NsInterp *itPtr,
     const char *method,
     const char *url,
+    Tcl_Obj *proxyObj,
     Ns_Set *hdrPtr,
     ssize_t bodySize,
     Tcl_Obj *bodyObj,
@@ -2393,17 +2654,17 @@ HttpConnect(
     Ns_Time *expirePtr,
     NsHttpTask **httpPtrPtr
 ) {
-    Tcl_Interp      *interp;
-    NsHttpTask      *httpPtr;
-    Ns_DString      *dsPtr;
-    bool             haveUserAgent = NS_FALSE;
-    unsigned short   portNr, defPortNr;
-    char            *port = (char*)NS_EMPTY_STRING;
-    char            *url2, *proto, *host, *path, *tail;
-    const char      *contentType = NULL;
-
-    static uint64_t  httpClientRequestCount = 0u; /* MT: static variable! */
-    uint64_t         requestCount = 0u;
+    Tcl_Interp     *interp;
+    NsHttpTask     *httpPtr;
+    Ns_DString     *dsPtr;
+    bool            haveUserAgent = NS_FALSE, ownHeaders = NS_FALSE;
+    bool            httpTunnel = NS_FALSE, httpProxy = NS_FALSE;
+    unsigned short  portNr, defPortNr, pPortNr = 0;
+    char           *url2, *pHost = NULL;
+    Ns_URL          u;
+    const char     *errorMsg = NULL;
+    const char     *contentType = NULL;
+    uint64_t        requestCount = 0u;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(method != NULL);
@@ -2452,14 +2713,18 @@ HttpConnect(
      * the item separating characters with '\0' characters.
      */
     url2 = ns_strdup(url);
-    if (Ns_ParseUrl(url2, &proto, &host, &port, &path, &tail) != NS_OK
-        || proto == NULL
-        || host  == NULL
-        || path  == NULL
-        || tail  == NULL) {
+    if (Ns_ParseUrl(url2, NS_FALSE, &u, &errorMsg) != NS_OK
+        || u.protocol == NULL
+        || u.host  == NULL
+        || u.path  == NULL
+        || u.tail  == NULL) {
 
-        Ns_TclPrintfResult(interp, "invalid URL \"%s\"", url);
+        Ns_TclPrintfResult(interp, "invalid URL \"%s\": %s", url, errorMsg);
         goto fail;
+    }
+
+    if (u.userinfo != NULL) {
+        Ns_Log(Warning, "ns_http: userinfo '%s' ignored: %s", u.userinfo, url);
     }
 
     /*
@@ -2478,7 +2743,7 @@ HttpConnect(
      * Check used protocol and protocol-specific parameters
      * and determine the default port (80 for HTTP, 443 for HTTPS)
      */
-    if (STREQ("http", proto)) {
+    if (STREQ("http", u.protocol)) {
         if (cert != NULL
             || caFile != NULL
             || caPath != NULL
@@ -2490,7 +2755,7 @@ HttpConnect(
         defPortNr = 80u;
     }
 #ifdef HAVE_OPENSSL_EVP_H
-    else if (STREQ("https", proto)) {
+    else if (STREQ("https", u.protocol)) {
         defPortNr = 443u;
     }
 #endif
@@ -2502,8 +2767,8 @@ HttpConnect(
     /*
      * Connect to specified port or to the default port.
      */
-    if (port != NULL) {
-        portNr = (unsigned short) strtol(port, NULL, 10);
+    if (u.port != NULL) {
+        portNr = (unsigned short) strtol(u.port, NULL, 10);
     } else {
         portNr = defPortNr;
     }
@@ -2520,15 +2785,94 @@ HttpConnect(
     }
 
     /*
+     * If content decompression allowed and no encodings explicitly set
+     * we tell remote what we would accept per-default.
+     */
+#ifdef HAVE_ZLIB_H
+    if (likely((httpPtr->flags & NS_HTTP_FLAG_DECOMPRESS) != 0u)) {
+        if (hdrPtr == NULL || Ns_SetIFind(hdrPtr, acceptEncodingHeader) == -1) {
+            const char *acceptEncodings = "gzip, deflate";
+
+            if (hdrPtr == NULL) {
+                hdrPtr = Ns_SetCreate(NULL);
+                ownHeaders = NS_TRUE;
+            }
+
+            Ns_SetPut(hdrPtr, acceptEncodingHeader, acceptEncodings);
+        }
+    }
+#endif
+
+    /*
+     * Check if we need to connect to the proxy server first.
+     * If the passed dictionary contains "host" key, we expect
+     * to find the "port" and (optionally) "tunnel" keys.
+     * If host is found, we will proxy.
+     * For https connections we will tunnel, otherwise we will
+     * cache-proxy. We will tunnel always if optional "tunnel"
+     * key is true.
+     */
+    if (proxyObj != NULL) {
+        Tcl_Obj *keyObj, *valObj;
+
+        keyObj = Tcl_NewStringObj("host", 4);
+        valObj = NULL;
+        if (Tcl_DictObjGet(interp, proxyObj, keyObj, &valObj) != TCL_OK) {
+            Tcl_DecrRefCount(keyObj);
+            goto fail; /* proxyObj is not a dictionary? */
+        }
+        Tcl_DecrRefCount(keyObj);
+        pHost = (valObj != NULL) ? Tcl_GetString(valObj) : NULL;
+        if (pHost != NULL) {
+            int portval = 0;
+
+            keyObj = Tcl_NewStringObj("port", 4);
+            valObj = NULL;
+            Tcl_DictObjGet(interp, proxyObj, keyObj, &valObj);
+            Tcl_DecrRefCount(keyObj);
+            if (valObj == NULL) {
+                Ns_TclPrintfResult(interp, "missing proxy port");
+                goto fail;
+            }
+            if (Tcl_GetIntFromObj(interp, valObj, &portval) != TCL_OK) {
+                goto fail;
+            }
+            if (portval <= 0) {
+                Ns_TclPrintfResult(interp, "invalid proxy port");
+            }
+            pPortNr = (unsigned short)portval;
+            if (defPortNr == 443u) {
+                httpTunnel = NS_TRUE;
+            } else {
+                keyObj = Tcl_NewStringObj("tunnel", 6);
+                valObj = NULL;
+                Tcl_DictObjGet(interp, proxyObj, keyObj, &valObj);
+                Tcl_DecrRefCount(keyObj);
+                if (valObj == NULL) {
+                    httpTunnel = NS_FALSE;
+                } else {
+                    int tunnel;
+
+                    if (Tcl_GetBooleanFromObj(interp, valObj, &tunnel) != TCL_OK) {
+                        goto fail;
+                    }
+                    httpTunnel = (tunnel == 1) ? NS_TRUE : NS_FALSE;
+                }
+            }
+            httpProxy = (defPortNr == 80u) && (httpTunnel == NS_FALSE);
+        }
+    }
+
+    /*
      * Now we are ready to attempt the connection.
-     * If no timeout given, assume 10 seconds.
+     * If no timeout given, assume 30 seconds.
      */
 
     {
         Ns_ReturnCode rc;
-        Ns_Time       def = {10, 0}, *toPtr = NULL;
+        Ns_Time       defaultTimout = {30, 0}, *toPtr = NULL;
 
-        Ns_Log(Ns_LogTaskDebug, "HttpConnect: connecting to [%s]:%hu", host, portNr);
+        Ns_Log(Ns_LogTaskDebug, "HttpConnect: connecting to [%s]:%hu", u.host, portNr);
 
         /*
          * Open the socket to remote, assure it is writable
@@ -2544,29 +2888,45 @@ HttpConnect(
         } else if (expirePtr != NULL) {
             toPtr = expirePtr;
         } else {
-            toPtr = &def;
+            toPtr = &defaultTimout;
         }
-        httpPtr->sock = Ns_SockTimedConnect2(host, portNr, NULL, 0, toPtr, &rc);
-        if (httpPtr->sock == NS_INVALID_SOCKET) {
-            Ns_SockConnectError(interp, host, portNr, rc);
-            HttpClientLogWrite(httpPtr, "connecttimeout");
-            goto fail;
-        }
-        if (Ns_SockSetNonBlocking(httpPtr->sock) != NS_OK) {
-            Ns_TclPrintfResult(interp, "can't set socket nonblocking mode");
-            goto fail;
-        }
-        rc = HttpWaitForSocketEvent(httpPtr->sock, POLLOUT, httpPtr->timeout);
-        if (rc != NS_OK) {
-            if (rc == NS_TIMEOUT) {
-                Ns_TclPrintfResult(interp, "timeout waiting for writable socket");
-                Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
-                HttpClientLogWrite(httpPtr, "writetimeout");
-            } else {
-                Ns_TclPrintfResult(interp, "waiting for writable socket: %s",
-                                   ns_sockstrerror(ns_sockerrno));
+        if (httpTunnel == NS_TRUE) {
+            httpPtr->sock = HttpTunnel(itPtr, pHost, pPortNr, u.host, portNr, toPtr);
+            if (httpPtr->sock == NS_INVALID_SOCKET) {
+                goto fail;
             }
-            goto fail;
+        } else {
+            char          *rhost = u.host;
+            unsigned short rport = portNr;
+
+            if (httpProxy == NS_TRUE) {
+                rhost = pHost;
+                rport = pPortNr;
+            }
+            httpPtr->sock = Ns_SockTimedConnect2(rhost, rport, NULL, 0, toPtr, &rc);
+            if (httpPtr->sock == NS_INVALID_SOCKET) {
+                Ns_SockConnectError(interp, rhost, rport, rc);
+                if (rc == NS_TIMEOUT) {
+                    HttpClientLogWrite(httpPtr, "connecttimeout");
+                }
+                goto fail;
+            }
+            if (Ns_SockSetNonBlocking(httpPtr->sock) != NS_OK) {
+                Ns_TclPrintfResult(interp, "can't set socket nonblocking mode");
+                goto fail;
+            }
+            rc = HttpWaitForSocketEvent(httpPtr->sock, POLLOUT, toPtr);
+            if (rc != NS_OK) {
+                if (rc == NS_TIMEOUT) {
+                    Ns_TclPrintfResult(interp, "timeout waiting for writable socket");
+                    HttpClientLogWrite(httpPtr, "writetimeout");
+                    Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
+                } else {
+                    Ns_TclPrintfResult(interp, "waiting for writable socket: %s",
+                                       ns_sockstrerror(ns_sockerrno));
+                }
+                goto fail;
+            }
         }
 
         /*
@@ -2606,20 +2966,34 @@ HttpConnect(
     Ns_DStringSetLength(dsPtr, 0);
     Ns_DStringAppend(dsPtr, method);
     Ns_StrToUpper(Ns_DStringValue(dsPtr));
-    Ns_DStringNAppend(dsPtr, " /", 2);
-    if (*path != '\0') {
-        Ns_DStringNAppend(dsPtr, path, -1);
-        Ns_DStringNAppend(dsPtr, "/", 1);
+    if (httpProxy == NS_TRUE) {
+        Ns_DStringNAppend(dsPtr, " ", 1);
+        Ns_DStringNAppend(dsPtr, url, -1);
+    } else {
+        Ns_DStringNAppend(dsPtr, " /", 2);
+        if (*u.path != '\0') {
+            Ns_DStringNAppend(dsPtr, u.path, -1);
+            Ns_DStringNAppend(dsPtr, "/", 1);
+        }
+        Ns_DStringNAppend(dsPtr, u.tail, -1);
+        if (u.query != NULL) {
+            Ns_DStringNAppend(dsPtr, "?", 1);
+            Ns_DStringNAppend(dsPtr, u.query, -1);
+        }
+        if (u.fragment != NULL) {
+            Ns_DStringNAppend(dsPtr, "#", 1);
+            Ns_DStringNAppend(dsPtr, u.fragment, -1);
+        }
     }
-    Ns_DStringNAppend(dsPtr, tail, -1);
-    Ns_Log(Ns_LogTaskDebug, "HttpConnect: %s request: %s", proto, Ns_DStringValue(dsPtr));
     Ns_DStringNAppend(dsPtr, " HTTP/1.1\r\n", 11);
+
+    Ns_Log(Ns_LogTaskDebug, "HttpConnect: %s request: %s", u.protocol, dsPtr->string);
 
     /*
      * Add provided headers, remove headers we are providing explicitly,
      * check User-Agent header existence.
      */
-    if (hdrPtr != NULL) {
+    if (ownHeaders == NS_FALSE && hdrPtr != NULL) {
         size_t ii;
 
         if (keepHostHdr == NS_FALSE) {
@@ -2659,7 +3033,7 @@ HttpConnect(
      */
     if (keepHostHdr == NS_FALSE) {
         (void)Ns_DStringVarAppend(dsPtr, hostHeader, ": ", (char *)0L);
-        (void)Ns_HttpLocationString(dsPtr, NULL, host, portNr, defPortNr);
+        (void)Ns_HttpLocationString(dsPtr, NULL, u.host, portNr, defPortNr);
         Ns_DStringNAppend(dsPtr, "\r\n", 2);
     }
 
@@ -2677,7 +3051,7 @@ HttpConnect(
 
     } else {
 
-        if (hdrPtr != NULL) {
+        if (ownHeaders == NS_FALSE && hdrPtr != NULL) {
             contentType = Ns_SetIGet(hdrPtr, contentTypeHeader);
         }
 
@@ -2774,9 +3148,17 @@ HttpConnect(
         Tcl_DStringFree(&d);
     }
 
+
+    if (ownHeaders == NS_TRUE) {
+        Ns_SetFree(hdrPtr);
+    }
+
     return TCL_OK;
 
  fail:
+    if (ownHeaders == NS_TRUE) {
+        Ns_SetFree(hdrPtr);
+    }
     ns_free((void *)url2);
     HttpClose(httpPtr);
 
@@ -2868,7 +3250,8 @@ HttpAppendBuffer(
     Ns_Log(Ns_LogTaskDebug, "HttpAppendBuffer: got %" PRIuz " bytes flags:%.6x",
            size, httpPtr->flags);
 
-    if (likely((httpPtr->flags & NS_HTTP_FLAG_GUNZIP) == 0u)) {
+    if (unlikely((httpPtr->flags & NS_HTTP_FLAG_DECOMPRESS) == 0u)
+        || likely((httpPtr->flags & NS_HTTP_FLAG_GZIP_ENCODING) == 0u)) {
 
         /*
          * Output raw content
@@ -3001,7 +3384,7 @@ HttpAppendContent(
  *        machine by simply invoking the registered procs.
  *
  *        Due to its universal nature, this code can be made
- *        independent from NsHttp and re-used elsewhere.
+ *        independent of NsHttp and re-used elsewhere.
  *
  * Results:
  *        Tcl result code
@@ -3476,9 +3859,9 @@ HttpProc(
                 ssize_t nb = 0;
 
                 httpPtr->next += n;
-                nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
                 Ns_MutexLock(&httpPtr->lock);
                 httpPtr->sent += (size_t)n;
+                nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
                 if (nb > 0) {
                     httpPtr->sendBodySize = (size_t)nb;
                 }
@@ -3487,7 +3870,7 @@ HttpProc(
                 if (remain > 0) {
 
                     /*
-                     * We still have something to be send
+                     * We still have something to be sent
                      * left in memory.
                      */
                     Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE"
@@ -3629,9 +4012,9 @@ HttpProc(
                         ssize_t nb = 0;
 
                         httpPtr->next += sent;
-                        nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
                         Ns_MutexLock(&httpPtr->lock);
                         httpPtr->sent += (size_t)sent;
+                        nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
                         if (nb > 0) {
                             httpPtr->sendBodySize = (size_t)nb;
                         }
@@ -3650,9 +4033,9 @@ HttpProc(
                     if (sent > 0) {
                         ssize_t nb = 0;
 
-                        nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
                         Ns_MutexLock(&httpPtr->lock);
                         httpPtr->sent += (size_t)sent;
+                        nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
                         if (nb > 0) {
                             httpPtr->sendBodySize = (size_t)nb;
                         }
@@ -3684,7 +4067,7 @@ HttpProc(
                         } else {
 
                             /*
-                             * We read less then chunksize bytes, the source
+                             * We read less than chunksize bytes, the source
                              * is on EOF, so what to do?  Since we can't
                              * rectify Content-Length, receiver expects us
                              * to send more...
@@ -3809,7 +4192,22 @@ HttpProc(
                         httpPtr->error = "http read failed";
                         Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_READ spool failed");
                     } else {
-                        taskDone = NS_FALSE;
+
+                        /*
+                         * At the point of reading response content (if any).
+                         * Continue reading if any of the following is true:
+                         *
+                         *   o. remote tells content length
+                         *   o. chunked content not fully parsed
+                         *   o. caller tells it expects content
+                         */
+                        if (httpPtr->replyLength > 0
+                            || ((httpPtr->flags & NS_HTTP_FLAG_CHUNKED) != 0u
+                                && (httpPtr->flags & NS_HTTP_FLAG_CHUNKED_END) == 0u)
+                            || (httpPtr->flags & NS_HTTP_FLAG_EMPTY) == 0u) {
+
+                            taskDone = NS_FALSE;
+                        }
                     }
                 }
 
@@ -4061,6 +4459,152 @@ HttpCutChannel(
         Tcl_CutChannel(chan);
     }
 
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * HttpTunnel --
+ *
+ *        Dig a tunnel to the remote host over the given proxy.
+ *
+ * Results:
+ *        Socket tunneled to the remote host/port.
+ *        Should behave as a regular directly connected socket.
+ *
+ * Side effects:
+ *        Runs an HTTP task for HTTP/1.1 connection to proxy.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static NS_SOCKET
+HttpTunnel(
+    NsInterp *itPtr,
+    const char *proxyhost,
+    unsigned short proxyport,
+    const char *host,
+    unsigned short port,
+    const Ns_Time *timeout
+) {
+    NsHttpTask *httpPtr;
+    Ns_DString *dsPtr;
+    Tcl_Interp *interp;
+
+    NS_SOCKET   result = NS_INVALID_SOCKET;
+    const char *url = "proxy-tunnel"; /* Not relevant; for logging purposes only */
+    uint64_t    requestCount = 0u;
+
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(proxyhost != NULL);
+    NS_NONNULL_ASSERT(host != NULL);
+
+    assert(proxyport > 0);
+    assert(port > 0);
+    /*
+     * Setup the task structure. From this point on
+     * if something goes wrong, we must HttpClose().
+     */
+    httpPtr = ns_calloc(1u, sizeof(NsHttpTask));
+    httpPtr->chunk = ns_calloc(1u, sizeof(NsHttpChunk));
+    httpPtr->bodyFileFd = NS_INVALID_FD;
+    httpPtr->spoolFd = NS_INVALID_FD;
+    httpPtr->sock = NS_INVALID_SOCKET;
+    httpPtr->spoolLimit = -1;
+    httpPtr->url = ns_strdup(url);
+    httpPtr->flags |= NS_HTTP_FLAG_EMPTY; /* Do not expect response content */
+    httpPtr->method = ns_strdup(connectMethod);
+    httpPtr->replyHeaders = Ns_SetCreate("replyHeaders"); /* Ignored */
+    httpPtr->servPtr = itPtr->servPtr;
+
+    if (timeout != NULL) {
+        httpPtr->timeout = ns_calloc(1u, sizeof(Ns_Time));
+        *httpPtr->timeout = *timeout;
+    }
+
+    Ns_GetTime(&httpPtr->stime);
+
+    interp = itPtr->interp;
+    dsPtr = &httpPtr->ds;
+    Ns_DStringInit(&httpPtr->ds);
+    Ns_DStringInit(&httpPtr->chunk->ds);
+
+    Ns_MasterLock();
+    requestCount = ++httpClientRequestCount;
+    Ns_MasterUnlock();
+
+    Ns_MutexInit(&httpPtr->lock);
+    (void)ns_uint64toa(dsPtr->string, requestCount);
+    Ns_MutexSetName2(&httpPtr->lock, "ns:httptask", dsPtr->string);
+
+    /*
+     * Now we are ready to attempt the connection.
+     * If no timeout given, assume 10 seconds.
+     */
+
+    {
+        Ns_ReturnCode rc;
+        Ns_Time       def = {10, 0}, *toPtr = NULL;
+
+        Ns_Log(Ns_LogTaskDebug, "HttpTunnel: connecting to proxy [%s]:%hu",
+               proxyhost, proxyport);
+
+        toPtr = (httpPtr->timeout != NULL) ? httpPtr->timeout : &def;
+        httpPtr->sock = Ns_SockTimedConnect2(proxyhost, proxyport, NULL, 0, toPtr, &rc);
+        if (httpPtr->sock == NS_INVALID_SOCKET) {
+            Ns_SockConnectError(interp, proxyhost, proxyport, rc);
+            if (rc == NS_TIMEOUT) {
+                HttpClientLogWrite(httpPtr, "connecttimeout");
+            }
+            goto fail;
+        }
+        if (Ns_SockSetNonBlocking(httpPtr->sock) != NS_OK) {
+            Ns_TclPrintfResult(interp, "can't set socket nonblocking mode");
+            goto fail;
+        }
+        rc = HttpWaitForSocketEvent(httpPtr->sock, POLLOUT, httpPtr->timeout);
+        if (rc != NS_OK) {
+            if (rc == NS_TIMEOUT) {
+                Ns_TclPrintfResult(interp, "timeout waiting for writable socket");
+                HttpClientLogWrite(httpPtr, "writetimeout");
+                Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
+            } else {
+                Ns_TclPrintfResult(interp, "waiting for writable socket: %s",
+                                   ns_sockstrerror(ns_sockerrno));
+            }
+            goto fail;
+        }
+    }
+
+    /*
+     * At this point we are connected.
+     * Construct CONNECT request line.
+     */
+    Ns_DStringSetLength(dsPtr, 0);
+    Ns_DStringPrintf(dsPtr, "%s %s:%d HTTP/1.1\r\n", httpPtr->method, host, port);
+    Ns_DStringPrintf(dsPtr, "%s: %s:%d\r\n", hostHeader, host, port);
+    Ns_DStringNAppend(dsPtr, "\r\n", 2);
+
+    httpPtr->requestLength = (size_t)dsPtr->length;
+    httpPtr->next = dsPtr->string;
+
+    /*
+     * Run the task, on success hijack the socket.
+     */
+    httpPtr->task = Ns_TaskCreate(httpPtr->sock, HttpProc, httpPtr);
+    Ns_TaskRun(httpPtr->task);
+    if (httpPtr->status == 200) {
+        result = httpPtr->sock;
+        httpPtr->sock = NS_INVALID_SOCKET;
+    } else {
+        Ns_TclPrintfResult(interp, "can't open http tunnel, response status: %d",
+                           httpPtr->status);
+    }
+
+fail:
+    HttpClose(httpPtr);
     return result;
 }
 
@@ -4379,7 +4923,7 @@ ParseTrailerProc(
             Ns_Set *headersPtr = httpPtr->replyHeaders;
             char   *trailer = dsPtr->string;
 
-            if (Ns_ParseHeader(headersPtr, trailer, ToLower) != NS_OK) {
+            if (Ns_ParseHeader(headersPtr, trailer, NULL, ToLower, NULL) != NS_OK) {
                 result = TCL_ERROR;
             }
         }

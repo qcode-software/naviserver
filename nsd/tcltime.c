@@ -540,9 +540,10 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         rc = TCL_ERROR;
     } else {
-        time_t ms = Ns_TimeToMilliseconds(tPtr);
+        time_t ms;
 
         assert(tPtr != NULL);
+        ms = Ns_TimeToMilliseconds(tPtr);
         if (ms > 0) {
             Tcl_Sleep((int)ms);
         }
@@ -651,13 +652,15 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
  *
  * ParseTimeUnit --
  *
- *      Parse time units specified after an integer or a float.
+ *      Parse time units specified after an integer or a float.  Note
+ *      that the smallest possible time value is 1 μs based on the
+ *      internal representation.
  *
  *      Accepted time units are:
- *         ms, s, m, h, d
+ *         μs, ms, s, m, h, d, w, y
  *
  * Results:
- *      Multiplier relative to seconds
+ *      Multiplier relative to seconds.
  *
  * Side effects:
  *      None.
@@ -683,6 +686,10 @@ static double ParseTimeUnit(const char *str)
         multiplier = 3600.0;
     } else if (*str == 'd' && *(str+1) == '\0') {
         multiplier = 86400.0;
+    } else if (*str == 'w' && *(str+1) == '\0') {
+        multiplier = 604800.0;
+    } else if (*str == 'y' && *(str+1) == '\0') {
+        multiplier = 31536000.0;
     } else if (*str == 'm' && *(str+1) == 's' && *(str+2) == '\0') {
         multiplier = 0.001;
     } else if (*str == '\xce' && *(str+1) == '\xbc' && *(str+2) == 's' && *(str+3) == '\0') {

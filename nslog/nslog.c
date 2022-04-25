@@ -306,7 +306,7 @@ Ns_ModuleInit(const char *server, const char *module)
     return result;
 }
 
-static int
+static Ns_ReturnCode
 AddCmds(Tcl_Interp *interp, const void *arg)
 {
     const Log *logPtr = arg;
@@ -833,7 +833,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
     if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
         /*
-         * This branch of the if is deprecated and kept only for backward
+         * This branch is deprecated and kept only for backward
          * compatibility (added Dec 2020).
          */
         p = Ns_ConnForwardedPeerAddr(conn);

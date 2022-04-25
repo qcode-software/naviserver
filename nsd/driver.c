@@ -246,9 +246,9 @@ static Ns_ReturnCode DriverInit(const char *server, const char *moduleName, cons
                                 const Ns_DriverInitData *init,
                                 NsServer *servPtr, const char *path,
                                 const char *bindaddrs,
-                                const char *defserver, const char *host)
+                                const char *defserver)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(6)
-    NS_GNUC_NONNULL(7) NS_GNUC_NONNULL(9);
+    NS_GNUC_NONNULL(7);
 static bool DriverModuleInitialized(const char *module)
     NS_GNUC_NONNULL(1);
 static const ServerMap *DriverLookupHost(Tcl_DString *hostDs, Driver *drvPtr)
@@ -672,15 +672,11 @@ Ns_DriverInit(const char *server, const char *module, const Ns_DriverInitData *i
             char  *moduleName = ns_malloc(maxModuleNameLength);
             int    i;
 
-            if (host == NULL) {
-                host = Ns_InfoHostname();
-            }
-
             for (i = 0; i < nrDrivers; i++) {
                 snprintf(moduleName, maxModuleNameLength, "%s:%d", module, i);
                 status = DriverInit(server, module, moduleName, init,
                                     servPtr, path,
-                                    address, defserver, host);
+                                    address, defserver);
                 if (status != NS_OK) {
                     break;
                 }
@@ -734,16 +730,18 @@ ServerMapEntryAdd(Tcl_DString *dsPtr, const char *host,
 
         (void) Ns_DStringVarAppend(dsPtr, drvPtr->protocol, "://", host, (char *)0L);
         mapPtr = ns_malloc(sizeof(ServerMap) + (size_t)dsPtr->length);
-        mapPtr->servPtr = servPtr;
-        mapPtr->ctx = ctx;
-        memcpy(mapPtr->location, dsPtr->string, (size_t)dsPtr->length + 1u);
+        if (likely(mapPtr != NULL)) {
+            mapPtr->servPtr = servPtr;
+            mapPtr->ctx = ctx;
+            memcpy(mapPtr->location, dsPtr->string, (size_t)dsPtr->length + 1u);
 
-        Tcl_SetHashValue(hPtr, mapPtr);
-        Ns_Log(Notice, "%s: adding virtual host entry for host <%s> location: %s mapped to server: %s ctx %p",
-               drvPtr->threadName, host, mapPtr->location, servPtr->server, (void*)ctx);
+            Tcl_SetHashValue(hPtr, mapPtr);
+            Ns_Log(Notice, "%s: adding virtual host entry for host <%s> location: %s mapped to server: %s ctx %p",
+                   drvPtr->threadName, host, mapPtr->location, servPtr->server, (void*)ctx);
 
-        if (addDefaultMapEntry) {
-            drvPtr->defMapPtr = mapPtr;
+            if (addDefaultMapEntry) {
+                drvPtr->defMapPtr = mapPtr;
+            }
         }
         /*
          * Always reset the Tcl_DString
@@ -868,10 +866,15 @@ void NsDriverMapVirtualServers(void)
             if (servPtr == NULL) {
                 Ns_Log(Error, "%s: no such server: %s", moduleName, server);
             } else {
-                char *writableHost, *hostName, *portStart;
+                char *writableHost, *hostName, *portStart, *end;
+                bool  hostParsedOk;
 
                 writableHost = ns_strdup(host);
-                Ns_HttpParseHost(writableHost, &hostName, &portStart);
+                hostParsedOk = Ns_HttpParseHost2(writableHost, NS_TRUE, &hostName, &portStart, &end);
+                if (!hostParsedOk) {
+                    Ns_Log(Warning, "server map: invalid hostname: '%s'", writableHost);
+                    continue;
+                }
 
                 if ((drvPtr->opts & NS_DRIVER_SSL) != 0u) {
                     Tcl_DString  ds1;
@@ -905,7 +908,9 @@ void NsDriverMapVirtualServers(void)
                                 drvPtr->opts |= NS_DRIVER_SNI;
                                 Tcl_SetHashValue(hPtr, ctx);
                             } else {
-                                Ns_Log(Error, "driver nsssl: init error: %s", strerror(errno));
+                                Ns_Log(Error, "driver nsssl: "
+                                       "could not initialize OpenSSL context (section %s): %s",
+                                       ds1.string, strerror(errno));
                                 ctx = NULL;
                             }
                         } else {
@@ -1065,7 +1070,7 @@ PortsParse(Ns_DList *dlPtr, const char *listString, const char *path)
  *      argument.
  *
  * Results:
- *      String content fo the Tcl_DString.
+ *      String content of the Tcl_DString.
  *
  * Side effects:
  *      None.
@@ -1111,7 +1116,7 @@ static Ns_ReturnCode
 DriverInit(const char *server, const char *moduleName, const char *threadName,
            const Ns_DriverInitData *init,
            NsServer *servPtr, const char *path,
-           const char *bindaddrs, const char *defserver, const char *host)
+           const char *bindaddrs, const char *defserver)
 {
     const char     *defproto;
     Driver         *drvPtr;
@@ -1124,7 +1129,6 @@ DriverInit(const char *server, const char *moduleName, const char *threadName,
     NS_NONNULL_ASSERT(init != NULL);
     NS_NONNULL_ASSERT(path != NULL);
     NS_NONNULL_ASSERT(bindaddrs != NULL);
-    NS_NONNULL_ASSERT(host != NULL);
 
     /*
      * Set the protocol and port defaults.
@@ -2186,6 +2190,7 @@ static void
 DriverClose(Sock *sockPtr)
 {
     NS_NONNULL_ASSERT(sockPtr != NULL);
+    /*fprintf(stderr, "##### DriverClose (%d)\n", sockPtr->sock);*/
     (*sockPtr->drvPtr->closeProc)((Ns_Sock *) sockPtr);
 }
 
@@ -2450,6 +2455,7 @@ DriverThread(void *arg)
                 /*
                  * Peer has closed the connection
                  */
+                Ns_Log(DriverDebug, "Peer has closed %p", (void*)sockPtr);
                 SockRelease(sockPtr, SOCK_CLOSE, 0);
 
             } else if (unlikely(!PollIn(&pdata, sockPtr->pidx))
@@ -2457,6 +2463,7 @@ DriverThread(void *arg)
                 /*
                  * Got no data for this sockPtr.
                  */
+                Ns_Log(DriverDebug, "Got no data for this sockPtr %p", (void*)sockPtr);
                 if (Ns_DiffTime(&sockPtr->timeout, &now, &diff) <= 0) {
                     SockRelease(sockPtr, SOCK_READTIMEOUT, 0);
                 } else {
@@ -2469,9 +2476,11 @@ DriverThread(void *arg)
                  * If enabled, perform read-ahead now.
                  */
                 assert(drvPtr == sockPtr->drvPtr);
+                Ns_Log(DriverDebug, "Got some data for this sockPtr %p", (void*)sockPtr);
 
                 if (likely((drvPtr->opts & NS_DRIVER_ASYNC) != 0u)) {
                     SockState s = SockRead(sockPtr, 0, &now);
+                    Ns_Log(DriverDebug, "SockRead on %p returned %s", (void*)sockPtr, GetSockStateName(s));
 
                     /*
                      * Queue for connection processing if ready.
@@ -2553,6 +2562,7 @@ DriverThread(void *arg)
                     }
                 }
             }
+
             sockPtr = nextPtr;
         }
 
@@ -2945,7 +2955,8 @@ RequestFree(Sock *sockPtr)
     reqPtr = sockPtr->reqPtr;
     assert(reqPtr != NULL);
 
-    Ns_Log(DriverDebug, "=== RequestFree cleans %p (avail %" PRIuz " keep %d length %" PRIuz " contentLength %" PRIuz ")",
+    Ns_Log(DriverDebug, "=== RequestFree cleans %p (avail %" PRIuz
+           " keep %d length %" PRIuz " contentLength %" PRIuz ")",
            (void *)reqPtr, reqPtr->avail, sockPtr->keep, reqPtr->length, reqPtr->contentLength);
 
     keep = (sockPtr->keep) && (reqPtr->avail > reqPtr->contentLength);
@@ -3025,11 +3036,15 @@ RequestFree(Sock *sockPtr)
         reqPtr->nextPtr = firstReqPtr;
         firstReqPtr = reqPtr;
         Ns_MutexUnlock(&reqLock);
+        Ns_Log(DriverDebug, "=== Push request structure %p in (to pool)",
+               (void*)reqPtr);
+
     } else {
         /*
          * Keep the partly cleaned up reqPtr associated with the connection.
          */
-        Ns_Log(DriverDebug, "=== KEEP request structure in sockPtr (don't push into the pool)");
+        Ns_Log(DriverDebug, "=== KEEP request structure %p in sockPtr (don't push into the pool)",
+               (void*)reqPtr);
     }
 }
 
@@ -3512,38 +3527,47 @@ SockSendResponse(Sock *sockPtr, int statusCode, const char *errMsg, const char *
      */
     if (sockPtr->reqPtr != NULL) {
         Request     *reqPtr = sockPtr->reqPtr;
-        const char  *requestLine = (reqPtr->request.line != NULL) ? reqPtr->request.line : NS_EMPTY_STRING;
-
-        (void)ns_inet_ntop((struct sockaddr *)&(sockPtr->sa), sockPtr->reqPtr->peer, NS_IPADDR_SIZE);
+        const char  *requestLine = (reqPtr->request.line != NULL)
+            ? reqPtr->request.line
+            : NS_EMPTY_STRING;
 
         /*
          * Check, if bad request looks like a TLS handshake. If yes, there is
          * no need to print out the received buffer.
          */
-        if (requestLine[0] == (char)0x16 && requestLine[1] >= 3 && requestLine[2] == 1) {
-            Ns_Log(Warning, "invalid request %d (%s) from peer %s: received TLS handshake on a non-TLS connection",
-                   statusCode, errMsg, reqPtr->peer);
+        if (unlikely(statusCode == 400)) {
+            char peer[NS_IPADDR_SIZE];
+            const char *bufferString = reqPtr->buffer.string;
 
-        } else if (statusCode == 400) {
-            Tcl_DString dsReqLine;
+            (void)ns_inet_ntop((struct sockaddr *)&(sockPtr->sa), peer, NS_IPADDR_SIZE);
 
-            /*
-             * These are errors, which might have to be invested based on
-             * deails of the received buffer.
-             */
-            Tcl_DStringInit(&dsReqLine);
-            Ns_Log(Warning, "invalid request: %d (%s) from peer %s request '%s' offsets: read %" PRIuz
-                   " write %" PRIuz " content %" PRIuz " avail %" PRIuz,
-                   statusCode, errMsg,
-                   reqPtr->peer,
-                   Ns_DStringAppendPrintable(&dsReqLine, NS_FALSE, requestLine, strlen(requestLine)),
-                   reqPtr->roff,
-                   reqPtr->woff,
-                   reqPtr->coff,
-                   reqPtr->avail);
-            Tcl_DStringFree(&dsReqLine);
+            if (bufferString[0] == (char)0x16 && bufferString[1] >= 3 && bufferString[2] == 1) {
+                Ns_Log(Warning, "invalid request %d (%s) from peer %s: received TLS handshake "
+                       "on a non-TLS connection",
+                       statusCode, errMsg, peer);
 
-            LogBuffer(Warning, "REQ BUFFER", reqPtr->buffer.string, (size_t)reqPtr->buffer.length);
+            } else {
+                Tcl_DString dsReqLine;
+
+                /*
+                 * These are errors, which might need some investigation based
+                 * on based on details of the received buffer.
+                 */
+                Tcl_DStringInit(&dsReqLine);
+                Ns_Log(Warning, "invalid request: %d (%s) from peer %s request '%s'"
+                       " offsets: read %" PRIuz
+                       " write %" PRIuz " content %" PRIuz " avail %" PRIuz,
+                       statusCode, errMsg,
+                       peer,
+                       Ns_DStringAppendPrintable(&dsReqLine, NS_FALSE, requestLine, strlen(requestLine)),
+                       reqPtr->roff,
+                       reqPtr->woff,
+                       reqPtr->coff,
+                       reqPtr->avail);
+                Tcl_DStringFree(&dsReqLine);
+
+                LogBuffer(Warning, "REQ BUFFER", reqPtr->buffer.string, (size_t)reqPtr->buffer.length);
+            }
         } else if (statusCode >= 500) {
             Ns_Log(Warning, "request returns %d (%s): %s", statusCode, errMsg, requestLine);
         }
@@ -3919,12 +3943,12 @@ SockRead(Sock *sockPtr, int spooler, const Ns_Time *timePtr)
 
     {
         Ns_SockState nsSockState = sockPtr->recvSockState;
-    /*
-     * The nsSockState has one of the following values, when provided:
-     *
-     *      NS_SOCK_READ, NS_SOCK_DONE, NS_SOCK_AGAIN, NS_SOCK_EXCEPTION,
-     *      NS_SOCK_TIMEOUT
-     */
+        /*
+         * The nsSockState has one of the following values, when provided:
+         *
+         *      NS_SOCK_READ, NS_SOCK_DONE, NS_SOCK_AGAIN, NS_SOCK_EXCEPTION,
+         *      NS_SOCK_TIMEOUT
+         */
         switch (nsSockState) {
         case NS_SOCK_TIMEOUT:  NS_FALL_THROUGH; /* fall through */
         case NS_SOCK_EXCEPTION:
@@ -4114,8 +4138,8 @@ EndOfHeader(Sock *sockPtr)
     }
 
     /*
-     * In case a valid and meaningful was provided, the string with the
-     * content length ("s") is not NULL.
+     * In case a valid and meaningful headers determining the content length
+     * was provided, the string with the content length ("s") is not NULL.
      */
     if (s != NULL) {
         Tcl_WideInt length;
@@ -4389,7 +4413,7 @@ SockParse(Sock *sockPtr)
                  */
                 Ns_Log(DriverDebug, "SockParse (%d): parse request line <%s>", sockPtr->sock, s);
 
-                if (Ns_ParseRequest(&reqPtr->request, s) == NS_ERROR) {
+                if (Ns_ParseRequest(&reqPtr->request, s, (size_t)(e-s)) == NS_ERROR) {
                     /*
                      * Invalid request.
                      */
@@ -4408,7 +4432,7 @@ SockParse(Sock *sockPtr)
                     Ns_Log(Notice, "pre-HTTP/1.0 request <%s>", reqPtr->request.line);
                 }
 
-            } else if (Ns_ParseHeader(reqPtr->headers, s, Preserve) != NS_OK) {
+            } else if (Ns_ParseHeader(reqPtr->headers, s, NULL, Preserve, NULL) != NS_OK) {
                 /*
                  * Invalid header.
                  */
@@ -4665,9 +4689,9 @@ DriverLookupHost(Tcl_DString *hostDs, Driver *drvPtr)
          */
         Ns_Log(DriverDebug,
                "cannot locate host header content '%s' in virtual hosts "
-               "table of driver '%s', fall back to default '%s'",
-               hostDs->string, drvPtr->moduleName,
-               drvPtr->defMapPtr->location);
+               "table of driver '%s', fall back to default "
+               "(default mapping or driver data)",
+               hostDs->string, drvPtr->moduleName);
 
         if (Ns_LogSeverityEnabled(DriverDebug)) {
             Tcl_HashEntry  *hPtr2;
@@ -4810,6 +4834,25 @@ SockSetServer(Sock *sockPtr)
 
         Ns_Log(DriverDebug, "SockSetServer request line '%s' get location from driver '%s'",
                reqPtr->request.line, sockPtr->location);
+    }
+
+    /*
+     * Since the URLencoding can be set per server, we need the server
+     * assignment to check the validity of the request URL.
+     *
+     * In some error conditions (e.g. from nssmtpd) the reqPtr->request.*
+     * members might be NULL.
+     */
+    if (likely(sockPtr->servPtr != NULL)
+        && NsEncodingIsUtf8(sockPtr->servPtr->encoding.urlEncoding)
+        && reqPtr->request.url != NULL
+        ) {
+        if (!Ns_Valid_UTF8((const unsigned char *)reqPtr->request.url,
+                           strlen(reqPtr->request.url))) {
+            Ns_Log(Warning, "Invalid UTF-8 encoding in url '%s'",
+                   reqPtr->request.url);
+            bad_request = NS_TRUE;
+        }
     }
 
     if (unlikely(bad_request)) {
@@ -6155,9 +6198,8 @@ WriterThread(void *arg)
         }
 
         /*
-         * Check for shutdown
+         * Check for shutdown (potentially a dirty read)
          */
-
         stopping = queuePtr->shutdown;
     }
     PollFree(&pdata);
@@ -6316,7 +6358,6 @@ WriterSetupStreamingMode(Conn *connPtr, const struct iovec *bufs, int nbufs, int
     }
 
     if (first) {
-        //bufs = NULL;
         connPtr->nContentSent = wrote;
 #ifndef _WIN32
         /*
@@ -8313,8 +8354,10 @@ NSDriverClientOpen(Tcl_Interp *interp, const char *driverName,
                    const char *url, const char *httpMethod, const char *version,
                    const Ns_Time *timeoutPtr, Sock **sockPtrPtr)
 {
-    char   *protocol, *host, *portString, *path, *tail, *url2;
-    int     result = TCL_OK;
+    char       *url2;
+    const char *errorMsg = NULL;
+    int         result = TCL_OK;
+    Ns_URL      u;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(url != NULL);
@@ -8327,30 +8370,30 @@ NSDriverClientOpen(Tcl_Interp *interp, const char *driverName,
     /*
      * We need here a fully qualified URL, otherwise raise an error
      */
-    if (unlikely(Ns_ParseUrl(url2, &protocol, &host, &portString, &path, &tail) != NS_OK)
-        || protocol == NULL || host == NULL || path == NULL || tail == NULL) {
-        Ns_Log(Notice, "driver: invalid URL '%s' passed to NSDriverClientOpen", url2);
+    if (unlikely(Ns_ParseUrl(url2, NS_FALSE, &u, &errorMsg) != NS_OK)
+        || u.protocol == NULL || u.host == NULL || u.path == NULL || u.tail == NULL) {
+        Ns_Log(Notice, "driver: invalid URL '%s' passed to NSDriverClientOpen: %s", url2, errorMsg);
         result = TCL_ERROR;
 
     } else {
         Driver        *drvPtr;
         unsigned short portNr = 0u; /* make static checker happy */
 
-        assert(protocol != NULL);
-        assert(host != NULL);
-        assert(path != NULL);
-        assert(tail != NULL);
+        assert(u.protocol != NULL);
+        assert(u.host != NULL);
+        assert(u.path != NULL);
+        assert(u.tail != NULL);
 
         /*
          * Find a matching driver for the specified protocol and optionally
          * the specified driver name.
          */
-        drvPtr = LookupDriver(interp, protocol, driverName);
+        drvPtr = LookupDriver(interp, u.protocol, driverName);
         if (drvPtr == NULL) {
             result = TCL_ERROR;
 
-        } else if (portString != NULL) {
-            portNr = (unsigned short) strtol(portString, NULL, 10);
+        } else if (u.port != NULL) {
+            portNr = (unsigned short) strtol(u.port, NULL, 10);
 
         } else if (drvPtr->defport != 0u) {
             /*
@@ -8359,7 +8402,7 @@ NSDriverClientOpen(Tcl_Interp *interp, const char *driverName,
             portNr = drvPtr->defport;
 
         } else {
-            Ns_TclPrintfResult(interp, "no default port for protocol '%s' defined", protocol);
+            Ns_TclPrintfResult(interp, "no default port for protocol '%s' defined", u.protocol);
             result = TCL_ERROR;
         }
 
@@ -8367,14 +8410,13 @@ NSDriverClientOpen(Tcl_Interp *interp, const char *driverName,
             NS_SOCKET     sock;
             Ns_ReturnCode status;
 
-            sock = Ns_SockTimedConnect2(host, portNr, NULL, 0u, timeoutPtr, &status);
+            sock = Ns_SockTimedConnect2(u.host, portNr, NULL, 0u, timeoutPtr, &status);
 
             if (sock == NS_INVALID_SOCKET) {
-                Ns_SockConnectError(interp, host, portNr, status);
+                Ns_SockConnectError(interp, u.host, portNr, status);
                 result = TCL_ERROR;
 
             } else {
-                const char    *query;
                 Tcl_DString    ds, *dsPtr = &ds;
                 Request       *reqPtr;
                 Sock          *sockPtr;
@@ -8399,24 +8441,32 @@ NSDriverClientOpen(Tcl_Interp *interp, const char *driverName,
                 Ns_DStringAppend(dsPtr, httpMethod);
                 Ns_StrToUpper(Ns_DStringValue(dsPtr));
                 Tcl_DStringAppend(dsPtr, " /", 2);
-                if (*path != '\0') {
-                    if (*path == '/') {
-                        path ++;
+                if (*u.path != '\0') {
+                    if (*u.path == '/') {
+                        u.path ++;
                     }
-                    Tcl_DStringAppend(dsPtr, path, -1);
+                    Tcl_DStringAppend(dsPtr, u.path, -1);
                     Tcl_DStringAppend(dsPtr, "/", 1);
                 }
-                Tcl_DStringAppend(dsPtr, tail, -1);
+                Tcl_DStringAppend(dsPtr, u.tail, -1);
+                if (u.query != NULL) {
+                    Ns_DStringNAppend(dsPtr, "?", 1);
+                    Ns_DStringNAppend(dsPtr, u.query, -1);
+                }
+                if (u.fragment != NULL) {
+                    Ns_DStringNAppend(dsPtr, "#", 1);
+                    Ns_DStringNAppend(dsPtr, u.fragment, -1);
+                }
+
                 Tcl_DStringAppend(dsPtr, " HTTP/", 6);
                 Tcl_DStringAppend(dsPtr, version, -1);
 
                 reqPtr->request.line = Ns_DStringExport(dsPtr);
                 reqPtr->request.method = ns_strdup(httpMethod);
-                reqPtr->request.protocol = ns_strdup(protocol);
-                reqPtr->request.host = ns_strdup(host);
-                query = strchr(tail, INTCHAR('?'));
-                if (query != NULL) {
-                    reqPtr->request.query = ns_strdup(query+1);
+                reqPtr->request.protocol = ns_strdup(u.protocol);
+                reqPtr->request.host = ns_strdup(u.host);
+                if (u.query != NULL) {
+                    reqPtr->request.query = ns_strdup(u.query+1);
                 } else {
                     reqPtr->request.query = NULL;
                 }

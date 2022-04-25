@@ -1,4 +1,586 @@
 =======================================
+NaviServer 4.99.23, released 2021-12-29
+=======================================
+
+ 70 files changed, 1431 insertions(+), 566 deletions(-)
+
+New Features:
+
+ - Improved hash algorithms for improved security
+
+   The new version supports SCRAM (Salted Challenge Response
+   Authentication Mechanism), which is one of the newer recommended
+   password hash algorithms to replace the classic salted SHA1
+   approaches. The classical hash algorithms become easier to attack
+   via high-performance hashing hardware (GPUs).  NaviServer supports
+   now SCRYPT and SCRAM (when compiled with more recent versions of
+   OpenSSL; SCRYPT requires at least OpenSSL 3.0. SCRAM requires OpenSSL 1.1)
+
+   The actual hash function of SCRAM is PBKDF2 [RFC2898] with HMAC as
+   the pseudorandom function (PRF) and with dkLen == output length of
+   HMAC == output length of the digest function.
+
+   Here is an example of using pbkdf2_hmac for the hash function of
+   SCRAM-sha-256. RFC 7677 recommends to use 15K iterations for PBKDF2:
+
+      ::ns_crypto::pbkdf2_hmac \
+               -digest sha256 \
+               -iterations 15000 \
+               -secret $password \
+               -salt $salt]
+
+   OpenACS supports already switching to from salted SHA1 to SCAM (or
+   SCRYPT) via configuration variable.
+
+
+ - Better Unicode support, including emojis requiring 4-byte UTF-8 characters.
+
+   Earlier versions of NaviServer and the nsdb* database drivers
+   assumed in a few places that Tcl-internal UTF-8 is also valid UTF-8
+   for external sources, which is often, but not always true. Now, the
+   proper export functions are everywhere called.
+
+   The new code was tested with Emojis up to Unicode 13 (many thanks
+   to Wolfgang Winkler)
+
+   This change affects as well the database driver module "nsdbpg".
+
+ - ns_trim enhancements:
+   The new option "-prefix ..." can be used to strip a string
+   (such as ">> ") from every line starting with it.
+
+ - extended time unit support (added "w" for weeks and "y" for years)
+
+ - Added an experimental global parameter "nocache" to ease to
+   experiment with horizontal scaling. As a consequence, "ns_cache
+   eval" becomes a dummy operation.
+
+ - Added an experimental command "ns_baseunit"
+
+      ns_baseunit ?-size size? ?-time time?
+
+   Convert from memory units or from time units to its base value
+   using the NaviServer internal converters, which are used the same
+   way for various commands.  The base unit for a memory size is a
+   byte, for a time value a second). This command is necessary to
+   provide Tcl-level commands calculating with these units to support
+   uniform interfaces (e.g., calculating cache partition sizes base on
+   values such as 2MB).
+
+   Either "-size" or "-time" has to be specified.
+
+      % ns_baseunit -size 10KB
+      10240
+
+      ns_baseunit -time 2.5h
+      9000
+
+ - Added an experimental command "ns_strcoll"
+
+       ns_strcoll ?-locale locale? string1 string2"
+
+   This command compares lexicographically string1 with string2
+   according to the current locale collation and returns an integer
+   greater than, equal to, or less than 0, depending on whether
+   string1 is greater than, equal to, or less than string2. The
+   command is necessary in cases, where e.g., the sorting order from
+   the database (normally based on local collation) is different from
+   default Tcl sorting order to provide a uniform interface with the same
+   sorting orders. The name is derived from the baseline POSIX
+   function call.
+
+   The command is suitable for usage in the lsort command:
+
+      % set l {Bor Bar Bär}
+      % lsort -command ns_strcoll $l
+      Bar Bär Bor
+
+      % lsort $l
+      Bar Bor Bär
+
+   Note that the output of the command depends on the correct
+   installation of locales on the host. Furthermore, the output of the
+   command varies depending on the C library's implementation, which
+   might differ for some locales/charsets between platforms.
+
+Performance Improvements:
+
+ - Increase scalability on DB operations by reducing DB pool locks
+
+   On high load servers, the total number of locks and busy locks on
+   the DB pools might become quite high. The new code caches these
+   statistics in the handles (which are per thread, requiring no
+   locks) and transfers the aggregated values on handle closes or
+   statistics calls.
+
+ - Set default for "concurrentinterpcreate" to "true" for Tcl 8.6 or
+   newer. Versions up to at least Tcl 8.5 are known to crash in case
+   two threads create interpreters at the same time. These crashes
+   were hard to reproduce, but serializing interpreter creation
+   helped. Since all our major servers are running for several years
+   without problems with this parameter turned on the default is now
+   set to "true", when NaviServer is compiled with Tcl 8.6 or newer.
+
+
+Bug Fixes:
+ - Fixed memory leak in "nsv_dict get" operations.
+
+
+Documentation improvements:
+---------------------------
+
+ - Improved the following man pages:
+
+        doc/src/manual/admin-tuning.man
+        doc/src/naviserver/commandlist.man
+        doc/src/naviserver/ns_adp_include.man
+        doc/src/naviserver/ns_baseunit.man
+        doc/src/naviserver/ns_cache.man
+        doc/src/naviserver/ns_charsets.man
+        doc/src/naviserver/ns_choosecharset.man
+        doc/src/naviserver/ns_connchan.man
+        doc/src/naviserver/ns_cookie.man
+        doc/src/naviserver/ns_cookiecharset.man
+        doc/src/naviserver/ns_crypto.man
+        doc/src/naviserver/ns_encodingforcharset.man
+        doc/src/naviserver/ns_encodingfortype.man
+        doc/src/naviserver/ns_formfieldcharset.man
+        doc/src/naviserver/ns_ictl.man
+        doc/src/naviserver/ns_job.man
+        doc/src/naviserver/ns_register.man
+        doc/src/naviserver/ns_schedule.man
+        doc/src/naviserver/ns_setformencoding.man
+        doc/src/naviserver/ns_shutdown.man
+        doc/src/naviserver/ns_sleep.man
+        doc/src/naviserver/ns_sockcallback.man
+        doc/src/naviserver/ns_sockopen.man
+        doc/src/naviserver/ns_strcoll.man
+        doc/src/naviserver/ns_time.man
+        doc/src/naviserver/ns_urlcharset.man
+        doc/src/naviserver/ns_valid_utf8.man
+        doc/src/naviserver/textutil-cmds.man
+
+
+Configuration Changes:
+----------------------
+
+ -  Ease configuration via environment variables
+
+    This feature is useful to manage many NaviServer instances with
+    mostly identical configurations without having to provide multiple
+    configuration files (e.g. for Docker setups, or clusters).
+
+    The sample configuration for of OpenACS (openacs-config.tcl)
+    contains now a Tcl dictionary with default values:
+
+      set defaultConfig {
+         hostname   localhost
+         ipaddress  127.0.0.1
+         httpport   8000
+         httpsport  ""
+         server     "openacs"
+         serverroot /var/www/$server
+         logroot    $serverroot/log/
+         homedir    /usr/local/ns
+         bindir     $homedir/bin
+         db_name    $server
+         db_user    $server
+         db_host    localhost
+         db_port    ""
+     }
+
+    These configuration values (keys of the dict) can be overridden by
+    environment variables prefixed with "oacs_" followed by the
+    parameter name. One can change the default port specified in the
+    configuration file for plain HTTP connections by e.g., providing it
+    via environment variables:
+
+        oacs_httpport=8101 /usr/local/ns/bin/nsd -i -t ....
+
+
+
+Code Changes:
+-------------
+ - Extended regression test
+
+ - Code Cleanup
+     . Do not declare reserved C identifiers
+
+ - Improved comments, fixed typos
+
+ - Marked "ns_set_precision" as deprecated, since there is no
+   reason why not setting the Tcl variable ::tcl_precision directly.
+
+
+Changes in NaviServer Modules:
+==============================
+
+ 8 files changed, 697 insertions(+), 283 deletions(-)
+
+
+nsdbpg:
+-------
+
+ - Extended added support for UTF-8 including emojis (see above)
+
+ - Added "ns_pg pid /handle/" to return the current backend PID
+   without SQL parsing.  This command is about 100x faster than using
+   "select pg_backend_pid()" and can be used e.g. for deploying
+   prepared statements.
+
+ - Some code cleanup and modernization
+
+ - Added minimal documentation of ns_pg* API in README file
+
+ - Bumped version number to 2.6
+
+nsstats:
+--------
+
+ - improved handling of fractional seconds
+ - added summary line with total savings to cache statistics
+   (to estimate consequences of eliminating this cache)
+ - improve bread-crums for "mapped" server URLs
+ - added user interface for unmapping URLs from connection pools
+
+nsodbc:
+-------
+
+ - adjust code with current prototypes
+ - fix warnings from static checkers
+
+nsshell:
+--------
+
+ - Improved source code documentation
+ - Updated PRISM.JS libraries links, to prevent X-Content-Type-Options errors
+
+letsencrypt:
+------------
+
+ - Removed obtaining the intermediate cross-signed certificate, since this does not seem
+   to be required anymore
+ - Improved source code documentation
+
+
+=======================================
+NaviServer 4.99.22, released 2021-08-25
+=======================================
+
+ 93 files changed, 4216 insertions(+), 1465 deletions(-)
+
+New Features:
+-------------
+
+ - Added support for macOS machines with the M1 processor.
+
+ - ns_http improvements:
+   . Added proxy handling for [ns_http]
+   . Added handling of charsets in ns_http get requests (for non-binary MIME types)
+
+ - Extended default mime-types:
+   . Added "jpeg/xl" to the default MIME types (specified in IANA provisional list)
+
+ - Better handling with invalid UTF-8 (also relevant for security reasons)
+   . new function "ns_valid_utf8" to check whether a byte-array contains
+     a valid UTF-8 byte sequence
+
+   . Check internally the validity of UTF-8 and complain in the system
+     log when invalid characters are encountered. Note that Tcl
+     transforms sometimes invalid UTF-8 into valid UTF-8 (e.g., URL
+     /x%c3.) such that the exact analysis of potential attacks can
+     become complex.
+
+   . Proper encoded URLs contain just a subset of 7-bit US ASCII. The
+     general problem of handling UTF-8 in request headers is actually
+     quite complex and spread over several RFCs. The current HTTP
+     specification (RFC 7230) states that "Parsing an HTTP message as
+     a stream of Unicode characters, without regard for the specific
+     encoding, creates security vulnerabilities due to the varying
+     ways that string processing libraries handle invalid multibyte
+     character sequences that contain the octet LF (%x0A)." ... older
+     RFCs allowed explicitly ISO8859-1.  However, all recent browsers
+     code properly encode UTF-8 in the URLs.  So, in theory, a server
+     could reject uncoded "binary" data, and assume this data is
+     coming from hacking attacks. However, this change just adds a
+     warning for these cases.
+
+   . UTF-8 validity checking is performed for URLs in percent-encoded
+     and in non-encoded form
+
+ - "ns_parseurl" reform: make URL conformant with RFC 3986
+
+    Previously, the parsing of URLs as performed by "ns_parseurl" was
+    more driven by heuristics than by standards. The new version
+    parses now URLs according to RFC 3986 (checking as well for valid
+    characters in user-defined URL components when the new option
+    "-strict" is used). Most internal usages of Ns_HttpParseHost() are
+    non-strict to provide good backwards compatibility.  The function
+    now parses as well the userinfo in the authority. (authority =
+    [userinfo "@"] host [":" port]).
+
+ - Added command: "ns_parsehostport ?-strict? string"
+
+   This command implements a subset of "ns_parseurl" by just trying to
+   parse the provided string into "host" and "port" (when
+   available). The command handles also the IP literal convention as
+   specified in RFC 3986 for parsing IPv6 addresses with ports.
+
+ - Added automated reloading of server certificates when SIGHUP is
+   received. While in previous version it was necessary to restart the
+   server, when certificates were renewed (e.g., via letsencrypt), the
+   new version reloads certificates when it receives a SIGHUP signal.
+
+
+Bug Fixes:
+----------
+
+ - Make sure to nul-terminate IPv4 portion in V4MAPPED addresses.
+
+ - Fixed a potential race condition on peer and proxy IP address,
+   where on e.g., pipelined requests the request structure is already
+   reused in a new request, while the old connection is used for
+   logging. This could result in incorrect peer addresses in the
+   access.log
+
+ - More precise execution of scheduled procs
+
+   Background: previously, the scheduling of repeated scheduled procs
+   was based on the last finish time. This has the consequence that
+   the execution time will drift away more and more from a starting
+   time, depending on the runtime of certain jobs. If one has e.g., a
+   service that should run every minute, some of these minutes might
+   be skipped by the cumulative drift on a long running server. New
+   repeated scheduled procs on the original scheduled time rather than
+   on last finish time.
+
+ - Fixed Ns_StrTrimRight() to avoid damaging of UTF-8 characters
+
+   Background: Up to now, NaviServer was using "CHARTYPE(space, c)" to
+   determine, which characters can be trimmed at the end of a string.
+   Unfortunately, there exists characters, which are classified as
+   "space", but which can be trailing bytes with different semantics
+   in multibyte UTF-8 characters (e.g., 0x85). When these bytes are
+   stripped the result are invalid UTF-8 characters.
+
+ - Added support for handling potentially negative time values when
+   Ns_GetTime() is non-monotonous
+
+   Background: The time of Ns_GetTime() is determined by
+   gettimeofday() is therefore potentially affected by discontinuous
+   jumps in the system time (e.g., if the system administrator
+   manually changes the system time).
+
+ - nsproxy: Disambiguate the name of the helper command with the name of the module
+
+   NaviServer could get confused between the helper command "nsproxy"
+   and the shared object of the module (called nsproxy.so). Since for
+   module-loading, the suffix is optional (to support multi-platform
+   config files), there as a potential confusion. The helper command
+   is now called "nsproxy-helper".
+
+ - Fixed list of charsets as returned by "ns_charsets".
+
+   Previously, "ns_charsets" returned just the mapped charsets (where
+   the name of the charset as defined in Tcl and by IANA differs). So
+   e.g., "utf8" was not reported back. Now, the full is reported
+   back. Additionally, more recent mappings were added.
+
+ - Bugfix for "ns_http connect": Linux sometimes returned error (false positive)
+
+   Sometimes "ns_http run SOMEHOST:PORT" returned under Linux an error
+   of the form "can't connect to SOMEHOST port PORT: operation now in
+   progress".  This problem could have occurred on connections to hosts
+   where the DNS entries have multiple IP addresses associated. This
+   error only showed up on the first connection attempt (e.g., after a
+   server restart, or on no connections to this host for e.g., a few
+   hours), all later attempts with identical parameters worked without
+   problems. It turned out that sometimes - while working through the
+   associated IP addresses - the call "getsockopt(sock, SOL_SOCKET,
+   SO_ERROR, ...)"  retrieved errno 113 <No route to host> from the
+   socket, maybe related with routing table lookup.
+
+ - Improved log messages concerning limit of number of open files
+
+ - Improved handling of running out of memory when creating threads
+   from Tcl
+
+ - Fixed potential race condition in logging during shutdown
+
+ - Fix potential bug in openssl.m4 (could check for files on a wrong path)
+
+
+Documentation improvements:
+---------------------------
+
+ - Improved the following man pages
+
+        doc/src/manual/admin-config.man
+        doc/src/manual/admin-maintenance.man
+        doc/src/manual/admin-tuning.man
+        doc/src/manual/c-driverdb.man
+        doc/src/manual/main-history.man
+        doc/src/naviserver/commandlist.man
+        doc/src/naviserver/ns_cache.man
+        doc/src/naviserver/ns_conn.man
+        doc/src/naviserver/ns_crypto.man
+        doc/src/naviserver/ns_getcontent.man
+        doc/src/naviserver/ns_http.man
+        doc/src/naviserver/ns_locationproc.man
+        doc/src/naviserver/ns_log.man
+        doc/src/naviserver/ns_parseurl.man
+        doc/src/naviserver/ns_schedule.man
+        doc/src/naviserver/ns_sendmail.man
+        doc/src/naviserver/ns_urlspace.man
+        doc/src/naviserver/ns_write.man
+        nsssl/doc/mann/nsssl.man
+
+ - Added examples for "ns_getcontent" to the manual pages
+
+ - Improved sample configuration files:
+
+   . Added a section for the sample config files how to use the
+     letsencrypt NaviServer module
+   . Updated cipher configurations as recommended by Mozilla in
+     sample configuration files.
+
+
+
+Code Changes:
+-------------
+ - Improved naming of functions
+ - OpenSSL: aligned code with current snapshot of OpenSSL 3.0* (3.0.0-beta3-dev)
+ - Aligned stubbed functions with Linux prototypes (use "restrict" keyword)
+
+ - Extended regression test
+    . Improved setup in tests for testing with private keys
+    . Added testing for application/json with UTF-8 charset vis ns_http
+    . Fixed handling of ns_hostbyaddr under macOS
+    . Added 90 additional tests
+
+ - Code Cleanup
+    . Improved security by reducing usage of "ns_mktemp":
+      use on the Tcl level "file tempfile ..." (introduced in Tcl 8.6)
+      instead of "ns_mktemp" whenever possible.
+    . Do not require to have tcllib package "try" installed when using
+      Tcl 8.6 or newer
+    . Use also in test cases reentrant version of localtime()
+    . Reduced (harmless) data races
+    . Fixed issued found by facebook infer 1.1.0
+    - Avoided passing NULL after the last typed argument to a variadic function
+
+ - Added ability to pass "CFLAGS_OPTIMIZE=..." to "make"
+   (eases build specific optimization)
+
+ - Improved comments, fixed typos
+
+
+=======================================
+NaviServer 4.99.21, released 2021-04-09
+=======================================
+
+ 64 files changed, 939 insertions(+), 536 deletions(-)
+
+New Features:
+-------------
+
+ - Logging improvements: Added parameter "logsec" and "logthread" for
+   section "ns/parameter" to make logging of full timestamps and
+   thread info optional. This gives more control to a developer to
+   shorten the log entries e.g. on development instances by excluding
+   certain values.
+
+ - Made "ns_http ... -decompress ... "obsolete in favor of new option
+   "-raw".  This fixes as well a crash.
+
+
+Bug Fixes:
+----------
+
+ - Fixed computation of "location" of a request for cases where the
+   network driver is not installed globally. The value of [ns_conn
+   location] (and the redirect target) is often, but not always
+   determined by the host header field as used for virtual servers.
+
+ - Fixed handling of sendBodyLength in ns_http
+
+ - Fixed handling of user-ids in nscp.
+
+ - Fixed potential segmentation violation in debug output, when (a) the
+   network driver is installed locally, and (b) the content of host
+   header field cannot be located in virtual server map (fallback to
+   validation via driver data).
+
+ - Fixed potential segmentation violation when nsd is called with '-c'
+   and '-t' and the config file contains no "home" parameter in the
+   config file. The fix simplifies the logic, and performs same
+   configuration of nsconf.home whenever "-c" is used in the command
+   line.
+
+ - Increase sysadmin-friendliness of OCSP handling in error cases: In
+   case OCSP (Online Certificate Status Protocol) is activated and the
+   connection to the AIA-server is blocked, do not reject all traffic
+   but behave like in a configuration without having OCSP activated,
+   and complain the system log.  Background: Sometimes requests to the
+   let's encrypt AIA server seems to be blocked by
+   firewalls. Previously, in such situations, all traffic was
+   blocked.
+
+ - Relax bailing out on malloc(0), since at least the OpenSSL 3a*
+   versions use this frequently on certain configurations. Calls of
+   malloc(0) are essentially useless and dangerous, but we cannot
+   avoid these.
+
+Performance improvements:
+-------------------------
+
+ - Added support for TCP_NODELAY for https sockets via configuration
+   option "nodelay" in the nsssl driver section. For whatever reasons,
+   NaviServer handled so far this option. The option can reduce the
+   time of connection calls via https (clearly measurable in benchmark
+   setups).
+
+
+Documentation improvements:
+---------------------------
+
+ - improved the following man pages
+
+        doc/src/manual/admin-config.man
+        doc/src/manual/admin-tuning.man
+        doc/src/manual/main-history.man
+        doc/src/naviserver/ns_http.man
+        doc/src/naviserver/ns_http.man
+        doc/src/naviserver/ns_write.man
+        nsdb/doc/mann/ns_db.man
+
+Configuration Changes:
+----------------------
+
+ - New options "logsec" and "logthread" for section "ns/parameter"
+   (see above)
+
+
+Code Changes:
+-------------
+ - Extended regression test to cover e.g. the error cases from above.
+
+ - Code Cleanup
+    . Removed obsolete and deprecated functions ctime_r()
+      and asctime_r() in favor of strftime().
+
+    . Removed calls to deprecated Tcl functions
+
+    - Don't pass (implementation-defined) NULL as last argument of a
+      variadic function.
+
+    - Usual cleanup, such as reduced implicit type conversions,
+      removed useless casts, removed dead assignments
+
+ - Improve comments, fixed typos
+
+
+=======================================
 NaviServer 4.99.20, released 2021-01-17
 =======================================
 
@@ -1133,7 +1715,7 @@ New Features:
  - Added support for sending of multiple file chunks in a
    single connection:
 
-      ns_writer sendfiles /list of filespecs/
+      ns_writer submitfiles /list of filespecs/
 
    Every "filespec" is a dict which must contain a "filename" element
    and can contain additionally an "-offset" and/or a "-size" element.
@@ -1393,7 +1975,7 @@ Bug Fixes:
 
       The scrypt function is a modern replacement for crypt and bcrypt
       and derives secret keys from a secret string. It is based on
-      memory- hard functions, which offer added protection against
+      memory-hard functions, which offer added protection against
       attacks using custom hardware and GPU arrays.
 
       The function requires the compilation of NaviServer against
@@ -3710,7 +4292,7 @@ New Features:
   * New Command "ns_rlimit" to get/set various resource limits from
     the operating system. A typical use case for this command is to
     query or set e.g. the core size via the NaviServer startup file or
-    to change it at runtime in a syntax independent from the naming
+    to change it at runtime in a syntax independent of the naming
     and conventions in the various startup scripts (e.g. upstart,
     systemd, ...). This is e.g. useful when a core dump should be
     created from the running state (e.g. in combination with the

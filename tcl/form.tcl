@@ -205,13 +205,11 @@ proc ns_getform {{charset ""}}  {
                 set lens [ns_conn filelength $file]
                 set hdrs [ns_conn fileheaders $file]
                 foreach off $offs len $lens hdr $hdrs {
-                    set fp ""
-                    while {$fp eq {}} {
-                        set tmpfile [ns_mktemp]
-                        set fp [ns_openexcl $tmpfile]
-                    }
+
+                    set fp [ns_opentmpfile tmpfile]
+                    catch {fconfigure $fp -encoding binary -translation binary}
+
                     ns_atclose [list file delete -- $tmpfile]
-                    fconfigure $fp -translation binary
                     ns_conn copy $off $len $fp
                     close $fp
 
@@ -303,6 +301,20 @@ proc ns_openexcl {file} {
     return $fp
 }
 
+#
+# For users of Tcl 8.5, the following should be sufficiently
+# equivalent. Not sure, we have to support still Tcl 8.5.
+#
+#proc ns_opentmpfile {varFilename {template ""} {
+#    upvar $varFilename tmpFileName
+#    set tmpFileName [ns_mktemp {*}$template]
+#    set fp [ns_openexcl $tmpFileName]
+#}
+
+proc ns_opentmpfile {varFilename {template ""}} {
+    upvar $varFilename tmpFileName
+    return [file tempfile tmpFileName {*}$template]
+}
 
 #
 # ns_resetcachedform --
@@ -421,9 +433,14 @@ proc ns_parseformfile { file form contentType } {
         return
     }
 
+
+    #
+    # Everything below is just for "multipart/form-data"
+    #
     fconfigure $fp -encoding binary -translation binary
     set boundary "--$b"
-    set fragment_headers ""
+
+    #ns_log notice "PARSE multipart inputfile $fp [fconfigure $fp -encoding]"
 
     while { ![eof $fp] } {
         # skip past the next boundary line
@@ -432,60 +449,49 @@ proc ns_parseformfile { file form contentType } {
         }
 
         #
-        # Fetch the disposition line and field name.
-        #
-        set dispositionLine [string trim [gets $fp]]
-        if { $dispositionLine eq "" } {
-            break
-        }
-
-        #
-        # Parse the header line with "ns_parseheader"
-        #
-        if {$fragment_headers ne ""} {
-            ns_set free $fragment_headers
-        }
-        set fragment_headers [ns_set create frag]
-        ns_parseheader $fragment_headers [encoding convertfrom utf-8 $dispositionLine]
-
-        #
-        # Parse the content of the disposition header into a dict and
-        # get field name and filename.
-        #
-        set disp [lindex [ns_parsefieldvalue [ns_set iget $fragment_headers Content-Disposition]] 0]
-
-        set filename [expr {[dict exist $disp filename] ? [dict get $disp filename] : ""}]
-        set name     [expr {[dict exist $disp name] ? [dict get $disp name] : ""}]
-        #ns_log notice "DISPO extracted filename <$filename> name <$name>"
-
-        #
-        # Fetch and save any field headers (usually just content-type
-        # for files).
+        # Parse fragment header
         #
         set content_type ""
+        set fragment_headers [ns_set create frag]
 
         while { ![eof $fp] } {
-            set line [string trim [gets $fp]]
+            set line [string trimright [encoding convertfrom utf-8 [gets $fp]] "\r\n"]
+            #ns_log notice "PARSE multipart <$line> after trim"
+
             if { $line eq "" } {
+                #
+                # Fragment header finished
+                #
                 break
             }
             #
-            # Use still sloppy parsing
+            # Parse header line (or header continuation line)
             #
-            set header [split [encoding convertfrom utf-8 $line] :]
-            set key    [string tolower [string trim [lindex $header 0]]]
-            set value  [string trim [lindex $header 1]]
+            set i [ns_parseheader $fragment_headers $line]
+            #ns_log notice "PARSE multipart $i [ns_set key $fragment_headers $i]:" \
+                [ns_set value $fragment_headers $i]
 
-            if {$key eq "content-type"} {
-                #
-                # Remember content_type to decide later, if content is
-                # binary.
-                #
-                set content_type $value
+            set key [ns_set key $fragment_headers $i]
+            switch $key {
+                "content-disposition" {
+                    #
+                    # Parse the content of the disposition header into a dict and
+                    # get field name and filename.
+                    #
+                    set disp [lindex [ns_parsefieldvalue [ns_set value $fragment_headers $i]] 0]
+                    set filename [expr {[dict exist $disp filename] ? [dict get $disp filename] : ""}]
+                    set name     [expr {[dict exist $disp name] ? [dict get $disp name] : ""}]
+                    #ns_log notice "PARSE multipart extracted filename <$filename> name <$name>"
+                }
+                "content-type" {
+                    set value [ns_set value $fragment_headers $i]
+                    set content_type $value
+                    ns_set put $form $name.$key $value
+                }
             }
-
-            ns_set put $form $name.$key $value
         }
+
+        ns_set free $fragment_headers
 
         if { $filename ne "" } {
             #
@@ -493,12 +499,17 @@ proc ns_parseformfile { file form contentType } {
             #
             ns_set put $form $name $filename
 
+            #ns_fileskipbom -keepencoding true $fp
+
             #
-            # Read lines of data until another boundary is found.
+            # Get file range for the target file (start ... end).
             #
             set start [tell $fp]
             set end $start
 
+            #
+            # Read lines of data until another boundary is found.
+            #
             while { ![eof $fp] } {
                 if { [string match $boundary* [string trim [gets $fp]]] } {
                     break
@@ -507,20 +518,20 @@ proc ns_parseformfile { file form contentType } {
             }
             set length [expr {$end - $start - 2}]
 
-            # Create a temp file for the content, which will be deleted
-            # when the connection close.  ns_openexcl can fail, hence why
-            # we keep spinning.
+            # Create a temp file for the content, which will be
+            # deleted when the connection close.
+            #
+            # Note that so far the output is written always in
+            # binary, no matter what the embedded file-type is.
 
-            set tmp ""
-            while { $tmp eq "" } {
-                set tmpfile [ns_mktemp]
-                set tmp [ns_openexcl $tmpfile]
-            }
-
+            set tmp [ns_opentmpfile tmpfile]
             catch {fconfigure $tmp -encoding binary -translation binary}
 
             if { $length > 0 } {
                 seek $fp $start
+                #ns_log notice "PARSE multipart fcopy $fp [fconfigure $fp -encoding]" \
+                    "-> $tmp [fconfigure $tmp -encoding]"
+
                 fcopy $fp $tmp -size $length
             }
 
@@ -601,8 +612,7 @@ proc ns_getcontent {args} {
             # There is no content file, we have to create it and write
             # the content from [ns_conn content] into it.
             #
-            set contentfile [ns_mktemp [ns_config ns/parameters tmpdir]/nsd-XXXXXX]
-            set F [open $contentfile w]
+            set F [ns_opentmpfile contentfile [ns_config ns/parameters tmpdir]/nsd-XXXXXX]
             if {$binary} {
                 fconfigure $F -translation binary
                 puts -nonewline $F [ns_conn content -binary]
@@ -621,9 +631,8 @@ proc ns_getcontent {args} {
                 # (like in ns_parseformfile), maybe this has to be
                 # parameterized in the future.
                 #
-                set ncontentfile [ns_mktemp [ns_config ns/parameters tmpdir]/nsd-XXXXXX]
                 set F [open $contentfile r]
-                set N [open $ncontentfile w]
+                set N [ns_opentmpfile ncontentfile [ns_config ns/parameters tmpdir]/nsd-XXXXXX]
                 fconfigure $F -translation binary
                 fconfigure $N -encoding utf-8
                 while {1} {

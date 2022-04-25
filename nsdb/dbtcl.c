@@ -58,7 +58,7 @@ static void EnterDbHandle(InterpData *idataPtr, Tcl_Interp *interp, Ns_DbHandle 
 static int DbGetHandle(InterpData *idataPtr, Tcl_Interp *interp, const char *handleId,
                        Ns_DbHandle **handle, Tcl_HashEntry **hPtrPtr);
 
-static void QuoteSqlValue(Tcl_DString *dsPtr, Tcl_Obj *valueObj, int valueType)
+static Ns_ReturnCode QuoteSqlValue(Tcl_DString *dsPtr, Tcl_Obj *valueObj, int valueType)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void
@@ -89,6 +89,7 @@ static int ErrorObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
  * Local variables defined in this file.
  */
 
+static const Tcl_ObjType *intTypePtr = NULL;
 static const char *const datakey = "nsdb:data";
 
 static const Ns_ObjvTable valueTypes[] = {
@@ -169,6 +170,11 @@ NsDbAddCmds(Tcl_Interp *interp, const void *arg)
     idataPtr->server = server;
     Tcl_InitHashTable(&idataPtr->dbs, TCL_STRING_KEYS);
     Tcl_SetAssocData(interp, datakey, FreeData, idataPtr);
+
+    intTypePtr = Tcl_GetObjType("int");
+    if (intTypePtr == NULL) {
+        Tcl_Panic("NsTclInitObjs: no int type");
+    }
 
     (void)Tcl_CreateObjCommand(interp, "ns_db", DbObjCmd, idataPtr, NULL);
     (void)Tcl_CreateObjCommand(interp, "ns_dbconfigpath", DbConfigPathObjCmd, idataPtr, NULL);
@@ -757,6 +763,8 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
     case INTERPRETSQLFILE:
         {
             const char *value;
+            int         valueLength = 0;
+            Tcl_DString ds;
 
             /*
              * The following commands require a 3rd argument.
@@ -780,7 +788,16 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
             }
             Ns_DStringFree(&handlePtr->dsExceptionMsg);
             handlePtr->cExceptionCode[0] = '\0';
-            value = Tcl_GetString(objv[3]);
+            value = Tcl_GetStringFromObj(objv[3], &valueLength);
+
+            /*
+             * Convert data to external UTF-8... and lets hope, the
+             * driver can handle UTF-8. In case it does not, we might
+             * have to tailor this functionality for certain drivers
+             * (would need additional configuration options).
+             */
+            Tcl_UtfToExternalDString(NULL, value, valueLength, &ds);
+            value = ds.string;
 
             /*if (cmd != GETROW) {
                 fprintf(stderr, "CMD %s: <%s> (%s)\n", Tcl_GetString(objv[1]), value,
@@ -876,6 +893,8 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
                 /* should not happen */
                 assert(cmd && 0);
             }
+
+            Tcl_DStringFree(&ds);
         }
         break;
 
@@ -1176,46 +1195,75 @@ QuoteListToListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *      doing the actual quoting work.
  *
  * Results:
- *      None.
+ *      Ns_ReturnCode to indicate success (NS_OK or NS_ERROR).
  *
  * Side effects:
  *      Updates dsPtr by appending the value.
  *
  *----------------------------------------------------------------------
  */
-static void
+static Ns_ReturnCode
 QuoteSqlValue(Tcl_DString *dsPtr, Tcl_Obj *valueObj, int valueType)
 {
     int         valueLength;
     const char *valueString;
+    Ns_ReturnCode result = NS_OK;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(valueObj != NULL);
 
     valueString = Tcl_GetStringFromObj(valueObj, &valueLength);
 
-    if (valueType == INTCHAR('n')) {
-        Tcl_DStringAppend(dsPtr, valueString, valueLength);
-
-    } else {
-        Tcl_DStringAppend(dsPtr, "'", 1);
-
-        for (;;) {
-            const char *p = strchr(valueString, INTCHAR('\''));
-            if (p == NULL) {
-                Tcl_DStringAppend(dsPtr, valueString, valueLength);
-                break;
-            } else {
-                int length = (int)((p - valueString) + 1);
-
-                Tcl_DStringAppend(dsPtr, valueString, length);
-                Tcl_DStringAppend(dsPtr, "'", 1);
-                valueString = p+1;
-                valueLength -= length;
-            }
+    if (valueObj->typePtr == intTypePtr) {
+        /*
+         * Since we can trust the byterep, we can bypass the expensive
+         * Tcl_UtfToExternalDString check.
+         */
+        if (valueType == INTCHAR('n')) {
+            Tcl_DStringAppend(dsPtr, valueString, valueLength);
+        } else {
+            Tcl_DStringAppend(dsPtr, "'", 1);
+            Tcl_DStringAppend(dsPtr, valueString, valueLength);
+            Tcl_DStringAppend(dsPtr, "'", 1);
         }
-        Tcl_DStringAppend(dsPtr, "'", 1);
+    } else {
+        Tcl_DString ds;
+          /*
+         * Protect against potential attacks, e.g. embedded nulls
+         * appearing after conversion to the external value.
+         */
+        Tcl_DStringInit(&ds);
+        Tcl_UtfToExternalDString(NULL, valueString, valueLength, &ds);
+
+        if (strlen(ds.string) < (size_t)ds.length) {
+            result = NS_ERROR;
+
+        } else if (valueType == INTCHAR('n')) {
+            Tcl_DStringAppend(dsPtr, valueString, valueLength);
+
+        } else {
+            Tcl_DStringAppend(dsPtr, "'", 1);
+
+            for (;;) {
+                const char *p = strchr(valueString, INTCHAR('\''));
+                if (p == NULL) {
+                    Tcl_DStringAppend(dsPtr, valueString, valueLength);
+                    break;
+                } else {
+                    int length = (int)((p - valueString) + 1);
+
+                    Tcl_DStringAppend(dsPtr, valueString, length);
+                    Tcl_DStringAppend(dsPtr, "'", 1);
+                    valueString = p+1;
+                    valueLength -= length;
+                }
+            }
+            Tcl_DStringAppend(dsPtr, "'", 1);
+        }
+        Tcl_DStringFree(&ds);
     }
+
+    return result;
 }
 
 /*
@@ -1252,23 +1300,25 @@ QuoteValueObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
-
     } else if (*Tcl_GetString(valueObj) == '\0') {
         Tcl_SetObjResult(interp, Tcl_NewStringObj("NULL", 4));
-        result = TCL_OK;
-
-    } else if (valueType == INTCHAR('n')) {
-        Tcl_SetObjResult(interp, valueObj);
         result = TCL_OK;
 
     } else {
         Tcl_DString ds;
 
         Tcl_DStringInit(&ds);
-        QuoteSqlValue(&ds, valueObj, valueType);
-        Tcl_DStringResult(interp, &ds);
+        if (unlikely(QuoteSqlValue(&ds, valueObj, valueType) == NS_ERROR)) {
+            Ns_TclPrintfResult(interp, "input string '%s' contains invalid characters",
+                               Tcl_GetString(valueObj));
+            Tcl_DStringFree(&ds);
+            result = TCL_ERROR;
 
-        result = TCL_OK;
+        } else {
+            Tcl_DStringResult(interp, &ds);
+            result = TCL_OK;
+        }
+
     }
     return result;
 }
@@ -1298,7 +1348,7 @@ QuoteValueObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
 static int
 QuoteListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int         result, valueType = INTCHAR('q');
+    int         result = TCL_OK, valueType = INTCHAR('q');
     Tcl_Obj    *listObj;
     Ns_ObjvSpec args[] = {
         {"list",  Ns_ObjvObj,   &listObj,   NULL},
@@ -1319,13 +1369,24 @@ QuoteListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
             int i;
 
             for (i = 0; i < oc; i++) {
-                QuoteSqlValue(&ds, ov[i], valueType);
-                if (i < oc-1) {
-                    Tcl_DStringAppend(&ds, ",", 1);
+
+                if (QuoteSqlValue(&ds, ov[i], valueType) != NS_OK) {
+                    Ns_TclPrintfResult(interp, "input string '%s' contains invalid characters",
+                                       Tcl_GetString(ov[i]));
+                    result = TCL_ERROR;
+                    break;
+
+                } else {
+                    if (i < oc-1) {
+                        Tcl_DStringAppend(&ds, ",", 1);
+                    }
                 }
             }
-            Tcl_DStringResult(interp, &ds);
-            result = TCL_OK;
+            if (result == TCL_OK) {
+                Tcl_DStringResult(interp, &ds);
+            } else {
+                Tcl_DStringFree(&ds);
+            }
 
         } else {
             result = TCL_ERROR;
@@ -1464,7 +1525,7 @@ GetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Ob
             }
             if (inquote) {
                 Tcl_DStringAppend(&elem, "\n", 1);
-                Tcl_DStringTrunc(&line, 0);
+                Tcl_DStringSetLength(&line, 0);
                 continue;
             }
             break;

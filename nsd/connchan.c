@@ -123,11 +123,14 @@ static void CancelCallback(const NsConnChan *connChanPtr)
 static NsConnChan *ConnChanCreate(NsServer *servPtr, Sock *sockPtr,
                                   const Ns_Time *startTime, const char *peer, bool binary,
                                   const char *clientData)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3)
     NS_GNUC_RETURNS_NONNULL;
 
 static void ConnChanFree(NsConnChan *connChanPtr, NsServer *servPtr)
     NS_GNUC_NONNULL(1);
+
+static ssize_t ConnChanReadBuffer(NsConnChan *connChanPtr, char *buffer, size_t bufferSize)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static NsConnChan *ConnChanGet(Tcl_Interp *interp, NsServer *servPtr, const char *name)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
@@ -284,7 +287,9 @@ CancelCallback(const NsConnChan *connChanPtr)
  *
  * ConnChanCreate --
  *
- *      Allocate a connection channel structure and initialize its fields.
+ *      Allocate a connection channel structure and initialize its
+ *      fields.  When the passed-in peer is NULL, determine peerAddr
+ *      from the sockPtr.
  *
  * Results:
  *      Initialized connection channel structure.
@@ -307,7 +312,6 @@ ConnChanCreate(NsServer *servPtr, Sock *sockPtr,
     NS_NONNULL_ASSERT(servPtr != NULL);
     NS_NONNULL_ASSERT(sockPtr != NULL);
     NS_NONNULL_ASSERT(startTime != NULL);
-    NS_NONNULL_ASSERT(peer != NULL);
 
     Ns_SockSetKeepalive(sockPtr->sock, 1);
 
@@ -332,7 +336,11 @@ ConnChanCreate(NsServer *servPtr, Sock *sockPtr,
     connChanPtr->fragmentsBuffer = NULL;
     connChanPtr->frameNeedsData = NS_TRUE;
 
-    strncpy(connChanPtr->peer, peer, NS_IPADDR_SIZE - 1);
+    if (peer == NULL) {
+        (void)ns_inet_ntop((struct sockaddr *)&(sockPtr->sa), connChanPtr->peer, NS_IPADDR_SIZE);
+    } else {
+        strncpy(connChanPtr->peer, peer, NS_IPADDR_SIZE - 1);
+    }
     connChanPtr->sockPtr = sockPtr;
     connChanPtr->binary = binary;
     memcpy(name, "conn", 4);
@@ -1136,7 +1144,7 @@ ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
                 connChanPtr = ConnChanCreate(servPtr,
                                              sockPtr,
                                              &now,
-                                             sockPtr->reqPtr->peer,
+                                             NULL,
                                              NS_TRUE /* binary, fixed for the time being */,
                                              NULL);
                 if (hdrPtr != NULL) {
@@ -1188,6 +1196,114 @@ ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
     }
     return result;
 }
+/*
+ *----------------------------------------------------------------------
+ *
+ * ConnChanConnectObjCmd --
+ *
+ *      Implements "ns_connchan connect".
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      Depends on subcommand.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+{
+    int            result, doTLS = (int)NS_FALSE;
+    unsigned short portNr = 0u;
+    char         *host;
+    Ns_Time       timeout = {1, 0}, *timeoutPtr = &timeout;
+    Ns_ObjvSpec   lopts[] = {
+        {"-tls",      Ns_ObjvBool, &doTLS, INT2PTR(NS_TRUE)},
+        {"-timeout",  Ns_ObjvTime, &timeoutPtr,  NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec   largs[] = {
+        {"host",    Ns_ObjvString, &host,   NULL},
+        {"port",    Ns_ObjvUShort, &portNr, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(lopts, largs, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        //const NsInterp *itPtr = clientData;
+        NsServer       *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
+        Sock           *sockPtr = NULL;
+        NS_SOCKET       sock;
+        Ns_ReturnCode   status;
+
+        fprintf(stderr, "CONNECT %s %hu TLS %d\n", host, portNr, doTLS);
+        sock = Ns_SockTimedConnect2(host, portNr, NULL, 0u, timeoutPtr, &status);
+
+        if (sock == NS_INVALID_SOCKET) {
+            Ns_SockConnectError(interp, host, portNr, status);
+            result = TCL_ERROR;
+
+        } else {
+            result = NSDriverSockNew(interp, sock, doTLS ? "https" : "http", NULL, "CONNECT", &sockPtr);
+        }
+
+        if (likely(result == TCL_OK)) {
+
+            if (STREQ(sockPtr->drvPtr->protocol, "https")) {
+                NS_TLS_SSL_CTX *ctx;
+
+                assert(sockPtr->drvPtr->clientInitProc != NULL);
+
+                /*
+                 * For the time being, just pass NULL
+                 * structures. Probably, we could create the
+                 * SSLcontext.
+                 */
+                result = Ns_TLS_CtxClientCreate(interp,
+                                                NULL /*cert*/, NULL /*caFile*/,
+                                                NULL /* caPath*/, NS_FALSE /*verify*/,
+                                                &ctx);
+                if (likely(result == TCL_OK)) {
+                    Ns_DriverClientInitArg params = {ctx, host};
+                    result = (*sockPtr->drvPtr->clientInitProc)(interp, (Ns_Sock *)sockPtr, &params);
+
+                    /*
+                     * For the time being, we create/delete the ctx in
+                     * an eager fashion. We could probably make it
+                     * reusable and keep it around.
+                     */
+                    if (ctx != NULL)  {
+                        Ns_TLS_CtxFree(ctx);
+                    }
+                }
+            }
+
+            if (likely(result == TCL_OK)) {
+                Ns_Time     now;
+                NsConnChan *connChanPtr;
+
+                Ns_GetTime(&now);
+                connChanPtr = ConnChanCreate(servPtr,
+                                             sockPtr,
+                                             &now,
+                                             NULL,
+                                             NS_TRUE /* binary, fixed for the time being */,
+                                             NULL);
+
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, -1));
+            }
+
+        }
+        if (unlikely(result != TCL_OK && sockPtr != NULL && sockPtr->sock > 0)) {
+            ns_sockclose(sockPtr->sock);
+        }
+        Ns_Log(Ns_LogConnchanDebug, "ns_connchan connect %s %hu returns %d", host, portNr, result);
+    }
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -1239,11 +1355,15 @@ ConnChanListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         }
         scriptLength = strlen(script);
         lcbPtr = ns_malloc(sizeof(ListenCallback) + scriptLength);
+        if (unlikely(lcbPtr == NULL)) {
+            return TCL_ERROR;
+        }
+
         lcbPtr->server = servPtr->server;
         memcpy(lcbPtr->script, script, scriptLength + 1u);
         lcbPtr->driverName = ns_strcopy(driverName);
-
         sock = Ns_SockListenCallback(addr, port, SockListenCallback, doBind, lcbPtr);
+
         /* Ns_Log(Notice, "ns_connchan listen calls  Ns_SockListenCallback, returning %d", sock);*/
         if (sock == NS_INVALID_SOCKET) {
             Ns_TclPrintfResult(interp, "could not register callback");
@@ -1264,7 +1384,7 @@ ConnChanListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                 connChanPtr = ConnChanCreate(sockPtr->servPtr,
                                              sockPtr,
                                              &now,
-                                             sockPtr->reqPtr->peer,
+                                             NULL,
                                              NS_TRUE /* binary, fixed for the time being */,
                                              NULL);
                 retVal = getsockname(sock, (struct sockaddr *) &sa, &len);
@@ -1340,7 +1460,7 @@ SockListenCallback(NS_SOCKET sock, void *arg, unsigned int UNUSED(why))
         connChanPtr = ConnChanCreate(sockPtr->servPtr,
                                      sockPtr,
                                      &now,
-                                     sockPtr->reqPtr->peer,
+                                     NULL,
                                      NS_TRUE /* binary, fixed for the time being */,
                                      NULL);
         Ns_Log(Notice, "SockListenCallback new connChan %s sock %d", connChanPtr->channelName, sock);
@@ -1918,7 +2038,7 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
     bool           finished, masked;
     int            opcode, frameLength, fragmentsBufferLength;
     size_t         payloadLength, offset;
-    unsigned char  mask[4];
+    unsigned char  mask[4] = {0u,0u,0u,0u};
     Tcl_Obj       *resultObj;
 
     resultObj = Tcl_NewDictObj();
@@ -1937,8 +2057,6 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
     /*
      * Append the newly read data.
      */
-
-    //{int i; for(i=0; i<MIN(150, nRead); i++) {fprintf(stderr,"%.2x",buffer[i]&0xff);} fprintf(stderr, "\n");}
     Tcl_DStringAppend(connChanPtr->frameBuffer, buffer, (int)nRead);
 
     /*
@@ -1951,16 +2069,15 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         goto incomplete;
     }
 
-    //{int i; for(i=0; i<MIN(150, connChanPtr->frameBuffer->length); i++) {fprintf(stderr,"%.2x",connChanPtr->frameBuffer->string[i]&0xff);} fprintf(stderr, "\n");}
     /*
      * Check, if frame is complete.
      */
     data = (unsigned char *)connChanPtr->frameBuffer->string;
 
-    finished      = ((data[0] & 0x80) != 0);
-    masked        = ((data[1] & 0x80) != 0);
-    opcode        = (data[0] & 0x0f);
-    payloadLength = (data[1] & 0x7f);
+    finished      = ((data[0] & 0x80u) != 0);
+    masked        = ((data[1] & 0x80u) != 0);
+    opcode        = (data[0] & 0x0Fu);
+    payloadLength = (data[1] & 0x7Fu);
 
     if (payloadLength <= 125) {
         offset = 2;
@@ -1985,26 +2102,26 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         memcpy(&mask, &data[offset], 4);
         offset += 4;
     }
-    //fprintf(stderr, "WS: payload length %zu offset %zu avail %d opcode %d fin %d, masked %d MASK ",
-    //        payloadLength, offset, connChanPtr->frameBuffer->length, opcode, finished, masked);
-    //{int i; for(i=0; i<4; i++) {fprintf(stderr,"%.2x",mask[i]&0xff);} fprintf(stderr, "\n");}
 
     frameLength = (int)(offset + payloadLength);
     if (connChanPtr->frameBuffer->length < (int)frameLength) {
-        //fprintf(stderr, "WS: INCOMPLETE offset %zu + payload length %zu = frameLength %d\n", offset, payloadLength, frameLength);
-        //{int i; for(i=0; i<connChanPtr->frameBuffer->length; i++) {fprintf(stderr,"%.2x",connChanPtr->frameBuffer->string[i]&0xff);} fprintf(stderr, "\n");}
         goto incomplete;
     }
-    //fprintf(stderr, "WS: COMPLETE ");
-    //{int i; for(i=0; i<frameLength; i++) {fprintf(stderr,"%.2x",connChanPtr->frameBuffer->string[i]&0xff);} fprintf(stderr, "\n");}
 
     Tcl_DictObjPut(NULL, resultObj, Tcl_NewStringObj("fin", 3), Tcl_NewIntObj(finished));
     Tcl_DictObjPut(NULL, resultObj, Tcl_NewStringObj("frame", 5), Tcl_NewStringObj("complete", 8));
 
     if (!finished) {
-        Ns_Log(Warning, "WS: unfinished frame, bytes %ld payload length %zu offset %zu avail %d opcode %d fin %d, masked %d",
-               nRead, payloadLength, offset, connChanPtr->frameBuffer->length, opcode, finished, masked);
-        {int i; for(i=0; i<connChanPtr->frameBuffer->length; i++) {fprintf(stderr,"%.2x",connChanPtr->frameBuffer->string[i]&0xff);} fprintf(stderr, "\n");}
+        Ns_Log(Warning, "WS: unfinished frame, bytes %ld payload length %zu offset %zu "
+               "avail %d opcode %d fin %d, masked %d",
+               nRead, payloadLength, offset, connChanPtr->frameBuffer->length,
+               opcode, finished, masked);
+
+        /*{   int i; for(i=0; i<connChanPtr->frameBuffer->length; i++) {
+                fprintf(stderr,"%.2x",connChanPtr->frameBuffer->string[i]&0xFF);
+            }
+            fprintf(stderr, "\n");
+            }*/
     }
 
     if (masked) {
@@ -2013,8 +2130,6 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         for( i = offset, j = 0u; j < payloadLength; i++, j++ ) {
             data[ i ] = data[ i ] ^ mask[ j % 4];
         }
-        //fprintf(stderr, "\n");
-        //{int i; for(i=offset; i<offset+payloadLength; i++) {fprintf(stderr,"%.2x",data[i]&0xff);} fprintf(stderr, "\n");}
     }
 
     fragmentsBufferLength = ConnChanBufferSize(connChanPtr, fragmentsBuffer);
@@ -2030,7 +2145,8 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         if (fragmentsBufferLength == 0) {
             payloadObj = Tcl_NewByteArrayObj(&data[offset], (int)payloadLength);
         } else {
-            Tcl_DStringAppend(connChanPtr->fragmentsBuffer, (const char *)&data[offset], (int)payloadLength);
+            Tcl_DStringAppend(connChanPtr->fragmentsBuffer,
+                              (const char *)&data[offset], (int)payloadLength);
             payloadObj = Tcl_NewByteArrayObj((const unsigned char *)connChanPtr->fragmentsBuffer->string,
                                              connChanPtr->fragmentsBuffer->length);
             Ns_Log(Ns_LogConnchanDebug,
@@ -2061,7 +2177,8 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         if (fragmentsBufferLength == 0) {
             connChanPtr->fragmentsOpcode = opcode;
         }
-        Tcl_DStringAppend(connChanPtr->fragmentsBuffer, (const char *)&data[offset], (int)payloadLength);
+        Tcl_DStringAppend(connChanPtr->fragmentsBuffer,
+                          (const char *)&data[offset], (int)payloadLength);
         Ns_Log(Ns_LogConnchanDebug,
                "WS: fin 0 opcode %d (fragments opcode %d) "
                "append %d to bytes to the fragmentsBuffer, totaling %d bytes",
@@ -2097,7 +2214,9 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
 
  exception:
     connChanPtr->frameNeedsData = NS_FALSE;
-    Tcl_DictObjPut(NULL, resultObj, Tcl_NewStringObj("frame", 5), Tcl_NewStringObj("exception", 10));
+    Tcl_DictObjPut(NULL, resultObj,
+                   Tcl_NewStringObj("frame", 5),
+                   Tcl_NewStringObj("exception", 10));
     WebsocketFrameSetCommonMembers(resultObj, nRead, connChanPtr);
     return resultObj;
 }
@@ -2279,7 +2398,9 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 bufs[0].iov_len = (size_t)connChanPtr->sendBuffer->length;
                 bufs[1].iov_len = 0u;
                 toSend = connChanPtr->sendBuffer->length;
-                Ns_Log(Ns_LogConnchanDebug, "WS: send buffered only msgLen == 0, buf length %zu toSend %d", bufs[0].iov_len, toSend);
+                Ns_Log(Ns_LogConnchanDebug,
+                       "WS: send buffered only msgLen == 0, buf length %zu toSend %d",
+                       bufs[0].iov_len, toSend);
             } else {
                 bufs[0].iov_base = (void *)msgString;
                 bufs[0].iov_len = (size_t)msgLen;
@@ -2293,7 +2414,8 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                    nBufs, bufs[0].iov_len, bufs[1].iov_len, toSend);*/
 
             if (toSend > 0) {
-                nSent = ConnchanDriverSend(interp, connChanPtr, bufs, nBufs, 0u, &connChanPtr->sendTimeout);
+                nSent = ConnchanDriverSend(interp, connChanPtr, bufs, nBufs, 0u,
+                                           &connChanPtr->sendTimeout);
             } else {
                 nSent = 0;
             }
@@ -2543,9 +2665,9 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
         data[0] = '\0';
         data[1] = '\0';
 
-        data[0] = (unsigned char)(data[0] | (unsigned char)(opcode & 0x0f));
+        data[0] = (unsigned char)(data[0] | ((unsigned char)opcode & 0x0Fu));
         if (fin) {
-            data[0] |= 0x80;
+            data[0] |= 0x80u;
         }
 
         if ( messageLength <= 125 ) {
@@ -2559,7 +2681,7 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
              */
 
             Tcl_DStringSetLength(&frameDs, 4);
-            data[1] |= (( unsigned char )126 & 0x7fu);
+            data[1] |= (( unsigned char )126 & 0x7Fu);
             len16 = htobe16((short unsigned int)messageLength);
             memcpy(&data[2], &len16, 2);
             offset = 4;
@@ -2571,18 +2693,17 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
              */
 
             Tcl_DStringSetLength(&frameDs, 10);
-            data[1] |= (( unsigned char )127 & 0x7fu);
+            data[1] |= (( unsigned char )127 & 0x7Fu);
             len64 = htobe64((uint64_t)messageLength);
             memcpy(&data[2], &len64, 8);
             offset = 10;
         }
-        //{int i; fprintf(stderr, "masked %d length %d first two bytes: ", masked, messageLength); for(i=0; i<2; i++) {fprintf(stderr,"%.2x",data[i]&0xff);} fprintf(stderr, "\n");}
 
         if (masked) {
             unsigned char mask[4];
             size_t        i, j;
 
-            data[1] |= 0x80;
+            data[1] |= 0x80u;
 #ifdef HAVE_OPENSSL_EVP_H
             (void) RAND_bytes(&mask[0], 4);
 #else
@@ -2614,7 +2735,6 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
             memcpy(&data[offset], &messageString[0], (size_t)messageLength);
         }
 
-        //{size_t i; for(i=0; i<(size_t)frameDs.length; i++) {fprintf(stderr,"%.2x",data[i]&0xff);} fprintf(stderr, "\n");}
         Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(data, frameDs.length));
 
         Tcl_DStringFree(&messageDs);
@@ -2647,6 +2767,7 @@ NsTclConnChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"callback", ConnChanCallbackObjCmd},
+        {"connect",  ConnChanConnectObjCmd},
         {"close",    ConnChanCloseObjCmd},
         {"detach",   ConnChanDetachObjCmd},
         {"exists",   ConnChanExistsObjCmd},

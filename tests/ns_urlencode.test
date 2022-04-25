@@ -170,14 +170,29 @@ test ns_urlencode-2.5.14 {spaces and plus signs} -body {
     ns_urldecode -part query "%2b"
 } -result {+}
 
-test ns_urlencode-2.5.15 {spaces and plus signs} -body {
+test ns_urlencode-2.5.15 {spaces and plus signs, lowercase} -body {
     ns_urldecode "%2b"
 } -result {+}
 
-test ns_urlencode-2.5.16 {spaces and plus signs} -body {
+test ns_urlencode-2.5.16 {spaces and plus signs, uppercase} -body {
     ns_urldecode "%2B"
 } -result {+}
 
+test ns_urlencode-2.5.17 {plain chars and encoded chars} -body {
+    ns_urldecode -part path "/mot%C3%B6rhead"
+} -result {/motörhead}
+
+test ns_urlencode-2.5.18.1 {invalid 2byte utf-8 - 2nd by too small} -body {
+    ns_valid_utf8 [ns_urldecode -charset iso8859-1 -part path "/mot%C3or"]
+} -returnCodes {ok error} -result 0
+
+test ns_urlencode-2.5.18.2 {invalid 2byte utf-8 - premature end} -body {
+    catch {ns_urldecode -charset iso8859-1 -part path "/mot%C3"}
+} -result 0
+
+test ns_urlencode-2.5.18.2 {invalid 2byte utf-8 - text with cp850 chars} -body {
+    ns_valid_utf8 [ns_urldecode -charset iso8859-1 -part path "test%E4%FC"]
+} -result 0
 
 test ns_urlencode-2.6.1 {rfc2396 section 2.4.3 URI 'delim' characters} -body {
     ns_urlencode -part path "<>\#%\""
@@ -365,6 +380,117 @@ test ns_urlencode-6.0 {security check: see, if we can sneek in a binary 0 to tri
     ns_unregister_op GET /encode-decode
 } -result "200 {1%00%27 0}"
 
+#
+# Test URLs ending with "funny characaters", e.g. the URL ends with
+# %3f, which decodes to a question mark.
+#
+test ns_urlencode-7.0 {
+    Funny chars: URL ends with question mark
+} -constraints {serverListen} -setup {
+    ns_register_proc GET /a? {
+        ns_return 200 text/plain [list [ns_conn url] [ns_info server]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /[ns_urlencode -part path a?]
+} -cleanup {
+    ns_unregister_op GET /a?
+} -returnCodes {ok return error} -result "200 {/a? test}"
+
+test ns_urlencode-7.0.1 {
+    Funny chars: URL ends with question mark, not found
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               GET /[ns_urlencode -part path a?]]
+    #ns_log notice r=$r
+    string match "404*was not found on this server*" $r
+} -returnCodes {ok return error} -result 1
+
+test ns_urlencode-7.0.2 {
+    Funny chars: URL ends with question mark, not found,
+    test on vhost with custom error page
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               -setheaders [list Host testvhost:[ns_config test listenport]] \
+               GET /[ns_urlencode -part path a?]]
+    #ns_log notice r=$r
+    string match "404*CUSTOM 404 page*" $r
+} -returnCodes {ok return error} -result 1
+
+test ns_urlencode-7.1 {
+    Funny chars: URL is just a question mark
+} -constraints {serverListen} -setup {
+    ns_register_proc GET /? {
+        ns_return 200 text/plain [list ok [ns_conn url] [ns_info server]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /%3F
+} -cleanup {
+    ns_unregister_op GET /?
+} -returnCodes {ok return error} -result "200 {ok /? test}"
+
+test ns_urlencode-7.1.1 {
+    Funny chars: URL is just a question mark, not found
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               GET /%3F]
+    #ns_log notice r=$r
+    string match "404*was not found on this server*" $r
+} -returnCodes {ok return error} -result 1
+
+test ns_urlencode-7.1.2 {
+    Funny chars: URL is just a question mark, not found,
+    test on vhost with custom error page
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               -setheaders [list Host testvhost:[ns_config test listenport]] \
+               GET /%3F]
+    #ns_log notice r=$r
+    string match "404*CUSTOM 404 page*" $r
+} -returnCodes {ok return error} -result 1
+
+
+#
+# ns_parsequery
+#
+test ns_parsequery-1.0 {basic syntax} -body {
+    ns_parsequery
+} -returnCodes error -result {wrong # args: should be "ns_parsequery ?-charset charset? ?--? querystring"}
+
+test ns_parsequery-1.1 {simple operation} -body {
+    ns_set array [ns_parsequery a=1&b=2]
+} -returnCodes {error ok} -result {a 1 b 2}
+
+test ns_parsequery-1.2 {simple operation} -body {
+    ns_set array [ns_parsequery msg=Hello+World%21&a=b&a=b&c=d]
+} -returnCodes {error ok} -result {msg {Hello World!} a b a b c d}
+
+test ns_parsequery-1.3 {invalid UTF-8} -body {
+    ns_parsequery return=%0a%0d%bf%f0%9f
+} -returnCodes {error ok} -result {could not parse query: "return=%0a%0d%bf%f0%9f"}
+
+test parsequery-1.4 {parsequery using urlencoding} -setup {
+    ns_register_proc GET /parsequery {
+        ns_conn urlencoding iso8859-1
+        set a [ns_queryget a]
+        ns_return 200 "text/plain" [list [ns_conn query] [ns_conn urlencoding] $a]
+    }
+} -body {
+    nstest::http -getbody 1 GET "/parsequery?a=%e4%f6%fc&b=B"
+} -cleanup {
+    ns_unregister_op GET /encoding
+} -result {200 {a=%e4%f6%fc&b=B iso-8859-1 äöü}}
+
+test parsequery-1.5 {parsequery using bad urlencoding} -setup {
+    ns_register_proc GET /parsequery {
+        #ns_conn urlencoding iso8859-1
+        set a [ns_queryget a]
+        ns_return 200 "text/plain" [list [ns_conn query] [ns_conn urlencoding] $a]
+    }
+} -body {
+    nstest::http -getbody 1 GET "/parsequery?a=%e4%f6%fc&b=B"
+} -cleanup {
+    ns_unregister_op GET /encoding
+} -result {200 {a=%e4%f6%fc&b=B utf-8 {}}}
 
 unset unreservedChars
 

@@ -833,6 +833,9 @@ DupKeyedListInternalRep(Tcl_Obj *srcPtr, Tcl_Obj *copyPtr)
     copyIntPtr->entries = (keylEntry_t *)
         ns_malloc((unsigned)copyIntPtr->arraySize * (unsigned)sizeof(keylEntry_t));
 
+    if (unlikely(copyIntPtr->entries == NULL)) {
+        Ns_Fatal("nsd keyedList: out of memory");
+    }
     for (idx = 0; idx < srcIntPtr->numEntries ; idx++) {
         copyIntPtr->entries[idx].key =
             ns_strdup(srcIntPtr->entries[idx].key);
@@ -1518,7 +1521,7 @@ TclX_KeylkeysObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
             if (result == TCL_OK) {
                 result = TclX_KeyedListGetKeys(interp, keylPtr, key, &listObjPtr);
                 if (result == TCL_BREAK) {
-                    Ns_TclPrintfResult(interp, "key not found: \"%s\"", key);
+                    Ns_TclPrintfResult(interp, "key not found: \"%s\"", key != NULL ? key : "");
                     result = TCL_ERROR;
                 }
             }

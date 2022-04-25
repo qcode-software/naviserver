@@ -202,6 +202,7 @@ List of all currently available NaviServer commands.
 [call [cmd ns_http]]
 [call [cmd ns_parsefieldvalue]]
 [call [cmd ns_parseheader]]
+[call [cmd ns_parsehostport]]
 [call [cmd ns_parseurl]]
 [call [cmd ns_url2file]]
 [call [cmd ns_urldecode]]
@@ -217,7 +218,9 @@ List of all currently available NaviServer commands.
 [call [cmd ns_encodingfortype]]
 [call [cmd ns_formfieldcharset]]
 [call [cmd ns_setformencoding]]
+[call [cmd ns_strcoll]]
 [call [cmd ns_urlcharset]]
+[call [cmd ns_valid_utf8]]
 [list_end]
 
 [section {Image Processing}]
@@ -468,6 +471,7 @@ List of all currently available NaviServer commands.
 [call [cmd ns_sourceproc]]
 [call [cmd ns_upload_stats]]
 [call [cmd ns_moduleload]]
+[call [cmd ns_baseunit]]
 [list_end]
 
 [section {Deprecated}]

@@ -30,7 +30,7 @@ test ns_fmttime-1.0 {ns_fmttime without format} -body {
     #
     return [llength [ns_fmttime 1563812758]]
 } -result {5}
-    
+
 test ns_fmttime-1.1 {ns_rand with 0 arg - float} -body {
     #
     # The year information is in all timezones for this timestamp
@@ -40,12 +40,200 @@ test ns_fmttime-1.1 {ns_rand with 0 arg - float} -body {
 } -result {2019 00:00}
 
 #######################################################################################
-#  test ns_quotehtml
+#  test ns_trim
 #######################################################################################
 
-test ns_quotehtml {ns_quotehtml with typical value} -body {
-    return [ns_quotehtml {<span class="foo">}]
-} -result {&lt;span class=&#34;foo&#34;&gt;}
+test ns_trim-0.0 {ns_trim without arguments} -body {
+    ns_trim
+} -returnCodes error -result {wrong # args: should be "ns_trim ?-subst? ?-delimiter delimiter? ?-prefix prefix? ?--? text"}
+test ns_trim-0.1 {ns_trim with invalid delimiter} -body {
+    ns_trim -delimiter aa "hello world"
+} -returnCodes error -result {invalid arguments: -delimiter must be a single character}
+test ns_trim-0.2 {ns_trim with delimiter and prefix} -body {
+    ns_trim -delimiter a -prefix b "hello world"
+} -returnCodes error -result {invalid arguments: either -prefix or -delimiter can be specified}
+
+test ns_trim-1.1 {nothing to trim} -body {
+    string map {\n \\n} [ns_trim "line1\nline2"]
+} -result {line1\nline2}
+test ns_trim-1.2 {trim spaces} -body {
+    string map {\n \\n} [ns_trim " line1\n  line2\nline3\n "]
+} -result {line1\nline2\nline3\n}
+test ns_trim-1.3 {trim with delimiter} -body {
+    string map {\n \\n} [ns_trim -delimiter : " : line1\n  : line2\n    : line3\n :"]
+} -result { line1\n line2\n line3\n}
+test ns_trim-1.4 {trim with delimiter and leading newline} -body {
+    string map {\n \\n} [ns_trim -delimiter : "\n : line1\n  : line2\n    : line3\n :"]
+} -result { line1\n line2\n line3\n}
+test ns_trim-1.5 {trim with delimiter and no occurrence of delimiter} -body {
+    string map {\n \\n} [ns_trim -delimiter ! "\n : line1\n  : line2\n    : line3\n :"]
+} -result {: line1\n: line2\n: line3\n:}
+
+test ns_trim-2.1 {trim with prefix} -body {
+    string map {\n \\n} [ns_trim -prefix "> " "\n>  line1\nline2\n>   line3\n> "]
+} -result {\n line1\nline2\n  line3\n}
+test ns_trim-2.2 {trim with delimiter and no occurrence of prefix} -body {
+    string map {\n \\n} [ns_trim -prefix > "\n : line1\n  : line2\n    : line3\n :"]
+} -result {\n : line1\n  : line2\n    : line3\n :}
+
+#######################################################################################
+#  test ns_strcoll
+#######################################################################################
+testConstraint collateFold [expr {$::tcl_platform(os) in {Linux}}]
+testConstraint localeCollate [expr {$::tcl_platform(os) in {Darwin Linux}}]
+
+#
+# The constraint 'collateFold' means to sort upper and lower character
+# right next to each other and to ignore certain characters
+# (e.g. dash) in the sorting order when comparing UTF-8. Probably,
+# strcoll_l on these systems is based on the ICU library
+# (International Components for Unicode).
+#
+test ns_strcoll-1.0.0 {ns_strcoll without locale (assuming en_US.UTF-8)} \
+    -constraints localeCollate -body {
+        return [expr {[ns_strcoll Bär Bor] < 0}]
+    } -result 1
+
+test ns_strcoll-1.0.1 {ns_strcoll with locale C} \
+    -body {
+        return [expr {[ns_strcoll -locale C Bär Bor] > 0}]
+    } -result 1
+
+test ns_strcoll-1.0.2 {ns_strcoll with locale en_US.UTF-8 } \
+    -constraints localeCollate -body {
+        return [expr {[ns_strcoll -locale en_US.UTF-8 Bär Bor] < 0}]
+    } -result 1
+
+test ns_strcoll-1.1 {ns_strcoll without locale specified} \
+    -constraints localeCollate -body {
+        set l {Önce Ince Once Ance Adam Çengel Art Ceb Dora Pravda Правда Omikron ό Zeppelin Bar Bor Bär}
+        return [lsort -command ns_strcoll $l]
+    } -result {Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin ό Правда}
+
+test ns_strcoll-1.2 {ns_strcoll with locale en_US.UTF-8} \
+    -constraints localeCollate -body {
+        set l {Önce Ince Once Ance Adam Çengel Art Ceb Dora Pravda Правда Omikron ό Zeppelin Bar Bor Bär}
+        return [lsort -command {ns_strcoll -locale en_US.UTF-8 --} $l]
+    } -result {Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin ό Правда}
+
+#
+# Check ignored dashes
+#
+test ns_strcoll-2.1 {sort with leading dashes, without locale specified} \
+    -constraints {collateFold} -body {
+        set l {b 1 -a}
+        return [lsort -command ns_strcoll $l]
+    } -result {1 -a b}
+
+test ns_strcoll-2.2 {sort with leading dashes, with locale en_US.UTF-8} \
+    -constraints {collateFold} -body {
+        set l {b 1 -a}
+        return [lsort -command {ns_strcoll -locale en_US.UTF-8 --} $l]
+    } -result {1 -a b}
+
+test ns_strcoll-2.3 {sort with leading dashes, with locale C} \
+    -body {
+        set l {b 1 -a}
+        return [lsort -command {ns_strcoll -locale C --} $l]
+    } -result {-a 1 b}
+
+#
+# Check case sorting
+#
+test ns_strcoll-3.1 {sort with upper and lowercase characters, no locale} \
+    -constraints {collateFold} -body {
+        set l {za zb Za ma mb Ma aa ab Aa 1 .}
+        return [lsort -command ns_strcoll $l]
+    } -result {. 1 aa Aa ab ma Ma mb za Za zb}
+
+test ns_strcoll-3.2 {sort with upper and lowercase characters, locale en_US.UTF-8} \
+    -constraints {collateFold} -body {
+        set l {za zb Za ma mb Ma aa ab Aa 1 .}
+        return [lsort -command {ns_strcoll -locale en_US.UTF-8 --} $l]
+    } -result {. 1 aa Aa ab ma Ma mb za Za zb}
+
+test ns_strcoll-3.3 {sort with upper and lowercase characters, locale C} \
+    -body {
+        set l {za zb Za ma mb Ma aa ab Aa 1 .}
+        return [lsort -command {ns_strcoll -locale C --} $l]
+    } -result {. 1 Aa Ma Za aa ab ma mb za zb}
+
+#######################################################################################
+#  test ns_valid_utf8
+#######################################################################################
+
+test ns_valid_utf8-1.0 {ns_valid_utf8 with typical value} -body {
+    return [ns_valid_utf8 "hello world"]
+} -result 1
+
+test ns_valid_utf8-1.1 {invalid utf8, containing x85 at the end} -body {
+    return [ns_valid_utf8 "forschungsprojek\x85"]
+} -result 0
+
+test ns_valid_utf8-1.2 {valid utf8, containing x85 at the end} -body {
+    return [ns_valid_utf8 "forschungsprojek\xc3\x85"]
+} -result 1
+
+#######################################################################################
+#  test ns_subnetmatch
+#######################################################################################
+
+test ns_subnetmatch-1.0 {ns_subnetmatch IPv4} -body {
+    return [ns_subnetmatch 137.208.0.0/16 137.208.116.31]
+} -result 1
+
+test ns_subnetmatch-1.1 {ns_subnetmatch IPv4 invalid cidr} -body {
+    ns_subnetmatch 137.208/16 137.208.116.31
+} -returnCodes error  -result {'137.208/16' is not a valid CIDR string for IPv4 or IPv6}
+test ns_subnetmatch-1.2 {ns_subnetmatch IPv4 invalid ip} -body {
+    ns_subnetmatch 137.208.0.0/16 137.208.116
+} -returnCodes error  -result {'137.208.116' is not a valid IPv4 or IPv6 address}
+
+test ns_subnetmatch-1.3 {ns_subnetmatch IPv4} -body {
+    lmap ip {
+        137.208.215.0
+        137.208.216.0
+        137.208.219.0
+        137.208.220.0
+        137.208.223.0
+        137.208.224.0
+    } {ns_subnetmatch 137.208.216.0/21 $ip}
+} -result {0 1 1 1 1 0}
+
+test ns_subnetmatch-1.4 {ns_subnetmatch IPv4} -body {
+    lmap ip {
+        137.208.215.0
+        137.208.216.0
+        137.208.219.0
+        137.208.220.0
+        137.208.223.0
+        137.208.224.0
+    } {ns_subnetmatch 0.0.0.0/0 $ip}
+} -result {1 1 1 1 1 1}
+
+test ns_subnetmatch-2.0 {ns_subnetmatch IPv6} -body {
+    return [ns_subnetmatch 2001:4860:4860::8888/32 2001:4860:6666:6666:6666:6666:6666:66FF]
+} -result 1
+
+test ns_subnetmatch-2.1 {ns_subnetmatch IPv6 invalid cidr} -body {
+    ns_subnetmatch 2001:4860:4860:8888/32 2001:4860:6666:6666:6666:6666:6666:66FF
+} -returnCodes error  -result {'2001:4860:4860:8888/32' is not a valid CIDR string for IPv4 or IPv6}
+
+test ns_subnetmatch-2.2 {ns_subnetmatch IPv6 invalid ip} -body {
+    ns_subnetmatch 2001:4860:4860::8888/32 2001:4860:6666:6666:6666:6666:6666
+} -returnCodes error  -result {'2001:4860:6666:6666:6666:6666:6666' is not a valid IPv4 or IPv6 address}
+
+test ns_subnetmatch-2.3 {ns_subnetmatch comparing IPv4 with IPv6} -body {
+    ns_subnetmatch 2001:628:404:74::31/64 137.206.1.1
+} -result 0
+
+test ns_subnetmatch-2.4 {ns_subnetmatch IPv4} -body {
+    lmap ip {
+        2001:628:404:74::31
+        ::1
+        ::0
+    } {ns_subnetmatch ::/0 $ip}
+} -result {1 1 1}
 
 #
 # Local variables:

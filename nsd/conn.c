@@ -459,7 +459,7 @@ Ns_ConnPeerAddr(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
 
-    return ((const Conn *)conn)->reqPtr->peer;
+    return ((const Conn *)conn)->peer;
 }
 
 const char *
@@ -467,7 +467,7 @@ Ns_ConnForwardedPeerAddr(const Ns_Conn *conn)
 {
     NS_NONNULL_ASSERT(conn != NULL);
 
-    return ((const Conn *)conn)->reqPtr->proxypeer;
+    return ((const Conn *)conn)->proxypeer;
 }
 
 /*
@@ -618,7 +618,7 @@ Ns_ConnPeer(const Ns_Conn *conn)
 const char *
 Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr, const struct sockaddr *clientsaPtr)
 {
-    const Conn *connPtr;
+    Conn *connPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(saPtr != NULL);
@@ -627,15 +627,15 @@ Ns_ConnSetPeer(const Ns_Conn *conn, const struct sockaddr *saPtr, const struct s
     connPtr = (Conn *)conn;
 
     connPtr->reqPtr->port = Ns_SockaddrGetPort(saPtr);
-    (void)ns_inet_ntop(saPtr, connPtr->reqPtr->peer, NS_IPADDR_SIZE);
+    (void)ns_inet_ntop(saPtr, connPtr->peer, NS_IPADDR_SIZE);
 
     if (clientsaPtr->sa_family != 0) {
-        (void)ns_inet_ntop(clientsaPtr, connPtr->reqPtr->proxypeer, NS_IPADDR_SIZE);
+        (void)ns_inet_ntop(clientsaPtr, connPtr->proxypeer, NS_IPADDR_SIZE);
     } else {
-        connPtr->reqPtr->proxypeer[0] = '\0';
+        connPtr->proxypeer[0] = '\0';
     }
 
-    return connPtr->reqPtr->peer;
+    return connPtr->peer;
 }
 
 
@@ -839,12 +839,19 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
     }
 
     /*
+     * If everything above failed, try the location form the connPtr. This is
+     * actually determine from sockPtr->location which comes from
+     * mapPtr->location, which comes from the virtual hosts mapping table.
+     */
+    if ((location == NULL) && (connPtr->location != NULL)) {
+        location = Ns_DStringAppend(dest, connPtr->location);
+    }
+
+    /*
      * If everything above failed, try the static driver location or - as last
      * resort - use the configured address.
      */
-    if ((location == NULL) && (connPtr->location != NULL)) {
-            location = Ns_DStringAppend(dest, connPtr->location);
-        }
+
     if (location == NULL) {
         unsigned short port;
         const char    *addr;
@@ -2078,12 +2085,32 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
                 } else if (GetChan(interp, Tcl_GetString(objv[4]), &chan) != TCL_OK) {
                     result = TCL_ERROR;
 
-                } else if (Tcl_Write(chan, connPtr->reqPtr->content + offset, length) != length) {
-                    Ns_TclPrintfResult(interp, "could not write %s bytes to %s: %s",
-                                       Tcl_GetString(objv[3]),
-                                       Tcl_GetString(objv[4]),
-                                       Tcl_PosixError(interp));
-                    result = TCL_ERROR;
+                } else {
+                    char *content = connPtr->reqPtr->content + offset;
+#ifdef NS_SKIPBOM
+                    Ns_Log(Notice, "NS_CONN COPY offset %d length %d chan '%s'\n",
+                           offset, length, Tcl_GetString(objv[4]));
+                    /*
+                     * The passed-in channel is binary. If this is the first
+                     * write operation, and file file starts with a BOM, then
+                     * strip it.
+                     */
+                    if (Tcl_Tell(chan) == 0 &&
+                        UCHAR(content[0]) == 0xEF &&
+                        UCHAR(content[1]) == 0xBB &&
+                        UCHAR(content[2]) == 0xBF) {
+                        Ns_Log(Notice, "NS_CONN COPY ---- BOM");
+                        content += 3;
+                        length -= 3;
+                    }
+#endif
+                    if (Tcl_Write(chan, content, length) != length) {
+                        Ns_TclPrintfResult(interp, "could not write %s bytes to %s: %s",
+                                           Tcl_GetString(objv[3]),
+                                           Tcl_GetString(objv[4]),
+                                           Tcl_PosixError(interp));
+                        result = TCL_ERROR;
+                    }
                 }
             }
         }
