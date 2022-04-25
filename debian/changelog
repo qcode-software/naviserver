@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1a-1+deb9u1) stretch; urgency=medium
+
+  * Import 4.99.24 rc1 for stretch
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 25 Apr 2022 13:48:31 +0100
+
 naviserver (4.99.20-20210128-1+deb9u1) stretch; urgency=medium
 
   * Fixed version number
