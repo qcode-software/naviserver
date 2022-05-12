@@ -382,7 +382,6 @@ proc ns_parseformfile { file form contentType } {
 
     if { [catch { set fp [open $file r] } errmsg] } {
         ns_log warning "ns_parseformfile could not open $file for reading"
-        return
     }
     #
     # Separate content-type and options
@@ -433,7 +432,6 @@ proc ns_parseformfile { file form contentType } {
         return
     }
 
-
     #
     # Everything below is just for "multipart/form-data"
     #
@@ -443,56 +441,74 @@ proc ns_parseformfile { file form contentType } {
     #ns_log notice "PARSE multipart inputfile $fp [fconfigure $fp -encoding]"
 
     while { ![eof $fp] } {
-        # skip past the next boundary line
+        #
+        # Parse part of a multipart entry, containing a boundary line,
+        # a header and the body.
+        #
         if { ![string match $boundary* [string trim [gets $fp]]] } {
             continue
         }
 
-        #
-        # Parse fragment header
-        #
-        set content_type ""
-        set fragment_headers [ns_set create frag]
+        set header_set [ns_set create part_header]
 
         while { ![eof $fp] } {
-            set line [string trimright [encoding convertfrom utf-8 [gets $fp]] "\r\n"]
+            set raw [gets $fp]
+            if {![ns_valid_utf8 $raw]} {
+                ns_log warning "multipart header contains invalid UTF-8: $raw"
+                close $fp
+                error "multipart header contains invalid UTF-8"
+            }
+            set line [string trimright [encoding convertfrom utf-8 $raw] "\r\n"]
             #ns_log notice "PARSE multipart <$line> after trim"
 
             if { $line eq "" } {
                 #
-                # Fragment header finished
+                # Part header finished
                 #
                 break
             }
             #
             # Parse header line (or header continuation line)
             #
-            set i [ns_parseheader $fragment_headers $line]
-            #ns_log notice "PARSE multipart $i [ns_set key $fragment_headers $i]:" \
-                [ns_set value $fragment_headers $i]
-
-            set key [ns_set key $fragment_headers $i]
-            switch $key {
-                "content-disposition" {
-                    #
-                    # Parse the content of the disposition header into a dict and
-                    # get field name and filename.
-                    #
-                    set disp [lindex [ns_parsefieldvalue [ns_set value $fragment_headers $i]] 0]
-                    set filename [expr {[dict exist $disp filename] ? [dict get $disp filename] : ""}]
-                    set name     [expr {[dict exist $disp name] ? [dict get $disp name] : ""}]
-                    #ns_log notice "PARSE multipart extracted filename <$filename> name <$name>"
-                }
-                "content-type" {
-                    set value [ns_set value $fragment_headers $i]
-                    set content_type $value
-                    ns_set put $form $name.$key $value
-                }
-            }
+            ns_parseheader $header_set $line
         }
 
-        ns_set free $fragment_headers
+        #
+        # Check, if everything necessary was included in the header.
+        #
+        set content_disposition [ns_set iget $header_set "content-disposition"]
+        if {$content_disposition ne ""} {
+            #
+            # Parse the content of the disposition header into a dict and
+            # get field name and filename.
+            #
+            set disp [lindex [ns_parsefieldvalue $content_disposition] 0]
+            set filename [expr {[dict exist $disp filename] ? [dict get $disp filename] : ""}]
+            set name     [expr {[dict exist $disp name] ? [dict get $disp name] : ""}]
+            ns_log notice "PARSE multipart extracted filename <$filename> name <$name>"
+        } else {
+            set name ""
+            set filename ""
+            ns_log notice "PARSE multipart no content_disposition"
+        }
 
+        if {$name eq ""} {
+            ns_log warning "ns_parseformfile: fragment header does not contain a field name"
+            continue
+        }
+
+        set content_type [ns_set iget $header_set "content-type"]
+        if {$content_type ne ""} {
+            ns_set put $form $name.content-type $content_type
+        }
+
+        ns_set free $header_set
+
+        #
+        # In case, we got a filename, there will be an upload file,
+        # otherwise it will be an ordinary field, where the value is
+        # simply put into the ns_set.
+        #
         if { $filename ne "" } {
             #
             # Uploaded file -- save the original filename as the value
@@ -567,6 +583,16 @@ proc ns_parseformfile { file form contentType } {
             seek $fp $start
 
             if {$content_type eq "" || [string match "text/*" $content_type]} {
+                #
+                # For ordinary values, newer HTTP specs mandate that
+                # the content_type must be omitted, but this was not
+                # always so.
+                #
+                if {![ns_valid_utf8 $value]} {
+                    ns_log warning "multipart value for $name contains invalid UTF-8: $value"
+                    close $fp
+                    error "multipart value for $name contains invalid UTF-8"
+                }
                 set value [encoding convertfrom utf-8 $value]
             }
             ns_set put $form $name $value
