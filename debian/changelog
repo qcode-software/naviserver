@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1-stretch-20220512-1+deb9u1) stretch; urgency=medium
+
+  * Import from upstream - invalid UTF8 in form data changes
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 12 May 2022 14:43:12 +0100
+
 naviserver (4.99.24~rc1a-1+deb9u1) stretch; urgency=medium
 
   * Import 4.99.24 rc1 for stretch
