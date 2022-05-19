@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1-stretch-20220519-1+deb9u1) stretch; urgency=medium
+
+  * Import from upstream. Implements "-fallbackencodings" for ns_getform
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Thu, 19 May 2022 11:46:21 +0100
+
 naviserver (4.99.24~rc1-stretch-20220512-1+deb9u1) stretch; urgency=medium
 
   * Import from upstream - invalid UTF8 in form data changes
