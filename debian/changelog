@@ -2,7 +2,7 @@ naviserver (4.99.24~rc1-stretch-20220520-1+deb9u1) stretch; urgency=medium
 
   * Import from upstream. Implements "-fallbackcharset".
 
- -- Qcode Software Ltd <david@qcode.co.uk>  Fri, 20 May 2022 10:26:29 +0100
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 20 May 2022 10:26:29 +0100
 
 naviserver (4.99.24~rc1-stretch-20220519-1+deb9u1) stretch; urgency=medium
 
