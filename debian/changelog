@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1-buster-20220523-1+deb10u1) buster; urgency=medium
+
+  * Import from upstream. Includes fallbackcharset support.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Mon, 23 May 2022 16:49:18 +0100
+
 naviserver (4.99.24~rc1-1+deb10u2) buster; urgency=medium
 
   * Package bugfix to properly link nsproxy-helper to naviserver-nsproxy
