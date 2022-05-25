@@ -1,0 +1,21 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Wed, 25 May 2022 13:55:13 +0100
+Subject: do not log invalid form data
+
+---
+ nsd/form.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nsd/form.c b/nsd/form.c
+index 39bc260..e45dea9 100644
+--- a/nsd/form.c
++++ b/nsd/form.c
+@@ -214,7 +214,7 @@ Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj,
+         }
+ 
+         if (status == NS_ERROR) {
+-            Ns_Log(Warning, "formdata: could not parse '%s'", toParse);
++            Ns_Log(Warning, "formdata: could not parse form data");
+             Ns_ConnClearQuery(conn);
+             if (rcPtr != NULL) {
+                 *rcPtr = status;
