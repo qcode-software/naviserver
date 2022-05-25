@@ -1,0 +1,21 @@
+From: Qcode Software Ltd <hackers@qcode.co.uk>
+Date: Wed, 25 May 2022 13:30:26 +0100
+Subject: do not log invalid form vars
+
+---
+ nsd/urlencode.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/nsd/urlencode.c b/nsd/urlencode.c
+index 9059e66..5df8bd7 100644
+--- a/nsd/urlencode.c
++++ b/nsd/urlencode.c
+@@ -1427,7 +1427,7 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
+                  * being, we just provided a warning message.
+                  */
+ 
+-                Ns_Log(Warning, "decoded string is invalid UTF-8: '%s' len %d", decoded, decodedLength);
++                Ns_Log(Warning, "decoded string is invalid UTF-8");
+                 Ns_DStringSetLength(dsPtr, (oldLength));
+ 
+                 result = TCL_ERROR;

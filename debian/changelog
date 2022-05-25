@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1-stretch-20220523-1+deb9u2) stretch; urgency=medium
+
+  * Patched to avoid logging form vars with invaid UTF-8
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Wed, 25 May 2022 13:31:44 +0100
+
 naviserver (4.99.24~rc1-stretch-20220523-1+deb9u1) stretch; urgency=medium
 
   * Import from upstream.
