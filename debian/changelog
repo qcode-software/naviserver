@@ -1,3 +1,9 @@
+naviserver (4.99.24~rc1-buster-20220523-1+deb10u2) buster; urgency=medium
+
+  * Patch to avoid logging invalid form data
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 27 May 2022 13:55:33 +0100
+
 naviserver (4.99.24~rc1-buster-20220523-1+deb10u1) buster; urgency=medium
 
   * Import from upstream. Includes fallbackcharset support.
