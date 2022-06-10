@@ -1,4 +1,3 @@
 0001-Specify-bash-for-makefile-so-distclean-works-as-expe.patch
 0002-add-stray-files-to-distclean.patch
 0003-skip-enocoding-test-for-downlevel-tcl.patch
-0004-fix-ns_writer-test-typos.patch
