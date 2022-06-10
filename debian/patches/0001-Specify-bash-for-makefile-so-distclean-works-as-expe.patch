@@ -3,8 +3,10 @@ Date: Tue, 7 Jul 2020 11:02:31 +0100
 Subject: Specify bash for makefile so distclean works as expected
 
 ---
- Makefile | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ Makefile                                           |  2 +-
+ .../0004-do-not-log-invalid-form-data.patch        | 35 ----------------------
+ 2 files changed, 1 insertion(+), 36 deletions(-)
+ delete mode 100644 debian/patches/0004-do-not-log-invalid-form-data.patch
 
 diff --git a/Makefile b/Makefile
 index 1725add..81ff1ab 100644
@@ -19,3 +21,44 @@ index 1725add..81ff1ab 100644
  NSBUILD=1
  include include/Makefile.global
  
+diff --git a/debian/patches/0004-do-not-log-invalid-form-data.patch b/debian/patches/0004-do-not-log-invalid-form-data.patch
+deleted file mode 100644
+index d48d325..0000000
+--- a/debian/patches/0004-do-not-log-invalid-form-data.patch
++++ /dev/null
+@@ -1,35 +0,0 @@
+-From: David Osborne <david@qcode.co.uk>
+-Date: Fri, 27 May 2022 13:54:26 +0100
+-Subject: do not log invalid form data
+-
+----
+- nsd/form.c      | 2 +-
+- nsd/urlencode.c | 2 +-
+- 2 files changed, 2 insertions(+), 2 deletions(-)
+-
+-diff --git a/nsd/form.c b/nsd/form.c
+-index 39bc260..e45dea9 100644
+---- a/nsd/form.c
+-+++ b/nsd/form.c
+-@@ -214,7 +214,7 @@ Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj,
+-         }
+- 
+-         if (status == NS_ERROR) {
+--            Ns_Log(Warning, "formdata: could not parse '%s'", toParse);
+-+            Ns_Log(Warning, "formdata: could not parse form data");
+-             Ns_ConnClearQuery(conn);
+-             if (rcPtr != NULL) {
+-                 *rcPtr = status;
+-diff --git a/nsd/urlencode.c b/nsd/urlencode.c
+-index 9059e66..5df8bd7 100644
+---- a/nsd/urlencode.c
+-+++ b/nsd/urlencode.c
+-@@ -1427,7 +1427,7 @@ UrlDecode(Ns_DString *dsPtr, const char *urlSegment, Tcl_Encoding encoding,
+-                  * being, we just provided a warning message.
+-                  */
+- 
+--                Ns_Log(Warning, "decoded string is invalid UTF-8: '%s' len %d", decoded, decodedLength);
+-+                Ns_Log(Warning, "decoded string is invalid UTF-8");
+-                 Ns_DStringSetLength(dsPtr, (oldLength));
+- 
+-                 result = TCL_ERROR;
