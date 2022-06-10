@@ -2,7 +2,7 @@ naviserver (4.99.24~rc2-buster-1+deb10u1) buster; urgency=medium
 
   * Import from upstream 4.99.24 rc2
 
- -- David Osborne <david@ip-172-0-1-203.eu-west-1.compute.internal>  Fri, 10 Jun 2022 15:01:04 +0100
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 10 Jun 2022 15:01:04 +0100
 
 naviserver (4.99.24~rc1-buster-20220523-1+deb10u2) buster; urgency=medium
 
