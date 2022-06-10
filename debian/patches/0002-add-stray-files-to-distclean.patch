@@ -7,10 +7,10 @@ Subject: add stray files to distclean
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index 81ff1ab..23bbd00 100644
+index 6060321..17ec827 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -301,8 +301,8 @@ clean-bak: clean
+@@ -302,8 +302,8 @@ clean-bak: clean
  	@find . -name '*~' -exec rm "{}" ";"
  
  distclean: clean
