@@ -1,1 +1,2 @@
 0001-Makefile-distclean-additions.patch
+0002-Skip-emoji-test-for-downlevel-tcl.patch
