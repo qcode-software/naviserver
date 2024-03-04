@@ -516,7 +516,7 @@ NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
         if (unlikely(entry == NULL)) {
             status = TCL_ERROR;
 
-        } else if (likely(isNew == 0 && force == 0)) {
+        } else if (likely(isNew == 0 && force == (int)NS_FALSE)) {
             char    *value = Ns_CacheGetValueT(entry, transactionStackPtr);
             Tcl_Obj *resultObj = Tcl_NewStringObj(value, (int)Ns_CacheGetSize(entry));
 
@@ -530,10 +530,19 @@ NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
         } else {
             Ns_Time start, end, diff;
 
+            if (isNew == 0 && force == (int)NS_TRUE) {
+                /*
+                 * When called with the "-force" flag, make the overall logic
+                 * more similar to the situation, where an entry is
+                 * unset. There are several places already, which treat
+                 * (entryPtr->value == NULL) specially during deletion etc.
+                 */
+                Ns_CacheUnsetValue(entry);
+                Ns_Log(Debug, "Force unset");
+            }
             /*
              * Evaluate the cmd to obtain the cache value.
              */
-
             Ns_CacheUnlock(cPtr->cache);
 
             Ns_GetTime(&start);
@@ -552,8 +561,10 @@ NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
 
                 entry2 = Ns_CacheCreateEntry(cPtr->cache, key, &isNew2);
                 if (isNew2 != 0) {
-                    Ns_Log(Warning, "==== cache %s key %s entry2 %p different from %p key '%s'",
-                           Ns_CacheName(cPtr->cache), key, (void*)entry, (void*)entry2, key);
+                    Ns_Log(Warning, "==== cache %s key %s old entry %p"
+                           " different from re-fetched entry %p",
+                           Ns_CacheName(cPtr->cache),
+                           key, (void*)entry, (void*)entry2);
                 }
             }
 
@@ -723,9 +734,9 @@ CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         result = TCL_ERROR;
 
     } else {
-        int                       isNew;
-        Ns_Entry                 *entry;
-        Ns_CacheTransactionStack *transactionStackPtr = &itPtr->cacheTransactionStack;
+        int                             isNew;
+        Ns_Entry                       *entry;
+        const Ns_CacheTransactionStack *transactionStackPtr = &itPtr->cacheTransactionStack;
 
         assert(cPtr != NULL);
         assert(key != NULL);
@@ -1287,6 +1298,25 @@ SetEntry(NsInterp *itPtr, TclCache *cPtr, Ns_Entry *entry, Tcl_Obj *valObj, Ns_T
             expPtr = Ns_AbsoluteTime(&t, &cPtr->expires);
         } else {
             expPtr = Ns_AbsoluteTime(&t, expPtr);
+#ifdef DEBUG_REL_TIME
+            {
+                Ns_Time tr, *trPtr;
+                //fprintf(stderr, "call Ns_RelativeTime with %p (2)\n", (void*)expPtr);
+                if (expPtr != NULL) {
+                    fprintf(stderr, "call Ns_RelativeTime INPUT  " NS_TIME_FMT "\n",  (int64_t)expPtr->sec, expPtr->usec);
+                }
+                trPtr =  Ns_RelativeTime(&tr, expPtr);
+                //fprintf(stderr, "call Ns_RelativeTime with %p (2) -> %p\n", (void*)expPtr, (void*)trPtr);
+                if (trPtr != NULL) {
+                    fprintf(stderr, "call Ns_RelativeTime INPUT2 " NS_TIME_FMT "\n",  (int64_t)expPtr->sec, expPtr->usec);
+                    fprintf(stderr, "call Ns_RelativeTime OUTPUT " NS_TIME_FMT "\n",  (int64_t)trPtr->sec, trPtr->usec);
+
+                    Ns_Log(Notice, "expires specified absolute " NS_TIME_FMT " relative " NS_TIME_FMT,
+                           (int64_t)expPtr->sec, expPtr->usec,
+                           (int64_t)trPtr->sec, trPtr->usec );
+                }
+            }
+#endif
         }
         if (transactionStackPtr->depth > 0) {
             int uncommitted = Ns_CacheSetValueExpires(entry, value, valueSize,

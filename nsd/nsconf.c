@@ -166,9 +166,9 @@ NsConfUpdate(void)
      * Set a default stacksize, if specified. Use OS default otherwise.
      */
 
-    size = (size_t)Ns_ConfigMemUnitRange(NS_CONFIG_THREADS, "stacksize", 0, 0, INT_MAX);
+    size = (size_t)Ns_ConfigMemUnitRange(NS_CONFIG_THREADS, "stacksize", NULL, 0, 0, INT_MAX);
     if (size == 0u) {
-        size = (size_t)Ns_ConfigMemUnitRange(path, "stacksize", 0, 0, INT_MAX);
+        size = (size_t)Ns_ConfigMemUnitRange(path, "stacksize", NULL, 0, 0, INT_MAX);
     }
     if (size > 0u) {
         (void) Ns_ThreadStackSize((ssize_t)size);
@@ -191,7 +191,8 @@ NsConfUpdate(void)
      * binder.c, win32.c
      */
 
-    nsconf.backlog = Ns_ConfigIntRange(path, "listenbacklog", 32, 0, INT_MAX);
+    nsconf.listenbacklog = Ns_ConfigIntRange(path, "listenbacklog", 32, 0, INT_MAX);
+    nsconf.sockacceptlog = Ns_ConfigIntRange(path, "sockacceptlog", 2,  2, 100);
 
     /*
      * tcljob.c
@@ -209,14 +210,17 @@ NsConfUpdate(void)
      */
 
     Ns_DStringInit(&ds);
-    nsconf.tcl.sharedlibrary = Ns_ConfigString(path, "tcllibrary", "tcl");
+    nsconf.tcl.sharedlibrary = ns_strcopy(Ns_ConfigString(path, "tcllibrary", "tcl"));
     if (Ns_PathIsAbsolute(nsconf.tcl.sharedlibrary) == NS_FALSE) {
         Ns_Set *set = Ns_ConfigCreateSection(NS_GLOBAL_CONFIG_PARAMETERS);
+        int     length;
 
         (void)Ns_HomePath(&ds, nsconf.tcl.sharedlibrary, (char *)0L);
+        length = ds.length;
+        ns_free((void*)nsconf.tcl.sharedlibrary);
         nsconf.tcl.sharedlibrary = Ns_DStringExport(&ds);
 
-        Ns_SetUpdate(set, "tcllibrary", nsconf.tcl.sharedlibrary);
+        Ns_SetUpdateSz(set, "tcllibrary", 10, nsconf.tcl.sharedlibrary, length);
     }
     nsconf.tcl.lockoninit = Ns_ConfigBool(path, "tclinitlock", NS_FALSE);
     Ns_DStringFree(&ds);

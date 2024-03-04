@@ -671,7 +671,15 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
         Tcl_Obj    *listObj = Tcl_NewListObj(0, NULL);
 
         p = htmlString;
-        while (((s = strchr(p, INTCHAR('<'))) != NULL) && ((e = strchr(s, INTCHAR('>'))) != NULL)) {
+        for (;;) {
+            s = strchr(p, INTCHAR('<'));
+            if (s == NULL) {
+                break;
+            }
+            e = NsParseTagEnd(s);
+            if (e == NULL) {
+                break;
+            }
             ++s;
             *e = '\0';
             while (*s != '\0' && CHARTYPE(space, *s) != 0) {
@@ -750,12 +758,12 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  */
 
 #if 0
-static void hexPrint(const char *msg, const unsigned char *octects, size_t octectLength)
+static void hexPrint(const char *msg, const unsigned char *octets, size_t octetLength)
 {
     size_t i;
-    fprintf(stderr, "%s octectLength %" PRIuz ":", msg, octectLength);
-    for (i = 0; i < octectLength; i++) {
-        fprintf(stderr, "%.2x ", octects[i] & 0xff);
+    fprintf(stderr, "%s octetLength %" PRIuz ":", msg, octetLength);
+    for (i = 0; i < octetLength; i++) {
+        fprintf(stderr, "%.2x ", octets[i] & 0xff);
     }
     fprintf(stderr, "\n");
 }
@@ -857,7 +865,7 @@ Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         size = (size_t)len + 3u;
         decoded = (unsigned char *)ns_malloc(size);
         size = Ns_HtuuDecode2(chars, decoded, size, encoding);
-        // hexPrint("decoded", decoded, size);
+        //NsHexPrint("base64 decoded", decoded, size, 30, NS_FALSE);
 
         if (isBinary) {
             Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (int)size));
@@ -866,7 +874,7 @@ Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             Tcl_DString ds, *dsPtr = &ds;
 
             Tcl_DStringInit(dsPtr);
-            Tcl_ExternalToUtfDString(NULL, (char *)decoded, (int)size, dsPtr);
+            (void)Tcl_ExternalToUtfDString(NULL, (char *)decoded, (int)size, dsPtr);
             Tcl_DStringResult(interp, dsPtr);
         }
 
@@ -1896,6 +1904,8 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
 
         Tcl_DStringInit(&ds);
         str = Ns_GetBinaryString(charsObj, isBinary == 1, &length, &ds);
+        //NsHexPrint("md5 input data", str, length, 30, NS_FALSE);
+
         Ns_CtxMD5Init(&ctx);
         Ns_CtxMD5Update(&ctx, (const unsigned char *) str, (size_t)length);
         Ns_CtxMD5Final(&ctx, digest);
@@ -2367,8 +2377,8 @@ NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 
             string1 = Tcl_GetStringFromObj(arg1Obj, &length1);
             string2 = Tcl_GetStringFromObj(arg2Obj, &length2);
-            Tcl_UtfToExternalDString(NULL, string1, length1, ds1Ptr);
-            Tcl_UtfToExternalDString(NULL, string2, length2, ds2Ptr);
+            (void)Tcl_UtfToExternalDString(NULL, string1, length1, ds1Ptr);
+            (void)Tcl_UtfToExternalDString(NULL, string2, length2, ds2Ptr);
 
             errno = 0;
             comparisonValue = strcoll_l(ds1Ptr->string, ds2Ptr->string,

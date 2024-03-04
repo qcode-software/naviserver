@@ -828,7 +828,7 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
             if (separator == '.') {
                 double dblValue;
 
-                if (Tcl_GetDouble(interp, sep, &dblValue) != TCL_OK) {
+                if (Tcl_GetDouble(NULL, sep, &dblValue) != TCL_OK) {
                     char *ptr = NULL, *p = sep;
                     long  fraction;
 
@@ -923,7 +923,7 @@ GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *
  *
  * SetTimeFromAny --
  *
- *      Attempt to generate an Ns_Time internal respresentation for the Tcl
+ *      Attempt to generate an Ns_Time internal representation for the Tcl
  *      object. It interprets integer as seconds, but allows as well the form
  *      sec:usec, sec.fraction, or number plus time unit.
  *

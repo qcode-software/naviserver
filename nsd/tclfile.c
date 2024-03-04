@@ -118,7 +118,7 @@ Ns_TclGetOpenChannel(Tcl_Interp *interp, const char *chanId, int write,
  * Ns_TclGetOpenFd --
  *
  *      Return an open Unix file descriptor for the given channel.
- *      This routine is used by the AOLserver * routines to provide
+ *      This routine is used by the NaviServer routines to provide
  *      access to the underlying socket.
  *
  * Results:
@@ -408,9 +408,10 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
                && Tcl_GetWideIntFromObj(interp, objv[2], &nbytes) != TCL_OK) {
 
         result = TCL_ERROR;
-    } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK) {
-        result = TCL_ERROR;
-
+    } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL, &result) != NS_OK) {
+        /*
+         * Might be a soft error.
+         */
     } else {
 
         /*

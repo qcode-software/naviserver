@@ -1,4 +1,1279 @@
 =======================================
+NaviServer 4.99.30, released 2024-01-26
+=======================================
+
+ 35 files changed, 700 insertions(+), 333 deletions(-)
+
+New Features:
+-------------
+
+  - Global Parameter "sockacceptlog" (Commit a8b5f33c):
+
+    Introduced a new global parameter "sockacceptlog" to define a
+    threshold for logging, when to inform the user about a high number
+    of incoming connections in a single accept callback.
+
+Bug Fixes:
+----------
+
+    - Compilation Issues (Commit 0b72baa7): Fixed compilation issues
+      when compiled without OpenSSL or zlib support.
+
+    - Meaningful End-Times on Connection Errors (Commit 929d55be):
+      Ensured meaningful end-times are provided during connection
+      errors in ns_http.
+
+    - Rework of "rejectalreadyclosedconn" (Commit f0963834): Reworked
+      the "rejectalreadyclosedconn" for safer operations and logging.
+
+    - Shutdown Callbacks and Spoolers (Commit 0f0ea439): Change
+      shutdown order to let shutdown callbacks use spoolers. This is
+      beneficial for cluster mode in OpenACS, where other cluster
+      nodes should be be informed about the shutdown of a node (Used
+      by OpenACS).
+
+Changes in Sample Configuration Files:
+--------------------------------------
+
+    - Oracle Startup Configurable (Commit 1ee7fef): Made startup
+      configuration for Oracle databases adjustable in
+      openacs-config.tcl.
+
+    - Use Uppercase Memory Units (Commit 2f96dc62): Standardized
+      memory units to uppercase in openacs-config.tcl.
+
+    - Removed Custom Setting for "connsperthread" (Commit 823b68b2):
+      Removed the custom setting for "connsperthread" in
+      openacs-config.tcl to avoid misconceptions.
+
+    - Backported nsd-config.tcl and openacs-config.tcl from main
+      branch to improve maintainability
+
+Misc Improvements:
+------------------
+
+    - Library Initialization After Command Line Processing (Commit
+      fc3ee12b): Moved library initialization to occur after command
+      line processing to avoid potential unexpected output.
+
+    - Timeout Information in Warning Messages (Commit 12fe7805):
+      Enhanced warning messages to include timeout value information.
+
+    - Improved Robustness of Regression Rest (Commit bcc309716)
+
+    - Compatibility Improvements:
+      * Improved Forward Compatibility for Tcl9 (Commit d9e15fb6)
+      * Improved Cross Compilation for certain ARM Processors in .m4
+        setup (Commit e1071fcf)
+      * Improved Include Path for macOS (Commit 120dcafce): Updated
+        the include path for cppcheck under newer macOS versions.
+
+
+
+
+=======================================
+NaviServer 4.99.29, released 2023-11-01
+=======================================
+
+ 37 files changed, 261 insertions(+), 132 deletions(-)
+
+New Features:
+-------------
+ - Eased configuration of simple setups
+   * don't require to specify a "defaultserver" when a single
+     server is in use.
+
+   * reduce warnings for per-server network drivers. This is a not
+     recommended but possible configuration, global network drivers
+     should be used.
+
+ - The configuration option "rejectalreadyclosedconn", which warns
+   about attempts to send data to the web client at times, when the
+   connection is not available anymore, is now applied on closed and
+   detached connections. Before it was only applied on closed
+   connections, causing potentially many warnings for legacy
+   applications.
+
+Bug Fixes:
+----------
+
+  - Fixed a potential memory leak introduced two releases ago (in
+    4.99.27).
+
+  - Fixed a potential compilation problem with glibc 2.38 or newer
+    (released 31 Jul 2023)
+
+  - Fixed reloading of certificates for mass virtual hosting
+
+Code Maintenance:
+-----------------
+
+  - fixed typos
+  - fixed enum/int conversion flagged by gcc13
+
+
+Modules:
+--------
+The following list contains the most important changes:
+
+ - module nsdbpg:
+   fixed memory leak (see above).
+
+
+=======================================
+NaviServer 4.99.28, released 2023-09-06
+=======================================
+
+ 49 files changed, 851 insertions(+), 328 deletions(-)
+
+New Features:
+-------------
+ - None
+
+Bug Fixes:
+----------
+
+  - Fixed incorrect list quoting for "filter" in urlspace
+    introspection. This lead to display problems, e.g. in the nsstats
+    module.
+
+  - Fixed naming Inconsistency: Unified the term "fastpath" across
+    configuration, API-interface, and documentation.
+
+  - Fixed potential crash in Ns_SetIUpdateSz(): Fixed a bug that could
+    lead to a crash when updating the content-type header field with a
+    lowercase field name via the old C API.
+
+    Many thanks to Brian Fenton for reporting the problem and his help
+    for debugging it.
+
+Code Maintenance:
+-----------------
+
+  - New API Function Ns_PlainUrlPath: Checks if a given URL path is
+    "plain," meaning it doesn't contain a query or fragment. Useful
+    for data validation in configuration files and Tcl API calls.
+
+  - Improved Validation when registering request handler. Previously,
+    it was possible to register request handlers for paths containing
+    query variables and fragments, which were never matched.
+
+  - Added Missing "-server" Argument: The "-server" argument was added
+    to ns_unregister_op and ns_unregister_url2file, allowing for more
+    centralized management (e.g. from the nsstats module).
+
+  - Added a more Portable Way of Printing NULL Pointer: Improved
+    portability for printing NULL pointers across different compilers,
+    which could lead to false positives in the regression test.
+
+  - Extended and Simplified Test Cases: Several commits were made to
+    improve and extend test cases across different modules and
+    scenarios.
+
+  - Improved and corrected documentation, including styling changes,
+    bug fixes, and providing more detailed information.
+
+
+Modules:
+--------
+The following list contains the most important changes:
+
+ - Extending nsstats:
+
+   - Introduced templating to improve style-ability
+   - Provided a more ,odern GUI based on the CSS classes from w3schools
+   - Added management of request handlers
+   - Added management of url2file mappings
+
+ - Rework of module nsdbbdb:
+    * properly initializing mutex variables (many thanks to John Buckman)
+    * support for LMDB (Lightning Memory-Mapped Database)
+    * Improved configurability for Makefile
+    * Modernization of C code (better following style guide)
+    * Added debug support via Debug(bdb)
+
+     Build nsdbbdb with Berkeley DB 6.2.32 (results in nsdbbdb.so)
+        make DBINCLUDE=/opt/local/include/db62  DBLIB=/opt/local/lib/db62/
+
+     Build nsdbbdb with LMDB (Lightning Memory-Mapped Database) (results in nsdblmdb.so)
+        make LMDB=1 DBINCLUDE=/opt/local/include DBLIB=/opt/local/lib/
+
+
+=======================================
+NaviServer 4.99.27, released 2023-08-09
+=======================================
+
+ 46 files changed, 739 insertions(+), 172 deletions(-)
+
+New Features:
+-------------
+ - None
+
+Bug Fixes:
+----------
+
+ - Bug fix: fixed potential crash when fallbackCharset is not defined
+   in the configuration file (using outdated configuration)
+
+ - Bug fix for fastpath in connection with "ns_serverrootproc"
+
+   Earlier versions of NaviServer initialized for fastpath the
+   interpreter with the connection conditionally, and rather late.
+   When "ns_serverrootproc" is configured, the interpreter with its
+   linkage to the connection is needed very early in the request.  Now
+   it is ensured, that the interpreted is registered for the
+   connection when the callback is issued.
+
+   NaviServer 5 will have more changes in this respect.
+
+   Many thanks to Georg Lehner for reporting this bug and testing.
+
+ - Fixed various spelling errors in source code and documentation
+
+ - Documentation:
+    * fixed documentation bugs
+    * modernized examples
+
+ - Ease debugging, how values for "ns_conn location" are determined
+
+Configuration Files:
+--------------------
+
+- Added sample section for charset mapping to sample-config.tcl
+
+Modules:
+--------
+The following list contains just bug fixes, new features will
+be documented with NaviServer 5.0.
+
+ - nsdbpg:
+    * Fixed potential crash in Tcl, when Database contains UTF-8
+      characters invalid to Tcl 8.6. Crash was observed in
+      "string tolower $var".
+    * Fixed potential crash, when bind variables are passed via
+      explicit "-bind" option, but variable binding was missing
+
+ - nsoracle:
+    * Reduced verbosity: For debug messages of the driver
+      implementation, use again "Debug" severity to avoid too much
+      verbosity, when looking for slow queries ("Debug(sql)" severity
+      of nsdb).
+
+
+=======================================
+NaviServer 4.99.26, released 2023-06-16
+=======================================
+
+ 18 files changed, 109 insertions(+), 64 deletions(-)
+
+New Features:
+-------------
+ - None
+
+Bug Fixes:
+----------
+
+ - Bug fix: don't update the value of an ns_set entry using the
+   identical string.
+
+   Since the update of an ns_set entry requires a free operation of
+   the old memory and a copy operation of the new value, in case the
+   pointers are identical, the new value might be freed in the first
+   step, leading to an invalid value. This condition can happen only
+   from the C level API.  Unfortunately, this happened with the sample
+   configuration file for OpenACS.
+
+ - Increase portability for older compilers and windows.
+   NaviServer 4.99.* uses now same idiom for NS_BITELEMENTS
+   as in NaviServer 5
+
+ - improved error message on socket errors (reported unknown error
+   before)
+
+Configuration Files:
+--------------------
+ - Modernize recommended cipher lists in OpenSSL configuration
+   files
+
+=======================================
+NaviServer 4.99.25, released 2023-05-01
+=======================================
+
+ 132 files changed, 3957 insertions(+), 2068 deletions(-)
+
+New Features:
+-------------
+
+ - Added meta-information to configuration values
+
+   NaviServer can now report, what configuration values provided in
+   the configuration file were actually used, what their default
+   values are, and whether these values were specified or not (using
+   the default values). With this information, administration
+   (e.g. migration) becomes easier. The NaviServer module "nsstats"
+   shows this meta information via the web interface.
+
+   This functionality is provided via the new option "-filter" for the
+   command "ns_configsection ... section". When the "-filter" option
+   is used, different kinds of information about the parameters is
+   returned from the specified section.
+
+    "-filter unread":
+
+        Returns the parameters, which were set during configuration (i.e.,
+        in the configuration file) but which were not read in the startup
+        phase of the server. This option is useful to determine
+        e.g. typographical errors of specified parameter names.
+
+    "-filter defaulted":
+
+        Returns the parameters, from which the default values were read
+        (i.e., which were not explicitly set)
+
+    "-filter defaults":
+
+        Returns the defaults of the parameter. This is useful for
+        contrasting the actual values with the default values for
+        Parameters, e.g. in a web based interface.
+
+ - ns_set reform (per default deactivated in 4.99, but activated in 5.*)
+
+   The classical implementation for ns_sets uses separately malloced
+   storage for every attribute name and attribute value. So, e.g., for
+   1000 ns_sets with 20 members each, this means 1,000*20*2 = 40,000
+   malloc/free operations, e.g., for a single db query! Although the
+   malloc implementations have improved over the years, these will
+   require many lock operations, especially under load, where many
+   threads might perform many concurrent malloc operations. One other
+   consequence is that the allocated memory will be scattered over
+   address space, which has bad implications for CPU caching.
+
+   The new implementation uses for one "ns_set" a single Tcl_DString
+   keeping all attribute names and attribute values. This reduces the
+   malloc operations and improves memory locality, such that cache
+   hits will improve.
+
+   One caveat of this change is that modules using "ns_set" have to be
+   recompiled, since the full C-level data structure of the "ns_set"
+   is exposed. Therefore, adding a member causes a binary
+   incompatibility. One other potential problem is that C-level
+   modules using the Ns_Set* API have to make sure that long-living
+   string values are copied (this was necessary before as well, but
+   was in many cases no problem, when the "ns_sets" were seldom
+   updated).
+
+   For high compatibility, this feature is deactivated per default in
+   the 4.99.* series and can be activated by setting the compile-time
+   C macro "NS_SET_DSTRING".
+
+
+
+API changes:
+------------
+
+   API extensions:
+    - Provide a new interface ending with *Sz to provide string sizes.
+      This reduces the need of strlen() operations.
+      * Ns_SetCreateSz()
+      * Ns_SetIUpdateSz()
+      * Ns_SetPutSz()
+      * Ns_SetPutValueSz()
+      * Ns_SetUpdateSz()
+
+    - New API calls for "ns_set" reform
+      * Ns_SetClearValues(): clear the values for all keys
+      * Ns_SetDataPrealloc(): creating ns_sets with preallocated values
+        to avoid resize operations
+      * NsSetResize()
+      * NsHeaderSetGet()
+
+    - Ns_ConfigSet(const char *section, const char *key, const char *name)
+      The last argument is new and allows one to create named sets
+      (previously, all such sets were unnamed)
+
+    - NsHexPrint(): Print the potentially binary content of a buffer
+      in human-readable form.
+
+    - Ns_RelativeTime(Ns_Time *relTimePtr, Ns_Time *timePtr)
+      This call implements the inverse operation of Ns_AbsoluteTime(),
+      and is used mostly to make debug messages eye-friendly.
+
+
+Performance Improvements:
+-------------------------
+
+ - Replaced malloc operation per log entry by thread local variable in
+   system log implementation.
+
+ - When NaviServer 4.99.25 is compiled with NS_SET_DSTRING supportm
+   the following preliminary performance results were measured from
+   the "ns_set" reform (see above).  The tests were performed on
+   openacs.org (Xeon Gold 6226R CPU @ 2.90GHz, 32 cores,
+   hyper-threading enabled). The test executes the SQL query
+
+        select * from acs_objects limit 1000
+
+   100 times in sequence. This test is run in 1 to 30 concurrent
+   threads. With 30 threads, 3mio tuples are retrieved, and 72 mio
+   malloc/free operations are needed alone for the retrieved values.
+
+   Before (classical ns_set with many mallocs):
+
+        threads 1 total 4606.787 ms avg 3285.25 ms
+        threads 5 total 4595.358 ms avg 3493.07 ms
+        threads 10 total 4804.193 ms avg 3755.93 ms
+        threads 20 total 6279.524 ms avg 4569.16 ms
+        threads 30 total 8966.427 ms avg 6618.58 ms
+
+   After reform (using common Tcl_DString per tuple):
+
+        threads 1 total 4524.645 ms avg 3242.54 ms
+        threads 5 total 4251.266 ms avg 3450.09 ms
+        threads 10 total 4656.795 ms avg 3665.31 ms
+        threads 20 total 5934.105 ms avg 4671.38 ms
+        threads 30 total 7384.591 ms avg 5642.76 ms
+
+   To summarize, the improvement increases under higher load (with
+   more parallel threads). E.g., with 30 threads, the total time
+   improved by 17%.... leading also to a smaller RSS. These tests were
+   not performed under "clinical" conditions.
+
+   The new Tcl API call "ns_set size" can be used to pre-allocate
+   larger ns_sets, such that the usual Tcl_DString growing policy does
+   not kick in, reducing further realloc() operations.
+
+
+Bug Fixes:
+----------
+
+ - Fixed potential crash in "ns_accesslog extendedheaders XXXX".
+   Setting extended headers via configuration file was correct, but
+   changing it dynamically via "ns_accesslog extendedheaders .." was
+   broken. (Issue https://sourceforge.net/p/naviserver/bugs/91/)
+
+ - "ns_conn location": Fixed potential race condition
+
+    It was possible that "ns_conn location" could return inconsistent
+    results in a single request, when the underlying sockPtr was
+    aggressively reused. Now, the value of the location member is
+    copied to the connection structure instead of being shared with
+    the socket structure (as before).
+
+ - "ns_cache_eval -force": Fixed potential race condition
+
+    There was a problem with "ns_cache_eval -force", where the system
+    relied on the existence of a pre-existing entry, but in case the
+    entry was flushed in the meantime problems a crash might have
+    happened. Now the value during the "-force" call is cleared exactly
+    like in the case of an unset operation. The null-value operations
+    are already protected until these are finished in various places
+    in the code.
+
+ - "ns_socknread": Fix potentially wrong result for buffered channels
+
+ - Bug fixes for problems showing up under MS Windows:
+
+    * Make sure that the output variable of Ns_ObjvIndex() is always an
+      integer. Previously, the output variable was in two places a
+      character variable, causing crashes under MS Windows.
+
+    * Handle incompatibility in setlocale() under MS Windows.  Under
+      MS Windows, later calls to setlocale() overwrite the string
+      returned by former calls. So, it is necessary to copy of the
+      returned string of a setlocale() call under MS Windows.
+
+    * Handling linking problems: MS Windows requires explicit handling
+      when importing symbols from .dll files (Ns_LogSqlDebug,
+      NS_intTypePtr)
+
+    * Pass error codes from low-level function SockRecv() and
+      SockSend() via variables.  This change makes sure the real error
+      code (immediately after the I/O operation) is passed to the
+      caller to avoid missed error cases and weird error message
+      (e.g. under windows).
+
+
+ - Bug fixes for ADP parser:
+
+    * Support for greater than sign ">" inside attribute values.
+
+      Previously, NaviServer determined the terminating end-of-tag
+      character as literally the first greater than sign, no matter if
+      this was used as attribute values between single or double
+      quotes.
+
+      The new version supports such values, since the "Living Standard
+      of HTML" [1] allows the use of less than "<" and greater than
+      ">" signs inside attribute values as long these are between
+      single or double quotes.  The guide [2] just recommends using
+      character escapes for "<", ">" and "&".
+
+      [1] https://html.spec.whatwg.org/multipage/syntax.html#syntax-attribute-value
+      [2] https://www.w3.org/International/questions/qa-escapes
+
+      This problem was reported by Wolfgang Winkler
+
+    * Clear ADP flags in case of errors (this error was present for
+      many years)
+
+      Previously, The following ADP page could lead to a full
+      breakdown of the server, since the error states of the server
+      were never cleared, and subsequent requests served be the same
+      interpreter could lead to the old error states.
+
+      Many thanks to Oleg Oleinick for reporting and the great test
+      cases.
+
+ - Provide better HTTP status code for early errors: When the driver
+   terminates already a request, it might be the case that the error
+   flags were not read out. In such cases, we provide now more
+   specific status codes rather than 400.
+
+ - ns_http:
+
+   * Improved robustness with domain names resolving against many IP
+     addresses: When a domain name is resolved against many IP
+     addresses, and all these IP addresses block (connect returns "in
+     progress") then the old code might have looped infinitely. Now
+     the code respects the provided timeout (default set to 5s) per
+     resolved IP address.
+
+     Many thanks to Joe Oldak for pointing out the problem and
+     leading us to the solution.
+
+   * Fixed timeout handling during TLS handshake: This problem could
+     appear, when the TCP connection to a server succeeded quickly,
+     but the TLS handshake was taking a long time, without a raising
+     a timeout exception, although the timeout time has expired.
+
+ - Set the default server before the init-scripts is called to make it
+   accessible from there
+
+ - Provide compatibility between in-memory and file-based form-data
+   handling for invalid characters: Since the file based
+   implementation uses a fallback-charset of iso8859-1 when parsing
+   form data in POST requests (in order to be able to extract
+   "_charset_" data), the in-memory based variant does now the
+   same. The decision of which parser is used is taken based on the
+   size of the form data.... and should therefore be consistent.
+
+ - nscp: Fixed problem, when the nscp module is activated but no
+   "users" section is specified. Many thanks to Andrew Piskorski for
+   reporting the problem.
+
+ - Security Improvement: Added protection against sneaking in fake
+   NAME.tmpfile entries into form fields, when performing file upload
+   operations.
+
+
+Documentation improvements:
+---------------------------
+
+ - Improved the following man pages:
+
+       doc/src/manual/adp-overview.man
+       doc/src/manual/tcl-lib-nstrace.man
+       doc/src/naviserver/commandlist.man
+       doc/src/naviserver/ns_adp.man
+       doc/src/naviserver/ns_adp_ctl.man
+       doc/src/naviserver/ns_config.man
+       doc/src/naviserver/ns_conn.man
+       doc/src/naviserver/ns_connchan.man
+       doc/src/naviserver/ns_cookie.man
+       doc/src/naviserver/ns_crypto.man
+       doc/src/naviserver/ns_http.man
+       doc/src/naviserver/ns_ictl.man
+       doc/src/naviserver/ns_locationproc.man
+       doc/src/naviserver/ns_parsehostport.man
+       doc/src/naviserver/ns_return.man
+       doc/src/naviserver/ns_set.man
+       doc/src/naviserver/ns_setprivileges.man
+
+
+Configuration Files:
+--------------------
+
+ - New feature for the sample configuration file openacs-config.tcl
+
+   The following variables (with prefix oacs_) can be taken from the
+   shell variables. This makes it easier to run similar variants of
+   NaviServer instances from a single configuration file, while
+   providing variables from the command line. This is e.g. useful for
+   Docker or cluster setups.
+
+       CookieNamespace
+       bindir
+       cachingmode
+       db_host
+       db_name
+       db_port
+       db_user
+       homedir
+       hostname
+       httpport
+       httpsport
+       ipaddress
+       logroot
+       nscpport
+       server
+       serverroot
+       smtpdport
+
+   One can use e.g.the following command to change some ports and the
+   log file during startup
+
+    oacs_httpport=8000 oacs_httpsport=8443 oacs_smtpdport=2526 \
+        oacs_logroot=/var/www/XXXX/log-node1/ \
+        /usr/local/ns/bin/nsd -t /var/www/XXXX/etc/openacs-config.tcl ...
+
+   - further updates for openacs-config.tcl:
+      * Added sample nssmtpd configuration
+      * Added placeholder for ClusterSecret
+      * Reflect recent Oracle requirements (tested with Oracle 19c)
+      * Added documentation for "StaticCSP", "CookieNamespace",
+        "NsShutdownWithNonZeroExitCode", "LogIncludeUserId"
+
+   - Updated all sample configuration files
+
+
+Code Changes:
+-------------
+
+ - Added and updated predefined MIME types based on
+    https://www.iana.org/assignments/media-types/media-types.xhtml
+
+ - Added compile time macro NS_VERBOSE_MALLOC to identify frequent
+   *alloc operations
+
+ - Print version of zlib during startup
+
+ - OpenSSL maintenance:
+
+    * Improved robustness for OCSP with OpenSSL 3.*
+
+      The previous version crashed with OpenSSL 3.*, when OCSP was
+      tried on self-signed certificates. Aside of the fact that OCSP
+      does not make sense for self-signed certificates, the server
+      should not crash in such situations.
+
+    * Fixed ns_crypto::aead::encrypt/decrypt test under OpenSSL 1.1.1
+      (as shipped per default, e.g. on Ubuntu 18.04.4)
+
+      In short, the problem was that with this version of OpenSSL,
+      setting empty additional authenticated data (AAD) behaved
+      differently from other versions, namely it was clearing
+      incorrectly (forgetting) the information that the initialization
+      vector (IV) was already set. An upgrade of OpenSSL fixed the
+      problem. However, with these changes, also the stock version of
+      OpenSSL can be used. As a byproduct, better error messages are
+      now produced, the code received more cleanup (e.g. explicit
+      initialization, etc.)
+
+
+ - Automated testing:
+
+    * Setup if Bitbucket + GitHub pipelines for automated regression
+      testing with multiple versions of components
+
+      For NaviServer 4.99 the current setup performs tests with gcc-10
+      + gcc-11, Tcl 8.6.13 + 8.7a5, NSF 2.4,0 + 2.4.0, tDOM 0.9.1 +
+      0.9.3, extra modules: nsdbpg nsdbi nsdbipg nsudp nscoap nssmtpd.
+
+      https://github.com/nm-wu/naviserver-mirror/actions
+
+    * Improved robustness of regression test when running with the
+      docker networking setup
+
+    * Force nonzero exit code when regression test fails
+
+    * Added parameter "-timeout" to call of regression test cases
+      Previously, the timeout was hard-wired to 3 seconds. One can now
+      call a test with e.g. "nstest::http -timeout 1s ... GET ..."
+
+    * adp_compress.test: removed trailing newline to ease
+      cross-platform regression tests
+
+    * Prefer standard Tcl test constraint "macOrUnix" over own solution
+
+    * Extended regression tests with more test cases
+
+ - Code management:
+    * Changed name of branch from "master" to "main"
+
+ - Code Cleanup
+     * Improved type cleanness
+     * Removed deprecated calls to "sprintf"
+     * Improved portability for Tcl 8.7* (handling of binary data)
+
+ - Improved comments, fixed typos
+
+
+Changes in NaviServer Modules:
+==============================
+
+ 39 files changed, 9658 insertions(+), 1781 deletions(-)
+
+General:
+  Adjust to necessary API changes in NaviServer (contains as well
+  support for the forthcoming release of NaviServer 5)
+
+
+nsdbpg:
+-------
+
+  - new pg-driver specific command: ns_pg_prepare /sql/
+
+    Return a dict building a prepared statement for the passed-in SQL
+    statement. The dict contains the keys "sql" and "args". The
+    function is used by e.g. OpenACS to generate prepared statements
+    from SQL commands with bind variables.
+
+  - Raise exception when a value for a bind variable contains a NUL character.
+    This value is explicitly forbidden in text strings passed to PostgreSQL.
+
+  - Let "ns_pg" report available subcommands even when handle is not
+    specified.  This makes the command compatible with the "icanuse"
+    feature in OpenACS.
+
+
+nsstats:
+--------
+
+  - HTTP client log analysis:
+     * Provide charts for performance (using highcharts via CDN)
+     * Provide charts on request frequency (using highcharts via CDN)
+     * Provide a summary table for HTTP client requests
+     * Improved robustness against invalid URLs (containing unescaped
+       spaces)
+     * Added support for selection of different HTTP client log files
+       via web interface
+
+  - "Process" page:
+      * Added percentage of request distribution over connection pools
+      * Added information about the connected client
+      * Added more detailed version information
+
+  - Added cache configuration to output when looking at a single cache
+
+  - Improved "log file" analysis
+    * Automated stripping of color codes
+
+    * Added filter option. The filter can be used to grep for (ID)
+      strings in both the system and access logs, providing a summary
+      for the traces of a request in the access log and system log on
+      a single place.
+
+  - Added default and usage information to "Config Parameters" page
+
+
+nsoracle:
+---------
+
+  - Fixed bug when streaming LOB content to connection. The old code
+    did not distinguish between binary and non-binary content.  This
+    bug was discussed in
+    https://openacs.org/forums/message-view?message_id=5693661
+
+    Bumped version number to 2.9
+
+- switched to plain Debug handling for debugging the driver
+
+    The handling of Ns_LogSqlDebug is performed inside nsdb, including
+    also the printout of (long) SQL statements. Previously, the driver
+    was too chatty when Debug(sql) was turned on.
+
+  - Added support for output columns of type SQLT_TIMESTAMP or SQLT_TIMESTAMP_TZ
+
+    This change fixes a bug, where SQL queries of the form
+
+         SELECT TO_TIMESTAMP(sysdate) FROM dual
+
+    lead to errors for the form:
+
+         Database operation "getrow" failed (exception 1406, "nsoracle.c:3659:Ns_OracleGetRow:
+         error in `OCIStmtFetch ()': ORA-01406: fetched column value was truncated
+
+    The driver needs for several output types special rules, where the
+    timestamp cases were not supported so far. It is also recommended
+    to set the according environment variables specifying the output
+    format in the configuration server of NaviServer, such as e.g.
+
+        set ::env(NLS_TIMESTAMP_FORMAT) "YYYY-MM-DD HH24:MI:SS.FF6"
+        set ::env(NLS_TIMESTAMP_TZ_FORMAT) "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM"
+
+    For testing in you local Oracle installation, you might test the
+    output formats (and the required sizes with the following snippet
+    for sqlplus:
+
+       COLUMN localtimestamp format a40
+       COLUMN systimestamp format a40
+       COLUMN ts_bytes format a80
+
+       alter session set nls_timestamp_format='YYYY-MM-DD HH24:MI:SS.FF6';
+       select localtimestamp, length(localtimestamp), dump(localtimestamp) ts_bytes from dual;
+
+       alter session set nls_timestamp_tz_format='YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM';
+       select systimestamp, length(systimestamp), dump(systimestamp) ts_bytes from dual;
+
+       alter session set nls_timestamp_tz_format='YYYY-MM-DD HH24:MI:SS.FF6 TZR';
+       select systimestamp, length(systimestamp), dump(systimestamp) ts_bytes from dual;
+
+
+letsencrypt:
+------------
+
+  - Added option to produce certificates with ECDSA:
+
+    Prior to this change, all certificates were using RSA keys.
+    Since a while, keys based on elliptic curves became the preference
+    of letsencrypt.
+
+
+nsshell:
+--------
+
+   - Fixed a bug in "ns_conn" emulation, when the "kernel" was not correctly identified
+
+=======================================
+NaviServer 4.99.24, released 2022-06-14
+=======================================
+
+ 77 files changed, 3242 insertions(+), 1100 deletions(-)
+
+New Features:
+
+ - Improved security
+
+   * Added protection against certain attacks in ns_dbquotevalue
+
+     Due to the corrected conversion to external UTF-8 in db-output,
+     new potential attack vectors appeared that were protected earlier
+     via the Tcl-internal 'modified UTF-8'. E.g., the binary null
+     character is stored as an overlong (two-byte) encoding of null
+     (0xc0 0x80), so that an actual (embedded) null byte (0x00) never
+     appears in the string. Due to the conversion, the internal
+     representation is translated back to the binary null
+     character. Embedded null byte characters can lead to
+     non-terminated string literals via ns_dbquotevalue.
+
+     In the updated version of NaviServer, ns_dbquotevalue raises an
+     exception when this occurs. Therefore, the function can be used
+     as well as an input checker (together with "try").
+
+   * Raise an exception when trying to use "ns_urldecode" to
+     produce invalid UTF-8
+
+     Background: several (external) functions expect valid UTF-8 to be
+     passed in and crash if this is not the case. One such example is
+     tDOM. These nasty byte sequences are used more intensively by
+     vulnerability scanners.
+
+     Therefore, ns_urldecode raises now an exception, when it tries to
+     convert to invalid UTF-8. It is still possible to use
+     ns_urldecode to convert to other charsets.
+
+        ns_urldecode -charset iso8859-1 -part path "/mot%C3or"
+
+     When urldecode() is called internally and would produce invalid
+     UTF-8, it truncates the string (and writes a warning to the
+     system log).
+
+     Note that the new fallback charset feature might avoid such
+     exceptions (see below).
+
+ - Fallback charsets
+
+   In case, a conversion to UTF-8 fails due to invalid byte sequences,
+   one can now provide a fallback charset for a second attempt of
+   decoding this data. This feature is useful for websites that
+   have to deal with requests containing invalid (form) data, typically
+   from legacy applications.
+
+   The fallback charset can be provided as optional parameter
+   "-fallbackcharset" for the command "ns_getform", "ns_parsequery"
+   and "ns_urldecode":
+
+        ns_getform ?-fallbackcharset fallbackcharset? ?charset?
+        ns_parsequery ?-charset charset? ?-fallbackcharset fallbackcharset? ?--? querystring
+        ns_urldecode ?-charset charset? ?-fallbackcharset fallbackcharset? ?-part part? ?--? string
+
+   In case, the parameter is not specified, it can be also be provided
+   to the form-processing commands "ns_getform" and "ns_parsequery" via
+   configuration variables:
+
+     * per-server configuration parameter "formFallbackCharset"
+       (in the section "ns/server/$server"), or as
+
+     * global server configuration parameter "formFallbackCharset"
+       (in the section "ns/parameters").
+
+   The highest precedence has the optional parameter, followed by the
+   per-server configuration parameter and the global configuration
+   parameter.
+
+
+ - Provide a hint when cache-entry is too large for caching
+
+   Background: the size of the entry is typically determined after the
+   execution of a potentially expensive query. During the eval of the
+   command, the cache entry is locked and forces a
+   serialization. However, this means that in these cases the
+   situation is worse than without a cache, where some queries can be
+   executed in parallel. We faced the situation of an expected
+   slowdown of the server with many "create entry collision", where
+   due to application matters, an entry was becoming too large. This
+   situation is not easy to debug, especially in stress
+   situations. The log message would have helped a log to identify the
+   cause.
+
+ - Added support for multibyte numeric entities
+
+   This change supports conversion of numeric entities representing
+   multibyte characters into HTML in "ns_striphtml" and
+   "ns_unquotehtml". Technically, the numeric entities represent
+   Unicode code points, which are transformed into UTF-8
+   serialization.  Every entity represents a single code point; The
+   values can be provided in decimal or hexadecimal notation. Before
+   this change, only single byte numeric entities were
+   supported. ASCII control characters (decimal 0-31) are ignored as
+   before.
+
+ - New and extended commands:
+
+   * ns_unquotehtml /text/
+
+     This command is the inverse operation of "ns_quotehtml". It
+     replaces the named and numeric entities in the provided string
+     with the native values. The command is similar to "ns_striphtml",
+     but "ns_striphtml" removes as well other HTML markup which might
+     not be desired in all cases.
+
+     This change fixes as well a bug with numeric entities (the old
+     code assumed, these are starting directly with a number after the
+     ampersand) and it adds support for numeric entities with
+     hexadecimal values (so far with the same value range as for
+     decimal numeric entities).
+
+   * ns_subnetmatch /subnet/ /ipaddr/
+
+     Determine, if a provided IP address (IPv4 or IPv6) is included in
+     a subnet specification, which is provided in CIDR notation. The
+     command makes internal NaviServer functionality available at the
+     Tcl level.  The regression test was extended to cover the
+     functionality.
+
+     The command ns_subnetmatch validates the provided subnet
+     specification (IPv4 or IPv6 address followed by slash and number
+     of significant bits) and the provided IP address and tests whether
+     the IP address is in the implied range. The command returns a
+     boolean value as the result. When comparing an IPv4 and IPv6
+     address/CIDR specification or vice versa, the result is always
+     false.
+
+     The function can be use when e.g. restricting access to certain
+     functionality to some subnets. The function can be used as well
+     to check, whether an IP address is an IPv4 or IPv6 address.
+
+      Examples:
+        % ns_subnetmatch 137.208.0.0/16 137.208.116.31
+        1
+
+        % ns_subnetmatch 137.208.0.0/16 112.207.16.33
+        0
+
+        % ns_subnetmatch 2001:628:404:74::31/64 [ns_conn peeraddr]
+        ...
+
+        # Is IP address a valid IPv6 address?
+        % ns_subnetmatch ::/0 $ip
+
+        # Is IP address a valid IPv4 address?
+        % ns_subnetmatch 0.0.0.0/0 $ip
+
+   * ns_connchan: Added new subcommand "ns_connchan connect"
+
+     "ns_connchan connect" is similar to "ns_connchan open", except
+     that it does not send an HTTP request (HTTP method, URL, and
+     header fields) but just opens the connection. It can be used for
+     some non-HTTP communication over TCP and TLS over the ns_connchan
+     infrastructure.
+
+   * ns_parseheader, Ns_ParseHeader(): return the field
+     number (index) of the parsed entry
+
+     Previously, there was no explicit feedback, what field of an
+     "ns_set" has been parsed by "ns_parseheader". Now, in success
+     cases, the function returns the index of the new/modified
+     entry. This function made it possible to generalize and simplify
+     the Tcl-level parsing of "multipart/form-data"
+     significantly. Additionally, a new optional argument "-prefix"
+     was added. When specified, it adds the specified prefix to the
+     key.
+
+   * ns_setcookie, ns_deletecookie
+
+     Mozilla and Chrome changed the default value for SameSite of
+     cookies from "none" to "lax" in February and Aug 2020. Cookies
+     that explicitly set SameSite=None must also set the "Secure"
+     attribute.
+
+     In order to mirror this change of policy in NaviServer and to
+     reduce necessary code changes, the default behavior for setting
+     or deleting cookie is now samesite "lax" (when "-samesite" is not
+     explicitly specified).  When trying to set a cookie with
+     "-samesite none" without the "-secure" flag, a warning is
+     generated, and the "-samesite lax" is assumed, since major
+     browsers announced that these will reject these cookies soon.
+
+
+API changes:
+
+ - ns_getform, ns_parsequery, and ns_urldecode
+
+   New optional parameter "-fallbackcharset". See above for details.
+
+- ns_parsequery: added option "-charset" and raise exception on failure
+
+   The new option "-charset" can be used to add a charset for the
+   result encoding of the passed-in HTTP query.
+
+   In case the charset is UTF8 (default on most platforms), and the
+   content is invalid UTF-8, an exception is raised (similar to
+   ns_urldecode). This can be addressed by parameter
+   "-fallbackcharset" (See above for details).
+
+ - ns_deletecookie: added support "-samesite" flag for ns_deletecookie.
+
+   Since "ns_deletecookie" sets internally a cookie, some browsers
+   might ignore in the future certain cookie requests (e.g. when
+   "-samesite" is not used or set to "none" on non-secure connections).
+
+ - ns_trim enhancements:
+   The new option "-prefix ..." can be used to strip a string
+   (such as ">> ") from every line starting with it.
+
+ - Potential incompatibilities
+    * "ns_urldecode" and "ns_getform" will raise an exception
+      when invalid UTF-8 data is tried to be interpreted as UTF-8
+      and no fallback charset is provided. Invalid UTF-8 data
+      causes trouble with external components such as
+      Tdom or databases and opens vulnerability vectors.
+
+
+Performance Improvements:
+
+ - Improve "cachingmode none"
+
+    "ns_cache_eval" works as follows:
+     1) create a temporary cache entry for the key
+     2) lock the cache-key (to avoid multiple parallel executions)
+     3) execute the query
+     4) store the result for the entry on success
+     5) unlock the cache-key
+
+    Previously, "cachingmode none" was simply avoiding to store the cached
+    values (step 4), but was serializing calls for a cache key as in
+    default caching modes. This was leading easily to cache entry collisions.
+
+    Now, "cachingmode none" is avoiding all steps 1..5 (therefore
+    no serialization and no cache collisions).
+
+    See also: https://openacs.org/forums/message-view?message_id=5665480
+
+Bug Fixes:
+
+  - Improved robustness of "ns_parseurl" for handling query parameters
+    and fragments for partial URLs
+
+    * fix over-eager collecting of URL components in tail
+    * extended regression test
+
+  - Fixed Ns_ResetFileVec NOT to invalidate residual Ns_FileVec
+    buffer.q (caused problems under Windows).
+
+  - ns_striphtml: Fixed probably very old bug for markup immediately
+    after an entity
+
+    This bug fix handles cases, where e.g. two entities are in a text
+    right next to each other, like e.g. in the string
+    "hello&lt;&gt;world". The old code was correctly decoding the
+    first entity, but output the second one literally.
+
+  - Fixed compilation for C++, which was introduced in 4.99.23
+    to avoid usage of reserved C identifiers
+
+    Many thanks to Brendan Graves for reporting the problem.
+
+  - Added missing named entities "apos" and "quote". These have been
+    missing since ages.
+
+  - Provide an error message when the configured locale is not
+    installed on the host.
+
+    This change causes NaviServer to abort, when the configured locale
+    is not installed on the host. Typically, this locale is e.g. used
+    by "ns_strcoll" for determining the default collating order. The
+    configuration file for the regression testing sets the environment
+    variable LANG to "en_US.UTF-8". This means that for running the
+    stock regression test, this locale must be installed on the
+    system. Before this change, NaviServer could crash at runtime when
+    trying to access the default locale (as e.g. in "ns_strcoll")
+
+  - Added support for "_charset_" field for default charset in
+    multipart/form-data (RFC 7578, section 4.6)
+
+    RFC 7578 (July 2015) defines an optional "_charset_" entry in the
+    form (typically provided as hidden form field) to specify the
+    charset of text entries. This is now supported as well by
+    NaviServer. This is apparently a seldom used feature.
+
+Documentation improvements:
+---------------------------
+
+ - Improved the following man pages:
+
+       doc/src/manual/admin-install.man
+       doc/src/naviserver/ns_conn.man
+       doc/src/naviserver/ns_connchan.man
+       doc/src/naviserver/ns_cookie.man
+       doc/src/naviserver/ns_crypto.man
+       doc/src/naviserver/ns_getform.man
+       doc/src/naviserver/ns_http.man
+       doc/src/naviserver/ns_httptime.man
+       doc/src/naviserver/ns_log.man
+       doc/src/naviserver/ns_parseheader.man
+       doc/src/naviserver/ns_parsequery.man
+       doc/src/naviserver/ns_parseurl.man
+       doc/src/naviserver/ns_rlimit.man
+       doc/src/naviserver/ns_urldecode.man
+       doc/src/naviserver/ns_urlencode.man
+       doc/src/naviserver/ns_valid_utf8.man
+       doc/src/naviserver/textutil-cmds.man
+       nsdb/doc/mann/ns_db.man
+
+
+Configuration Changes:
+----------------------
+
+ - Updated OpenACS sample configuration file
+    * reflect recent Oracle (tested with Oracle 19c)
+
+    * added documentation for "StaticCSP", "CookieNamespace",
+      "NsShutdownWithNonZeroExitCode", "LogIncludeUserId"
+
+
+Code Changes:
+-------------
+
+ - Set Tcl error code "NS_INVALID_UTF8" for errors due to invalid UTF-8
+
+ - Changed Tcl error code "NSCACHE" to "NS_CACHE". Now all
+   NaviServer-specific error codes start with the prefix "NS_".
+
+ - Extended regression test
+
+ - Improve Tcl version compatibility
+
+   * Removed -DTCL_NO_DEPRECATED from default CFLAGS to cope with
+     recent deprecation in Tcl 8.7a5
+
+ - Code Cleanup
+     . Do not declare reserved C identifiers
+     . Improved type cleanness
+     . Refactored file-based multipart form parser to make logic
+       explicit (Tcl code)
+
+ - Improved comments, fixed typos
+
+ - Marked "ns_set_precision" as deprecated, since there is no
+   reason why not setting the Tcl variable ::tcl_precision directly.
+
+ - Don't hard-wire port for HTTPS testing to 8443
+
+   The setup code looks now for a free port for HTTPS connections
+   starting with 8443, and remembers the free port in the
+   configuration value "tls_listenport" and "tls_listenurl". This is
+   now fully analogous to the setup of the plain HTTP testing (setting
+   "listenport" and "listenurl")
+
+ - Silence warning with recent versions of gcc when certain values of
+   _FORTIFY_SOURCE/-Wstringop-overflow are set.
+
+
+Changes in NaviServer Modules:
+==============================
+
+ 22 files changed, 8447 insertions(+), 1429 deletions(-)
+
+ - general: Updated obsolete ChangeLog files and
+   replaced these by automatically generated ones.
+
+nsdbpg:
+-------
+
+ - Raise exception when a value for a bind variable contains a NUL
+   character. This value is explicitly forbidden in text strings
+   passed to PostgreSQL.
+
+ - Let "ns_pg" report available subcommands even when handle is not
+   specified.  This makes the command compatible with the "icanuse"
+   feature in OpenACS.
+
+
+nsoracle:
+---------
+ - Added support for output columns of type SQLT_TIMESTAMP or SQLT_TIMESTAMP_TZ
+
+   This change fixes a bug, where SQL queries of the form
+
+         SELECT TO_TIMESTAMP(sysdate) FROM dual
+
+   lead to errors for the form:
+
+         Database operation "getrow" failed (exception 1406, "nsoracle.c:3659:Ns_OracleGetRow:
+         error in `OCIStmtFetch ()': ORA-01406: fetched column value was truncated
+
+   The driver needs for several output types special rules, where the
+   timestamp cases were not supported so far. It is also recommended
+   to set the according environment variables specifying the output
+   format in the configuration server of NaviServer, such as e.g.
+
+        set ::env(NLS_TIMESTAMP_FORMAT) "YYYY-MM-DD HH24:MI:SS.FF6"
+        set ::env(NLS_TIMESTAMP_TZ_FORMAT) "YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM"
+
+   For testing in you local Oracle installation, you might test the
+   output formats (and the required sizes with the following snippet
+   for sqlplus:
+
+       COLUMN localtimestamp format a40
+       COLUMN systimestamp format a40
+       COLUMN ts_bytes format a80
+
+       alter session set nls_timestamp_format='YYYY-MM-DD HH24:MI:SS.FF6';
+       select localtimestamp, length(localtimestamp), dump(localtimestamp) ts_bytes from dual;
+
+       alter session set nls_timestamp_tz_format='YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM';
+       select systimestamp, length(systimestamp), dump(systimestamp) ts_bytes from dual;
+
+       alter session set nls_timestamp_tz_format='YYYY-MM-DD HH24:MI:SS.FF6 TZR';
+       select systimestamp, length(systimestamp), dump(systimestamp) ts_bytes from dual;
+
+ - Code cleanup, ensure silent compilation with standard compiler settings
+ - Improved spelling
+
+ECDSA
+letsencrypt:
+------------
+ - Added option to produce certificates with ECDSA
+
+   Prior to this change, all certificates were using RSA keys. Since a
+   while, keys based on elliptic curves became the preference of
+   letsencrypt.
+
+ - Improved spelling
+
+
+=======================================
 NaviServer 4.99.23, released 2021-12-29
 =======================================
 
@@ -1270,7 +2545,7 @@ Performance improvements:
        nsv:2:openacs.org    6       2.23M   16
        nsv:5:openacs.org    3       2.16M   0
 
-     On more busy sites, the improved scalability si much higher.
+     On more busy sites, the improved scalability is much higher.
 
    * rwlocks are better in cases, where the number of readers is
      significantly higher than the number of writers.  So, it has to
@@ -1461,7 +2736,7 @@ Code Changes:
 - Improved error code handling on driver receive operations
 
    Previously, higher level of API calls were not able to access
-   realiably the error information detected on the lower-level (async
+   reliably the error information detected on the lower-level (async
    I/O-based or OpenSSL based) driver operations. This made it
    impossible to provide good error messages e.g. in "ns_connchan" and
    we could not provide error processing based on Tcl error
@@ -1792,7 +3067,7 @@ New Features:
       working with header fields.
 
     * Added subcommand "ns_set iupdate": this command is the case
-      insenstive counterpart of "ns_set update".
+      insensitive counterpart of "ns_set update".
 
     * Fixed "nsv_set a b" when neither a key nor the array exists.
 
@@ -1904,7 +3179,7 @@ Bug Fixes:
   - nslog:
     * Abort in error situation with an error message instead of crashing
     * Added server name in log entries to make it easier to distinguish
-      messages per-server during bootup
+      messages per-server during boot up
 
   - Range requests:
     * Fixed potential problem with too many non-contiguous byte ranges
@@ -5574,7 +6849,7 @@ Tcl API Changes:
           ns_server ?-server /server/? ?-pool /p/? stats
 
       - Query for the current connection, whether
-        the requestor accepts zipped results
+        the requester accepts zipped results
 
           ns_conn zipaccepted
 
@@ -5611,7 +6886,7 @@ Tcl API Changes:
 
       - The output of "ns_writer list" now contains the start time of
         the initiating request, the name of the thread, driver, the
-        ip-address of the requestor, the file descriptor, the
+        ip-address of the requester, the file descriptor, the
         remaining size and the bytes already sent, and the client data
         as provided via [ns_conn clientdata].
 

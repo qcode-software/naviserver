@@ -193,7 +193,7 @@ Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog,
 
     sock = Ns_SockListenEx(address, port, backlog, reuseport);
     if (sock != NS_INVALID_SOCKET) {
-        NsSSLConfig *drvCfgPtr = driver->arg;
+        const NsSSLConfig *drvCfgPtr = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
         if (drvCfgPtr->deferaccept) {
@@ -292,11 +292,11 @@ static ssize_t
 Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
      Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
 {
-    NsSSLConfig *drvCfgPtr = sock->driver->arg;
-    SSLContext  *sslCtx = sock->arg;
-    Ns_SockState sockState = NS_SOCK_NONE;
-    ssize_t      nRead = 0;
-    unsigned long sslERRcode = 0u;
+    const NsSSLConfig *drvCfgPtr = sock->driver->arg;
+    SSLContext        *sslCtx = sock->arg;
+    Ns_SockState       sockState = NS_SOCK_NONE;
+    ssize_t            nRead = 0;
+    unsigned long      sslERRcode = 0u;
     /*
      * Verify client certificate, driver may require valid cert
      */
@@ -565,21 +565,25 @@ static int
 ClientInit(Tcl_Interp *interp, Ns_Sock *sockPtr, void *arg)
 {
     SSL                    *ssl;
-    int                     result;
     Ns_DriverClientInitArg *params= (Ns_DriverClientInitArg *)arg;
+    int                     result;
 
-    result = Ns_TLS_SSLConnect(interp, sockPtr->sock,
-                               params->ctx,
-                               params->sniHostname, &ssl);
-
-    if (likely(result == TCL_OK)) {
+    if (Ns_TLS_SSLConnect(interp, sockPtr->sock,
+                          params->ctx,
+                          params->sniHostname,
+                          NULL,
+                          &ssl) == NS_OK) {
         SSLContext *sslCtx = ns_calloc(1, sizeof(SSLContext));
 
         sslCtx->ssl = ssl;
         sockPtr->arg = sslCtx;
-    } else if (ssl != NULL) {
-        SSL_shutdown(ssl);
-        SSL_free(ssl);
+        result = TCL_OK;
+    } else {
+        if (ssl != NULL) {
+            SSL_shutdown(ssl);
+            SSL_free(ssl);
+        }
+        result = TCL_ERROR;
     }
 
     return result;

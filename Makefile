@@ -28,6 +28,8 @@
 #
 #
 #
+MAN_CSS=man.css
+HEADER_INC=header.inc
 
 NSBUILD=1
 include include/Makefile.global
@@ -139,7 +141,7 @@ install-doc:
 		$(MKDIR) $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver ; \
 		$(CP) doc/html/* $(DESTDIR)$(NAVISERVER)/pages/doc ; \
 		$(CP) contrib/banners/*.png $(DESTDIR)$(NAVISERVER)/pages/doc ; \
-		$(CP) doc/src/man.css $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver/ ; \
+		$(CP) doc/src/$(MAN_CSS) $(DESTDIR)$(NAVISERVER)/pages/doc/naviserver/ ; \
 		echo "\nThe documentation is installed under: $(DESTDIR)$(NAVISERVER)/pages/doc" ; \
 	else \
 		echo "\nNo documentation is installed locally; either generate the documentation with" ; \
@@ -201,8 +203,12 @@ build-doc:
 	    else \
                $(CP) ../../version_include.man .; \
             fi; \
-	    $(DTPLITE) -merge -style ../src/man.css \
-                       -header ../src/header.inc \
+	    echo $(DTPLITE) -merge -style ../src/$(MAN_CSS) \
+                       -header ../src/$(HEADER_INC) \
+                       -footer ../src/footer.inc \
+                       -o ../html/ html $$srcdir; \
+	    $(DTPLITE) -merge -style ../src/$(MAN_CSS) \
+                       -header ../src/$(HEADER_INC) \
                        -footer ../src/footer.inc \
                        -o ../html/ html $$srcdir; \
 	    $(DTPLITE) -merge -o ../man/ nroff $$srcdir; \
@@ -274,16 +280,19 @@ memcheck: all
 helgrind: all
 	$(NS_LD_LIBRARY_PATH) valgrind --tool=helgrind ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
+CPPCHECK_SYS_INCLUDES=-I/usr/include
+#CPPCHECK_SYS_INCLUDES=-I`xcrun --show-sdk-path`/usr/include
+
 cppcheck:
 	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c nsssl/*.c \
-		-I./include -I/usr/include -D__x86_64__ -DNDEBUG $(DEFS)
+		-I./include $(CPPCHECK_SYS_INCLUDES) -D__x86_64__ -DNDEBUG $(DEFS)
 
 CLANG_TIDY_CHECKS=
 #CLANG_TIDY_CHECKS=-checks=-*,performance-*,portability-*,cert-*,modernize-*
 #CLANG_TIDY_CHECKS=-checks=-*,modernize-*,performance-*,portability-*,cert-*
 #CLANG_TIDY_CHECKS=-checks=-*,bugprone-*
 clang-tidy:
-	clang-tidy-mp-11 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	clang-tidy-mp-14 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		$(CLANG_TIDY_CHECKS) -- \
 		-I./include -I/usr/include $(DEFS)
 
@@ -327,7 +336,7 @@ dist: config.guess config.sub clean
 	find naviserver-$(NS_PATCH_LEVEL) -name '*.c-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*.h-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*~' -exec rm \{} \;
-	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
+	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --no-xattrs --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
 	$(RM) naviserver-$(NS_PATCH_LEVEL)
 
 

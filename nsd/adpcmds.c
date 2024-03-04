@@ -259,10 +259,8 @@ NsTclAdpCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         const char        *option;
         const unsigned int flag;
     } adpCtlOpts[] = {
-
         { "bufsize",      (unsigned)CBufSizeIdx },
         { "channel",      (unsigned)CChanIdx },
-
         { "autoabort",    ADP_AUTOABORT },
         { "cache",        ADP_CACHE },
         { "detailerror",  ADP_DETAIL },
@@ -276,7 +274,6 @@ NsTclAdpCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         { "trimspace",    ADP_TRIM },
         { NULL, 0u}
     };
-
 
     if (unlikely(objc < 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "option ?arg ...?");
@@ -832,7 +829,7 @@ NsTclAdpDumpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *
  * NsTclAdpInfoObjCmd --
  *
- *      Implements "ns_adp_info". This command provodes introspection for the
+ *      Implements "ns_adp_info". This command provides introspection for the
  *      current filename, size and modification time.
  *
  * Results:
@@ -1033,7 +1030,6 @@ NsTclAdpBindArgsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
 int
 NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    const NsInterp *itPtr = clientData;
     Tcl_Obj        *varnameObj = NULL;
     int             result = TCL_OK;
     Ns_ObjvSpec     args[] = {
@@ -1044,6 +1040,8 @@ NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
     } else {
+        const NsInterp *itPtr = clientData;
+
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj((itPtr->adp.exception == ADP_OK)));
 
         if (varnameObj != NULL) {
@@ -1096,13 +1094,14 @@ NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
 static int
 AdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, bool doStream)
 {
-    NsInterp *itPtr = clientData;
-    int       result;
+    int result;
 
     if (objc != 1) {
         Tcl_WrongNumArgs(interp, 1, objv, NULL);
         result = TCL_ERROR;
     } else {
+        NsInterp *itPtr = clientData;
+
         result = NsAdpFlush(itPtr, doStream);
     }
     return result;

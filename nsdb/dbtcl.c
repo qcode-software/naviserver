@@ -27,7 +27,7 @@
  * version of this file under either the License or the GPL.
  */
 
-
+#define NS_DBTCL_C 1
 /*
  * dbtcl.c --
  *
@@ -44,6 +44,12 @@ typedef struct InterpData {
     const char *server;
     Tcl_HashTable dbs;
 } InterpData;
+
+/*
+ * The data for this severity resides in this file (and is protected
+ * in nsdb.h via NS_DBTCL_C).
+ */
+Ns_LogSeverity Ns_LogSqlDebug;
 
 /*
  * Local functions defined in this file
@@ -796,7 +802,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
              * have to tailor this functionality for certain drivers
              * (would need additional configuration options).
              */
-            Tcl_UtfToExternalDString(NULL, value, valueLength, &ds);
+            (void)Tcl_UtfToExternalDString(NULL, value, valueLength, &ds);
             value = ds.string;
 
             /*if (cmd != GETROW) {
@@ -960,7 +966,7 @@ DbObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* ob
             const char *arg5 = Tcl_GetString(objv[5]);
 
             if (!STREQ(arg5, "in") && !STREQ(arg5, "out")) {
-                Ns_TclPrintfResult(interp, "inout parameter of setparam must "
+                Ns_TclPrintfResult(interp, "direction of setparam must "
                                    "be \"in\" or \"out\"");
                 result = TCL_ERROR;
 
@@ -1228,12 +1234,12 @@ QuoteSqlValue(Tcl_DString *dsPtr, Tcl_Obj *valueObj, int valueType)
         }
     } else {
         Tcl_DString ds;
-          /*
+        /*
          * Protect against potential attacks, e.g. embedded nulls
          * appearing after conversion to the external value.
          */
         Tcl_DStringInit(&ds);
-        Tcl_UtfToExternalDString(NULL, valueString, valueLength, &ds);
+        (void)Tcl_UtfToExternalDString(NULL, valueString, valueLength, &ds);
 
         if (strlen(ds.string) < (size_t)ds.length) {
             result = NS_ERROR;

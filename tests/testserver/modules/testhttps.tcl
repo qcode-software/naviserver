@@ -51,6 +51,7 @@ namespace eval ::nstest {
             {-getmultiheaders}
             {-getbody 0}
             {-getbinary 0}
+            {-timeout 3s}
             {-verbose 0}
             {-hostname}
             --
@@ -59,7 +60,8 @@ namespace eval ::nstest {
             {body ""}
         } $args
 
-        set host [ns_config "test" loopback]
+        set addr [ns_config "test" loopback]
+        set host test
         switch $proto {
             "https" {
                 set port [ns_config "ns/module/nsssl" port]
@@ -72,12 +74,12 @@ namespace eval ::nstest {
             default {error "protocol $proto not supported"}
         }
 
-        set timeout 3
         set ::nstest::verbose $verbose
         set extraFlags {}
 
         if {[info exists hostname]} {
             lappend extraFlags -hostname $hostname
+            set host $hostname
         }
 
         set hdrs [ns_set create]
@@ -122,15 +124,28 @@ namespace eval ::nstest {
             set binaryFlag ""
         }
 
-        set fullUrl $proto://\[$host\]:$port/[string trimleft $url /]
+        set fullUrl $proto://\[$addr\]:$port/[string trimleft $url /]
         log url $fullUrl
-        set result [ns_http run \
-                        {*}$extraFlags \
-                        -timeout $timeout \
-                        -method $method \
-                        -headers $hdrs \
-                        -body $body \
-                        $fullUrl]
+        try {
+            ns_http run \
+                {*}$extraFlags \
+                -timeout $timeout \
+                -method $method \
+                -headers $hdrs \
+                -body $body \
+                $fullUrl
+        } trap {NS_TIMEOUT} {errorMsg} {
+            #ns_log notice "REQUEST timeout: $errorMsg errorCode $::errorCode"
+            dict set result status 000
+            dict set result body "testcase NS_TIMEOUT: $errorMsg"
+            dict set result headers [ns_set create]
+
+        } on error {errorMsg} {
+            #ns_log notice "REQUEST error: $errorMsg errorCode $::errorCode"
+            ::throw $::errorCode $errorMsg
+        } on ok {result} {
+            #ns_log notice "REQUEST returned $result"
+        }
 
         #ns_set cleanup $hdrs
         #set hdrs [ns_set create]

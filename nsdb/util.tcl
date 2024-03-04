@@ -43,7 +43,7 @@ nsv_set _nsdb months {
 # on server shutdown
 #
 
-if { [ns_config -bool -set ns/parameters dbcloseonexit off] } {
+if { [ns_config -bool ns/parameters dbcloseonexit off] } {
     ns_log Notice conf: enabling nsdb onexit handler
     ns_atexit ns_dbshutdown
 }
@@ -51,7 +51,7 @@ if { [ns_config -bool -set ns/parameters dbcloseonexit off] } {
 #
 # ns_dbshutdown
 #
-#       Called at server exit and closed all confogured pools
+#       Called at server exit and closed all configured pools
 #
 
 proc ns_dbshutdown { args } {

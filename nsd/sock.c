@@ -58,17 +58,21 @@
 
 static NS_SOCKET SockConnect(const char *host, unsigned short port,
                              const char *lhost, unsigned short lport,
-                             bool async) NS_GNUC_NONNULL(1);
+                             bool async, int count, int ms,
+                             Ns_ReturnCode *resultPtr)
+    NS_GNUC_NONNULL(1);
 
-static Ns_ReturnCode WaitForConnect(NS_SOCKET sock);
+static Ns_ReturnCode WaitForConnect(NS_SOCKET sock, int count, int ms);
 
 static NS_SOCKET SockSetup(NS_SOCKET sock);
 
 static ssize_t SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs,
-                        unsigned int flags);
+                        unsigned int flags, unsigned long *errorCodePtr)
+    NS_GNUC_NONNULL(5);
 
 static ssize_t SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
-                        unsigned int flags);
+                        unsigned int flags, unsigned long *errorCodePtr)
+    NS_GNUC_NONNULL(5);
 
 static NS_SOCKET BindToSameFamily(const struct sockaddr *saPtr,
                                   struct sockaddr *lsaPtr,
@@ -392,7 +396,10 @@ Ns_SockRecvBufs(Ns_Sock *sock, struct iovec *bufs, int nbufs,
                                   (unsigned int)NS_SOCK_READ,
                                   timeoutPtr);
         if (status == NS_OK) {
-            nrBytes = SockRecv(sock->sock, bufs, nbufs, flags);
+            nrBytes = SockRecv(sock->sock, bufs, nbufs, flags, &recvErrno);
+            if (nrBytes == -1) {
+                sockState = NS_SOCK_EXCEPTION;
+            }
         } else if (status == NS_TIMEOUT) {
             sockState = NS_SOCK_TIMEOUT;
         } else {
@@ -441,16 +448,15 @@ Ns_SockRecvBufs2(NS_SOCKET sock, struct iovec *bufs, int nbufs,
 {
     ssize_t      n;
     Ns_SockState sockState = NS_SOCK_READ;
+    unsigned long errorCode = 0;
 
     NS_NONNULL_ASSERT(bufs != NULL);
     NS_NONNULL_ASSERT(errnoPtr != NULL);
 
-    n = SockRecv(sock, bufs, nbufs, flags);
+    n = SockRecv(sock, bufs, nbufs, flags, &errorCode);
 
     if (unlikely(n == -1)) {
-        int sockerrno = ns_sockerrno;
-
-        if (Retry(sockerrno)) {
+        if (Retry((int)errorCode)) {
             /*
              * Resource is temporarily unavailable.
              */
@@ -459,11 +465,11 @@ Ns_SockRecvBufs2(NS_SOCKET sock, struct iovec *bufs, int nbufs,
             /*
              * Some other error.
              */
-            Ns_Log(Debug, "Ns_SockRecvBufs2 errno %d on sock %d: %s",
-                   sockerrno, sock, strerror(sockerrno));
+            Ns_Log(Debug, "Ns_SockRecvBufs2 errno %lu on sock %d: %s",
+                   errorCode, sock, strerror((int)errorCode));
             sockState = NS_SOCK_EXCEPTION;
         }
-        *errnoPtr = (unsigned long)sockerrno;
+        *errnoPtr = errorCode;
     } else if (unlikely(n == 0)) {
         /*
          * Peer has performed an orderly shutdown.
@@ -613,13 +619,14 @@ Ns_SockSendBufs2(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
                  unsigned int flags)
 {
     ssize_t sent;
+    unsigned long errorCode = 0;
 
     NS_NONNULL_ASSERT(bufs != NULL);
 
-    sent = SockSend(sock, bufs, nbufs, flags);
+    sent = SockSend(sock, bufs, nbufs, flags, &errorCode);
 
     if (unlikely(sent == -1)) {
-        if (Retry(ns_sockerrno)) {
+        if (Retry((int)errorCode)) {
             /*
              * Resource is temporarily unavailable.
              */
@@ -872,7 +879,7 @@ Ns_SockWait(NS_SOCKET sock, unsigned int what, int timeout)
 NS_SOCKET
 Ns_SockListen(const char *address, unsigned short port)
 {
-    return Ns_SockListenEx(address, port, nsconf.backlog, NS_FALSE);  // TODO: currently no parameter defined
+    return Ns_SockListenEx(address, port, nsconf.listenbacklog, NS_FALSE);  // TODO: currently no parameter defined
 }
 
 
@@ -1039,7 +1046,7 @@ Ns_SockConnect(const char *host, unsigned short port)
 {
     NS_NONNULL_ASSERT(host != NULL);
 
-    return SockConnect(host, port, NULL, 0u, NS_FALSE);
+    return SockConnect(host, port, NULL, 0u, NS_FALSE, 20, 100, NULL);
 }
 
 NS_SOCKET
@@ -1047,7 +1054,7 @@ Ns_SockConnect2(const char *host, unsigned short port, const char *lhost, unsign
 {
     NS_NONNULL_ASSERT(host != NULL);
 
-    return SockConnect(host, port, lhost, lport, NS_FALSE);
+    return SockConnect(host, port, lhost, lport, NS_FALSE, 20, 100, NULL);
 }
 
 
@@ -1072,7 +1079,7 @@ Ns_SockAsyncConnect(const char *host, unsigned short port)
 {
     NS_NONNULL_ASSERT(host != NULL);
 
-    return SockConnect(host, port, NULL, 0u, NS_TRUE);
+    return SockConnect(host, port, NULL, 0u, NS_TRUE, 20, 100, NULL);
 }
 
 NS_SOCKET
@@ -1080,7 +1087,7 @@ Ns_SockAsyncConnect2(const char *host, unsigned short port, const char *lhost, u
 {
     NS_NONNULL_ASSERT(host != NULL);
 
-    return SockConnect(host, port, lhost, lport, NS_TRUE);
+    return SockConnect(host, port, lhost, lport, NS_TRUE, 20, 100, NULL);
 }
 
 
@@ -1117,19 +1124,24 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost,
     NS_SOCKET     sock;
     socklen_t     len;
     Ns_ReturnCode status;
+    int           count;
+    const int     ms = 100;
 
     NS_NONNULL_ASSERT(host != NULL);
     NS_NONNULL_ASSERT(timeoutPtr != NULL);
 
     /*
-     * Connect to the host asynchronously and wait for
-     * it to connect.
+     * Connect to the host asynchronously and wait for it to connect. The
+     * connection code makes a few attempts in the interval of "ms"
+     * milliseconds. The number of attempts is determined by the timeoutPtr.
      */
+    count = (int)Ns_TimeToMilliseconds(timeoutPtr)/ms;
+    Ns_Log(Debug, "Ns_SockTimedConnect2 for %s:%hu MS %ld count %d",
+           host, port, Ns_TimeToMilliseconds(timeoutPtr), count);
 
-    sock = SockConnect(host, port, lhost, lport, NS_TRUE);
+    sock = SockConnect(host, port, lhost, lport, NS_TRUE, count, ms, &status);
     if (unlikely(sock == NS_INVALID_SOCKET)) {
         /*Ns_Log(Warning, "SockConnect returned invalid socket");*/
-        status = NS_ERROR;
 
     } else {
         /*Ns_Log(Notice, "SockConnect for %s:%hu returned socket %d, wait for write (errno %d <%s>)",
@@ -1222,13 +1234,14 @@ Ns_SockConnectError(Tcl_Interp *interp, const char *host, unsigned short portNr,
         Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
     } else {
         const char *err;
-        char buf[16];
+        char buf[TCL_INTEGER_SPACE];
 
         /*
          * Tcl_PosixError() maintains errorCode variable
          */
         err = (Tcl_GetErrno() != 0) ? Tcl_PosixError(interp) : "reason unknown";
-        sprintf(buf, "%hu", portNr);
+        ns_uint32toa(buf, (uint32_t)portNr);
+
         Tcl_AppendResult(interp, "can't connect to ", host, " port ", buf,
                          ": ", err, (char *)0L);
     }
@@ -1711,13 +1724,15 @@ BindToSameFamily(const struct sockaddr *saPtr, struct sockaddr *lsaPtr,
  *
  * WaitForConnect --
  *
- *      Handle EINPROGRESS and friends in async connect attempts.  We check
- *      after the connect, whether the socket is writable.  This works
- *      sometimes, but in some cases, poll() returns that the socket is
- *      writable, but it is still not connected. So, we double check, if we
- *      can get the peer address for this socket via getpeername(), which is
- *      only possible when connection succeeded.  Otherwise we retry a couple
- *      of times.
+ *      Handle EINPROGRESS and friends in async connect attempts.  We
+ *      check after the connect, whether the socket is writable.  This
+ *      works sometimes, but in some cases, poll() returns that the
+ *      socket is writable, but it is still not connected. So, we double
+ *      check, if we can get the peer address for this socket via
+ *      getpeername(), which is only possible when connection succeeded.
+ *      "count" specifies the number of connections attempts (important
+ *      for async operations), and "ms" determines the interval between
+ *      attempts.
  *
  * Results:
  *      NS_OK on success or NS_ERROR on failure.
@@ -1730,11 +1745,10 @@ BindToSameFamily(const struct sockaddr *saPtr, struct sockaddr *lsaPtr,
  */
 
 static Ns_ReturnCode
-WaitForConnect(NS_SOCKET sock)
+WaitForConnect(NS_SOCKET sock, int count, int ms)
 {
     struct pollfd sockfd;
     Ns_ReturnCode result;
-    int count = 20;
 
     for (;;) {
         int nfds;
@@ -1744,13 +1758,12 @@ WaitForConnect(NS_SOCKET sock)
         sockfd.fd = sock;
 
         /*
-         * Wait for max 100ms for the socket to become
-         * writable, otherwise use the next offered IP
-         * address. TODO: The waiting timespan should be
-         * probably configurable.
+         * Wait for max "ms" milliseconds for the socket to become
+         * writable, otherwise use the next offered IP address.
          */
-        nfds = ns_poll(&sockfd, 1, 100);
-        Ns_Log(Debug, "WaitForConnect: poll returned 0x%.4x, nsfds %d", sockfd.revents, nfds);
+        nfds = ns_poll(&sockfd, 1, ms);
+        Ns_Log(Debug, "WaitForConnect: poll returned 0x%.4x, nsfds %d count %d",
+               sockfd.revents, nfds, count);
 
         if ((sockfd.revents & POLLOUT) != 0) {
             struct NS_SOCKADDR_STORAGE sa;
@@ -1800,11 +1813,11 @@ WaitForConnect(NS_SOCKET sock)
              * states, we do not get this under macOS. In case, we have no
              * error state, we retry.
              */
-            if (sockfd.revents == 0 && Ns_SockErrorCode(NULL, sock) == 0) {
-                Ns_Log(Debug, "WaitForConnect: sock %d retry", sock);
+            if (count-- > 0 && sockfd.revents == 0 && Ns_SockErrorCode(NULL, sock) == 0) {
+                /*Ns_Log(Debug, "WaitForConnect: sock %d retry", sock);*/
                 continue;
             }
-            result = NS_ERROR;
+            result = count > 0 ? NS_ERROR : NS_TIMEOUT;
         }
         break;
     }
@@ -1821,7 +1834,9 @@ WaitForConnect(NS_SOCKET sock)
  *
  *      Open a TCP connection to a host/port sync or async.  "host" and
  *      "port" refer to the remote, "lhost" and "lport" to the local
- *      communication endpoint.
+ *      communication endpoint. "count" specifies the number of
+ *      connections attempts (important for async operations), and "ms"
+ *      determines the interval between attempts.
  *
  * Results:
  *      A socket or NS_INVALID_SOCKET on error.
@@ -1835,13 +1850,15 @@ WaitForConnect(NS_SOCKET sock)
 
 static NS_SOCKET
 SockConnect(const char *host, unsigned short port, const char *lhost,
-            unsigned short lport, bool async)
+            unsigned short lport, bool async, int count, int ms, Ns_ReturnCode *resultPtr)
 {
-    NS_SOCKET             sock;
-    bool                  success;
-    Tcl_DString           ds;
+    NS_SOCKET      sock;
+    bool           success;
+    Tcl_DString    ds;
+    Ns_ReturnCode  result;
 
-    /*Ns_Log(Notice, "SockConnect calls Ns_GetSockAddr %s %hu", host, port);*/
+    /*Ns_Log(Notice, "SockConnect calls Ns_GetSockAddr %s %hu count %d ms %d",
+      host, port, count, ms);*/
 
     Tcl_DStringInit(&ds);
     success = Ns_GetAllAddrByHost(&ds, host);
@@ -1849,6 +1866,7 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
     if (!success) {
         Ns_Log(Warning, "SockConnect could not resolve host %s", host);
         sock = NS_INVALID_SOCKET;
+        result = NS_ERROR;
     } else {
 
         /*
@@ -1866,9 +1884,13 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                    host, addresses);
         }
         sock = NS_INVALID_SOCKET;
+        /*
+         * Setting result to NS_ERROR is needed for the case, where
+         * "addresses" are empty.
+         */
+        result = NS_ERROR;
 
         for (;;) {
-            Ns_ReturnCode  result;
             const char    *address;
 
             address = ns_strtok(addresses, " ");
@@ -1918,7 +1940,6 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                          * but the handling is this way much easier.
                          */
                         if (multipleIPs) {
-
                             if (err == NS_EWOULDBLOCK) {
                                 Ns_Log(Debug, "async connect to %s on sock %d returned NS_EWOULDBLOCK",
                                        address, sock);
@@ -1926,7 +1947,8 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                                 Ns_Log(Debug, "async connect to %s on sock %d returned EINPROGRESS",
                                        address, sock);
                             }
-                            if (WaitForConnect(sock) == NS_OK) {
+                            result = WaitForConnect(sock, count, ms);
+                            if (result == NS_OK) {
                                 /*
                                  * The socket is connected, we can use this IP address.
                                  */
@@ -1939,9 +1961,9 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                                 /*
                                  * The socket could not be connected, try a next IP address.
                                  */
-                                /* Ns_Log(Notice, "async connect multipleIPs INPROGRESS "
-                                       "sock %d connect failed (address %s), try next",
-                                       sock, address); */
+                                /*Ns_Log(Debug, "async connect multipleIPs INPROGRESS "
+                                       "sock %d connect failed (address %s), try next (result %d)",
+                                       sock, address, result);*/
                                 ns_sockclose(sock);
                                 sock = NS_INVALID_SOCKET;
                                 continue;
@@ -1951,8 +1973,9 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
                         Ns_Log(Notice, "close sock %d due to error err %d <%s>",
                                sock, err, ns_sockstrerror(err));
                         ns_sockclose(sock);
-                        Ns_LogSockaddr(Warning, "SockConnect fails", saPtr);
+                        /* Ns_LogSockaddr(Warning, "SockConnect fails", saPtr);*/
                         sock = NS_INVALID_SOCKET;
+                        result = NS_ERROR;
                         continue;
                     }
                 } else {
@@ -1968,6 +1991,9 @@ SockConnect(const char *host, unsigned short port, const char *lhost,
         }
     }
     Tcl_DStringFree(&ds);
+    if (resultPtr != NULL) {
+        *resultPtr = result;
+    }
 
     Ns_Log(Debug, "SockConnect to %s: returns sock %d", host, sock);
 
@@ -2030,7 +2056,7 @@ SockSetup(NS_SOCKET sock)
  */
 
 static ssize_t
-SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
+SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags, unsigned long *errorCodePtr)
 {
     ssize_t numBytes = 0;
 
@@ -2039,6 +2065,7 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
 
     if (WSARecv(sock, (LPWSABUF)bufs, (unsigned long)nbufs, &RecvBytes,
                 &Flags, NULL, NULL) != 0) {
+        *errorCodePtr = WSAGetLastError();
         numBytes = -1;
     } else {
         numBytes = (ssize_t)RecvBytes;
@@ -2050,10 +2077,11 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
     msg.msg_iov = bufs;
     msg.msg_iovlen = (NS_MSG_IOVLEN_T)nbufs;
     numBytes = recvmsg(sock, &msg, (int)flags);
+    *errorCodePtr = (unsigned long)ns_sockerrno;
 #endif
 
     if (numBytes == -1) {
-        Ns_Log(Debug, "SockRecv: %s", ns_sockstrerror(ns_sockerrno));
+        Ns_Log(Debug, "SockRecv: %s", ns_sockstrerror((int)*errorCodePtr));
     }
 
     return numBytes;
@@ -2078,7 +2106,7 @@ SockRecv(NS_SOCKET sock, struct iovec *bufs, int nbufs, unsigned int flags)
  */
 
 static ssize_t
-SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags)
+SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags, unsigned long *errorCodePtr)
 {
     ssize_t numBytes = 0;
 
@@ -2088,6 +2116,7 @@ SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags
     if (WSASend(sock, (LPWSABUF)bufs, (unsigned long)nbufs, &nrBytesSent,
                 (DWORD)flags, NULL, NULL) == -1) {
         numBytes = -1;
+        *errorCodePtr = WSAGetLastError();
     } else {
         numBytes = (ssize_t)nrBytesSent;
     }
@@ -2098,10 +2127,11 @@ SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags
     msg.msg_iov = (struct iovec *)bufs;
     msg.msg_iovlen = (NS_MSG_IOVLEN_T)nbufs;
     numBytes = sendmsg(sock, &msg, (int)flags|MSG_NOSIGNAL|MSG_DONTWAIT);
+    *errorCodePtr = (unsigned long)ns_sockerrno;
 #endif
 
     if (numBytes == -1) {
-        Ns_Log(Debug, "SockSend: %d, %s", sock, ns_sockstrerror(ns_sockerrno));
+        Ns_Log(Debug, "SockSend: %d, %s", sock, ns_sockstrerror((int)*errorCodePtr));
     }
 
     return numBytes;

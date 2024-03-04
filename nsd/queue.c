@@ -603,7 +603,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
         connPtr->drvPtr               = sockPtr->drvPtr;
         connPtr->poolPtr              = poolPtr;
         connPtr->server               = servPtr->server;
-        connPtr->location             = sockPtr->location;
+        connPtr->location             = ns_strncopy(sockPtr->location, -1);
         connPtr->flags                = sockPtr->flags;
         if ((sockPtr->drvPtr->opts & NS_DRIVER_ASYNC) == 0u) {
             connPtr->acceptTime       = *nowPtr;
@@ -617,6 +617,7 @@ NsQueueConn(Sock *sockPtr, const Ns_Time *nowPtr)
          */
         sockPtr->acceptTime.sec       = 0;
         sockPtr->flags                = 0u;
+        sockPtr->location             = NULL;
 
         /*
          * Try to get an entry from the connection thread queue,
@@ -968,29 +969,35 @@ MapspecParse(Tcl_Interp *interp, Tcl_Obj *mapspecObj, char **method, char **url,
 
     if (Tcl_ListObjGetElements(NULL, mapspecObj, &oc, &ov) == TCL_OK) {
         if (oc == 2 || oc == 3) {
-            status = NS_OK;
-            *method = Tcl_GetString(ov[0]);
-            *url = Tcl_GetString(ov[1]);
-            if (oc == 3) {
-                int        oc2;
-                Tcl_Obj  **ov2;
+            const char *errorMsg;
 
-                if (Tcl_ListObjGetElements(NULL, ov[2], &oc2, &ov2) == TCL_OK && oc2 == 2) {
-                    *specPtr = NsUrlSpaceContextSpecNew(Tcl_GetString(ov2[0]),
-                                                        Tcl_GetString(ov2[1]));
-
-                } else {
-                    status = NS_ERROR;
-                }
+            if (!Ns_PlainUrlPath(Tcl_GetString(ov[1]), &errorMsg)) {
+                status = NS_ERROR;
             } else {
-                *specPtr = NULL;
+                status = NS_OK;
+                *method = Tcl_GetString(ov[0]);
+                *url = Tcl_GetString(ov[1]);
+                if (oc == 3) {
+                    TCL_SIZE_T oc2;
+                    Tcl_Obj  **ov2;
+
+                    if (Tcl_ListObjGetElements(NULL, ov[2], &oc2, &ov2) == TCL_OK && oc2 == 2) {
+                        *specPtr = NsUrlSpaceContextSpecNew(Tcl_GetString(ov2[0]),
+                                                            Tcl_GetString(ov2[1]));
+
+                    } else {
+                        status = NS_ERROR;
+                    }
+                } else {
+                    *specPtr = NULL;
+                }
             }
         }
     }
     if (unlikely(status == NS_ERROR) && interp != NULL) {
         Ns_TclPrintfResult(interp,
                            "invalid mapspec '%s'; must be 2- or 3-element list "
-                           "containing HTTP method, URL, and optionally a filtercontext",
+                           "containing HTTP method, plain URL path, and optionally a filtercontext",
                            Tcl_GetString(mapspecObj));
     }
 
@@ -2225,6 +2232,9 @@ NsConnThread(void *arg)
         Ns_MutexLock(tqueueLockPtr);
         connPtr->flags &= ~NS_CONN_CONFIGURED;
 
+        /*
+         * We are done with the headers, reset these for further reuse.
+         */
         Ns_SetTrunc(connPtr->headers, 0);
 
         argPtr->state = connThread_ready;
@@ -2378,6 +2388,33 @@ NsConnThread(void *arg)
     Ns_ThreadExit(argPtr);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsHeaderSetGet --
+ *
+ *      Return an Ns_Set for request headers with some defaults.
+ *
+ * Results:
+ *      Ns_Set *
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_Set *NsHeaderSetGet(size_t size)
+{
+    Ns_Set *result;
+
+    result = Ns_SetCreateSz(NS_SET_NAME_REQ, MAX(10, size));
+#ifdef NS_SET_DSTRING
+    Ns_SetDataPrealloc(result, 4095);
+#endif
+
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -2394,7 +2431,6 @@ NsConnThread(void *arg)
  *
  *----------------------------------------------------------------------
  */
-
 static void
 ConnRun(Conn *connPtr)
 {
@@ -2429,9 +2465,29 @@ ConnRun(Conn *connPtr)
     memset(&(connPtr->reqPtr->request), 0, sizeof(struct Ns_Request));
 
     /*
-      Ns_Log(Notice, "ConnRun connPtr %p req %p %s", connPtr, connPtr->request, connPtr->request.line);
+      Ns_Log(Notice, "ConnRun connPtr %p req %s", (void*)connPtr, connPtr->request.line);
     */
-    (void) Ns_SetRecreate2(&connPtr->headers, connPtr->reqPtr->headers);
+
+    /*
+     * Move connPtr->reqPtr->headers to connPtr->headers (named "req") for the
+     * delivery thread and get a fresh or preallocated structure for the next
+     * request in this connection thread.
+     */
+    {
+        Ns_Set *preallocedHeaders = connPtr->headers;
+        if (preallocedHeaders == NULL) {
+            preallocedHeaders = NsHeaderSetGet(connPtr->reqPtr->headers->maxSize);
+        } else {
+#ifdef NS_SET_DSTRING
+            Ns_Log(Ns_LogNsSetDebug, "SSS ConnRun REUSE %p '%s': size %lu/%lu buffer %d/%d",
+                   (void*)preallocedHeaders, preallocedHeaders->name,
+                   preallocedHeaders->size, preallocedHeaders->maxSize,
+                   preallocedHeaders->data.length, preallocedHeaders->data.spaceAvl);
+#endif
+        }
+        connPtr->headers = connPtr->reqPtr->headers;
+        connPtr->reqPtr->headers = preallocedHeaders;
+    }
 
     /*
      * Flag, that the connection is fully configured and we can use its
@@ -2463,7 +2519,10 @@ ConnRun(Conn *connPtr)
     memcpy(connPtr->idstr, "cns", 3u);
     (void)ns_uint64toa(&connPtr->idstr[3], (uint64_t)connPtr->id);
 
-    connPtr->outputheaders = Ns_SetCreate(NULL);
+    if (connPtr->outputheaders == NULL) {
+        connPtr->outputheaders = Ns_SetCreate(NS_SET_NAME_RESPONSE);
+    }
+
     if (connPtr->request.version < 1.0) {
         conn->flags |= NS_CONN_SKIPHDRS;
     }
@@ -2512,8 +2571,7 @@ ConnRun(Conn *connPtr)
              * treat the result as NS_FILTER_RETURN. Other feedback to this
              * connection can not work anymore.
              */
-            Ns_Log(Debug, "Filter closed connection; cancel further request processing");
-
+            Ns_Log(Debug, "Preauth filter closed connection; cancel further request processing");
             status = NS_FILTER_RETURN;
         }
 
@@ -2651,8 +2709,8 @@ ConnRun(Conn *connPtr)
     Ns_ConnClearQuery(conn);
     Ns_SetFree(connPtr->auth);
     connPtr->auth = NULL;
-    Ns_SetFree(connPtr->outputheaders);
-    connPtr->outputheaders = NULL;
+
+    Ns_SetTrunc(connPtr->outputheaders, 0);
 
     if (connPtr->request.line != NULL) {
         /*
@@ -2660,6 +2718,10 @@ ConnRun(Conn *connPtr)
          */
         Ns_ResetRequest(&connPtr->request);
         assert(connPtr->request.line == NULL);
+    }
+    if (connPtr->location != NULL) {
+        ns_free((char *)connPtr->location);
+        connPtr->location = NULL;
     }
 
     if (connPtr->clientData != NULL) {

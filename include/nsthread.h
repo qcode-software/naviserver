@@ -571,6 +571,21 @@ typedef int ns_sockerrno_t;
 # define NS_TCL_PRE87
 #endif
 
+/*
+ * Minimal forward compatibility for compiling
+ * modules with Tcl9 support (TIP 627, 64bit object counts)
+ * with Tcl8 versions
+ */
+
+#if TCL_MAJOR_VERSION<9
+# define NS_TCL_PRE9
+#endif
+
+#define TCL_SIZE_T           int
+#define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc
+#define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand
+#define PRITcl_Size "d"
+
 #if !defined(NS_POLL_NFDS_TYPE)
 # define NS_POLL_NFDS_TYPE unsigned int
 #endif
@@ -1134,6 +1149,7 @@ NS_EXTERN void Ns_GetTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_AdjTime(Ns_Time *timePtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_IncrTime(Ns_Time *timePtr, time_t sec, long usec)  NS_GNUC_NONNULL(1);
 NS_EXTERN Ns_Time *Ns_AbsoluteTime(Ns_Time *absPtr, Ns_Time *adjPtr)  NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_Time *Ns_RelativeTime(Ns_Time *relTimePtr, Ns_Time *timePtr)  NS_GNUC_NONNULL(1);
 NS_EXTERN long Ns_DiffTime(const Ns_Time *t1, const Ns_Time *t0, Ns_Time *resultPtr)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN time_t Ns_TimeToMilliseconds(const Ns_Time *timePtr)  NS_GNUC_NONNULL(1) NS_GNUC_PURE;

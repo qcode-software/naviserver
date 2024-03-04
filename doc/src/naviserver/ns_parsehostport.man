@@ -16,11 +16,11 @@
 
 [para] This function interprets the provided string as host
 and optional port as defined by the authority elements in RFC 3986.
-The function supports IP-literal notation. The functionlity is
+The function supports IP-literal notation. The functionality is
 an subset of [cmd ns_parseurl].
 
 [para] When [option "-strict"] is specified, the function performs a
-more thorough checking of the valid characters for the host(as defined
+more thorough checking of the valid characters for the host (as defined
 in RFC 3986, but relaxed by errata #4942). Otherwise, the checking is
 kept to the bare minimum.
 

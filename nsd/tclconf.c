@@ -56,8 +56,8 @@
 int
 NsTclConfigObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char       *section, *key = (char *)NS_EMPTY_STRING;
-    Tcl_Obj    *defObj = NULL;
+    char       *section;
+    Tcl_Obj    *defObj = NULL, *keyObj;
     int         status, isBool = 0, isInt = 0, exact = 0, doSet = 0;
     Tcl_WideInt minValue = LLONG_MIN, maxValue = LLONG_MAX;
 
@@ -73,7 +73,7 @@ NsTclConfigObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
     };
     Ns_ObjvSpec args[] = {
         {"section",  Ns_ObjvString, &section, NULL},
-        {"key",      Ns_ObjvString, &key,     NULL},
+        {"key",      Ns_ObjvObj,    &keyObj,     NULL},
         {"?default", Ns_ObjvObj,    &defObj,  NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -83,14 +83,17 @@ NsTclConfigObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
     } else {
         const char *value;
         bool        done = NS_FALSE;
+        char       *keyString;
+        int         keyLength;
 
         if (minValue > LLONG_MIN || maxValue < LLONG_MAX) {
             isInt = 1;
         }
 
+        keyString = Tcl_GetStringFromObj(keyObj, &keyLength);
         value = (exact != 0) ?
-            Ns_ConfigGetValueExact(section, key) :
-            Ns_ConfigGetValue(section, key);
+            Ns_ConfigGetValueExact(section, keyString) :
+            Ns_ConfigGetValue(section, keyString);
 
         /*
          * Handle type checking of config value.
@@ -158,12 +161,15 @@ NsTclConfigObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
                 }
             }
 
-            if (status == TCL_OK && doSet != 0) {
-                /* make setting queryable */
-
+            if (status == TCL_OK && doSet != 0 && !nsconf.state.started) {
                 Ns_Set *set = Ns_ConfigCreateSection(section);
+
+                /* make setting queryable */
                 if (set != NULL) {
-                    Ns_SetUpdate(set, key, Tcl_GetString(defObj));
+                    int         defLength;
+                    const char *defString = Tcl_GetStringFromObj(defObj, &defLength);
+
+                    Ns_SetUpdateSz(set, keyString, keyLength, defString, defLength);
                 }
             }
             if (status == TCL_OK) {
@@ -199,18 +205,37 @@ NsTclConfigObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
 int
 NsTclConfigSectionObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    int     result;
-
-    if (unlikely((objc != 2))) {
+    int         result = TCL_OK, filter = 0;
+    char       *section;
+    static Ns_ObjvTable filterset[] = {
+        {"unread",    UCHAR('u')},
+        {"defaulted", UCHAR('d')},
+        {"defaults",  UCHAR('s')},
+        {NULL,        0u}
+    };
+    Ns_ObjvSpec opts[] = {
+        {"-filter", Ns_ObjvIndex, &filter, filterset},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"section",  Ns_ObjvString, &section, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    if (unlikely(Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK)) {
         result = TCL_ERROR;
-        Tcl_WrongNumArgs(interp, 1, objv, "section");
     } else {
         Ns_Set *set;
 
-        result = TCL_OK;
-        set = Ns_ConfigGetSection(Tcl_GetString(objv[1]));
+        if (filter != '\0') {
+            set = NsConfigSectionGetFiltered(section, (char)filter);
+        } else {
+            set = Ns_ConfigGetSection(section);
+        }
         if (set != NULL) {
-            result = Ns_TclEnterSet(interp, set, NS_TCL_SET_STATIC);
+            result = Ns_TclEnterSet(interp, set,
+                                    filter == 'd' || filter == 'u' ?
+                                    NS_TCL_SET_DYNAMIC : NS_TCL_SET_STATIC);
         }
     }
     return result;

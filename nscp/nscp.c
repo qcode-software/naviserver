@@ -30,7 +30,7 @@
 /*
  * nscp.c --
  *
- *      Simple control port module for AOLserver which allows
+ *      Simple control port module for NaviServer which allows
  *      one to telnet to a specified port, login, and issue
  *      Tcl commands.
  */
@@ -145,18 +145,12 @@ LoadUsers(Mod *localModPtr, const char *server, const char *module)
     (void) Ns_ConfigSectionPath(&set, server, module, "users", (char *)0L);
 
     /*
-     * In case, no users are configured and nscp is listening on the loopback
-     * address, create empty user without password.
+     * In case, no users are configured, and nscp is listening on the loopback
+     * address, create automatically a user with an empty name and no
+     * password.
      */
     if (Ns_SetSize(set) == 0u && STREQ(localModPtr->addr, NS_IP_LOOPBACK)) {
-        Ns_DString  ds;
-        const char *path;
-
-        Ns_DStringInit(&ds);
-        path = Ns_ModulePath(&ds, server, module, "users", (char *)0L);
-        set = Ns_ConfigCreateSection(path);
-        Ns_SetUpdate(set, "user", "::");
-        Ns_DStringFree(&ds);
+        Ns_SetUpdateSz(set, "user", 4, "::", 2);
     }
 
     /*
@@ -273,7 +267,7 @@ Ns_ModuleInit(const char *server, const char *module)
          */
         modPtr = ns_malloc(sizeof(Mod));
         modPtr->server = server;
-        modPtr->addr = addr;
+        modPtr->addr = ns_strcopy(addr);
         modPtr->port = port;
         modPtr->echo = Ns_ConfigBool(path, "echopasswd", NS_TRUE);
         modPtr->commandLogging = Ns_ConfigBool(path, "cpcmdlogging", NS_FALSE);
@@ -736,14 +730,14 @@ ExitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
  *----------------------------------------------------------------------
  */
 
-static Ns_ReturnCode
+static int
 NscpAddCmds(Tcl_Interp *interp, const void *UNUSED(arg))
 {
     /*const char *server = arg;*/
 
     (void)Tcl_CreateObjCommand(interp, "nscp", NsTclNscpObjCmd, NULL, NULL);
 
-    return NS_OK;
+    return TCL_OK;
 }
 /*
  *----------------------------------------------------------------------

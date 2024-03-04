@@ -80,7 +80,7 @@ typedef struct Task {
     NS_POLL_NFDS_TYPE  idx;           /* Poll index */
     short              events;        /* Poll events */
     Ns_Time            timeout;       /* Read/write timeout (wall-clock time) */
-    Ns_Time            expire;        /* Task wall-clock time) */
+    Ns_Time            expire;        /* Task (wall-clock time) */
     int                refCount;      /* For reserve/release purposes */
     unsigned int       signalFlags;   /* Signal flags sent to queue thread */
     unsigned int       flags;         /* Flags private to the task */
@@ -848,7 +848,9 @@ NsWaitTaskQueueShutdown(const Ns_Time *toPtr)
     }
 
     if (status != NS_OK) {
-        Ns_Log(Warning, "timeout waiting for task queues shutdown");
+        Ns_Log(Warning, "timeout waiting for task queues shutdown"
+               " (timeout " NS_TIME_FMT ")",
+               (int64_t)nsconf.shutdowntimeout.sec, nsconf.shutdowntimeout.usec);
     }
 
     return;

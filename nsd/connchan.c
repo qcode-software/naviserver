@@ -1238,7 +1238,6 @@ ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
         NS_SOCKET       sock;
         Ns_ReturnCode   status;
 
-        fprintf(stderr, "CONNECT %s %hu TLS %d\n", host, portNr, doTLS);
         sock = Ns_SockTimedConnect2(host, portNr, NULL, 0u, timeoutPtr, &status);
 
         if (sock == NS_INVALID_SOCKET) {
@@ -1645,7 +1644,7 @@ ConnChanStatusObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                            Tcl_NewStringObj("sent", 4),
                            Tcl_NewWideIntObj((Tcl_WideInt)connChanPtr->wBytes));
             Tcl_DictObjPut(NULL, dictObj,
-                           Tcl_NewStringObj("reveived", 8),
+                           Tcl_NewStringObj("received", 8),
                            Tcl_NewWideIntObj((Tcl_WideInt)connChanPtr->rBytes));
             Tcl_DictObjPut(NULL, dictObj,
                            Tcl_NewStringObj("framebuffer", 8),
@@ -2166,7 +2165,7 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
     } else {
         /*
          * The "fin" bit is not set, we have a segment, but not the
-         * complete message.  Append the reveived frame to the
+         * complete message.  Append the received frame to the
          * fragments buffer.
          */
         RequireDsBuffer(&connChanPtr->fragmentsBuffer);
@@ -2263,7 +2262,6 @@ ConnChanReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             /*
              * The provided channel exists.
              */
-            ssize_t      nRead;
             char         buffer[16384]; //buffer[16384];
 
             if (!connChanPtr->binary) {
@@ -2272,7 +2270,8 @@ ConnChanReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             }
 
             if ( webSocketFrame == 0 || connChanPtr->frameNeedsData) {
-                nRead = ConnChanReadBuffer(connChanPtr, buffer, sizeof(buffer));
+                ssize_t nRead = ConnChanReadBuffer(connChanPtr, buffer, sizeof(buffer));
+
                 if (nRead < 0) {
                     const char *errorMsg;
 
@@ -2353,16 +2352,17 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
              */
             struct iovec bufs[2];
             ssize_t      nSent;
-            int          msgLen, nBufs = 1, toSend;
+            size_t       toSend;
+            int          msgLen, nBufs = 1;
             const char  *msgString = (const char *)Tcl_GetByteArrayFromObj(msgObj, &msgLen);
 #ifdef WS_RECORD_OUTPUT
             static int FD;
             static char fnbuffer[100];
 #endif
-            if (!connChanPtr->binary) {
-                Ns_Log(Warning, "ns_connchan: only binary channels are currently supported. "
-                       "Channel %s is not binary", name);
-            }
+            //if (!connChanPtr->binary) {
+            //    Ns_Log(Warning, "ns_connchan: only binary channels are currently supported. "
+            //           "Channel %s is not binary", name);
+            //}
 
 #ifdef WS_RECORD_OUTPUT
             if (connChanPtr->wBytes == 0) {
@@ -2382,6 +2382,8 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 buffered = 1;
             }
 
+            Ns_Log(Ns_LogConnchanDebug, "%s new message length %d buffered %d",
+                   name, msgLen, buffered);
 
             /*
              * Write the data via the "send" operation of the driver.
@@ -2392,26 +2394,28 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 bufs[1].iov_base = (void *)msgString;
                 bufs[1].iov_len = (size_t)msgLen;
                 nBufs = 2;
-                toSend = msgLen + connChanPtr->sendBuffer->length;
+                toSend = (size_t)msgLen + (size_t)connChanPtr->sendBuffer->length;
+
             } else if (msgLen == 0 && buffered && ConnChanBufferSize(connChanPtr, sendBuffer) > 0) {
                 bufs[0].iov_base = (void *)connChanPtr->sendBuffer->string;
                 bufs[0].iov_len = (size_t)connChanPtr->sendBuffer->length;
                 bufs[1].iov_len = 0u;
-                toSend = connChanPtr->sendBuffer->length;
+                toSend = (size_t)connChanPtr->sendBuffer->length;
                 Ns_Log(Ns_LogConnchanDebug,
-                       "WS: send buffered only msgLen == 0, buf length %zu toSend %d",
+                       "WS: send buffered only msgLen == 0, buf length %zu toSend %" PRIdz,
                        bufs[0].iov_len, toSend);
+
             } else {
                 bufs[0].iov_base = (void *)msgString;
                 bufs[0].iov_len = (size_t)msgLen;
                 bufs[1].iov_len = 0u;
                 Ns_Log(Ns_LogConnchanDebug, "WS: send msgLen toSend %ld", bufs[0].iov_len);
-                toSend = msgLen;
+                toSend = (size_t)msgLen;
             }
 
-            /*Ns_Log(Notice, "WS: send buffered before nbufs %d len[0] % " PRIdz
-                   ", len[1] %" PRIdz " len %d",
-                   nBufs, bufs[0].iov_len, bufs[1].iov_len, toSend);*/
+            Ns_Log(Ns_LogConnchanDebug, "%s new message length %d buffered length %d total %" PRIdz,
+                   name, msgLen, connChanPtr->sendBuffer != NULL ? connChanPtr->sendBuffer->length : 0,
+                   toSend);
 
             if (toSend > 0) {
                 nSent = ConnchanDriverSend(interp, connChanPtr, bufs, nBufs, 0u,
@@ -2420,12 +2424,12 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 nSent = 0;
             }
 
-            /*Ns_Log(Notice, "WS: send buffered after  nbufs %d len[0] %" PRIdz
+            Ns_Log(Ns_LogConnchanDebug, "%s after ConnchanDriverSend nbufs %d len[0] %" PRIdz
                    ", len[1] %" PRIdz " sent %" PRIdz,
-                   nBufs, bufs[0].iov_len, bufs[1].iov_len, nSent);*/
+                   name, nBufs, bufs[0].iov_len, bufs[1].iov_len, nSent);
 
             if (nSent > -1) {
-                int remaining = toSend - (int)nSent;
+                size_t remaining = (size_t)toSend - (size_t)nSent;
 
                 /*Ns_Log(Notice, "WS: send buffered %d msgLength %d nbufs %d to send %d sent %" PRIdz
                        " remaining %d errno %d %s (BYTES from %" PRIdz " to %" PRIdz ")",
@@ -2445,17 +2449,17 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                      */
                     if (nBufs == 2) {
                         Ns_Log(Ns_LogConnchanDebug, "... two-buffer old buffer length %d + new %d"
-                               " = %d sent %ld (old not fully sent %d)",
-                                connChanPtr->sendBuffer->length, msgLen,
-                                connChanPtr->sendBuffer->length + msgLen,
-                                nSent, (connChanPtr->sendBuffer->length > nSent));
+                               " = %" PRIdz " sent %ld (old not fully sent %d)",
+                               connChanPtr->sendBuffer->length, msgLen,
+                               (size_t)connChanPtr->sendBuffer->length + (size_t)msgLen,
+                               nSent, (connChanPtr->sendBuffer->length > nSent));
                         if (connChanPtr->sendBuffer->length > nSent) {
                             /*
                              * The old send buffer was not completely
                              * sent.
                              *
                              * bufs[0].len is the unsent length,
-                             * bufs[0].base points to the begin of the
+                             * bufs[0].base points to the start of the
                              * unset buffer.
                              */
                             assert(bufs[0].iov_len > 0);
@@ -2535,6 +2539,10 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                     }
 
                     if (freshDataRemaining > 0) {
+                        Ns_Log(Ns_LogConnchanDebug, "... appending to sendbuffer old %d + remaining %d "
+                               "will be %d",
+                               connChanPtr->sendBuffer->length, freshDataRemaining,
+                               connChanPtr->sendBuffer->length + freshDataRemaining);
                         Tcl_DStringAppend(connChanPtr->sendBuffer,
                                           msgString + (msgLen - freshDataRemaining),
                                           freshDataRemaining);
@@ -2554,7 +2562,7 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                          */
                         int buffedLen = ConnChanBufferSize(connChanPtr, sendBuffer);
                         Ns_Log(Ns_LogConnchanDebug, "... buffered %d buffedLen %d msgLength %d "
-                               "everything was sent, remaining %d, (BYTES from %" PRIdz " to %" PRIdz ")",
+                               "everything was sent, remaining %" PRIdz ", (BYTES from %" PRIdz " to %" PRIdz ")",
                                buffered, buffedLen, msgLen, remaining,
                                connChanPtr->wBytes - (size_t)nSent, connChanPtr->wBytes);
                         assert(remaining == 0);
@@ -2575,7 +2583,8 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                          * Non-buffered case, there might be a partial send operation
                          */
                         if (remaining != 0) {
-                            Ns_Log(Notice, "... partial write: to send %d sent %" PRIdz " remaining %d",
+                            Ns_Log(Notice, "... partial write: to send %" PRIdz
+                                   " sent %" PRIdz " remaining %" PRIdz,
                                    toSend, nSent, remaining);
                         }
                     }

@@ -40,7 +40,7 @@
  * The following constants are defined for this file.
  */
 
-#define NS_SQLERRORCODE "NSINT" /* SQL error code for AOLserver exceptions. */
+#define NS_SQLERRORCODE "NSINT" /* SQL error code for NaviServer exceptions. */
 
 
 /*
@@ -131,6 +131,9 @@ Ns_Db0or1Row(Ns_DbHandle *handle, const char *sql, int *nrows)
             }
         }
         if (success) {
+#ifdef NS_SET_DEBUG
+            Ns_Log(Notice, "Ns_Db0or1Row Ns_SetCopy %p", (void*)row);
+#endif
             row = Ns_SetCopy(row);
         }
     }

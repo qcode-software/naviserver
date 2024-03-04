@@ -125,8 +125,9 @@ typedef struct {
     Ns_Set **columns;
 } Ns_DbTableInfo;
 
-NS_EXTERN Ns_LogSeverity Ns_LogSqlDebug;
-
+#ifndef NS_DBTCL_H
+extern NS_IMPORT Ns_LogSeverity Ns_LogSqlDebug;
+#endif
 
 typedef Ns_ReturnCode (NsDb_DriverInitProc)(const char *driver, const char *configPath);
 NS_EXTERN const char *NS_EMPTY_STRING;
@@ -150,7 +151,7 @@ NS_EXTERN Ns_ReturnCode Ns_DbCancel(Ns_DbHandle *handle)                  NS_GNU
 NS_EXTERN Ns_ReturnCode Ns_DbResetHandle(Ns_DbHandle *handle)             NS_GNUC_NONNULL(1);
 NS_EXTERN Ns_ReturnCode Ns_DbSpStart(Ns_DbHandle *handle, const char *procname) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN Ns_ReturnCode Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname,
-                                        const char *paramtype, const char *inout, const char *value)
+                                        const char *paramtype, const char *direction, const char *value)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 NS_EXTERN int           Ns_DbSpExec(Ns_DbHandle *handle)                 NS_GNUC_NONNULL(1);
 NS_EXTERN Ns_ReturnCode Ns_DbSpReturnCode(Ns_DbHandle *handle, const char *returnCode, int bufsize)

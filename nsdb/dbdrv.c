@@ -409,6 +409,9 @@ Ns_DbSelect(Ns_DbHandle *handle, const char *sql)
         } else if (driverPtr->selectProc != NULL) {
             Ns_Time startTime;
 
+#ifdef NS_SET_DEBUG
+            Ns_Log(Notice, "Ns_DbSelect Ns_SetTrunc %p", (void*)handle->row);
+#endif
             Ns_GetTime(&startTime);
             Ns_SetTrunc(handle->row, 0u);
             setPtr = (*driverPtr->selectProc)(handle, sql);
@@ -498,6 +501,9 @@ Ns_DbBindRow(Ns_DbHandle *handle)
     if (handle->connected
         && driverPtr != NULL
         && driverPtr->bindProc != NULL) {
+#ifdef NS_SET_DEBUG
+        Ns_Log(Notice, "Ns_DbBindRow Ns_SetTrunc %p", (void*)handle->row);
+#endif
 
         Ns_SetTrunc(handle->row, 0u);
         setPtr = (*driverPtr->bindProc)(handle);
@@ -926,7 +932,7 @@ Ns_DbSpStart(Ns_DbHandle *handle, const char *procname)
  *
  *      Set a parameter in a store procedure; must have executed Ns_DbSpStart
  *      first. "paramname" looks like "@x", paramtype is like "int" or
- *      "varchar", inout is "in" or "out", value is like "123".
+ *      "varchar", direction is "in" or "out", value is like "123".
  *
  * Results:
  *      NS_OK/NS_ERROR
@@ -939,7 +945,7 @@ Ns_DbSpStart(Ns_DbHandle *handle, const char *procname)
 
 Ns_ReturnCode
 Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtype,
-                const char *inout, const char *value)
+                const char *direction, const char *value)
 {
     const DbDriver *driverPtr;
     Ns_ReturnCode    status = NS_ERROR;
@@ -953,7 +959,7 @@ Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtyp
         && driverPtr->spsetparamProc != NULL) {
 
         Ns_DStringInit(&args);
-        Ns_DStringVarAppend(&args, paramname, " ", paramtype, " ", inout, " ",
+        Ns_DStringVarAppend(&args, paramname, " ", paramtype, " ", direction, " ",
                             value, (char *)0L);
         status = (*driverPtr->spsetparamProc)(handle, args.string);
         Ns_DStringFree(&args);
@@ -1062,6 +1068,9 @@ Ns_DbSpGetParams(Ns_DbHandle *handle)
     NS_NONNULL_ASSERT(handle != NULL);
 
     driverPtr = NsDbGetDriver(handle);
+#ifdef NS_SET_DEBUG
+    Ns_Log(Notice, "Ns_DbSpGetParams Ns_SetTrunc %p", (void*)handle->row);
+#endif
     Ns_SetTrunc(handle->row, 0u);
     if (handle->connected
         && driverPtr != NULL
