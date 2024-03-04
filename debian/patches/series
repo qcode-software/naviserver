@@ -1,3 +1,4 @@
 0001-Makefile-distclean-additions.patch
 0002-Skip-emoji-test-for-downlevel-tcl.patch
 0003-ns_http-tmpdir-fix.patch
+0004-Comment-out-tests-logging-with-nsf.patch
