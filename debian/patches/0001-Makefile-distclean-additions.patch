@@ -1,0 +1,31 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Mon, 4 Mar 2024 14:42:05 +0000
+Subject: Makefile distclean additions
+
+---
+ Makefile | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 61461c9..0cb64c3 100644
+--- a/Makefile
++++ b/Makefile
+@@ -31,6 +31,7 @@
+ MAN_CSS=man.css
+ HEADER_INC=header.inc
+ 
++SHELL=/bin/bash
+ NSBUILD=1
+ include include/Makefile.global
+ 
+@@ -311,8 +312,8 @@ clean-bak: clean
+ 
+ distclean: clean
+ 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
+-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
++	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1,nsconfig.h,nsconfig.h.in,nsversion.h} \
++	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl naviserver.rdf version_include.man
+ 
+ config.guess:
+ 	wget -O config.guess 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD'
