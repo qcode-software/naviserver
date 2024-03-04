@@ -1,0 +1,21 @@
+From: David Osborne <david@qcode.co.uk>
+Date: Mon, 4 Mar 2024 15:31:39 +0000
+Subject: ns_http tmpdir fix
+
+---
+ tests/ns_http.test | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/ns_http.test b/tests/ns_http.test
+index c93cc83..2ca99ea 100644
+--- a/tests/ns_http.test
++++ b/tests/ns_http.test
+@@ -1820,7 +1820,7 @@ test http-8.2 {ns_return with UTF-8 3 byte char with fresh bytearray} -constrain
+ test http-8.3 {ns_return with UTF-8 3 byte char with impure bytearray} -constraints {serverListen} -setup {
+     ns_register_proc GET /get {
+         set v "☃"
+-        set fn [ns_config ns/parameters tmpdir]sun-[clock clicks -microseconds]
++        set fn [ns_config ns/parameters tmpdir]/sun-[clock clicks -microseconds]
+         try {
+             set F [open $fn w]
+             fconfigure $F -translation binary
