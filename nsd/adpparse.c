@@ -35,9 +35,10 @@
 
 #include "nsd.h"
 
-#define SERV_STREAM 0x01u
-#define SERV_RUNAT  0x02u
-#define SERV_NOTTCL 0x04u
+#define SCRIPT_TAG_FOUND       0x01u
+#define SCRIPT_TAG_SERV_STREAM 0x02u
+#define SCRIPT_TAG_SERV_RUNAT  0x04u
+#define SCRIPT_TAG_SERV_NOTTCL 0x08u
 
 #define TAG_ADP     1
 #define TAG_PROC    2
@@ -46,7 +47,14 @@
 #define APPEND      "ns_adp_append "
 #define APPEND_LEN  (sizeof(APPEND) - 1u)
 
-#define LENSZ       ((int)(sizeof(int)))
+#define LENGTH_SIZE       ((int)(sizeof(int)))
+
+typedef enum {
+    TagInlineCode,
+    TagNext,
+    TagScript,
+    TagReg
+} TagParseState;
 
 /*
  * The following structure maintains proc and ADP registered tags.
@@ -68,7 +76,7 @@ typedef struct Tag {
 typedef struct Parse {
     AdpCode       *codePtr; /* Pointer to compiled AdpCode struct. */
     int            line;    /* Current line number while parsing. */
-    Tcl_DString    lens;    /* Length of text or script block. */
+    Tcl_DString    lengths;    /* Length of text or script block. */
     Tcl_DString    lines;   /* Line number of block for debug messages. */
 } Parse;
 
@@ -103,6 +111,65 @@ static void AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned
 static void AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flags, const char* file)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
+
+/*
+ * report --
+ *
+ *      Local debugging function
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Printing to log file.
+ */
+#if 0
+static void report(const char *msg, const char *string, ssize_t len)
+{
+    const int max = 3000;
+
+    if (len == -1) {
+        len = (ssize_t)strlen(string)+1;
+    }
+    {
+        char buffer[len + 2];
+        memcpy(buffer, string, len+1);
+        buffer[len>max ? max : len+1] = '\0';
+        Ns_Log(Notice, "%s //%s//", msg, buffer);
+    }
+}
+#endif
+
+/*
+ * TagValidFirstChar, TagValidChar --
+ *
+ *      Valid characters for tag names. These rules are slightly more tolerant
+ *      than in HTML, but these this is necessary, since ADP is more tolerant
+ *      than HTML and supports as well embedding of tags in start tags,
+ *      etc. This is as well needed for backward compatibility. These rules
+ *      are in essence just needed in NsParseTagEnd to determine, if markup is
+ *      used in attribute values.
+ *
+ * Results:
+ *      Boolean value.
+ *
+ * Side effects:
+ *      Printing to log file.
+ */
+static bool TagValidFirstChar (char c) {
+    return (c >= 'a' && c <= 'z')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9');
+}
+static bool TagValidChar (char c) {
+    return (c >= 'a' && c <= 'z')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9')
+        || (c == ':')
+        || (c == '_') ;
+}
+
+
 /*
  *----------------------------------------------------------------------
  *
@@ -175,7 +242,8 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         NsServer       *servPtr = itPtr->servPtr;
         const char     *end, *tag, *content;
         Tcl_HashEntry  *hPtr;
-        int             isNew, slen, elen, tlen;
+        int             isNew;
+        int      slen, elen, tlen;
         Tcl_DString     tbuf;
         Tag            *tagPtr;
 
@@ -199,7 +267,7 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         }
 
         /*
-         * Allocate piggypacked memory chunk containing
+         * Allocate piggybacked memory chunk containing
          *   - tag structure,
          *   - tag begin string,
          *   - tag end string
@@ -278,8 +346,152 @@ AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flags, const cha
         Ns_DStringPrintf(&codePtr->text, "} {0} {} {}]}}\nadp:%s %%>}", file);
     }
     codePtr->nblocks = codePtr->nscripts = 1;
-    size = -codePtr->text.length;
+    /*
+     * The cast of "text.length" to "int" is dangerous (for really big
+     * strings). "size" should be int, but we keep it so far due to the
+     * logic with the negative lengths.
+     *
+     * See also: keep "len" as int in AdpExec() in adpeval.c
+     */
+    size = -(int)codePtr->text.length;
     AppendLengths(codePtr, &size, &line);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsParseTagEnd --
+ *
+ *      Search for the endsign of a tag (greater than). For ages, NaviServer
+ *      just searched for the first upcoming greater than sign:
+ *
+ *         strchr(str, INTCHAR('>'));
+ *
+ *      However, the Living Standard of HTML allows the greater sign in
+ *      attributes values as long these are between single or double quotes:
+ *      https://html.spec.whatwg.org/multipage/syntax.html#syntax-attribute-value
+ *
+ *      As long the tag looks like a valid definition, it parses it and ignores
+ *      markup between quotes. When the passed-in string does not look like a
+ *      well-formed start tag, fall back to the legacy approach to provide
+ *      maximal backward compatibility.
+ *
+ * Results:
+ *      Either pointing the ending greater sign or NULL
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+char*
+NsParseTagEnd(char *str)
+{
+    const char *startTagStr = str;
+    /*
+     * Parse tag name
+     */
+    str++;
+    if (!TagValidFirstChar(*str)) {
+        //Ns_Log(Notice, "legacy case: no valid first character of tag name");
+        goto legacy;
+    }
+    str++;
+    while (TagValidChar(*str)) {
+        str++;
+    }
+    //report("NsParseTagEnd tag name ", startTagStr, str-startTagStr);
+
+    /*
+     * Now we expect whitespace* followed by optional attributes and maybe the
+     * closing ">" character.
+     */
+    if (*str != '>' && CHARTYPE(space, *str) == 0) {
+        //Ns_Log(Notice, "legacy case: no space or > after tag name");
+        goto legacy;
+    }
+    for (;;) {
+        while (CHARTYPE(space, *str) != 0) {
+            str++;
+        }
+        if (*str == '>') {
+            goto done;
+        }
+        /*
+         * Expect attribute name
+         */
+        if (!TagValidFirstChar(*str)) {
+            //Ns_Log(Notice, "legacy case: no valid first character of attribute name");
+            goto legacy;
+        }
+        str++;
+        while (TagValidChar(*str)) {
+            str++;
+        }
+        while (CHARTYPE(space, *str) != 0) {
+            str++;
+        }
+        //report("NsParseTagEnd tag name + att", startTagStr, str-startTagStr);
+        if (*str == '>') {
+            /*
+             * Attribute without equal sign at the end
+             */
+            goto done;
+        }
+        if (*str != '=') {
+            //Ns_Log(Notice, "legacy case: no valid character after attribute name");
+            goto legacy;
+        }
+        str++;
+        while (CHARTYPE(space, *str) != 0) {
+            str++;
+        }
+        /*
+         * We expect quoted or unquoted attribute value
+         */
+        //Ns_Log(Notice, "We are now at char '%c'. Is this a quoted value?", *str);
+        if (*str == '\'' || *str == '"') {
+            const char quote = *str;
+            str++;
+            while (*str != quote) {
+                if (*str == '\0') {
+                    //Ns_Log(Notice, "legacy case: quote not terminated");
+                    goto legacy;
+                }
+                str++;
+            }
+            str++;
+        } else {
+            /*
+             * Unquoted value
+             */
+            if (!TagValidFirstChar(*str)) {
+                //Ns_Log(Notice, "legacy case: no valid first character of unquoted value");
+                goto legacy;
+            }
+            str++;
+            while (TagValidChar(*str)) {
+                str++;
+            }
+        }
+        //report("NsParseTagEnd tag name + att + value", startTagStr, str-startTagStr);
+    }
+    assert(str != NULL);
+    //report("NsParseTagEnd ===", startTagStr, str-startTagStr);
+
+ done:
+    return str;
+
+ legacy:
+
+    str = strchr(startTagStr, INTCHAR('>'));
+    if (str != NULL) {
+        //report("NsParseTagEnd ===", startTagStr, str-startTagStr);
+    } else {
+        //Ns_Log(Notice, "NsParseTagEnd === NULL");
+    }
+
+    return str;
 }
 
 
@@ -310,24 +522,19 @@ AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flags, const cha
  *
  *----------------------------------------------------------------------
  */
+
 static void
 AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
 {
-    int                  level;
-    unsigned int         scriptFlags;
-    const Tcl_HashEntry *hPtr;
-    const Tag           *tagPtr = NULL;
+    int                  level = 0;
+    unsigned int         scriptFlags = 0u;
     const char          *script = NS_EMPTY_STRING, *ae = NS_EMPTY_STRING;
-    char                *s, *e, *n, *a, *text, null = '\0', *as = &null;
+    char                *s, *e, *a, *text, null = '\0', *as = &null;
+    const Tag           *tagPtr = NULL;
     Tcl_DString          tag;
-    bool                 scriptStreamDone;
+    bool                 scriptStreamDone = NS_FALSE;
     Parse                parse;
-    enum {
-        TagNext,
-        TagScript,
-        TagReg
-    } state;
-
+    TagParseState        state = TagNext;
 
     NS_NONNULL_ASSERT(codePtr != NULL);
     NS_NONNULL_ASSERT(servPtr != NULL);
@@ -340,35 +547,43 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
     parse.line = 0;
 
     Tcl_DStringInit(&tag);
-    Tcl_DStringInit(&parse.lens);
+    Tcl_DStringInit(&parse.lengths);
     Tcl_DStringInit(&parse.lines);
 
     /*
      * Parse ADP one tag at a time.
      */
     text = adp;
-    scriptStreamDone = NS_FALSE;
-    scriptFlags = 0u;
-    level = 0;
-    state = TagNext;
     Ns_RWLockRdLock(&servPtr->adp.taglock);
 
-    while ((s = strchr(adp, INTCHAR('<'))) && (e = strchr(s, INTCHAR('>')))) {
+    for (;;) {
+
+        s = strchr(adp, INTCHAR('<'));
+        if (s == NULL) {
+            break;
+        }
 
         /*
          * Process the tag depending on the current state.
          */
         switch (state) {
-        case TagNext:
+
+        case TagInlineCode:
             /*
-             * Look for a <% ... %> sequence.
+             * We identified the start of a <% ... %> block. Find the
+             * corresponding %> beyond any additional nested <% ... %>
+             * sequences.
+             *
+             * Handling of <% ...%> requires a different end-of-tag
+             * handling. For regular tags, we have to differentiate
+             * between the closing ">" inside and outside quotes, which
+             * does not apply the adp-eval blocks.
              */
-            if (s[1] == '%' && s[2] != '>') {   /* NB: Avoid <%>. */
-                /*
-                 * Find the corresponding %> beyond any additional
-                 * nested <% ... %> sequences.
-                 */
-                e = strstr(e - 1, "%>");
+
+            e = strstr(s, "%>");
+            if (e != NULL) {
+                const char *n;
+
                 n = s + 2;
                 while (e != NULL && (n = strstr(n, "<%")) != NULL && n < e) {
                     n = n + 2;
@@ -399,11 +614,48 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
                     }
                     text = e + 2; /* NB: Next text after valid closing %>. */
                 }
-                s = text - 1; /* NB: Will incr +1, past text, below. */
-            } else {
+
+                state = TagNext;
+
+                /*
+                 * Skip to next possible ADP tag location.
+                 */
+                adp = text;
+                continue;
+            }
+            break;
+
+        case TagNext:
+            /*
+             * Do we have a regular tag or a <% ... %> block?
+             */
+            if (s[1] == '%' && s[2] != '>') /* NB: Avoid <%>. */ {
+                /*
+                 * Just switch to the inline code block state and continue.
+                 */
+                state = TagInlineCode;
+                continue;
+            }
+            if (!(
+                  (s[1] >= 'a' && s[1] <= 'z')
+                  || (s[1] >= 'A' && s[1] <= 'Z')
+                  || (s[1] >= '0' && s[1] <= '9')
+                  )) {
+                //report("state TagNext, invalid begin of tag", s, -1);
+                adp = s + 1;
+                continue;
+            }
+
+            /*
+             * Is this a start tag <START_TAG A1="..." ...>?
+             */
+            //e = strchr(s, INTCHAR('>'));
+            e = NsParseTagEnd(s);
+            if (e != NULL) {
                 /*
                  * Check for <script> tags or registered tags.
                  */
+                //report("state TagNext, parse tag", s, e-s);
 
                 GetTag(&tag, s, e, &a);
                 script = GetScript(tag.string, a, e, &scriptFlags);
@@ -415,6 +667,8 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
                     state = TagScript;
                     level = 1;
                 } else {
+                    const Tcl_HashEntry *hPtr;
+
                     hPtr = Tcl_FindHashEntry(&servPtr->adp.tags, tag.string);
                     if (hPtr != NULL) {
                         /*
@@ -438,71 +692,112 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
                         }
                     }
                 }
+                /*
+                 * Skip to next possible ADP tag location.
+                 */
+                //Ns_Log(Notice, "found tag '%s' len %d", tag.string, tag.length);
+                //adp = s + tag.length + 1;
+                //report("YY advance to ", adp, e-adp);
+                //adp = s + 1;
+                //report("... instead of ", adp, e-adp);
+                adp = s + tag.length + 1;
+                continue;
             }
             break;
 
         case TagScript:
             /*
-             * Look for corresponding closing </script> tag, handling
-             * possible nesting of other <script> tags.
+             * We are inside a script tag.
              */
-            GetTag(&tag, s, e, NULL);
-            if (STREQ(tag.string, "script")) {
-                ++level;
-            } else if (STREQ(tag.string, "/script")) {
-                --level;
-                if (level == 0) {
-                    /*
-                     * Found closing tag.  If not in safe mode,
-                     * enable streaming if requested and appending
-                     * the embedded script and then begin looking
-                     * for next ADP tag.
-                     */
+            e = strchr(s, INTCHAR('>'));
+            if (e != NULL) {
+                //report("state TagScript, parse tag", s, e-s);
 
-                    if ((flags & ADP_SAFE) == 0u) {
-                        if (((scriptFlags & SERV_STREAM) != 0u) && (! scriptStreamDone)) {
-                            static char *const buffer = (char *)"ns_adp_ctl stream on";
-                            char *end = buffer + strlen(buffer);
+                /*
+                 * Look for corresponding closing </script> tag, handling
+                 * possible nesting of other <script> tags.
+                 */
+                GetTag(&tag, s, e, NULL);
+                if (STREQ(tag.string, "script")) {
+                    ++level;
+                } else if (STREQ(tag.string, "/script")) {
+                    --level;
+                    if (level == 0) {
+                        /*
+                         * Found closing tag.  If not in safe mode,
+                         * enable streaming if requested and appending
+                         * the embedded script and then begin looking
+                         * for next ADP tag.
+                         */
 
-                            AppendBlock(&parse, buffer, end, 's', flags);
-                            scriptStreamDone = NS_TRUE;
+                        if ((flags & ADP_SAFE) == 0u) {
+                            if (((scriptFlags & SCRIPT_TAG_SERV_STREAM) != 0u) && (! scriptStreamDone)) {
+                                static char *const buffer = (char *)"ns_adp_ctl stream on";
+                                char *end = buffer + strlen(buffer);
+
+                                AppendBlock(&parse, buffer, end, 's', flags);
+                                scriptStreamDone = NS_TRUE;
+                            }
+                            AppendBlock(&parse, script, s, 's', flags);
                         }
-                        AppendBlock(&parse, script, s, 's', flags);
+                        text = e + 1;
+                        state = TagNext;
                     }
-                    text = e + 1;
-                    state = TagNext;
                 }
+                /*
+                 * Skip to next possible ADP tag location.
+                 */
+                //Ns_Log(Notice, "found tag '%s' len %d", tag.string, tag.length);
+                adp = s + tag.length + 1;
+                continue;
             }
             break;
 
         case TagReg:
             /*
-             * Looking for corresponding closing tag for a registered
-             * tag, handling possible nesting of the same tag.
+             * We are inside a registered tag
              */
-            GetTag(&tag, s, e, NULL);
-            if (STREQ(tag.string, tagPtr->tag)) {
-                ++level;
-            } else if (STREQ(tag.string, tagPtr->endtag)) {
-                --level;
-                if (level == 0) {
-                    /*
-                     * Found closing tag. Append tag content and
-                     * being looking for next ADP tag.
-                     */
+            e = strchr(s, INTCHAR('>'));
+            if (e != NULL) {
+                //report("state TagReg, parse tag", s, e-s);
 
-                    AppendTag(&parse, tagPtr, as, ae, s, flags);
-                    text = e + 1;
-                    state = TagNext;
+                /*
+                 * Looking for corresponding closing tag for a registered
+                 * tag, handling possible nesting of the same tag.
+                 */
+                GetTag(&tag, s, e, NULL);
+                if (STREQ(tag.string, tagPtr->tag)) {
+                    /*
+                     * Nesting of the same tag.
+                     */
+                    ++level;
+                    adp = s + tag.length + 1;
+
+                } else if (STREQ(tag.string, tagPtr->endtag)) {
+                    /*
+                     * Closing tag.
+                     */
+                    --level;
+                    if (level == 0) {
+                        /*
+                         * Found closing tag. Append tag content and
+                         * being looking for next ADP tag.
+                         */
+
+                        AppendTag(&parse, tagPtr, as, ae, s, flags);
+                        text = e + 1;
+                        state = TagNext;
+                    }
+                    adp = s + tag.length + 2;
+                } else {
+                    adp = s + 1;
                 }
+                continue;
             }
             break;
         }
 
-        /*
-         * Skip to next possible ADP tag location.
-         */
-        adp = s + 1;
+        break;
     }
     Ns_RWLockUnlock(&servPtr->adp.taglock);
 
@@ -522,15 +817,22 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
      */
 
     if ((flags & ADP_SINGLE) != 0u) {
-        int line = 0, len = -codePtr->text.length;
+        /*
+         * The cast of "text.length" to "int" is dangerous (for really big
+         * strings).
+         *
+         * See also: AdpParseTclFile(), and AdpExec() in adpeval.c
+         */
+
+        int line = 0, len = -(int)codePtr->text.length;
         codePtr->nscripts = codePtr->nblocks = 1;
         AppendLengths(codePtr, &len, &line);
     } else {
-        AppendLengths(codePtr, (const int *) parse.lens.string,
+        AppendLengths(codePtr, (const int *) parse.lengths.string,
                       (const int *) parse.lines.string);
     }
 
-    Tcl_DStringFree(&parse.lens);
+    Tcl_DStringFree(&parse.lengths);
     Tcl_DStringFree(&parse.lines);
     Tcl_DStringFree(&tag);
 }
@@ -675,8 +977,8 @@ AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsigned int fla
                 ++codePtr->nscripts;
                 l = -l;
             }
-            Tcl_DStringAppend(&parsePtr->lens, (char *) &l, LENSZ);
-            Tcl_DStringAppend(&parsePtr->lines, (char *) &parsePtr->line, LENSZ);
+            Tcl_DStringAppend(&parsePtr->lengths, (char *) &l, LENGTH_SIZE);
+            Tcl_DStringAppend(&parsePtr->lines, (char *) &parsePtr->line, LENGTH_SIZE);
             /*
              * Increment line numbers based on the passed-in segment
              */
@@ -719,7 +1021,12 @@ GetTag(Tcl_DString *dsPtr, char *s, const char *e, char **aPtr)
         ++s;
     }
     t = s;
-    while (s < e  && CHARTYPE(space, *s) == 0) {
+    /*
+     * The following loop for obtaining the tag name is more liberal than the
+     * HTML specification, allowing just letters and digits. However, we do
+     * NOT want e.g. "html<if" as a tag name, whenparsing "<html<if ...>>"
+     */
+    while (s < e  && CHARTYPE(space, *s) == 0  && *s != '<') {
         ++s;
     }
     Tcl_DStringSetLength(dsPtr, 0);
@@ -850,11 +1157,11 @@ ParseAtts(char *s, const char *e, unsigned int *flagsPtr, Tcl_DString *attsPtr, 
         }
         if (flagsPtr != NULL && vs != as) {
             if (STRIEQ(as, "runat") && STRIEQ(vs, "server")) {
-                *flagsPtr |= SERV_RUNAT;
+                *flagsPtr |= SCRIPT_TAG_SERV_RUNAT;
             } else if (STRIEQ(as, "language") && !STRIEQ(vs, "tcl")) {
-                *flagsPtr |= SERV_NOTTCL;
+                *flagsPtr |= SCRIPT_TAG_SERV_NOTTCL;
             } else if (STRIEQ(as, "stream") && STRIEQ(vs, "on")) {
-                *flagsPtr |= SERV_STREAM;
+                *flagsPtr |= SCRIPT_TAG_SERV_STREAM;
             }
         }
 
@@ -899,8 +1206,8 @@ GetScript(const char *tag, char *a, char *e, unsigned int *flagPtr)
 
     if (a < e && STRIEQ(tag, "script")) {
         ParseAtts(a, e, &flags, NULL, 1);
-        if ((flags & SERV_RUNAT) != 0u && (flags & SERV_NOTTCL) == 0u) {
-            *flagPtr = (flags & SERV_STREAM);
+        if ((flags & SCRIPT_TAG_SERV_RUNAT) != 0u && (flags & SCRIPT_TAG_SERV_NOTTCL) == 0u) {
+            *flagPtr = (flags & SCRIPT_TAG_SERV_STREAM);
             result = (e + 1);
         }
     }
@@ -998,7 +1305,7 @@ static void
 AppendLengths(AdpCode *codePtr, const int *length, const int *line)
 {
     Tcl_DString *textPtr;
-    int          start, ncopy;
+    int   start, ncopy;
 
     NS_NONNULL_ASSERT(codePtr != NULL);
     NS_NONNULL_ASSERT(length != NULL);
@@ -1008,8 +1315,8 @@ AppendLengths(AdpCode *codePtr, const int *length, const int *line)
     /*
      * Need to round up start of lengths array to next word.
      */
-    start = ((textPtr->length / LENSZ) + 1) * LENSZ;
-    ncopy = codePtr->nblocks * LENSZ;
+    start = ((textPtr->length / LENGTH_SIZE) + 1) * LENGTH_SIZE;
+    ncopy = (int)codePtr->nblocks * LENGTH_SIZE;
     Tcl_DStringSetLength(textPtr, start + (ncopy * 2));
     codePtr->len = (int *) (textPtr->string + start);
     codePtr->line = (int *) (textPtr->string + start + ncopy);

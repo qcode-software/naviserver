@@ -215,7 +215,7 @@ Ns_ModuleInit(const char *server, const char *UNUSED(module))
  *      Add Tcl commands for perms
  *
  * Results:
- *      NS_OK
+ *      TCL_OK
  *
  * Side effects:
  *      Adds Tcl commands
@@ -223,9 +223,9 @@ Ns_ModuleInit(const char *server, const char *UNUSED(module))
  *----------------------------------------------------------------------
  */
 
-static Ns_ReturnCode AddCmds(Tcl_Interp *interp, const void *arg)
+static int AddCmds(Tcl_Interp *interp, const void *arg)
 {
-  Tcl_CreateObjCommand(interp, "ns_perm", PermObjCmd, (ClientData)arg, NULL);
+    Tcl_CreateObjCommand(interp, "ns_perm", PermObjCmd, (ClientData)arg, NULL);
     return NS_OK;
 }
 
@@ -380,7 +380,7 @@ static Ns_ReturnCode AuthProc(const char *server, const char *method, const char
     Tcl_HashSearch search;
     char           buf[NS_ENCRYPT_BUFSIZE], *group;
     const char    *auth = NULL;
-    Ns_Conn       *conn = Ns_GetConn();
+    const Ns_Conn *conn = Ns_GetConn();
 
     if (conn == NULL) {
         Ns_Log(Error, "nsperm: authProc called without connection");
@@ -443,7 +443,7 @@ static Ns_ReturnCode AuthProc(const char *server, const char *method, const char
     if (STREQ(auth, "Basic")) {
 
         /*
-         * Basic Authentiction: Verify user password (if any).
+         * Basic Authentication: Verify user password (if any).
          */
 
         if (userPtr->pwd[0] != 0) {
@@ -761,7 +761,7 @@ FreeUserInfo(User *userPtr, const char *name)
  *      Implements "ns_perm adduser".
  *
  * Results:
- *      Tcl resut
+ *      Tcl result
  *
  * Side effects:
  *      A user may be added to the global user hash table
@@ -897,7 +897,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *      Implements "ns_perm deluser".
  *
  * Results:
- *      Tcl resut
+ *      Tcl result
  *
  * Side effects:
  *      A user may be deleted from the global user hash table
@@ -941,7 +941,7 @@ static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *      Implements "ns_perm listusers".
  *
  * Results:
- *      Tcl resut
+ *      Tcl result
  *
  * Side effects:
  *      None
@@ -1129,7 +1129,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *      Implements "ns_perm delgroup".
  *
  * Results:
- *      Tcl resut
+ *      Tcl result
  *
  * Side effects:
  *      A group may be deleted from the global user hash table
@@ -1186,7 +1186,7 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *      Implements "ns_perm listgroups".
  *
  * Results:
- *      Tcl resut
+ *      Tcl result
  *
  * Side effects:
  *      None

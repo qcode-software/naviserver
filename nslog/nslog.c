@@ -239,7 +239,7 @@ Ns_ModuleInit(const char *server, const char *module)
         logPtr->flags |= LOG_CHECKFORPROXY;
     }
 
-    logPtr->driverPattern = Ns_ConfigString(path, "driver", NULL);
+    logPtr->driverPattern = ns_strcopy(Ns_ConfigString(path, "driver", NULL));
 
     logPtr->ipv4maskPtr = NULL;
 #ifdef HAVE_IPV6
@@ -306,7 +306,7 @@ Ns_ModuleInit(const char *server, const char *module)
     return result;
 }
 
-static Ns_ReturnCode
+static int
 AddCmds(Tcl_Interp *interp, const void *arg)
 {
     const Log *logPtr = arg;
@@ -333,7 +333,7 @@ AddCmds(Tcl_Interp *interp, const void *arg)
  *      None
  *
  * Side effects:
- *      Upadating fields in logPtr
+ *      Updating fields in logPtr
  *
  *----------------------------------------------------------------------
  */
@@ -359,10 +359,10 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
                 ns_free((char *)logPtr->extendedHeaders);
             }
             if (logPtr->requestHeaders != NULL) {
-                ns_free((char *)logPtr->requestHeaders);
+                Tcl_Free((char *) logPtr->requestHeaders);
             }
             if (logPtr->responseHeaders != NULL) {
-                ns_free((char *)logPtr->responseHeaders);
+                Tcl_Free((char *)logPtr->responseHeaders);
             }
             logPtr->extendedHeaders = ns_strdup(str);
 
@@ -380,7 +380,6 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
                 logPtr->nrResponseHeaders = 0;
             } else {
                 Tcl_DString requestHeaderFields, responseHeaderFields;
-                int nrRequestsHeaderFields = 0, nrResponseHeaderFields = 0;
 
                 Tcl_DStringInit(&requestHeaderFields);
                 Tcl_DStringInit(&responseHeaderFields);
@@ -394,10 +393,8 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
                         suffix ++;
                         if (strncmp(fieldName, "request", 3) == 0) {
                             Tcl_DStringAppendElement(&requestHeaderFields, suffix);
-                            nrRequestsHeaderFields++;
                         } else if (strncmp(fieldName, "response", 3) == 0) {
                             Tcl_DStringAppendElement(&responseHeaderFields, suffix);
-                            nrResponseHeaderFields++;
                         } else {
                             Ns_Log(Error, "nslog: ignore invalid entry prefix '%s' in extendedHeaders parameter",
                                    fieldName);
@@ -407,7 +404,6 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
                          * No prefix, assume request header field
                          */
                         Tcl_DStringAppendElement(&requestHeaderFields, suffix);
-                        nrRequestsHeaderFields++;
                     }
                 }
                 (void) Tcl_SplitList(NULL, requestHeaderFields.string,
@@ -833,7 +829,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
     if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
         /*
-         * This branch is deprecated and kept only for backward
+         * This branch of the if is deprecated and kept only for backward
          * compatibility (added Dec 2020).
          */
         p = Ns_ConnForwardedPeerAddr(conn);

@@ -369,7 +369,7 @@ Ns_CacheWaitCreateEntryT(Ns_Cache *cache, const char *key, int *newPtr,
 
     if (isNew == 0 && Ns_CacheGetValueT(entry, transactionStackPtr) == NULL) {
         /*
-         * One could condsider setting a default timeout here, or defining max
+         * One could consider setting a default timeout here, or defining max
          * iterations to avoid definiteky a potential infinite loop.
          */
         do {
@@ -377,9 +377,12 @@ Ns_CacheWaitCreateEntryT(Ns_Cache *cache, const char *key, int *newPtr,
                 Ns_Log(Notice, "ns_cache create entry collision cache %s key '%s', no timeout",
                        ((Cache*)cache)->name, key);
             } else {
+                Ns_Time  relTime, *relTimePtr;
+
+                relTimePtr =  Ns_RelativeTime(&relTime, (Ns_Time *)timeoutPtr);
                 Ns_Log(Notice, "ns_cache create entry collision cache %s key '%s', timeout " NS_TIME_FMT,
                        ((Cache*)cache)->name, key,
-                       (int64_t)timeoutPtr->sec, timeoutPtr->usec);
+                       (int64_t)relTimePtr->sec, relTimePtr->usec);
             }
             status = Ns_CacheTimedWait(cache, timeoutPtr);
 

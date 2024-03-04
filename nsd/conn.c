@@ -761,6 +761,13 @@ Ns_ConnLocation(Ns_Conn *conn)
     const char     *location = NULL;
 
     if (servPtr->vhost.locationProc != NULL) {
+        /*
+         * Call the registered proc which is typically, a Tcl
+         * call. Therefore, make sure, the connection has already an
+         * interpreter associated.
+         */
+        Ns_GetConnInterp(conn);
+
         location = (*servPtr->vhost.locationProc)(conn);
     }
     if (location == NULL) {
@@ -810,19 +817,27 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
 
         /*
          * Prefer the new style Ns_ConnLocationProc.
+         *
+         * Call the registered proc which is typically, a Tcl
+         * call. Therefore, make sure, the connection has already an
+         * interpreter associated.
          */
+        Ns_GetConnInterp(conn);
 
         location = (*servPtr->vhost.connLocationProc)(conn, dest, servPtr->vhost.connLocationArg);
+        Ns_Log(Debug, "Ns_ConnLocation: locationproc returned <%s>", location);
 
     } else if (servPtr->vhost.locationProc != NULL) {
 
         /*
          * Fall back to old style Ns_LocationProc.
          */
+        Ns_GetConnInterp(conn);
 
         location = (*servPtr->vhost.locationProc)(conn);
         if (location != NULL) {
             location = Ns_DStringAppend(dest, location);
+            Ns_Log(Debug, "Ns_ConnLocation: old style locationproc returned <%s>", location);
         }
 
     } else if (servPtr->vhost.enabled
@@ -835,6 +850,7 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
          */
         if (Ns_StrIsValidHostHeaderContent(host)) {
             location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol, host, 0u, 0u);
+            Ns_Log(Debug, "Ns_ConnLocation: vhost - location based on host header field <%s>", location);
         }
     }
 
@@ -845,6 +861,7 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
      */
     if ((location == NULL) && (connPtr->location != NULL)) {
         location = Ns_DStringAppend(dest, connPtr->location);
+        Ns_Log(Debug, "Ns_ConnLocation: location from mapping table <%s>", location);
     }
 
     /*
@@ -863,6 +880,8 @@ Ns_ConnLocationAppend(Ns_Conn *conn, Ns_DString *dest)
             port = connPtr->drvPtr->port;
             addr = connPtr->drvPtr->address;
         }
+        Ns_Log(Debug, "Ns_ConnLocation: final resort, use numerical address '%s' '%hu'",
+               addr, port);
         location = Ns_HttpLocationString(dest, connPtr->drvPtr->protocol,
                                          addr, port, connPtr->drvPtr->defport);
     }
@@ -1563,25 +1582,34 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         NULL
     };
     static const unsigned int required_flags[] = {
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_OPEN, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_OPEN, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_OPEN, NS_CONN_REQUIRE_OPEN,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_OPEN, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_OPEN,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_OPEN,
+        /* line continued */ NS_CONN_REQUIRE_OPEN,
         NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONNECTED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, 0u,
         NS_CONN_REQUIRE_CONNECTED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONNECTED, NS_CONN_REQUIRE_CONFIGURED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
-        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED, NS_CONN_REQUIRE_CONFIGURED,
+        /* line continued */ NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
         NS_CONN_REQUIRE_CONFIGURED,
         0u
@@ -1626,9 +1654,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         /*
          * We have to check the connection requirements.
          */
-        if (NsConnRequire(interp, required_flags[opt], NULL) != NS_OK) {
-            result = TCL_ERROR;
-        } else {
+        if (NsConnRequire(interp, required_flags[opt], NULL, &result) == NS_OK) {
             /*
              * We know that connPtr can't be NULL.
              */
@@ -1750,7 +1776,7 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
             Tcl_SetResult(interp, itPtr->nsconn.auth, TCL_STATIC);
         } else {
             if (connPtr->auth == NULL) {
-                connPtr->auth = Ns_SetCreate(NULL);
+                connPtr->auth = Ns_SetCreate(NS_SET_NAME_AUTH);
             }
             if (unlikely(Ns_TclEnterSet(interp, connPtr->auth, NS_TCL_SET_STATIC) != TCL_OK)) {
                 result = TCL_ERROR;
@@ -1819,7 +1845,8 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
                 length = (int)connPtr->reqPtr->length - offset;
 
             } else if ((result == TCL_OK)
-                       && (length > -1)
+                       && (length >= 0)
+                       && (offset >= 0)
                        && ((size_t)length + (size_t)offset > connPtr->reqPtr->length)
                        ) {
                 Ns_TclPrintfResult(interp, "offset + length exceeds available content length");
@@ -2187,7 +2214,9 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         }
 
     case CProtocolIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(connPtr->drvPtr->protocol, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(request->isProxyRequest
+                                                  ? request->protocol
+                                                  : connPtr->drvPtr->protocol, -1));
         break;
 
     case CHostIdx:
@@ -2246,13 +2275,10 @@ NsTclConnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
             int               oc = 2, status;
             Ns_ObjvSpec       spec = {"?status", Ns_ObjvInt, &status, &statusRange};
 
-            if (NsConnRequire(interp, NS_CONN_REQUIRE_CONNECTED, &conn) != NS_OK) {
+            if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) == TCL_OK) {
                 result = TCL_ERROR;
 
-            } else if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
-                result = TCL_ERROR;
-
-            } else {
+            } else if (NsConnRequire(interp, NS_CONN_REQUIRE_CONNECTED, &conn, &result) == NS_OK) {
                 Tcl_SetObjResult(interp, Tcl_NewIntObj(Ns_ConnResponseStatus(conn)));
                 Ns_ConnSetResponseStatus(conn, status);
             }
@@ -2425,9 +2451,10 @@ NsTclWriteContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
         {NULL,       NULL,          NULL,      NULL}
     };
 
-    if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL) != NS_OK
-        || Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
+
+    } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL, &result) != NS_OK) {
 
     } else if (GetChan(interp, chanName, &chan) != TCL_OK) {
         result = TCL_ERROR;
@@ -2625,9 +2652,13 @@ MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
  *      - when the sockPtr of the connection was detachted, or
  *      - when the connection is already closed,
  *
- *      return NS_ERROR and set an appropriate error message, If connPtr is
- *      valid, the function return NS_OK and returns the connPtr in its second
- *      argument.
+ *      return NS_ERROR and set an appropriate error message when
+ *      rejectalreadyclosedconn is true (default). When this parameter is set
+ *      to false, it causes a soft error and returns the tcl status code as
+ *      last argument.
+ *
+ *      If the connection is valid, the function return NS_OK and returns the connPtr
+ *      in its thirg argument.
  *
  * Results:
  *      NaviServer result code
@@ -2639,10 +2670,11 @@ MakeConnChannel(const NsInterp *itPtr, Ns_Conn *conn)
  */
 
 Ns_ReturnCode
-NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr)
+NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr, int *tclResultPtr)
 {
     Ns_Conn      *conn;
     Ns_ReturnCode status;
+    bool          softError = NS_FALSE;
 
     NS_NONNULL_ASSERT(interp != NULL);
 
@@ -2653,12 +2685,13 @@ NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr)
 
     } else if (((flags & NS_CONN_REQUIRE_CONNECTED) != 0u)
                && (Ns_ConnSockPtr(conn) == NULL)) {
+        softError = (!nsconf.reject_already_closed_or_detached_connection);
         Tcl_SetObjResult(interp, Tcl_NewStringObj("connection socket is detached", -1));
         status = NS_ERROR;
 
     } else if (((flags & NS_CONN_REQUIRE_OPEN) != 0u)
-               && ((conn->flags & NS_CONN_CLOSED) != 0u)
-               && nsconf.reject_already_closed_connection) {
+               && ((conn->flags & NS_CONN_CLOSED) != 0u)) {
+        softError = (!nsconf.reject_already_closed_or_detached_connection);
         Tcl_SetObjResult(interp, Tcl_NewStringObj("connection already closed", -1));
         status = NS_ERROR;
 
@@ -2674,6 +2707,17 @@ NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr)
         status = NS_OK;
     }
 
+    if (tclResultPtr != NULL) {
+        *tclResultPtr = TCL_OK;
+        if (status == NS_ERROR) {
+            if (softError) {
+                Tcl_ResetResult(interp);
+                Ns_Log(Notice, "skip output due to rejectalreadyclosedconn == false");
+            } else {
+                *tclResultPtr = TCL_ERROR;
+            }
+        }
+    }
     return status;
 }
 

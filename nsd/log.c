@@ -102,6 +102,13 @@ typedef struct LogCache {
     Ns_DString  buffer;       /* The log entries cache text-cache */
 } LogCache;
 
+static LogEntry *LogEntryGet(LogCache *cachePtr) NS_GNUC_NONNULL(1);
+static void LogEntryFree(LogCache *cachePtr, LogEntry *logEntryPtr)  NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(2);
+
+#if !defined(NS_THREAD_LOCAL)
+static void LogEntriesFree(void *arg);
+#endif
+
 /*
  * Local functions defined in this file
  */
@@ -147,6 +154,9 @@ static int ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *ta
  */
 
 static Ns_Tls       tls;
+#if !defined(NS_THREAD_LOCAL)
+static Ns_Tls       tlsEntry;
+#endif
 static Ns_Mutex     lock;
 static Ns_Cond      cond;
 
@@ -259,6 +269,9 @@ NsInitLog(void)
 
     Ns_MutexSetName(&lock, "ns:log");
     Ns_TlsAlloc(&tls, FreeCache);
+#if !defined(NS_THREAD_LOCAL)
+    Ns_TlsAlloc(&tlsEntry, LogEntriesFree);
+#endif
     Tcl_InitHashTable(&severityTable, TCL_STRING_KEYS);
 
     Tcl_SetPanicProc(Panic);
@@ -421,23 +434,33 @@ NsConfigLog(void)
         if (likely(result == TCL_OK)) {
             prefixIntensity = (LogColorIntensity)idx;
         }
+    } else {
+        /*
+         * Just refer to these values to mark these as used.
+         */
+        (void) Ns_ConfigString(path, "logprefixcolor", NS_EMPTY_STRING);
+        (void) Ns_ConfigString(path, "logprefixintensity", NS_EMPTY_STRING);
     }
 
     maxbackup = Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
 
-    logfileName = Ns_ConfigString(path, "serverlog", "nsd.log");
+    logfileName = ns_strcopy(Ns_ConfigString(path, "serverlog", "nsd.log"));
     if (Ns_PathIsAbsolute(logfileName) == NS_FALSE) {
+        int length;
+
         Ns_DStringInit(&ds);
         if (Ns_HomePathExists("logs", (char *)0L)) {
             (void)Ns_HomePath(&ds, "logs", logfileName, (char *)0L);
         } else {
             (void)Ns_HomePath(&ds, logfileName, (char *)0L);
         }
+        length = ds.length;
+        ns_free((void*)logfileName);
         logfileName = Ns_DStringExport(&ds);
-        Ns_SetUpdate(set, "serverlog", logfileName);
+        Ns_SetUpdateSz(set, "serverlog", 9, logfileName, length);
     }
 
-    rollfmt = Ns_ConfigString(path, "logrollfmt", NS_EMPTY_STRING);
+    rollfmt = ns_strcopy(Ns_ConfigString(path, "logrollfmt", NS_EMPTY_STRING));
 
 }
 
@@ -625,7 +648,7 @@ Ns_LogSeverityEnabled(Ns_LogSeverity severity)
  *      Previous enabled state.
  *
  * Side effects:
- *      Upadating severityConfig
+ *      Updating severityConfig
  *
  *----------------------------------------------------------------------
  */
@@ -749,7 +772,13 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
          */
         cachePtr = GetCache();
         if (cachePtr->finalizing) {
-            fprintf(stderr, "Log cache is already finalized, ignore logging attempt\n");
+            Tcl_DString ds;
+
+            fprintf(stderr, "Log cache is already finalized, ignore logging attempt, message:\n");
+            Tcl_DStringInit(&ds);
+            Ns_DStringVPrintf(&ds, fmt, apSrc);
+            fprintf(stderr, "%s", ds.string);
+            Tcl_DStringFree(&ds);
             return;
         }
         if (cachePtr->currentEntry != NULL) {
@@ -758,7 +787,7 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
             entryPtr = cachePtr->firstEntry;
         }
         if (entryPtr == NULL) {
-            entryPtr = ns_malloc(sizeof(LogEntry));
+            entryPtr = LogEntryGet(cachePtr);
             entryPtr->nextPtr = NULL;
             if (cachePtr->currentEntry != NULL) {
                 cachePtr->currentEntry->nextPtr = entryPtr;
@@ -1605,8 +1634,8 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
     NS_NONNULL_ASSERT(cachePtr != NULL);
     NS_NONNULL_ASSERT(listPtr != NULL);
 
-    /*fprintf(stderr, "#### %s cachePtr %p locked %d count %d cachePtr->count %d\n",
-      Ns_ThreadGetName(), (void*)cachePtr, locked, count, cachePtr->count);*/
+    /*fprintf(stderr, "#### %s cachePtr %p locked %d count %d cachePtr->count %d hold %d\n",
+      Ns_ThreadGetName(), (void*)cachePtr, locked, count, cachePtr->count, cachePtr->hold);*/
 
     if (locked) {
         Ns_MutexLock(&lock);
@@ -1684,8 +1713,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
 
             for (; entryPtr != NULL; entryPtr = tmpPtr) {
                 tmpPtr = entryPtr->nextPtr;
-                memset(entryPtr, 0, sizeof(LogEntry));
-                ns_free(entryPtr);
+                LogEntryFree(cachePtr, entryPtr);
             }
         }
     }
@@ -1765,7 +1793,7 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     }
 
     /*
-     * In case colorization was configured, add the necessary escape
+     * In case colorization was configured, add the escape necessary
      * sequences.
      */
     if ((flags & LOG_COLORIZE) != 0u) {
@@ -2048,6 +2076,63 @@ GetCache(void)
     return cachePtr;
 }
 
+#if !defined(NS_THREAD_LOCAL)
+static void LogEntriesFree(void *arg)
+{
+    LogEntry *logEntry = (LogEntry *)arg;
+    fprintf(stderr, "LOGENTRY: free list %p\n", (void*)logEntry);
+    ns_free(logEntry);
+}
+#endif
+
+static LogEntry *
+LogEntryGet(LogCache *cachePtr)
+{
+    LogEntry *entryPtr;
+
+    if (cachePtr->hold) {
+        entryPtr = ns_malloc(sizeof(LogEntry));
+    } else {
+#if defined(NS_THREAD_LOCAL)
+        static NS_THREAD_LOCAL LogEntry logEntry = {0};
+        entryPtr = &logEntry;
+#else
+        LogCache *logEntryList;
+
+        logEntryList = Ns_TlsGet(&tlsEntry);
+        if (logEntryList == NULL) {
+            logEntryList = ns_calloc(1u, sizeof(LogEntry));
+            entryPtr = logEntryList;
+            Ns_TlsSet(&tlsEntry, logEntryList);
+        } else {
+            entryPtr = logEntryList;
+            logEntryList = entryPtr->nextPtr;
+            entryPtr->nextPtr = NULL;
+        }
+#endif
+    }
+    return entryPtr;
+}
+
+static void
+LogEntryFree(LogCache *cachePtr, LogEntry *logEntryPtr)
+{
+    if (cachePtr->hold) {
+        memset(logEntryPtr, 0, sizeof(LogEntry));
+        ns_free(logEntryPtr);
+    } else {
+#if defined(NS_THREAD_LOCAL)
+#else
+        logEntryList = Ns_TlsGet(&tlsEntry);
+        logEntryPtr->nextPtr = logEntryList;
+        if (logEntryList != NULL) {
+            logEntryList->nextPtr = logEntryPtr;
+        }
+#endif
+        /*fprintf(stderr, "LOGENTRY: pushed\n");*/
+    }
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -2075,19 +2160,7 @@ FreeCache(void *arg)
         cachePtr->finalizing = NS_TRUE;
 
         LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
-#if 0
-        {
-            LogEntry *entryPtr, *tmpPtr;
 
-            // FIXME AW - this is already done in LogFlush, so why repeat it again?
-            entryPtr = cachePtr->firstEntry;
-            while (entryPtr != NULL) {
-                tmpPtr = entryPtr->nextPtr;
-                ns_free(entryPtr);
-                entryPtr = tmpPtr;
-            }
-        }
-#endif
         Ns_DStringFree(&cachePtr->buffer);
         ns_free(cachePtr);
     }

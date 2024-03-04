@@ -35,6 +35,48 @@
 
 #include "nsd.h"
 
+static void ReportError(Tcl_Interp *interp, const char *fmt, ...)
+    NS_GNUC_NONNULL(2) NS_GNUC_PRINTF(2,3);
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ReportError --
+ *
+ *      Error reporting function for this file.  The function has the
+ *      fprintf interface (format string plus arguments) and leaves an
+ *      error message in the interpreter's result object, when an
+ *      interpreter is provided. Otherwise, it outputs a warning to
+ *      the system log.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Error reporting.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+ReportError(Tcl_Interp *interp, const char *fmt, ...)
+{
+    va_list     ap;
+    Tcl_DString ds;
+
+    NS_NONNULL_ASSERT(fmt != NULL);
+
+    Tcl_DStringInit(&ds);
+    va_start(ap, fmt);
+    Ns_DStringVPrintf(&ds, fmt, ap);
+    va_end(ap);
+    if (interp != NULL) {
+        Tcl_DStringResult(interp, &ds);
+    } else {
+        Ns_Log(Warning, "%s", ds.string);
+        Tcl_DStringFree(&ds);
+    }
+}
+
 #ifdef HAVE_OPENSSL_EVP_H
 # include "nsopenssl.h"
 # include <openssl/ssl.h>
@@ -68,7 +110,7 @@
  */
 typedef struct {
     int            timeout;
-    char          *respin;     /* File to load OCSP Response from (or NULL if no file) */
+    //char          *respin;     /* File to load OCSP Response from (or NULL if no file) */
     int            verbose;
     OCSP_RESPONSE *resp;
     Ns_Time        expire;
@@ -93,18 +135,20 @@ static DH *SSL_dhCB(SSL *ssl, int isExport, int keyLength);
 # ifndef OPENSSL_NO_OCSP
 static int SSL_cert_statusCB(SSL *ssl, void *arg);
 
+/*
+ * Local functions defined in this file
+ */
+static Ns_ReturnCode
+PartialTimeout(const Ns_Time *endTimePtr, Ns_Time *diffPtr, Ns_Time *defaultPartialTimeoutPtr,
+               Ns_Time **partialTimeoutPtrPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+
 static bool
 OCSP_ResponseIsValid(OCSP_RESPONSE *resp, OCSP_CERTID *id)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 # endif
 
-/*
- * Local functions defined in this file
- */
-static void ReportError(Tcl_Interp *interp, const char *fmt, ...)
-    NS_GNUC_NONNULL(2) NS_GNUC_PRINTF(2,3);
-
-static Ns_ReturnCode WaitFor(NS_SOCKET sock, unsigned int st);
+static Ns_ReturnCode WaitFor(NS_SOCKET sock, unsigned int st, Ns_Time *timeoutPtr);
 
 static void CertTableInit(void);
 static void CertTableReload(void *UNUSED(arg));
@@ -444,7 +488,6 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
              * We got a response.
              */
             if (result != SSL_TLSEXT_ERR_OK) {
-                assert(resp != NULL);
                 OCSP_RESPONSE_free(resp);
                 goto err;
             }
@@ -706,7 +749,7 @@ OCSP_FromCacheFile(Tcl_DString *dsPtr, OCSP_CERTID *id, OCSP_RESPONSE **resp)
  *
  * OCSP_computeResponse --
  *
- *      Get OCSP_RESPONSE either from a cache file or from the cerificate
+ *      Get OCSP_RESPONSE either from a cache file or from the certificate
  *      issuing server via the DER encoded OCSP request. In case the disk
  *      lookup fails, but the request to the AIA server succeeds, the result
  *      is stored for caching in the filesystem.
@@ -743,6 +786,12 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
         goto err;
     }
 
+    aia = X509_get1_ocsp(cert);
+    if (aia == NULL) {
+        Ns_Log(Warning, "cert_status: cannot obtain URL for Authority Information Access (AIA), maybe self-signed?");
+        goto err;
+    }
+
     /*
      * Try to get the OCSP_RESPONSE from a cache file.
      */
@@ -760,8 +809,7 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
         STACK_OF(X509_EXTENSION) *exts;
         int i;
 
-        aia = X509_get1_ocsp(cert);
-        if (aia != NULL && srctx->verbose) {
+        if (srctx->verbose) {
             Ns_Log(Notice, "cert_status: Authority Information Access (AIA) URL: %s",
                    sk_OPENSSL_STRING_value(aia, 0));
         }
@@ -825,7 +873,7 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
  *
  * OCSP_FromAIA --
  *
- *      Get OCSP_RESPONSE from the cerificate issuing server (Authority
+ *      Get OCSP_RESPONSE from the certificate issuing server (Authority
  *      Information Access) via the DER encoded OCSP request.
  *
  * Results:
@@ -1142,12 +1190,12 @@ Ns_TLS_CtxFree(NS_TLS_SSL_CTX *ctx)
  *
  * WaitFor --
  *
- *      Wait 10ms (currently hardcoded) for a state change on a socket.
- *      This is used for handling OpenSSL's states SSL_ERROR_WANT_READ
- *      and SSL_ERROR_WANT_WRITE.
+ *      Wait for the provided or default 10ms (currently hardcoded)
+ *      for a state change on a socket.  This is used for handling
+ *      OpenSSL's states SSL_ERROR_WANT_READ and SSL_ERROR_WANT_WRITE.
  *
  * Results:
- *      NaviServer return code.
+ *      NS_OK, NS_ERROR, or NS_TIMEOUT.
  *
  * Side effects:
  *      None.
@@ -1155,11 +1203,41 @@ Ns_TLS_CtxFree(NS_TLS_SSL_CTX *ctx)
  *----------------------------------------------------------------------
  */
 static Ns_ReturnCode
-WaitFor(NS_SOCKET sock, unsigned int st)
+WaitFor(NS_SOCKET sock, unsigned int st, Ns_Time *timeoutPtr)
 {
-    Ns_Time timeout = { 0, 10000 }; /* 10ms */
-    return Ns_SockTimedWait(sock, st, &timeout);
+    Ns_Time timeout;
+    if (timeoutPtr == NULL) {
+        /* 10ms */
+        timeout.sec = 0;
+        timeout.usec = 10000;
+        timeoutPtr = &timeout;
+    }
+    return Ns_SockTimedWait(sock, st, timeoutPtr);
 }
+
+static Ns_ReturnCode
+PartialTimeout(const Ns_Time *endTimePtr, Ns_Time *diffPtr, Ns_Time *defaultPartialTimeoutPtr,
+               Ns_Time **partialTimeoutPtrPtr)
+{
+    Ns_Time       now;
+    Ns_ReturnCode result = NS_OK;
+
+    Ns_GetTime(&now);
+    if (Ns_DiffTime(endTimePtr, &now, diffPtr) > 0) {
+        if (diffPtr->sec > defaultPartialTimeoutPtr->sec || diffPtr->usec > defaultPartialTimeoutPtr->usec) {
+            *partialTimeoutPtrPtr = defaultPartialTimeoutPtr;
+        } else {
+            *partialTimeoutPtrPtr = diffPtr;
+        }
+        Ns_Log(Debug, "Ns_TLS_SSLConnect partial timeout " NS_TIME_FMT,
+               (int64_t)(*partialTimeoutPtrPtr)->sec, (*partialTimeoutPtrPtr)->usec);
+    } else {
+        /* time is up */
+        result = NS_TIMEOUT;
+    }
+    return result;
+}
+
 
 
 /*
@@ -1171,30 +1249,36 @@ WaitFor(NS_SOCKET sock, unsigned int st)
  *      usable (is connected, handshake performed)
  *
  * Results:
- *      A standard Tcl result.
+ *      NS_OK, NS_ERROR, or NS_TIMEOUT.
  *
  * Side effects:
  *      None.
  *
  *----------------------------------------------------------------------
  */
-int
+Ns_ReturnCode
 Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
-                  const char *sni_hostname,
+                  const char *sni_hostname, const Ns_Time *timeoutPtr,
                   NS_TLS_SSL **sslPtr)
 {
     NS_TLS_SSL     *ssl;
-    int             result = TCL_OK;
+    Ns_ReturnCode   result = NS_OK;
+    Ns_Time         endTime, defaultPartialTimeout = { 0, 10000 }; /* 10ms */
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(ctx != NULL);
     NS_NONNULL_ASSERT(sslPtr != NULL);
 
+    if (timeoutPtr != NULL) {
+        Ns_GetTime(&endTime);
+        Ns_IncrTime(&endTime, timeoutPtr->sec, timeoutPtr->usec);
+    }
+
     ssl = SSL_new(ctx);
     *sslPtr = ssl;
     if (ssl == NULL) {
         Ns_TclPrintfResult(interp, "SSLCreate failed: %s", ERR_error_string(ERR_get_error(), NULL));
-        result = TCL_ERROR;
+        result = NS_ERROR;
 
     } else {
         if (sni_hostname != NULL) {
@@ -1211,27 +1295,38 @@ Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
         SSL_set_connect_state(ssl);
 
         for (;;) {
-            int sslRc, err;
+            int           sslRc, err;
+            Ns_Time       timeout, *partialTimeoutPtr = NULL;
 
             Ns_Log(Debug, "ssl connect on sock %d", sock);
             sslRc = SSL_connect(ssl);
             err   = SSL_get_error(ssl, sslRc);
             //fprintf(stderr, "### ssl connect sock %d returned err %d\n", sock, err);
 
-            if (err == SSL_ERROR_WANT_READ) {
-                (void)WaitFor(sock, (unsigned int)NS_SOCK_READ);
-                continue;
-
-            } else if (err == SSL_ERROR_WANT_WRITE) {
-                (void)WaitFor(sock, (unsigned int)NS_SOCK_WRITE);
+            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+                if (timeoutPtr != NULL) {
+                    /*
+                     * Since there might be many WANT_READ or
+                     * WANT_WRITE, we have to constantly check the
+                     * remaining time and may adjust the partial
+                     * timeout as well.
+                     */
+                    if (PartialTimeout(&endTime, &timeout, &defaultPartialTimeout, &partialTimeoutPtr) == NS_TIMEOUT) {
+                        result = NS_TIMEOUT;
+                        break;
+                    }
+                }
+                (void) WaitFor(sock,
+                               (unsigned int)(err == SSL_ERROR_WANT_READ ? NS_SOCK_READ : NS_SOCK_WRITE),
+                               partialTimeoutPtr);
                 continue;
             }
             break;
         }
 
-        if (!SSL_is_init_finished(ssl)) {
+        if (result == NS_OK && !SSL_is_init_finished(ssl)) {
             Ns_TclPrintfResult(interp, "ssl connect failed: %s", ERR_error_string(ERR_get_error(), NULL));
-            result = TCL_ERROR;
+            result = NS_ERROR;
         } else {
             //const char *verifyString = X509_verify_cert_error_string(SSL_get_verify_result(ssl));
             //fprintf(stderr, "### SSL certificate verify: %s\n", verifyString);
@@ -1265,45 +1360,6 @@ SSLPassword(char *buf, int num, int UNUSED(rwflag), void *UNUSED(userdata))
     fprintf(stdout, "Enter SSL password:");
     pwd = fgets(buf, num, stdin);
     return (pwd != NULL ? (int)strlen(buf) : 0);
-}
-
-/*
- *----------------------------------------------------------------------
- *
- * ReportError --
- *
- *      Error reporting function for this file.  The function has the
- *      fprintf interface (format string plus arguments) and leaves an
- *      error message in the interpreter's result object, when an
- *      interpreter is provided. Otherwise, it outputs a warning to
- *      the system log.
- *
- * Results:
- *      None.
- *
- * Side effects:
- *      Error reporting.
- *
- *----------------------------------------------------------------------
- */
-static void
-ReportError(Tcl_Interp *interp, const char *fmt, ...)
-{
-    va_list     ap;
-    Tcl_DString ds;
-
-    NS_NONNULL_ASSERT(fmt != NULL);
-
-    Tcl_DStringInit(&ds);
-    va_start(ap, fmt);
-    Ns_DStringVPrintf(&ds, fmt, ap);
-    va_end(ap);
-    if (interp != NULL) {
-        Tcl_DStringResult(interp, &ds);
-    } else {
-        Ns_Log(Warning, "%s", ds.string);
-        Tcl_DStringFree(&ds);
-    }
 }
 
 /*
@@ -1510,7 +1566,7 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
 
 #if OPENSSL_VERSION_NUMBER > 0x00908070 && !defined(HAVE_OPENSSL_3) && !defined(OPENSSL_NO_EC)
             /*
-             * Generate key for eliptic curve cryptography (potentially used
+             * Generate key for elliptic curve cryptography (potentially used
              * for Elliptic Curve Digital Signature Algorithm (ECDSA) and
              * Elliptic Curve Diffie-Hellman (ECDH).
              *
@@ -1560,7 +1616,11 @@ static void CertTableAdd(const NS_TLS_SSL_CTX *ctx, const char *cert)
     Ns_MasterLock();
     hPtr = Tcl_CreateHashEntry(&certTable, (char *)ctx, &isNew);
     if (isNew != 0) {
-        Tcl_SetHashValue(hPtr, cert);
+        /*
+         * Keep a local copy of the certificate string in case the
+         * passed-in value is volatile.
+         */
+        Tcl_SetHashValue(hPtr, ns_strdup(cert));
         Ns_Log(Debug, "CertTableAdd: sslCtx %p cert '%s'", (void *)ctx, cert);
     }
     Ns_MasterUnlock();
@@ -1816,11 +1876,11 @@ Ns_TLS_SSLAccept(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
             err = SSL_get_error(ssl, rc);
 
             if (err == SSL_ERROR_WANT_READ) {
-                (void)WaitFor(sock, (unsigned int)NS_SOCK_READ);
+                (void)WaitFor(sock, (unsigned int)NS_SOCK_READ, NULL);
                 continue;
 
             } else if (err == SSL_ERROR_WANT_WRITE) {
-                (void)WaitFor(sock, (unsigned int)NS_SOCK_WRITE);
+                (void)WaitFor(sock, (unsigned int)NS_SOCK_WRITE, NULL);
                 continue;
             }
             break;
@@ -1964,7 +2024,15 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
                    sock, sslERRcode, reasonCode);
 #ifdef SSL_R_UNEXPECTED_EOF_WHILE_READING
             if (reasonCode == SSL_R_UNEXPECTED_EOF_WHILE_READING) {
-                Ns_Log(Notice, "SSL_read(%d) ERROR_SYSCALL sees UNEXPECTED_EOF_WHILE_READING", sock);
+                /*
+                 * Only complain loudly, when socket not in init
+                 * mode. SSL_in_init() returns 1 if the SSL/TLS state
+                 * machine is currently processing or awaiting
+                 * handshake messages, or 0 otherwise.
+                 */
+                Ns_LogSeverity level = (SSL_in_init(sslPtr) == 1 ? Debug : Notice);
+
+                Ns_Log(level, "SSL_read(%d) ERROR_SYSCALL sees UNEXPECTED_EOF_WHILE_READING", sock);
                 nRead = got;
                 sockState = NS_SOCK_DONE;
                 break;
@@ -2046,7 +2114,7 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
 ssize_t
 Ns_SSLSendBufs2(SSL *ssl, const struct iovec *bufs, int nbufs)
 {
-    ssize_t sent;
+    ssize_t sent = 0;
 
     NS_NONNULL_ASSERT(ssl != NULL);
     NS_NONNULL_ASSERT(bufs != NULL);
@@ -2055,10 +2123,7 @@ Ns_SSLSendBufs2(SSL *ssl, const struct iovec *bufs, int nbufs)
         /* sent = -1; to silence bad static checkers (cppcheck), fb infer complains when set */
         Ns_Fatal("Ns_SSLSendBufs2: can handle at most one buffer at the time");
 
-    } else if (bufs[0].iov_len == 0) {
-        sent = 0;
-
-    } else {
+    } else if (bufs[0].iov_len > 0) {
         int  err;
 
         sent = SSL_write(ssl, bufs[0].iov_base, (int)bufs[0].iov_len);
@@ -2135,7 +2200,7 @@ void NsInitOpenSSL(void)
 
 int
 Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET UNUSED(sock), NS_TLS_SSL_CTX *UNUSED(ctx),
-                  const char *UNUSED(sni_hostname),
+                  const char *UNUSED(sni_hostname), const Ns_Time *UNUSED(timeoutPtr),
                   NS_TLS_SSL **UNUSED(sslPtr))
 {
     Ns_TclPrintfResult(interp, "SSLCreate failed: no support for OpenSSL built in");
@@ -2175,6 +2240,16 @@ Ns_TLS_CtxFree(NS_TLS_SSL_CTX *UNUSED(ctx))
 {
     /* dummy stub */
 }
+
+int
+Ns_TLS_CtxServerInit(const char *UNUSED(path), Tcl_Interp *UNUSED(interp),
+                     unsigned int UNUSED(flags),
+                     void *UNUSED(app_data),
+                     NS_TLS_SSL_CTX **UNUSED(ctxPtr))
+{
+    return TCL_OK;
+}
+
 #endif
 
 /*

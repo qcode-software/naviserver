@@ -380,6 +380,8 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
 
  done:
 
+    request->isProxyRequest = (request->host != NULL && request->protocol != NULL);
+
     Ns_Log(Warning, "Ns_ParseRequest <%s> -> ERROR", line);
     Ns_DStringFree(&ds);
     return NS_ERROR;
@@ -668,7 +670,7 @@ Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseD
 
                 Ns_DStringInit(&ds);
                 Ns_DStringVarAppend(&ds, value, " ", line, (char *)0L);
-                Ns_SetPutValue(set, idx, ds.string);
+                Ns_SetPutValueSz(set, idx, ds.string, ds.length);
                 Ns_DStringFree(&ds);
             }
         }
@@ -698,7 +700,7 @@ Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseD
             for (value = sep + 1; (*value != '\0') && CHARTYPE(space, *value) != 0; value++) {
                 ;
             }
-            idx = Ns_SetPut(set, line, value);
+            idx = Ns_SetPutSz(set, line, sep-line, value, -1);
             key = Ns_SetKey(set, idx);
             if (disp == ToLower) {
                 while (*key != '\0') {
@@ -862,7 +864,7 @@ GetEncodingFormat(const char *encodingString, const char *encodingFormat, double
  *
  * CompressAllow --
  *
- *      Handle quality values expressed expicitly (for gzip or brotli) in the
+ *      Handle quality values expressed explicitly (for gzip or brotli) in the
  *      header fields. Respect cases, where compression is forbidden via
  *      identy or default rules.
  *

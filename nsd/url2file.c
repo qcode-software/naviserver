@@ -112,7 +112,13 @@ ConfigServerUrl2File(const char *server)
     servPtr = NsGetServer(server);
     if (likely(servPtr != NULL)) {
         Ns_RegisterUrl2FileProc(server, "/", Ns_FastUrl2FileProc, NULL, servPtr, 0u);
-        Ns_SetUrlToFileProc(server, NsUrlToFileProc);
+        /*
+         * The following call was here for quite a long time, using the
+         * deprecated Ns_SetUrlToFileProc() (at least since 2005). So, code
+         * might depend on this, but I doubt it. Leave it for the time being,
+         * commented out.
+         */
+        //Ns_SetUrlToFileProc(server, NsUrlToFileProc);
         result = NS_OK;
     } else {
         result = NS_ERROR;
@@ -147,6 +153,7 @@ Ns_RegisterUrl2FileProc(const char *server, const char *url,
                         unsigned int flags)
 {
     NsServer *servPtr = NsGetServer(server);
+    /*Ns_Log(Warning, "Ns_RegisterUrl2FileProc CALLED for url '%s'", url);*/
 
     if (servPtr != NULL) {
         Url2File *u2fPtr;
@@ -267,9 +274,12 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
     NS_NONNULL_ASSERT(url != NULL);
 
     if (servPtr->fastpath.url2file != NULL) {
+        Ns_Log(Debug, "url2file: url '%s' use fastpath.url2file", url);
         status = (*servPtr->fastpath.url2file)(dsPtr, servPtr->server, url);
     } else {
         Url2File *u2fPtr;
+
+        Ns_Log(Debug, "url2file: url '%s' use NsUrlSpecificGet to determine filename", url);
 
         Ns_MutexLock(&ulock);
         u2fPtr = NsUrlSpecificGet(servPtr, "x", url, uid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL);
@@ -291,6 +301,7 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
         }
     }
 
+    Ns_Log(Debug, "url2file: url '%s' is mapped to '%s' (status %d)", url, dsPtr->string, status);
     return status;
 }
 
@@ -316,6 +327,7 @@ void
 Ns_SetUrlToFileProc(const char *server, Ns_UrlToFileProc *procPtr)
 {
     NsServer *servPtr = NsGetServer(server);
+    Ns_Log(Warning, "DEPRECATED proc called");
 
     if (servPtr != NULL) {
         servPtr->fastpath.url2file = procPtr;
@@ -464,12 +476,15 @@ NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc,
 int
 NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
-    char       *url = NULL;
-    int         noinherit = 0, recurse = 0, result = TCL_OK;
+    const NsInterp *itPtr = clientData;
+    NsServer       *servPtr = itPtr->servPtr;
+    char           *url = NULL;
+    int             noinherit = 0, recurse = 0, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_TRUE)},
-        {"-recurse",   Ns_ObjvBool,  &recurse,   INT2PTR(NS_TRUE)},
-        {"--",         Ns_ObjvBreak, NULL,   NULL},
+        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
+        {"-recurse",   Ns_ObjvBool,   &recurse,   INT2PTR(NS_TRUE)},
+        {"-server",    Ns_ObjvServer, &servPtr,   NULL},
+        {"--",         Ns_ObjvBreak,  NULL,       NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -480,7 +495,6 @@ NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int obj
         result = TCL_ERROR;
     } else {
         unsigned int    flags = 0u;
-        const NsInterp *itPtr = clientData;
 
         if (noinherit != 0) {
             flags |= NS_OP_NOINHERIT;
@@ -489,7 +503,7 @@ NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int obj
             flags |= NS_OP_RECURSE;
         }
 
-        Ns_UnRegisterUrl2FileProc(itPtr->servPtr->server, url, flags);
+        Ns_UnRegisterUrl2FileProc(servPtr->server, url, flags);
     }
 
     return result;

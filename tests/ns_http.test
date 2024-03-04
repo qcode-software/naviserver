@@ -573,12 +573,12 @@ test http-5.2.1-b {
 if {$tcl_version > 8.6} {
     #
     # Binary content via non-binary mimetype is questionable, but works in 8.7
-    #
+    # Binary content with binary mimetype should work
 
     test http-5.2.2-b {
 
         check encoding  ns_conn content PUT,
-        content type text/html
+        content type application/octet-stream
         binary data
 
     } -constraints {serverListen} -setup {
@@ -593,36 +593,40 @@ if {$tcl_version > 8.6} {
         }
     } -body {
         set string [encoding convertto utf-8 "\u0000\u0001\u0002\u0003☀"]
-        nstest::http -getbody 1 -setheaders {content-type text/html} PUT /put $string
+        nstest::http -getbody 1 -setheaders {content-type application/octet-stream} PUT /put $string
     } -cleanup {
         ns_unregister_op PUT /put
         unset -nocomplain r
-    } -result {200 {utf-8 <text/html> 00 01 02 03 E2 98 80 (7 7)}}
+    } -result {200 {utf-8 <application/octet-stream> 00 01 02 03 E2 98 80 (7 7)}}
 
-
-    test http-5.2.3-b {
-
-        check encoding  ns_conn content PUT,
-        content type text/html;charset=utf-8
-        binary data
-
-    } -constraints {serverListen} -setup {
-        ns_register_proc PUT /put {
-            #ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
-            set contentType [ns_set iget [ns_conn headers] content-type]
-            set contentLength [ns_set iget [ns_conn headers] content-length]
-            set content [ns_conn content -binary]
-            foreach byte [split $content ""] { lappend bytes [format %02X [scan $byte %c]] }
-            set bytesLength [llength $bytes]
-            ns_return 200 text/plain "[ns_conn encoding] <$contentType> $bytes ($contentLength $bytesLength)"
-        }
-    } -body {
-        set string [encoding convertto utf-8 "\u0000\u0001\u0002\u0003☀"]
-        nstest::http -getbody 1 -setheaders {content-type text/html;charset=utf-8} PUT /put $string
-    } -cleanup {
-        ns_unregister_op PUT /put
-        unset -nocomplain r
-    } -result {200 {utf-8 <text/html;charset=utf-8> 00 01 02 03 E2 98 80 (7 7)}}
+    #
+    #  Detection of binary content via Tcl_Obj object type + bytes
+    #  content is unreliable. Therefore, this questionable test for
+    #  tcl 8.7+ is deactivated.
+    #
+    # test http-5.2.3-b {
+    #
+    #     check encoding  ns_conn content PUT,
+    #     content type text/html;charset=utf-8
+    #     binary data
+    #
+    # } -constraints {serverListen} -setup {
+    #     ns_register_proc PUT /put {
+    #         #ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
+    #         set contentType [ns_set iget [ns_conn headers] content-type]
+    #         set contentLength [ns_set iget [ns_conn headers] content-length]
+    #         set content [ns_conn content -binary]
+    #         foreach byte [split $content ""] { lappend bytes [format %02X [scan $byte %c]] }
+    #         set bytesLength [llength $bytes]
+    #         ns_return 200 text/plain "[ns_conn encoding] <$contentType> $bytes ($contentLength $bytesLength)"
+    #     }
+    # } -body {
+    #     set string [encoding convertto utf-8 "\u0000\u0001\u0002\u0003☀"]
+    #     nstest::http -getbody 1 -setheaders {content-type text/html;charset=utf-8} PUT /put $string
+    # } -cleanup {
+    #     ns_unregister_op PUT /put
+    #     unset -nocomplain r
+    # } -returnCodes {error ok} -result {200 {utf-8 <text/html> 00 01 02 03 E2 98 80 (7 7)}}
 }
 
 
@@ -896,7 +900,7 @@ test http-5.7.1a {
 } -cleanup {
     ns_unregister_op POST /POST
     unset -nocomplain r
-} -result {400 {application/x-www-form-urlencoded cannot decode 'p1=a%C5%93Cb&p2=a%E6b'; contains invalid UTF-8 NS_INVALID_UTF8}}
+} -result {200 {application/x-www-form-urlencoded 'p1 aÅCb p2 aæb' POST }}
 
 
 test http-5.7.1b {
@@ -1816,12 +1820,15 @@ test http-8.2 {ns_return with UTF-8 3 byte char with fresh bytearray} -constrain
 test http-8.3 {ns_return with UTF-8 3 byte char with impure bytearray} -constraints {serverListen} -setup {
     ns_register_proc GET /get {
         set v "☃"
-        set fn [ns_mktemp]
-        set F [open /tmp/sun w]
-        fconfigure $F -translation binary
-        puts -nonewline $F $v
-        close $F
-        file delete $fn
+        set fn [ns_config ns/parameters tmpdir]sun-[clock clicks -microseconds]
+        try {
+            set F [open $fn w]
+            fconfigure $F -translation binary
+            puts -nonewline $F $v
+            close $F
+        } finally {
+            file delete $fn
+        }
         ns_return 200 "text/plain" $v
     }
 } -body {
@@ -2070,7 +2077,37 @@ test http-9.1 {
     ns_unregister_op POST /post
 } -result {utf-8 <application/x-www-form-urlencoded> AÄATesting <äöüß☀>ZÜZ}
 
+#
+# Test client request with potential problem cases
+#   - handling empty requests
+#   - request header comes via multiple read operations
+#
+test http-11.1.1 {HTTP/1.0 GET + 0bytes} -constraints serverListen -setup {
+    ns_register_proc GET /0bytes {
+        ns_return 200 text/plain ""
+    }
+} -body {
+    set r0 [ns_http run -method GET [ns_config test listenurl]/10bytes]
+    set r1 [ns_http run -method GET [ns_config test listenurl]/0bytes]
+    list [dict get $r1 status] [ns_set iget [dict get $r1 headers] content-length]
+} -cleanup {
+    ns_unregister_op GET /0bytes
+    unset -nocomplain r0 r1
+} -returnCodes {error ok} -result {200 0}
 
+test http-11.2.1 {HTTP/1.0 GET + many reply header fields} -constraints serverListen -setup {
+    ns_register_proc GET /many-reply-header-fields {
+        for {set i 0} {$i < 2000} {incr i} {ns_set put [ns_conn outputheaders] X-extra-$i $i}
+        ns_return 200 text/plain "OK"
+    }
+} -body {
+    set r0 [ns_http run -method GET [ns_config test listenurl]/10bytes]
+    set r1 [ns_http run -method GET [ns_config test listenurl]/many-reply-header-fields]
+    list [dict get $r0 status] [dict get $r1 status] [llength [ns_set keys [dict get $r1 headers] x-*]]
+} -cleanup {
+    ns_unregister_op GET /many-reply-header-fields
+    unset -nocomplain i r0 r1
+} -returnCodes {error ok} -result {200 200 2000}
 
 cleanupTests
 

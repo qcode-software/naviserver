@@ -158,9 +158,10 @@ struct nsconf {
     char        hostname[255];
     char        address[NS_IPADDR_SIZE];
     Ns_Time     shutdowntimeout;
-    int         backlog;
+    int         listenbacklog;
+    int         sockacceptlog;
     int         sanitize_logfiles;
-    bool        reject_already_closed_connection;
+    bool        reject_already_closed_or_detached_connection;
     bool        reverseproxymode;
     bool        nocache;
 
@@ -450,6 +451,7 @@ typedef struct Driver {
     int queuesize;                      /* Current number of sockets in the queue */
     int maxqueuesize;                   /* Maximum number of sockets in the queue */
     int acceptsize;                     /* Number requests to accept at once */
+    int sockacceptlog;                  /* Report, when more than this sockets are received in one step */
     int driverthreads;                  /* Number of identical driver threads to be created */
     unsigned int loggingFlags;          /* Logging control flags */
 
@@ -645,6 +647,8 @@ typedef struct Conn {
     int compress;
 
     Ns_Set *query;
+    Ns_Set *formData;
+
     Tcl_HashTable files;
     void *cls[NS_CONN_MAXCLS];
 
@@ -844,7 +848,7 @@ typedef struct NsServer {
         void                *serverRootArg;
         Ns_ConnLocationProc *connLocationProc;
         Ns_TclCallback      *connLocationArg;
-        Ns_LocationProc     *locationProc; /* Depreciated */
+        Ns_LocationProc     *locationProc; /* Deprecated */
         bool                 enabled;
     } vhost;
 
@@ -1405,6 +1409,7 @@ NS_EXTERN Ns_LogSeverity Ns_LogRequestDebug;
 NS_EXTERN Ns_LogSeverity Ns_LogConnchanDebug;
 NS_EXTERN Ns_LogSeverity Ns_LogUrlspaceDebug;
 NS_EXTERN Ns_LogSeverity Ns_LogTimeoutDebug;
+NS_EXTERN Ns_LogSeverity Ns_LogNsSetDebug;
 NS_EXTERN bool NsWriterBandwidthManagement;
 
 NS_EXTERN const char *nsBuildDate;
@@ -1581,7 +1586,7 @@ NS_EXTERN Ns_OpProc NsTclRequestProc;
 NS_EXTERN Ns_OpProc NsAdpPageProc;
 NS_EXTERN Ns_ArgProc NsAdpPageArgProc;
 NS_EXTERN Ns_TclTraceProc NsTclTraceProc;
-NS_EXTERN Ns_UrlToFileProc NsUrlToFileProc;
+NS_EXTERN Ns_UrlToFileProc NsUrlToFileProc NS_GNUC_DEPRECATED_FOR(Ns_FastUrl2FileProc);
 NS_EXTERN Ns_Url2FileProc NsTclUrl2FileProc;
 NS_EXTERN Ns_Url2FileProc NsMountUrl2FileProc;
 NS_EXTERN Ns_ArgProc NsMountUrl2FileArgProc;
@@ -1615,6 +1620,9 @@ NS_EXTERN void NsStopSpoolers(void);
 NS_EXTERN Ns_ReturnCode NsPreBind(const char *args, const char *file);
 NS_EXTERN void NsClosePreBound(void);
 NS_EXTERN const char *NsConfigRead(const char *file) NS_GNUC_NONNULL(1);
+NS_EXTERN Ns_Set *NsConfigSectionGetFiltered(const char *section, char filter) NS_GNUC_NONNULL(1);
+NS_EXTERN void NsConfigMarkAsRead(const char *section, size_t i) NS_GNUC_NONNULL(1);
+
 NS_EXTERN void NsConfigEval(const char *config, const char *configFileName,
                             int argc, char *const *argv, int optionIndex)
     NS_GNUC_NONNULL(1);
@@ -1661,6 +1669,15 @@ NS_EXTERN NS_TLS_SSL_CTX *NsDriverLookupHostCtx(Tcl_DString *hostDs, const Ns_Dr
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
+#ifdef NS_SET_DSTRING
+NS_EXTERN void Ns_SetDataPrealloc(Ns_Set *set, int size)
+    NS_GNUC_NONNULL(1);
+#endif
+NS_EXTERN void NsSetResize(Ns_Set *set, size_t newSize, int bufferSize)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN Ns_Set *NsHeaderSetGet(size_t size);
+
 /*
  * limits.c
  */
@@ -1700,7 +1717,7 @@ NS_EXTERN void NsConnTimeStatsUpdate(Ns_Conn *conn)
 NS_EXTERN void NsConnTimeStatsFinalize(const Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
-NS_EXTERN Ns_ReturnCode NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr)
+NS_EXTERN Ns_ReturnCode NsConnRequire(Tcl_Interp *interp, unsigned int flags, Ns_Conn **connPtr, int *tclResultPtr)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -1764,6 +1781,9 @@ NS_EXTERN void NsAdpReset(NsInterp *itPtr)
     NS_GNUC_NONNULL(1);
 
 NS_EXTERN void NsAdpFree(NsInterp *itPtr)
+    NS_GNUC_NONNULL(1);
+
+NS_EXTERN char *NsParseTagEnd(char *str)
     NS_GNUC_NONNULL(1);
 
 /*
@@ -1838,6 +1858,13 @@ NS_EXTERN bool NsTclObjIsEncodedByteArray(const Tcl_Obj *objPtr)
 
 NS_EXTERN bool NsTclTimeoutException(Tcl_Interp *interp)
     NS_GNUC_NONNULL(1);
+
+/*
+ * str.c
+ */
+NS_EXTERN void NsHexPrint(const char *msg, const unsigned char *octets, size_t octetLength,
+                          unsigned int perLine, bool withChar)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * (HTTP) Proxy support

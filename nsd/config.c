@@ -37,6 +37,26 @@
 
 #define ISSLASH(c) ((c) == '/' || (c) == '\\')
 
+typedef struct Section {
+    Ns_Set   *set;
+    Ns_Set   *defaults;
+    uintmax_t readArray[4];
+    uintmax_t defaultArray[4];
+} Section;
+
+typedef enum {
+    value_set,
+    value_defaulted,
+    value_read
+
+} ValueOperation;
+
+#define NS_BITELEMENTS (sizeof(uintmax_t) * 8)
+static const unsigned int bitElements = NS_BITELEMENTS;
+static const unsigned int maxBitElements = NS_BITELEMENTS *
+    (int)(sizeof(((Section*)0)->defaultArray) /
+          sizeof(((Section*)0)->defaultArray[0]));
+
 /*
  * Local functions defined in this file.
  */
@@ -44,23 +64,27 @@
 static Tcl_ObjCmdProc SectionObjCmd;
 static Tcl_ObjCmdProc ParamObjCmd;
 
-static Ns_Set* GetSection(const char *section, bool create)
+static void ConfigMark(Section *sectionPtr, size_t i, ValueOperation op)
+    NS_GNUC_NONNULL(1);
+
+static Section* GetSection(const char *section, bool create)
     NS_GNUC_NONNULL(1);
 static void PathAppend(Tcl_DString *dsPtr, const char *server, const char *module, va_list ap)
     NS_GNUC_NONNULL(1);
 
-static const char* ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
+static const char* ConfigGet(const char *section, const char *key, bool exact, const char *defaultString)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static bool ToBool(const char *value, bool *valuePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static Tcl_WideInt
-ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+ConfigWideIntRange(const char *section, const char *key,
+                   const char *defaultString, Tcl_WideInt defaultValue,
                    Tcl_WideInt minValue, Tcl_WideInt maxValue,
                    Ns_ReturnCode (converter)(const char *chars, Tcl_WideInt *intPtr),
                    const char *kind)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(6) NS_GNUC_NONNULL(7);
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(7) NS_GNUC_NONNULL(8);
 
 
 /*
@@ -69,9 +93,10 @@ ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValu
  * Ns_ConfigString --
  *
  *      Return a configuration file value, or the default if not found.
+ *      Similar to Ns_ConfigGetValue(), but receives a default.
  *
  * Results:
- *      Pointer to value string.
+ *      Pointer to value string or NULL.
  *
  * Side effects:
  *      None.
@@ -103,7 +128,7 @@ Ns_ConfigString(const char *section, const char *key, const char *defaultValue)
  * Ns_ConfigSet --
  *
  *      Return an Ns_Set *from a config value specified as Tcl list. The list
- *      has to be a flat list with attributes and valus (also a Tcl dict).
+ *      has to be a flat list with attributes and values (also a Tcl dict).
  *
  * Results:
  *      Ns_set or NULL, of the config value does not exist.
@@ -114,7 +139,7 @@ Ns_ConfigString(const char *section, const char *key, const char *defaultValue)
  *----------------------------------------------------------------------
  */
 const Ns_Set *
-Ns_ConfigSet(const char *section, const char *key)
+Ns_ConfigSet(const char *section, const char *key, const char *name)
 {
     const char *value;
     Ns_Set     *setPtr;
@@ -131,7 +156,7 @@ Ns_ConfigSet(const char *section, const char *key)
     if (value != NULL) {
         Tcl_Obj *valueObj = Tcl_NewStringObj(value, -1);
 
-        setPtr = Ns_SetCreateFromDict(NULL, "key", valueObj);
+        setPtr = Ns_SetCreateFromDict(NULL, name, valueObj);
         Tcl_DecrRefCount(valueObj);
     } else {
         setPtr = NULL;
@@ -282,10 +307,11 @@ Ns_ConfigIntRange(const char *section, const char *key, int defaultValue,
         update = NS_TRUE;
     }
     if (update) {
-        Ns_Set *set = GetSection(section, NS_FALSE);
+        Section *sectionPtr = GetSection(section, NS_FALSE);
+        int      length;
 
-        snprintf(strBuffer, sizeof(strBuffer), "%d", value);
-        Ns_SetUpdate(set, key, strBuffer);
+        length = snprintf(strBuffer, sizeof(strBuffer), "%d", value);
+        Ns_SetUpdateSz(sectionPtr->set, key, -1, strBuffer, length);
     }
 
     return value;
@@ -323,34 +349,47 @@ Ns_ConfigWideInt(const char *section, const char *key, Tcl_WideInt defaultValue)
 }
 
 Tcl_WideInt
-Ns_ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+Ns_ConfigWideIntRange(const char *section, const char *key,
+                      Tcl_WideInt defaultValue,
                       Tcl_WideInt minValue, Tcl_WideInt maxValue)
 {
-    return ConfigWideIntRange(section, key, defaultValue, minValue, maxValue, Ns_StrToWideInt, "integer");
+    return ConfigWideIntRange(section, key, NULL, defaultValue, minValue, maxValue, Ns_StrToWideInt, "integer");
 }
 
 Tcl_WideInt
-Ns_ConfigMemUnitRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+Ns_ConfigMemUnitRange(const char *section, const char *key,
+                      const char *defaultString, Tcl_WideInt defaultValue,
                       Tcl_WideInt minValue, Tcl_WideInt maxValue)
 {
-    return ConfigWideIntRange(section, key, defaultValue, minValue, maxValue, Ns_StrToMemUnit, "memory unit");
+    return ConfigWideIntRange(section, key, defaultString, defaultValue,
+                              minValue, maxValue, Ns_StrToMemUnit, "memory unit");
 }
 
 static Tcl_WideInt
-ConfigWideIntRange(const char *section, const char *key, Tcl_WideInt defaultValue,
+ConfigWideIntRange(const char *section, const char *key,
+                   const char *defaultString, Tcl_WideInt defaultValue,
                    Tcl_WideInt minValue, Tcl_WideInt maxValue,
                    Ns_ReturnCode (converter)(const char *chars, Tcl_WideInt *intPtr),
                    const char *kind)
 {
-    const char *s;
+    const char *s, *defstrPtr;
     char        defstr[TCL_INTEGER_SPACE];
     Tcl_WideInt value;
 
     NS_NONNULL_ASSERT(section != NULL);
     NS_NONNULL_ASSERT(key != NULL);
 
-    snprintf(defstr, sizeof(defstr), "%" TCL_LL_MODIFIER "d", defaultValue);
-    s = ConfigGet(section, key, NS_FALSE, defstr);
+    if (defaultString != NULL && *defaultString != '\0') {
+        defstrPtr = defaultString;
+        if (converter(defaultString, &defaultValue) != NS_OK) {
+            Ns_Log(Warning, "default value '%s' for %s/%s could not be parsed",
+                   defaultString, section, key);
+        }
+    } else {
+        defstrPtr = defstr;
+        snprintf(defstr, sizeof(defstr), "%" TCL_LL_MODIFIER "d", defaultValue);
+    }
+    s = ConfigGet(section, key, NS_FALSE, defstrPtr);
     if (s != NULL && converter(s, &value) == NS_OK) {
         /*
          * Found and parsed parameter.
@@ -488,9 +527,10 @@ Ns_ConfigTimeUnitRange(const char *section, const char *key,
  * Ns_ConfigGetValue --
  *
  *      Return a configuration file value for a given key
+ *      Similar to Ns_ConfigString(), but gets no default value.
  *
  * Results:
- *      char ptr to a value
+ *      Char pointer to a value or NULL
  *
  * Side effects:
  *      None.
@@ -780,7 +820,7 @@ Ns_ConfigSectionPath(Ns_Set **setPtr, const char *server, const char *module, ..
 {
     va_list       ap;
     Tcl_DString   ds;
-    Ns_Set       *set;
+    Section      *sectionPtr;
 
     Tcl_DStringInit(&ds);
     va_start(ap, module);
@@ -788,14 +828,15 @@ Ns_ConfigSectionPath(Ns_Set **setPtr, const char *server, const char *module, ..
     va_end(ap);
 
     Ns_Log(Dev, "config section: %s", ds.string);
-    set = GetSection(ds.string, NS_TRUE);
+    sectionPtr = GetSection(ds.string, NS_TRUE);
+
     Tcl_DStringFree(&ds);
 
     if (setPtr != NULL) {
-        *setPtr = set;
+        *setPtr = sectionPtr->set;
     }
 
-    return Ns_SetName(set);
+    return Ns_SetName(sectionPtr->set);
 }
 
 
@@ -833,7 +874,8 @@ Ns_ConfigGetSections(void)
     n = 0;
     hPtr = Tcl_FirstHashEntry(&nsconf.sections, &search);
     while (hPtr != NULL) {
-        sets[n++] = Tcl_GetHashValue(hPtr);
+        Section *sectionPtr = Tcl_GetHashValue(hPtr);
+        sets[n++] = sectionPtr->set;
         hPtr = Tcl_NextHashEntry(&search);
     }
     sets[n] = NULL;
@@ -845,7 +887,72 @@ Ns_ConfigGetSections(void)
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConfigGetSection --
+ * ConfigMark, NsConfigMarkAsRead --
+ *
+ *      Update state of a parameter at the specified position in the specified
+ *      section. Note that delete operations on the ns_set of parameters
+ *      (which should not happen) could bring the index with the reading and
+ *      defaulting information out of sync.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static void ConfigMark(Section *sectionPtr, size_t i, ValueOperation op)
+{
+    if (i < maxBitElements) {
+        int index = (int)(i / bitElements);
+        int shift = (int)(i % bitElements);
+
+        switch (op) {
+        case value_set:
+            sectionPtr->defaultArray[index] &= ~((uintmax_t)1u << shift);
+            break;
+        case value_defaulted:
+            sectionPtr->defaultArray[index] |= ((uintmax_t)1u << shift);
+            break;
+        case value_read:
+            sectionPtr->readArray[index] |= ((uintmax_t)1u << shift);
+            break;
+        }
+    } else {
+        Ns_Log(Notice, "Cannot mark in set %s pos %lu", sectionPtr->set->name, i);
+    }
+}
+
+void NsConfigMarkAsRead(const char *section, size_t i) {
+
+    if (!nsconf.state.started) {
+        Section *sectionPtr = GetSection(section, NS_FALSE);
+
+        ConfigMark(sectionPtr, i, value_read);
+    }
+}
+
+#if 0
+/* currently not needed */
+const char *NsConfigGetDefault(const char *section, const char *key) {
+    const char *result = NULL;
+    int         i;
+    Section    *sectionPtr = GetSection(section, NS_FALSE);
+
+    if (sectionPtr != NULL) {
+        i = Ns_SetIFind(sectionPtr->defaults, key);
+        if (i > -1) {
+            result = sectionPtr->defaults->fields[i].value;
+        }
+    }
+    return result;
+}
+#endif
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConfigGetSection, Ns_ConfigGetSection2 --
  *
  *      Returns the Ns_Set of a config section called section.
  *
@@ -858,11 +965,30 @@ Ns_ConfigGetSections(void)
  *
  *----------------------------------------------------------------------
  */
-
 Ns_Set *
 Ns_ConfigGetSection(const char *section)
 {
-    return GetSection(section, NS_FALSE);
+    return Ns_ConfigGetSection2(section, NS_TRUE);
+}
+
+Ns_Set *
+Ns_ConfigGetSection2(const char *section, bool markAsRead)
+{
+    Section *sectionPtr = GetSection(section, NS_FALSE);
+
+    if (markAsRead
+        && sectionPtr != NULL && sectionPtr->set != NULL
+        && !nsconf.state.started
+        ) {
+        size_t i;
+        const Ns_Set *set = sectionPtr->set;
+
+        for (i = 0u; i < set->size; i++) {
+            ConfigMark(sectionPtr, i, value_read);
+        }
+    }
+
+    return sectionPtr != NULL ? sectionPtr->set : NULL;
 }
 
 /*
@@ -885,7 +1011,9 @@ Ns_Set *
 Ns_ConfigCreateSection(const char *section)
 {
     bool create = !Ns_InfoStarted();
-    return GetSection(section, create);
+    Section *sectionPtr = GetSection(section, create);
+
+    return sectionPtr != NULL ? sectionPtr->set : NULL;
 }
 
 
@@ -1012,9 +1140,9 @@ void
 NsConfigEval(const char *config, const char *configFileName,
              int argc, char *const *argv, int optionIndex)
 {
-    Tcl_Interp   *interp;
-    Ns_Set *set = NULL;
-    int i;
+    Tcl_Interp     *interp;
+    static Section *sectionPtr = NULL;
+    int             i;
 
     NS_NONNULL_ASSERT(config != NULL);
 
@@ -1023,8 +1151,8 @@ NsConfigEval(const char *config, const char *configFileName,
      */
 
     interp = Ns_TclCreateInterp();
-    (void)Tcl_CreateObjCommand(interp, "ns_section", SectionObjCmd, &set, NULL);
-    (void)Tcl_CreateObjCommand(interp, "ns_param", ParamObjCmd, &set, NULL);
+    (void)Tcl_CreateObjCommand(interp, "ns_section", SectionObjCmd, &sectionPtr, NULL);
+    (void)Tcl_CreateObjCommand(interp, "ns_param", ParamObjCmd, &sectionPtr, NULL);
     for (i = 0; argv[i] != NULL; ++i) {
         (void) Tcl_SetVar(interp, "argv", argv[i], TCL_APPEND_VALUE|TCL_LIST_ELEMENT|TCL_GLOBAL_ONLY);
     }
@@ -1064,10 +1192,10 @@ static int
 ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
-    char       *paramName = (char *)NS_EMPTY_STRING, *paramValue = (char *)NS_EMPTY_STRING;
+    Tcl_Obj    *nameObj, *valueObj;
     Ns_ObjvSpec args[] = {
-        {"name",  Ns_ObjvString,  &paramName, NULL},
-        {"value", Ns_ObjvString,  &paramValue, NULL},
+        {"name",  Ns_ObjvObj,  &nameObj,  NULL},
+        {"value", Ns_ObjvObj,  &valueObj, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -1075,15 +1203,22 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
         result = TCL_ERROR;
 
     } else {
-        Ns_Set *set = *((Ns_Set **) clientData);
+        Section *sectionPtr = *((Section **) clientData);
 
-        assert(paramName != NULL);
-        assert(paramValue != NULL);
+        if (likely(sectionPtr != NULL)) {
+            const char *nameString, *valueString;
+            int         nameLength, valueLength;
+            size_t      i;
 
-        if (likely(set != NULL)) {
-            (void)Ns_SetPut(set, paramName, paramValue);
+            nameString = Tcl_GetStringFromObj(nameObj, &nameLength);
+            valueString = Tcl_GetStringFromObj(valueObj, &valueLength);
+            i = Ns_SetPutSz(sectionPtr->set, nameString, nameLength, valueString, valueLength);
+            if (!nsconf.state.started) {
+                ConfigMark(sectionPtr, i, value_set);
+            }
         } else {
-            Ns_TclPrintfResult(interp, "parameter %s not preceded by an ns_section command.", paramName);
+            Ns_TclPrintfResult(interp, "parameter %s not preceded by an ns_section command",
+                               Tcl_GetString(nameObj));
             result = TCL_ERROR;
         }
     }
@@ -1097,7 +1232,7 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  *
  * SectionObjCmd --
  *
- *      Impelements "ns_section". This command creates a new config section in
+ *      Implements "ns_section". This command creates a new config section in
  *      form of a newly-allocated "ns_set" for holding config data.
  *      "ns_param" stores config data in the set.
  *
@@ -1126,10 +1261,12 @@ SectionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
         result = TCL_ERROR;
 
     } else {
-        Ns_Set **set = (Ns_Set **) clientData;
+        Section *sectionPtr, **passedSectionPtr = (Section **) clientData;
+
 
         assert(sectionName != NULL);
-        *set = GetSection(sectionName, NS_TRUE);
+        sectionPtr = GetSection(sectionName, NS_TRUE);
+        *passedSectionPtr = sectionPtr;
 
         if (blockObj != NULL) {
             result = Tcl_GlobalEvalObj(interp, blockObj);
@@ -1157,48 +1294,101 @@ SectionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
  */
 
 static const char *
-ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
+ConfigGet(const char *section, const char *key, bool exact, const char *defaultString)
 {
     const char *s = NULL;
-    Ns_Set     *set;
+    Section    *sectionPtr;
 
     NS_NONNULL_ASSERT(section != NULL);
     NS_NONNULL_ASSERT(key != NULL);
 
-    set = GetSection(section, NS_FALSE);
+    sectionPtr = GetSection(section, NS_FALSE);
 
-    if (set != NULL) {
+    if (sectionPtr != NULL && sectionPtr->set != NULL) {
         int  i;
 
         if (exact) {
-            i = Ns_SetFind(set, key);
+            i = Ns_SetFind(sectionPtr->set, key);
         } else {
-            i = Ns_SetIFind(set, key);
+            i = Ns_SetIFind(sectionPtr->set, key);
         }
+
         if (i >= 0) {
             /*
              * The configuration value was found in the ns_set for this
              * section.
              */
-            s = Ns_SetValue(set, i);
-        } else if (!nsconf.state.started) {
+            s = Ns_SetValue(sectionPtr->set, i);
+
+        } else if (!nsconf.state.started /*&& defaultString != NULL && *defaultString != '\0'*/) {
             /*
              * The configuration value was NOT found. Since we want to be able
-             * to retrieve all current configuration values via introspection
-             * (e.g. as used by nsstats), add new entries to the set. This is
-             * only possible during startup when we there is a single
-             * thread. Changing ns_sets is not thread safe.
+             * to retrieve all current configuration values including defaults
+             * via introspection (e.g. as used by nsstats), add a new entry
+             * with the default to the set. This is only possible during
+             * startup when we there is a single thread. Changing ns_sets is
+             * not thread safe.
              */
-            i = (int)Ns_SetPut(set, key, defstr);
-            if (defstr != NULL) {
-                s = Ns_SetValue(set, i);
-            }
+            i = (int)Ns_SetPutSz(sectionPtr->set, key, -1,
+                                 defaultString, defaultString == NULL ? 0 : -1);
+            ConfigMark(sectionPtr, (size_t)i, value_defaulted);
+            s = Ns_SetValue(sectionPtr->set, i);
+
         } else {
-            s = defstr;
+            s = defaultString;
+        }
+        if (!nsconf.state.started) {
+            ConfigMark(sectionPtr, (size_t)i, value_read);
+            if (defaultString != NULL) {
+                (void)Ns_SetPutSz(sectionPtr->defaults, key, -1, defaultString, -1);
+            }
         }
     }
     return s;
 }
+
+Ns_Set *
+NsConfigSectionGetFiltered(const char *section, char filter)
+{
+    Section       *sectionPtr = NULL;
+    Ns_Set        *result = NULL;
+
+    NS_NONNULL_ASSERT(section != NULL);
+
+    sectionPtr = GetSection(section, NS_FALSE);
+
+    if (sectionPtr != NULL) {
+        if (filter == 's') {
+            result = sectionPtr->defaults;
+        } else {
+            size_t  i;
+            Ns_Set *set = sectionPtr->set;
+
+            result = Ns_SetCreate(section);
+            for (i = 0u; i < set->size; i++) {
+
+                if (i < maxBitElements) {
+                    int index = (int)(i / bitElements);
+                    int shift = (int)(i % bitElements);
+                    uintmax_t mask = ((uintmax_t)1u << shift);
+
+                    if (filter == 'u' && (sectionPtr->readArray[index] & mask) == 0u) {
+                        /*fprintf(stderr, "unused parameter: %s/%s (%lu)\n",
+                          section, set->fields[i].name, i);*/
+                        Ns_SetPutSz(result, set->fields[i].name, -1, set->fields[i].value, -1);
+                    } else if  (filter == 'd' && (sectionPtr->defaultArray[index] & mask) != 0u) {
+                        /*fprintf(stderr, "defaulted parameter: %s/%s (%lu) defaults %p mask %p\n",
+                          section, set->fields[i].name, i,
+                          (void*)sectionPtr->defaultArray[0], (void*)mask);*/
+                        Ns_SetPutSz(result, set->fields[i].name, -1, set->fields[i].value, -1);
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
 
 
 /*
@@ -1217,11 +1407,10 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defstr)
  *
  *----------------------------------------------------------------------
  */
-
-static Ns_Set *
+static Section *
 GetSection(const char *section, bool create)
 {
-    Ns_Set        *set = NULL;
+    Section       *sectionPtr = NULL;
     Tcl_HashEntry *hPtr;
     Tcl_DString    ds;
     int            isNew;
@@ -1264,16 +1453,18 @@ GetSection(const char *section, bool create)
     } else {
         hPtr = Tcl_CreateHashEntry(&nsconf.sections, section, &isNew);
         if (isNew != 0) {
-            set = Ns_SetCreate(section);
-            Tcl_SetHashValue(hPtr, set);
+            sectionPtr = ns_calloc(1u, sizeof(Section));
+            sectionPtr->defaults = Ns_SetCreate(section);
+            sectionPtr->set = Ns_SetCreate(section);
+            Tcl_SetHashValue(hPtr, sectionPtr);
         }
     }
     if (hPtr != NULL) {
-        set = Tcl_GetHashValue(hPtr);
+        sectionPtr = Tcl_GetHashValue(hPtr);
     }
     Tcl_DStringFree(&ds);
 
-    return set;
+    return sectionPtr;
 }
 
 

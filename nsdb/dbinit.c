@@ -37,8 +37,6 @@
 
 #include "db.h"
 
-Ns_LogSeverity Ns_LogSqlDebug;
-
 /*
  * The following structure defines a database pool.
  */
@@ -964,7 +962,7 @@ NsDbDisconnect(Ns_DbHandle *handle)
 bool
 NsDbGetActive(Ns_DbHandle *handle)
 {
-    Handle *handlePtr = (Handle *) handle;
+    const Handle *handlePtr = (Handle *) handle;
 
     NS_NONNULL_ASSERT(handle != NULL);
 
@@ -989,8 +987,8 @@ NsDbSetActive(const char *UNUSED(context), Ns_DbHandle *handle, bool active)
  *
  * NsDbLogSql --
  *
- *      Log a SQL statement depending on the verbose state of the
- *      handle.
+ *      Log a SQL statement depending on the setting of Ns_LogSqlDebug
+ *      and the LogMinDuration. Errors are always reported.
  *
  * Results:
  *      None.
@@ -1396,17 +1394,17 @@ CreatePool(const char *pool, const char *path, const char *driver)
          * Allocate Pool structure and initialize its members
          */
         poolPtr = ns_calloc(1u, sizeof(Pool));
-        poolPtr->driver = driver;
+        poolPtr->driver = ns_strcopy(driver);
         poolPtr->driverPtr = driverPtr;
         Ns_MutexInit(&poolPtr->lock);
         Ns_MutexSetName2(&poolPtr->lock, "nsdb", pool);
         Ns_CondInit(&poolPtr->waitCond);
         Ns_CondInit(&poolPtr->getCond);
-        poolPtr->source = source;
-        poolPtr->name = pool;
-        poolPtr->user = Ns_ConfigGetValue(path, "user");
-        poolPtr->pass = Ns_ConfigGetValue(path, "password");
-        poolPtr->desc = Ns_ConfigGetValue("ns/db/pools", pool);
+        poolPtr->source = ns_strcopy(source);
+        poolPtr->name = ns_strcopy(pool);
+        poolPtr->user = ns_strcopy(Ns_ConfigGetValue(path, "user"));
+        poolPtr->pass = ns_strcopy(Ns_ConfigGetValue(path, "password"));
+        poolPtr->desc = ns_strcopy(Ns_ConfigGetValue("ns/db/pools", pool));
         poolPtr->stale_on_close = 0;
         poolPtr->fVerboseError = Ns_ConfigBool(path, "logsqlerrors", NS_FALSE);
         poolPtr->nhandles = Ns_ConfigIntRange(path, "connections", 2, 0, INT_MAX);
@@ -1444,7 +1442,10 @@ CreatePool(const char *pool, const char *path, const char *driver)
             handlePtr->connection = NULL;
             handlePtr->connected = NS_FALSE;
             handlePtr->fetchingRows = NS_FALSE;
-            handlePtr->row = Ns_SetCreate(NULL);
+            handlePtr->row = Ns_SetCreate(NS_SET_NAME_DB);
+#ifdef NS_SET_DEBUG
+            Ns_Log(Notice, "Ns_DbInit CreatePool %s %i: %p", pool, i, (void*)handlePtr->row);
+#endif
             handlePtr->cExceptionCode[0] = '\0';
             handlePtr->otime = handlePtr->atime = 0;
             handlePtr->stale = NS_FALSE;

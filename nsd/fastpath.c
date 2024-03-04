@@ -131,10 +131,10 @@ NsConfigFastpath(void)
     useBrotliRefresh = Ns_ConfigBool(path, "brotli_refresh", NS_FALSE);
 
     if (Ns_ConfigBool(path, "cache", NS_FALSE)) {
-        size_t size = (size_t)Ns_ConfigMemUnitRange(path, "cachemaxsize",
+        size_t size = (size_t)Ns_ConfigMemUnitRange(path, "cachemaxsize", "10MB",
                                                     1024*10000, 1024, INT_MAX);
         cache = Ns_CacheCreateSz("ns:fastpath", TCL_STRING_KEYS, size, FreeEntry);
-        maxentry = (int)Ns_ConfigMemUnitRange(path, "cachemaxentry", 8192, 8, INT_MAX);
+        maxentry = (int)Ns_ConfigMemUnitRange(path, "cachemaxentry", "8KB", 8192, 8, INT_MAX);
     }
     /*
      * Register the fastpath initialization for every server.
@@ -233,7 +233,9 @@ ConfigServerFastpath(const char *server)
             Ns_Log(Error, "fastpath[%s]: directoryfile is not a list: %s", server, p);
         }
 
-        servPtr->fastpath.serverdir = Ns_ConfigString(path, "serverdir", NS_EMPTY_STRING);
+        servPtr->fastpath.serverdir =
+            ns_strcopy(Ns_ConfigString(path, "serverdir", NS_EMPTY_STRING));
+
         if (!Ns_PathIsAbsolute(servPtr->fastpath.serverdir)) {
             (void)Ns_HomePath(&ds, servPtr->fastpath.serverdir, (char *)0L);
             servPtr->fastpath.serverdir = Ns_DStringExport(&ds);
@@ -246,7 +248,7 @@ ConfigServerFastpath(const char *server)
          * "pageroot" always points to the absolute path, while "pagedir"
          * might contain the relative path (or is the same as "pageroot").
          */
-        servPtr->fastpath.pagedir = Ns_ConfigString(path, "pagedir", "pages");
+        servPtr->fastpath.pagedir = ns_strcopy(Ns_ConfigString(path, "pagedir", "pages"));
         if (Ns_PathIsAbsolute(servPtr->fastpath.pagedir) == NS_TRUE) {
             servPtr->fastpath.pageroot = servPtr->fastpath.pagedir;
             NormalizePath(&servPtr->fastpath.pageroot);
@@ -256,8 +258,8 @@ ConfigServerFastpath(const char *server)
             servPtr->fastpath.pageroot = Ns_DStringExport(&ds);
         }
 
-        servPtr->fastpath.dirproc = Ns_ConfigString(path, "directoryproc", "_ns_dirlist");
-        servPtr->fastpath.diradp  = Ns_ConfigGetValue(path, "directoryadp");
+        servPtr->fastpath.dirproc = ns_strcopy(Ns_ConfigString(path, "directoryproc", "_ns_dirlist"));
+        servPtr->fastpath.diradp  = ns_strcopy(Ns_ConfigString(path, "directoryadp", NULL));
 
         Ns_RegisterRequest(server, "GET", "/",  Ns_FastPathProc, NULL, NULL, 0u);
         Ns_RegisterRequest(server, "HEAD", "/", Ns_FastPathProc, NULL, NULL, 0u);
@@ -353,6 +355,7 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
     } else if (S_ISDIR(connPtr->fileInfo.st_mode)) {
         int i;
 
+        Ns_Log(Debug, "FastPathProc resolves dir <%s> names %d", url, servPtr->fastpath.dirc);
         /*
          * For directories, search for a matching directory file and
          * restart the connection if found.
@@ -364,9 +367,11 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
                 goto notfound;
             }
             Ns_DStringVarAppend(&ds, "/", servPtr->fastpath.dirv[i], (char *)0L);
+
             if ((stat(ds.string, &connPtr->fileInfo) == 0)
                 && S_ISREG(connPtr->fileInfo.st_mode)
                 ) {
+                Ns_Log(Debug, "FastPathProc checks [%d] '%s' -> found", i, ds.string);
                 if (url[strlen(url) - 1u] != '/') {
                     const char* query = conn->request.query;
 
@@ -381,6 +386,7 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
                 }
                 goto done;
             }
+            Ns_Log(Debug, "FastPathProc checks [%d] '%s' -> not found", i, ds.string);
         }
 
         /*
@@ -389,9 +395,13 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
          */
 
         if (servPtr->fastpath.diradp != NULL) {
+            Ns_Log(Debug, "FastPathProc lists directory listing using ADP");
             result = Ns_AdpRequest(conn, servPtr->fastpath.diradp);
+
         } else if (servPtr->fastpath.dirproc != NULL) {
+            Ns_Log(Debug, "FastPathProc lists directory listing using Tcl");
             result = Ns_TclRequest(conn, servPtr->fastpath.dirproc);
+
         } else {
             goto notfound;
         }
@@ -491,7 +501,7 @@ UrlIs(const char *server, const char *url, bool isDir)
  * Ns_PageRoot --
  *
  *      Return pathname of the server pages directory.
- *      Depreciated: Use Ns_PagePath() which is virtual host aware.
+ *      Deprecated: Use Ns_PagePath() which is virtual host aware.
  *
  * Results:
  *      Server pageroot or NULL on invalid server.
@@ -569,7 +579,7 @@ CompressExternalFile(Tcl_Interp *interp, const char *cmdName, const char *fileNa
  * CheckStaticCompressedDelivery --
  *
  *      Check, if there is a static compressed file available for
- *      delivery. When it is there but outdated, try to referesh it,
+ *      delivery. When it is there but outdated, try to refresh it,
  *      when this is allowed be the configuration.
  *
  * Results:
@@ -655,7 +665,7 @@ CheckStaticCompressedDelivery(
  *      Return file contents, possibly from cache.
  *
  * Results:
- *      Standard Ns_Request result.
+ *      NaviServer return code.
  *
  * Side effects:
  *      May map, cache, open, and/or send file out connection.

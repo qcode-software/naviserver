@@ -409,7 +409,7 @@ Ns_StrToMemUnit(const char *chars, Tcl_WideInt *intPtr)
                 if (fraction > 0.0) {
                     /*
                      * We have a fraction (e.g. 1.5MB). Compute the value as
-                     * floating point value and covert the result to integer.
+                     * floating point value and convert the result to integer.
                      */
                     double r = (double)(lval * multiplier) + fraction * multiplier;
 
@@ -660,9 +660,8 @@ Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *
      * d5b6c20ee0b3f6dafa632a63eafe3fd0db26752d
      *
      */
-
+    Ns_Log(Debug, "Ns_GetBinaryString is byte-array: %d", NsTclObjIsByteArray(obj));
     if (forceBinary || NsTclObjIsByteArray(obj)) {
-        //fprintf(stderr, "NsTclObjIsByteArray\n");
         result = (unsigned char *)Tcl_GetByteArrayFromObj(obj, lengthPtr);
     } else {
         int         stringLength;
@@ -676,7 +675,7 @@ Ns_GetBinaryString(Tcl_Obj *obj, bool forceBinary, int *lengthPtr, Tcl_DString *
         //    //fprintf(stderr, "some other obj\n");
         //}
 
-        Tcl_UtfToExternalDString(NS_utf8Encoding, charInput, stringLength, dsPtr);
+        (void)Tcl_UtfToExternalDString(NS_utf8Encoding, charInput, stringLength, dsPtr);
         result = (unsigned char *)dsPtr->string;
         *lengthPtr = dsPtr->length;
     }
@@ -914,6 +913,47 @@ bool Ns_Is7bit(const char *bytes, size_t nrBytes)
     }
     return ((mask1 | mask2 | mask3 | mask4 | last_mask) & 0x8080808080808080u) == 0u;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsHexPrint --
+ *
+ *      Debugging function for internal use. Print the potentially binary
+ *      content of a buffer in human-readable form.
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      Output to stderr.
+ *
+ *----------------------------------------------------------------------
+ */
+void NsHexPrint(const char *msg, const unsigned char *octets, size_t octetLength,
+                unsigned int perLine, bool withChar)
+{
+    size_t i;
+
+    fprintf(stderr, "%s octetLength %" PRIuz ":\n", msg, octetLength);
+    for (i = 0; i < octetLength; i++) {
+        if (withChar) {
+            fprintf(stderr, "%c %.2x ",
+                    iscntrl(octets[i] & 0xff) ? 46 : octets[i] & 0xff,
+                    octets[i] & 0xff);
+        } else {
+            fprintf(stderr, "%.2x ", octets[i] & 0xff);
+        }
+        if (((i + 1) % perLine) == 0) {
+            fprintf(stderr, "\n");
+        }
+    }
+    if (octetLength % perLine != 0) {
+        fprintf(stderr, "\n");
+    }
+}
+
 
 /*
  * Local Variables:

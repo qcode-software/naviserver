@@ -86,7 +86,7 @@ void
 NsConfigProgress(void)
 {
     progressMinSize = (size_t)
-        Ns_ConfigMemUnitRange(NS_GLOBAL_CONFIG_PARAMETERS, "progressminsize", 0, 0, INT_MAX);
+        Ns_ConfigMemUnitRange(NS_GLOBAL_CONFIG_PARAMETERS, "progressminsize", NULL, 0, 0, INT_MAX);
 
     if (progressMinSize > 0u) {
         Ns_SlsAlloc(&slot, ResetProgress);
@@ -251,8 +251,12 @@ NsUpdateProgress(Ns_Sock *sock)
                 Ns_Log(Warning, "ns:progress(%" PRIdz "/%" PRIdz "): ignoring duplicate URL: %s",
                        reqPtr->avail, reqPtr->length, key);
             }
-            if (set != NULL)   {Ns_SetFree(set);}
-            if (dsPtr != NULL) {Ns_DStringFree(dsPtr);}
+            if (set != NULL) {
+                Ns_SetFree(set);
+            }
+            if (dsPtr != NULL) {
+                Ns_DStringFree(dsPtr);
+            }
 
         } else {
 

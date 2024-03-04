@@ -118,7 +118,7 @@ ConfigServerVhost(const char *server)
         if (Ns_ConfigBool(path, "stripport", NS_TRUE)) {
             servPtr->vhost.opts |= NSD_STRIP_PORT;
         }
-        servPtr->vhost.hostprefix = Ns_ConfigGetValue(path, "hostprefix");
+        servPtr->vhost.hostprefix = ns_strcopy(Ns_ConfigString(path, "hostprefix", NULL));
         servPtr->vhost.hosthashlevel =
             Ns_ConfigIntRange(path, "hosthashlevel", 0, 0, 5);
 
@@ -1033,7 +1033,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
 {
     char           *safehost;
     const char     *path = NULL;
-    const Ns_Conn  *conn;
+    Ns_Conn        *conn;
     const Ns_Set   *headers;
     Ns_DString      ds;
 
@@ -1041,10 +1041,13 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
     NS_NONNULL_ASSERT(servPtr != NULL);
 
     if (servPtr->vhost.serverRootProc != NULL) {
-
-        /*
-         * Prefer to run a user-registered Ns_ServerRootProc.
-         */
+       /*
+        * Call the registered proc which is typically, a Tcl
+        * call. Therefore, make sure, the connection has already an
+        * interpreter associated.
+        */
+        conn = Ns_GetConn();
+        Ns_GetConnInterp(conn);
 
         path = (servPtr->vhost.serverRootProc)(dest, rawHost, servPtr->vhost.serverRootArg);
 

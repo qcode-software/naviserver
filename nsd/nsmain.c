@@ -132,20 +132,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     Tcl_FindExecutable(argv[0]);
 
     /*
-     * Initialize the Nsd library.
-     */
-
-    Nsd_LibInit();
-
-    /*
-     * Mark the server stopped until initialization is complete.
-     */
-
-    Ns_MutexLock(&nsconf.state.lock);
-    nsconf.state.started = NS_FALSE;
-    Ns_MutexUnlock(&nsconf.state.lock);
-
-    /*
      * When run as a Win32 service, Ns_Main will be re-entered
      * in the service main thread. In this case, jump past the
      * point where the initial thread blocked when connected to
@@ -275,6 +261,20 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         printf("   Platform:        %s\n", Ns_InfoPlatform());
         return 0;
     }
+
+    /*
+     * Initialize the Nsd library.
+     */
+
+    Nsd_LibInit();
+
+    /*
+     * Mark the server stopped until initialization is complete.
+     */
+
+    Ns_MutexLock(&nsconf.state.lock);
+    nsconf.state.started = NS_FALSE;
+    Ns_MutexUnlock(&nsconf.state.lock);
 
     if (testMode) {
         const char *fileContent;
@@ -468,7 +468,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             * we need to re-init the notifier after the fork.
             * Failing to do so will make Tcl_ThreadAlert (et.al.)
             * unusable since the notifier subsystem may not be
-            * initialized. The problematic behavior may be exibited
+            * initialized. The problematic behavior may be exhibited
             * for any loadable module that creates threads using the
             * Tcl API but never calls directly into Tcl_CreateInterp
             * that handles the notifier initialization indirectly.
@@ -620,6 +620,16 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
             localeString =  setlocale(LC_COLLATE, NULL);
         }
 
+#ifdef _WIN32
+        if (localeString != NULL) {
+            /*
+             * Under windows, later calls to setlocale() overwrite the
+             * returned string and the pointer will be invalid.
+             */
+            localeString = ns_strdup(localeString);
+        }
+#endif
+
         response = setlocale(LC_COLLATE, localeString);
         if (response != NULL) {
 #ifdef _WIN32
@@ -642,7 +652,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     NS_mutexlocktrace = Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "mutexlocktrace", NS_FALSE);
 #endif
 
-    nsconf.formFallbackCharset = Ns_ConfigString(NS_GLOBAL_CONFIG_PARAMETERS, "FormFallbackCharset", NULL);
+    nsconf.formFallbackCharset =
+        ns_strcopy(Ns_ConfigString(NS_GLOBAL_CONFIG_PARAMETERS, "FormFallbackCharset", NULL));
     if (nsconf.formFallbackCharset != NULL
         && *nsconf.formFallbackCharset == '\0') {
         nsconf.formFallbackCharset  = NULL;
@@ -653,9 +664,12 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * so all default config values will be used for that server
      */
 
-    servers = Ns_ConfigCreateSection("ns/servers");
+    servers = Ns_ConfigGetSection("ns/servers");
+    if (servers == NULL) {
+        servers = Ns_ConfigCreateSection("ns/servers");
+    }
     if (Ns_SetSize(servers) == 0u) {
-        (void)Ns_SetPut(servers, "default", "Default NaviServer");
+        (void)Ns_SetPutSz(servers, "default", 7, "Default NaviServer", 18);
     }
 
     /*
@@ -728,7 +742,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         assert(nsconf.home != NULL);
     }
     nsconf.home = SetCwd(nsconf.home);
-    nsconf.reject_already_closed_connection =
+    nsconf.reject_already_closed_or_detached_connection =
         Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "rejectalreadyclosedconn", NS_TRUE);
     nsconf.sanitize_logfiles =
         Ns_ConfigIntRange(NS_GLOBAL_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 2);
@@ -740,11 +754,11 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
          * Allow values like "none", or abbreviated to "no"), but be open for
          * future enhancements like e.g. "cluster".
          */
-        const char *cacheConfig = Ns_ConfigGetValue(NS_GLOBAL_CONFIG_PARAMETERS, "cachingmode");
-        if (cacheConfig == NULL) {
+        const char *valueString = Ns_ConfigString(NS_GLOBAL_CONFIG_PARAMETERS, "cachingmode", "full");
+        if (strcmp(valueString, "full") == 0) {
             nsconf.nocache = NS_FALSE;
         } else {
-            nsconf.nocache = (strncmp(cacheConfig, "no", 2) == 0);
+            nsconf.nocache = (strncmp(valueString, "no", 2) == 0);
         }
     }
 
@@ -753,7 +767,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     set = Ns_ConfigCreateSection(NS_GLOBAL_CONFIG_PARAMETERS);
-    Ns_SetUpdate(set, "home", nsconf.home);
+    Ns_SetUpdateSz(set, "home", 4, nsconf.home, -1);
 
     /*
      * Update core config values.
@@ -761,13 +775,13 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
     NsConfUpdate();
 
-    nsconf.tmpDir = Ns_ConfigGetValue(NS_GLOBAL_CONFIG_PARAMETERS, "tmpdir");
+    nsconf.tmpDir = ns_strcopy(Ns_ConfigGetValue(NS_GLOBAL_CONFIG_PARAMETERS, "tmpdir"));
     if (nsconf.tmpDir == NULL) {
         nsconf.tmpDir = getenv("TMPDIR");
         if (nsconf.tmpDir == NULL) {
             nsconf.tmpDir = P_tmpdir;
         }
-        Ns_SetUpdate(set, "tmpdir", nsconf.tmpDir);
+        Ns_SetUpdateSz(set, "tmpdir", 6, nsconf.tmpDir, -1);
     }
 
 #ifdef _WIN32
@@ -869,24 +883,29 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
     /*
      * Initialize the virtual servers.
+     *
+     * Set the default server before the init scripts to make it accessible
+     * from there.
      */
 
     if (server != NULL) {
+        nsconf.defaultServer = server;
         NsInitServer(server, initProc);
+
     } else {
         size_t i;
+
+        /*
+         * Make the first server the default server.
+         */
+        nsconf.defaultServer = Ns_SetKey(servers, 0);
 
         for (i = 0u; i < Ns_SetSize(servers); ++i) {
             server = Ns_SetKey(servers, i);
             NsInitServer(server, initProc);
 
         }
-        /*
-         * Make the first server the default server.
-         */
-        server = Ns_SetKey(servers, 0);
     }
-    nsconf.defaultServer = server;
 
     /*
      * Initialize non-server static modules.
@@ -993,7 +1012,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
     NsStopDrivers();
     NsStopServers(&timeout);
-    NsStopSpoolers();
 
     /*
      * Next, start simultaneous shutdown in other systems and wait
@@ -1020,6 +1038,13 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     NsRunAtExitProcs();
+
+    /*
+     * In case, the callbacks above require spool operations, they might need
+     * still working spoolers. But they are finished now and we can stop the
+     * spoolers.
+     */
+    NsStopSpoolers();
 
     /*
      * Remove the pid maker file, print a final "server exiting"
