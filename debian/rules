@@ -50,8 +50,8 @@ override_dh_installsystemd:
 #	dh_installinit -pnaviserver --no-start --noscripts
 #	dh_systemd_start -pnaviserver --no-restart-on-upgrade
 
-override_dh_systemd_start:
-	echo "Not running dh_systemd_start"
+#override_dh_systemd_start:
+#	echo "Not running dh_systemd_start"
 
 %:
 	dh $@
