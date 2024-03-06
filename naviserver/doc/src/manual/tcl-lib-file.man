@@ -1,0 +1,35 @@
+[include version_include.man]
+[manpage_begin {tcl-lib-file} n [vset version]]
+[moddesc {NaviServer Manual}]
+
+[titledesc {Support for .tcl-style dynamic pages}]
+
+[description]
+When a client requests a page, the page can be a static or dynamic,
+where the latter means that the content is computed at the time it is served. 
+Dynamic content can be provided as .adp files or via .tcl files.
+We cover here just the .tcl files.
+
+[para] By default requests to files with the extension .tcl are served
+as plain files (i.e. showing the source code of the .tcl files). By
+setting the flag [term enabletclpages] in the configuration file,
+NaviServer can be instructed to interpret such files when these are
+requested (Tcl pages).  Notice the entries in your sample-config.tcl
+configuration file:
+
+[example_begin]
+ ns_section ns/server/${server}/adp {
+   ns_param   enabletclpages  false         ;# Parse *.tcl files in pagedir.
+ }
+[example_end]
+
+[para]
+When [term enabletclpages] is activated, NaviServer registers
+upon startup for all files with the extension .tcl in the directory
+[term pagedir] a handler to deliver these files as Tcl pages
+(using [cmd ns_register_tcl]). The handler is registered for the HTTP
+methods GET, POST and HEAD.
+
+[see_also nsd adp-overview]
+[keywords NaviServer configuration fastpath pagedir]
+[manpage_end]

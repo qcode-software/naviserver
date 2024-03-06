@@ -1,0 +1,12 @@
+#
+# Copy version to github, since we have there more
+# processing minutes for free.
+#
+clone:
+  depth: full
+
+pipelines:
+  default:
+    - step:
+        script:
+          - git push git@github.com:nm-wu/naviserver-mirror.git

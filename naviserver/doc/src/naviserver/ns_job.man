@@ -1,0 +1,272 @@
+[include version_include.man]
+[manpage_begin ns_job n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+
+[titledesc {Implement job queues and thread pools for evaluating Tcl scripts}]
+
+[description]
+
+ns_job manages a thread pool and a set of named job queues. Job queues
+have a max number of threads and when the current number of running
+thread reaches this maximum number then jobs are queued.  New threads
+are created when there are less than maxthread number of idle threads.
+
+[para] This command provides a means for queueing Tcl scripts for
+evaluation by a pool of threads.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+
+[list_end]
+
+[list_begin definitions]
+
+[call [cmd "ns_job cancel"] [arg queueId] [arg jobId]]
+
+Remove the specified job from the queue. If the job is currently
+running, then the job will be removed from the queue when it
+completes. Returns 1 (true) if the job is currently running and
+can not be cancelled.
+
+
+[call [cmd "ns_job configure"] \
+	[opt [option {-jobsperthread N}]] \
+	[opt [option {-logminduration T}]] \
+	[opt [option {-timeout T}]]]
+
+Configures jobs system, parameters are:
+
+[option -jobsperthread] defines how many jobs each thread can process and
+then gracefully exit, performing a tcl-level cleanup. When the
+parameter is 0, which means that the number of jobs has no influence
+on cleaning up a thread). The logic works the same way as
+[term connsperthread] config parameter for connection threads to
+help reduce memory consumption and cleanup Tcl resources.
+
+[para] The parameter [option -timeout] defines maximum idle time for the
+job worker thread. When the timeout expires, the thread exits like
+when [option -jobsperthread] runs out. When the [option -timeout] is 0, the
+there will be no timeout.
+
+[para] The parameter [option -logminduration] defines a time limit for
+logging the system log. When a job takes longer than the time limit
+it will be logged.
+
+[para] Without any arguments, the command just returns current
+settings values in form of a dict.
+
+
+[call [cmd "ns_job create"] \
+	[opt [option {-desc description}]] \
+	[arg queueId] [opt [arg maxthreads]]]
+
+Create a new job queue called queueId. If maxthreads is not specified,
+then the default of 4 is used.
+
+
+[call [cmd "ns_job delete"] [arg queueId]]
+
+Request that the specified queue be deleted. The queue will only be
+deleted when all jobs are removed.
+
+
+[call [cmd "ns_job exists"] [arg queueId] [arg jobId]]
+
+Returns 1 if such job is running the given queue, otherwise
+returns 0.
+
+
+[call [cmd "ns_job genid"]]
+
+Generate a new unique ID. This new ID can be used as the queue ID
+without conflicting with any other queue ID.
+
+
+[call [cmd "ns_job joblist"] [arg queueId]]
+
+Returns a list the jobs in the specified queue. Every returned job entry
+has the following fields:
+
+[list_begin itemized]
+
+   [item] [term id] - Job's ID
+
+   [item] [term state] - The job's state; either [term scheduled],
+	[term running], [term done], or [term unknown].
+
+   [item] [term script] - The Tcl commands executed be the job.
+
+   [item] [term results] - If the job has completed, then this field will
+	contain the results. If the job is running or scheduled to run, then
+	this will contain the script.
+
+   [item] [term code] - When the job is done, this will contain the return
+	code. Return codes are TCL_OK, TCL_ERROR, TCL_RETURN, TCL_BREAK,
+	TCL_CONTINUE.
+
+   [item] [term type] - The type of job.  A job's return value
+	is [term nondetached] or [term detached].
+
+   [item] [term req] - The job is required.  Return values are
+	[term none], [term wait],or [term cancel].
+
+   [item] [term thread] - The thread id of the job.
+
+   [item] [term starttime] - The start time of the job.
+
+   [item] [term endtime] - The end time of the job.
+[list_end]
+
+
+
+[call [cmd "ns_job jobs"] [arg queueId]]
+
+Return a list of the job IDs.
+
+
+[call [cmd "ns_job queue"] \
+	[opt [option {-detached}]] \
+	[opt [option -head]] \
+	[opt [option {-jobid id}]] \
+	[arg queueId] [arg script]]
+
+Add a new job to the queue. When [opt [option {-head}]] is specified, add
+the new jab to the front of the queue. If there are less than
+maxthreads current running then the job will be started. If there are
+maxthreads currently running then this new job will be queued.
+
+[para] If [option -detached], then the job will be cleaned up when it completes;
+no wait will be necessary.
+
+[para] if [option -jobid] is specified, it will be used as new job id instead
+of auto-generated one. If such job already exists, an error will be
+thrown.
+
+[para] if [option -head] is specified, then new job will be inserted in the
+beginning of the joblist, otherwise and by default every new job is
+added to the end of the job list.
+
+[para] The new job's ID is returned.
+
+
+[call [cmd "ns_job queuelist"]]
+
+Returns a list of the queues. A queue has the following fields:
+
+[list_begin itemized]
+
+   [item] [term name] - Name of the queue.
+
+   [item] [term desc] - Description of the queue.
+
+   [item] [term maxthreads] - Max number of threads to run for this queue.
+
+   [item] [term numrunning] - Number of currently running jobs in this queue.
+
+   [item] [term req] - Some request fired; e.g. someone requested this
+   queue be deleted. Queue will not be deleted until all the jobs on the queue are removed.
+[list_end]
+
+
+[call [cmd "ns_job queues"]]
+
+Returns a list of the queue IDs.
+
+
+[call [cmd "ns_job threadlist"]]
+
+Returns a list of the thread pool's fields.
+
+
+[list_begin itemized]
+
+   [item] [term maxthreads] - Max number of threads for all the queues in the
+	thread pool.
+
+   [item] [term numthreads] - Number of allocated threads.
+
+   [item] [term numidle] - Number of currently idle threads.
+
+   [item] [term req] - E.g. [term stop]: The thread pools is being
+       stopped. This probably means that the server is shutting down.
+[list_end]
+
+
+[call [cmd "ns_job wait"] \
+	[opt [option {-timeout T}]] \
+	[arg queueId] [arg jobId]]
+
+Wait for the specified queued or running job to finish.
+[cmd "ns_job wait"] returns the results of the script.
+
+[para] An error is thrown if the specified timeout period (given in
+seconds and fractions of seconds) is reached.
+
+
+[call [cmd "ns_job waitany"] \
+	[opt [option {-timeout T}]] \
+	[arg queueId]]
+
+Wait for any job on the queue complete.
+
+[para] An error is thrown if the specified timeout period (given in
+seconds and fractions of seconds) is reached.
+
+[list_end]
+
+[section CONFIGURATION]
+
+The default settings of the configuration parameters of [cmd ns_job]
+can be provided in the global parameters of the NaviServer
+configuration file:
+
+[example_begin]
+ [cmd ns_section] ns/parameters {
+   # ...
+   ns_param joblogminduration 1s
+   ns_param jobsperthread   1000
+   ns_param jobtimeout        5m
+   # ...
+ } 
+[example_end]
+
+These configuration parameters define default values for
+the parameters which can be provided to [cmd "ns_job configure"].
+
+[section EXAMPLES]
+
+Create a job queue, run a job in this queue and wait for the result.
+
+[example_begin]
+ % [cmd "ns_job create"] q1
+ q1
+ 
+ % set j [lb][cmd "ns_job queue"] q1 {
+      ns_log notice start
+      ns_sleep 10
+      ns_log notice stop
+      set x "i am done"}[rb]
+ job0
+ 
+ % [cmd "ns_job wait"] q1 $j
+ i am done
+[example_end]
+
+
+Run a job in this queue in the background and do not wait for the
+result.
+
+[example_begin]
+ % [cmd "ns_job queue"] -detached q1 {ns_log notice "a detached job"}
+[example_end]
+
+[see_also nsd ns_schedule_proc]
+[keywords "global built-in" background]
+
+
+[manpage_end]
+
+

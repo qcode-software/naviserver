@@ -1,0 +1,156 @@
+[include version_include.man]
+[manpage_begin  textutil-cmds n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Utility commands for processing text}]
+
+[description]
+
+These commands support common tasks of processin text chunks in
+webserver applications.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_quotehtml] [arg html]]
+
+Returns the contents of HTML with certain characters that are special in HTML
+replaced with an escape code.  The resulting text can be literally displayed
+in a webpage with an HTML renderer. Specifically:
+
+[list_begin definitions]
+[def] & becomes &amp;
+[def] < becomes &lt;
+[def] > becomes &gt;
+[def] ' becomes &#39;
+[def] " becomes &#34;
+[list_end]
+
+ All other characters are unmodified in the output.
+
+
+[call [cmd ns_unquotehtml] [arg html]]
+
+This is essentially the inverse operation of [cmd ns_quotehtml] and
+replaces the named and numeric entities in decimal or hexadecimal
+notation contained in the provided string by their native characters.
+ASCII control characters are omitted.
+
+[call [cmd ns_striphtml] [arg html]]
+
+ Returns the contents of [arg html] with all HTML tags removed.
+ This function replaces as well all known HTML4 named entities and
+ numeric entities in decimal or hexadecimal notation
+ by its UTF-8 representations and removes HTML comments.
+ ASCII control characters are omitted.
+
+
+[call [cmd ns_reflow_text] \
+       	[opt [option "-width [arg width]"]] \
+       	[opt [option "-offset [arg offset]"]] \
+       	[opt [option "-prefix [arg prefix]"]] \
+        [arg text]]
+
+Reflow a text to the specified length. The arguments
+[arg width] (default 80) and [arg offset] (default 0)
+are integers referring to number of characters. The
+[arg prefix] can be used to prefix every resulting line
+with a constant string.
+
+
+[call [cmd ns_trim] \
+        [opt [option "-subst"]] \
+        [opt [option "-delimiter [arg delimiter]"]] \
+        [opt [option "-prefix [arg prefix]"]] \
+        [arg text]]
+
+Multi-line trim with optional [arg delimiter] or [arg prefix].
+The command is useful, when not the full indentation from the source code
+file (with a indentation depending on the nesting level) should
+be preserved on the output (such as SQL statements, HTML markup, etc.).
+
+[para] When neither [option -delimiter] or [option -prefix] is specified
+all leading whitespace is stripped from the result.
+When [option -delimiter] is specified, the delimiter is stripped as
+well.  The specified [arg delimiter] has to be a single character.
+
+[para]
+When [option -prefix] is used the specified string will be stripped from
+lines starting exactly with this prefix (example: use
+[option "-prefix [term >>]"] to strip the prefix [term >>] from
+every line starting with it. This option is mutual exclusive with
+the option [option -delimiter].
+
+[para]
+Optionally, substitution can be used, which is applied before
+trimming (not really needed but sometimes convenient).
+
+[para]
+
+[list_end]
+
+[section EXAMPLES]
+
+[example_begin]
+ % ns_quotehtml "Hello World!"
+ Hello World!
+ 
+ % ns_quotehtml "The <STRONG> tag is used to indicate strongly emphasized text."
+ The &lt;STRONG&gt; tag is used to indicate strongly emphasized text.
+ 
+ % ns_quotehtml {<span class="foo">}
+ &lt;span class=&#34;foo&#34;&gt;
+[example_end]
+
+
+[example_begin]
+ % ns_reflow_text -width 15 -prefix "> " "one two three four five six seven eight nine ten"
+ > one two three
+ > four five six
+ > seven eight
+ > nine ten
+[example_end]
+
+[example_begin]
+ % ns_striphtml "<MARQUEE direction='right'><BLINK>Hello World!</BLINK></MARQUEE>"
+ Hello World!
+[example_end]
+
+[example_begin]
+ % ns_trim {
+    SELECT object_id, object_name
+    FROM   acs_objects
+    WHERE  object_id > 10000
+ }
+ SELECT object_id, object_name
+ FROM   acs_objects
+ WHERE  object_id > 10000
+ 
+ % ns_trim -delimiter | {
+    | <ul>
+    |   <li> one
+    |   <li> two
+    |   <li> three
+    | </ul>
+ }
+  <ul>
+    <li> one
+    <li> two
+    <li> three
+  </ul>
+
+ ns_trim -prefix "> " {
+ > line 1
+ > line 2 
+ }
+  
+ line 1
+ line 2 
+[example_end]
+
+[see_also ns_hrefs]
+[keywords "server built-in" text quote HTML encoding entity]
+
+[manpage_end]
+

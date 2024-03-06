@@ -1,0 +1,438 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+#
+# Most fo these tests require the OpenSSL API, some require nsf
+#
+tcltest::testConstraint crypto [ns_info ssl]
+tcltest::testConstraint nsf [expr {[info commands ::nsf::proc] ne ""}]
+tcltest::testConstraint tcl86 [expr {$tcl_version >= 8.6}]
+
+#######################################################################################
+#  Message digests: sha1, sha224, sha256, sha512
+#######################################################################################
+
+test ns_crypto_sha2-1.1 {basic syntax: plain call} -constraints crypto -body {
+     ns_crypto::md
+} -returnCodes error -result {wrong # args: should be "ns_crypto::md command ?args?"}
+test ns_crypto_sha2-1.2 {basic syntax: plain call} -constraints crypto -body {
+     ns_crypto::md string -digest sha123 x
+} -returnCodes error  -match glob -result {Unknown value for digest "sha123", valid: *}
+
+test ns_crypto_sha2-2.0 {basic operation} -constraints crypto -body {
+    ns_crypto::md string foo
+} -result "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+
+test ns_crypto_sha2-2.1 {basic operation} -constraints crypto -body {
+    ns_crypto::md string -digest sha224 foo
+} -result "0808f64e60d58979fcb676c96ec938270dea42445aeefcd3a4e6f8db"
+
+test ns_crypto_sha2-2.2 {basic operation} -constraints crypto -body {
+    ns_crypto::md string -digest sha256 foo
+} -result "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+
+test ns_crypto_sha2-2.3 {basic operation} -constraints crypto -body {
+    ns_crypto::md string -digest sha384 foo
+} -result "98c11ffdfdd540676b1a137cb1a22b2a70350c9a44171d6b1180c6be5cbb2ee3f79d532c8a1dd9ef2e8e08e752a3babb"
+
+test ns_crypto_sha2-2.4 {basic operation} -constraints crypto -body {
+    ns_crypto::md string -digest sha512 foo
+} -result "f7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7"
+
+#######################################################################################
+#  Signing text using a fixed private key, using SHA1.
+#  The operation is roughly equivalent to
+#
+#     openssl dgst -sha1 -sign myprivate.pem -out sha1.sign myfile.txt
+#
+#  Example from:
+#  https://medium.com/@bn121rajesh/rsa-sign-and-verify-using-openssl-behind-the-scene-bf3cac0aade2
+#######################################################################################
+test ns_crypto_sign-1.0 {basic operation} -constraints crypto -body {
+    set path [ns_config "test" home]/testserver/etc/
+    ::ns_crypto::md string -digest sha1 -sign $path/TESTKEY.pem "abcdefghijklmnopqrstuvwxyz\n"
+} -returnCodes {error ok} -result "9139be98f16cf53d22da63cb559bb06a93338da6a344e28a4285c2da33facb7080d26e7a09483779a016eebc207602fc3f90492c2f2fb8143f0fe30fd855593d"
+
+#######################################################################################
+#  verify signature using a fixed private key, using SHA1.
+#  The operation is roughly equivalent to
+#
+#     openssl dgst -sha1 -verify mypublic.pem -signature sha1.sign myfile.txt
+#
+#######################################################################################
+
+test ns_crypto_signature_verify-1.0 {basic operation} -constraints crypto -body {
+    set path [ns_config "test" home]/testserver/etc/
+    set sig [::ns_crypto::md string \
+                 -digest sha1 \
+                 -encoding binary \
+                 -sign $path/myprivate.pem \
+                 "abcdefghijklmnopqrstuxvwxyz\n"]
+    set vfy_ok [::ns_crypto::md string \
+                    -digest sha1 \
+                    -verify $path/mypublic.pem \
+                    -signature $sig \
+                    "abcdefghijklmnopqrstuxvwxyz\n"]
+    set vfy_nok [::ns_crypto::md string \
+                     -digest sha1 \
+                     -verify $path/mypublic.pem \
+                     -signature $sig \
+                     "abcdefghijklmnopqrstuxvwxyz"]
+    return [list $vfy_ok $vfy_nok]
+} -returnCodes {error return} -result {1 0}
+
+
+#######################################################################################
+#  HMAC: Keyed-Hashing for Message Authentication
+#  based on sha1, sha224, sha256, sha512
+#  RFC 2104 https://tools.ietf.org/html/rfc2104
+#######################################################################################
+
+test ns_hmac_sha2-1.1 {basic syntax: plain call} -constraints crypto -body {
+    ns_crypto::hmac
+} -returnCodes error -result {wrong # args: should be "ns_crypto::hmac command ?args?"}
+test ns_hmac_sha2-1.2 {basic syntax: plain call} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha123 x
+} -returnCodes error -result {wrong # args: should be "ns_crypto::hmac string ?-binary? ?-digest digest? ?-encoding encoding? ?--? key message"}
+test ns_hmac_sha2-1.3 {basic syntax: plain call} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha123 x y
+} -returnCodes error -match glob -result {Unknown value for digest "sha123", valid: *}
+
+test ns_hmac_sha2-2.0 {basic operation} -constraints crypto -body {
+    ns_crypto::hmac string "Jefe" "what do ya want for nothing?"
+} -result "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+
+test ns_hmac_sha2-2.1 {basic operation} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha224 "Jefe" "what do ya want for nothing?"
+} -result "a30e01098bc6dbbf45690f3a7e9e6d0f8bbea2a39e6148008fd05e44"
+
+test ns_hmac_sha2-2.2 {basic operation} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha256 "Jefe" "what do ya want for nothing?"
+} -result "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+
+test ns_hmac_sha2-2.3 {basic operation} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha384 "Jefe" "what do ya want for nothing?"
+} -result "af45d2e376484031617f78d2b58a6b1b9c7ef464f5a01b47e42ec3736322445e8e2240ca5e69e2c78b3239ecfab21649"
+
+test ns_hmac_sha2-2.4 {basic operation} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha512 "Jefe" "what do ya want for nothing?"
+} -result "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737"
+
+
+test ns_hmac_sha1-1.1 {basic operation} -constraints crypto -body {
+     ns_crypto::hmac string -digest sha1 "Jefe" "what do ya want for nothing?"
+} -result "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79"
+
+test ns_hmac_sha1-1.2 {binary operation (example from RFC 4226, appendix D)} -constraints crypto -body {
+     ns_crypto::hmac string -digest sha1 12345678901234567890 [binary format W 0]
+} -result "cc93cf18508d94934c64b65d8ba7667fb7cde4b0"
+
+test ns_hmac_sha1-1.3 {binary operation (example from RFC 4226, appendix D)} -constraints crypto -body {
+    ns_crypto::hmac string -digest sha1 12345678901234567890 [binary format W 1]
+} -result "75a48a19d4cbe100644e8ac1397eea747a2d33ab"
+
+
+#######################################################################################
+#  HMAC and MD file test
+#######################################################################################
+
+test ns_hmac-file-1.0 {ns_hmac file function} -constraints {crypto nsf} -body {
+    catch {ns_hmac file -digest sha256 foo [ns_server pagedir]/16480bytes} result
+    set result
+} -result "a3d3b7ad986f84a8e4b170ec576747361b31596b63c9135b049624612126ffd7"
+
+test ns_md-file-1.0 {ns_hmac file function} -constraints {crypto nsf} -body {
+    catch {ns_md file -digest sha256 [ns_server pagedir]/16480bytes} result
+    set result
+} -result "53deaf2e6c268ed0aae583e1c6f8679eedf08fb1218914530fa09b954c4bd621"
+
+
+#######################################################################################
+#  Password hashes
+#
+# Test Cases for pbkdf2-hmac-sha1 based on RFC 6070
+# (PKCS #5_ Password-Based Key Derivation Function 2 (PBKDF2) Test Vectors)
+############################################################################
+
+test pbkdf2_hmac-sha1.0 {Testcase 1 for pbkdf2-hmac-sha1 based on RFC 6070} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 1 -salt "salt" -digest sha1
+} -result "0c60c80f961f0e71f3a9b524af6012062fe037a6"
+
+test pbkdf2_hmac-sha1.1 {Testcase 2 for pbkdf2-hmac-sha1 based on RFC 6070} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 2 -salt "salt" -digest sha1
+} -result "ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957"
+
+test pbkdf2_hmac-sha1.2 {Testcase 3 for pbkdf2-hmac-sha1 based on RFC 6070} -body {
+      ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 4096 -salt "salt" -digest sha1
+} -result "4b007901b765489abead49d926f721d065a429c1"
+
+#test pbkdf2_hmac-sha1.3 {Testcase 4 for pbkdf2-hmac-sha1 based on RFC 6070; this test takes a while (11secs)
+#} -body {
+#    ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 16777216 -salt "salt" -digest sha1
+#} -result "eefe3d61cd4da4e4e9945b3d6ba2158c2634e984"
+
+test pbkdf2_hmac-sha1.4 {Testcase 5 for pbkdf2-hmac-sha1 based on RFC 6070, forcing a different length} -body {
+    ::ns_crypto::pbkdf2_hmac \
+        -secret "passwordPASSWORDpassword" \
+        -iterations 4096 \
+        -salt "saltSALTsaltSALTsaltSALTsaltSALTsalt" \
+        -digest sha1 \
+        -dklen 25
+} -result "3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038"
+
+test pbkdf2_hmac-sha1.5 {Testcase 6 for pbkdf2-hmac-sha1 based on RFC 6070, forcing a different length} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 4096 -salt "sa\0lt" -digest sha1 -dklen 16
+} -result "56fa6aa75548099dcc37d7f03425e0c3"
+
+############################################################################
+# Test Cases for pbkdf2-hmac-sha2 from
+# https://stackoverflow.com/questions/5130513/pbkdf2-hmac-sha2-test-vectors
+############################################################################
+
+test pbkdf2_hmac-sha256.0 {Testcase 1 for pbkdf2-hmac-sha256} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 1 -salt "salt"
+} -result "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"
+
+test pbkdf2_hmac-sha256.1 {Testcase 2 for pbkdf2-hmac-sha256} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 2 -salt "salt"
+} -result "ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43"
+
+test pbkdf2_hmac-sha256.2 {Testcase 3 for pbkdf2-hmac-sha256} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "password" -iterations 4096 -salt "salt"
+} -result "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"
+
+test pbkdf2_hmac-sha256.5 {Testcase 4 for pbkdf2-hmac-sha256, forcing a different length} -body {
+    ::ns_crypto::pbkdf2_hmac -secret "pass\0word" -iterations 4096 -salt "sa\0lt" -dklen 16
+} -result "89b69d0516f829893c696226650a8687"
+
+#######################################################################################
+#  HOTP: An HMAC-Based One-Time Password Algorithm
+#  RFC 4426 https://tools.ietf.org/html/rfc4226
+#######################################################################################
+
+test hotp-1 {
+
+    Test for HOTP based on testvector in Appendix D from RFC 4226
+    https://www.ietf.org/rfc/rfc4226.txt
+
+} -constraints {crypto nsf} -body {
+    set result ""
+    foreach C {0 1 2 3 4 5 6 7 8 9} {
+        lappend result [ns_hotp -digest sha1 -key 12345678901234567890 [binary format W $C]]
+    }
+    return $result
+} -result "755224 287082 359152 969429 338314 254676 287922 162583 399871 520489"
+
+
+#######################################################################################
+#  TOTP: Time-Based One-Time Password Algorithm
+#  RFC 6238 https://tools.ietf.org/html/rfc6238
+#######################################################################################
+
+test totp-1 {
+
+    Test for HOTP based on testvector from Appendix B of RFC 6238
+    https://tools.ietf.org/html/rfc6238
+
+} -constraints {crypto nsf} -body {
+    set result {}
+    foreach time {59 1111111109 1111111111 1234567890 2000000000 20000000000} {
+        foreach digest {
+            sha1
+            sha256
+            sha512
+        } key {
+            12345678901234567890
+            12345678901234567890123456789012
+            1234567890123456789012345678901234567890123456789012345678901234
+        } {
+            lappend result [ns_totp -digest $digest -key $key -time $time]
+        }
+    }
+    return $result
+} -result "94287082 46119246 90693936 07081804 68084774 25091201 14050471 67062674 99943326 89005924 91819424 93441116 69279037 90698825 38618901 65353130 77737706 47863826"
+
+
+#######################################################################################
+#  HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
+#  RFC 5869 https://tools.ietf.org/html/rfc5869
+#######################################################################################
+catch {ns_crypto::md x} errorMsg
+if {[string match "*hkdf*" $errorMsg]} {
+
+    test hkdf-1.0 {test HKDF based on sha256, test case 1 from RFC 5869} -constraints {crypto} -body {
+        ::ns_crypto::md hkdf -digest sha256 \
+            -salt   [binary format H* 000102030405060708090a0b0c] \
+            -secret [binary format H* 0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b] \
+            -info   [binary format H* f0f1f2f3f4f5f6f7f8f9] \
+            42
+    } -result "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+
+    test hkdf-1.1 {test HKDF based on sha256, test case 3 from RFC 5869} -constraints {crypto} -body {
+        ::ns_crypto::md hkdf -digest sha256 \
+            -salt   "" \
+            -secret [binary format H* 0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b] \
+            -info   "" \
+            42
+    } -result "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8"
+
+    test hkdf-1.2 {test HKDF based on sha1, test case 4 from RFC 5869} -constraints {crypto} -body {
+        ::ns_crypto::md hkdf -digest sha1 \
+            -salt   [binary format H* 000102030405060708090a0b0c] \
+            -secret [binary format H* 0b0b0b0b0b0b0b0b0b0b0b] \
+            -info   [binary format H* f0f1f2f3f4f5f6f7f8f9] \
+            42
+    } -result "085a01ea1b10f36933068b56efa5ad81a4f14b822f5b091568a9cdd4f155fda2c22e422478d305f3f896"
+
+}
+
+
+#######################################################################################
+#  Working with "funny" UTF-8 characters
+#######################################################################################
+test md-utf-1.0 {plain umlaut, 16-bit UTF-8} -constraints {nsf} -body {
+    ns_md string ü
+} -result 607474ca475a9724d7360aba71a56d5df77e61350e3f724cfa1f46e857e2d85f
+
+test md-utf-1.1 {character outside 16-bit range, 24 bits UTF-8} -constraints {nsf} -body {
+    ns_md string ☀
+} -result d0f6163cbf68c300eb17b4e538651099d95afaaab84fa7b283f56face0ca643c
+
+test md-utf-1.2 {plain umlaut, no-nsf, 16-bit UTF-8} -body {
+    ns_crypto::md string ü
+} -result 607474ca475a9724d7360aba71a56d5df77e61350e3f724cfa1f46e857e2d85f
+
+test md-utf-1.3 {character outside 16-bit range, no-nsf, 24 bits UTF-8} -body {
+    ns_crypto::md string ☀
+} -result d0f6163cbf68c300eb17b4e538651099d95afaaab84fa7b283f56face0ca643c
+
+#######################################################################################
+#  Real world example including hmac and md
+#######################################################################################
+test hmac-md-1.0 {test results of hmac passed to ns_crypto::md} -body {
+    ns_crypto::md string [ns_crypto::hmac string \
+                              -digest sha256 \
+                              -encoding binary \
+                              "AWS4LfongAfJ2Y2L1y5M1R1sd6fk1csV1ttRXQACnpzI" \
+                              20190808]
+} -result 4e4beb75ada15a19223adff1a57d7f11964b2209d3513ad51c7227fdc109b963
+
+test hmac-md-1.0.1 {test results of hmac passed to ns_crypto::md} -body {
+    set h [ns_crypto::hmac string \
+               -digest sha256 \
+               -encoding binary \
+               "AWS4LfongAfJ2Y2L1y5M1R1sd6fk1csV1ttRXQACnpzI" \
+               20190808]
+    #ns_log notice "obj(h) [nsf::__db_get_obj $h]"
+    ns_crypto::md string $h
+} -result 4e4beb75ada15a19223adff1a57d7f11964b2209d3513ad51c7227fdc109b963
+
+
+test hmac-md-1.1 {test results of ns_crypto::hmac passed to ns_md} -body {
+    ns_crypto::md string [ns_crypto::hmac string \
+                      -digest sha256 \
+                      -encoding binary \
+                      "AWS4LfongAfJ2Y2L1y5M1R1sd6fk1csV1ttRXQACnpzI" \
+                      20190808]
+} -result 4e4beb75ada15a19223adff1a57d7f11964b2209d3513ad51c7227fdc109b963
+
+
+test base64-md5.0 {
+    ns_base64encode and decode with 2 byte UTF-8 character "ü"
+} -body {
+    set string "ü"
+    ns_log notice 00-literal-ü
+    set m00 [ns_md5 "ü"]
+    ns_log notice 01-var-string-before-convertfrom
+    ns_log notice "obj(inp0) [nsf::__db_get_obj $string]"
+    set m01 [ns_md5 $string]
+    ns_log notice "obj(inp1) [nsf::__db_get_obj $string]"
+    set s1 [encoding convertfrom utf-8 $string]
+    ns_log notice 02-var-string-after-convertfrom
+    ns_log notice "obj(inp2) [nsf::__db_get_obj $string]"
+    set m02 [ns_md5 $string]
+    ns_log notice 03-var-s1
+    set m02 [ns_md5 $s1]
+    ns_log notice "obj(res) [nsf::__db_get_obj $s1]"
+    set m0 [ns_md5 $string]
+
+    ns_log notice "obj(str0) [nsf::__db_get_obj $string] $m0 $string"
+    set encoded [ns_base64encode $string]
+    set decoded [ns_base64decode $encoded]
+    set m1 [ns_md5 $decoded]
+    ns_log notice "obj(dec1) [nsf::__db_get_obj $decoded] $m1 $decoded"
+    set decoded2 [encoding convertfrom utf-8 $decoded]; # FAILS with TIP 657 branch
+    set m2 [ns_md5 $decoded2]
+    ns_log notice "obj(dec2) [nsf::__db_get_obj $decoded] $m2 $decoded2"
+    list $m01 $m1 [string equal $m01 $m1] [string equal $m01 $m2]
+} -returnCodes {ok error} -result {C03410A5204B21CD8229FF754688D743 C03410A5204B21CD8229FF754688D743 1 1}
+
+test base64-md5.1 {
+    ns_base64encode and decode with 2 byte UTF-8 character "ü"
+} -body {
+    set string "ü"
+    set m0 [ns_md5 $string]
+    #ns_log notice "obj(str0) [nsf::__db_get_obj $string] $m0 $string"
+    set encoded [ns_base64encode $string]
+    set m1 [ns_md5 $string]
+    #ns_log notice "obj(str1) [nsf::__db_get_obj $string] $m1 $string"
+    set decoded [ns_base64decode $encoded]
+    set m2 [ns_md5 $string]
+    #ns_log notice "obj(dec1) [nsf::__db_get_obj $decoded] $m2 $decoded"
+    set decoded [encoding convertfrom utf-8 $decoded]
+    set m3 [ns_md5 $string]
+    #ns_log notice "obj(dec2) [nsf::__db_get_obj $decoded] $m3 $decoded"
+    list $m1 $m2 $m3
+} -result {C03410A5204B21CD8229FF754688D743 C03410A5204B21CD8229FF754688D743 C03410A5204B21CD8229FF754688D743}
+
+test base64-md5.2 {
+    ns_base64decode and tcl base64decode of binary data
+} -constraints tcl86 -body {
+    set encoded {I+w+Yr+CXWGVsk2ZbqqzZlKcTuEM8TCMLOYjBv1h8xo2txA0Q5UX7v5gd5j6e8x1eIWGcfd3ORH2Vgt2HcDURw==}
+    set ns_dec  [ns_base64decode -binary $encoded]
+    ns_log notice "obj(ns_dec) [nsf::__db_get_obj $ns_dec]"
+    set tcl_dec [binary decode base64 $encoded]
+    ns_log notice "obj(tcl_de) [nsf::__db_get_obj $tcl_dec]"
+    # The following two ns_md5 commands have to autodetect the byte
+    # array
+    set m0 [ns_md5 $ns_dec]
+    set m1 [ns_md5 $tcl_dec]
+    #ns_log notice "obj(ns_dec) [nsf::__db_get_obj $ns_dec] $m0"
+    #ns_log notice "obj(tcl_de) [nsf::__db_get_obj $tcl_dec] $m1"
+
+    binary scan $ns_dec H* ns_hex
+    binary scan $tcl_dec H* tcl_hex
+    #ns_log notice "ns_dec  <$ns_hex>"
+    #ns_log notice "tcl_dec <$tcl_hex>"
+
+    list $m0 $m1 [string equal $ns_hex $tcl_hex]
+} -result {E50C2BFEF5ABE4D1004C192DFFA769ED E50C2BFEF5ABE4D1004C192DFFA769ED 1}
+
+############################################################################
+# Test Cases for ns_crypto::aead::encrypt and decrypt
+############################################################################
+test aead-1.0 {aead::encrypt} -body {
+    set d [ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 -key secret "hello world"]
+    list bytes [string length [dict get $d bytes]] tag [string length [dict get $d tag]]
+} -returnCodes {ok error} -result {bytes 22 tag 32}
+
+test aead-1.1 {aead::encrypt and decrypt} -body {
+    set d [ns_crypto::aead::encrypt string -cipher aes-128-gcm -iv 123456789 \
+               -key secret -aad 127.0.0.1 -encoding binary \
+               "hello world"]
+    ns_crypto::aead::decrypt string -cipher aes-128-gcm -iv 123456789 \
+        -key secret -tag [dict get $d tag] \
+        -encoding binary [dict get $d bytes]
+} -returnCodes {ok error} -result {hello world}
+
+
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

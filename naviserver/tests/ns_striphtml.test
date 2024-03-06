@@ -1,0 +1,382 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+test ns_striphtml-1.0 {basic test} -body {
+    ns_striphtml {hello <b>world</b>}
+} -result "hello world"
+
+test ns_striphtml-2.0.1 {nbsp entity} -body {
+    ns_striphtml {hello&nbsp;world}
+} -result "hello world"
+test ns_striphtml-2.0.2 {bare less sign} -body {
+    ns_striphtml {hello&lt;world}
+} -result "hello<world"
+test ns_striphtml-2.0.3 {bare greater sign} -body {
+    ns_striphtml {hello&gt;world}
+} -result "hello>world"
+test ns_striphtml-2.0.4 {two entities next to each other} -body {
+    ns_striphtml {&lt;&gt;}
+} -result "<>"
+test ns_striphtml-2.0.5 {two entities next to each other, embedded} -body {
+    ns_striphtml {hello&lt;&gt;world}
+} -result "hello<>world"
+test ns_striphtml-2.0.6 {with decimal numeric entity} -body {
+    ns_striphtml [ns_quotehtml {hello "world"}]
+} -result {hello "world"}
+test ns_striphtml-2.0.7 {with decomal numeric entity} -body {
+    ns_striphtml [ns_quotehtml {hello 'world'}]
+} -result "hello 'world'"
+test ns_striphtml-2.0.8 {with hex entity} -body {
+    ns_striphtml {hello &#x22;world&#x22;}
+} -result {hello "world"}
+
+test ns_striphtml-2.0.9 {two entity next to each other} -body {
+    ns_striphtml {a&lt;b&lt;&gt;c}
+} -result "a<b<>c"
+test ns_striphtml-2.0.10 {entity immediately followed by opening tag} -body {
+    ns_striphtml {a<a href='h'>b</a>c&amp;<a href='h'>d</a>e}
+} -result "abc&de"
+test ns_striphtml-2.0.11 {unknown entity} -body {
+    ns_striphtml {a&ltxxx;b}
+} -result "ab"
+
+
+test ns_striphtml-2.1 {euro entity} -body {
+    ns_striphtml {hello&euro;world}
+} -result "hello€world"
+
+test ns_striphtml-2.2 {cent entity} -body {
+    ns_striphtml {hello&cent;world}
+} -result "hello¢world"
+test ns_striphtml-2.2b {cent entity} -body {
+    ns_striphtml {hello&#162;world}
+} -result "hello¢world"
+
+test ns_striphtml-2.3 {pound entity} -body {
+    ns_striphtml {hello&pound;world}
+} -result "hello£world"
+test ns_striphtml-2.3b {pound numeric entity} -body {
+    ns_striphtml {hello&#163;world}
+} -result "hello£world"
+
+test ns_striphtml-2.4 {yen entity} -body {
+    ns_striphtml {hello&yen;world}
+} -result "hello¥world"
+test ns_striphtml-2.4b {yen numeric entity} -body {
+    ns_striphtml {'hello&#165;world'}
+} -result "'hello¥world'"
+
+
+test ns_striphtml-3.0 {table} -body {
+    set t {
+                                {"AElig",   5, "Æ", 2},
+                                {"Aacute",  6, "Á", 2},
+                                {"Acirc",   5, "Â", 2},
+                                {"Agrave",  6, "À", 2},
+                                {"Alpha",   5, "Α", 2},
+                                {"Aring",   5, "Å", 2},
+                                {"Atilde",  6, "Ã", 2},
+                                {"Auml",    4, "Ä", 2},
+                                {"Beta",    4, "Β", 2},
+                                {"Ccedil",  6, "Ç", 2},
+                                {"Chi",     3, "Χ", 2},
+                                {"Delta",   5, "Δ", 2},
+                                {"ETH",     3, "Ð", 2},
+                                {"Eacute",  6, "É", 2},
+                                {"Ecirc",   5, "Ê", 2},
+                                {"Egrave",  6, "È", 2},
+                                {"Epsilon", 7, "Ε", 2},
+                                {"Eta",     3, "Η", 2},
+                                {"Euml",    4, "Ë", 2},
+                                {"Gamma",   5, "Γ", 2},
+                                {"Iacute",  6, "Í", 2},
+                                {"Icirc",   5, "Î", 2},
+                                {"Igrave",  6, "Ì", 2},
+                                {"Iota",    4, "Ι", 2},
+                                {"Iuml",    4, "Ï", 2},
+                                {"Kappa",   5, "Κ", 2},
+                                {"Lambda",  6, "Λ", 2},
+                                {"Mu",      2, "Μ", 2},
+                                {"Ntilde",  6, "Ñ", 2},
+                                {"Nu",      2, "Ν", 2},
+                                {"Oacute",  6, "Ó", 2},
+                                {"Ocirc",   5, "Ô", 2},
+                                {"Ograve",  6, "Ò", 2},
+                                {"Omega",   5, "Ω", 2},
+                                {"Omicron", 7, "Ο", 2},
+                                {"Oslash",  6, "Ø", 2},
+                                {"Otilde",  6, "Õ", 2},
+                                {"Ouml",    4, "Ö", 2},
+                                {"Phi",     3, "Φ", 2},
+                                {"Pi",      2, "Π", 2},
+                                {"Prime",   5, "″", 2},
+                                {"Psi",     3, "Ψ", 2},
+                                {"Rho",     3, "Ρ", 2},
+                                {"Sigma",   5, "Σ", 2},
+                                {"THORN",   5, "Þ", 2},
+                                {"Tau",     3, "Τ", 2},
+                                {"Theta",   5, "Θ", 2},
+                                {"Uacute",  6, "Ú", 2},
+                                {"Ucirc",   5, "Û", 2},
+                                {"Ugrave",  6, "Ù", 2},
+                                {"Upsilon", 7, "Υ", 2},
+                                {"Uuml",    4, "Ü", 2},
+                                {"Xi",      2, "Ξ", 2},
+                                {"Yacute",  6, "Ý", 2},
+                                {"Zeta",    4, "Ζ", 2},
+                                {"aacute",  6, "á", 2},
+                                {"acirc",   5, "â", 2},
+                                {"acute",   5, "´", 2},
+                                {"aelig",   5, "æ", 2},
+                                {"agrave",  6, "à", 2},
+                                {"alefsym", 7, "ℵ", 2},
+                                {"alpha",   5, "α", 2},
+                                {"amp",     3, "&", 2},
+                                {"and",     3, "∧", 2},
+                                {"ang",     3, "∠", 2},
+                                {"apos",    4, "'", 1},
+                                {"aring",   5, "å", 2},
+                                {"asymp",   5, "≈", 2},
+                                {"atilde",  6, "ã", 2},
+                                {"auml",    4, "ä", 2},
+                                {"beta",    4, "β", 2},
+                                {"brvbar",  6, "¦", 2},
+                                {"bull",    4, "•", 2},
+                                {"cap",     3, "∩", 2},
+                                {"ccedil",  6, "ç", 2},
+                                {"cedil",   5, "¸", 2},
+                                {"cent",    4, "¢", 2},
+                                {"chi",     3, "χ", 2},
+                                {"clubs",   5, "♣", 2},
+                                {"cong",    4, "≅", 2},
+                                {"copy",    4, "©", 2},
+                                {"crarr",   5, "↵", 2},
+                                {"cup",     3, "∪", 2},
+                                {"curren",  6, "¤", 2},
+                                {"dArr",    4, "⇓", 2},
+                                {"darr",    4, "↓", 2},
+                                {"deg",     3, "°", 2},
+                                {"delta",   5, "δ", 2},
+                                {"diams",   5, "♦", 2},
+                                {"divide",  6, "÷", 2},
+                                {"eacute",  6, "é", 2},
+                                {"ecirc",   5, "ê", 2},
+                                {"egrave",  6, "è", 2},
+                                {"empty",   5, "∅", 2},
+                                {"epsilon", 7, "ε", 2},
+                                {"equiv",   5, "≡", 2},
+                                {"eta",     3, "η", 2},
+                                {"eth",     3, "ð", 2},
+                                {"euml",    4, "ë", 2},
+                                {"euro",    4, "€", 3},
+                                {"exist",   5, "∃", 2},
+                                {"fnof",    4, "ƒ", 2},
+                                {"forall",  6, "∀", 2},
+                                {"frac12",  6, "½", 2},
+                                {"frac14",  6, "¼", 2},
+                                {"frac34",  6, "¾", 2},
+                                {"frasl",   5, "⁄", 2},
+                                {"gamma",   5, "γ", 2},
+                                {"ge",      2, "≥", 1},
+                                {"gt",      2, ">", 1},
+                                {"hArr",    4, "⇔", 2},
+                                {"harr",    4, "↔", 2},
+                                {"hearts",  6, "♥", 2},
+                                {"hellip",  6, "…", 2},
+                                {"iacute",  6, "í", 2},
+                                {"icirc",   5, "î", 2},
+                                {"iexcl",   5, "¡", 2},
+                                {"igrave",  6, "ì", 2},
+                                {"image",   5, "ℑ", 2},
+                                {"infin",   5, "∞", 2},
+                                {"int",     3, "∫", 2},
+                                {"iota",    4, "ι", 2},
+                                {"iquest",  6, "¿", 2},
+                                {"isin",    4, "∈", 2},
+                                {"iuml",    4, "ï", 2},
+                                {"kappa",   5, "κ", 2},
+                                {"lArr",    4, "⇐", 2},
+                                {"lambda",  6, "λ", 2},
+                                {"lang",    4, "〈", 2},
+                                {"laquo",   5, "«", 2},
+                                {"larr",    4, "←", 2},
+                                {"lceil",   5, "⌈", 2},
+                                {"le",      2, "≤", 2},
+                                {"lfloor",  6, "⌊", 2},
+                                {"lowast",  6, "∗", 2},
+                                {"loz",     3, "◊", 2},
+                                {"lt",      2, "<", 1},
+                                {"macr",    4, "¯", 2},
+                                {"micro",   5, "µ", 2},
+                                {"middot",  6, "·", 2},
+                                {"minus",   5, "−", 2},
+                                {"mu",      2, "μ", 2},
+                                {"nabla",   5, "∇", 2},
+                                {"nbsp",    4, " ", 1},
+                                {"ne",      2, "≠", 2},
+                                {"ni",      2, "∋", 2},
+                                {"not",     3, "¬", 2},
+                                {"notin",   5, "∉", 2},
+                                {"nsub",    4, "⊄", 2},
+                                {"ntilde",  6, "ñ", 2},
+                                {"nu",      2, "ν", 2},
+                                {"oacute",  6, "ó", 2},
+                                {"ocirc",   5, "ô", 2},
+                                {"ograve",  6, "ò", 2},
+                                {"oline",   5, "‾", 2},
+                                {"omega",   5, "ω", 2},
+                                {"omicron", 7, "ο", 2},
+                                {"oplus",   5, "⊕", 2},
+                                {"or",      2, "∨", 2},
+                                {"ordf",    4, "ª", 2},
+                                {"ordm",    4, "º", 2},
+                                {"oslash",  6, "ø", 2},
+                                {"otilde",  6, "õ", 2},
+                                {"otimes",  6, "⊗", 2},
+                                {"ouml",    4, "ö", 2},
+                                {"para",    4, "¶", 2},
+                                {"part",    4, "∂", 2},
+                                {"perp",    4, "⊥", 2},
+                                {"phi",     3, "φ", 2},
+                                {"pi",      2, "π", 2},
+                                {"piv",     3, "ϖ", 2},
+                                {"plusmn",  6, "±", 2},
+                                {"pound",   5, "£", 2},
+                                {"prime",   5, "′", 1},
+                                {"prod",    4, "∏", 2},
+                                {"prop",    4, "∝", 2},
+                                {"psi",     3, "ψ", 2},
+                                {"quot",    4, "\"", 1},
+                                {"rArr",    4, "⇒", 2},
+                                {"radic",   5, "√", 2},
+                                {"rang",    4, "〉", 2},
+                                {"raquo",   5, "»", 2},
+                                {"rarr",    4, "→", 2},
+                                {"rceil",   5, "⌉", 2},
+                                {"real",    4, "ℜ", 2},
+                                {"reg",     3, "®", 2},
+                                {"rfloor",  6, "⌋", 2},
+                                {"rho",     3, "ρ", 2},
+                                {"sdot",    4, "⋅", 2},
+                                {"sect",    4, "§", 2},
+                                {"shy",     3, "­", 2},
+                                {"sigma",   5, "σ", 2},
+                                {"sigmaf",  6, "ς", 2},
+                                {"sim",     3, "∼", 2},
+                                {"spades",  6, "♠", 2},
+                                {"sub",     3, "⊂", 2},
+                                {"sube",    4, "⊆", 2},
+                                {"sum",     3, "∑", 2},
+                                {"sup",     3, "⊃", 2},
+                                {"sup1",    4, "¹", 2},
+                                {"sup2",    4, "²", 2},
+                                {"sup3",    4, "³", 2},
+                                {"supe",    4, "⊇", 2},
+                                {"szlig",   5, "ß", 2},
+                                {"tau",     3, "τ", 2},
+                                {"there4",  6, "∴", 2},
+                                {"theta",   5, "θ", 2},
+                                {"thetasym",8, "ϑ", 2},
+                                {"thorn",   5, "þ", 2},
+                                {"times",   5, "×", 2},
+                                {"trade",   5, "™", 2},
+                                {"uArr",    4, "⇑", 2},
+                                {"uacute",  6, "ú", 2},
+                                {"uarr",    4, "↑", 2},
+                                {"ucirc",   5, "û", 2},
+                                {"ugrave",  6, "ù", 2},
+                                {"uml",     3, "¨", 2},
+                                {"upsih",   5, "ϒ", 2},
+                                {"upsilon", 7, "υ", 2},
+                                {"uuml",    4, "ü", 2},
+                                {"weierp",  6, "℘", 2},
+                                {"xi",      2, "ξ", 2},
+                                {"yacute",  6, "ý", 2},
+                                {"yen",     3, "¥", 2},
+                                {"yuml",    4, "ÿ", 2},
+                                {"zeta",    4, "ζ", 2},
+                                {NULL,      4, "", 0}
+    }
+    regsub -all {{NULL,    0, "", 0}} $t "" t
+    regsub -all {,} $t " " t
+    set string ""
+    set expected ""
+    foreach l $t {
+        lassign $l name len value valueLen
+        if {$len ne [string length $name]} {
+            ns_log notice "name length of <$name> incorrect, should be [string length $name]"
+        }
+        append string   "&$name; "
+        append expected "$value "
+    }
+    set got [ns_striphtml $string]
+    set result [expr {$expected eq $got}]
+    if {$result eq 0} {
+        ns_log notice "\nexp: $expected\ngot: $got"
+        foreach e [split $expected " "] g [split $got " "] {
+            ns_log notice "e $e g $g eq [expr {$e eq $g}]"
+        }
+    }
+    return $result
+} -result "1"
+
+test ns_striphtml-4.0 {strip HTML comment} -body {
+    ns_striphtml {hello<!-- SOME COMMENT -->World}
+} -result "helloWorld"
+
+
+#######################################################################################
+#  test ns_quotehtml
+#######################################################################################
+
+test ns_quotehtml-1.0 {ns_quotehtml with typical value} -body {
+    return [ns_quotehtml {<span class="foo">}]
+} -result {&lt;span class=&#34;foo&#34;&gt;}
+
+#######################################################################################
+#  test ns_unquotehtml
+#######################################################################################
+
+test ns_unquotehtml-1.0 {ns_unquotehtml with typical value} -body {
+    return [ns_unquotehtml [ns_quotehtml {<span class="foo">...</span>}]]
+} -result {<span class="foo">...</span>}
+
+test ns_unquotehtml-1.1 {ns_unquotehtml with typical value} -body {
+    return [ns_unquotehtml [ns_quotehtml {aaa<span class='foo'>...</span>zzz}]]
+} -result {aaa<span class='foo'>...</span>zzz}
+
+test ns_unquotehtml-1.2 {ns_unquotehtml with named UTF-8 entity} -body {
+    return [ns_unquotehtml {a&otimes;b}]
+} -result {a⊗b}
+test ns_unquotehtml-1.3 {two entities next to each other} -body {
+    ns_unquotehtml {&lt;&gt;}
+} -result "<>"
+test ns_unquotehtml-1.4 {two entities next to each other. embedded} -body {
+    ns_unquotehtml {hello&lt;&gt;world}
+} -result "hello<>world"
+
+
+test ns_unquotehtml-2.0 {ns_unquotehtml with numeric entities (US ASCII)} -body {
+    ns_unquotehtml {&#104;&#x65;&#108;&#x6C;&#x6F;}
+} -result {hello}
+
+test ns_unquotehtml-2.1 {ns_unquotehtml with numeric euro sign as (code point U+20AC)} -body {
+    ns_unquotehtml {give me &#x20AC;&#8364;!}
+} -result {give me €€!}
+
+test ns_unquotehtml-2.2 {ns_unquotehtml with mermaids with different skin tones} -body {
+    ns_unquotehtml {&#129500;&#127995; Light skin tone; &#129500;&#127998; Medium Dark skin tone.}
+} -result {🧜🏻 Light skin tone; 🧜🏾 Medium Dark skin tone.}
+
+
+
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

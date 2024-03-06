@@ -1,0 +1,408 @@
+# -*- Tcl -*-
+#
+# The contents of this file are subject to the Mozilla Public License
+# Version 1.1 (the "License"); you may not use this file except in
+# compliance with the License. You may obtain a copy of the License at
+# http://mozilla.org/.
+#
+# Software distributed under the License is distributed on an "AS IS"
+# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
+# the License for the specific language governing rights and limitations
+# under the License.
+#
+# The Original Code is AOLserver Code and related documentation
+# distributed by AOL.
+#
+# The Initial Developer of the Original Code is America Online,
+# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
+# Inc. All Rights Reserved.
+#
+# Alternatively, the contents of this file may be used under the terms
+# of the GNU General Public License (the "GPL"), in which case the
+# provisions of GPL are applicable instead of those above.  If you wish
+# to allow use of your version of this file only under the terms of the
+# GPL and not to allow others to use your version of this file under the
+# License, indicate your decision by deleting the provisions above and
+# replace them with the notice and other provisions required by the GPL.
+# If you do not delete the provisions above, a recipient may use your
+# version of this file under either the License or the GPL.
+#
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+if {[ns_config test listenport]} {
+    testConstraint serverListen true
+}
+
+
+#
+# The following allows us to use ADP without a connection.
+#
+
+ns_adp_ctl channel stdout
+
+
+
+
+test adp-1.1 {Simple Tcl page} -body {
+    nstest::http -getbody 1 GET /helloworld.tcl
+} -result {200 {Hello World!}}
+
+
+test adp-1.2 {Simple Tcl page returning large data} -body {
+    set result [nstest::http -getbody 1 GET /helloworld.tcl?data=x&repeat=8666]
+    list [lindex $result 0] [string length [lindex $result 1]]
+} -cleanup {
+    unset -nocomplain result
+} -result {200 8666}
+
+
+test adp-1.3 {Simple ADP page} -body {
+    nstest::http -getbody 1 GET /helloworld.adp
+} -result {200 {Hello World!}}
+
+
+test adp-1.4 {Simple ADP page returning large data} -body {
+    set result [nstest::http -getbody 1 GET /helloworld.adp?data=x&repeat=8666]
+    list [lindex $result 0] [string length [lindex $result 1]]
+} -cleanup {
+    unset -nocomplain result
+} -result {200 8666}
+
+
+test adp-2.1 {ADP page map} -setup {
+    ns_register_adp GET /dejavu helloworld.adp
+} -body {
+    nstest::http -getbody 1 GET /dejavu
+} -cleanup {
+    ns_unregister_op GET /dejavu
+} -result {200 {Hello World!}}
+
+
+test adp-2.2 {Tcl page map} -setup {
+    ns_register_tcl GET /dejavu helloworld.tcl
+} -body {
+    nstest::http -getbody 1 GET /dejavu
+} -cleanup {
+    ns_unregister_op GET /dejavu
+} -result {200 {Hello World!}}
+
+
+
+test adp-3.1 {ns_adp_ctl} -body {
+    # (enabled by default)
+    list [ns_adp_ctl autoabort 0] [ns_adp_ctl autoabort]
+} -result {1 0}
+
+test adp-3.2 {ns_adp_ctl bufsize} -body {
+    set orig [ns_adp_ctl bufsize 1666]
+    ns_adp_ctl bufsize $orig
+} -cleanup {
+    unset -nocomplain orig
+} -result {1666}
+
+
+
+test adp-4.1a {ns_adp_append} -body {
+    ns_adp_parse {<% ns_adp_append adp-4.1 %>}
+} -result {adp-4.1}
+
+test adp-4.1b {ns_adp_append} -body {
+    ns_adp_parse {<% ns_adp_append adp-4.1' %>}
+} -result {adp-4.1'}
+
+
+test adp-4.2 {ns_adp_puts} -body {
+    ns_adp_parse {<% ns_adp_puts adp-4.2 %>}
+} -result "adp-4.2\n"
+
+test adp-4.3 {ns_adp_puts} -body {
+    ns_adp_parse {<% ns_adp_puts -nonewline adp-4.3 %>}
+} -result {adp-4.3}
+
+test adp-4.4 {ns_adp_dir (unset)} -body {
+    ns_adp_dir
+} -result {}
+
+
+test adp-5.1 {Nested ADP tags} -body {
+    string map {\r ""} [nstest::http -getbody 1 GET /nested.adp]
+} -result {200 {anything
+}}
+
+test adp-5.2 {Deeply nested ADP tags} -body {
+    string map {\r ""} [nstest::http -getbody 1 GET /deepnest.adp]
+} -result {200 {deep
+}}
+
+
+#
+# ns_adp_parse
+#
+
+test adp-6.1 {adp-parse string} -body {
+    ns_adp_parse {2 + 2 = <%= [expr 2 + 2] %> !!!}
+} -result {2 + 2 = 4 !!!}
+
+test adp-6.2 {adp-parse string} -body {
+    ns_adp_parse -string {2 + 2 = <%= [expr 2 + 2] %> !!!}
+} -result {2 + 2 = 4 !!!}
+
+
+test adp-6.3 {adp-parse file} -body {
+    string map {\r ""} [ns_adp_parse -file adp1.adp]
+} -result {2 + 2 = 4 !!!
+}
+
+test adp-6.4 {adp-parse file with arguments} -body {
+    string map {\r ""} [ns_adp_parse -file adp2.adp hello world]
+} -result {2 + 2 = 4 !!!
+argc 3
+argv adp2.adp hello world
+}
+
+test adp-7.1 {adp-parse string with tag, quoted and unquoted} -body {
+    proc ::test_tag_proc {params} {return [ns_set array $params]}
+    ns_adp_registerscript test71 ::test_tag_proc
+    ns_adp_parse -string {<test71 a="1" b=2>}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {a 1 b 2}
+
+test adp-7.2a {adp-parse string with tag, with less sign} -body {
+    proc ::test_tag_proc {params} {return [ns_set array $params]}
+    ns_adp_registerscript test72 ::test_tag_proc
+    ns_adp_parse -string {<test72 a="1" title="<" b=2>}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {a 1 title < b 2}
+
+test adp-7.2b {adp-parse string with tag with greater sign} -body {
+    proc ::test_tag_proc {params} {return [ns_set array $params]}
+    ns_adp_registerscript test72 ::test_tag_proc
+    ns_adp_parse -string {<test72 a="1" title=">" b=2>}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {a 1 title > b 2}
+
+test adp-7.3 {adp-parse string with tag, with markup in attribute} -body {
+    proc ::test_tag_proc {params} {return [ns_set array $params]}
+    ns_adp_registerscript test73 ::test_tag_proc
+    ns_adp_parse -string {<test73 a="1" title="<i class='fa fa-link'></i>" b=2>}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {a 1 title {<i class='fa fa-link'></i>} b 2}
+
+#
+# When parsing fails, the result is literally the input
+#
+test adp-7.4a {adp-parse string with tag, attribute quote not terminated} -body {
+    proc ::test_tag_proc {params} {return [ns_set array $params]}
+    ns_adp_registerscript test74 ::test_tag_proc
+    ns_adp_parse -string {<test74 a="1" b=2}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {<test74 a="1" b=2}
+
+test adp-7.4b {adp-parse string with tag, attribute quote not terminated} -body {
+    proc ::test_tag_proc {params} {return [ns_set array $params]}
+    ns_adp_registerscript test74 ::test_tag_proc
+    ns_adp_parse -string {<test74 a="1" title=" b=2>}  ;#"
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {a 1 title {" b=2>}} ;#"
+
+test adp-7.5.1 {adp-parse string with non-registered tag, attribute quote not terminated} -body {
+    ns_adp_parse -string {<test75 a="1" title=" b=2>}  ;#"
+} -result {<test75 a="1" title=" b=2>} ;#"
+
+test adp-7.5.2 {adp-parse string with non-registered tag, plain less sign in text} -body {
+    ns_adp_parse -string {a < b & x=1, <test75 a="1" b=2> ...}
+} -result {a < b & x=1, <test75 a="1" b=2> ...}
+
+test adp-7.5.3 {adp-parse string with non-registered tag, plain less and gt sign in text} -body {
+    ns_adp_parse -string {a < b & x=1, <test75 a="1" b=2> .>.}
+} -result {a < b & x=1, <test75 a="1" b=2> .>.}
+
+#
+# <script> tags (lang=tcl)
+#
+test adp-8.1.0 {adp-parse script base case} -body {
+    ns_adp_parse {begin <script>hello word</script> end}
+} -returnCodes {ok error} -result {begin <script>hello word</script> end}
+
+test adp-8.1.1 {adp-parse script runat="server" and default language} -body {
+    set r [ns_adp_parse {begin <script runat="server">set ::result ok</script> end}]
+    list $r $::result
+} -cleanup {
+    unset -nocomplain ::result
+} -returnCodes {ok error} -result {{begin  end} ok}
+
+test adp-8.1.2 {adp-parse script runat="server" and language tcl} -body {
+    set r [ns_adp_parse {begin <script language=tcl runat=server>set ::result ok</script> end}]
+    list $r $::result
+} -cleanup {
+    unset -nocomplain ::result
+} -returnCodes {ok error} -result {{begin  end} ok}
+
+test adp-8.1.3a {adp-parse script runat="server" and language tcl, tag inside script} -body {
+    set r [ns_adp_parse {begin <script language=tcl runat=server>set ::result <br></script> end}]
+    list $r $::result
+} -cleanup {
+    unset -nocomplain ::result
+} -returnCodes {ok error} -result {{begin  end} <br>}
+
+test adp-8.1.3b {adp-parse script runat="server" and language tcl, broken tag inside script} -body {
+    set r [ns_adp_parse {begin <script language=tcl runat=server>set ::result "<a '>"</script> end}]
+    list $r $::result
+} -cleanup {
+    unset -nocomplain ::result
+} -returnCodes {ok error} -result {{begin  end} {<a '>}}
+
+# <%= .. %> is NOT executed in "<script language=tcl runat=server>...</script>"
+test adp-8.1.4 {adp-parse script runat="server" and language tcl, <%...%> inside script} -body {
+    set r [ns_adp_parse {begin <script language=tcl runat=server>set ::result {<%= [expr {2 + 2}] %>}</script> end}]
+    list $r $::result
+} -cleanup {
+    unset -nocomplain ::result
+} -returnCodes {ok error} -result {{begin  end} {<%= [expr {2 + 2}] %>}}
+
+#
+# <script> tags (type="text/javascript")
+#
+test adp-8.2.0 {adp-parse script classical javascript case} -body {
+    ns_adp_parse {begin <script type="text/javascript">alert('hi');</script> end}
+} -result {begin <script type="text/javascript">alert('hi');</script> end}
+
+test adp-8.2.1 {adp-parse script javascript case, tag inside script} -body {
+    ns_adp_parse {begin <script type="text/javascript">x = '<br>';</script> end}
+} -result {begin <script type="text/javascript">x = '<br>';</script> end}
+
+test adp-8.2.2a {adp-parse script javascript case, broken tag inside script} -body {
+    ns_adp_parse {begin <script type="text/javascript"> begin < ' end</script> end}
+} -result {begin <script type="text/javascript"> begin < ' end</script> end}
+
+test adp-8.2.2b {adp-parse script javascript case, broken tag inside script} -body {
+    ns_adp_parse {begin <script type="text/javascript"> x= '<a "';</script> end} ;#"
+} -result {begin <script type="text/javascript"> x= '<a "';</script> end}    ;#"
+
+test adp-8.2.2c {adp-parse script javascript case, broken tag inside script, trailing tag} -body {
+    ns_adp_parse {begin <script type="text/javascript"> begin <a ' end</script> <tag t=foo'> end}
+} -result {begin <script type="text/javascript"> begin <a ' end</script> <tag t=foo'> end}
+
+test adp-8.2.2d {adp-parse script javascript case, broken tag inside script, trailing registered tag, invalid tag name before} -body {
+    proc ::test_tag_proc {params} {return RESULT}
+    ns_adp_registerscript test822 ::test_tag_proc
+    ns_adp_parse {begin <script type="text/javascript"> begin <a. ' end</script> <test822> t=foo' end}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {begin <script type="text/javascript"> begin <a. ' end</script> RESULT t=foo' end}
+
+test adp-8.2.2e {adp-parse script javascript case, broken tag inside script, trailing registered tag, no attribute} -body {
+    proc ::test_tag_proc {params} {return RESULT}
+    ns_adp_registerscript test822 ::test_tag_proc
+    ns_adp_parse {begin <script type="text/javascript"> begin <a ' end</script> <test822> t=foo' end}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {begin <script type="text/javascript"> begin <a ' end</script> RESULT t=foo' end}
+
+
+# Not sure, the following is a good idea, since adp inline code <% .. %>
+# substitution can interfere with JavaScript Templates (JST).
+# Execute  <%= .. %> in "<script type="text/javascript>...</script>"?
+test adp-8.2.3 {adp-parse script javascript case, <% .. %> inside script} -body {
+    ns_adp_parse {begin <script type="text/javascript"> x= '<%= [expr {2 + 2}] %>';</script> end}
+} -result {begin <script type="text/javascript"> x= '4';</script> end}
+
+test adp-8.2.4a {adp-parse script javascript case, nested <script>} -body {
+    ns_adp_parse {begin <script type="text/javascript">document.write("<script>alert('Hi')</script>");</script> end}
+} -result {begin <script type="text/javascript">document.write("<script>alert('Hi')</script>");</script> end}
+
+test adp-8.2.4b {adp-parse script javascript case, nested <script> unbalanced} -body {
+    ns_adp_parse {begin <script type="text/javascript">document.write("<script>alert('Hi')");</script> end}
+} -result {begin <script type="text/javascript">document.write("<script>alert('Hi')");</script> end}
+
+test adp-8.2.5a {adp-parse script javascript case, </script> inside script} -body {
+    ns_adp_parse {begin <script type="text/javascript"> x= '</script>';</script> end}
+} -result {begin <script type="text/javascript"> x= '</script>';</script> end}
+
+test adp-8.2.5b {adp-parse script javascript case, </script> inside script} -body {
+    ns_adp_parse {begin <script type="text/javascript"> x= '</script>'; end}
+} -result {begin <script type="text/javascript"> x= '</script>'; end}
+
+
+
+test adp-8.3.0a {adp-parse string with tag and script} -body {
+    proc ::test_tag_proc {params} {return RESULT}
+    ns_adp_registerscript test831 ::test_tag_proc
+    ns_adp_parse -string {start <foo arg="<test831>"> end}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {start <foo arg="RESULT"> end}
+
+test adp-8.3.0b {adp-parse string with tag and script} -body {
+    proc ::test_tag_proc {params} {return RESULT}
+    ns_adp_registerscript test831 ::test_tag_proc
+    ns_adp_parse -string {start <script arg="<test831>"></script> end}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {start <script arg="RESULT"></script> end}
+
+
+test adp-8.3.1 {adp-parse string with tag and script} -body {
+    proc ::test_tag_proc {params} {return RESULT}
+    ns_adp_registerscript test831 ::test_tag_proc
+    ns_adp_parse -string {start <foo arg="<test831>"> <script arg="<test831>"> end}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {start <foo arg="RESULT"> <script arg="RESULT"> end}
+
+test adp-8.3.2 {adp-parse string with tag and script} -body {
+    proc ::test_tag_proc {params} {return bar}
+    ns_adp_registerscript test832 ::test_tag_proc
+    ns_adp_parse -string {start <foo<test831>> end}
+} -cleanup {
+    rename  ::test_tag_proc ""
+} -result {start <foobar> end}
+
+if {0} {
+    #
+    # some cases from OpenACS (require <if> tag)
+    #
+    <script type="<%=@headscript.type;literal@"<if @headscript.src@ not nil> src="@headscript.src;literal@"</if>><if @headscript.content@ not nil>@headscript.content;noquote@</if></script>
+    <html<if @doc.lang@ not nil> lang="@doc.lang;literal@"</if>>
+}
+
+test http_adp-2.0 {simple ADP page} -body {
+    nstest::http -getbody 1 GET /helloworld.adp
+} -result {200 {Hello World!}}
+
+test http_adp-2.1.1 {ADP page with timed out ns_http request} -body {
+    #
+    # Here the invocation of the testcase times out
+    #
+    nstest::http -timeout 1s -getbody 1 GET /http_nonexistent.adp
+} -returnCodes {ok return error} -match glob -result {000 {testcase NS_TIMEOUT: http request timeout}}
+
+test http_adp-2.1.2 {ADP page with timed out ns_http request followed by simple ADP page} -body {
+    try {ns_http run -timeout .5s http://192.0.2.1/} on error {errorMsg} {ns_log notice "run ends in $::errorCode '$errorMsg'"}
+    try {ns_http run http://192.0.2.1/} on error {errorMsg} {ns_log notice "run ends in $::errorCode '$errorMsg'"}
+    nstest::http -getbody 1 GET /helloworld.adp
+} -returnCodes {ok return error} -result {200 {Hello World!}}
+
+
+test http_adp-2.2 {ADP page with timed out ns_http request followed by simple ADP page} -body {
+    nstest::http -getbody 1 GET /http_returntimeout.adp
+} -returnCodes {ok return error} -match glob -result {503 *Service Unavailable*}
+
+
+cleanupTests
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

@@ -1,0 +1,42 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+
+test ns_guesstype-5.1 {basic syntax: ns_guesstype} -body {
+     ns_guesstype
+} -returnCodes error -result {wrong # args: should be "ns_guesstype filename"}
+
+test ns_guesstype-5.2 {no extension} -body {
+     ns_guesstype x
+} -result "*/*"
+
+test ns_guesstype-5.3 {no extension, path} -body {
+     ns_guesstype /x/y/z
+} -result "*/*"
+
+test ns_guesstype-5.4 {path, extension} -body {
+     ns_guesstype /x/y/z.txt
+} -result "text/plain"
+
+
+test ns_guesstype-6.1 {spot check: .html} -body {
+     ns_guesstype "filename.html"
+} -match "glob" -result "text/html*"
+
+test ns_guesstype-6.2 {spot check: .gif} -body {
+     ns_guesstype "filename.gif"
+} -result "image/gif"
+
+
+
+cleanupTests
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

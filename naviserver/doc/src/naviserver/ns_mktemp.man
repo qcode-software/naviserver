@@ -1,0 +1,56 @@
+[include version_include.man]
+[manpage_begin ns_mktemp n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+
+[titledesc {Make a unique temporary filename}]
+
+[description] This command is a wrapper around the mktemp(3) function
+in the C standard library.  This function generates a unique temporary
+filename from an optional template.  
+
+[para]
+Note that some implementations of mktemp are not safe (creating
+predictable/only a small number of variations) against attacks and
+race conditions - please consult your 
+system's man pages if this might be an issue to you. In order to create
+temp files, the Tcl command [term "file tempfile"] should be used
+(introduced in Tcl 8.6), which is safe against race conditions.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_mktemp] [opt [arg template]]]
+
+[para]
+
+This command generates a unique temporary filename using optionally a
+template as argument, which is a string whose last six characters must
+be XXXXXX, and returns a new string where those are replaced with
+random characters such as to make the string a unique filename. It is
+commonly used to create temporary filenames.
+
+[para]
+If this command is called without the optional parameter it behaves
+like
+[example_begin]
+ ns_mktemp [lb]ns_config ns/parameters tmpdir[rb]/ns-XXXXXX
+[example_end]
+
+
+[list_end]
+
+
+[section EXAMPLES]
+
+[example_begin]
+ % ns_mktemp /tmp/aol-XXXXXX
+ /tmp/aol-rhaGGx
+[example_end]
+
+
+[keywords "global built-in" tmp tmpfile]
+
+[manpage_end]
+

@@ -1,0 +1,64 @@
+[include version_include.man]
+[manpage_begin ns_htmlselect n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Build an HTML SELECT form widget from the specified data}]
+
+[description]
+
+This command builds an HTML SELECT tag using the passed-in data.
+
+If [option -multi] is specified, the SELECT will be generated with the MULTIPLE attribute to allow multiple 
+options to be selected.  This option also affects the SIZE attribute output for the SELECT.  If 
+-multi is specified, the SIZE attribute will be set to 5 or the number of elements in values, 
+whichever is less.  If [option -multi] is not specified, then the SIZE attribute will be set to 5 if 
+there are more than 25 elements in values.  If there are 25 or fewer elements in values, the
+SIZE attribute will be omitted (equivalent to SIZE=1).
+
+[para]
+If [option -sort] is specified, the option list of the SELECT will be sorted according to the elements of
+labels, or the elements of values if labels is not specified.  
+
+[para]
+[arg labels] is an optional list of labels to display.  If not specified, the elements of values will be
+used.  The order and number of the labels list must match the order and number of the values list.
+
+[para]
+[arg name] specifies the NAME attribute of the SELECT statement.
+
+[para]
+[arg values] is a list of the OPTIONs for the SELECT. If [arg labels]
+are not specified, the [arg values] themselves will be used as the OPTION labels.
+
+[para]
+[arg selectedData] is an optional list of the OPTIONs that will be selected by default.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_htmlselect] \
+        [opt [option -multi]] \
+        [opt [option {-sort}]] \
+        [opt [option {-labels [arg labels]}]] \
+        [arg name] \
+        [arg values] \
+        [opt [arg selectedData]]]
+
+
+[list_end]
+
+
+[section EXAMPLES]
+
+[example_begin]
+ % ns_htmlselect -sort -labels {dog cat cow} "favoriteAnimal" {1 2 3} 2
+ <select name='favoriteAnimal'>
+ <option value="2" selected>cat
+ <option value="3">cow
+ <option value="1">dog
+ </select>
+[example_end]
+
+[manpage_end]
+

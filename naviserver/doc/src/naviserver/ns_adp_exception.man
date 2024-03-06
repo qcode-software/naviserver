@@ -1,0 +1,46 @@
+[include version_include.man]
+[manpage_begin ns_adp_exception n [vset version]]
+
+[titledesc {Examine the current ADP exception state}]
+
+[moddesc {NaviServer Built-in Commands}]
+
+[description] This function is used to examine the current ADP
+exception state.
+
+[list_begin definitions]
+
+[call [cmd ns_adp_exception] [opt [arg state]]]
+
+[para]
+The function  returns 0 if the exception state is ok and 1 otherwise.
+
+[para] If the optional state argument is passed, a variable with that
+name will be set for the caller, and will contain the exception state
+with one of the following possible values:
+
+[list_begin itemized]
+
+[item] ok:
+ADP was evaluated successfully
+
+[item] overflow:
+Stack overflow occurred.  This might happen, for example, if there was
+a recursive call to [cmd ns_adp_include].
+
+[item] abort:
+An attempt to debug failed or ns_adp_abort was called.
+
+[item] break: 
+ns_adp_break was called
+
+[item] unknown:
+Unrecognized exception status.  This should not occur.
+
+[list_end]
+[list_end]
+
+[keywords "server built-in" ADP]
+
+[manpage_end]
+

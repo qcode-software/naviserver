@@ -1,0 +1,63 @@
+[include version_include.man]
+[manpage_begin ns_parseurl n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Parse a URL into its components}]
+
+[description]
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_parseurl] \
+        [opt [option "-strict"]] \
+        [arg url]]
+
+[para] This function parses the provided URL into its parts and
+returns these in the form of a Tcl dict. The function supports
+IP-literal notation as specified in RFC 3986.
+
+[para] The provided [arg url] might be an absolute URL (containing
+protocol and host), a protocol agnostic URL (starting with two slashes
+followed by hostname, as defined in RFC 3986) or a relative URL
+starting with everything that does not look likea a scheme. When the
+relative URL starts with a slash, it is separated into [term path] and
+[term tail], otherwise it is parsed into [term tail] (legacy
+NaviServer behavior).  When the [arg url] contains a [term query] or
+[term fragment], these are potentially returned in the dict.
+
+[para] When [option "-strict"] is specified, the function performs a
+more thorough checking of the input characters (as defined in RFC
+3986, but relaxed by errata #4942). Otherwise, the checking is kept to
+the bare minimum.
+
+[para]
+The resulting dict might contain the
+following elements: [term proto], [term userinfo],
+[term host], [term port], [term path], [term tail],
+[term query], and [term fragment].
+
+[list_end]
+
+[section EXAMPLES]
+
+[example_begin]
+ % ns_parseurl http://openacs.org//projects/openacs/download/
+ proto http host openacs.org path /projects/openacs/download tail {}
+ 
+ % ns_parseurl {http://[lb]::1[rb]:80/index.html}
+ proto http host ::1 port 80 path {} tail index.html
+ 
+ % ns_parseurl /foo/bar.html
+ path foo tail bar.html
+ 
+ % ns_parseurl /top/query?x=1&y=2#pos1
+ path top tail query query x=1&y=2 fragment pos1
+[example_end]
+
+[see_also ns_absoluteurl ns_parsequery ns_parsefieldvalue ns_parseheader ns_parsehostport]
+[keywords "global built-in" url parse encoding]
+[manpage_end]
+
+
