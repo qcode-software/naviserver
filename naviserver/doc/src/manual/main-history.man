@@ -1,0 +1,58 @@
+[include version_include.man]
+[manpage_begin {main-history} n [vset version]]
+[moddesc {NaviServer Manual}]
+
+[titledesc {History of NaviServer}]
+
+[description]
+
+[section {History of NaviServer}]
+
+America Online acquired a small company called NaviSoft several years
+ago just before that company delivered a document management and
+retrieval system called NaviServer. NaviServer was reworked into a
+World Wide Web server with Tcl, natural-language processing, database
+management, and was integrated with a suite of document-management
+client tools.  The document manager and editor was called "NaviPress,"
+and the document browser was "NaviGo."  NaviPress was groundbreaking
+in its implementation of the HTTP PUT and BROWSE methods for remote
+editing of web content.  In these ways it was many years ahead of
+Microsoft Frontpage and Netscape Navigator Gold.
+
+
+[para]
+In the years since then, NaviSoft created the NaviHosting service and
+created a group of software tools around it that was used by GNN,
+PrimeHost, and the AOL service itself.  In 1998 the NaviSoft
+subsidiary was integrated back into AOL and a new group of people
+became stewards to the code. This team supported the legacy code and
+added exciting new features to AOLserver, like ADP server-side HTML
+scripts, caching--even an FTP server.  The team also maintained the
+many software applications that supported GNN, PrimeHost, and AOL.
+
+
+[para]
+Finally, in 1999, the entire AOLserver code base was overhauled and
+[uri http://news.com.com/2100-1023-228252.html] released to the Open
+Source community as AOLserver 3.0 under the AOLserver Public License,
+an application of the Mozilla Public License.
+
+[para]
+America Online continued to use AOLserver throughout its business --
+for sites like Digital City (http://home.digitalcity.com/),
+Netscape (http://home.netscape.com),
+CompuServe (http://compuserve.com/), to the
+America Online service (http://aol.com/) itself.
+
+[para]
+In 2005 new project called NaviServer was created which was a fork of
+AOLserver 4.0.11.
+
+[para]
+
+Later AOL has refocused its business, separated from Time Warner
+and was acquired by Verizon Communications in 2015
+[uri https://en.wikipedia.org/wiki/AOL]. While the latest release
+of AOLserver is from 2012, NaviServer continues being actively developed.
+
+[manpage_end]

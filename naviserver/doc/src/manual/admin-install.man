@@ -1,0 +1,302 @@
+[include version_include.man]
+[manpage_begin admin-install n [vset version]]
+[moddesc {NaviServer Manual}]
+
+[titledesc {NaviServer Installation Guide}]
+
+[description]
+
+NaviServer is distributed in source form.
+
+[section {Getting Started}]
+
+NaviServer is reasonably portable and known to compile and run on the following platforms:
+
+[list_begin itemized]
+
+[item]Linux 2.2 and better (x86 and others)
+
+[item]FreeBSD 3.4 and better (x86 and others)
+
+[item]OpenBSD 2.5 and better (x86 and others)
+
+[item]Solaris 2.x and better (SPARC and x86)
+
+[item]OpenSolaris (OmniOS, OpenIndiana)
+
+[item]IRIX 6.x (mips)
+
+[item]HP/UX 10 and 11 (hppa)
+
+[item]DEC Tru64 & OSF/1 4.0 and better (alpha)
+
+[item]UnixWare 7.x and better (x86)
+
+[item]Apple OS/X "Darwin"
+
+
+[list_end]
+
+[para]
+
+It's likely NaviServer can compile on other systems and/or higher or  lower
+numbered versions but this has not been extensively tested.  The primary
+development platforms for NaviServer is Linux.
+
+[para] You will need a [emph {C compiler}].  The best one to use is
+GNU GCC from [uri http://www.gnu.org] and its mirrors or clang.
+NaviServer (and the included Tcl libraries) are written entirely in
+ANSI standard C.
+
+[para]
+
+[emph {GNU make}] is also required.  It is available for
+all major operating systems and also available from the GNU web site.
+On some platforms (e.g., SunOS, FreeBSD, OpenBSD) the GNU make
+is called [emph {gmake}].
+
+[para]
+
+[section {Downloading}]
+
+Released versions of NaviServer are available from
+[uri https://sourceforge.net/projects/naviserver/ {SourceForge Download area}].
+
+You find there for every version the main NaviServer source code and
+as well the [emph {naviserver-*modules.tar.gz}] files matching the
+main source code files with the same version.
+
+[para]
+
+Latest development version of NaviServer and the
+modules is available from the
+[uri https://sourceforge.net/projects/naviserver/ {GitHub NaviServer repository}]
+and can be downloaded via:
+
+[example_begin]
+ git clone https://github.com/naviserver-project/naviserver.git
+[example_end]
+
+or for the modules with
+
+[example_begin]
+ git clone https://github.com/naviserver-project/[emph modulname]
+[example_end]
+
+[section {Building}]
+
+We've tried to make building NaviServer as simple as possible.  When
+downloading a release from sourceforge, simply type:
+
+[example_begin]
+ cd naviserver
+ ./configure
+ make
+ sudo make install
+[example_end]
+
+When working with the (unreleased) version from the source code
+repository, a call of [emph autogen.sh] is necessary as well:
+
+[example_begin]
+ cd naviserver
+ ./autogen.sh
+ ./configure
+ make
+ sudo make install
+ make install
+[example_end]
+
+Note: If you have any problems building, the two files [emph {include/Makefile.global}] and
+[emph {include/Makefile.module}] have all the information you need to change
+settings throughout the NaviServer environment.
+
+[para]
+
+Two options to configure.sh script worth noting:
+
+[list_begin enum]
+
+[enum] --enable-symbols to enable debugging information to be compiled in for
+       easy debugging, otherwise it will be compiled with optimization enabled and
+       that will prevent from effective troubleshooting in case of server crash
+
+[list_end]
+
+[section {Installing}]
+
+
+Type "[emph {make install}]" to make a production server.  This
+will create an installation directory at [emph {/usr/local/ns/}], populate
+the directories with various  startup files and  configuration files, copy
+the binaries to the [emph {/usr/local/ns/bin}] directory, and finish.
+
+[para]
+
+[section {Compiling and Installing Modules}]
+
+Download modules from sourceforge releases or GitHub as described
+above. Note that you should first install the main NaviServer package
+before installing the optional modules. Some part of the configuration
+of the modules is taken from previously installed NaviServer
+installations.
+
+Typically installed at the standard
+place at [term /usr/local/ns/]. If this is not the case in your
+installation, please provide the location to make via parameter
+[term NAVISERVER].
+
+[example_begin]
+  make NAVISERVER=PATH_TO_LOCATION install
+[example_end]
+
+
+At this moment the following modules are available:
+[para]
+
+[emph {nsaccess nsclamav nsdbi nsdbmysql nsdhcpd nsicmp nsmemcache nssip nsstats nsvfs nsaspell nsconf nsdbilite nsdbpg nsdns nsimap nsphp nssmtpd nssyslogd nszlib nsauthpam nsconfigrw nsdbimy nsdbsqlite nsexpat nsldapd nsradiusd nssnmp nstftpd nschartdir nsdbbdb nsdbipg nsdbtds nsgdchart nsloopctl nsrtsp nsssl nsoracle nsudp}]
+
+[para]
+To check what modules are available go to: https://github.com/orgs/naviserver-project/repositories
+
+[para]
+
+Some of the modules have external dependencies such as include
+directories or paths to libraries, so please look into module's README
+file for any additional information.
+
+[section {Configuring}]
+
+The installation directory contains several configuration files under
+/usr/local/ns/conf installation directory.
+A simple configuration to start with is nsd-config.tcl, which is used
+int he examples below. For more details, see
+[uri ../admin-config.html {NaviServer Configuration Reference}].
+
+[para]
+
+
+Note: Modules can be disabled in the sample nsd.tcl for various
+reasons. Some modules like [emph nscp] or [emph nsperm] are optional
+and can be disabled by e.g., commenting out the
+respective lines in the "ns/server/default/modules" section of the
+configuration file.  Before using them in a production
+environment, change the passwords and default permissions by following
+the instructions in the NaviServer documentation.
+
+
+[para]
+
+Although you must be root to start NaviServer on port 80, the server
+itself must change to a regular user shortly after initialization.
+You either need to start the server as a non-root user (in which case
+you will not be able to listen for connections on privileged ports
+such as port 80) or you must include a [emph {-u user}] command line
+flag to which the server will setuid(2) after startup. We assume in
+the following sections that a user [emph nsadmin] and a group
+[emph nsadmin] were already created on the system, where NaviServer
+is installed.
+
+[para]
+
+If NaviServer was installed with default nsd.tcl configuration file, just
+type
+[example_begin]
+  /usr/local/ns/bin/nsd
+[example_end]
+and it will be started in the background listening on port 8080.
+
+[para]
+
+You may either specify a Unix username or numeric uid, e.g.:
+[example_begin]
+  bin/nsd -t conf/nsd-config.tcl -u [emph nsadmin]
+[example_end]
+
+[para]
+
+For the mode  of operation, there are four choices: 
+[emph {Foreground, Background, Background with watchdog}] and [emph {Inittab.}]
+
+[list_begin itemized]
+
+[item] Foreground mode:
+[example_begin]
+  bin/nsd  -f -t conf/nsd-config.tcl -u [emph nsadmin]-g [emph nsadmin]
+[example_end]
+
+[para]
+In [emph {Foreground }]mode , the server starts  and emits diagnostic log messages
+directly to the  terminal window.   This is useful for testing, configuration
+or debugging  a server.  To start the server in foreground mode use:
+
+[para]
+To stop a server running the foreground simply press  interrupt on your keyboard
+(e.g., ctrl-c or the DEL key) which will send a SIGINT to the server and
+initiate shutdown.
+
+
+[item] Background mode:
+
+[example_begin]
+  bin/nsd -t conf/nsd-config.tcl -u [emph nsadmin] -g [emph nsadmin]
+[example_end]
+
+[para]
+In [emph {Background}] mode, the server forks and disassociates from
+the terminal.  Diagnostic messages are appended to log/server.log.
+This is a typical daemon-style mode of operation.  To start the server
+in background mode use:
+
+[para]
+
+To stop a server running  the background  you may either use the kill(2) command
+to send a SIGTERM to the background  process id(*) or the special -K flag of the
+nsd binary.  This flag  will determine the process id from a special marker
+file, send the signal and wait for shutdown, e.g.:
+
+[item] Background mode with built-in watchdog:
+
+[example_begin]
+ /usr/local/ns/bin/nsd  -w -t /usr/local/ns/nsd-config.tcl -u [emph nsadmin] -g [emph nsadmin]
+[example_end]
+
+[para]
+In [emph {Watchdog}] mode, the server is restarted automatically when
+it crashes independent of the respawn support from the operating system.
+
+
+[item] Inittab mode (non-forking mode):
+
+[para]
+
+[example_begin]
+  w1:23:respawn:/usr/local/ns/bin/nsd  -i -t /usr/local/ns/nsd-config.tcl -u [emph nsadmin] -g [emph nsadmin]
+[example_end]
+
+[para]
+In [emph {Inittab}] mode, the server runs in the foreground  but opens the
+log file as with background mode.  This mode is used  when the server is
+started from an entry in the "/etc/inittab" file.   The benefit of this mode
+is that init will restart the server automatically.
+
+[para]
+Furthermore, the inittab mode is needed as well on macOS when
+NaviServer is started via launchd (controlled via launchctl).
+
+
+[list_end]
+
+[emph Note]: While running NaviServer on some Unix platforms (e.g.,
+Linux, SGI), you'll notice multiple nsd processes.  This is normal and
+represents the individual threads.  The main process id can be
+determined by checking the log/nsd.pid file or looking at the last few
+entries of the server log (per default "logs/error.log", each of which
+will include the process id and thread id in the form [lb]pid.tid[rb].
+You can also telnet to the control port and type "ns_info pid".
+
+[see_also admin-maintenance]
+
+[keywords nsd command-line-options nscp nssock nsssl]
+
+[manpage_end]

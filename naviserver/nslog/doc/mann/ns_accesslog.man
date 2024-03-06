@@ -1,0 +1,290 @@
+[include version_include.man]
+
+[manpage_begin ns_accesslog n [vset version]]
+[moddesc   {NaviServer Module Commands}]
+[titledesc {Query and control access log parameters}]
+
+[description]
+
+This command controls and configures the access log of the server.
+The access log records all served requests of a server containing
+timestamp, IP address of the requester, the queried resource, the
+HTTP result code, the transmitted amount of data, etc. In general, it
+follows the more or less standardized access log file format (NCSA
+format, common log format) but can be influence to contain more
+information, useful for log file analysis, debugging and statistics.
+
+[para] In most cases, the access log is controlled via the parameter
+specified in the configuration file (see below). For example, when the
+server is running in reverse proxy mode, the value provided by the
+reverse proxy server via request header fields will be reported in the
+log file instead of the IP address of the physically connected host.
+Several parameters can be queried and altered as well at run-time via
+the command [cmd "ns_accesslog"].
+
+
+
+[section {COMMANDS}]
+[list_begin definitions]
+
+
+[call [cmd "ns_accesslog file"] \
+	[opt [arg new-path]] ]
+
+Returns the path of the access log for the current virtual server.
+
+[para]
+If [opt [arg new-path]] is given then the old log is closed and the log
+re-opened at the new location. All the components of [opt [arg new-path]] must
+exist. If an error occurs logging will be disabled.
+
+
+
+[call [cmd "ns_accesslog roll"] \
+	[opt [arg new-path]]]
+
+Roll the access log (see [cmd ns_rollfile] for details). Keep [term maxbackup]
+old log files around.  If [opt [arg new-path]] is given then it overrides the
+configuration parameter 'file' as the new log file.
+
+
+
+[call [cmd "ns_accesslog rollfmt"] \
+	[opt [arg time-format]] ]
+
+Get the [opt [arg time-format]] which is appended to the log filename when
+rolling. The format string is as understood by the Tcl [cmd clock] command.
+If [opt [arg time-format]] is given then it replaces any existing value.
+
+
+
+[call [cmd "ns_accesslog maxbackup"] \
+	[opt [arg keep]] ]
+
+Get the number of backup files which will be kept when log rolling is
+enabled. If [opt [arg keep]] is given it replaces any existing value.
+
+
+
+[call [cmd "ns_accesslog flags"] \
+	[opt [arg flags]]]
+
+Return a list of the enabled logging options, or reset the list if a
+new set of flags is given. Valid flags are: logcombined,
+formattedtime, logpartialtimes, logreqtime, checkforproxy, and
+suppressquery. They have the same meaning as the similarly named
+configuration parameters.
+
+
+
+[call [cmd "ns_accesslog extendedheaders"] \
+	[opt [arg new-headers]]]
+
+Return a list of the HTTP header fields which will be appended to each entry in the
+access log. If [opt [arg new-headers]] is given it replaces the existing
+setting.
+
+[para] By default, all specified header fields are request header
+fields (like e.g. {Referer X-Forwarded-For}). Optionally one can
+specify the request header fields with a prefix "request:" or "response"
+to denote request or response header fields. The prefix can be
+abbreviated to 3 characters (example: {req:Host response:Content-Type}).
+Note that always the request header fields are reported before the
+response header fields. Caveat: certain response header fields (e.g. "Date"
+or "Server" are not accessible this way).
+
+
+[call [cmd "ns_accesslog maxbuffer"] \
+	[opt [arg lines]] ]
+
+Set or get the maximum number of lines to buffer before being flushed to the
+log file.
+
+
+[list_end]
+
+
+
+[section CONFIGURATION]
+
+The nslog module is loaded per-server.
+
+[example_begin]
+ ns_section "ns/server/server1/modules" {
+   ns_param   nslog   nslog.so
+ }
+ ns_section "ns/server/server1/module/nslog" {
+   ns_param   ...
+ }
+[example_end]
+
+
+The following are valid configuration parameters:
+
+[list_begin definitions]
+
+[def checkforproxy]
+If true then the value of the X-Forwarded-For HTTP header is logged as the IP
+address of the client. Otherwise, the IP address of the directly
+connected host is logged. Default: false.
+
+[para] The parameter [def checkforproxy] is deprecated in favor of the
+more general reverse proxy mode of the server.
+
+[def driver]
+Name of the driver initiating the requests. This option can be used
+to produce different access logs for requests submitted via
+different drivers to sort out e.g. local server talk.  Per default,
+every request is logged. When a value is provided, only requests are
+logged in this log file when the request comes from a driver matching
+the provided glob pattern.
+
+[def file]
+String: path to the log file. Default: access.log
+
+[def extendedheaders]
+A space separated list of additional HTTP headers whose values should be logged.
+Default: no extra headers are logged.
+
+[def formattedtime]
+If true, log the time in common-log-format. Otherwise log seconds since the
+epoch. Default: true.
+
+[def logcombined]
+If true, log the referrer and user-agent HTTP headers (NCSA combined
+format). Default: true.
+
+[def logpartialtimes]
+If true then include the high-resolution start time of the request
+together with partial request durations (accept, queue, filter,
+run) in the access log.
+Default: false.
+
+[def logreqtime]
+If true then log the total amount of time the request took to run in seconds and
+milliseconds.  Default: false.
+
+[def masklogaddr]
+Mask IP address in log file for GDPR (similar to the "anonip" IP anonymizer of the
+Swiss privacy foundation). When this parameter is set, all IP
+addresses are masked in the log file, such that the host-specific (=
+person-specific) information is masked out and the IP address does not
+match a particular individual anymore.  Still, with the masking turned
+on, reverse DNS lookup and/or geolocation is possible. Default: false.
+
+[def maskipv4]
+Mask to be used for IPv4 addresses, when [term masklogaddr] is true.
+Default: 255.255.255.0
+
+[def maskipv6]
+Mask to be used for IPv6 addresses, when [term masklogaddr] is true.
+Default: ff:ff:ff:ff::
+
+[def maxbuffer]
+The number of log entries to buffer before flushing to the log file. Default: 0.
+
+[def rolllog]
+If true then the log file will be rolled. Default: true.
+
+[def rollhour]
+The hour of the day (0-23) to roll the log file if log rolling is enabled.
+Default: 0 (midnight).
+
+[def maxbackup]
+Number of old log files to keep when log rolling is enabled. Default: 100.
+
+[def rollonsignal]
+If true then the log file will be rolled when the serve receives a SIGHUP
+signal. Default: false.
+
+[def suppressquery]
+If true then the query (everything after the ? in the URL) is not logged.
+Default: false.
+
+[list_end]
+
+
+
+
+[section EXAMPLES]
+
+The path of the active access log.
+
+[example_begin]
+nscp:1> [cmd ns_accesslog] file
+/home/ns/servers/server1/modules/nslog/access.log
+ 
+nscp:2> [cmd ns_modulepath] server1 nslog access.log
+/home/ns/servers/server1/modules/nslog/access.log
+[example_end]
+
+
+
+The access log can be rolled manually.
+
+[example_begin]
+nscp:1> ns_accesslog roll
+[example_end]
+
+
+
+Extended logging options can be configured at run-time.
+
+[example_begin]
+nscp:1> [cmd ns_accesslog] flags
+logCombined
+ 
+nscp:2> [cmd ns_accesslog] flags {logcombined formattedtime}
+logcombined formattedtime
+ 
+nscp:3> [cmd ns_accesslog] extendedheaders
+ 
+nscp:4> [cmd ns_accesslog] extendedheaders {Cookie Accept}
+Cookie Accept
+[example_end]
+
+Example for writing multiple access logs per driver for a single
+server: In this example, the loopback traffic is written to a separate
+log file.
+
+[example_begin]
+ #
+ # Configure extra nssock driver for loopback traffic
+ #
+ ns_section "ns/modules" {
+   ns_param loopback  ${bindir}/nssock
+ }
+ 
+ ns_section ns/module/loopback {
+   ns_param	defaultserver	$server
+   ns_param	address		127.0.0.1
+   ns_param	port		8888
+ }
+ 
+ #
+ # Load nslog modules twice with different names
+ #
+ ns_section ns/server/${server}/modules {
+   ns_param	nslog		${bindir}/nslog
+   ns_param	nslog2		${bindir}/nslog
+ }
+ 
+ #
+ # Configure driver patterns (default "*")
+ #
+ ns_section ns/server/${server}/module/nslog2 {
+   ns_param	file	  ${logroot}/access-loopback.log
+   ns_param	driver 	  "loopback"
+ }
+ ns_section ns/server/${server}/module/nslog {
+   ns_param	file	  ${logroot}/access.log
+   ns_param	driver 	  "ns*"
+ }
+[example_end]
+
+
+
+[see_also ns_log ns_rollfile]
+[keywords module nslog "server built-in" log path ipaddress reverseproxy]
+
+[manpage_end]

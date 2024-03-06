@@ -1,0 +1,79 @@
+[include version_include.man]
+[manpage_begin ns_rwlock n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Create, destroy, and manipulate read/write locks}]
+
+[description]
+
+Create, destroy, and manipulate read/write locks.
+ 
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd "ns_rwlock create"]]
+Initialize a read/write lock and returns an ID for it.
+
+[call [cmd "ns_rwlock destroy"] [arg rwlockid]]
+
+Free the resources associated with the specified read/write lock. The
+rwlockid argument is the read/write lock ID returned by
+[cmd ns_rwlock] create when the lock was created.
+
+[call [cmd "ns_rwlock readlock"] [arg rwlockid]]
+
+Acquire a read lock. Any number of read locks can be pending.  If
+there's a write lock active, the read lock acquisition blocks until
+the write lock is released.
+
+
+[call [cmd "ns_rwlock readunlock"] [arg rwlockid]]
+
+Release a read lock.
+
+
+[call [cmd "ns_rwlock writelock"] [arg rwlockid]]
+
+Acquire a write lock. Only one write lock can be in effect.
+If there are pending read locks active, the write lock acquisition blocks until
+all of the read locks drain. If a subsequent read lock acquisition attempt is made,
+the write lock has priority.
+
+
+[call [cmd "ns_rwlock writeunlock"] [arg rwlockid]] 
+
+Release a write lock.
+
+[list_end]
+
+[section EXAMPLES]
+
+[example_begin]
+ Put some examples here to illustrate command usage.
+[example_end]
+
+[section NOTES]
+About Read/Write Locks
+
+[para]
+Read/write locks are a serialization mechanism for using data structures
+where multiple reads can happen simultaneously, but where writes must
+happen singly. For example, suppose you have a hash table that is
+heavily used but doesn't change very often. You'd like to have multiple
+threads be able to read from the table without blocking on each other,
+but when you need to update the table, you can do so safely without
+having to worry about other threads reading incorrect data.
+
+[para]
+The principal feature of read/write locks is the mechanism of which locks
+have priority and which locks must wait. Any number of read locks can be
+pending. If there's a write lock active, the read lock acquisition blocks
+until the write lock is released. Also, only one write lock can be in effect.
+If there are pending read locks active, the write lock acquisition blocks until
+all of the read locks drain. If a subsequent read lock acquisition attempt is
+made while a write lock is waiting to acquire, the write lock has priority.
+
+[see_also nsd]
+[keywords "server built-in" NaviServer]
+[manpage_end]

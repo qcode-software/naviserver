@@ -1,0 +1,572 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+# rfc2396 unreserved URI characters, except for + which receives
+# special treatment by the HTTP URL scheme.
+set unreservedChars "-.!~*'()0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+test ns_urlencode-1.1.1 {basic syntax} -body {
+    ns_urlencode
+} -returnCodes error -result {wrong # args: should be "ns_urlencode ?-charset charset? ?-part part? ?-uppercase? ?--? args"}
+
+test ns_urlencode-1.1.2 {basic syntax} -body {
+    ns_urlencode -part x y
+} -returnCodes error -result {bad option "x": must be query, path, cookie, or oauth1}
+
+test ns_urlencode-1.2.1 {basic syntax} -body {
+    ns_urldecode
+} -returnCodes error -result {wrong # args: should be "ns_urldecode ?-charset charset? ?-fallbackcharset fallbackcharset? ?-part part? ?--? string"}
+
+test ns_urlencode-1.2.2 {basic syntax} -body {
+    ns_urldecode -part x y
+} -returnCodes error -result {bad option "x": must be query, path, cookie, or oauth1}
+
+
+test ns_urlencode-2.1.1a {basic operation} -body {
+    ns_urlencode ""
+} -result {}
+
+test ns_urlencode-2.1.1b {basic operation} -body {
+    ns_urlencode --
+} -returnCodes {error ok} -result {--}
+
+test ns_urlencode-2.1.1c {basic operation} -body {
+    ns_urlencode -- --
+} -result {--}
+
+test ns_urlencode-2.1.1d {basic operation} -body {
+    ns_urldecode --
+} -returnCodes {error ok} -result {--}
+
+test ns_urlencode-2.1.1e {basic operation} -body {
+    ns_urldecode -- --
+} -result {--}
+
+test ns_urlencode-2.1.2 {basic operation} -body {
+    ns_urlencode -part path ""
+} -result {}
+
+test ns_urlencode-2.1.3 {basic operation} -body {
+    ns_urlencode -part query ""
+} -result {}
+
+test ns_urlencode-2.2.1 {basic operation} -body {
+    ns_urldecode ""
+} -result {}
+
+test ns_urlencode-2.2.2 {basic operation} -body {
+    ns_urldecode -part path ""
+} -result {}
+
+test ns_urlencode-2.2.3 {basic operation} -body {
+    ns_urldecode -part query ""
+} -result {}
+
+test ns_urlencode-2.2.4 {basic operation} -body {
+    ns_urldecode "1"
+} -result {1}
+
+test ns_urlencode-2.2.5 {basic operation} -body {
+    ns_urldecode -part path "1"
+} -result {1}
+
+test ns_urlencode-2.2.6 {basic operation} -body {
+    ns_urldecode -part query "1"
+} -result {1}
+
+
+
+test ns_urlencode-2.3.1 {unreserved characters} -body {
+    ns_urlencode $unreservedChars
+} -result $unreservedChars
+
+test ns_urlencode-2.3.2 {unreserved characters} -body {
+    ns_urldecode $unreservedChars
+} -result $unreservedChars
+
+
+test ns_urlencode-2.4.1 {multiple args} -body {
+    ns_urlencode -part path 1 2 3
+} -result {1/2/3}
+
+test ns_urlencode-2.4.2 {multiple args} -body {
+    ns_urlencode -part query 1 2 3
+} -result {1&2&3}
+
+test ns_urlencode-2.4.3 {multiple args} -body {
+    ns_urlencode 1 2 3
+} -result {1&2&3}
+
+
+test ns_urlencode-2.5.1 {spaces and plus signs} -body {
+    ns_urlencode -part path +
+} -result {+}
+
+test ns_urlencode-2.5.2 {spaces and plus signs} -body {
+    ns_urlencode -part query +
+} -result {%2b}
+
+test ns_urlencode-2.5.3 {spaces and plus signs} -body {
+    ns_urlencode +
+} -result {%2b}
+
+test ns_urlencode-2.5.4 {spaces and plus signs} -body {
+    ns_urlencode -part path " "
+} -result {%20}
+
+test ns_urlencode-2.5.5 {spaces and plus signs} -body {
+    ns_urlencode -part query " "
+} -result {+}
+
+test ns_urlencode-2.5.6 {spaces and plus signs} -body {
+    ns_urlencode " "
+} -result {+}
+
+test ns_urlencode-2.5.7 {spaces and plus signs} -body {
+    ns_urldecode -part path +
+} -result {+}
+
+test ns_urlencode-2.5.8 {spaces and plus signs} -body {
+    ns_urldecode -part query +
+} -result { }
+
+test ns_urlencode-2.5.9 {spaces and plus signs} -body {
+    ns_urldecode +
+} -result { }
+
+test ns_urlencode-2.5.10 {spaces and plus signs} -body {
+    ns_urldecode -part path " "
+} -result { }
+
+test ns_urlencode-2.5.11 {spaces and plus signs} -body {
+    ns_urldecode -part query " "
+} -result { }
+
+test ns_urlencode-2.5.12 {spaces and plus signs} -body {
+    ns_urldecode " "
+} -result { }
+
+test ns_urlencode-2.5.10 {spaces and plus signs} -body {
+    ns_urldecode -part path "%20"
+} -result { }
+
+test ns_urlencode-2.5.11 {spaces and plus signs} -body {
+    ns_urldecode -part query "%20"
+} -result { }
+
+test ns_urlencode-2.5.12 {spaces and plus signs} -body {
+    ns_urldecode "%20"
+} -result { }
+
+test ns_urlencode-2.5.13 {spaces and plus signs} -body {
+    ns_urldecode -part path "%2b"
+} -result {+}
+
+test ns_urlencode-2.5.14 {spaces and plus signs} -body {
+    ns_urldecode -part query "%2b"
+} -result {+}
+
+test ns_urlencode-2.5.15 {spaces and plus signs, lowercase} -body {
+    ns_urldecode "%2b"
+} -result {+}
+
+test ns_urlencode-2.5.16 {spaces and plus signs, uppercase} -body {
+    ns_urldecode "%2B"
+} -result {+}
+
+test ns_urlencode-2.5.17 {plain chars and encoded chars} -body {
+    ns_urldecode -part path "/mot%C3%B6rhead"
+} -result {/motörhead}
+
+test ns_urlencode-2.5.18.1 {invalid 2byte utf-8 - 2nd by too small} -body {
+    ns_valid_utf8 [ns_urldecode -charset iso8859-1 -part path "/mot%C3or"]
+} -returnCodes {ok error} -result 0
+
+test ns_urlencode-2.5.18.2 {invalid 2byte utf-8 - premature end} -body {
+    catch {ns_urldecode -charset iso8859-1 -part path "/mot%C3"}
+} -result 0
+
+test ns_urlencode-2.5.18.3 {invalid 2byte utf-8 - text with cp850 chars} -body {
+    ns_valid_utf8 [ns_urldecode -charset iso8859-1 -part path "test%E4%FC"]
+} -result 0
+
+test ns_urlencode-2.5.19.1 {invalid 2byte utf-8 - premature end} -body {
+    catch {ns_urldecode -part path "/mot%C3"}
+} -result 1
+test ns_urlencode-2.5.19.2 {invalid 2byte utf-8 - premature end} -body {
+    catch {ns_urldecode -part path "/123456789/mot%C3"}
+} -result 1
+test ns_urlencode-2.5.19.3 {invalid 2byte utf-8 - 2nd byte invalid} -body {
+    catch {ns_urldecode -part path "/mot%C3%02xxx"}
+} -result 1
+test ns_urlencode-2.5.19.3 {invalid 2byte utf-8 - 2nd byte invalid} -body {
+    catch {ns_urldecode -part path "/123456789/mot%C3%02xxx"}
+} -result 1
+test ns_urlencode-2.5.19.4 {invalid 3byte utf-8 - premature end} -body {
+    catch {ns_urldecode -part path "/mot%E9"}
+} -result 1
+test ns_urlencode-2.5.19.5 {invalid 3byte utf-8 - premature end} -body {
+    catch {ns_urldecode -part path "/123456789/mot%E9"}
+} -result 1
+test ns_urlencode-2.5.19.6 {invalid 3byte utf-8 - premature end} -body {
+    catch {ns_urldecode -part path "/mot%E9%E8"}
+} -result 1
+test ns_urlencode-2.5.19.7 {invalid 3byte utf-8 - premature end} -body {
+    catch {ns_urldecode -part path "/123456789/mot%E9%E8"}
+} -result 1
+test ns_urlencode-2.5.19.8 {invalid 3byte utf-8 - invalid 3 bytes} -body {
+    catch {ns_urldecode -part path "/mot%E9%E8%E7"}
+} -result 1
+test ns_urlencode-2.5.19.9 {invalid 3byte utf-8 - invalid 3 bytes} -body {
+    catch {ns_urldecode -part path "/123456789/mot%E9%E8%E7"}
+} -result 1
+# valid %F0%9f%92%95
+test ns_urlencode-2.5.19.10 {invalid 4byte utf-8 - truncate} -body {
+    catch {ns_urldecode -part path "/mot%F0"}
+} -result 1
+test ns_urlencode-2.5.19.11 {invalid 4byte utf-8 - truncate} -body {
+    catch {ns_urldecode -part path "/mot%F0%9f"}
+} -result 1
+test ns_urlencode-2.5.19.12 {invalid 4byte utf-8 - truncate} -body {
+    catch {ns_urldecode -part path "/mot%F0%9f%92"}
+} -result 1
+test ns_urlencode-2.5.19.13 {invalid 4byte utf-8 - NO truncate} -body {
+    catch {ns_urldecode -part path "/mot%F0%9f%92%95"}
+} -result 0
+test ns_urlencode-2.5.19.14 {invalid 4byte utf-8 - invalid 4th byte} -body {
+    catch {ns_urldecode -part path "/mot%F0%9f%92%C0xxx"}
+} -result 1
+test ns_urlencode-2.5.19.15 {invalid 4byte utf-8 - invalid 3rd byte} -body {
+    catch {ns_urldecode -part path "/mot%F0%9f%C0%C0xxx"}
+} -result 1
+
+
+test ns_urlencode-2.6.1 {rfc2396 section 2.4.3 URI 'delim' characters} -body {
+    ns_urlencode -part path "<>\#%\""
+} -result {%3c%3e%23%25%22}
+
+test ns_urlencode-2.6.2 {plain chars and encoded chars} -body {
+    ns_urldecode -charset iso8859-1 -part path "/mot%F6rhead"
+} -result {/motörhead}
+
+test ns_urlencode-2.6.3 {plain chars and encoded chars} -body {
+    ns_urldecode -fallbackcharset iso8859-1 -part path "/mot%F6rhead"
+} -returnCodes {ok return error}  -result {/motörhead}
+
+
+test ns_urlencode-2.7.1 {rfc2396 section 2.4.3 URI 'unwise' characters} -body {
+    ns_urlencode -part path {{}|\^[]`}
+} -result {%7b%7d%7c%5c%5e%5b%5d%60}
+
+test ns_urlencode-2.8.1 {rfc2396 section 3.3 URI path component reserved characters} -body {
+    ns_urlencode -part path {/?;=}
+} -result {%2f%3f%3b%3d}
+
+test ns_urlencode-2.8.2 {path component unreserved characters} -body {
+    ns_urlencode -part path {:@&+$,}
+} -result {:@&+$,}
+
+
+test ns_urlencode-2.9.1 {rfc2396 section 3.4 URI query component reserved characters} -body {
+    ns_urlencode -part query {;/?:@&=+,$}
+} -result {%3b/?:@%26%3d%2b%2c$}
+
+test ns_urlencode-2.10.1 {charset decode} -body {
+    ns_urldecode -charset iso8859-1 "%FA"
+} -result {ú}
+test ns_urlencode-2.10.2 {charset encode} -body {
+    ns_urlencode -charset iso8859-1 "ú"
+} -result {%fa}
+
+
+if {[ns_config test listenport] ne ""} {
+    testConstraint serverListen true
+}
+
+test ns_urlencode-3.0 {test request with unencoded path segments} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo/* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /foo/bar.tcl
+} -cleanup {
+    ns_unregister_op GET /foo/*
+} -result {200 {URL /foo/bar.tcl URLV {foo bar.tcl}}}
+
+test ns_urlencode-3.1 {test request with unencoded path segments, 2 elements, ending with slash} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo/* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /foo/bar/
+} -cleanup {
+    ns_unregister_op GET /foo/*
+} -result {200 {URL /foo/bar/ URLV {foo bar}}}
+
+test ns_urlencode-3.2 {
+    test request with unencoded path segments, 1 element ending with slash
+} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /foo/
+} -cleanup {
+    ns_unregister_op GET /foo*
+} -result {200 {URL /foo/ URLV foo}}
+
+test ns_urlencode-3.3 {
+    test request with unencoded path segments, 1 element, no slash
+} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /foo
+} -cleanup {
+    ns_unregister_op GET /foo*
+} -result {200 {URL /foo URLV foo}}
+
+
+test ns_urlencode-4.0 {test request with encoded path segments} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo/* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /foo/bar%20baz.tcl
+} -cleanup {
+    ns_unregister_op GET /foo/*
+} -result {200 {URL {/foo/bar baz.tcl} URLV {foo {bar baz.tcl}}}}
+
+test ns_urlencode-4.1 {test request with encoded path segments} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo/* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /foo/bar%2fbaz.tcl
+} -cleanup {
+    ns_unregister_op GET /foo/*
+} -result {200 {URL /foo/bar/baz.tcl URLV {foo bar/baz.tcl}}}
+
+
+
+test ns_urlencode-5.0 {encode and unencode character sequence with percent codes - path segment} -constraints {serverListen} -setup {
+    ns_register_proc GET /encode-decode {
+        set s "/%20,'\".=+"
+        set sEnc [ns_urlencode -part path $s]
+        ns_return 200 text/plain [list $s $sEnc [expr {[ns_urldecode -part path $sEnc] eq $s}]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /encode-decode
+} -cleanup {
+    ns_unregister_op GET /encode-decode
+} -result "200 {/%20,'\\\".=+ %2f%2520,'%22.%3d+ 1}"
+
+test ns_urlencode-5.1 {encode and unencode character sequence with percent codes - query segment} -constraints {serverListen} -setup {
+    ns_register_proc GET /encode-decode {
+        set s "/%20,'\".=+"
+        set sEnc [ns_urlencode -part query $s]
+        ns_return 200 text/plain [list $s $sEnc [expr {[ns_urldecode -part query $sEnc] eq $s}]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /encode-decode
+} -cleanup {
+    ns_unregister_op GET /encode-decode
+} -result "200 {/%20,'\\\".=+ /%2520%2c'%22.%3d%2b 1}"
+
+test ns_urlencode-5.2 {encode and unencode character sequence with percent codes - cookie} -constraints {serverListen} -setup {
+    ns_register_proc GET /encode-decode {
+        set s "/%20,'\".=+"
+        set sEnc [ns_urlencode -part cookie $s]
+        ns_return 200 text/plain [list $s $sEnc [expr {[ns_urldecode -part cookie $sEnc] eq $s}]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /encode-decode
+} -cleanup {
+    ns_unregister_op GET /encode-decode
+} -result "200 {/%20,'\\\".=+ /%2520%2c'%22.=+ 1}"
+
+test ns_urlencode-5.3.1 {encode and unencode character sequence with oauth1 encoding} -body {
+    set string {-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~}
+    set enc [ns_urlencode -part oauth1 $string]
+    string equal $enc $string
+} -cleanup {
+    unset string enc
+} -result "1"
+
+test ns_urlencode-5.3.2 {encode and unencode character sequence with oauth1 encoding} -body {
+    set string {-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~}
+    set enc [ns_urlencode -part oauth1 $string]
+    set dec [ns_urldecode -part oauth1 $enc]
+    string equal $enc $dec
+} -cleanup {
+    unset string enc dec
+} -result "1"
+
+test ns_urlencode-5.3.3 {encode and unencode character sequence with oauth1 encoding} -body {
+    ns_urldecode -part oauth1 a+b
+} -result "a+b"
+
+test ns_urlencode-5.3.4 {encode and unencode character sequence with oauth1 encoding} -body {
+    set unencoded {-.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz~}
+    set string ""
+    for {set i 1} {$i < 128} {incr i} {
+        set c [format %c $i]
+        if {[string first $c $unencoded] == -1} {append string $c}
+    }
+    # The reset must be a multiple of 2 chars, since everything must be encoded.
+    expr {[string length [ns_urlencode -part oauth1 $string]] % 3}
+} -cleanup {
+    unset string i c unencoded
+} -result 0
+
+
+
+test ns_urlencode-6.0 {security check: see, if we can sneek in a binary 0 to trick "string is integer"} -constraints {serverListen} -setup {
+    ns_register_proc GET /encode-decode {
+        set s "1%00%27"
+        set decoded [ns_urldecode -part query $s]
+        ns_return 200 text/plain [list $s [string is integer -strict $decoded]]
+    }
+} -body {
+    nstest::http -http 1.1 -getbody 1 GET /encode-decode
+} -cleanup {
+    ns_unregister_op GET /encode-decode
+} -result "200 {1%00%27 0}"
+
+#
+# Test URLs ending with "funny characters", e.g. the URL ends with
+# %3f, which decodes to a question mark.
+#
+test ns_urlencode-7.0 {
+    Funny chars: URL ends with question mark
+} -constraints {serverListen} -setup {
+    ns_register_proc GET /a? {
+        ns_return 200 text/plain [list [ns_conn url] [ns_info server]]
+    }
+} -body {
+    nstest::http -http 1.1 GET /[ns_urlencode -part path a?]
+} -cleanup {
+    ns_unregister_op GET /a?
+} -returnCodes {ok return error} -result "404"
+
+test ns_urlencode-7.0.1 {
+    Funny chars: URL ends with question mark, not found
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               GET /[ns_urlencode -part path a?]]
+    #ns_log notice r=$r
+    string match "404*was not found on this server*" $r
+} -returnCodes {ok return error} -result 1
+
+test ns_urlencode-7.0.2 {
+    Funny chars: URL ends with question mark, not found,
+    test on vhost with custom error page
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               -setheaders [list Host testvhost:[ns_config test listenport]] \
+               GET /[ns_urlencode -part path a?]]
+    #ns_log notice r=$r
+    string match "404*CUSTOM 404 page*" $r
+} -returnCodes {ok return error} -result 1
+
+test ns_urlencode-7.1 {
+    Funny chars: URL is just a question mark
+} -constraints {serverListen} -setup {
+    ns_register_proc GET /? {
+        ns_return 200 text/plain [list ok [ns_conn url] [ns_info server]]
+    }
+} -body {
+    nstest::http -http 1.1 GET /%3F
+} -cleanup {
+    ns_unregister_op GET /?
+} -returnCodes {ok return error} -result "404"
+
+test ns_urlencode-7.1.1 {
+    Funny chars: URL is just a question mark, not found
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               GET /%3F]
+    #ns_log notice r=$r
+    string match "404*was not found on this server*" $r
+} -returnCodes {ok return error} -result 1
+
+test ns_urlencode-7.1.2 {
+    Funny chars: URL is just a question mark, not found,
+    test on vhost with custom error page
+} -constraints {serverListen} -body {
+    set r [nstest::http -http 1.1 -getbody 1 \
+               -setheaders [list Host testvhost:[ns_config test listenport]] \
+               GET /%3F]
+    #ns_log notice r=$r
+    string match "404*CUSTOM 404 page*" $r
+} -returnCodes {ok return error} -result 1
+
+
+
+#
+# ns_parsequery
+#
+test ns_parsequery-1.0 {basic syntax} -body {
+    ns_parsequery
+} -returnCodes error -result {wrong # args: should be "ns_parsequery ?-charset charset? ?-fallbackcharset fallbackcharset? ?--? querystring"}
+
+test ns_parsequery-1.1 {simple operation} -body {
+    ns_set array [ns_parsequery a=1&b=2]
+} -returnCodes {error ok} -result {a 1 b 2}
+
+test ns_parsequery-1.2 {simple operation} -body {
+    ns_set array [ns_parsequery msg=Hello+World%21&a=b&a=b&c=d]
+} -returnCodes {error ok} -result {msg {Hello World!} a b a b c d}
+
+test ns_parsequery-1.3 {invalid UTF-8} -body {
+    try {
+        ns_parsequery return=%0a%0d%bf%f0%9f
+    } on error {errorMsg errorDict} {
+        set _ "$errorMsg [dict get $errorDict -errorcode]"
+    } on ok {result} {
+        set _ "OK"
+    }
+} -returnCodes {error ok} -cleanup {
+   unset -nocomplain _
+} -result {could not parse query: "return=%0a%0d%bf%f0%9f" NS_INVALID_UTF8}
+
+test parsequery-1.4 {parsequery using urlencoding} -setup {
+    ns_register_proc GET /parsequery {
+        ns_conn urlencoding iso8859-1
+        set a [ns_queryget a]
+        ns_return 200 "text/plain" [list [ns_conn query] [ns_conn urlencoding] $a]
+    }
+} -body {
+    nstest::http -getbody 1 GET "/parsequery?a=%e4%f6%fc&b=B"
+} -cleanup {
+    ns_unregister_op GET /encoding
+} -result {200 {a=%e4%f6%fc&b=B iso-8859-1 äöü}}
+
+test parsequery-1.5 {parsequery using bad urlencoding} -setup {
+    ns_register_proc GET /parsequery {
+        #ns_conn urlencoding iso8859-1
+        set a [ns_queryget a]
+        ns_return 200 "text/plain" [list [ns_conn query] [ns_conn urlencoding] $a]
+    }
+} -body {
+    nstest::http -getbody 1 GET "/parsequery?a=%e4%f6%fc&b=B"
+} -cleanup {
+    ns_unregister_op GET /encoding
+} -result {200 {a=%e4%f6%fc&b=B utf-8 {}}}
+
+unset unreservedChars
+
+
+
+cleanupTests
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

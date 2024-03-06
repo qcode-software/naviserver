@@ -1,0 +1,480 @@
+[include version_include.man]
+[manpage_begin nsv n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {NaviServer nsv Commands}]
+
+[description]
+The nsv commands provide a high performance data sharing mechanism.
+This facility is much flexible alternative to the obsolete ns_share
+command.  The model uses an array syntax and includes more features.
+In addition, lock contention is managed in a much more scalable
+way--something that is not possible with the obsolete ns_share
+facility.
+
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+
+[call [cmd "nsv_array get"] [arg array] [opt [arg pattern]]]
+
+[call [cmd "nsv_array set"] [arg array] [arg value-list]]
+
+[call [cmd "nsv_array reset"] [arg array] [arg value-list]]
+
+[call [cmd "nsv_array exists"] [arg array]]
+
+[call [cmd "nsv_array size"] [arg array]]
+
+[call [cmd "nsv_array names"] [arg array] [opt [arg pattern]]]
+
+Commands for the most part mirror the corresponding Tcl command for
+ordinary variables.
+
+
+[example_begin]
+ % nsv_array set shared_array { key1 value1 key2 value2 }
+ 
+ % nsv_array get shared_array
+ key1 value1 key2 value2
+ 
+ % nsv_array reset shared_array { key3 value3 }
+ 
+ % nsv_array exists shared_array
+ 1
+ 
+ % nsv_array size shared_array
+ 1
+ 
+ % nsv_array names shared_array
+ key3
+ 
+ % nsv_array set shared_array [lb]array get tmp_shared_array[rb]
+ % array set tmp_shared_array [lb]nsv_array get shared_array[rb]
+ % nsv_array reset shared_array [lb]array get tmp_shared_array[rb]
+[example_end]
+
+
+[call [cmd nsv_bucket] [opt [arg bucket-nr]]]
+
+Return a list of all the array names with lock counts from the specified
+bucket. If no bucket-nr is specified, return a list of all arrays from
+all buckets.  This command is mainly for performance tuning. When e.g.
+the number of locks for a certain bucket is high one can use this
+command to determine the arrays with their usages from this bucket.
+
+[example_begin]
+ set buckets ""
+ set count -1
+ foreach b [lb]nsv_bucket[rb] {
+    append buckets "[lb]incr count[rb]: " [lb]lsort -integer -index 1 -decreasing $b[rb] \n
+ }
+ ns_log notice $buckets
+[example_end]
+
+[call [cmd "nsv_dict append"]  [arg array] [arg key] [arg dictkey] [opt [arg {value ...}]]]
+[call [cmd "nsv_dict exists"]  [arg array] [arg key] [arg dictkey] [opt [arg {dictkey ...}]]]
+[call [cmd "nsv_dict get"]     [opt "-varname [arg varname]"] [arg array] [arg key] [opt [arg {dictkey ...}]]]
+[call [cmd "nsv_dict getdef"]  [opt "-varname [arg varname]"] [arg array] [arg key] [opt [arg {dictkey ...}]] [arg default]]
+[call [cmd "nsv_dict incr"]    [arg array] [arg key] [opt [arg {increment}]]]
+[call [cmd "nsv_dict keys"]    [arg array] [arg key] [opt [arg {pattern}]]]
+[call [cmd "nsv_dict lappend"] [arg array] [arg key] [arg dictkey] [opt [arg {value ...}]]]
+[call [cmd "nsv_dict set"]     [arg array] [arg key] [arg dictkey] [opt [arg {dictkey ...}]] [arg value]]
+[call [cmd "nsv_dict size"]    [arg array] [arg key]]
+[call [cmd "nsv_dict unset"]   [arg array] [arg key] [arg dictkey] [opt [arg {dictkey ...}]]]
+
+Implementation of the Tcl [term dict] command for shared variables.
+The commands work similar as [cmd nsv_set] and [cmd nsv_get],
+except that the value of these commands are structure values in form
+of dicts.
+
+[para]
+
+The main difference to plain Tcl is the option
+[opt "-varname [arg varname]"].
+
+When this option is provided, the function returns 0 or 1 depending
+on success and returns in the success case the value in the provided
+variable. When the varname option is provided, the behavior is
+similar to the optional last argument in [cmd nsv_get] or
+[cmd ns_cache_get]
+
+The option [opt "-varname [arg varname]"] has the advantage
+to test and get the value with a single locked command. This avoids
+race conditions and reduces the number of locks for the application.
+
+
+[example_begin]
+ % nsv_dict set personnel 4711 name gustaf
+ name gustaf
+ 
+ % nsv_dict set personnel 4711 sex m
+ name gustaf sex m
+ 
+ % nsv_dict get personnel 4711 name
+ gustaf
+ 
+ % nsv_dict get personnel 4711
+ name gustaf sex m
+[example_end]
+
+[call [cmd nsv_exists] [arg array] [arg key]]
+
+Test whether a key exists in the nsv array.
+
+[example_begin]
+ % nsv_exists shared_array key1
+ 1
+ % nsv_exists shared_array key2
+ 0
+[example_end]
+
+
+[call [cmd nsv_get] \
+	[arg array] \
+	[arg key] \
+	[opt [arg varName]]]
+
+
+Get the value for the key from the nsv array.  If the optional
+[arg varName] is provided, the function returns on success 1 and on
+failure 0. On success, it binds the variable [arg varName]. If the
+variable name is not provided, it returns on success the value and
+raises on failure an error (similar to [cmd ns_cache_get]).
+With the optional variable name, this function allows an atomic 
+check for existence followed by a get operation.
+
+
+[example_begin]
+ % nsv_get shared_array key1
+ value1
+[example_end]
+
+
+[call [cmd nsv_incr] [arg arrayName] [arg key] [opt [arg increment]]]
+
+
+If increment is supplied then its value (which must be an integer) is added to the
+value of the element key; otherwise 1 is added to the value of the element key.
+Unlike the Tcl equivalent if key does not exists it is created. Returns the new value
+of the element specified by key. Internally interlocked so it is thread safe, no mutex required.
+
+
+[example_begin]
+ % nsv_incr shared_array foo
+ 1
+ % nsv_incr shared_array foo -1
+ 0
+[example_end]
+
+[call [cmd nsv_append] [arg array] [arg key] [arg value] [opt [arg {value ...}]]]
+
+Append all of the value arguments to the current value of variable key in the array.
+If key doesn't exist, it is given a value equal to the concatenation of all the value arguments
+
+[example_begin]
+ % nsv_append shared_array key1 foo
+ value1foo
+[example_end]
+
+
+[call [cmd nsv_lappend] [arg array] [arg key] [arg value] [opt [arg {value ...}]]]
+
+
+Append all of the value arguments as list elements to variable key in the array.
+If key doesn't exist, it is created as a list with elements given by the value arguments
+
+
+[example_begin]
+ % nsv_lappend shared_array key1 value2
+ value1 value2
+[example_end]
+
+
+[call [cmd nsv_names] [opt [arg pattern]]]
+
+Return a list of all the nsvs in use, optionally only those matching pattern. If no
+matching nsvs are in use returns the empty string.
+
+[example_begin]
+ % nsv_names
+ shared_array
+[example_end]
+
+
+[call [cmd nsv_set] \
+	[opt [option -default]] \
+	[opt [option -reset]] \
+	[arg array] \
+	[arg key] \
+	[opt [arg value]]]
+
+Set the value for a key in an nsv array. Returns the value the key is
+set to. The various options are especially useful to implement atomic
+operations.
+
+[list_begin options]
+[opt_def -default] When this flag is specified nothing is changed in case
+the key [arg key] of [arg array] has already an
+value. Otherwise it sets the value.
+This operation is similar to SETNX in REDIS (set if no exists).
+
+[opt_def -reset]
+
+When this flag is specified and a [arg value] is given, the command
+resets the value for [arg key] and returns the [emph old] value.
+This operation is similar to GETSET in REDIS (get the old value and
+set it new).
+
+[para] When this flag is specified but no [arg value] is
+provided, the command returns the value for [arg key] and unsets resets it.
+
+
+[list_end]
+
+[example_begin]
+ % nsv_set shared_array key1 value1
+ value1
+[example_end]
+
+
+[call [cmd nsv_unset] [opt [option -nocomplain]] [opt --] [arg array] [opt [arg key]]]
+
+Unset an array or a single key from an array. If successful returns an
+empty string. When [option -nocomplain] is specified the command does not
+complain when the specified array or key does not exist.
+
+[example_begin]
+ % nsv_unset shared_array key1
+ % nsv_unset shared_array
+[example_end]
+
+
+[list_end]
+
+[section {Migrating From ns_share}]
+
+Migrating from ns_share is straightforward.  If your init.tcl included commands such as:
+
+[example_begin]
+ ns_share myshare
+ set myshare(lock) [lb]ns_mutex create[rb]
+[example_end]
+
+use instead:
+
+[example_begin]
+ nsv_set myshare lock [lb]ns_mutex create[rb]
+[example_end]
+
+
+In your procedures, instead of:
+
+[example_begin]
+ proc myproc {} {
+     ns_share myshare
+     ns_mutex lock $myshare(lock)
+     ...
+ }
+[example_end]
+
+use:
+
+[example_begin]
+ proc myproc {} {
+     ns_mutex lock [lb]nsv_get myshare lock[rb]
+     ...
+ }
+[example_end]
+
+and within an ADP page, instead of:
+
+
+[example_begin]
+ <%
+  ns_share myshare
+  ns_puts $myshare(key1)
+ %>
+ 
+ <%=$myshare(key2)%>
+[example_end]
+
+use:
+
+
+[example_begin]
+ <%
+ ns_puts [lb]nsv_get myshare key1[rb]
+ %>
+ 
+ <%=[lb]nsv_get myshare key2[rb]%>
+[example_end]
+
+Notice that, unlike ns_share, no command is required to define the
+shared array.  The first attempt at setting the variable through any
+means will automatically create the array.  Also notice that only arrays
+are supported.  However, to migrate from ns_share you can simply package
+up all existing ns_share scalars into a single array with a short name,
+perhaps just ".". For example, if you had:
+
+
+[example_begin]
+ ns_share mylock myfile
+ set myfile /tmp/some.file
+ set mylock [lb]ns_mutex create[rb]
+[example_end]
+
+
+you can use:
+
+[example_begin]
+ nsv_set . myfile /tmp/some.file
+ nsv_set . mylock [lb]ns_mutex create[rb]
+[example_end]
+
+
+[section {Multithreading Features}]
+
+One advantages of nsv is built in interlocking for thread safety.
+For example, consider a case of a "increment-by-one" unique id system.
+Here's the ns_share solution:
+
+
+[example_begin]
+ ns_share ids
+ set ids(lock) [lb]ns_mutex create[rb]
+ set ids(next) 0
+ 
+ proc nextid {} {
+     ns_share ids
+     ns_mutex lock $ids(lock)
+     set next [lb]incr ids(next)[rb]
+     ns_mutex unlock $ids(lock)
+     return $next
+ }
+[example_end]
+
+
+and here's an nsv solution:
+
+
+[example_begin]
+ nsv_set ids next 0
+ 
+ proc nextid {} {
+     return [lb]nsv_incr ids next[rb]
+ }
+[example_end]
+
+
+Note that the nsv solution does not need a mutex as the nsv_incr command
+is internally interlocked.
+
+
+[section {Compatibility with Tcl Arrays}]
+
+Another useful feature of nsv is the nsv_array command which works much
+like the Tcl array command.  This can be used to import and export values
+from ordinary Tcl arrays.  For example, to copy from Tcl use:
+
+
+[example_begin]
+ nsv_array set meta [lb]array get tmpmeta[rb]
+[example_end]
+
+
+and to copy to Tcl use:
+
+[example_begin]
+ array set metacopy [lb]nsv_array get meta[rb]
+[example_end]
+
+
+As with all other nsv command, nsv_array is atomic and no explicit
+locking is required.  This feature can be used to construct a new nsv
+array by first filling up an ordinary temporary Tcl array via some time
+consuming process and then swapping it into place as above.  While the
+new temporary array is being constructed, other threads can access the
+old array without delay or inconsistent data.  You can even reset a
+complete nsv array in one step with "reset".  For example, instead of:
+
+
+[example_begin]
+ ns_share lock meta
+ set lock [lb]ns_mutex create[rb]
+ ns_mutex lock $lock
+ unset meta
+ array set meta [lb]array get tmpmeta[rb]
+ ns_mutex unlock $lock
+[example_end]
+
+
+you can simply use:
+
+
+[example_begin]
+ nsv_array reset meta [lb]array get tmpmeta[rb]
+[example_end]
+
+
+The reset option will flush and then reset all values atomically,
+eliminating the need for the explicit lock.
+
+
+[section {Configuration}]
+
+All accesses to shared variables are protected by a mutex. Attention
+should be taken for array operations which have to iterate over
+many shared variables to return the result, since this will lead
+to reduced scalability due too long lasting locks.
+
+[subsection {Number of buckets}]
+
+The nsv system uses a common multithreading technique to reduce the
+potential for lock contention which is to split the locks to achieve
+finer grained locking.  This technique groups arrays randomly into
+buckets and only the arrays within a particular bucket share a lock.
+The number of buckets to be used can be configured by setting the
+[const nsvbuckets] Tcl parameters, e.g.:
+
+[example_begin]
+ ns_section  ns/server/${server}/tcl {
+   # Number of buckets in Tcl hash table for nsv vars
+   ns_param nsvbuckets 16
+ }
+[example_end]
+
+
+The default value for [term nsvbuckets] is 8 which should be
+reasonable for most applications.  Note that you can monitor the lock
+contention by viewing the results of "ns_info locks" command after the
+server has been running for some time.  The nsv locks all have names
+of the form "nsv:##".  If you find many lock attempts which did not
+succeeded immediately, try increasing [term nsvbuckets].
+
+[subsection {Mutex Locks vs. RWLocks}]
+
+An RWLock allows concurrent read access and a single writer, while a
+mutex locks allows only a single reader or a single writer at the same
+time. The RWLock has more overhead to support concurrency, but in case
+there are more read than write operations, RWLocks are better (but
+this might be different by the support for RWLocks). In general, for
+Web server applications (like e.g. OpenACS), most nsv variables have a
+write ratio of way below 1%. However, applications might be different,
+so NaviServer allows the specify in the configuration file, whether
+mutex locks or rwlocks might be used.
+
+[example_begin]
+ ns_section  ns/server/${server}/tcl {
+   ns_param nsvrwlocks false   ;# default true
+ }
+[example_end]
+
+
+[see_also nsd ns_cache ns_urlspace ns_set]
+[keywords "server built-in" nsv shared variables mutex \
+   "data structure" configuration]
+
+[manpage_end]

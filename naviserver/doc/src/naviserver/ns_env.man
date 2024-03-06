@@ -1,0 +1,52 @@
+[include version_include.man]
+[manpage_begin ns_env n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+
+[titledesc {Return, change or add a value of an environment variable}]
+
+[description]
+
+This command provides thread-safe (unlike Tcl env array) access to the environment
+variables of the currently running nsd process.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd "ns_env names"]]
+
+[call [cmd "ns_env exists"] [arg name]]
+
+[call [cmd "ns_env get"] [opt [option -nocomplain]] [arg name]]
+
+[call [cmd "ns_env set"] [arg name] [arg value]]
+
+[call [cmd "ns_env unset"] [opt [option -nocomplain]] [arg name]]
+
+[list_end]
+
+
+[section EXAMPLES]
+
+[example_begin]
+ % ns_env names
+ CONSOLE TERM INIT_VERSION PATH RUNLEVEL PWD PREVLEVEL SHLVL HOME
+ 
+ % ns_env get PATH
+ /usr/local/sbin:/sbin:/bin:/usr/sbin:/usr/bin
+ 
+ % ns_env set USER nsd
+ 
+ % ns_env get USER
+ nsd
+ 
+ % ns_env unset USER
+[example_end]
+
+
+[see_also nsd]
+[keywords "global built-in" ]
+[manpage_end]
+
+

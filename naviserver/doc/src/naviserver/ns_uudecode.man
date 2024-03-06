@@ -1,0 +1,49 @@
+[include version_include.man]
+[manpage_begin ns_uudecode n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Binary-to-text decoding using "htuu" encoding}]
+
+[description]
+
+ This command performs a text to potentially binary conversion,
+ based on the base64 encoding scheme. The command is kept
+ for backward compatibility, the command [cmd ns_base64decode]
+ should be used instead.
+
+[para]
+ NOTE: This stype of encoding is sometimes called "htuu". This command
+ converts the specified argument from RFC 1113 printable encoding
+ format to its native representation. This technique is similar to the
+ familiar Unix uuencode format in that it maps 6 binary bits to one
+ ASCII character (or more aptly, 3 binary bytes to 4 ASCII
+ characters). However, RFC 1113 does not use the same mapping to
+ printable characters as uuencode.
+
+[list_begin definitions]
+
+ [call [cmd ns_uudecode] \
+  	[opt [option -binary]] \
+	[opt [option --]] \
+	[arg string]]
+
+In case, the result might contain binary content,
+it is recommend to use the option [option -binary], which causes the
+result to be a Tcl byte array.
+
+[list_end]
+
+
+[section EXAMPLES]
+
+[example_begin]
+ oss2:nscp 7> ns_uuencode test
+ dGVzdA==
+ 
+ oss2:nscp 6> ns_uudecode dGVzdA==
+ test
+[example_end]
+
+[see_also ns_uuencode ns_base64]
+[keywords "global built-in" encoding]
+[manpage_end]

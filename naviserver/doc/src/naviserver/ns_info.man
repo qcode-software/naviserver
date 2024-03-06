@@ -1,0 +1,229 @@
+[include version_include.man]
+[manpage_begin ns_info n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Return information about various aspects of the running NaviServer}]
+
+
+[description]
+
+This command provides information about the current state of the running NaviServer. 
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+
+[call [cmd ns_info] [arg option] [opt [arg {arg arg ...}]]]
+
+
+[list_end]
+
+
+[list_begin definitions]
+
+[call [cmd  "ns_info address"]]
+
+Returns the primary IP address of the hostname of this machine, or
+the unspecified IP address (for IPv4 "0.0.0.0", for IPv6 "::") if
+unable to determine.
+
+[call [cmd  "ns_info argv0"]]
+
+Returns file path to executable binary
+
+[call [cmd "ns_info boottime"]]
+
+Returns the time in epoch seconds since the current server was started
+
+[call [cmd  "ns_info builddate"]]
+
+Returns the date and time at which the current server was compiled, e.g.: "Jul 20 2004 at 14:57:20"
+
+[call [cmd  "ns_info callbacks"]]
+
+Returns all registered startup/exit/shutdown callbacks
+
+[call [cmd "ns_info config"]]
+
+Returns the absolute path to the configuration file used to start the server
+
+[call [cmd  "ns_info home"]]
+
+Returns the current working directory of the server
+
+[call [cmd  "ns_info hostname"]]
+
+Returns the value of gethostname(), or "localhost" if that fails
+
+[call [cmd  "ns_info ipv6"]]
+
+Returns information if the binary was compiled with IPv6 support.
+
+[call [cmd  "ns_info locks"]]
+
+Lists lock information from mutexes and rwlocks with their statistics.
+The result is returned as a list with the following elements.
+For each lock, the following information is returned:
+name, {}, unique id, number of locks, number of busy locks, total wait
+time, max wait time, total lock time, number of read locks, number of write
+locks.
+Not all information is available for all types of locks.
+
+[call [cmd  "ns_info log"]]
+
+Returns the name of the error log file. The name is specified by the
+"serverlog" parameter in the "ns/parameters" section.
+
+[call [cmd  "ns_info major"]]
+
+Returns the major version number.
+
+[call [cmd  "ns_info minor"]]
+
+Returns the minor version number.
+
+[call [cmd  "ns_info mimetypes"]]
+
+Returns the current mime-type mappings.
+
+[call [cmd  "ns_info name"]]
+
+Returns the name of the server implementation, i.e. "NaviServer".
+
+[call [cmd  "ns_info nsd"]]
+
+Returns absolute  path and name of the nsd binary, which is currently
+executed.
+
+[call [cmd  "ns_info patchlevel"]]
+
+Returns the full version number of the server (including patch level).
+
+[call [cmd  "ns_info pid"]]
+
+Returns the process id of the running nsd process.
+
+
+[call [cmd  "ns_info pools"]]
+
+Returns usage info from the memory pools (returned by
+Tcl_GetMemoryInfo() if configured).
+
+[call [cmd  "ns_info scheduled"]]
+
+Returns the list of the scheduled procedures in the current process
+(all virtual servers). Each list element is itself a 9-element list of
+{id, flags, interval, nextqueue, lastqueue, laststart, lastend,
+procname, arg}:
+
+[list_begin itemized]
+
+    [item]  id - unique id returned by the scheduling command
+    [item]  flags  -  Bitmap of one or more of:
+	[list_begin itemized]
+
+        [item] 1 -- NS_SCHED_THREAD
+        [item] 2 -- NS_SCHED_ONCE
+        [item] 4 -- NS_SCHED_DAILY
+        [item] 8 -- NS_SCHED_WEEKLY
+        [item] 16 - NS_SCHED_PAUSED
+        [item] 32 - NS_SCHED_RUNNING 
+    [list_end]
+
+    [item] interval - interval specification (i.e. seconds from
+    midnight for daily schedule)
+
+    [item] nextqueue - Next time to queue for run
+
+    [item] lastqueue - Last time queued for run
+
+    [item] laststart - Last time run started
+
+    [item] lastend - Last time run finished
+
+    [item] procname - for tasks scheduled with ns_schedule_proc this
+    will be ns:tclschedproc and arg will be the actual scheduled Tcl
+    script.
+
+    [item] arg - client data 
+
+[list_end]
+
+
+[call [cmd  "ns_info server"]]
+
+Returns the name of the current virtual server.
+
+
+[call [cmd  "ns_info servers"]]
+
+Returns the names of all virtual servers in the current nsd process.
+
+
+[call [cmd  "ns_info shutdownpending"]]
+
+Returns 1 if shutdown is pending, 0 otherwise.
+
+
+[call [cmd  "ns_info sockcallbacks"]]
+
+Returns returns a list of all socket callbacks such as the socket
+listening callback for the nscp module. Each list element is itself a
+4-element list like this: 
+
+[example_begin]
+ {11 {read exit} nscp {127.0.0.1 9999} 0}
+[example_end]
+
+[call [cmd  "ns_info ssl"]]
+
+Returns information if the binary was compiled with OpenSSL support.
+
+
+[call [cmd  "ns_info started"]]
+
+Returns 1 if the server is fully started, 0 otherwise.
+
+
+[call [cmd  "ns_info tag"]]
+
+Returns the most detailed revision info, which might be shipped with
+the tar file or obtained from the source code management system (git
+or mercurial).
+
+[call [cmd  "ns_info threads"]]
+
+Returns a list of all threads in the current process (all virtual
+servers). Each list element is itself a 7-element list of {name,
+parent, id, flag, ctime, procname, arg}:
+
+[list_begin itemized]
+
+    [item]   name - current name of the thread
+    [item]  parent - parent thread name
+    [item]  id - id of the thread
+    [item]  flag - 1 if this is a detached thread, 0 otherwise
+    [item]  ctime - Thread creation time
+    [item]  procname - for conn threads this will be ns:connthread
+    [item]  arg - client data - for a running conn thread arg will be a 7-element list in the format returned by ns_server all - {conn id, peeraddr, state, method, url, running time, bytes sent}, where state is either "running" or "queued": {cns25 127.0.0.1 running POST /ds/shell 0.5158 0}
+
+[list_end]
+
+
+[call [cmd  "ns_info uptime"]]
+
+Returns the number of seconds since the nsd process started.
+
+
+[call [cmd  "ns_info version"]]
+
+Returns the version number of the server (major and minor version
+number combined with a dot).
+
+
+[list_end]
+[keywords "global built-in" introspection]
+
+[manpage_end]
+

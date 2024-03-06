@@ -1,0 +1,119 @@
+[include version_include.man]
+[manpage_begin ns_hmac n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Returns a string containing a keyed-hash
+message authentication code (HMAC)}]
+
+[description] These functions return a keyed-hash message authentication
+code (HMAC) for the specified key and message, using the specified
+message digest algorithm. An HMAC is a message authentication code of
+a key (secret) with a message. It may be used to simultaneously verify
+both the data integrity and the authentication of a message. For
+details of HMAC, consult RFC 4231.
+
+[para] The provided commands provide a one-step interface and an
+incremental interface, where the latter one can be used to incrementally
+compute a HMAC e.g. by reading data from a file. This is especially important
+for computing a HMAC on content which is too large to be kept in memory.
+
+[para] The listed commands are available in installations when
+NaviServer is compiled with OpenSSL support and where the NSF package
+is installed.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd "ns_hmac string"] \
+	[opt [option "-digest [arg digest]"]] \
+	[opt [option "-encoding [arg encoding]"]] \
+	[arg key] \
+	[arg message]]
+
+[para]
+[arg key]
+Secret in the HMAC computation.
+
+[para]
+[arg message]
+Data from which the HMAC is to be computed.
+
+[call [cmd "ns_hmac file"] \
+    [opt [option "-digest [arg digest]"]] \
+    [opt [option "-encoding [arg encoding]"]] \
+    [arg key] [arg filename] [arg args] \
+]
+
+[para]
+[arg key]
+Secret in the HMAC computation
+
+[para]
+[arg filename]
+Path of a file containing the data from which the HMAC
+is to be computed. The file is read incrementally.
+ 
+[arg args]
+Optional paths to other files to be processed.
+The resulting HMAC is calculated cumulatively.
+
+[call [cmd "ns_hmac new"] \
+    [opt [option "-digest [arg digest]"]] \
+    [option "-key [arg key]"] \
+]
+
+Create and return a new HMAC object for incremental operations.
+The option [option "-digest"] defaults to "sha256"
+the option [option "-key"] has to be always specified.
+
+
+[call [arg \$hmac_object] [cmd "add"] [arg data]]
+
+Add [arg data] incrementally to the HMAC object, which was created
+previously with [cmd "ns_hmac new"].
+
+[call [arg \$hmac_object] \
+	[cmd "get"] \
+	[opt [option "-encoding [arg encoding]"]] \
+]
+
+Return the current HMAC value from the HMAC object, 
+to which data was added previously with the method [cmd "add"].
+
+[call [arg \$hmac_object] [cmd "destroy"]]
+
+Delete the HMAC object (used for incremental operations).
+
+[list_end]
+
+[section OPTIONS]
+[list_begin options]
+
+[opt_def -digest [arg digest]]
+
+Digest algorithm for the checksum computation. The available
+algorithms are implemented in OpenSSL. The current versions of OpenSSL
+supports the following message digest algorithms: "blake2b512
+blake2s256 md4 md5 md5-sha1 mdc2 ripemd160 sha1 sha224 sha256 sha3-224
+sha3-256 sha3-384 sha3-512 sha384 sha512 sha512-224 sha512-256
+shake128 shake256 sm3 whirlpool". The default value is "sha256"
+
+[opt_def -encoding [arg encoding]]
+
+The option [option "-encoding [arg encoding]"] specifies the
+output encoding used for the resulting values of the dict.
+Possible encodings are [term hex], [term base64url],
+[term base64], or [term binary]. Default is [term hex].
+[list_end]
+
+[example_begin]
+  nscp 2> ns_hmac string -digest sha256 "Jefe" "what do ya want for nothing?"
+  5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+[example_end]
+
+[see_also nsd ns_hotp ns_totp ns_md ns_md5 ns_sha1 ns_sha ns_crypt ns_crypto ns_rand]
+[keywords encoding crypto HMAC nsf]
+
+[manpage_end]
+

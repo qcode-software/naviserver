@@ -1,0 +1,281 @@
+[include version_include.man]
+[manpage_begin ns_connchan n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Manage connection channels.}]
+
+[description] The command [cmd ns_connchan] allows one to detach the
+ current channel from a connection thread and manage the connection
+ outside the initiating connection thread. It allows one to write or read
+ to the channel, to define callbacks and to list open connections and
+ to close the connection. The read and write operations on this
+ channel will use directly the driver infrastructure which was in use
+ during the detach command.
+
+[para]
+ The command allows e.g. to read from and to write to all
+ network drivers (such as plain HTTP channels and from SSL/TLS
+ connections). It can be used to implement e.g. WebSockets or
+ asynchronous deliveries (e.g. h264 streams) including secure
+ connections. Therefore, this command is more general than the
+ approaches based on [cmd "ns_conn channel"] using plain Tcl channels.
+
+[para]
+ NaviServer maintains an internal table per server to keep track of
+ the detached connection channels and to offer introspection to the
+ state of the detached channels.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+[call [cmd "ns_connchan detach"]]
+
+ The command [cmd "ns_connchan detach"] unplugs the connection channel from
+ the current connection thread and stores it with a fresh handle name
+ in a per-virtual-server private table. The command returns the
+ created handle as result.
+
+[para]
+ After this command was issued in a connection thread, all attempts to
+ access the connection socket directly (e.g. via [cmd ns_write]) will fail.
+
+
+[call [cmd "ns_connchan close"] \
+	[opt [option "-server [arg server]"]] \
+	[arg channel]]
+
+ Close the named connection channel. The [option "-server"] can be
+ used for cleanup of stale handles.
+
+[call [cmd "ns_connchan exists"] [arg channel]]
+
+ Returns 1 if the named connection channel exists, 0 otherwise.
+
+[call [cmd "ns_connchan list"] \
+	[opt [option "-server [arg server]"]] ]
+
+  Return a list of the currently detached connection channels for the
+  current or named [arg server].
+
+[para]
+ Every list entry contains
+ [list_begin itemized]
+	[item] name of the channel
+	[item] name of the thread
+	[item] start time of the initiating request, 
+	[item] driver, 
+	[item] the IP address of the client,
+	[item] sent bytes,
+	[item] received bytes,
+	[item] the client data as provided via [lb]ns_conn
+             clientdata[rb],
+	[item] the cmd name of the callback, or "" when no callback is registered,
+	[item] the callback condition flags, or "" when no callback is registered.
+ [list_end]
+
+When NaviServer is running in reverse proxy mode, the client IP
+address is taken from the value as provided by the reverse proxy
+server.
+
+[call [cmd "ns_connchan callback"] \
+	[opt [option "-timeout [arg t]"]] \
+	[opt [option "-receivetimeout [arg r]"]] \
+	[opt [option "-sendtimeout [arg s]"]] \
+	[arg channel] \
+	[arg command] \
+	[arg when] \
+]
+
+Register a Tcl callback for the named connection [arg channel].
+[option -timeout] is the poll timeout, [option -receivetimeout] is a
+timeout for incoming packets, [option -sendtimeout] is the timeout for
+outgoing packets.  When [option -sendtimeout] has the value of 0, a
+read operation might return the empty string. A value larger than 0
+might block the event processing for the specified time.
+All timeouts values are specified in the form [arg secs[opt :microseconds]], or
+[arg secs.fraction] or as a number with a time unit.
+
+[para]
+The argument [arg when] consist of one or more characters
+of r, w, e, or x, specifying, when the callback should fire.
+
+[para] When the callback is fired, the specified Tcl command will be
+called with an additional argument, which is an indicator for the
+reason of the call [arg when]. The value of [arg when] will be as
+follows:
+
+[list_begin itemized]
+[item] r - the socket is readable
+[item] w - the socket is writable
+[item] e - the socket has an exceptional condition
+[item] x - the server is shutting down
+[item] t - timeout received
+[list_end]
+
+[para] When the callback exits, its return value determines, whether
+the callback should be canceled or not. The return value is
+interpreted as follows:
+[list_begin itemized]
+[item] 0 - the callback is canceled, and the channel is deleted
+         automatically (typically, when an error occurs)
+[item] 1 - the callback will be used as well for further events
+[item] 2 - the callback will be suspended. No further events will
+         be fired, but the channel is not deleted.
+[list_end]
+
+
+[call [cmd "ns_connchan connect"] \
+	[opt [option "-tls"]] \
+	[opt [option "-timeout [arg t]"]] \
+	[arg host] \
+	[arg port] \
+]
+
+Open a client connection channel to the specified [arg host]
+and [arg port].  The command is similar to [cmd "ns_connchan open"],
+but does less: While
+[cmd "ns_connchan open"] sends an HTTP request to the server denoted by
+a URL, [cmd "ns_connchan connect"] just connects to the server
+without sending any request data.
+
+[para] The option [option "-tls"] will connection via TLS, otherwise
+the connection is via plain socket. [option -timeout] specifies the
+timeout for establishing the connection (default 1 second).
+The timeout value [arg t] can be specified in the form
+[arg secs[opt :microseconds]], or [arg secs.fraction],
+or as a number with a time unit.
+
+[call [cmd "ns_connchan listen"] \
+	[opt [option "-driver [arg d]"]] \
+	[opt [option "-server [arg s]"]] \
+	[opt [option "-bind"]] \
+	[arg address] \
+	[arg port] \
+	[arg script] \
+]
+
+Open listening socket. Call the [arg script] callback on incoming
+connections. On success, this command returns a dict containing
+"channel", "port", "sock" and "address".
+
+
+[call [cmd "ns_connchan open"] \
+	[opt [option "-headers [arg h]"]] \
+	[opt [option "-hostname [arg HOSTNAME ]"]] \
+	[opt [option "-method [arg m]"]] \
+	[opt [option "-timeout [arg t]"]] \
+	[opt [option "-version [arg v]"]] \
+	[arg url] \
+]
+
+Open a connection channel to the specified [arg url].
+The URL might be an HTTP or an HTTPS URL.
+[option -headers] refers to a [term ns_set] of request header fields,
+[option -method] specifies the HTTP method (default GET),
+[option -timeout] specifies the timeout for establishing the connection
+(default 1 second), and
+[option -version] specifies the HTTP version (default 1.0)
+The timeout value [arg t] is specified in the form
+[arg secs[opt :microseconds]], or [arg secs.fraction],
+or as a number with a time unit.
+
+For connecting to a server with virtual hosting that provides
+multiple certificates via SNI (Server Name Indication) the
+option [option -hostname] is required.
+
+
+[call [cmd "ns_connchan read"] \
+	[opt [option "-websocket"]] \
+	[arg channel] \
+]
+
+Read from the specified connection channel and return the received data.
+
+[para]
+When the option [option "-websocket"] is used, then the command
+expects WebSocket frames. In this mode, the result of the command is a
+Tcl [cmd dict] containing the following elements:
+
+[para]
+[term fin] status bit,
+[term frame] state ([term incomplete] or [term complete]),
+[term unprocessed] (received number of bytes in buffer not handled so far),
+[term fragments] (number of bytes in the WebSocket fragments buffer),
+[term haveData] (boolean value to express that unprocessed
+data might be sufficient for the next frame without an extra read
+operation.
+
+
+
+
+[para]
+In case the frame is finished ([term fin] status bit is set),
+the dict contains as well the  WebSocket [term opcode] and
+the [term payload] of the frame.
+
+
+[call [cmd "ns_connchan status"] \
+	[arg channel] \
+]
+
+Query status information from the specified connection channel.
+The command returns a dict containing the following elements:
+
+[para]
+
+[term driver] (module name the driver),
+[term fragments] (for WebSocket read operations: number of bytes in the WebSocket fragments buffer),
+[term framebuffer] (for WebSocket read operations: number of bytes in the WebSocket frame buffer),
+[term peer] (communication peer, the IP address of the other side of the channel),
+[term received] (number of bytes received),
+[term sendbuffer] (for buffered write operations: number of bytes in the send buffer),
+[term sent] (number of bytes sent), and
+[term start] (time when the connection started).
+
+When a callback is defined for this channel, the dict contains as well the
+[term callback] and the
+[term condition] on which the callback will be fired.
+
+[call [cmd "ns_connchan wsencode"] \
+	[opt [option "-binary"]] \
+	[opt [option "-fin [arg 0|1]"]] \
+	[opt [option "-mask"]] \
+	[opt [option "-opcode [arg {continue|text|binary|close|ping|pong}]"]] \
+	[arg message] \
+]
+
+returns a binary websocket frame based on the provided information
+in the form of a Tcl byte array.
+When [option "-mask"] is specified, the data will be masked with
+random information. For the opcode [arg binary], the input is treated
+as binary as well. When [option "-binary"] is used, the data
+will be treated as binary. This is e.g. necessary on
+multi-segment messages, where later segments have the opcode
+[arg continue].
+
+
+[call [cmd "ns_connchan write"] \
+	[arg channel] \
+	[opt [option "-buffered"]] \
+	[arg string] \	
+]
+
+Write to the specified connection channel. The function returns
+the number of bytes sent, which might be less than the input length.
+
+[para] When the option [option "-buffered"] is used, then for partial
+write operations the data which could not be sent is handled
+internally. The command returns like in non-buffered mode the number of
+bytes sent, but keeps the reminder and will process this data together
+with the next write operation (e.g. called with an empty string as
+last argument). By using the buffered mode, the Tcl programmer does not
+have to care about sending the non-sent chunk again and to concatenate
+this with potentially more data from other write operations.
+
+
+[list_end]
+
+[see_also ns_conn ns_chan ns_sockcallback ns_write ns_time]
+[keywords "server built-in" channels socket driver reverseproxy websocket]
+
+[manpage_end]

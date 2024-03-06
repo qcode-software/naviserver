@@ -1,0 +1,74 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+if {[ns_config test listenport]} {
+    testConstraint serverListen true
+}
+
+test ns_listencallback-1.0 {register} -constraints {serverListen} -setup {
+    #
+    # Register listen callback with Tcl handler
+    #
+    #ns_socklistencallback * $port ns_listencallback::conn_handler
+} -body {
+
+    for {set port 7225} {$port < 7999} {incr port} {
+        ns_log notice "try open socket on localhost $port"
+        try {
+            #
+            # Register listen callback with Tcl handler
+            #
+            ns_socklistencallback * $port ns_listencallback::conn_handler
+            #
+            # Try to open this
+            #
+            set fds [ns_sockopen localhost $port]
+        } on error {errorMsg} {
+            ns_log notice "try localhost $port failed -> $errorMsg"
+        } on ok {result} {
+            break
+        }
+    }
+    lassign $fds rfd wfd
+    set size 0
+
+    if {[gets $rfd line] == -1} {
+        ns_log error "got no data"
+    } else {
+        incr size [string length $line]
+        puts $wfd "How are you?"
+        flush $wfd
+        gets $rfd line
+        incr size [string length $line]
+    }
+    return [list size $size]
+} -cleanup {
+    #
+    # Currently, there seems to way to stop listening on that port.
+    #
+    unset -nocomplain port localhost
+} -result {size 46}
+
+#
+# the following function must be available in the blueprint
+#
+if {0} {
+    proc ns_listencallback::conn_handler {rfd wfd} {
+        puts  $wfd "Welcome to the test server"
+        flush $wfd
+        gets  $rfd line
+        puts  $wfd "Well isn't that nice"
+        flush $wfd
+    }
+}
+
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

@@ -1,0 +1,119 @@
+[include version_include.man]
+[manpage_begin ns_md n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Returns a string containing a message digest (MD)}]
+
+[description] These functions return a message digest (MD) for a
+message using the specified message digest algorithm. The MD code can
+be used to check the integrity of a piece of data (whether the data was
+altered) by computing a cryptographic checksum.
+
+[para] The provided commands provide a one-step interface and an
+incremental interface, where the latter one can be used to
+incrementally compute a message digest e.g. by reading data from a
+file. This is especially important for computing message digest on
+content which is too large to be kept in memory.
+
+[para] The listed commands are available in installations when
+NaviServer is compiled with OpenSSL support and where the NSF
+package is installed. The command [cmd ns_md] is a generalization
+of [cmd ns_md5] and [cmd ns_sha1] since it provides a much larger
+set of cryptogrphic algorithms, output formats and provides 
+the incremental interface.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd "ns_md string"] \
+    [opt [option "-digest [arg digest]"]] \
+    [opt [option "-encoding [arg encoding]"]] \
+    [arg message] \
+]
+
+[para]
+
+[arg message]
+Data from which the digest is to be computed.
+
+[call [cmd "ns_md file"] \
+    [opt [option "-digest [arg digest]"]] \
+    [opt [option "-encoding [arg encoding]"]] \
+    [arg filename] [arg args] \
+]
+
+[para] 
+
+[arg filename]
+Path of a file containing the data from which the digest
+is to be computed. The file is read incrementally.
+
+[arg args]
+Optional paths to other files to be processed. 
+The resulting message digest is calculated cumulatively.
+
+[call [cmd "ns_md new"] \
+    [opt [option "-digest [arg digest]"]] \
+]
+
+Create and return a new MD object for incremental operations.
+The option [option "-digest"] defaults to "sha256".
+
+[call [arg \$md_object] [cmd "add"] \
+    [arg data] \
+]
+
+Add [arg data] incrementally to the MD object, which was created
+previously with [cmd "ns_md new"].
+
+[call [arg \$md_object] [cmd "get"] \
+    [opt [option "-encoding [arg encoding]"]] \
+]
+
+Return the current digest value from the MD object, to which data was
+added previously with the method [cmd "add"].
+
+[call [arg \$md_object] [cmd "destroy"]]
+
+Delete the MD object (used for incremental operations).
+
+[list_end]
+
+[section OPTIONS]
+[list_begin options]
+
+[opt_def -digest [arg digest]]
+
+Digest algorithm for the checksum computation. The available
+algorithms are implemented in OpenSSL. The current versions of OpenSSL
+supports the following message digest algorithms: "blake2b512
+blake2s256 md4 md5 md5-sha1 mdc2 ripemd160 sha1 sha224 sha256 sha3-224
+sha3-256 sha3-384 sha3-512 sha384 sha512 sha512-224 sha512-256
+shake128 shake256 sm3 whirlpool". The default value is "sha256"
+
+[opt_def -encoding [arg encoding]]
+
+Formats the output of the generated digest. The available options
+are: hex, binary, base64 and base64url. The default value is "hex".
+
+[opt_def -encoding [arg encoding]]
+
+The option [option "-encoding [arg encoding]"] specifies the
+output encoding used for the resulting values of the dict.
+Possible encodings are [term hex], [term base64url],
+[term base64], or [term binary]. Default is [term hex].
+
+[list_end]
+
+[example_begin]
+  nscp 2> ns_md string -digest sha256 "what do ya want for nothing?"
+  b381e7fec653fc3ab9b178272366b8ac87fed8d31cb25ed1d0e1f3318644c89c
+[example_end]
+
+[see_also nsd ns_hmac ns_crypt ns_crypto ns_md5 ns_rand ns_sha1 ns_sha]
+[keywords encoding crypto MD nsf]
+
+[manpage_end]
+
+

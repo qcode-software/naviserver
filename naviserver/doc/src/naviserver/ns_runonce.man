@@ -1,0 +1,45 @@
+[include version_include.man]
+[manpage_begin ns_runonce n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Run Tcl script only once}]
+
+[description]
+
+This command ensures that the passed-in script will be executed only
+once. In other words, when ns_runonce is executed multiple times with
+the same script, later invocations have no effect. The command is
+typically used in situations, where resources are allocated. The
+command requires an executing server, i.e., it can't be used in the
+configuration file.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_runonce] [opt [option -global]] [opt [option --]] [arg script]]
+
+[para]
+[option -global]
+If specified, the unique execution refers to all defined servers,
+otherwise, the execution will be only once per server.
+
+[para]
+[arg script]
+Tcl script to be executed
+[list_end]
+
+[section EXAMPLES]
+
+[example_begin]
+ ns_runonce {
+   ns_cache_create mycache 0
+ }
+[example_end]
+
+
+[see_also nsd ns_atstartup ns_atsignal]
+[keywords "server built-in" NaviServer callback]
+[manpage_end]
+
+

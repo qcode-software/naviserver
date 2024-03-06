@@ -1,0 +1,417 @@
+[include version_include.man]
+[manpage_begin ns_conn n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Find information about the current HTTP connection}]
+
+[description]
+
+This command is used to retrieve various pieces of information about a connection.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_conn] [arg option] [opt [arg {arg arg ...}]]]
+
+[list_end]
+
+The subcommands of ns_conn are (in alphabetical order):
+
+[list_begin definitions]
+
+[call [cmd  "ns_conn acceptedcompression"]]
+
+Returns the compression formats accepted by the client.
+
+[call [cmd  "ns_conn addr"]]
+Returns the local IP address (IPv4 or IPv6) of the current connection.
+
+[call [cmd  "ns_conn auth"]]
+Returns the authorization header content as an [cmd ns_set]. For
+[term Basic] authentication there are reserved keys:
+Username and Password, these are the keys returned by
+[cmd "ns_conn authuser"] and [cmd "ns_conn authpassword"].
+
+[para] In case of [term Digest] authentication, all the fields
+provided are returned in the ns_set. For [term Bearer] authentication
+the base65 encoded Token is returned in the ns_set.
+
+[para] This ns_set can be updated.
+
+[para] For other authorization schemes, the
+[term Authorization] header field can be handled
+like all other request header fields:
+
+[example_begin]
+ set auth_header [lb]ns_set iget [lb]ns_conn headers[rb] Authorization ""[rb]
+[example_end]
+
+
+[call [cmd  "ns_conn authpassword"]]
+
+Returns the decoded user password from the authorization data.
+
+[call [cmd  "ns_conn authuser"]]
+
+Returns the decoded username from the authorization data.
+
+
+
+[call [cmd  "ns_conn channel"]]
+
+Returns the Tcl channel name for the current connection.
+
+
+[call [cmd  "ns_conn clientdata"] [opt [arg value]]]
+
+Query or set the client date of the current connection. The client
+data is provided by the application and is potentially passed to
+different threads and can be used to establish the context with the
+connection thread. For example, the writer thread outputs the client
+data when listing running connections (one can determine e.g. which
+user has initiated the delivery, etc.).
+
+
+[call [cmd  "ns_conn close"]]
+
+Closes the connection so the script (or ADP) can do any time-consuming processing
+without making the client wait. If you use ns_conn close in an ADP, streaming
+should be turned on before closing the connection (i.e. <SCRIPT RUNAT=SERVER STREAM=ON>)
+or nothing will get sent out at all.
+
+[call [cmd  "ns_conn compress"] [opt [arg level]]]
+
+Either set or query the compression level for the current connection.
+Use [cmd  "ns_conn compress 0"] to indicate that compression should be
+deactivated
+
+[call [cmd  "ns_conn content"] [opt [option -binary]] [opt [arg offset]] [opt [arg length]]]
+
+Returns the content of the HTTP request body, optionally a substring
+of that content starting at offset and extending length
+characters. If the option [option -binary] is used, the content is
+returned raw. Otherwise, a conversion to the encoding of the connection
+is performed.
+
+Note that the client response might be returned as string
+content (as retrieved by this command) or as file 
+(see [cmd "ns_conn contentfile"] ).
+
+[call [cmd  "ns_conn contentfile"]]
+
+Returns name of the temporary file which holds contents of the
+request. Whether of not a content files is returned depends on the
+configuration settings.
+
+[call [cmd  "ns_conn contentlength"]]
+
+Returns the number of bytes in the content passed in.
+
+
+[call [cmd  "ns_conn contentsentlength"] [opt [arg bytes]]]
+
+Returns or sets the number of bytes in the content to be sent. 
+
+
+[call [cmd  "ns_conn copy"] [arg off] [arg len] [arg chan]]
+
+Copies number of bytes from the current connection starting
+at the given offset to a Tcl channel.
+
+
+[call [cmd  "ns_conn driver"]]
+
+Returns the name of the module (nssock or nsssl) that is acting as the
+communications driver for this connection.
+
+
+[call [cmd  "ns_conn encoding"] [opt [arg encoding]]]
+
+Query or set the encoding for the current connection.
+
+
+[call [cmd  "ns_conn fileheaders"]  [arg file]]
+
+Return the ns_set with header information for the uploaded file with
+the specified name (returned via [lb]ns_conn files[rb]).  If the file
+was uploaded with the HTML5 [term multiple] attribute a list of ns_sets
+is returned.
+
+[call [cmd  "ns_conn filelength"]  [arg file]]
+
+Return the length of the uploaded file with the specified
+name (returned via [lb]ns_conn files[rb]). If the file was
+uploaded with the HTML5 [term multiple] attribute a list of 
+file lengths is returned.
+
+[call [cmd  "ns_conn fileoffset"]  [arg file]]
+
+Return the offset of the uploaded file with the specified
+name (returned via [lb]ns_conn files[rb]). If the file was
+uploaded with the HTML5 [term multiple] attribute a list of offsets
+is returned.
+
+[call [cmd  "ns_conn files"]]
+
+Return files uploaded with the current form.
+
+
+[call [cmd  "ns_conn flags"]]
+
+Return the internal flags of the current connection. Use with care,
+the flags might change over versions.
+
+
+[call [cmd  "ns_conn form"] \
+     [opt [option "-fallbackcharset [arg fallbackcharset]"]] \
+]
+
+Returns any submitted form data as an [term ns_set]. This form data
+may have been submitted with a POST or appended to the URL in a GET
+request.
+
+[para]
+The option [option -fallbackcharset] can be used to specify an
+alternative character set in cases, the decoding the form-data leads
+to invalid UTF-8. Instead of raising an exception, a second attempt of
+decoding the data is made with the fallback charset. Note that the
+fallback charset can be provided as well via the configuration parameter
+[term formfallbackcharset]. For more details, see [cmd ns_getform].
+
+[para] Note: ns_conn form is not suitable for multipart formdata file
+upload. Use [cmd ns_getform] instead.
+
+
+
+[call [cmd  "ns_conn headerlength"]]
+
+Returns the length of the header. Together with
+[cmd "ns_conn contentlength"] this can be used to
+determine the uncompressed request size,
+(not counting chunked overhead).
+
+[call [cmd  "ns_conn headers"]]
+
+Returns all the HTTP request header fields as an [cmd ns_set].
+The keys of the ns_set represent the field
+names. The case of the returned field names depends
+on the "HeaderCase" configuration
+parameter. By default, HeaderCase is "Preserve",
+which means case is preserved.
+
+[call [cmd  "ns_conn host"]]
+
+Returns the host part of the URL in the HTTP request line. This is
+only set, when the NaviServer is used as a proxy server.
+
+[call [cmd  "ns_conn id"]]
+
+Returns the unique identifier of the current connection.
+
+
+[call [cmd  "ns_conn isconnected"]]
+
+Returns 1 if you're in a connection thread, and you are therefore allowed to make
+calls to ns_conn. It returns 0 if you're not in a connection thread (such as when
+you're in a schedule procedure) and you are not allowed to make calls to ns_conn.
+
+
+[call [cmd  "ns_conn keepalive"] [opt [arg value]]]
+
+Query or set the keepalive for the current connection.
+
+
+[call [cmd  "ns_conn location"]]
+
+Returns the location string for this virtual server in the form:
+protocol://hostname[lb]:port[rb].
+
+The location is determined via the following means:
+[list_begin enumerated]
+
+[enum]
+if [cmd ns_locationproc] is configured, its result is returned.
+
+[enum]
+if virtual hosting is enabled, and the "Host:" header field
+is provided and valid, it returns its content.
+
+[enum]
+If everything above fails, it is determined by virtual hosts mapping table
+(as defined in the "ns/module/nssock/servers" or
+"ns/module/nsssl/servers" section in the configuration file).
+
+[enum]
+If everything above fails, and a connection is open, it is determined
+by the current socket address.
+
+[enum]
+If everything above fails, it is determined
+by configuration values of the driver.
+
+[list_end]
+
+
+[call [cmd  "ns_conn method"]]
+
+Returns the HTTP method, e.g. GET.
+
+
+[call [cmd  "ns_conn outputheaders"]]
+
+Returns an [cmd ns_set] containing the HTTP response header fields,
+i.e. the fields that will be sent out when a result is returned
+to the client. This ns_set can be manipulated like any other ns_set.
+You can also use this command to extend/update/clear to the
+set of HTTP response header fields.
+[para]
+For example:
+[example_begin]
+ ns_set put [lb]ns_conn outputheaders[rb] "Content-Disposition" "attachment;filename=export.xotcl"
+[example_end]
+
+
+[call [cmd  "ns_conn peeraddr"] [opt [option "-source configured|direct|forwarded"]]]
+
+Returns the IP address of the client, i.e. the "other side" of the
+HTTP connection. An IPv4 address is returned in the form of a string
+separated with periods (e.g., 155.164.59.75), an IPv6 address is
+returned in the form of a string separated with colons (e.g.,
+2001:628:404:74::31).  In reverse proxy mode the IP address is
+determined by the value forwarded by the reverse proxy server (via the
+x-fowarded-for header field).
+
+[para] The result can be influenced by the [option "-source"] to
+return the result as configured by the reverse proxy mode (default),
+or to return always the direct or forwarded IP address.
+
+[call [cmd  "ns_conn  peerport"]]
+
+Returns the port of the client, i.e. the "other side" of the HTTP connection. 
+
+
+[call [cmd  "ns_conn pool"]]
+
+Returns the current connection pool from the currently connected server.
+
+
+[call [cmd  "ns_conn port"]]
+
+When NaviServer is used as a proxy server, it returns the port
+specified explicitly in the URL of the HTTP request. In all other
+cases (no explicit ":port" part in the URL, no proxy server
+request), the returned port number is 0.
+
+
+[call [cmd  "ns_conn protocol"]]
+
+Returns the protocol of the current connection. When NaviServer is
+used as a proxy server, it contains the URL in the HTTP request line.
+
+[call [cmd  "ns_conn query"]]
+
+Returns the query parameters of the HTTP request
+(transmitted after question mark via URL).
+
+
+[call [cmd  "ns_conn partialtimes"]]
+
+Returns detailed timing information about the current requests. The
+result is a dict containing the keys "accepttime" (the time between
+the accept of a socket and its adding to the queue; not always easy to
+interpret), "queuetime" (time in the queue), "filtertime" (time spent
+during running of filters) and "runtime" (time spent so far during the
+main request).
+
+
+[call [cmd  "ns_conn ratelimit"] [opt limit]]
+
+Query or set rate limit for the current connection. The value is
+provided in KB/s (kilobytes per second). A value of 0 means unlimited.
+Default values can be provided per connection pool
+(parameter [term ratelimit]) or on the driver level
+(parameter [term writerratelimit]).
+The limit is only enforced on connections using writer threads.
+
+
+[call [cmd  "ns_conn request"]]
+
+Returns the HTTP request line as presented by the client, e.g. GET / HTTP/1.1.
+
+
+[call [cmd  "ns_conn server"]]
+
+Returns the name of the server handling the request.
+
+
+[call [cmd  "ns_conn sock"]]
+
+Returns the socket id (integer fd) of current connection.
+
+
+[call [cmd  "ns_conn start"]]
+
+Returns the time the connection request started in "sec:usec" (aka
+ns_time) format.
+
+
+[call [cmd  "ns_conn status"] [opt [arg value]]]
+
+Query or set the HTTP status code for the current connection.
+
+
+[call [cmd  "ns_conn timeout"]]
+
+Returns absolute time value beyond which conn should not wait on
+resources, such as condition variables.
+
+
+[call [cmd  "ns_conn url"]]
+
+Returns the URL of the HTTP request. This is the portion of the request after the
+hostname, for example [lb]ns_conn url[rb] on  returns /index.adp.
+
+
+[call [cmd  "ns_conn urlc"]]
+
+Returns the number of elements (delimited by `/') in the URL of the HTTP request.
+
+
+[call [cmd  "ns_conn urlencoding"] [opt [arg encoding]]]
+
+Query or set the url encoding for the current connection.
+
+
+[call [cmd  "ns_conn urlv"] [opt [arg idx]]]
+
+Returns a list containing the pieces of the URL delimited by `/'.
+When [arg idx] is provided, return the nth element of the URL vector.
+
+
+[call [cmd  "ns_conn version"]]
+
+Returns the version of the HTTP request. This is usually 1.0 or 1.1.
+
+
+[call [cmd  "ns_conn zipaccepted"]]
+
+Returns 0 or 1 depending on whether or not the client accepts a zip
+encoded response.
+
+
+[list_end]
+
+[section EXAMPLES]
+
+[example_begin]
+ if { [lb]string match /page/* [lb]ns_conn url[rb][rb] } {
+  ns_returnnotfound
+ }
+[example_end]
+
+[see_also ns_adp ns_locationproc ns_getform ns_set ns_queryget \
+  ns_time ns_subnetmatch]
+[keywords "server built-in" IPv4 IPv6 gzip connection reverseproxy]
+
+[manpage_end]

@@ -1,0 +1,48 @@
+[include version_include.man]
+[manpage_begin ns_locationproc n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+[titledesc {Register custom location handler}]
+
+[description] This command installs a custom script which will return
+location string for the current connection, as returned by
+[cmd "ns_conn location"]. Usually, a location looks like http://localhost/.
+
+[cmd ns_locationproc] registers the handler for the current
+server. Therefore, the command cannot be used in the configuration
+script (no current server, defining the setup of all servers), but in
+the module files.
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd ns_locationproc] [arg script]]
+
+[para] [arg script] Tcl script which result will be used to return the
+location string.
+
+[list_end]
+
+[section EXAMPLES]
+
+[example_begin]
+ namespace eval nstest {
+    ns_locationproc ::nstest::location
+
+    ad_proc ::nstest::location {args} {
+        set location [lb]ns_conn protocol[rb]://[lb]ns_set iget [lb]ns_conn headers[rb] host[rb]
+        ns_log notice "LOCATION-PROC args <$args> - location <$location>"
+        return $location
+    }
+    ns_log notice "SOURCING location-procs.tcl <[lb]ns_info server[rb]>"
+ }
+[example_end]
+
+
+[see_also ns_serverrootproc ns_conn]
+[keywords "global built-in" virtual hosting redirect]
+[manpage_end]
+
+
+
