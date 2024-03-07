@@ -73,8 +73,8 @@ fi
 if [ ! -f $SSL_CERT ]; then
 	TMPOUT=`mktemp` || exit 1
 	TMPFILE=`mktemp` || exit 1
-	if ! HOSTNAME="$(hostname -f)" ; then
-		HOSTNAME="$(hostname)"
+	if ! HSTNAME="$(hostname -f)" ; then
+		HSTNAME="$(hostname)"
 	fi
 	cat <<EOF >$TMPFILE
 #
@@ -87,7 +87,7 @@ distinguished_name      = req_distinguished_name
 prompt                  = no
 policy			= policy_anything
 [ req_distinguished_name ]
-commonName                      = $HOSTNAME
+commonName                      = $HSTNAME
 EOF
 
 	if ! openssl req -config $TMPFILE -new -x509 -days 3650 -nodes -out $SSL_CERT -keyout $SSL_CERT > $TMPOUT 2>&1 ; then
