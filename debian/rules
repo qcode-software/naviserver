@@ -28,7 +28,12 @@ override_dh_auto_install:
 	mkdir -p  $(TARGETDIR)/etc/naviserver
 	install -m 644 debian/default.tcl $(TARGETDIR)/etc/naviserver
 	install -m 644 debian/default.env $(TARGETDIR)/etc/naviserver
+
+override_dh_install:
 	dh_install --sourcedir $(TARGETDIR)
+
+override_dh_missing:
+	dh_missing --sourcedir $(TARGETDIR)
 
 override_dh_shlibdeps:
 	dh_shlibdeps -a -l$(CURDIR)/debian/$(COREPACKAGE)$(PREFIX)/lib
@@ -39,19 +44,8 @@ override_dh_auto_clean:
 	 ./autogen.sh --with-tcl=/usr/lib/tcl8.6 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
 	dh_auto_clean
 
-#override_dh_strip:
-#	dh_strip --dbg-package=naviserver-dbg
-
 override_dh_installsystemd:
 	dh_installsystemd --no-stop-on-upgrade
-
-#override_dh_installinit:
-#	dh_systemd_enable -pnaviserver --name=naviserver@ naviserver@.service
-#	dh_installinit -pnaviserver --no-start --noscripts
-#	dh_systemd_start -pnaviserver --no-restart-on-upgrade
-
-#override_dh_systemd_start:
-#	echo "Not running dh_systemd_start"
 
 %:
 	dh $@
