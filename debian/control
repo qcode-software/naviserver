@@ -3,7 +3,6 @@ Section: web
 Priority: optional
 Maintainer: Qcode Software Ltd <hackers@qcode.co.uk> 
 Build-Depends: debhelper (>= 13),
-               autotools-dev,
                tcl-dev,
                zlib1g-dev,
                mawk,
