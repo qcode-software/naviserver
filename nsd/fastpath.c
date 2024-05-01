@@ -8,22 +8,10 @@
  * the License for the specific language governing rights and limitations
  * under the License.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -171,7 +159,7 @@ NormalizePath(const char **pathPtr) {
         /*
          * The path contains a slash, it might be not normalized;
          */
-        pathObj = Tcl_NewStringObj(*pathPtr, -1);
+        pathObj = Tcl_NewStringObj(*pathPtr, TCL_INDEX_NONE);
         Tcl_IncrRefCount(pathObj);
 
         normalizedPathObj = Tcl_FSGetNormalizedPath(NULL, pathObj);
@@ -232,6 +220,10 @@ ConfigServerFastpath(const char *server)
                                        &servPtr->fastpath.dirv) != TCL_OK) {
             Ns_Log(Error, "fastpath[%s]: directoryfile is not a list: %s", server, p);
         }
+        /*
+         * The string in servPtr->fastpath.dirv should be freed with
+         * Tcl_Free() in case the server is reconfigured or deleted.
+         */
 
         servPtr->fastpath.serverdir =
             ns_strcopy(Ns_ConfigString(path, "serverdir", NS_EMPTY_STRING));
@@ -353,9 +345,10 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
         result = FastReturn(conn, 200, NULL, ds.string);
 
     } else if (S_ISDIR(connPtr->fileInfo.st_mode)) {
-        int i;
+        TCL_SIZE_T i;
 
-        Ns_Log(Debug, "FastPathProc resolves dir <%s> names %d", url, servPtr->fastpath.dirc);
+        Ns_Log(Debug, "FastPathProc resolves dir <%s> names %" PRITcl_Size,
+               url, servPtr->fastpath.dirc);
         /*
          * For directories, search for a matching directory file and
          * restart the connection if found.
@@ -371,7 +364,8 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
             if ((stat(ds.string, &connPtr->fileInfo) == 0)
                 && S_ISREG(connPtr->fileInfo.st_mode)
                 ) {
-                Ns_Log(Debug, "FastPathProc checks [%d] '%s' -> found", i, ds.string);
+                Ns_Log(Debug, "FastPathProc checks [%" PRITcl_Size "] '%s' -> found",
+                       i, ds.string);
                 if (url[strlen(url) - 1u] != '/') {
                     const char* query = conn->request.query;
 
@@ -386,7 +380,8 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
                 }
                 goto done;
             }
-            Ns_Log(Debug, "FastPathProc checks [%d] '%s' -> not found", i, ds.string);
+            Ns_Log(Debug, "FastPathProc checks [%" PRITcl_Size "] '%s' -> not found",
+                   i, ds.string);
         }
 
         /*
@@ -559,7 +554,7 @@ CompressExternalFile(Tcl_Interp *interp, const char *cmdName, const char *fileNa
     NS_NONNULL_ASSERT(gzFileName != NULL);
 
     Tcl_DStringInit(dsPtr);
-    Tcl_DStringAppend(dsPtr, cmdName, -1);
+    Tcl_DStringAppend(dsPtr, cmdName, TCL_INDEX_NONE);
     Tcl_DStringAppend(dsPtr, " ", 1);
     Tcl_DStringAppendElement(dsPtr, fileName);
     Tcl_DStringAppendElement(dsPtr, gzFileName);
@@ -615,8 +610,8 @@ CheckStaticCompressedDelivery(
 
     connPtr = (Conn *)conn;
 
-    Tcl_DStringAppend(dsPtr, fileName, -1);
-    Tcl_DStringAppend(dsPtr, ext, -1);
+    Tcl_DStringAppend(dsPtr, fileName, TCL_INDEX_NONE);
+    Tcl_DStringAppend(dsPtr, ext, TCL_INDEX_NONE);
     compressedFileName = Tcl_DStringValue(dsPtr);
     //fprintf(stderr, "=== check compressed file <%s> compressed <%s>\n", fileName, compressedFileName);
 
@@ -1034,7 +1029,7 @@ FreeEntry(void *arg)
  *----------------------------------------------------------------------
  */
 int
-NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         contents = (int)NS_FALSE, reset = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {

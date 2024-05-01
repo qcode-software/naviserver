@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the AOLserver Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://aolserver.com/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -54,6 +36,31 @@
 #define CHUNK_SIZE 16384
 
 /*
+ * Definition of close-waiting infrastructure
+ */
+typedef enum {
+    CW_FREE,
+    CW_WAITING,
+    CW_INUSE
+} CloseWaitingState;
+
+typedef struct {
+    Ns_Time            expire;
+    size_t             pos;
+    NS_TLS_SSL_CTX    *ctx;              /* SSL context handle */
+    NS_TLS_SSL        *ssl;              /* SSL connection handle */
+    const char        *host;
+    NS_SOCKET          sock;             /* socket to the remote peer */
+    CloseWaitingState  state;
+    unsigned short     port;
+} CloseWaitingData;
+
+
+static Ns_Mutex closeWaitingMutex = NULL;  // TODO: maybe an rwlock
+static Ns_DList closeWaitingList;
+static Ns_SchedProc CloseWaitingCheckExpire;
+
+/*
  * String equivalents of some methods, header keys
  */
 static const char *transferEncodingHeader = "Transfer-Encoding";
@@ -79,14 +86,31 @@ static const char *errorCodeTimeoutString = "NS_TIMEOUT";
  * For http task mutex naming
  */
 static uint64_t httpClientRequestCount = 0u; /* MT: static variable! */
+static Ns_TaskQueue *taskQueue = NULL; /* MT: static variable! */
+
+#ifdef MEM_RECORD_DEBUG
+/*
+ * For mem/task debugging
+ */
+static Ns_Mutex ckMutex = NULL;
+static Tcl_HashTable ckPointerTable;
+static Tcl_HashTable ckPointerDeletionTable;
+#endif
 
 /*
  * Local functions defined in this file
  */
+static bool InitOnceHttp(void);
+
+static void CloseWaitingDataClean(CloseWaitingData *cwDataPtr)
+    NS_GNUC_NONNULL(1);
+
+static const char* CloseWaitingDataPrettyState(CloseWaitingData *cwDataPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
 
 static int HttpQueue(
     NsInterp *itPtr,
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const*
     objv,
     bool run
@@ -109,8 +133,9 @@ static int HttpConnect(
     bool keepHostHdr,
     Ns_Time *timeoutPtr,
     Ns_Time *expirePtr,
+    Ns_Time *keepAliveTimeoutPtr,
     NsHttpTask **httpPtrPtr
-) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(17);
+) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(18);
 
 static bool HttpGet(
     NsInterp *itPtr,
@@ -121,6 +146,11 @@ static bool HttpGet(
 
 static void HttpClose(
     NsHttpTask *httpPtr
+) NS_GNUC_NONNULL(1);
+
+static void HttpCleanupPerRequestData(
+    NsHttpTask *httpPtr,
+    const char *context
 )  NS_GNUC_NONNULL(1);
 
 static void HttpCancel(
@@ -151,6 +181,11 @@ static int HttpAppendRawBuffer(
     size_t size
 ) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
+static int
+SkipMessage(
+    NsHttpTask *httpPtr
+) NS_GNUC_NONNULL(1);
+
 static Ns_ReturnCode HttpWaitForSocketEvent(
     NS_SOCKET sock,
     short events,
@@ -161,13 +196,13 @@ static void HttpAddInfo(
     NsHttpTask *httpPtr,
     const char *key,
     const char *value
-)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(2);
+)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static void HttpCheckHeader(
     NsHttpTask *httpPtr
 ) NS_GNUC_NONNULL(1);
 
-static Ns_ReturnCode HttpCheckSpool(
+static int HttpCheckSpool(
     NsHttpTask *httpPtr
 ) NS_GNUC_NONNULL(1);
 
@@ -197,7 +232,7 @@ static void HttpSpliceChannel(
 static void HttpSpliceChannels(
     Tcl_Interp *interp,
     NsHttpTask *httpPtr
-) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+) NS_GNUC_NONNULL(2);
 
 static int HttpGetResult(
     Tcl_Interp *interp,
@@ -222,6 +257,32 @@ static NS_SOCKET HttpTunnel(
     const Ns_Time *timeout
 ) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
+
+static bool PersistentConnectionLookup(const char *remoteHost, unsigned short remotePort,
+                                       CloseWaitingData *cwDataPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+static bool PersistentConnectionAdd(NsHttpTask *httpPtr, const char **reasonPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void HttpCloseWaitingDataRelease(NsHttpTask *httpPtr)
+    NS_GNUC_NONNULL(1);
+
+static void LogDebug(const char *before, NsHttpTask *httpPtr, const char *after)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+
+#ifdef MEM_RECORD_DEBUG
+static void CkAlloc(const void *ptr, const char *label)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static void CkFree(const void *ptr, const char *message)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static const char *CkCheck(const void *ptr)
+    NS_GNUC_NONNULL(1);
+#else
+# define CkAlloc(arg1,arg2)
+# define CkFree(arg1,arg2)
+# define CkCheck(arg1) ("")
+#endif
+
+
 static Ns_LogCallbackProc HttpClientLogOpen;
 static Ns_LogCallbackProc HttpClientLogClose;
 static Ns_LogCallbackProc HttpClientLogRoll;
@@ -233,24 +294,29 @@ static Ns_TaskProc HttpProc;
 /*
  * Function implementing the Tcl interface.
  */
-static Tcl_ObjCmdProc HttpCancelObjCmd;
-static Tcl_ObjCmdProc HttpCleanupObjCmd;
-static Tcl_ObjCmdProc HttpListObjCmd;
-static Tcl_ObjCmdProc HttpStatsObjCmd;
-static Tcl_ObjCmdProc HttpQueueObjCmd;
-static Tcl_ObjCmdProc HttpRunObjCmd;
-static Tcl_ObjCmdProc HttpWaitObjCmd;
+static TCL_OBJCMDPROC_T HttpCancelObjCmd;
+static TCL_OBJCMDPROC_T HttpCleanupObjCmd;
+static TCL_OBJCMDPROC_T HttpKeepalivesObjCmd;
+static TCL_OBJCMDPROC_T HttpListObjCmd;
+#ifdef MEM_RECORD_DEBUG
+static TCL_OBJCMDPROC_T HttpMeminfoObjCmd;
+#endif
+static TCL_OBJCMDPROC_T HttpQueueObjCmd;
+static TCL_OBJCMDPROC_T HttpRunObjCmd;
+static TCL_OBJCMDPROC_T HttpStatsObjCmd;
+static TCL_OBJCMDPROC_T HttpWaitObjCmd;
 
-static NsHttpParseProc ParseCRProc;
-static NsHttpParseProc ParseLFProc;
-static NsHttpParseProc ParseLengthProc;
 static NsHttpParseProc ChunkInitProc;
 static NsHttpParseProc ParseBodyProc;
-static NsHttpParseProc TrailerInitProc;
-static NsHttpParseProc ParseTrailerProc;
+static NsHttpParseProc ParseCRProc;
 static NsHttpParseProc ParseEndProc;
+static NsHttpParseProc ParseLFProc;
+static NsHttpParseProc ParseLengthProc;
+static NsHttpParseProc ParseTrailerProc;
+static NsHttpParseProc TrailerInitProc;
 
 static char* SkipDigits(char *chars) NS_GNUC_NONNULL(1);
+static char *DStringAppendHttpFlags(Tcl_DString *dsPtr, unsigned int flags) NS_GNUC_NONNULL(1);
 
 /*
  * Callbacks for the chunked-encoding state machine
@@ -290,6 +356,97 @@ static NsHttpParseProc* EndParsers[] = {
     NULL
 };
 
+/*----------------------------------------------------------------------
+ *
+ * DStringAppendHttpFlags --
+ *
+ *      Append the provided taskHTTP flags in human readable form.
+ *
+ * Results:
+ *      Tcl_DString value
+ *
+ * Side effects:
+ *      Appends to the Tcl_DString
+ *
+ *----------------------------------------------------------------------
+ */
+
+static char *
+DStringAppendHttpFlags(Tcl_DString *dsPtr, unsigned int flags)
+{
+    int    count = 0;
+    size_t i;
+    static const struct {
+        unsigned int state;
+        const char  *label;
+    } options[] = {
+        { NS_HTTP_FLAG_DECOMPRESS,    "DECOMPRESS" },
+        { NS_HTTP_FLAG_GZIP_ENCODING, "GZIP" },
+        { NS_HTTP_FLAG_CHUNKED,       "CHUNKED" },
+        { NS_HTTP_FLAG_CHUNKED_END,   "CHUNKED_END" },
+        { NS_HTTP_FLAG_BINARY,        "BINARY" },
+        { NS_HTTP_FLAG_EMPTY,         "EMPTY" },
+        { NS_HTTP_KEEPALIVE,          "KEEPALIVE" },
+        { NS_HTTP_VERSION_1_1,        "1.1" },
+        { NS_HTTP_STREAMING,          "STREAMING" },
+        { NS_HTTP_HEADERS_PENDING,    "HDR_PENDING" }
+    };
+
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+
+    for (i=0; i<sizeof(options)/sizeof(options[0]); i++) {
+        if ((options[i].state & flags) != 0u) {
+            if (count > 0) {
+                Tcl_DStringAppend(dsPtr, "|", 1);
+            }
+            Tcl_DStringAppend(dsPtr, options[i].label, TCL_INDEX_NONE);
+            count ++;
+        }
+    }
+    return dsPtr->string;
+}
+
+
+
+/*----------------------------------------------------------------------
+ *
+ * LogDebug --
+ *
+ *      When task debugging is on, write a standardized debug message to the
+ *      log file, including the final sock state and error in human readable
+ *      form.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Writes to the log file.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+LogDebug(const char *before, NsHttpTask *httpPtr, const char *after)
+{
+    NS_NONNULL_ASSERT(before != NULL);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+    NS_NONNULL_ASSERT(after != NULL);
+
+    if (Ns_LogSeverityEnabled(Ns_LogTaskDebug)) {
+        Tcl_DString dsSockState, dsHttpState;
+
+        Tcl_DStringInit(&dsSockState);
+        Tcl_DStringInit(&dsHttpState);
+        Ns_Log(Ns_LogTaskDebug, "%s httpPtr:%p flags:%s finalSockState:%s err:(%s) %s",
+               before,
+               (void*)httpPtr,
+               DStringAppendHttpFlags(&dsHttpState, httpPtr->flags),
+               Ns_DStringAppendSockState(&dsSockState, httpPtr->finalSockState),
+               (httpPtr->error != NULL) ? httpPtr->error : "none",
+               after);
+        Tcl_DStringFree(&dsSockState);
+        Tcl_DStringFree(&dsHttpState);
+    }
+}
 
 /*
  *----------------------------------------------------------------------
@@ -314,10 +471,16 @@ NsInitHttp(NsServer *servPtr)
 
     NS_NONNULL_ASSERT(servPtr != NULL);
 
+    //fprintf(stderr, "============== NsInitHttp %p ==============\n", (void*)servPtr);
     Ns_MutexInit(&servPtr->httpclient.lock);
-    Ns_MutexSetName2(&servPtr->httpclient.lock, "httpclientlog", servPtr->server);
+    Ns_MutexSetName2(&servPtr->httpclient.lock, "httpclient", servPtr->server);
+
+    NS_INIT_ONCE(InitOnceHttp);
 
     path = Ns_ConfigSectionPath(NULL, servPtr->server, NULL, "httpclient", (char *)0L);
+    Ns_ConfigTimeUnitRange(path, "keepalive",
+                           "0s", 0, 0, INT_MAX, 0, &servPtr->httpclient.keepaliveTimeout);
+
     servPtr->httpclient.logging = Ns_ConfigBool(path, "logging", NS_FALSE);
 
     if (servPtr->httpclient.logging) {
@@ -328,8 +491,8 @@ NsInitHttp(NsServer *servPtr)
         filename = Ns_ConfigString(path, "logfile", NULL);
         if (filename == NULL) {
             Tcl_DStringAppend(&defaultLogFileName, "httpclient-", 11);
-            Tcl_DStringAppend(&defaultLogFileName, servPtr->server, -1);
-            Tcl_DStringAppend(&defaultLogFileName, ".log", 10);
+            Tcl_DStringAppend(&defaultLogFileName, servPtr->server, TCL_INDEX_NONE);
+            Tcl_DStringAppend(&defaultLogFileName, ".log", 4);
             filename = defaultLogFileName.string;
         }
 
@@ -344,8 +507,8 @@ NsInitHttp(NsServer *servPtr)
         }
         Tcl_DStringFree(&defaultLogFileName);
         servPtr->httpclient.logRollfmt = ns_strcopy(Ns_ConfigGetValue(path, "logrollfmt"));
-        servPtr->httpclient.logMaxbackup = Ns_ConfigIntRange(path, "logmaxbackup",
-                                                             100, 1, INT_MAX);
+        servPtr->httpclient.logMaxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(path, "logmaxbackup",
+                                                                         100, 1, INT_MAX);
 
         HttpClientLogOpen(servPtr);
 
@@ -567,6 +730,8 @@ NsStopHttp(NsServer *servPtr)
 static char*
 SkipDigits(char *chars)
 {
+    NS_NONNULL_ASSERT(chars != NULL);
+
     for (; *chars  >= '0' && *chars <= '9'; chars++) {
         ;
     }
@@ -959,6 +1124,7 @@ Ns_HttpMessageParse(
     if (payloadPtr != NULL) {
         *payloadPtr = NULL;
     }
+    Ns_Log(Ns_LogTaskDebug, "Message Parse <%s>", message);
 
     items = sscanf(message, "HTTP/%2d.%2d %3d", majorPtr, minorPtr, statusPtr);
     if (items != 3) {
@@ -979,9 +1145,7 @@ Ns_HttpMessageParse(
                 p[len - 1u] = '\0';
             }
             if (firsthdr != 0) {
-                if (hdrPtr->name != NULL) {
-                    ns_free((void *)hdrPtr->name);
-                }
+                ns_free((void *)hdrPtr->name);
                 hdrPtr->name = ns_strdup(p);
                 firsthdr = 0;
             } else if (len < 2 || Ns_ParseHeader(hdrPtr, p, NULL, ToLower, NULL) != NS_OK) {
@@ -1025,18 +1189,22 @@ int
 NsTclHttpObjCmd(
     ClientData clientData,
     Tcl_Interp *interp,
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const* objv
 ) {
     const Ns_SubCmdSpec subcmds[] = {
-        {"cancel",   HttpCancelObjCmd},
-        {"cleanup",  HttpCleanupObjCmd},
-        {"list",     HttpListObjCmd},
-        {"queue",    HttpQueueObjCmd},
-        {"run",      HttpRunObjCmd},
-        {"stats",    HttpStatsObjCmd},
-        {"wait",     HttpWaitObjCmd},
-        {NULL,       NULL}
+        {"cancel",     HttpCancelObjCmd},
+        {"cleanup",    HttpCleanupObjCmd},
+        {"keepalives", HttpKeepalivesObjCmd},
+        {"list",       HttpListObjCmd},
+#ifdef MEM_RECORD_DEBUG
+        {"meminfo",    HttpMeminfoObjCmd},
+#endif
+        {"queue",      HttpQueueObjCmd},
+        {"run",        HttpRunObjCmd},
+        {"stats",      HttpStatsObjCmd},
+        {"wait",       HttpWaitObjCmd},
+        {NULL,         NULL}
     };
 
     return Ns_SubcmdObjv(subcmds, clientData, interp, objc, objv);
@@ -1063,7 +1231,7 @@ static int
 HttpRunObjCmd(
     ClientData clientData,
     Tcl_Interp *UNUSED(interp),
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const* objv
 ) {
     return HttpQueue(clientData, objc, objv, NS_TRUE);
@@ -1090,7 +1258,7 @@ static int
 HttpQueueObjCmd(
     ClientData clientData,
     Tcl_Interp *UNUSED(interp),
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const* objv
 ) {
     return HttpQueue(clientData, objc, objv, NS_FALSE);
@@ -1167,7 +1335,7 @@ static int
 HttpWaitObjCmd(
     ClientData  clientData,
     Tcl_Interp *interp,
-    int         objc,
+    TCL_OBJC_T         objc,
     Tcl_Obj    *const* objv
 ) {
     NsInterp   *itPtr = clientData;
@@ -1266,17 +1434,17 @@ HttpWaitObjCmd(
         }
 
         rc = Ns_TaskWait(httpPtr->task, timeoutPtr);
+        Ns_Log(Ns_LogTaskDebug, "Ns_TaskWait returns %d", rc);
 
         if (likely(rc == NS_OK)) {
             result = HttpGetResult(interp, httpPtr);
         } else {
             HttpCancel(httpPtr);
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(httpPtr->error, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(httpPtr->error, TCL_INDEX_NONE));
             if (rc == NS_TIMEOUT) {
                 Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
                 Ns_Log(Ns_LogTimeoutDebug, "ns_http request '%s' runs into timeout",
                        httpPtr->url);
-                Ns_GetTime(&httpPtr->etime);
                 HttpClientLogWrite(httpPtr, "tasktimeout");
             }
             result = TCL_ERROR;
@@ -1366,7 +1534,7 @@ static int
 HttpCancelObjCmd(
     ClientData  clientData,
     Tcl_Interp *interp,
-    int         objc,
+    TCL_OBJC_T         objc,
     Tcl_Obj    *const* objv
 ) {
     NsInterp    *itPtr = clientData;
@@ -1418,7 +1586,7 @@ static int
 HttpCleanupObjCmd(
     ClientData  clientData,
     Tcl_Interp *interp,
-    int         objc,
+    TCL_OBJC_T         objc,
     Tcl_Obj    *const* objv
 ) {
     NsInterp    *itPtr = clientData;
@@ -1504,7 +1672,7 @@ static int
 HttpListObjCmd(
     ClientData  clientData,
     Tcl_Interp *interp,
-    int         objc,
+    TCL_OBJC_T         objc,
     Tcl_Obj    *const* objv
 ) {
     NsInterp      *itPtr = clientData;
@@ -1543,13 +1711,13 @@ HttpListObjCmd(
             }
 
             Tcl_ListObjAppendElement
-                (interp, resultObj, Tcl_NewStringObj(taskString, -1));
+                (interp, resultObj, Tcl_NewStringObj(taskString, TCL_INDEX_NONE));
 
             Tcl_ListObjAppendElement
-                (interp, resultObj, Tcl_NewStringObj(httpPtr->url, -1));
+                (interp, resultObj, Tcl_NewStringObj(httpPtr->url, TCL_INDEX_NONE));
 
             Tcl_ListObjAppendElement
-                (interp, resultObj, Tcl_NewStringObj(taskState, -1));
+                (interp, resultObj, Tcl_NewStringObj(taskState, TCL_INDEX_NONE));
         }
     }
 
@@ -1557,6 +1725,47 @@ HttpListObjCmd(
 
     return result;
 }
+
+#ifdef MEM_RECORD_DEBUG
+static int
+HttpMeminfoObjCmd(
+    ClientData  UNUSED(clientData),
+    Tcl_Interp *interp,
+    TCL_OBJC_T         UNUSED(objc),
+    Tcl_Obj    *const* UNUSED(objv)
+) {
+    int            result = TCL_OK;
+    Tcl_Obj       *resultObj;
+    Tcl_HashEntry *hPtr;
+    Tcl_HashSearch search;
+    Tcl_DString    ds;
+
+    resultObj = Tcl_NewListObj(0, NULL);
+    Tcl_DStringInit(&ds);
+
+    Ns_MutexLock(&ckMutex);
+
+    for (hPtr = Tcl_FirstHashEntry(&ckPointerTable, &search);
+         hPtr != NULL;
+         hPtr = Tcl_NextHashEntry(&search) ) {
+        void       *ptr   = Tcl_GetHashKey(&ckPointerTable, hPtr);
+        const char *label = Tcl_GetHashValue(hPtr);
+
+        //Ns_Log(Notice, "CkMeminfo: ptr %p label %s", ptr, label);
+        Ns_DStringPrintf(&ds, "%p %s", ptr, label);
+
+        Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(ds.string, ds.length));
+        Tcl_DStringSetLength(&ds,0);
+    }
+
+    Ns_MutexUnlock(&ckMutex);
+
+    Tcl_SetObjResult(interp, resultObj);
+    Tcl_DStringFree(&ds);
+
+    return result;
+}
+#endif
 
 
 /*
@@ -1579,7 +1788,7 @@ static int
 HttpStatsObjCmd(
     ClientData  clientData,
     Tcl_Interp *interp,
-    int         objc,
+    TCL_OBJC_T         objc,
     Tcl_Obj    *const* objv
 ) {
     NsInterp      *itPtr = clientData;
@@ -1624,11 +1833,11 @@ HttpStatsObjCmd(
 
             (void) Tcl_DictObjPut
                 (interp, entryObj, Tcl_NewStringObj("task", 4),
-                 Tcl_NewStringObj(taskString, -1));
+                 Tcl_NewStringObj(taskString, TCL_INDEX_NONE));
 
             (void) Tcl_DictObjPut
                 (interp, entryObj, Tcl_NewStringObj("url", 3),
-                 Tcl_NewStringObj(httpPtr->url, -1));
+                 Tcl_NewStringObj(httpPtr->url, TCL_INDEX_NONE));
 
             (void) Tcl_DictObjPut
                 (interp, entryObj, Tcl_NewStringObj("requestlength", 13),
@@ -1708,6 +1917,220 @@ HttpStatsObjCmd(
     return result;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * HttpKeepalivesObjCmd
+ *
+ *      Implements "ns_http keepalives".
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+HttpKeepalivesObjCmd(
+    ClientData         UNUSED(clientData),
+    Tcl_Interp        *interp,
+    TCL_OBJC_T         UNUSED(objc),
+    Tcl_Obj    *const* UNUSED(objv)
+) {
+    int            result = TCL_OK;
+    Tcl_Obj       *resultObj = NULL;
+    size_t         i;
+    Ns_Time        now;
+    Tcl_DString    ds;
+
+    Ns_GetTime(&now);
+    Tcl_DStringInit(&ds);
+    resultObj = Tcl_NewListObj(0, NULL);
+
+    Ns_MutexLock(&closeWaitingMutex);
+    for (i = 0; i < closeWaitingList.size; i ++) {
+        Tcl_Obj          *entryObj = Tcl_NewDictObj();
+        CloseWaitingData *currentCwDataPtr = closeWaitingList.data[i];
+        Ns_Time           diffTime;
+
+        (void) Tcl_DictObjPut(interp, entryObj,
+                              Tcl_NewStringObj("slot", 4),
+                              Tcl_NewLongObj((long)i));
+
+        (void) Tcl_DictObjPut(interp, entryObj,
+                              Tcl_NewStringObj("state", 5),
+                              Tcl_NewStringObj(CloseWaitingDataPrettyState(currentCwDataPtr),
+                                               TCL_INDEX_NONE));
+
+        if (currentCwDataPtr->state != CW_FREE) {
+            (void) Ns_DiffTime(&currentCwDataPtr->expire, &now, &diffTime);
+
+            Ns_DStringPrintf(&ds, NS_TIME_FMT, (int64_t)diffTime.sec, diffTime.usec);
+            (void) Tcl_DictObjPut(interp, entryObj,
+                                  Tcl_NewStringObj("expire", 6),
+                                  Tcl_NewStringObj(ds.string, ds.length));
+
+            Tcl_DStringSetLength(&ds, 0);
+            Ns_DStringPrintf(&ds, "%s:%hu", currentCwDataPtr->host, currentCwDataPtr->port);
+            (void) Tcl_DictObjPut(interp, entryObj,
+                                  Tcl_NewStringObj("peer", 4),
+                                  Tcl_NewStringObj(ds.string, ds.length));
+            Tcl_DStringSetLength(&ds, 0);
+
+            (void) Tcl_DictObjPut(interp, entryObj,
+                                  Tcl_NewStringObj("sock", 4),
+                                  Tcl_NewIntObj((int)currentCwDataPtr->sock));
+        }
+
+        Tcl_ListObjAppendElement(interp, resultObj, entryObj);
+    }
+    Ns_MutexUnlock(&closeWaitingMutex);
+
+    Tcl_SetObjResult(interp, resultObj);
+    Tcl_DStringFree(&ds);
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * InitOnceHttp --
+ *
+ *      Make sure that we have a task queue defined, the mutexes initialized,
+ *      the close-waiting list and the janitor task defined.
+ *
+ * Results:
+ *      NS_TRUE.
+ *
+ * Side effects:
+ *      Initializing the module.
+ *
+ *----------------------------------------------------------------------
+ */
+static bool InitOnceHttp(void) {
+    Ns_Time interval;
+
+    interval.sec = 1;
+    interval.usec = 0;
+
+    //fprintf(stderr, "============== InitOnceHttp %p ==============\n", (void*)taskQueue);
+    taskQueue = Ns_CreateTaskQueue("tclhttp");
+
+    Ns_DListInit(&closeWaitingList);
+    Ns_MutexInit(&closeWaitingMutex);
+    Ns_MutexSetName2(&closeWaitingMutex, "ns:closewaiting", NULL);
+
+    (void) Ns_ScheduleProcEx(CloseWaitingCheckExpire, NULL /*poolPtr*/, 0, &interval, NULL);
+
+#ifdef MEM_RECORD_DEBUG
+    Ns_MutexInit(&ckMutex);
+    Tcl_InitHashTable(&ckPointerTable, TCL_ONE_WORD_KEYS);
+    Tcl_InitHashTable(&ckPointerDeletionTable, TCL_ONE_WORD_KEYS);
+#endif
+
+    return NS_TRUE;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * CloseWaitingCheckExpire --
+ *
+ *      Janitor proc of type "Ns_SchedProc" which checks for expired items in
+ *      the close waiting list. The list is typically very short (up to max 10
+ *      elements) therefore the linear search over all items sounds
+ *      sufficient. In case the list gets longer, we might consider compacting
+ *      or recording the position of the last active item.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+CloseWaitingCheckExpire(void *UNUSED(arg), int UNUSED(id)) {
+    size_t  i;
+    Ns_Time now;
+
+    Ns_GetTime(&now);
+
+    Ns_MutexLock(&closeWaitingMutex);
+    for (i = 0; i < closeWaitingList.size; i ++) {
+        CloseWaitingData *currentCwDataPtr = closeWaitingList.data[i];
+        long              diff;
+
+        if (currentCwDataPtr->state == CW_FREE) {
+            continue;
+        }
+        diff = Ns_DiffTime(&now, &currentCwDataPtr->expire, NULL);
+        if (diff > -1) {
+            if (currentCwDataPtr->state == CW_INUSE) {
+                int errorCode = Ns_SockErrorCode(NULL, currentCwDataPtr->sock);
+
+                /*
+                 * Check, if the socket is in an error state. Checking as well
+                 * the OpenSSL error code won't work here, since the errors
+                 * are kept per thread, and the janitor is working in a different thread.
+                 */
+
+                /*Ns_Log(Notice, "CloseWaitingCheckExpire sock %d host %s:%hu expired,"
+                       " but still marked as INUSE, errorCode %d",
+                       currentCwDataPtr->sock, currentCwDataPtr->host, currentCwDataPtr->port,
+                       errorCode);*/
+
+                if (errorCode != 0) {
+                    Ns_Log(Notice, "CloseWaitingCheckExpire: forces close in state INUSE for"
+                           " sock %d host %s:%hu due to sock error: %s",
+                           currentCwDataPtr->sock, currentCwDataPtr->host, currentCwDataPtr->port,
+                           strerror(errorCode)
+                          );
+                    CloseWaitingDataClean(currentCwDataPtr);
+                }
+
+            } else {
+                Ns_Log(Ns_LogTaskDebug, "CloseWaitingCheckExpire closes sock %d host %s:%hu in state %s",
+                       currentCwDataPtr->sock, currentCwDataPtr->host, currentCwDataPtr->port,
+                       CloseWaitingDataPrettyState(currentCwDataPtr));
+                CloseWaitingDataClean(currentCwDataPtr);
+            }
+        }
+    }
+    Ns_MutexUnlock(&closeWaitingMutex);
+
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * CloseWaitingDataPrettyState --
+ *
+ *      Provide a human readable form of the state of a CloseWaiting entry.
+ *
+ * Results:
+ *      String.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static const char*
+CloseWaitingDataPrettyState(CloseWaitingData *cwDataPtr)
+{
+    return cwDataPtr->state == CW_FREE ? "free"
+        : cwDataPtr->state == CW_INUSE ? "inuse"
+        : cwDataPtr->state == CW_WAITING ? "waiting"
+        : "unknown";
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -1734,12 +2157,12 @@ HttpStatsObjCmd(
 static int
 HttpQueue(
     NsInterp *itPtr,
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const* objv,
     bool run
 ) {
     Tcl_Interp *interp;
-    int         result = TCL_OK, decompress = 0, raw = 0, binary = 0;
+    int         result = TCL_OK, decompress = 0, raw = 0, binary = 0, partialResults = 0;
     Tcl_WideInt spoolLimit = -1;
     int         verifyCert = 0, keepHostHdr = 0;
     NsHttpTask *httpPtr = NULL;
@@ -1756,7 +2179,7 @@ HttpQueue(
                *bodyFileName = NULL;
     Ns_Set     *requestHdrPtr = NULL;
     Tcl_Obj    *bodyObj = NULL, *proxyObj = NULL;
-    Ns_Time    *timeoutPtr = NULL, *expirePtr = NULL;
+    Ns_Time    *timeoutPtr = NULL, *expirePtr = NULL, *keepAliveTimeoutPtr = NULL;
     Tcl_WideInt bodySize = 0;
     Tcl_Channel bodyChan = NULL, spoolChan = NULL;
     Ns_ObjvValueRange sizeRange = {0, LLONG_MAX};
@@ -1775,14 +2198,16 @@ HttpQueue(
         {"-donecallback",     Ns_ObjvString,  &doneCallback,   NULL},
         {"-headers",          Ns_ObjvSet,     &requestHdrPtr,  NULL},
         {"-hostname",         Ns_ObjvString,  &sniHostname,    NULL},
+        {"-keepalive",        Ns_ObjvTime,    &keepAliveTimeoutPtr, NULL},
         {"-keep_host_header", Ns_ObjvBool,    &keepHostHdr,    INT2PTR(NS_TRUE)},
         {"-method",           Ns_ObjvString,  &method,         NULL},
         {"-outputchan",       Ns_ObjvString,  &outputChanName, NULL},
         {"-outputfile",       Ns_ObjvString,  &outputFileName, NULL},
+        {"-partialresults",   Ns_ObjvBool,    &partialResults, INT2PTR(NS_TRUE)},
         {"-spoolsize",        Ns_ObjvMemUnit, &spoolLimit,     NULL},
         {"-expire",           Ns_ObjvTime,    &expirePtr,      NULL},
         {"-timeout",          Ns_ObjvTime,    &timeoutPtr,     NULL},
-        {"-verify",           Ns_ObjvBool,    &verifyCert,     INT2PTR(NS_FALSE)},
+        {"-verify",           Ns_ObjvBool,    &verifyCert,     INT2PTR(NS_TRUE)},
         {"-proxy",            Ns_ObjvObj,     &proxyObj,       NULL},
         {NULL, NULL,  NULL, NULL}
     };
@@ -1849,6 +2274,8 @@ HttpQueue(
     }
 
     if (result == TCL_OK) {
+        Ns_Log(Ns_LogTaskDebug, "HttpQueue calls HttpConnect with timeout:%p", (void*)timeoutPtr);
+
         result = HttpConnect(itPtr,
                              method,
                              url,
@@ -1865,6 +2292,7 @@ HttpQueue(
                              (keepHostHdr == 1),
                              timeoutPtr,
                              expirePtr,
+                             keepAliveTimeoutPtr,
                              &httpPtr);
     }
 
@@ -1911,9 +2339,14 @@ HttpQueue(
         if (binary != 0) {
             httpPtr->flags |= NS_HTTP_FLAG_BINARY;
         }
+        if (partialResults != 0) {
+            httpPtr->flags |= NS_HTTP_PARTIAL_RESULTS;
+        }
+
         httpPtr->servPtr = itPtr->servPtr;
 
         httpPtr->task = Ns_TaskTimedCreate(httpPtr->sock, HttpProc, httpPtr, expirePtr);
+        CkAlloc((void *)httpPtr->task, "task (queue)");
 
         if (run == NS_TRUE) {
 
@@ -1927,19 +2360,11 @@ HttpQueue(
             HttpClose(httpPtr);
 
         } else {
-            static Ns_TaskQueue *taskQueue = NULL; /* MT: static variable! */
 
             /*
              * Enqueue the task, optionally returning the taskID
              */
-
-            if (taskQueue == NULL) {
-                Ns_MasterLock();
-                if (taskQueue == NULL) {
-                    taskQueue = Ns_CreateTaskQueue("tclhttp");
-                }
-                Ns_MasterUnlock();
-            }
+            assert(taskQueue != NULL);
 
             if (Ns_TaskEnqueue(httpPtr->task, taskQueue) != NS_OK) {
                 HttpSpliceChannels(interp, httpPtr);
@@ -1959,7 +2384,7 @@ HttpQueue(
             } else {
                 Tcl_HashEntry *hPtr = NULL;
                 uint32_t       ii;
-                int            len;
+                TCL_SIZE_T     len;
                 char           buf[TCL_INTEGER_SPACE + 4];
 
                 /*
@@ -1969,7 +2394,7 @@ HttpQueue(
                 for (ii = (uint32_t)itPtr->httpRequests.numEntries; ; ii++) {
                     int new = 0;
 
-                    len = ns_uint32toa(&buf[4], ii);
+                    len = (TCL_SIZE_T)ns_uint32toa(&buf[4], ii);
                     hPtr = Tcl_CreateHashEntry(&itPtr->httpRequests, buf, &new);
                     if (new != 0) {
                         break;
@@ -2028,7 +2453,7 @@ HttpClientLogWrite(
 
         Tcl_DStringInit(&logString);
         Ns_DStringPrintf(&logString, "%s %s %d %s %s " NS_TIME_FMT
-                         " %" PRIdz " %" PRIdz " %s\n",
+                         " %" PRIdz " %" PRIdz " %d %s\n",
                          Ns_LogTime(buf),
                          Ns_ThreadGetName(),
                          httpPtr->status == 0 ? 408 : httpPtr->status,
@@ -2037,6 +2462,7 @@ HttpClientLogWrite(
                          (int64_t)diff.sec, diff.usec,
                          httpPtr->sent,
                          httpPtr->received,
+                         (httpPtr->pos > 0),
                          causeString
                         );
 
@@ -2078,12 +2504,11 @@ HttpGetResult(
             *fileNameObj     = NULL,
             *resultObj       = NULL,
             *replyHeadersObj = NULL,
+            *errorObj        = NULL,
             *elapsedTimeObj;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(httpPtr != NULL);
-
-    //fprintf(stderr, "================ HttpGetResult\n");
 
     /*
      * In some error conditions, the endtime is not set. make sure, take the
@@ -2098,27 +2523,34 @@ HttpGetResult(
     Ns_TclSetTimeObj(elapsedTimeObj, &diff);
 
     if (httpPtr->error != NULL) {
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(httpPtr->error, -1));
-        Ns_GetTime(&httpPtr->etime);
+        errorObj = Tcl_NewStringObj(httpPtr->error, TCL_INDEX_NONE);
         if (httpPtr->finalSockState == NS_SOCK_TIMEOUT) {
-            Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
             Ns_Log(Ns_LogTimeoutDebug, "ns_http request '%s' runs into timeout",
                    httpPtr->url);
             HttpClientLogWrite(httpPtr, "tasktimeout");
+        } else {
+            HttpClientLogWrite(httpPtr, "error");
         }
-        result = TCL_ERROR;
-        goto err;
-    }
 
-    HttpClientLogWrite(httpPtr, "ok");
+        if ((httpPtr->flags & NS_HTTP_PARTIAL_RESULTS) == 0u) {
+            Tcl_SetObjResult(interp, errorObj);
+            if (httpPtr->finalSockState == NS_SOCK_TIMEOUT) {
+                Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
+            }
+            result = TCL_ERROR;
+            goto err;
+        }
+    } else {
+        HttpClientLogWrite(httpPtr, "ok");
+    }
 
     if (httpPtr->recvSpoolMode == NS_FALSE) {
 #if defined(TCLHTTP_USE_EXTERNALTOUTF)
         Tcl_Encoding encoding = NULL;
 #endif
-        bool   binary = NS_FALSE;
-        int    cSize;
-        char  *cData;
+        bool       binary = NS_FALSE;
+        TCL_SIZE_T cSize;
+        char      *cData;
 
         /*
          * Determine type (binary/text) of the received data
@@ -2169,16 +2601,18 @@ HttpGetResult(
         }
 
         cData = httpPtr->ds.string + httpPtr->replyHeaderSize;
-        cSize = (int)httpPtr->replyBodySize;
+        cSize = (TCL_SIZE_T)httpPtr->replyBodySize;
 
         if (binary == NS_TRUE)  {
+            //NsHexPrint("replybodyobj", (unsigned char *)cData, (size_t)cSize, 20, NS_TRUE);
             replyBodyObj = Tcl_NewByteArrayObj((unsigned char *)cData, cSize);
         } else {
 #if defined(TCLHTTP_USE_EXTERNALTOUTF)
             Tcl_DString ds;
+
             Tcl_DStringInit(&ds);
-            Tcl_ExternalToUtfDString(encoding, cData, cSize, &ds);
-            replyBodyObj = Tcl_NewStringObj(Tcl_DStringValue(&ds), -1);
+            (void)Tcl_ExternalToUtfDString(encoding, cData, cSize, &ds);
+            replyBodyObj = Tcl_NewStringObj(Tcl_DStringValue(&ds), TCL_INDEX_NONE);
             Tcl_DStringFree(&ds);
 #else
             replyBodyObj = Tcl_NewStringObj(cData, cSize);
@@ -2189,8 +2623,59 @@ HttpGetResult(
     statusObj = Tcl_NewIntObj(httpPtr->status);
 
     if (httpPtr->spoolFd != NS_INVALID_FD) {
-        fileNameObj = Tcl_NewStringObj(httpPtr->spoolFileName, -1);
+        fileNameObj = Tcl_NewStringObj(httpPtr->spoolFileName, TCL_INDEX_NONE);
     }
+
+    /*
+     * Check, if "connection: keep-alive" was provided in the reply.
+     */
+    {
+        const char *field;
+
+        /*
+         * Set the default value of KEEPALIVE handling depending on HTTP
+         * version.  For HTTP/1.1 the default is KEEPALIVE, unless there is an
+         * explicit "connection: close" provided from the server.
+         */
+        if ((httpPtr->flags & NS_HTTP_VERSION_1_1) != 0u) {
+            httpPtr->flags |= NS_HTTP_KEEPALIVE;
+        } else {
+            httpPtr->flags &= ~NS_HTTP_KEEPALIVE;
+        }
+
+        field = Ns_SetIGet(httpPtr->replyHeaders, connectionHeader);
+        if (field != NULL) {
+            if (strncasecmp(field, "close", 5) == 0) {
+                httpPtr->flags &= ~NS_HTTP_KEEPALIVE;
+            }
+        }
+
+        /*
+         * Close the connection as well when httpPtr->error is set to avoid
+         * keep-alive for sockets in error states.
+         */
+        if (httpPtr->error != NULL) {
+            httpPtr->flags &= ~NS_HTTP_KEEPALIVE;
+        }
+        /*
+         * Sanity check: When the keep-alive flag is still set, we should have
+         * also a keep-alive timeout value present. This timeout value
+         * controls the initialization logic during connection setup. By using
+         * this sanity check, we do not rely only on the response of the
+         * server with its exact field contents.
+         */
+        if ((httpPtr->flags & NS_HTTP_KEEPALIVE) != 0u
+            && httpPtr->keepAliveTimeout.sec == 0
+            && httpPtr->keepAliveTimeout.usec == 0
+           ) {
+            httpPtr->flags &= ~NS_HTTP_KEEPALIVE;
+            Ns_Log(Ns_LogTaskDebug, "HttpGetResult: sanity check deactivates keep-alive");
+        }
+        Ns_Log(Ns_LogTaskDebug, "HttpGetResult: connection: %s",
+               (httpPtr->flags & NS_HTTP_KEEPALIVE) != 0u ? "keep-alive" : "close");
+    }
+    /* Ns_Log(Notice, "replyHeaders");
+       Ns_SetPrint(httpPtr->replyHeaders); */
 
     /*
      * Add reply headers set into the interp
@@ -2227,6 +2712,10 @@ HttpGetResult(
         Tcl_DictObjPut(interp, resultObj, Tcl_NewStringObj("body", 4),
                        replyBodyObj);
     }
+    if (errorObj != NULL) {
+        Tcl_DictObjPut(interp, resultObj, Tcl_NewStringObj("error", 5),
+                       errorObj);
+    }
     if (httpPtr->infoObj != NULL) {
         Tcl_DictObjPut(interp, resultObj, Tcl_NewStringObj("https", 5),
                        httpPtr->infoObj);
@@ -2235,14 +2724,15 @@ HttpGetResult(
         const char *chanName = Tcl_GetChannelName(httpPtr->bodyChan);
 
         Tcl_DictObjPut(interp, resultObj, Tcl_NewStringObj("body_chan", 9),
-                       Tcl_NewStringObj(chanName, -1));
+                       Tcl_NewStringObj(chanName, TCL_INDEX_NONE));
     }
     if (httpPtr->spoolChan != NULL) {
         const char *chanName = Tcl_GetChannelName(httpPtr->spoolChan);
 
         Tcl_DictObjPut(interp, resultObj, Tcl_NewStringObj("outputchan", 10),
-                       Tcl_NewStringObj(chanName, -1));
+                       Tcl_NewStringObj(chanName, TCL_INDEX_NONE));
     }
+
     Tcl_SetObjResult(interp, resultObj);
 
     Tcl_DecrRefCount(replyHeadersObj);
@@ -2272,14 +2762,13 @@ HttpGetResult(
  *
  * HttpCheckHeader --
  *
- *      Check whether we have full HTTP response incl. headers.
- *      If yes, record the total size of the response
- *      (including the lone CR/LF delimiter) in the NsHttpTask
- *      structure, as to avoid subsequent checking.
- *      Terminate the response string by eliminating the lone
- *      CR/LF delimiter (put a NULL byte at the CR place).
- *      This way it is easy to calculate size of the optional
- *      body content following the response line/headers.
+ *      Check whether we have full HTTP response including headers.  If yes,
+ *      record the total size of the response (including the lone CR/LF
+ *      delimiter) in the NsHttpTask structure, as to avoid subsequent
+ *      checking.  Terminate the response string by eliminating the lone CR/LF
+ *      delimiter (put a NULL byte at the CR place).  This way it is easy to
+ *      calculate size of the optional body content following the response
+ *      line/headers.
  *
  * Results:
  *      None.
@@ -2301,15 +2790,20 @@ HttpCheckHeader(
 
     eoh = strstr(httpPtr->ds.string, "\r\n\r\n");
     if (eoh != NULL) {
-        httpPtr->replyHeaderSize = (int)(eoh - httpPtr->ds.string) + 4;
+        httpPtr->replyHeaderSize = (TCL_SIZE_T)(eoh - httpPtr->ds.string) + 4;
         *(eoh + 2) = '\0';
+        httpPtr->flags &= ~NS_HTTP_HEADERS_PENDING;
+        Ns_Log(Ns_LogTaskDebug, "HttpCheckHeader: headers complete");
     } else {
         eoh = strstr(httpPtr->ds.string, "\n\n");
         if (eoh != NULL) {
             Ns_Log(Warning, "HttpCheckHeader: client reply contains"
                    " LF instead of CR/LF trailer which should not happen");
-            httpPtr->replyHeaderSize = (int)(eoh - httpPtr->ds.string) + 2;
+            httpPtr->replyHeaderSize = (TCL_SIZE_T)(eoh - httpPtr->ds.string) + 2;
             *(eoh + 1) = '\0';
+            httpPtr->flags &= ~NS_HTTP_HEADERS_PENDING;
+        } else {
+            Ns_Log(Ns_LogTaskDebug, "HttpCheckHeader: headers not complete");
         }
     }
 }
@@ -2320,13 +2814,14 @@ HttpCheckHeader(
  *
  * HttpCheckSpool --
  *
- *      Determine, whether the received data should be left in
- *      the memory or whether it should be spooled to a file
- *      or channel, depending on the size of the returned content
- *      and the configuration settings.
+ *      Determine, whether the received data should be left in the
+ *      memory or whether it should be spooled to a file or channel,
+ *      depending on the size of the returned content and the
+ *      configuration settings. The function might return TCL_CONTINUE
+ *      to signal, that the buffer has to be processed again.
  *
  * Results:
- *      Ns_ReturnCode.
+ *      Tcl Return Code
  *
  * Side effects:
  *      Handles the partial response content located in memory.
@@ -2334,20 +2829,22 @@ HttpCheckHeader(
  *----------------------------------------------------------------------
  */
 
-static Ns_ReturnCode
+static int
 HttpCheckSpool(
     NsHttpTask *httpPtr
 ) {
-    Ns_ReturnCode result = NS_OK;
+    int result = TCL_OK;
+    int major = 0, minor = 0;
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
 
+    Ns_Log(Ns_LogTaskDebug, "HttpCheckSpool");
     /*
      * At this point, we already identified the end of the
      * response/headers but haven not yet parsed it because
      * we still do not know the value of the response status.
      *
-     * The Ns_DString in httpPtr->ds contains, at this point:
+     * The Tcl_DString in httpPtr->ds contains, at this point:
      *
      *     1. HTTP response line (delimited by CR/LF)
      *     2. Response header(s) (each delimited by CR/LF)
@@ -2362,20 +2859,45 @@ HttpCheckSpool(
      * length of the DString value (size of 1.-3.) and not
      * using the DString length element.
      */
-
     if (Ns_HttpMessageParse(httpPtr->ds.string, strlen(httpPtr->ds.string),
                             httpPtr->replyHeaders,
-                            NULL,
-                            NULL,
+                            &major,
+                            &minor,
                             &httpPtr->status,
                             NULL) != NS_OK || httpPtr->status == 0) {
 
         Ns_Log(Warning, "ns_http: parsing reply failed");
-        result = NS_ERROR;
+        result = TCL_ERROR;
 
     } else {
         const char *header;
         Tcl_WideInt replyLength = 0;
+
+        /*
+         * We have received the message header and parsed the first
+         * line. Therefore, we know the HTTP status code and the version
+         * numbers.
+         */
+        if (minor == 1 && major == 1) {
+            httpPtr->flags |= NS_HTTP_VERSION_1_1;
+        }
+
+        if (httpPtr->status / 100 == 1) {
+            /*
+             * Handling of all informational messages, such as "100
+             * continue". We skip here the message without further
+             * processing.
+             */
+            SkipMessage(httpPtr);
+            return TCL_CONTINUE;
+
+        } else if (httpPtr->status == 204) {
+            /*
+             * In case the requests returns 204 (no content), no body is
+             * expected.
+             */
+            httpPtr->flags |= NS_HTTP_FLAG_EMPTY;
+        }
 
         /*
          * Check the returned Content-Length
@@ -2405,7 +2927,17 @@ HttpCheckSpool(
                 httpPtr->chunk->parsers = ChunkParsers;
                 Ns_Log(Ns_LogTaskDebug, "HttpCheckSpool: %s: %s",
                        transferEncodingHeader, header);
+                /*
+                 * Why is this header field deleted here?
+                 */
                 Ns_SetIDeleteKey(httpPtr->replyHeaders, transferEncodingHeader);
+            } else if (httpPtr->status != 204) {
+                /*
+                 * No content-length provided and not chunked, assume
+                 * streaming HTML.
+                 */
+                Ns_Log(Ns_LogTaskDebug, "ns_http: assume streaming HTML, status %d", httpPtr->status);
+                httpPtr->flags |= NS_HTTP_STREAMING;
             }
         }
 
@@ -2479,13 +3011,13 @@ HttpCheckSpool(
                      */
                     Ns_Log(Error, "ns_http: can't open spool file: %s:",
                            httpPtr->spoolFileName);
-                    result = NS_ERROR;
+                    result = TCL_ERROR;
                 }
             }
         }
     }
 
-    if (result == NS_OK) {
+    if (result == TCL_OK) {
         size_t cSize;
 
         cSize = (size_t)(httpPtr->ds.length - httpPtr->replyHeaderSize);
@@ -2507,7 +3039,7 @@ HttpCheckSpool(
             memcpy(buf, cData, cSize);
             Ns_DStringSetLength(&httpPtr->ds, httpPtr->replyHeaderSize);
             if (HttpAppendContent(httpPtr, buf, cSize) != TCL_OK) {
-                result = NS_ERROR;
+                result = TCL_ERROR;
             }
         }
     }
@@ -2656,6 +3188,7 @@ HttpConnect(
     bool keepHostHdr,
     Ns_Time *timeoutPtr,
     Ns_Time *expirePtr,
+    Ns_Time *keepAliveTimeoutPtr,
     NsHttpTask **httpPtrPtr
 ) {
     Tcl_Interp     *interp;
@@ -2675,13 +3208,18 @@ HttpConnect(
     NS_NONNULL_ASSERT(url != NULL);
     NS_NONNULL_ASSERT(httpPtrPtr != NULL);
 
+    /*Ns_Log(Notice, "HttpConnect bodySize %ld body type %s", bodySize, bodyObj->typePtr?bodyObj->typePtr->name:"none");*/
+
     interp = itPtr->interp;
+    assert(itPtr->servPtr != NULL);
 
     /*
-     * Setup the task structure. From this point on
+     * Setup the NsHttpTask structure. From this point on
      * if something goes wrong, we must HttpClose().
      */
     httpPtr = ns_calloc(1u, sizeof(NsHttpTask));
+    CkAlloc((void *)httpPtr, "NsHttpTask");
+
     httpPtr->chunk = ns_calloc(1u, sizeof(NsHttpChunk));
     httpPtr->bodyFileFd = NS_INVALID_FD;
     httpPtr->spoolFd = NS_INVALID_FD;
@@ -2691,10 +3229,28 @@ HttpConnect(
     httpPtr->method = ns_strdup(method);
     httpPtr->replyHeaders = Ns_SetCreate(NS_SET_NAME_CLIENT_RESPONSE);
     httpPtr->servPtr = itPtr->servPtr;
+    httpPtr->flags = NS_HTTP_HEADERS_PENDING;
 
     if (timeoutPtr != NULL) {
         httpPtr->timeout = ns_calloc(1u, sizeof(Ns_Time));
         *httpPtr->timeout = *timeoutPtr;
+    }
+
+    /*
+     * Take keep-alive timeout either from provided flag, or from
+     * configuration file.
+     */
+    if (keepAliveTimeoutPtr == NULL && itPtr->servPtr != NULL &&
+        (itPtr->servPtr->httpclient.keepaliveTimeout.sec != 0
+         || itPtr->servPtr->httpclient.keepaliveTimeout.usec != 0
+        )) {
+        keepAliveTimeoutPtr = &itPtr->servPtr->httpclient.keepaliveTimeout;
+        Ns_Log(Ns_LogTaskDebug, "HttpConnect: use keep-alive " NS_TIME_FMT
+               " from configuration file",
+               (int64_t)keepAliveTimeoutPtr->sec, keepAliveTimeoutPtr->usec );
+    }
+    if (keepAliveTimeoutPtr != NULL) {
+        httpPtr->keepAliveTimeout = *keepAliveTimeoutPtr;
     }
 
     Ns_GetTime(&httpPtr->stime);
@@ -2902,104 +3458,149 @@ HttpConnect(
                 goto fail;
             }
         } else {
-            char          *rhost = u.host;
-            unsigned short rport = portNr;
+            char            *rhost = u.host;
+            unsigned short   rport = portNr;
+            bool             reuseConnection;
+            CloseWaitingData cwData;
 
             if (httpProxy == NS_TRUE) {
                 rhost = pHost;
                 rport = pPortNr;
             }
-            httpPtr->sock = Ns_SockTimedConnect2(rhost, rport, NULL, 0, toPtr, &rc);
-            if (httpPtr->sock == NS_INVALID_SOCKET) {
-                Ns_SockConnectError(interp, rhost, rport, rc);
-                if (rc == NS_TIMEOUT) {
-                    Ns_GetTime(&httpPtr->etime);
-                    HttpClientLogWrite(httpPtr, "connecttimeout");
-                }
-                goto fail;
+
+            if (strcasecmp(httpPtr->method, "HEAD") == 0) {
+                /*
+                 * Do not expect a response content.
+                 */
+                httpPtr->flags |= NS_HTTP_FLAG_EMPTY;
             }
-            if (Ns_SockSetNonBlocking(httpPtr->sock) != NS_OK) {
-                Ns_TclPrintfResult(interp, "can't set socket nonblocking mode");
-                goto fail;
-            }
-            rc = HttpWaitForSocketEvent(httpPtr->sock, POLLOUT, toPtr);
-            if (rc != NS_OK) {
-                if (rc == NS_TIMEOUT) {
-                    Ns_TclPrintfResult(interp, "timeout waiting for writable socket");
-                    Ns_GetTime(&httpPtr->etime);
-                    HttpClientLogWrite(httpPtr, "writetimeout");
-                    Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
-                } else {
-                    Ns_GetTime(&httpPtr->etime);
-                    Ns_TclPrintfResult(interp, "waiting for writable socket: %s",
-                                       ns_sockstrerror(ns_sockerrno));
-                }
-                goto fail;
-            }
-        }
 
-        /*
-         * Optionally setup an SSL connection
-         */
-        if (defPortNr == 443u) {
-            NS_TLS_SSL_CTX *ctx = NULL;
-            int             result;
+            httpPtr->host = ns_strdup(rhost);
+            httpPtr->port = rport;
+            reuseConnection = PersistentConnectionLookup(rhost, rport, &cwData);
 
-            result = Ns_TLS_CtxClientCreate(interp, cert, caFile, caPath,
-                                            verifyCert, &ctx);
-            if (likely(result == TCL_OK)) {
-                NS_TLS_SSL *ssl = NULL;
-                Ns_Time now, remainingTime;
+            if (reuseConnection) {
+                /*
+                 * We can reuse the connection data. Add one to pos, such that
+                 * pos == 0 indicates that no data was reused. We need
+                 * invalidation of the cached entry for HttpCancel()
+                 * operations.
+                 */
+                httpPtr->sock = cwData.sock;
+                httpPtr->ctx = cwData.ctx;
+                httpPtr->ssl = cwData.ssl;
+                httpPtr->pos = cwData.pos + 1;
+                /*Ns_Log(Notice, "HttpConnect: PersistentConnectionLookup REUSE sock %d ctx %p ssl %p",
+                  httpPtr->sock, (void*) httpPtr->ctx, (void*) httpPtr->ssl);*/
 
-                httpPtr->ctx = ctx;
-                Ns_GetTime(&now);
-                Ns_DiffTime(&now, &startTime, &remainingTime);
-                if (Ns_DiffTime(toPtr, &remainingTime, &remainingTime) < 0) {
-                    /*
-                     * The remaining timeout is already negative,
-                     * already too late to call Ns_TLS_SSLConnect()
-                     */
-                    Ns_Log(Ns_LogTaskDebug, "Ns_TLS_SSLConnect negative remaining timeout " NS_TIME_FMT,
-                           (int64_t)remainingTime.sec, remainingTime.usec);
-                    Ns_TclPrintfResult(interp, "timeout waiting for TLS setup");
-                    Ns_GetTime(&httpPtr->etime);
-                    HttpClientLogWrite(httpPtr, "tlssetuptimeout");
-                    Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
-                    goto fail;
-                } else {
-                    Ns_Log(Ns_LogTaskDebug, "Ns_TLS_SSLConnect remaining timeout " NS_TIME_FMT,
-                           (int64_t)remainingTime.sec, remainingTime.usec);
+            } else {
+                /*
+                 * PersistentConnectionLookup failed, setup fresh connection.
+                 */
+                httpPtr->sock = Ns_SockTimedConnect2(rhost, rport, NULL, 0, toPtr, &rc);
+                /*Ns_Log(Notice, "HttpConnect: reuse failed, Ns_SockTimedConnect2 opened sock %d", httpPtr->sock);*/
 
-                    rc = Ns_TLS_SSLConnect(interp, httpPtr->sock, ctx,
-                                           sniHostname, &remainingTime, &ssl);
+                if (httpPtr->sock == NS_INVALID_SOCKET) {
+                    Ns_SockConnectError(interp, rhost, rport, rc);
                     if (rc == NS_TIMEOUT) {
-                        /*
-                         * Ns_TLS_SSLConnect ran into a timeout.
-                         */
-                        Ns_TclPrintfResult(interp, "timeout waiting for TLS handshake");
                         Ns_GetTime(&httpPtr->etime);
-                        HttpClientLogWrite(httpPtr, "tlsconnecttimeout");
+                        HttpClientLogWrite(httpPtr, "connecttimeout");
+                    }
+                    goto fail;
+                }
+#ifdef NS_HTTP_TRACE_SOCKET_OPS
+                Ns_Log(Notice, "ns_http socket %d open host %s:%hu method %s url %s",
+                       httpPtr->sock, httpPtr->host, httpPtr->port, method, url);
+#endif
+                if (Ns_SockSetNonBlocking(httpPtr->sock) != NS_OK) {
+                    Ns_TclPrintfResult(interp, "can't set socket nonblocking mode");
+                    goto fail;
+                }
+                rc = HttpWaitForSocketEvent(httpPtr->sock, POLLOUT, toPtr);
+                if (rc != NS_OK) {
+                    if (rc == NS_TIMEOUT) {
+                        Ns_TclPrintfResult(interp, "timeout waiting for writable socket");
+                        HttpClientLogWrite(httpPtr, "writetimeout");
                         Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
-                        goto fail;
-
-                    } else if (rc == NS_ERROR) {
-                        result = TCL_ERROR;
                     } else {
-                        result = TCL_OK;
+                        Ns_TclPrintfResult(interp, "waiting for writable socket: %s",
+                                           ns_sockstrerror(ns_sockerrno));
+                    }
+                    goto fail;
+                }
+
+                /*
+                 * Optionally setup an SSL connection
+                 */
+                if (defPortNr == 443u) {
+                    NS_TLS_SSL_CTX *ctx = NULL;
+                    int             result;
+
+                    result = Ns_TLS_CtxClientCreate(interp, cert, caFile, caPath,
+                                                    verifyCert, &ctx);
+                    if (likely(result == TCL_OK)) {
+                        NS_TLS_SSL *ssl = NULL;
+                        Ns_Time now, remainingTime;
+
+                        httpPtr->ctx = ctx;
+                        Ns_GetTime(&now);
+                        Ns_DiffTime(&now, &startTime, &remainingTime);
+                        if (Ns_DiffTime(toPtr, &remainingTime, &remainingTime) < 0) {
+                            /*
+                             * The remaining timeout is already negative,
+                             * already too late to call Ns_TLS_SSLConnect()
+                             */
+                            Ns_Log(Ns_LogTaskDebug, "Ns_TLS_SSLConnect negative remaining timeout " NS_TIME_FMT,
+                                   (int64_t)remainingTime.sec, remainingTime.usec);
+                            Ns_TclPrintfResult(interp, "timeout waiting for TLS setup");
+                            Ns_GetTime(&httpPtr->etime);
+                            HttpClientLogWrite(httpPtr, "tlssetuptimeout");
+                            Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
+                            goto fail;
+                        } else {
+                            Ns_Log(Ns_LogTaskDebug, "Ns_TLS_SSLConnect remaining timeout " NS_TIME_FMT,
+                                   (int64_t)remainingTime.sec, remainingTime.usec);
+                            /*
+                             * If the user has specified an sniHostname, use
+                             * it. Otherwise use the hostname from the URL,
+                             * when it is non-numeric.
+                             */
+                            if (sniHostname == NULL && !NsHostnameIsNumericIP(rhost)) {
+                                sniHostname = rhost;
+                                Ns_Log(Debug, "automatically use SNI <%s>", rhost);
+                            }
+                            rc = Ns_TLS_SSLConnect(interp, httpPtr->sock, ctx,
+                                                   sniHostname, &remainingTime, &ssl);
+                            if (rc == NS_TIMEOUT) {
+                                /*
+                                 * Ns_TLS_SSLConnect ran into a timeout.
+                                 */
+                                Ns_TclPrintfResult(interp, "timeout waiting for TLS handshake");
+                                Ns_GetTime(&httpPtr->etime);
+                                HttpClientLogWrite(httpPtr, "tlsconnecttimeout");
+                                Tcl_SetErrorCode(interp, errorCodeTimeoutString, (char *)0L);
+                                goto fail;
+
+                            } else if (rc == NS_ERROR) {
+                                result = TCL_ERROR;
+                            } else {
+                                result = TCL_OK;
+                            }
+                        }
+
+                        if (likely(result == TCL_OK)) {
+                            httpPtr->ssl = ssl;
+#ifdef HAVE_OPENSSL_EVP_H
+                            HttpAddInfo(httpPtr, "sslversion", SSL_get_version(ssl));
+                            HttpAddInfo(httpPtr, "cipher", SSL_get_cipher(ssl));
+                            SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
+#endif
+                        }
+                    }
+                    if (unlikely(result != TCL_OK)) {
+                        goto fail;
                     }
                 }
-
-                if (likely(result == TCL_OK)) {
-                    httpPtr->ssl = ssl;
-#ifdef HAVE_OPENSSL_EVP_H
-                    HttpAddInfo(httpPtr, "sslversion", SSL_get_version(ssl));
-                    HttpAddInfo(httpPtr, "cipher", SSL_get_cipher(ssl));
-                    SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
-#endif
-                }
-            }
-            if (unlikely(result != TCL_OK)) {
-                goto fail;
             }
         }
     }
@@ -3013,21 +3614,21 @@ HttpConnect(
     Ns_StrToUpper(Ns_DStringValue(dsPtr));
     if (httpProxy == NS_TRUE) {
         Ns_DStringNAppend(dsPtr, " ", 1);
-        Ns_DStringNAppend(dsPtr, url, -1);
+        Ns_DStringNAppend(dsPtr, url, TCL_INDEX_NONE);
     } else {
         Ns_DStringNAppend(dsPtr, " /", 2);
         if (*u.path != '\0') {
-            Ns_DStringNAppend(dsPtr, u.path, -1);
+            Ns_DStringNAppend(dsPtr, u.path, TCL_INDEX_NONE);
             Ns_DStringNAppend(dsPtr, "/", 1);
         }
-        Ns_DStringNAppend(dsPtr, u.tail, -1);
+        Ns_DStringNAppend(dsPtr, u.tail, TCL_INDEX_NONE);
         if (u.query != NULL) {
             Ns_DStringNAppend(dsPtr, "?", 1);
-            Ns_DStringNAppend(dsPtr, u.query, -1);
+            Ns_DStringNAppend(dsPtr, u.query, TCL_INDEX_NONE);
         }
         if (u.fragment != NULL) {
             Ns_DStringNAppend(dsPtr, "#", 1);
-            Ns_DStringNAppend(dsPtr, u.fragment, -1);
+            Ns_DStringNAppend(dsPtr, u.fragment, TCL_INDEX_NONE);
         }
     }
     Ns_DStringNAppend(dsPtr, " HTTP/1.1\r\n", 11);
@@ -3068,10 +3669,15 @@ HttpConnect(
     }
 
     /*
-     * Disable keep-alive connections
-     * FIXME: why?
+     * Disable keep-alive connections, when no keep-alive timeout is
+     * specified.
      */
-    Ns_DStringPrintf(dsPtr, "%s: close\r\n", connectionHeader);
+    Ns_Log(Ns_LogTaskDebug, "HttpConnect: keepAliveTimeoutPtr %p", (void*)keepAliveTimeoutPtr);
+    if (keepAliveTimeoutPtr == NULL
+        || (keepAliveTimeoutPtr->sec == 0 && keepAliveTimeoutPtr->usec == 0)
+       ) {
+        Ns_DStringPrintf(dsPtr, "%s: close\r\n", connectionHeader);
+    }
 
     /*
      * Optionally, add our own Host header
@@ -3081,6 +3687,9 @@ HttpConnect(
         (void)Ns_HttpLocationString(dsPtr, NULL, u.host, portNr, defPortNr);
         Ns_DStringNAppend(dsPtr, "\r\n", 2);
     }
+
+    Ns_Log(Ns_LogTaskDebug, "HttpConnect: %s request: %s",
+           u.protocol, dsPtr->string);
 
     /*
      * Calculate Content-Length header, handle in-memory body
@@ -3127,9 +3736,9 @@ HttpConnect(
         }
 
         if (bodyObj != NULL) {
-            int   bodyLen = 0;
-            char *bodyStr = NULL;
-            bool  binary;
+            TCL_SIZE_T bodyLen = 0;
+            char      *bodyStr = NULL;
+            bool       binary;
 
             /*
              * Append in-memory body to the requests string
@@ -3138,6 +3747,7 @@ HttpConnect(
              * 2GB+ hence the signed int type suffices.
              */
             binary = NsTclObjIsByteArray(bodyObj);
+
             if (binary == NS_FALSE) {
                 if (contentType != NULL) {
 
@@ -3150,13 +3760,30 @@ HttpConnect(
                 }
             }
             if (binary == NS_TRUE) {
+                /*Ns_Log(Notice, "... bodyObj has type %s ", bodyObj->typePtr?bodyObj->typePtr->name:"NONE");*/
+                /*Ns_Log(Notice, "... before GetByteArrayFromObj body <%s>", Tcl_GetString(bodyObj));*/
                 bodyStr = (char *)Tcl_GetByteArrayFromObj(bodyObj, &bodyLen);
+                /*NsHexPrint("after GetByteArrayFromObj", (unsigned char *)bodyStr, (size_t)bodyLen, 20, NS_TRUE);*/
+//#define JAN 1
+#ifdef JAN
+                if (bodyStr == NULL) {
+                    Ns_TclPrintfResult(interp, "Body is not really binary");
+                    goto fail;
+                }
+#endif
+#if !defined(NS_TCL_PRE9)
+                if (bodyStr == NULL) {
+                    bodyStr = (char *)Tcl_GetBytesFromObj(interp, bodyObj, &bodyLen);
+                    Ns_Log(Notice, "... Tcl_GetBytesFromObj returned len %zu body '%p'", bodyLen, (void*)bodyStr);
+                }
+#endif
+                //Ns_Log(Notice, "... body as bytearray len %zu body '%s'", bodyLen, bodyStr);
             } else {
                 bodyStr = Tcl_GetStringFromObj(bodyObj, &bodyLen);
             }
 
             httpPtr->bodySize = (size_t)bodyLen;
-            Ns_DStringPrintf(dsPtr, "%s: %d\r\n\r\n", contentLengthHeader,
+            Ns_DStringPrintf(dsPtr, "%s: %" PRITcl_Size "\r\n\r\n", contentLengthHeader,
                              bodyLen);
 
             httpPtr->requestHeaderSize = (size_t)dsPtr->length;
@@ -3186,7 +3813,7 @@ HttpConnect(
         Tcl_DString d;
 
         Tcl_DStringInit(&d);
-        Ns_Log(Ns_LogRequestDebug, "full request (len %d) <%s>",
+        Ns_Log(Ns_LogRequestDebug, "full request (len %" PRITcl_Size ") <%s>",
                dsPtr->length,
                Ns_DStringAppendPrintable(&d, NS_TRUE, dsPtr->string,
                                          (size_t)dsPtr->length));
@@ -3243,12 +3870,12 @@ HttpAppendRawBuffer(
         if (httpPtr->spoolFd != NS_INVALID_FD) {
             written = ns_write(httpPtr->spoolFd, buffer, size);
         } else if (httpPtr->spoolChan != NULL) {
-            written = (ssize_t)Tcl_Write(httpPtr->spoolChan, buffer, (int)size);
+            written = (ssize_t)Tcl_Write(httpPtr->spoolChan, buffer, (TCL_SIZE_T)size);
         } else {
             written = -1;
         }
     } else {
-        Tcl_DStringAppend(&httpPtr->ds, buffer, (int)size);
+        Tcl_DStringAppend(&httpPtr->ds, buffer, (TCL_SIZE_T)size);
         written = (ssize_t)size;
     }
 
@@ -3261,6 +3888,83 @@ HttpAppendRawBuffer(
 
     return result;
 }
+/*
+ *----------------------------------------------------------------------
+ *
+ * SkipMessage --
+ *
+ *        Skip the incoming message. This is needed e.g. for "100
+ *        continue" handling.
+ *
+ * Results:
+ *        Tcl result code.
+ *
+ * Side effects:
+ *        None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+SkipMessage(
+    NsHttpTask *httpPtr
+) {
+    int result = TCL_OK;
+
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+
+    Ns_Log(Ns_LogTaskDebug, "RESET 1xx");
+
+    if (httpPtr->recvSpoolMode == NS_TRUE) {
+        /*
+         * Spool mode is activated after the header
+         * processing. Therefore, it should be here set to NS_FALSE.
+         */
+        Ns_Log(Error, "ns_http: SkipMessage is called in spool mode (should never happen).");
+
+    } else {
+        /*
+        NsHexPrint("old buffer", (unsigned char*)httpPtr->ds.string, httpPtr->ds.length,
+                   20, NS_TRUE);
+        Ns_Log(Notice, "... old <%s>", httpPtr->ds.string);
+        Ns_Log(Notice, "... replyHeaderSize %d current Size %d",
+               httpPtr->replyHeaderSize, httpPtr->ds.length);
+        */
+        if (httpPtr->ds.length == httpPtr->replyHeaderSize) {
+            /*
+             * We have received just the header. Skip it.
+             */
+            Tcl_DStringSetLength(&httpPtr->ds, (TCL_SIZE_T)0);
+
+        } else if (httpPtr->ds.length > httpPtr->replyHeaderSize) {
+            TCL_SIZE_T newSize;
+            /*
+             * We have received more than the header. Move remaining
+             * content upfront in the buffer.
+             */
+            newSize =  httpPtr->ds.length - httpPtr->replyHeaderSize;
+            assert(newSize>=0);
+            memmove(httpPtr->ds.string, httpPtr->ds.string + httpPtr->replyHeaderSize, (size_t)newSize);
+            Tcl_DStringSetLength(&httpPtr->ds, newSize);
+
+        } else {
+            Ns_Log(Error, "ns_http: SkipMessage called with header size way too large"
+                   "(should never happen)");
+        }
+        /*
+        NsHexPrint("new buffer", (unsigned char*)httpPtr->ds.string, httpPtr->ds.length,
+                   20, NS_TRUE);
+        Ns_Log(Notice, "... new <%s>", httpPtr->ds.string);
+        Ns_Log(Notice, "... replyLength %zu replySize %zu",
+               httpPtr->replyLength, httpPtr->replySize);
+        */
+        httpPtr->replyHeaderSize = 0;
+    }
+    httpPtr->flags |= NS_HTTP_HEADERS_PENDING;
+    httpPtr->status = 0;
+
+    return result;
+}
+
 
 
 /*
@@ -3372,6 +4076,7 @@ HttpAppendContent(
     int result;
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
+    NS_NONNULL_ASSERT(buffer != NULL);
 
     if ((httpPtr->flags & NS_HTTP_FLAG_CHUNKED) == 0u) {
         result = HttpAppendBuffer(httpPtr, buffer, size);
@@ -3450,23 +4155,27 @@ HttpAppendChunked(
     char        *buf = (char *)buffer;
     size_t       len = size;
     NsHttpChunk *chunkPtr;
+    NsHttpParseProc *parseProcPtr = NULL;
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
-    chunkPtr = httpPtr->chunk;
-    NS_NONNULL_ASSERT(chunkPtr != NULL);
+    NS_NONNULL_ASSERT(buffer != NULL);
 
-    Ns_Log(Ns_LogTaskDebug, "HttpAppendChunked: http:%p, task:%p",
-           (void*)httpPtr, (void*)httpPtr->task);
+    chunkPtr = httpPtr->chunk;
+    assert(chunkPtr != NULL);
+
+    Ns_Log(Ns_LogTaskDebug, "HttpAppendChunked: http:%p, task:%p bytes:%lu",
+           (void*)httpPtr, (void*)httpPtr->task, size);
+    /* NsHexPrint("", buffer, size, 20, NS_TRUE);*/
 
     while (len > 0 && result != TCL_ERROR) {
-        NsHttpParseProc *parseProcPtr;
 
         Ns_Log(Ns_LogTaskDebug, "... len %lu ", len);
 
         parseProcPtr = *(chunkPtr->parsers + chunkPtr->callx);
         while (len > 0 && parseProcPtr != NULL) {
             result = (*parseProcPtr)(httpPtr, &buf, &len);
-            Ns_Log(Ns_LogTaskDebug, "... parseproc returns %d ", result);
+            Ns_Log(Ns_LogTaskDebug, "... parse proc %d from %p returns %s ",
+                   chunkPtr->callx, (void*)chunkPtr->parsers, result == TCL_OK ? "OK" : "not ok");
             if (result != TCL_OK) {
                 break;
             }
@@ -3477,6 +4186,13 @@ HttpAppendChunked(
             chunkPtr->callx = 0; /* Repeat from the first proc */
         }
     }
+    /*
+     * When we reach the end, len == 0 and we jump out of the loop. When we
+     * have reached the end parser, call it here.
+     */
+    if (parseProcPtr == ParseEndProc) {
+        result = (*parseProcPtr)(httpPtr, &buf, &len);
+    }
 
     if (result != TCL_ERROR) {
         result = TCL_OK;
@@ -3485,7 +4201,91 @@ HttpAppendChunked(
     return result;
 }
 
-
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * HttpCleanupPerRequestData --
+ *
+ *        Cleanup per-request data. This is in essence everything inside
+ *        NsHttpTask except the keep-alive specific connection data.
+ *
+ * Results:
+ *        None
+ *
+ * Side effects:
+ *        Free up memory
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+HttpCleanupPerRequestData(
+    NsHttpTask *httpPtr,
+    const char *context
+) {
+
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+
+    Ns_Log(Ns_LogTaskDebug, "HttpCleanupPerRequestData httpPtr %p (%s) task %p host %s:%hu",
+           (void*)httpPtr, context, (void*)httpPtr->task, httpPtr->host, httpPtr->port);
+
+    if (httpPtr->spoolFileName != NULL) {
+        ns_free((void *)httpPtr->spoolFileName);
+        httpPtr->spoolFileName = NULL;
+    }
+    if (httpPtr->doneCallback != NULL) {
+        ns_free((void *)httpPtr->doneCallback);
+        httpPtr->doneCallback = NULL;
+    }
+    if (httpPtr->spoolFd != NS_INVALID_FD) {
+        (void)ns_close(httpPtr->spoolFd);
+        httpPtr->spoolFd = NS_INVALID_SOCKET;
+    }
+    if (httpPtr->bodyFileFd != NS_INVALID_FD) {
+        (void)ns_close(httpPtr->bodyFileFd);
+        httpPtr->bodyFileFd = NS_INVALID_SOCKET;
+    }
+    if (httpPtr->bodyChan != NULL) {
+        (void)Tcl_Close(NULL, httpPtr->bodyChan);
+        httpPtr->bodyChan = NULL;
+    }
+    if (httpPtr->spoolChan != NULL) {
+        (void)Tcl_Close(NULL, httpPtr->spoolChan);
+        httpPtr->spoolChan = NULL;
+    }
+    if (httpPtr->compress != NULL) {
+        (void)Ns_InflateEnd(httpPtr->compress);
+        ns_free((void *)httpPtr->compress);
+        httpPtr->compress = NULL;
+    }
+    if (httpPtr->infoObj != NULL) {
+        Tcl_DecrRefCount(httpPtr->infoObj);
+        httpPtr->infoObj = NULL;
+    }
+    if (httpPtr->replyHeaders != NULL) {
+        Ns_SetFree(httpPtr->replyHeaders);
+        httpPtr->replyHeaders = NULL;
+    }
+    if (httpPtr->timeout != NULL) {
+        ns_free((void *)httpPtr->timeout);
+        httpPtr->timeout = NULL;
+    }
+    ns_free((void *)httpPtr->url);
+    httpPtr->url = NULL;
+
+    ns_free((void *)httpPtr->method);
+    httpPtr->method = NULL;
+
+    Ns_MutexDestroy(&httpPtr->lock); /* Should not be held locked here! */
+    Tcl_DStringFree(&httpPtr->ds);
+
+    if (httpPtr->chunk != NULL) {
+        Tcl_DStringFree(&httpPtr->chunk->ds);
+        ns_free((void *)httpPtr->chunk);
+        httpPtr->chunk = NULL;
+    }
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -3501,82 +4301,129 @@ HttpAppendChunked(
  *
  *----------------------------------------------------------------------
  */
-
 static void
 HttpClose(
     NsHttpTask *httpPtr
 ) {
+    bool clearSlot = NS_TRUE;
+
     NS_NONNULL_ASSERT(httpPtr != NULL);
 
-    Ns_Log(Ns_LogTaskDebug, "HttpClose: http:%p, task:%p",
-           (void*)httpPtr, (void*)httpPtr->task);
+    assert(CkCheck(httpPtr) != NULL);
+
+    Ns_Log(Ns_LogTaskDebug, "HttpClose: http:%p task:%p host %s:%hu sock %d flags %.6x",
+           (void*)httpPtr, (void*)httpPtr->task, httpPtr->host, httpPtr->port,
+           httpPtr->sock, httpPtr->flags);
 
     /*
      * When HttpConnect runs into a failure, it might not have httpPtr->task
      * set. We cannot be sure, the task is always set.
      */
 
+    /*Ns_Log(Notice, "HttpClose bodyfileFd %d spoolFd %d",
+      httpPtr->bodyFileFd,  httpPtr->spoolFd);*/
+
     if (httpPtr->task != NULL) {
+        Ns_Log(Ns_LogTaskDebug, "=== close %p, Ns_TaskFree main task %p",
+               (void*)httpPtr, (void*)httpPtr->task);
+
         (void) Ns_TaskFree(httpPtr->task);
+        CkFree(httpPtr->task, "HttpClose (with task)");
         httpPtr->task = NULL;
+
+        if (httpPtr->sock != NS_INVALID_SOCKET
+            && (httpPtr->flags & NS_HTTP_KEEPALIVE) != 0u
+           ) {
+            const char *reason;
+
+            if (!PersistentConnectionAdd(httpPtr, &reason)) {
+                Ns_Log(Warning, "Could not add persistent connection (reason %s, host %s:%hu)",
+                       reason, httpPtr->host, httpPtr->port);
+                /*
+                 * Clear keep-alive flag.
+                 */
+                httpPtr->flags &= ~NS_HTTP_KEEPALIVE;
+            } else {
+                clearSlot = NS_FALSE;
+                //Ns_Log(Notice, "HttpClose persistent connection added ");
+            }
+
+        } else {
+            /*
+             * We have either an invalid socket or no keepalive.
+             */
+            LogDebug("HttpClose", httpPtr, "no keepalive");
+        }
     }
+
+    /*Ns_Log(Notice, "=== HttpClose frees finally httpPtr %p", (void*)httpPtr);*/
+
+    if (clearSlot && httpPtr->pos > 0u) {
+        //Ns_Log(Notice, "=== clearslot calls HttpCloseWaitingDataRelease");
+        HttpCloseWaitingDataRelease(httpPtr);
+    } else {
 #ifdef HAVE_OPENSSL_EVP_H
-    if (httpPtr->ssl != NULL) {
-        SSL_shutdown(httpPtr->ssl);
-        SSL_free(httpPtr->ssl);
-    }
-    if (httpPtr->ctx != NULL) {
-        SSL_CTX_free(httpPtr->ctx);
-    }
+        if (httpPtr->ssl != NULL) {
+            SSL_shutdown(httpPtr->ssl);
+            SSL_free(httpPtr->ssl);
+        }
+        if (httpPtr->ctx != NULL) {
+            SSL_CTX_free(httpPtr->ctx);
+        }
 #endif
-    if (httpPtr->sock != NS_INVALID_SOCKET) {
-        ns_sockclose(httpPtr->sock);
+        if (httpPtr->sock != NS_INVALID_SOCKET) {
+            ns_sockclose(httpPtr->sock);
+#ifdef NS_HTTP_TRACE_SOCKET_OPS
+            Ns_Log(Notice, "ns_http socket %d close host %s:%hu HttpClose pos %ld",
+                   httpPtr->sock, httpPtr->host, httpPtr->port, httpPtr->pos);
+#endif
+        }
     }
-    if (httpPtr->spoolFileName != NULL) {
-        ns_free((void *)httpPtr->spoolFileName);
-    }
-    if (httpPtr->doneCallback != NULL) {
-        ns_free((void *)httpPtr->doneCallback);
-    }
-    if (httpPtr->spoolFd != NS_INVALID_FD) {
-        (void)ns_close(httpPtr->spoolFd);
-    }
-    if (httpPtr->bodyFileFd != NS_INVALID_FD) {
-        (void)ns_close(httpPtr->bodyFileFd);
-    }
-    if (httpPtr->bodyChan != NULL) {
-        (void)Tcl_Close(NULL, httpPtr->bodyChan);
-    }
-    if (httpPtr->spoolChan != NULL) {
-        (void)Tcl_Close(NULL, httpPtr->spoolChan);
-    }
-    if (httpPtr->compress != NULL) {
-        (void)Ns_InflateEnd(httpPtr->compress);
-        ns_free((void *)httpPtr->compress);
-    }
-    if (httpPtr->infoObj != NULL) {
-        Tcl_DecrRefCount(httpPtr->infoObj);
-        httpPtr->infoObj = NULL;
-    }
-    if (httpPtr->replyHeaders != NULL) {
-        Ns_SetFree(httpPtr->replyHeaders);
-    }
-    if (httpPtr->timeout != NULL) {
-        ns_free((void *)httpPtr->timeout);
+    httpPtr->ssl = NULL;
+    httpPtr->ctx = NULL;
+    httpPtr->sock = NS_INVALID_SOCKET;
+
+    HttpCleanupPerRequestData(httpPtr, "HttpClose");
+    if (httpPtr->host != NULL) {
+        ns_free((void *)httpPtr->host);
     }
 
-    ns_free((void *)httpPtr->url);
-    ns_free((void *)httpPtr->method);
-
-    Ns_MutexDestroy(&httpPtr->lock); /* Should not be held locked here! */
-    Tcl_DStringFree(&httpPtr->ds);
-
-    if (httpPtr->chunk != NULL) {
-        Tcl_DStringFree(&httpPtr->chunk->ds);
-        ns_free((void *)httpPtr->chunk);
-    }
-
+    CkFree((void *)httpPtr, "finalising HttpClose");
     ns_free((void *)httpPtr);
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * HttpCloseWaitingDataRelease --
+ *
+ *        Release the close-waiting data potentially still owned by the
+ *        httpPtr (when httpPtr->pos > 0).
+ *
+ * Results:
+ *        None.
+ *
+ * Side effects:
+ *        May free slot in close-waiting list.
+ *
+ *----------------------------------------------------------------------
+ */
+static void HttpCloseWaitingDataRelease(NsHttpTask *httpPtr)
+{
+    if (httpPtr->pos > 0u) {
+
+        Ns_MutexLock(&closeWaitingMutex);
+        if (unlikely(closeWaitingList.size < httpPtr->pos)) {
+            Ns_Log(Error, "HttpCloseWaitingDataRelease sees invalid position  %ld", httpPtr->pos);
+        } else {
+            Ns_Log(Ns_LogTaskDebug, "HttpCloseWaitingDataRelease invalidates entry at position %ld", httpPtr->pos-1);
+            CloseWaitingDataClean(closeWaitingList.data[httpPtr->pos - 1]);
+        }
+        Ns_MutexUnlock(&closeWaitingMutex);
+
+        httpPtr->pos = 0u;
+    }
 }
 
 
@@ -3596,16 +4443,21 @@ HttpClose(
  *
  *----------------------------------------------------------------------
  */
-
 static void
 HttpCancel(
     NsHttpTask *httpPtr
 ) {
-    NS_NONNULL_ASSERT(httpPtr != NULL);
-    NS_NONNULL_ASSERT(httpPtr->task != NULL);
+    Ns_Task *task;
 
-    (void) Ns_TaskCancel(httpPtr->task);
-    Ns_TaskWaitCompleted(httpPtr->task);
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+    assert(httpPtr->task != NULL);
+
+    task = httpPtr->task;
+    (void) Ns_TaskCancel(task);
+    Ns_TaskWaitCompleted(task);
+
+    Ns_Log(Notice, "HttpCancel host %s:%hu pos %ld", httpPtr->host,  httpPtr->port, httpPtr->pos);
+    HttpCloseWaitingDataRelease(httpPtr);
 }
 
 
@@ -3634,13 +4486,17 @@ HttpAddInfo(
 ) {
     Tcl_Obj *keyObj, *valObj;
 
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(value != NULL);
+
     if (httpPtr->infoObj == NULL) {
         httpPtr->infoObj = Tcl_NewDictObj();
         Tcl_IncrRefCount(httpPtr->infoObj);
     }
 
-    keyObj = Tcl_NewStringObj(key, -1);
-    valObj = Tcl_NewStringObj(value, -1);
+    keyObj = Tcl_NewStringObj(key, TCL_INDEX_NONE);
+    valObj = Tcl_NewStringObj(value, TCL_INDEX_NONE);
 
     Tcl_DictObjPut(NULL, httpPtr->infoObj, keyObj, valObj);
 }
@@ -3769,7 +4625,6 @@ HttpTaskRecv(
  *
  *----------------------------------------------------------------------
  */
-
 static void
 HttpDoneCallback(
     NsHttpTask *httpPtr
@@ -3780,16 +4635,14 @@ HttpDoneCallback(
 
     NS_NONNULL_ASSERT(httpPtr != NULL);
 
-    Ns_Log(Ns_LogTaskDebug, "HttpDoneCallback: finalSockState:%.2x, err:(%s)",
-           httpPtr->finalSockState,
-           (httpPtr->error != NULL) ? httpPtr->error : "none");
+    LogDebug("HttpDoneCallback", httpPtr, "");
 
     interp = NsTclAllocateInterp( httpPtr->servPtr);
 
     result = HttpGetResult(interp, httpPtr);
 
     Tcl_DStringInit(&script);
-    Tcl_DStringAppend(&script, httpPtr->doneCallback, -1);
+    Tcl_DStringAppend(&script, httpPtr->doneCallback, TCL_INDEX_NONE);
     Ns_DStringPrintf(&script, " %d ", result);
     Tcl_DStringAppendElement(&script, Tcl_GetStringResult(interp));
 
@@ -3848,13 +4701,14 @@ HttpProc(
     NS_NONNULL_ASSERT(arg != NULL);
 
     httpPtr = (NsHttpTask *)arg;
+    assert(CkCheck(httpPtr) != NULL);
 
     Ns_Log(Ns_LogTaskDebug, "HttpProc: enter socket state %.2x", why);
 
     switch (why) {
     case NS_SOCK_INIT:
 
-        Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_INIT");
+        Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_INIT timeout:%p", (void*)httpPtr->timeout);
 
         if (httpPtr->bodyChan != NULL) {
             HttpSpliceChannel(NULL, httpPtr->bodyChan);
@@ -3898,13 +4752,18 @@ HttpProc(
             }
 
             if (n == -1) {
-                httpPtr->error = "http send failed";
+                httpPtr->error = "http send failed (initial send request)";
                 Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE send failed");
 
             } else {
                 ssize_t nb = 0;
 
                 httpPtr->next += n;
+                Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE task %p on httpPtr %p lock %p"
+                       " will send dsPtr:%p, next:%p, remain:%" PRIuz,
+                       (void*)task, (void*)httpPtr, (void*)&httpPtr->lock,
+                       (void*)httpPtr->ds.string, (void*)httpPtr->next, remain);
+
                 Ns_MutexLock(&httpPtr->lock);
                 httpPtr->sent += (size_t)n;
                 nb = (ssize_t)(httpPtr->sent - httpPtr->requestHeaderSize);
@@ -3966,7 +4825,7 @@ HttpProc(
              */
 
             Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE sendSpoolMode"
-                   " buffersize:%d buffer:%p next:%p sent:%" PRIuz,
+                   " buffersize:%" PRITcl_Size" buffer:%p next:%p sent:%" PRIuz,
                    httpPtr->ds.length, (void *)httpPtr->ds.string,
                    (void *)httpPtr->next, httpPtr->sent);
 
@@ -3975,7 +4834,7 @@ HttpProc(
                 /*
                  * Read remaining body data in chunks
                  */
-                Tcl_DStringSetLength(&httpPtr->ds, (int)toRead);
+                Tcl_DStringSetLength(&httpPtr->ds, (TCL_SIZE_T)toRead);
                 httpPtr->next = httpPtr->ds.string;
                 if (toRead > httpPtr->bodySize) {
                     toRead = httpPtr->bodySize; /* At end of the body! */
@@ -3985,7 +4844,7 @@ HttpProc(
                 } else if (httpPtr->bodyFileFd != NS_INVALID_FD) {
                     n = ns_read(httpPtr->bodyFileFd, httpPtr->next, toRead);
                 } else if (httpPtr->bodyChan != NULL) {
-                    n = Tcl_Read(httpPtr->bodyChan, httpPtr->next, (int)toRead);
+                    n = (ssize_t)Tcl_Read(httpPtr->bodyChan, httpPtr->next, (TCL_SIZE_T)toRead);
                 } else {
                     n = -1; /* Here we could read only from file or chan! */
                 }
@@ -3997,7 +4856,7 @@ HttpProc(
                      * we are at the EOF (we are reading in blocking mode!).
                      */
                     onEof = NS_TRUE;
-                    Tcl_DStringSetLength(&httpPtr->ds, (int)n);
+                    Tcl_DStringSetLength(&httpPtr->ds, (TCL_SIZE_T)n);
                 }
 
                 if (n > 0) {
@@ -4014,7 +4873,7 @@ HttpProc(
                 /*
                  * The buffer has still some content left
                  */
-                n = httpPtr->ds.length - (httpPtr->next - httpPtr->ds.string);
+                n = (ssize_t)(httpPtr->ds.length - (TCL_SIZE_T)(httpPtr->next - httpPtr->ds.string));
 
                 Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE"
                        " remaining buffersize:%" PRIdz, n);
@@ -4026,7 +4885,7 @@ HttpProc(
              */
 
             if (unlikely(n == -1)) {
-                httpPtr->error = "http read failed";
+                httpPtr->error = "http read failed (initial data to send)";
                 Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE read failed");
 
             } else {
@@ -4040,7 +4899,7 @@ HttpProc(
                        " %" PRIdz " of %" PRIuz " bytes", sent, toSend);
 
                 if (unlikely(sent == -1)) {
-                    httpPtr->error = "http send failed";
+                    httpPtr->error = "http send failed (send request)";
                     Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE send failed");
 
                 } else if (sent < toSend) {
@@ -4128,7 +4987,7 @@ HttpProc(
                              * Or, we can trigger the error immediately.
                              * We opt for the latter.
                              */
-                            httpPtr->error = "http read failed";
+                            httpPtr->error = "http read failed (chunk data to send)";
                             taskDone = NS_TRUE;
                             Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_WRITE"
                                    " short read, left:%" PRIuz, httpPtr->bodySize);
@@ -4200,11 +5059,16 @@ HttpProc(
                  * At this point we do not really know
                  * what kind of error it was.
                  */
-                httpPtr->error = "http read failed";
+                httpPtr->error = "http read failed (initial receive from server)";
                 Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_READ receive failed");
 
             } else if (n > 0) {
                 int result;
+
+                Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_READ task %p on httpPtr %p lock %p"
+                       " got some bytes %ld",
+                       (void*)task, (void*)httpPtr, (void*)&httpPtr->lock,
+                       n);
 
                 /*
                  * Most likely case: we got some bytes.
@@ -4215,10 +5079,13 @@ HttpProc(
 
                 result = HttpAppendContent(httpPtr, buf, (size_t)n);
                 if (unlikely(result != TCL_OK)) {
-                    httpPtr->error = "http read failed";
+                    httpPtr->error = "http read failed (chunk receive from server)";
                     Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_READ append failed");
                 } else {
                     Ns_ReturnCode rc = NS_OK;
+
+                  process_header:
+
                     if (httpPtr->replyHeaderSize == 0) {
 
                         /*
@@ -4226,34 +5093,62 @@ HttpProc(
                          */
                         HttpCheckHeader(httpPtr);
                     }
-                    if (httpPtr->replyHeaderSize > 0 && httpPtr->status == 0) {
 
+                    if (httpPtr->replyHeaderSize > 0 && httpPtr->status == 0) {
                         /*
                          * Parses received status/headers,
                          * decides where to spool content.
                          */
-                        rc = HttpCheckSpool(httpPtr);
+                        result = HttpCheckSpool(httpPtr);
+                        if (result == TCL_CONTINUE) {
+                            goto process_header;
+                        }
+                        rc = (result == TCL_OK ? NS_OK : NS_ERROR);
                     }
                     if (unlikely(rc != NS_OK)) {
-                        httpPtr->error = "http read failed";
+                        httpPtr->error = "http read failed (check spool)";
                         Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_READ spool failed");
                     } else {
-
                         /*
                          * At the point of reading response content (if any).
                          * Continue reading if any of the following is true:
                          *
-                         *   o. remote tells content length
-                         *   o. chunked content not fully parsed
-                         *   o. caller tells it expects content
+                         *   - headers are not complete
+                         *   - remote tells content length and it is not complete
+                         *   - we received streaming HTML content (no content-length provided)
+                         *   - chunked content not fully parsed
+                         *   - caller tells it expects content
                          */
-                        if (httpPtr->replyLength > 0
+                        if (
+                            ((httpPtr->flags & NS_HTTP_HEADERS_PENDING) != 0u)
+                            || (httpPtr->replyLength > 0
+                             && httpPtr->replySize < httpPtr->replyLength
+                             && (httpPtr->flags & NS_HTTP_FLAG_EMPTY) == 0u)
+                            || (httpPtr->flags & NS_HTTP_STREAMING) != 0u /* we rely on connection-close */
                             || ((httpPtr->flags & NS_HTTP_FLAG_CHUNKED) != 0u
                                 && (httpPtr->flags & NS_HTTP_FLAG_CHUNKED_END) == 0u)
-                            || (httpPtr->flags & NS_HTTP_FLAG_EMPTY) == 0u) {
-
+                            || ((httpPtr->flags & NS_HTTP_FLAG_CHUNKED) == 0u
+                                && httpPtr->replyLength == 0
+                                && httpPtr->replySize != 0
+                                && (httpPtr->flags & NS_HTTP_FLAG_EMPTY) == 0u)
+                        ) {
                             taskDone = NS_FALSE;
                         }
+                        LogDebug("read ok", httpPtr, "");
+                        Ns_Log(Ns_LogTaskDebug, "HttpProc: NS_SOCK_READ httpPtr->replyLength %ld"
+                               " httpPtr->replySize %ld flags %.6x %d %d %d %d -> done %d",
+                               httpPtr->replyLength, httpPtr->replySize, httpPtr->flags,
+                               (httpPtr->flags & NS_HTTP_STREAMING) != 0u,
+                               (httpPtr->replyLength > 0
+                                && httpPtr->replySize < httpPtr->replyLength
+                                && (httpPtr->flags & NS_HTTP_FLAG_EMPTY) == 0u),
+                               ((httpPtr->flags & NS_HTTP_FLAG_CHUNKED) != 0u
+                                && (httpPtr->flags & NS_HTTP_FLAG_CHUNKED_END) == 0u),
+                               ((httpPtr->flags & NS_HTTP_FLAG_CHUNKED) == 0u
+                                && httpPtr->replyLength == 0
+                                && httpPtr->replySize != 0
+                                && (httpPtr->flags & NS_HTTP_FLAG_EMPTY) == 0u),
+                               taskDone);
                     }
                 }
 
@@ -4306,6 +5201,7 @@ HttpProc(
          * the task as completed (done) right here.
          */
         taskDone = (httpPtr->doneCallback != NULL);
+        LogDebug("HttpProc: NS_SOCK_TIMEOUT", httpPtr, "");
         httpPtr->error = "http request timeout";
 
         break;
@@ -4366,9 +5262,7 @@ HttpProc(
 
     if (httpPtr != NULL) {
         httpPtr->finalSockState = why;
-        Ns_Log(Ns_LogTaskDebug, "HttpProc: exit taskDone:%d, finalSockState:%.2x,"
-               " error:(%s)", taskDone, httpPtr->finalSockState,
-               httpPtr->error != NULL ? httpPtr->error : "none");
+        LogDebug("HttpProc: exit", httpPtr, taskDone ? "done" : "not done");
         if (taskDone == NS_TRUE) {
             Ns_GetTime(&httpPtr->etime);
             Ns_TaskDone(httpPtr->task);
@@ -4399,6 +5293,8 @@ HttpSpliceChannels(
     Tcl_Interp *interp,
     NsHttpTask *httpPtr
 ) {
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+
     if (httpPtr->bodyChan != NULL) {
         HttpSpliceChannel(interp, httpPtr->bodyChan);
         httpPtr->bodyChan = NULL;
@@ -4431,6 +5327,8 @@ HttpSpliceChannel(
     Tcl_Interp *interp,
     Tcl_Channel chan
 ) {
+    NS_NONNULL_ASSERT(chan != NULL);
+
     Tcl_SpliceChannel(chan);
 
     if (interp != NULL) {
@@ -4465,6 +5363,8 @@ HttpCutChannel(
     Tcl_Channel chan
 ) {
     int result = TCL_OK;
+
+    NS_NONNULL_ASSERT(chan != NULL);
 
     if (interp != NULL) {
         if (Tcl_IsChannelShared(chan)) {
@@ -4538,7 +5438,6 @@ HttpTunnel(
     NsHttpTask *httpPtr;
     Ns_DString *dsPtr;
     Tcl_Interp *interp;
-
     NS_SOCKET   result = NS_INVALID_SOCKET;
     const char *url = "proxy-tunnel"; /* Not relevant; for logging purposes only */
     uint64_t    requestCount = 0u;
@@ -4643,6 +5542,8 @@ HttpTunnel(
      * Run the task, on success hijack the socket.
      */
     httpPtr->task = Ns_TaskCreate(httpPtr->sock, HttpProc, httpPtr);
+    CkAlloc((void *)httpPtr, "task (tunnel)");
+
     Ns_TaskRun(httpPtr->task);
     if (httpPtr->status == 200) {
         result = httpPtr->sock;
@@ -4787,8 +5688,6 @@ ParseLengthProc(
     NsHttpChunk *chunkPtr = httpPtr->chunk;
     Tcl_DString *dsPtr = &chunkPtr->ds;
 
-    Ns_Log(Ns_LogTaskDebug, "--- ParseLengthProc");
-
     /*
      * Collect all that looks as a hex digit
      */
@@ -4797,11 +5696,13 @@ ParseLengthProc(
         len--;
         buf++;
     }
+    Ns_Log(Ns_LogTaskDebug, "--- ParseLengthProc hex digits <%s>", dsPtr->string);
 
     if (len == 0) {
         result = TCL_BREAK;
     } else {
         Tcl_WideInt cl = 0;
+
         if (Ns_StrToWideInt(dsPtr->string, &cl) != NS_OK || cl < 0) {
             result = TCL_ERROR;
         } else {
@@ -4860,7 +5761,7 @@ ParseBodyProc(
     size_t       len = *size;
     NsHttpChunk *chunkPtr = httpPtr->chunk;
 
-    Ns_Log(Ns_LogTaskDebug, "--- ParseBodyProc");
+    Ns_Log(Ns_LogTaskDebug, "--- ParseBodyProc chunk length %ld", chunkPtr->length);
 
     if (chunkPtr->length == 0) {
         Ns_Set     *headersPtr;
@@ -4873,8 +5774,10 @@ ParseBodyProc(
         headersPtr = httpPtr->replyHeaders;
         trailer = Ns_SetIGet(headersPtr, trailersHeader);
         if (trailer != NULL) {
+            Ns_Log(Ns_LogTaskDebug, "... switch to trailer parsers");
             chunkPtr->parsers = TrailerParsers;
         } else {
+            Ns_Log(Ns_LogTaskDebug, "... switch to end parsers");
             chunkPtr->parsers = EndParsers;
         }
 
@@ -5012,6 +5915,8 @@ ParseEndProc(
     char **UNUSED(buffer),
     size_t *size
 ) {
+    Ns_Log(Ns_LogTaskDebug, "--- ParseEndProc");
+
     *size = 0;
     httpPtr->flags |= NS_HTTP_FLAG_CHUNKED_END;
 
@@ -5086,6 +5991,329 @@ TrailerInitProc(
 
     return TCL_OK;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * PersistentConnectionLookup --
+ *
+ *        Check, if for the connection key (host + port) an already open
+ *        connection exists in the form of a task in the close-waiting list.
+ *        On success, delete the connection entry and return it to the
+ *        caller. This prevents double-reuses.
+ *
+ * Results:
+ *        Boolean value indicating success.
+ *
+ * Side effects:
+ *        Potentially free up memory.
+
+ *----------------------------------------------------------------------
+ */
+static bool
+PersistentConnectionLookup(const char *remoteHost, unsigned short remotePort,
+                           CloseWaitingData *cwDataPtr)
+{
+    bool   success = NS_FALSE;
+    size_t i;
+
+    NS_NONNULL_ASSERT(remoteHost != NULL);
+    NS_NONNULL_ASSERT(cwDataPtr != NULL);
+
+    /*Ns_Log(Notice, "PersistentConnectionLookup host %s:%hu", remoteHost, remotePort);*/
+
+    Ns_MutexLock(&closeWaitingMutex);
+    for (i = 0; i < closeWaitingList.size; i ++) {
+        CloseWaitingData *currentCwDataPtr = closeWaitingList.data[i];
+
+        /*Ns_Log(Notice, "... compare with host %s:%hu state %d",
+          currentCwDataPtr->host, currentCwDataPtr->port, currentCwDataPtr->state);*/
+
+        if (currentCwDataPtr->state == CW_WAITING
+            && strcmp(remoteHost, currentCwDataPtr->host) == 0
+            && currentCwDataPtr->port == remotePort) {
+            /*
+             * We copy more than necessary, but KISS.
+             */
+            *cwDataPtr = *currentCwDataPtr;
+            currentCwDataPtr->state = CW_INUSE;
+            success = NS_TRUE;
+            break;
+        }
+    }
+    Ns_MutexUnlock(&closeWaitingMutex);
+
+    /*if (success) {
+        Ns_Log(Notice, "PersistentConnectionLookup host %s:%hu -> %d",
+               remoteHost, remotePort, success);
+               }*/
+
+    return success;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * PersistentConnectionAdd --
+ *
+ *        Add the persistent connection data to the lookup table.
+ *
+ * Results:
+ *        Boolean value indicating that the lookup was successful.
+ *
+ * Side effects:
+ *        Potentially adding a slot to the free-waiting list.
+
+ *----------------------------------------------------------------------
+ */
+static bool
+PersistentConnectionAdd(NsHttpTask *httpPtr, const char **reasonPtr)
+{
+    CloseWaitingData *cwDataPtr = NULL;
+    size_t            i;
+    int               errorCode;
+    const char       *operation;
+
+    NS_NONNULL_ASSERT(httpPtr != NULL);
+    NS_NONNULL_ASSERT(reasonPtr != NULL);
+
+    /*Ns_Log(Notice,"PersistentConnectionAdd host %s:%hu input pos %ld input sock %d",
+      httpPtr->host, httpPtr->port, httpPtr->pos, httpPtr->sock);*/
+
+    if (httpPtr->sock == NS_INVALID_SOCKET
+        || Ns_SockErrorCode(NULL, httpPtr->sock) != 0
+        ) {
+       *reasonPtr = "cannot add invalid socket to close waiting list";
+       return NS_FALSE;
+    }
+
+    errorCode = Ns_SockErrorCode(NULL, httpPtr->sock);
+    /*
+     * Check, if the socket is in an error state. We could also check here for
+     * additional error states from OpenSSL, which are kept per thread.
+     */
+    if (errorCode != 0) {
+        *reasonPtr = "cannot add socket in error state to close waiting list";
+        return NS_FALSE;
+    }
+
+    Ns_MutexLock(&closeWaitingMutex);
+
+    if (httpPtr->pos != 0) {
+        /*
+         * The incoming httpPtr has already a slot assignment. Reuse it.
+         */
+        if (unlikely(httpPtr->pos > closeWaitingList.size)) {
+            *reasonPtr = "provided slot position is invalid";
+            Ns_MutexUnlock(&closeWaitingMutex);
+            return NS_FALSE;
+        }
+        cwDataPtr = closeWaitingList.data[httpPtr->pos-1];
+        operation = "reuse";
+        /*Ns_Log(Notice,"PersistentConnectionAdd host %s:%hu reuse slot on input pos %ld",
+          httpPtr->host, httpPtr->port, httpPtr->pos);*/
+    } else {
+        /*
+         * Get a slot which can be reused.
+         */
+        for (i = 0; i < closeWaitingList.size; i ++) {
+            CloseWaitingData *currentCwDataPtr = closeWaitingList.data[i];
+
+            if (currentCwDataPtr->state == CW_FREE) {
+                /*
+                 * Reuse free slot or slot. We could also check for other
+                 * reuse/cleanup conditions in error states, but this proved
+                 * to be tricky due to potential crashes in OpenSSL during
+                 * cleanup.
+                 */
+                cwDataPtr = currentCwDataPtr;
+                operation = "recycled";
+                break;
+            }
+        }
+    }
+    if (cwDataPtr == NULL) {
+        /*
+         * Re-using a slot did not succeed. Allocate a new slot.
+         */
+        cwDataPtr = ns_calloc(1u, sizeof(CloseWaitingData));
+        cwDataPtr->pos = closeWaitingList.size;
+        Ns_Log(Notice, "PersistentConnectionAdd: allocate new slot for '%s:%hu' on pos %ld sock %d",
+               httpPtr->host, httpPtr->port, cwDataPtr->pos, httpPtr->sock);
+        Ns_DListAppend(&closeWaitingList, cwDataPtr);
+        operation = "added";
+    }
+
+    cwDataPtr->state = CW_WAITING;
+    cwDataPtr->sock = httpPtr->sock;
+    cwDataPtr->ssl = httpPtr->ssl;
+    cwDataPtr->ctx = httpPtr->ctx;
+
+    Ns_GetTime(&cwDataPtr->expire);
+    Ns_IncrTime(&cwDataPtr->expire, httpPtr->keepAliveTimeout.sec, httpPtr->keepAliveTimeout.usec);
+
+    if (cwDataPtr->host != NULL) {
+        ns_free((char*)cwDataPtr->host);
+    }
+    cwDataPtr->host = ns_strdup(httpPtr->host);
+    cwDataPtr->port = httpPtr->port;
+
+    Ns_MutexUnlock(&closeWaitingMutex);
+
+    httpPtr->sock = NS_INVALID_SOCKET;
+    httpPtr->ctx = NULL;
+    httpPtr->ssl = NULL;
+
+    Ns_Log(Ns_LogTaskDebug,"PersistentConnectionAdd %s persistent connection for host %s:%hu on pos %ld"
+           " sock %d state %s with keepalive " NS_TIME_FMT " expire %ld",
+           operation, httpPtr->host, httpPtr->port, cwDataPtr->pos,
+           cwDataPtr->sock, CloseWaitingDataPrettyState(cwDataPtr),
+           (int64_t) httpPtr->keepAliveTimeout.sec, httpPtr->keepAliveTimeout.usec,
+           cwDataPtr->expire.sec);
+
+    return NS_TRUE;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * CloseWaitingDataClean --
+ *
+ *        Clean the passed-in CloseWaitingData. It closes the socket, shuts
+ *        down the OpenSSL connection and frees the stored hostname. Finally,
+ *        the state of the slot is make reusable (set to state CW_FREE).
+ *
+ *        This function is supposed to be called under a closeWaitingMutex
+ *        lock.
+ *
+ * Results:
+ *        None.
+ *
+ * Side effects:
+ *        Potentially closing socket and freeing memory.
+
+ *----------------------------------------------------------------------
+ */
+static void
+CloseWaitingDataClean(CloseWaitingData *cwDataPtr)
+{
+    NS_NONNULL_ASSERT(cwDataPtr != NULL);
+
+    /*Ns_Log(Notice, "CloseWaitingDataClean pos %ld called with sock %d host %s:%hu in state %s",
+           cwDataPtr->pos,
+           cwDataPtr->sock, cwDataPtr->host, cwDataPtr->port,
+           CloseWaitingDataPrettyState(cwDataPtr));*/
+
+#ifdef HAVE_OPENSSL_EVP_H
+    if (cwDataPtr->ssl != NULL) {
+        SSL_shutdown(cwDataPtr->ssl);
+        SSL_free(cwDataPtr->ssl);
+        cwDataPtr->ssl = NULL;
+    }
+    if (cwDataPtr->ctx != NULL) {
+        SSL_CTX_free(cwDataPtr->ctx);
+        cwDataPtr->ctx = NULL;
+    }
+#endif
+    if (cwDataPtr->sock != NS_INVALID_SOCKET) {
+        ns_sockclose(cwDataPtr->sock);
+#ifdef NS_HTTP_TRACE_SOCKET_OPS
+        Ns_Log(Notice, "ns_http socket %d close host %s:%hu CloseWaitingDataClean pos %ld",
+               cwDataPtr->sock, cwDataPtr->host, cwDataPtr->port, cwDataPtr->pos);
+#endif
+        cwDataPtr->sock = NS_INVALID_SOCKET;
+    }
+    if (cwDataPtr->host != NULL) {
+        ns_free((char *)cwDataPtr->host);
+        cwDataPtr->host = NULL;
+    }
+    cwDataPtr->state = CW_FREE;
+
+    /*Ns_Log(Notice, "CloseWaitingDataClean pos %ld ... final state %s",
+           cwDataPtr->pos,
+           CloseWaitingDataPrettyState(cwDataPtr));*/
+}
+
+
+#ifdef MEM_RECORD_DEBUG
+/*
+ *----------------------------------------------------------------------
+ *
+ * CkAlloc --
+ *
+ *        Debug function, recording alloc operation
+ *
+ * Results:
+ *        None.
+ *
+ * Side effects:
+ *        Record the pointer and a label in the debug table.
+
+ *----------------------------------------------------------------------
+ */
+static void CkAlloc(const void *ptr, const char *label)
+{
+    Tcl_HashEntry *hPtr;
+    int            isNew;
+
+    //Ns_Log(Notice, "--- CkAlloc %p (%s)", ptr, label);
+
+    Ns_MutexLock(&ckMutex);
+    hPtr = Tcl_CreateHashEntry(&ckPointerTable, ptr, &isNew);
+
+    if (likely(isNew != 0)) {
+        Tcl_SetHashValue(hPtr, label);
+    } else {
+        Ns_Log(Error, "CkAlloc: cannot add pointer %p, value exists already", ptr);
+    }
+    Ns_MutexUnlock(&ckMutex);
+}
+
+static const char *CkCheck(const void *ptr)
+{
+    Tcl_HashEntry *hPtr;
+    const char    *result = NULL;
+
+    Ns_MutexLock(&ckMutex);
+    hPtr = Tcl_FindHashEntry(&ckPointerTable, ptr);
+
+    if (hPtr != NULL) {
+        result = (const char *)Tcl_GetHashValue(hPtr);
+    }
+    Ns_MutexUnlock(&ckMutex);
+    //Ns_Log(Notice, "--- CkCheck %p -> %s", ptr, result);
+    return result;
+}
+
+static void CkFree(const void *ptr, const char *message)
+{
+    Tcl_HashEntry *hPtr, *hPtr2;
+
+    //Ns_Log(Notice, "--- CkFree %p", ptr);
+
+    Ns_MutexLock(&ckMutex);
+    hPtr = Tcl_FindHashEntry(&ckPointerTable, ptr);
+
+    if (likely(hPtr != NULL)) {
+        int isNew;
+
+        hPtr2 = Tcl_CreateHashEntry(&ckPointerDeletionTable, ptr, &isNew);
+        Tcl_SetHashValue(hPtr, message);
+        Tcl_DeleteHashEntry(hPtr);
+    } else {
+        Ns_Log(Error, "--- CkFree: cannot free pointer %p, value does not exist: %s", ptr, message);
+        hPtr2 = Tcl_FindHashEntry(&ckPointerDeletionTable, ptr);
+        if (hPtr2 != NULL) {
+            Ns_Log(Error, "... pointer was already deleted at: %s", (char*)Tcl_GetHashValue(hPtr2));
+        } else {
+            Ns_Log(Error, "... pointer was never allocated");
+        }
+    }
+    Ns_MutexUnlock(&ckMutex);
+}
+#endif
 
 /*
  * Local Variables:

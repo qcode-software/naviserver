@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -176,13 +158,13 @@ FreeFuncptrEntry(Tcl_HashEntry *hPtr)
  *----------------------------------------------------------------------
  */
 
-static unsigned int
+static TCL_HASH_TYPE
 FuncptrKey(Tcl_HashTable *UNUSED(tablePtr), void *keyPtr)
 {
   /*
    * Simply return the value part of the funcptrEntry as hash value.
    */
-  return PTR2UINT(((funcptrEntry_t *)keyPtr)->funcptr);
+  return PTR2TCL_SIZE(((funcptrEntry_t *)keyPtr)->funcptr);
 }
 
 /*
@@ -283,6 +265,46 @@ Ns_RegisterProcInfo(ns_funcptr_t procAddr, const char *desc, Ns_ArgProc *argProc
     }
     infoPtr->desc = desc;
     infoPtr->proc = argProc;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsGetProcFunction --
+ *
+ *      Return the function pointer of a function with the specified
+ *      description value.
+ *
+ * Results:
+ *      function pointer or NULL
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+ns_funcptr_t
+NsGetProcFunction(const char *description)
+{
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
+    ns_funcptr_t         result = NULL;
+
+    NS_NONNULL_ASSERT(description != NULL);
+
+    hPtr = Tcl_FirstHashEntry(&infoHashTable, &search);
+    while (hPtr != NULL) {
+        const Info *infoPtr;
+
+        infoPtr = Tcl_GetHashValue(hPtr);
+        if (strcmp(infoPtr->desc, description) == 0) {
+            Ns_Log(Debug, "... function desc: '%s' => %d",
+                   infoPtr->desc, strcmp(infoPtr->desc, description));
+            result = (ns_funcptr_t)Tcl_GetHashKey(&infoHashTable, hPtr);
+        }
+        hPtr = Tcl_NextHashEntry(&search);
+    }
+    return result;
 }
 
 

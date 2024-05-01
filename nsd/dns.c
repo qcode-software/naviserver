@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -83,6 +65,7 @@ static Ns_Cache *hostCache;
 static Ns_Cache *addrCache;
 static Ns_Time   ttl;       /* Time in seconds each entry can live in the cache. */
 static Ns_Time   timeout;   /* Time in seconds to wait for concurrent update.  */
+static Ns_Cs     getDNScs = NULL;
 
 
 
@@ -226,7 +209,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, bo
                 Ns_CacheBroadcast(cache);
             } else {
                 Ns_DStringNAppend(&ds, Ns_CacheGetValue(entry),
-                                  (int)Ns_CacheGetSize(entry));
+                                  (TCL_SIZE_T)Ns_CacheGetSize(entry));
                 success = NS_TRUE;
             }
             Ns_CacheUnlock(cache);
@@ -245,7 +228,7 @@ DnsGet(GetProc *getProc, Ns_DString *dsPtr, Ns_Cache *cache, const char *key, bo
             while (*p != '\0' && CHARTYPE(space, *p) == 0) {
                 ++p;
             }
-            Ns_DStringSetLength(&ds, (int)(p - ds.string));
+            Ns_DStringSetLength(&ds, (TCL_SIZE_T)(p - ds.string));
         }
         Ns_DStringNAppend(dsPtr, ds.string, ds.length);
     }
@@ -426,8 +409,7 @@ GetHost(Ns_DString *dsPtr, const char *addr)
     int result;
     bool status = NS_FALSE;
 #ifndef HAVE_MTSAFE_DNS
-    static Ns_Cs cs;
-    Ns_CsEnter(&cs);
+    Ns_CsEnter(&getDNScs);
 #endif
 
     memset(&sa, 0, sizeof(struct sockaddr_in));
@@ -456,7 +438,7 @@ GetHost(Ns_DString *dsPtr, const char *addr)
          */
     }
 #ifndef HAVE_MTSAFE_DNS
-    Ns_CsLeave(&cs);
+    Ns_CsLeave(&getDNScs);
 #endif
 
     return status;
@@ -503,14 +485,13 @@ static bool
 GetHost(Ns_DString *dsPtr, const char *addr)
 {
     struct sockaddr_in sa;
-    static Ns_Cs cs;
     bool status = NS_FALSE;
 
     sa.sin_addr.s_addr = inet_addr(addr);
     if (sa.sin_addr.s_addr != INADDR_NONE) {
         struct hostent *he;
 
-        Ns_CsEnter(&cs);
+        Ns_CsEnter(&getDNScs);
         he = gethostbyaddr((char *) &sa.sin_addr,
                            sizeof(struct in_addr), AF_INET);
         if (he == NULL) {
@@ -519,7 +500,7 @@ GetHost(Ns_DString *dsPtr, const char *addr)
             Ns_DStringAppend(dsPtr, he->h_name);
             status = NS_TRUE;
         }
-        Ns_CsLeave(&cs);
+        Ns_CsLeave(&getDNScs);
     }
     return status;
 }
@@ -535,9 +516,8 @@ GetAddr(Ns_DString *dsPtr, const char *host)
     int              result;
     bool             status = NS_FALSE;
 #ifndef HAVE_MTSAFE_DNS
-    static Ns_Cs     cs;
 
-    Ns_CsEnter(&cs);
+    Ns_CsEnter(&getDNScs);
 #endif
 
     memset(&hints, 0, sizeof(hints));
@@ -568,7 +548,7 @@ GetAddr(Ns_DString *dsPtr, const char *host)
          */
     }
 #ifndef HAVE_MTSAFE_DNS
-    Ns_CsLeave(&cs);
+    Ns_CsLeave(&getDNScs);
 #endif
     return status;
 }
@@ -641,10 +621,9 @@ GetAddr(Ns_DString *dsPtr, const char *host)
 {
     struct hostent *he;
     struct in_addr ia, *ptr;
-    static Ns_Cs cs;
     bool status = NS_FALSE;
 
-    Ns_CsEnter(&cs);
+    Ns_CsEnter(&getDNScs);
     he = gethostbyname(host);
     if (he == NULL) {
         LogError("gethostbyname", h_errno);
@@ -660,7 +639,7 @@ GetAddr(Ns_DString *dsPtr, const char *host)
             status = NS_TRUE;
         }
     }
-    Ns_CsLeave(&cs);
+    Ns_CsLeave(&getDNScs);
 
     return status;
 }
@@ -674,8 +653,54 @@ GetAddr(Ns_DString *dsPtr, const char *host)
 #endif /* HAVE_IPV6 */
 
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsHostnameIsNumericIP --
+ *
+ *      Check, of the specified hostname is a numeric IP address
+ *      (IPv4 or IPv6).
+ *
+ * Results:
+ *      Boolean.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+bool
+NsHostnameIsNumericIP(const char *hostname)
+{
+    bool        result = NS_TRUE;
 
+    NS_NONNULL_ASSERT(hostname != NULL);
 
+    /*
+     * When the hostname contains a colon, it must be an IPv6
+     * address. It will be regarded as numeric.
+     */
+    if (strchr(hostname, INTCHAR(':')) == NULL) {
+        /*
+         * Otherwise, make sure, the name contains only digits or
+         * dots.
+         */
+        const char *p = hostname;
+
+        while (*p != 0) {
+            char c = *p;
+
+            if ((c >= '0' && c <= '9') || c == '.') {
+                p++;
+                continue;
+            }
+            result = NS_FALSE;
+            break;
+        }
+    }
+
+    return result;
+}
 
 
 
@@ -740,6 +765,26 @@ LogError(char *func, int h_errnop)
 }
 
 #endif
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsInitDNS --
+ *
+ *      Initialize once the critical section.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      One-time initialization.
+ *
+ *----------------------------------------------------------------------
+ */
+void NsInitDNS(void) {
+    //fprintf(stderr, "==== NsInitDNS =====================================\n");
+    Ns_CsInit(&getDNScs);
+}
 
 /*
  * Local Variables:

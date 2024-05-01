@@ -1,30 +1,12 @@
 #
-# The contents of this file are subject to the Mozilla Public License
-# Version 1.1 (the "License"); you may not use this file except in
-# compliance with the License. You may obtain a copy of the License at
-# http://www.mozilla.org/.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# The Initial Developer of the Original Code and related documentation
+# is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+# America Online, Inc. All Rights Reserved.
 #
-# The Original Code is AOLserver Code and related documentation
-# distributed by AOL.
-#
-# The Initial Developer of the Original Code is America Online,
-# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
-# Inc. All Rights Reserved.
-#
-# Alternatively, the contents of this file may be used under the terms
-# of the GNU General Public License (the "GPL"), in which case the
-# provisions of GPL are applicable instead of those above.  If you wish
-# to allow use of your version of this file only under the terms of the
-# GPL and not to allow others to use your version of this file under the
-# License, indicate your decision by deleting the provisions above and
-# replace them with the notice and other provisions required by the GPL.
-# If you do not delete the provisions above, a recipient may use your
-# version of this file under either the License or the GPL.
 #
 
 #
@@ -87,7 +69,7 @@ set	pagedir			$serverdir/$pageroot
 ########################################################################
 
 ns_section ns/server/${server}/modules {
-    ns_param	nssock			${homedir}/bin/nssock
+    ns_param	http			${homedir}/bin/nssock
     ns_param	nslog			${homedir}/bin/nslog
     ns_param	nscgi			${homedir}/bin/nscgi
     ns_param	nsperm			${homedir}/bin/nsperm
@@ -337,6 +319,12 @@ ns_section ns/server/${server} {
     #ns_param	highwatermark	100     ;# 80; allow concurrent creates above this queue-is percentage
                                         ;# 100 means to disable concurrent creates
 
+    #
+    # Configuration of replies
+    #
+    # ns_param	noticedetail	false	;# true, return detail information in server reply
+    # ns_param	noticeadp	returnnotice.adp ;# ADP file for ns_returnnotice.
+    
     # Compress response character data: ns_return, ADP etc.
     ns_param	compressenable		off     ;# Default; use ns_conn compress to override
     ns_param	compresslevel		4       ;# 1-9 where 9 is high compression, high overhead
@@ -482,10 +470,10 @@ ns_section ns/fastpath {
 }
 
 ########################################################################
-# Socket driver module (HTTP)  -- nssock
+# Socket driver module nssock for HTTP connections
 ########################################################################
 
-ns_section ns/server/${server}/module/nssock {
+ns_section ns/server/${server}/module/http {
 
     # TCP port server will listen on
     ns_param	port			$port
@@ -676,13 +664,13 @@ ns_section ns/server/${server}/module/nscp/users {
 #
 ########################################################################
 
-ns_section ns/module/nssock {
+ns_section ns/module/http {
     ns_param	port			$port
     ns_param	hostname		$hostname
     ns_param	address			$address     ;# Space separated list of IP addresses
     ns_param	defaultserver		$server
 }
-ns_section ns/module/nssock/servers {
+ns_section ns/module/http/servers {
     ns_param	$server		$hostname
 }
 

@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -53,7 +35,7 @@ typedef struct TclCache {
  * Local functions defined in this file
  */
 
-static int CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, bool append);
+static int CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, bool append);
 
 static Ns_Entry *CreateEntry(const NsInterp *itPtr, TclCache *cPtr, const char *key,
                              int *newPtr, Ns_Time *timeoutPtr, const Ns_CacheTransactionStack *transactionStackPtr)
@@ -73,7 +55,7 @@ static Tcl_Obj*GetCacheNames(NsServer *servPtr, bool withUncommittedEntries)
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
 static int
-CacheTransactionFinishObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, bool commit);
+CacheTransactionFinishObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, bool commit);
 
 static int
 CacheTransactionFinish(NsServer *servPtr, const char *cacheName, uintptr_t transactionEpoch, bool commit, unsigned long *countPtr)
@@ -83,7 +65,7 @@ static int
 CacheTransactionFinishPop(NsInterp *itPtr, Tcl_Obj *listObj, bool commit, unsigned long *countPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
-static int CacheEval(Tcl_Interp *interp, int nargs, int objc, Tcl_Obj *const* objv);
+static int CacheEval(Tcl_Interp *interp, TCL_SIZE_T nargs, TCL_OBJC_T objc, Tcl_Obj *const* objv);
 
 static Ns_ObjvProc ObjvCache;
 
@@ -124,10 +106,10 @@ GetCacheNames(NsServer *servPtr, bool withUncommittedEntries) {
             const TclCache *cPtr = Tcl_GetHashValue(hPtr);
 
             if (Ns_CacheGetNrUncommittedEntries(cPtr->cache) > 0) {
-                Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewStringObj(key, -1));
+                Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
             }
         } else {
-            Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewStringObj(key, -1));
+            Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
         }
     }
     Ns_RWLockUnlock(&servPtr->tcl.cachelock);
@@ -192,7 +174,7 @@ TclCacheCreate(const char *name, size_t maxEntry, size_t maxSize,
  */
 
 int
-NsTclCacheCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char        *name = NULL;
     int         result = TCL_OK;
@@ -258,7 +240,7 @@ NsTclCacheCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
  */
 
 int
-NsTclCacheExistsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheExistsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int       result = TCL_OK;
     TclCache *cPtr = NULL;
@@ -305,9 +287,10 @@ NsTclCacheExistsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
  */
 
 int
-NsTclCacheConfigureObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheConfigureObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    int         result = TCL_OK, nargs = 0;
+    int         result = TCL_OK;
+    TCL_SIZE_T  nargs = 0;
     Tcl_WideInt maxSize = 0, maxEntry = 0;
     Ns_Time    *timeoutPtr = NULL, *expPtr = NULL;
     TclCache   *cPtr = NULL;
@@ -426,14 +409,14 @@ NsTclCacheConfigureObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, T
  *----------------------------------------------------------------------
  */
 static int
-CacheEval(Tcl_Interp *interp, int nargs, int objc, Tcl_Obj *const* objv)
+CacheEval(Tcl_Interp *interp, TCL_SIZE_T nargs, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int status;
 
     if (nargs == 1) {
         status = Tcl_EvalObjEx(interp, objv[objc-1], 0);
     } else {
-        status = Tcl_EvalObjv(interp, nargs, objv + (objc-nargs), 0);
+        status = Tcl_EvalObjv(interp, nargs, objv + ((TCL_SIZE_T)objc-nargs), 0);
     }
     if (status == TCL_RETURN) {
         status = TCL_OK;
@@ -464,12 +447,13 @@ CacheEval(Tcl_Interp *interp, int nargs, int objc, Tcl_Obj *const* objv)
  */
 
 int
-NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     TclCache   *cPtr = NULL;
     char       *key = NULL;
     Ns_Time    *timeoutPtr = NULL, *expPtr = NULL;
-    int         nargs = 0, force = (int)NS_FALSE, status;
+    int         force = (int)NS_FALSE, status;
+    TCL_SIZE_T  nargs = 0;
 
     Ns_ObjvSpec opts[] = {
         {"-timeout", Ns_ObjvTime,  &timeoutPtr, NULL},
@@ -518,7 +502,7 @@ NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
 
         } else if (likely(isNew == 0 && force == (int)NS_FALSE)) {
             char    *value = Ns_CacheGetValueT(entry, transactionStackPtr);
-            Tcl_Obj *resultObj = Tcl_NewStringObj(value, (int)Ns_CacheGetSize(entry));
+            Tcl_Obj *resultObj = Tcl_NewStringObj(value, (TCL_SIZE_T)Ns_CacheGetSize(entry));
 
             /*
              * We have a value for the cache entry, return it.
@@ -627,7 +611,7 @@ NsTclCacheEvalObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
  */
 
 int
-NsTclCacheIncrObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheIncrObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp  *itPtr = clientData;
     TclCache  *cPtr;
@@ -696,24 +680,25 @@ NsTclCacheIncrObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
  */
 
 int
-NsTclCacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return CacheAppendObjCmd(clientData, interp, objc, objv, NS_TRUE);
 }
 
 int
-NsTclCacheLappendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheLappendObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return CacheAppendObjCmd(clientData, interp, objc, objv, NS_FALSE);
 }
 
 static int
-CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, bool append)
+CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, bool append)
 {
     NsInterp  *itPtr = clientData;
     TclCache  *cPtr = NULL;
     char      *key = NULL;
-    int        result = TCL_OK, nelements = 0;
+    int        result = TCL_OK;
+    TCL_SIZE_T nelements = 0;
     Ns_Time   *timeoutPtr = NULL, *expPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
@@ -745,14 +730,14 @@ CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         if (entry == NULL) {
             result = TCL_ERROR;
         } else {
-            Tcl_Obj  *valObj = Tcl_NewObj();
-            int       i;
+            Tcl_Obj   *valObj = Tcl_NewObj();
+            TCL_OBJC_T i;
 
             if (isNew == 0) {
                 Tcl_SetStringObj(valObj, Ns_CacheGetValueT(entry, transactionStackPtr),
-                                 (int)Ns_CacheGetSize(entry));
+                                 (TCL_SIZE_T)Ns_CacheGetSize(entry));
             }
-            for (i = objc - nelements; i < objc; i++) {
+            for (i = objc - (TCL_OBJC_T)nelements; i < objc; i++) {
                 if (append) {
                     Tcl_AppendObjToObj(valObj, objv[i]);
                 } else if (Tcl_ListObjAppendElement(interp, valObj, objv[i]) != TCL_OK) {
@@ -789,7 +774,7 @@ CacheAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  */
 
 int
-NsTclCacheNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+NsTclCacheNamesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     const NsInterp      *itPtr = clientData;
     NsServer            *servPtr = itPtr->servPtr;
@@ -835,7 +820,7 @@ noGlobChars(const char *pattern)
 
 
 int
-NsTclCacheKeysObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheKeysObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     TclCache        *cPtr = NULL;
     const Ns_Entry  *entry;
@@ -872,7 +857,7 @@ NsTclCacheKeysObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
         Ns_CacheLock(cPtr->cache);
         entry = Ns_CacheFindEntryT(cPtr->cache, pattern, transactionStackPtr);
         if (entry != NULL && Ns_CacheGetValueT(entry, transactionStackPtr) != NULL) {
-            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(pattern, -1));
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(pattern, TCL_INDEX_NONE));
         }
         Ns_CacheUnlock(cPtr->cache);
         Tcl_SetObjResult(interp, listObj);
@@ -893,7 +878,7 @@ NsTclCacheKeysObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
             const char *key = Ns_CacheKey(entry);
 
             if (pattern == NULL || Tcl_StringMatch(key, pattern) == 1) {
-                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, -1));
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
             }
             entry = Ns_CacheNextEntryT(&search, transactionStackPtr);
         }
@@ -925,10 +910,11 @@ NsTclCacheKeysObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
  */
 
 int
-NsTclCacheFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheFlushObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     TclCache        *cPtr = NULL;
-    int              glob = (int)NS_FALSE, npatterns = 0, result = TCL_OK;
+    int              glob = (int)NS_FALSE, result = TCL_OK;
+    TCL_SIZE_T       npatterns = 0;
     const NsInterp  *itPtr = clientData;
     const Ns_CacheTransactionStack *transactionStackPtr = &itPtr->cacheTransactionStack;
 
@@ -949,7 +935,8 @@ NsTclCacheFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
 
     } else {
         Ns_Entry  *entry;
-        int        nflushed = 0, i;
+        int        nflushed = 0;
+        TCL_SIZE_T i;
         Ns_Cache  *cache;
 
         assert(cPtr != NULL);
@@ -985,7 +972,7 @@ NsTclCacheFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
              */
 
             for (i = npatterns; i > 0; i--) {
-                entry = Ns_CacheFindEntryT(cache, Tcl_GetString(objv[objc-i]), transactionStackPtr);
+                entry = Ns_CacheFindEntryT(cache, Tcl_GetString(objv[(TCL_SIZE_T)objc-i]), transactionStackPtr);
                 if (entry != NULL && Ns_CacheGetValueT(entry, transactionStackPtr) != NULL) {
                     Ns_CacheFlushEntry(entry);
                     nflushed++;
@@ -1003,7 +990,7 @@ NsTclCacheFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
                 const char *key = Ns_CacheKey(entry);
 
                 for (i = npatterns; i > 0; i--) {
-                    const char *pattern = Tcl_GetString(objv[objc-i]);
+                    const char *pattern = Tcl_GetString(objv[(TCL_SIZE_T)objc-i]);
 
                     if (Tcl_StringMatch(key, pattern) == 1) {
                         Ns_CacheFlushEntry(entry);
@@ -1041,7 +1028,7 @@ NsTclCacheFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 int
-NsTclCacheGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     TclCache   *cPtr = NULL;
     char       *key;
@@ -1072,7 +1059,7 @@ NsTclCacheGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
             void  *value = Ns_CacheGetValueT(entry, transactionStackPtr);
 
             if (value != NULL) {
-                resultObj = Tcl_NewStringObj(value, -1);
+                resultObj = Tcl_NewStringObj(value, TCL_INDEX_NONE);
             } else {
                 resultObj = NULL;
             }
@@ -1122,7 +1109,7 @@ NsTclCacheGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclCacheStatsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheStatsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     TclCache   *cPtr = NULL;
     int         contents = (int)NS_FALSE, reset = (int)NS_FALSE, result = TCL_OK;
@@ -1266,7 +1253,7 @@ static void
 SetEntry(NsInterp *itPtr, TclCache *cPtr, Ns_Entry *entry, Tcl_Obj *valObj, Ns_Time *expPtr, int cost)
 {
     const char *bytes;
-    int         len;
+    TCL_SIZE_T  len;
     size_t      valueSize;
 
     NS_NONNULL_ASSERT(cPtr != NULL);
@@ -1308,9 +1295,6 @@ SetEntry(NsInterp *itPtr, TclCache *cPtr, Ns_Entry *entry, Tcl_Obj *valObj, Ns_T
                 trPtr =  Ns_RelativeTime(&tr, expPtr);
                 //fprintf(stderr, "call Ns_RelativeTime with %p (2) -> %p\n", (void*)expPtr, (void*)trPtr);
                 if (trPtr != NULL) {
-                    fprintf(stderr, "call Ns_RelativeTime INPUT2 " NS_TIME_FMT "\n",  (int64_t)expPtr->sec, expPtr->usec);
-                    fprintf(stderr, "call Ns_RelativeTime OUTPUT " NS_TIME_FMT "\n",  (int64_t)trPtr->sec, trPtr->usec);
-
                     Ns_Log(Notice, "expires specified absolute " NS_TIME_FMT " relative " NS_TIME_FMT,
                            (int64_t)expPtr->sec, expPtr->usec,
                            (int64_t)trPtr->sec, trPtr->usec );
@@ -1349,7 +1333,7 @@ SetEntry(NsInterp *itPtr, TclCache *cPtr, Ns_Entry *entry, Tcl_Obj *valObj, Ns_T
  */
 
 static int
-ObjvCache(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *const* objv)
+ObjvCache(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     TclCache  **cPtrPtr = spec->dest;
@@ -1428,7 +1412,7 @@ ObjvCache(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *const* o
  */
 
 int
-NsTclCacheTransactionBeginObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheTransactionBeginObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result;
 
@@ -1479,19 +1463,19 @@ NsTclCacheTransactionBeginObjCmd(ClientData clientData, Tcl_Interp *interp, int 
  *----------------------------------------------------------------------
  */
 int
-NsTclCacheTransactionCommitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheTransactionCommitObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return CacheTransactionFinishObjCmd(clientData, interp, objc, objv, NS_TRUE);
 }
 
 int
-NsTclCacheTransactionRollbackObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCacheTransactionRollbackObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return CacheTransactionFinishObjCmd(clientData, interp, objc, objv, NS_FALSE);
 }
 
 static int
-CacheTransactionFinishObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, bool commit)
+CacheTransactionFinishObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, bool commit)
 {
     int  result, all = (int)NS_FALSE;
     Ns_ObjvSpec opts[] = {
@@ -1655,7 +1639,7 @@ CacheTransactionFinishPop(NsInterp *itPtr, Tcl_Obj *listObj, bool commit, unsign
 
     if (transactionStackPtr->uncommitted[transactionStackPtr->depth] > 0) {
         Tcl_Obj      **lobjv;
-        int            lobjc;
+        TCL_SIZE_T     lobjc;
         unsigned int   i;
 
         Tcl_ListObjGetElements(itPtr->interp, listObj, &lobjc, &lobjv);

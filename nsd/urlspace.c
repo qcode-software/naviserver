@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -249,6 +231,7 @@ typedef struct {
 typedef struct {
     char  *filter;
     Trie   trie;
+    unsigned int flags;
 } Channel;
 
 /*
@@ -317,11 +300,11 @@ static Ns_IndexKeyCmpProc CmpKeyWithChannel;
  * SubCommands
  */
 
-static Tcl_ObjCmdProc UrlSpaceGetObjCmd;
-static Tcl_ObjCmdProc UrlSpaceListObjCmd;
-static Tcl_ObjCmdProc UrlSpaceNewObjCmd;
-static Tcl_ObjCmdProc UrlSpaceSetObjCmd;
-static Tcl_ObjCmdProc UrlSpaceUnsetObjCmd;
+static TCL_OBJCMDPROC_T UrlSpaceGetObjCmd;
+static TCL_OBJCMDPROC_T UrlSpaceListObjCmd;
+static TCL_OBJCMDPROC_T UrlSpaceNewObjCmd;
+static TCL_OBJCMDPROC_T UrlSpaceSetObjCmd;
+static TCL_OBJCMDPROC_T UrlSpaceUnsetObjCmd;
 
 /*
  * Utility functions
@@ -390,6 +373,7 @@ static void JunctionAdd(Junction *juncPtr, char *seq, void *data,
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void *JunctionFind(const Junction *juncPtr, char *seq,
+                          Ns_UrlSpaceMatchInfo *matchInfoPtr,
                           NsUrlSpaceContextFilterProc proc, void *context)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
@@ -474,12 +458,8 @@ UrlSpaceContextSpecFree(void *arg)
 {
     UrlSpaceContextSpec *spec = arg;
 
-    if (spec->field != NULL) {
-        ns_free((void*)spec->field);
-    }
-    if (spec->patternString != NULL) {
-        ns_free((void*)spec->patternString);
-    }
+    ns_free((void*)spec->field);
+    ns_free((void*)spec->patternString);
     ns_free(arg);
 }
 
@@ -746,7 +726,7 @@ Ns_UrlSpecificGet(const char *server, const char *method, const char *url, int i
 
     servPtr = NsGetServer(server);
     return (likely(servPtr != NULL)) ?
-        NsUrlSpecificGet(servPtr, method, url, id, 0u, NS_URLSPACE_DEFAULT, NULL, NULL)
+        NsUrlSpecificGet(servPtr, method, url, id, 0u, NS_URLSPACE_DEFAULT, NULL, NULL, NULL)
         : NULL;
 }
 
@@ -764,7 +744,7 @@ Ns_UrlSpecificGetFast(const char *server, const char *method, const char *url, i
 
     servPtr = NsGetServer(server);
     return likely(servPtr != NULL) ?
-        NsUrlSpecificGet(servPtr, method, url, id, 0u, NS_URLSPACE_FAST, NULL, NULL)
+        NsUrlSpecificGet(servPtr, method, url, id, 0u, NS_URLSPACE_FAST, NULL, NULL, NULL)
         : NULL;
 }
 
@@ -780,7 +760,7 @@ Ns_UrlSpecificGetExact(const char *server, const char *method, const char *url,
 
     servPtr = NsGetServer(server);
     return likely(servPtr != NULL) ?
-        NsUrlSpecificGet(servPtr, method, url, id, flags, NS_URLSPACE_EXACT, NULL, NULL)
+        NsUrlSpecificGet(servPtr, method, url, id, flags, NS_URLSPACE_EXACT, NULL, NULL, NULL)
         : NULL;
 }
 
@@ -808,6 +788,7 @@ Ns_UrlSpecificGetExact(const char *server, const char *method, const char *url,
 void *
 NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
                  unsigned int flags, NsUrlSpaceOp op,
+                 Ns_UrlSpaceMatchInfo *matchInfoPtr,
                  NsUrlSpaceContextFilterProc proc, void *context)
 {
     Ns_DString      ds, *dsPtr = &ds;
@@ -831,7 +812,7 @@ NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
     switch (op) {
 
     case NS_URLSPACE_DEFAULT:
-        data = JunctionFind(junction, dsPtr->string, proc, context);
+        data = JunctionFind(junction, dsPtr->string, matchInfoPtr, proc, context);
         break;
 
     case NS_URLSPACE_EXACT:
@@ -842,7 +823,7 @@ NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
         /*
          * Deprecated branch.
          */
-        data = JunctionFind(junction, dsPtr->string, proc, context);
+        data = JunctionFind(junction, dsPtr->string, matchInfoPtr, proc, context);
         break;
 
     }
@@ -1670,7 +1651,8 @@ TrieFind(const Trie *triePtr, char *seq, NsUrlSpaceContextFilterProc proc, void 
     if (nodePtr != NULL) {
         if (
             (*seq == '\0') /* this makes "set -noinherit /x/ *.html foo" + "get /x/a.html" fail */
-            && (nodePtr->dataNoInherit != NULL)) {
+            && (nodePtr->dataNoInherit != NULL)
+            ) {
             data = nodePtr->dataNoInherit;
         } else {
             data = nodePtr->dataInherit;
@@ -2244,6 +2226,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
     if (channelPtr == NULL) {
         channelPtr = ns_malloc(sizeof(Channel));
         channelPtr->filter = ns_strdup(dsFilter.string);
+        channelPtr->flags = flags;
         TrieInit(&channelPtr->trie);
 
 #ifndef __URLSPACE_OPTIMIZE__
@@ -2288,13 +2271,14 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
  *
  *----------------------------------------------------------------------
  */
-
 static void *
-JunctionFind(const Junction *juncPtr, char *seq, NsUrlSpaceContextFilterProc proc, void *context)
+JunctionFind(const Junction *juncPtr, char *seq,
+             Ns_UrlSpaceMatchInfo *matchInfoPtr,
+             NsUrlSpaceContextFilterProc proc, void *context)
 {
     const Channel *channelPtr;
     const char    *p;
-    size_t         i, l;
+    size_t         i, l, nrSegments;
     int            depth = 0;
     void          *data;
 
@@ -2306,8 +2290,11 @@ JunctionFind(const Junction *juncPtr, char *seq, NsUrlSpaceContextFilterProc pro
      * sequence.
      */
 
-    for (p = seq; p[l = NS_strlen(p) + 1u] != '\0'; p += l) {
-        ;
+    for (p = seq, nrSegments = 0; ; p += l, ++nrSegments) {
+        l = NS_strlen(p) + 1u;
+        if (p[l] == '\0') {
+            break;
+        }
     }
 
     /*
@@ -2325,6 +2312,8 @@ JunctionFind(const Junction *juncPtr, char *seq, NsUrlSpaceContextFilterProc pro
         return NULL;
     }
 
+    //Ns_Log(Notice, "JunctionFind: index count %ld", l);
+
     /*
      * For __URLSPACE_OPTIMIZE__
      * Basically if we use the optimize, let's reverse the order
@@ -2336,58 +2325,102 @@ JunctionFind(const Junction *juncPtr, char *seq, NsUrlSpaceContextFilterProc pro
 
 #ifndef __URLSPACE_OPTIMIZE__
     for (i = 0u; i < l; i++) {
-        bool doit;
+        bool    match, noFilter, candidateIsSegmentMatch;
+        void   *candidateData = NULL;
+        int     candidateDepth = 0;
+        ssize_t candidateOffset = 0;
+        size_t  candidateSegmentLength = 0u;
 
         channelPtr = Ns_IndexEl(&juncPtr->byuse, i);
 #else
     for (i = l; i > 0u; i--) {
-        bool doit;
+        bool    match, noFilter, candidateIsSegmentMatch;
+        void   *candidateData = NULL;
+        int     candidateDepth = 0;
+        ssize_t candidateOffset = 0;
+        size_t  candidateSegmentLength = 0u;
 
         channelPtr = Ns_IndexEl(&juncPtr->byname, i - 1u);
 #endif
 
-        doit = (
-                (*(channelPtr->filter) == '*' && *(channelPtr->filter + 1) == '\0')
-                || (NS_Tcl_StringMatch(p, channelPtr->filter) == 1)
-                );
+        noFilter = (*(channelPtr->filter) == '*' && *(channelPtr->filter + 1) == '\0');
+        match = (noFilter || (NS_Tcl_StringMatch(p, channelPtr->filter) == 1));
 
+        //Ns_Log(Notice, "Junction Filter tail <%s> match with <%s>", p, channelPtr->filter);
 #ifdef DEBUG
         fprintf(stderr, "JunctionFind: compare filter '%s' with channel filter '%s' => %d\n",
                 p, channelPtr->filter, doit);
 #endif
-        if (doit) {
+        if (match) {
             /*
              * We got here because this URL matches the filter
              * (for example, "*.adp").
              */
+            candidateData = TrieFind(&channelPtr->trie, seq, proc, context, &candidateDepth);
+            candidateOffset = 0;
+            candidateSegmentLength = 0u;
+            candidateIsSegmentMatch = NS_FALSE;
 
-            if (data == NULL) {
-                /*
-                 * Nothing has been found so far. Traverse the channel
-                 * and find the node; set data to that. Depth will be
-                 * set to the level of the node.
-                 */
+        } else if (!noFilter && (channelPtr->flags & NS_OP_SEGMENT_MATCH) != 0u) {
+            size_t  n;
+            char   *segment;
+            ssize_t segmentOffset;
 
-                depth = 0;
-                data = TrieFind(&channelPtr->trie, seq, proc, context, &depth);
-            } else {
-                void *candidate;
-                int   cdepth;
+            /*
+             * If we have a filter, but it did not match in the last
+             * segment, and NS_OP_SEGMENT_MATCH is set, try a segment
+             * match. Stop, when the last segment is reached, since we
+             * know already that it does not match from above.
+             */
 
-                /*
-                 * Let's see if this channel has a node that also
-                 * matches the sequence but is more specific (has a
-                 * greater depth) that the previously found node.
-                 */
+            for (segment = seq, segmentOffset = 0, n = 0;
+                 n < nrSegments;
+                 segment = seq + segmentOffset, ++n) {
+                size_t segmentLength = NS_strlen(segment);
 
-                cdepth = 0;
-                candidate = TrieFind(&channelPtr->trie, seq, proc, context, &cdepth);
-                if ((candidate != NULL) && (cdepth > depth)) {
-                    data = candidate;
-                    depth = cdepth;
+                //Ns_Log(Notice, "... segment[%ld/%ld] <%s> offset %ld depth %d",
+                //       n, nrSegments, segment, segmentOffset, depth);
+
+                if (NS_Tcl_StringMatch(segment, channelPtr->filter)) {
+                    candidateDepth = 0;
+                    candidateData = TrieFind(&channelPtr->trie, seq, proc, context, &candidateDepth);
+                    candidateOffset = segmentOffset;
+                    candidateSegmentLength = segmentLength;
+                    candidateIsSegmentMatch = NS_TRUE;
+
+                    //Ns_Log(Notice, "JunctionFind: ===> path segment <%s> match with <%s>"
+                    //       " candidate depth %d candidate data %p channelPtr->flags %.4x",
+                    //       segment, channelPtr->filter, candidateDepth,(void*)candidateData,
+                    //       channelPtr->flags);
                 }
+                segmentOffset += (ssize_t)segmentLength + 1;
+            }
+            //Ns_Log(Notice, "JunctionFind: ... found cdepth %d data %p", p);
+        }
+
+        /*
+         * Take candidate data either
+         * - when no data has been found so far, or
+         * - when data was found on a more specific node (i.e., it has a greater depth
+         *   than the previously found node)
+         */
+        if (candidateData != NULL
+            && (data == NULL || candidateDepth > depth)
+            ) {
+            //Ns_Log(Notice, "... take candidate data %p, old data %p, candidate depth %d old depth %d",
+            //       (void*)candidateData, data, candidateDepth, depth);
+            depth = candidateDepth;
+            data = candidateData;
+            if (matchInfoPtr != NULL) {
+                matchInfoPtr->offset = candidateOffset;
+                matchInfoPtr->isSegmentMatch = candidateIsSegmentMatch;
+                matchInfoPtr->segmentLength = candidateSegmentLength;
             }
         }
+
+        //Ns_Log(Notice, "JunctionFind: doit %d, depth %d compare tail '%s' with channel filter '%s' => %d (%p)",
+        //               doit, depth,
+        //       p, channelPtr->filter, doit, (void*)data);
 
 #ifdef DEBUG
         if (depth > 0) {
@@ -2624,7 +2657,7 @@ MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
     NS_NONNULL_ASSERT(method != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
-    Ns_DStringNAppend(dsPtr, method, (int)NS_strlen(method) + 1);
+    Ns_DStringNAppend(dsPtr, method, (TCL_SIZE_T)NS_strlen(method) + 1);
 
     /*
      * Loop over each directory in the URL and turn the slashes
@@ -2642,7 +2675,7 @@ MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
                 done = NS_TRUE;
             }
 
-            Ns_DStringNAppend(dsPtr, url, (int)l++);
+            Ns_DStringNAppend(dsPtr, url, (TCL_SIZE_T)l++);
             Ns_DStringNAppend(dsPtr, "\0", 1);
             url += l;
         } else {
@@ -2837,7 +2870,7 @@ WalkCallback(Ns_DString *dsPtr, const void *arg)
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2919,10 +2952,10 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 #endif
             //Ns_Log(Notice, "UrlSpaceGetObjCmd context %p context %p", (void*)context, (void*)ctxPtr);
             Ns_RWLockRdLock(&servPtr->urlspace.idlocks[id]);
-            data = NsUrlSpecificGet(servPtr, key, url, id, flags, op, NsUrlSpaceContextFilter, ctxPtr);
+            data = NsUrlSpecificGet(servPtr, key, url, id, flags, op, NULL, NsUrlSpaceContextFilter, ctxPtr);
             Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
 
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(data, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(data, TCL_INDEX_NONE));
         }
     }
     return result;
@@ -2944,7 +2977,7 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2991,7 +3024,7 @@ UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -3031,11 +3064,12 @@ UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
-    int             result = TCL_OK, id = -1, noinherit = 0, oc = 0;
+    int             result = TCL_OK, id = -1, noinherit = 0;
+    TCL_SIZE_T      oc = 0;
     char           *key = (char *)".", *url = (char*)NS_EMPTY_STRING, *data = (char*)NS_EMPTY_STRING;
     Tcl_Obj        *headerFilterObj = NULL, **ov = NULL;
     Ns_ObjvSpec     lopts[] = {
@@ -3112,7 +3146,7 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -3188,7 +3222,7 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclUrlSpaceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclUrlSpaceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"get",   UrlSpaceGetObjCmd},

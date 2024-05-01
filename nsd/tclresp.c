@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -48,7 +30,7 @@ static Ns_ObjvValueRange statusRange = {100, 599};
 static int Result(Tcl_Interp *interp, Ns_ReturnCode result)
     NS_GNUC_NONNULL(1);
 
-static int ReturnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+static int ReturnObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,
                         Ns_ReturnCode (*proc) (Ns_Conn *conn))
     NS_GNUC_NONNULL(2);
 
@@ -74,21 +56,22 @@ static int ReturnObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
  */
 
 int
-NsTclHeadersObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclHeadersObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn          *conn = NULL;
-    int               httpStatus = 0, length = -1, binary = (int)NS_FALSE, result;
+    int               httpStatus = 0, binary = (int)NS_FALSE, result;
+    Tcl_WideInt       length = -1;
     char             *mimeType = NULL;
-    Ns_ObjvValueRange lengthRange = {0, INT_MAX};
+    Ns_ObjvValueRange lengthRange = {0, SSIZE_MAX};
     Ns_ObjvSpec       opts[] = {
         {"-binary", Ns_ObjvBool,  &binary, INT2PTR(NS_TRUE)},
         {"--",      Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"status",  Ns_ObjvInt,    &httpStatus, &statusRange},
-        {"?type",   Ns_ObjvString, &mimeType,   NULL},
-        {"?length", Ns_ObjvInt,    &length,     &lengthRange},
+        {"status",  Ns_ObjvInt,     &httpStatus, &statusRange},
+        {"?type",   Ns_ObjvString,  &mimeType,   NULL},
+        {"?length", Ns_ObjvWideInt, &length,     &lengthRange},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -111,6 +94,9 @@ NsTclHeadersObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
         }
 
         if (length > -1) {
+            /*
+             * A "-length" value was provided.
+             */
             Ns_ConnSetLengthHeader(conn, (size_t)length, NS_FALSE);
         }
 
@@ -146,7 +132,7 @@ NsTclHeadersObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclStartContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclStartContentObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn      *conn = NULL;
     Tcl_Encoding  encoding = NULL;
@@ -216,11 +202,13 @@ NsTclStartContentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
  */
 
 int
-NsTclWriteObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclWriteObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     Ns_Conn        *conn  = NULL;
-    int             length = 0, i, n, result;
+    int             n, result;
+    TCL_SIZE_T      length = 0;
+    TCL_OBJC_T      i;
     Ns_ReturnCode   status;
     bool            binary;
     unsigned int    flags;
@@ -328,7 +316,7 @@ NsTclWriteObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *c
  */
 
 int
-NsTclReturnObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn          *conn = NULL;
     Tcl_Obj          *dataObj;
@@ -349,14 +337,14 @@ NsTclReturnObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
         result = TCL_ERROR;
     } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, &conn, &result) == NS_OK) {
         const char *data;
-        int         len;
+        TCL_SIZE_T  len;
 
         if (binary == (int)NS_TRUE || NsTclObjIsByteArray(dataObj)) {
             data = (const char *) Tcl_GetByteArrayFromObj(dataObj, &len);
-            result = Result(interp, Ns_ConnReturnData(conn, httpStatus, data, len, mimeType));
+            result = Result(interp, Ns_ConnReturnData(conn, httpStatus, data, (ssize_t)len, mimeType));
         } else {
             data = Tcl_GetStringFromObj(dataObj, &len);
-            result = Result(interp, Ns_ConnReturnCharData(conn, httpStatus, data, len, mimeType));
+            result = Result(interp, Ns_ConnReturnCharData(conn, httpStatus, data, (ssize_t)len, mimeType));
         }
     }
 
@@ -384,19 +372,20 @@ NsTclReturnObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  */
 
 int
-NsTclRespondObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRespondObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn          *conn = NULL;
-    int               result = TCL_OK, httpStatus = 200, length = -1;
+    int               result = TCL_OK, httpStatus = 200;
+    Tcl_WideInt       length = -1;
     char             *type = (char *)"*/*", *setid = NULL;
     char             *chars = NULL, *filename = NULL, *chanid = NULL, *binary = NULL;
     const Ns_Set     *set = NULL;
     Tcl_Channel       chan;
-    Ns_ObjvValueRange lengthRange = {0, INT_MAX};
+    Ns_ObjvValueRange lengthRange = {0, SSIZE_MAX};
     Ns_ObjvSpec       opts[] = {
         {"-status",   Ns_ObjvInt,       &httpStatus, &statusRange},
         {"-type",     Ns_ObjvString,    &type,       NULL},
-        {"-length",   Ns_ObjvInt,       &length,     &lengthRange},
+        {"-length",   Ns_ObjvWideInt,   &length,     &lengthRange},
         {"-headers",  Ns_ObjvString,    &setid,      NULL},
         {"-string",   Ns_ObjvString,    &chars,      NULL},
         {"-file",     Ns_ObjvString,    &filename,   NULL},
@@ -495,7 +484,7 @@ NsTclRespondObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  */
 
 int
-NsTclReturnFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn      *conn = NULL;
     int           httpStatus = 0, result;
@@ -536,18 +525,19 @@ NsTclReturnFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 int
-NsTclReturnFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    int               length = 0, httpStatus = 0, result;
+    int               httpStatus = 0, result;
+    Tcl_WideInt       length = 0;
     char             *mimeType, *channelName;
     Ns_Conn          *conn = NULL;
     Tcl_Channel       chan = NULL;
-    Ns_ObjvValueRange lengthRange = {0, INT_MAX};
+    Ns_ObjvValueRange lengthRange = {0, SSIZE_MAX};
     Ns_ObjvSpec       args[] = {
-        {"status",  Ns_ObjvInt,    &httpStatus,  &statusRange},
-        {"type",    Ns_ObjvString, &mimeType,    NULL},
-        {"channel", Ns_ObjvString, &channelName, NULL},
-        {"length",  Ns_ObjvInt,    &length,     &lengthRange},
+        {"status",  Ns_ObjvInt,     &httpStatus,  &statusRange},
+        {"type",    Ns_ObjvString,  &mimeType,    NULL},
+        {"channel", Ns_ObjvString,  &channelName, NULL},
+        {"length",  Ns_ObjvWideInt, &length,     &lengthRange},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -583,16 +573,17 @@ NsTclReturnFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclConnSendFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclConnSendFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn          *conn = NULL;
     Tcl_Channel       chan = NULL;
-    int               length = 0, result;
+    Tcl_WideInt       length = 0;
+    int               result;
     char             *channelName;
-    Ns_ObjvValueRange lengthRange = {0, INT_MAX};
+    Ns_ObjvValueRange lengthRange = {0, SSIZE_MAX};
     Ns_ObjvSpec  args[] = {
         {"channel", Ns_ObjvString,  &channelName, NULL},
-        {"length",  Ns_ObjvInt,     &length,      &lengthRange},
+        {"length",  Ns_ObjvWideInt, &length,      &lengthRange},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -610,8 +601,8 @@ NsTclConnSendFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
             status = Ns_ConnSendChannel(conn, chan, (ssize_t)length);
 
             if (status != NS_OK) {
-                Ns_TclPrintfResult(interp, "could not send %d bytes from channel %s",
-                                   length, channelName);
+                Ns_TclPrintfResult(interp, "could not send %ld bytes from channel %s",
+                                   (ssize_t)length, channelName);
                 result = TCL_ERROR;
             }
         }
@@ -640,7 +631,7 @@ NsTclConnSendFpObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 int
-NsTclReturnBadRequestObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnBadRequestObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn      *conn = NULL;
     int           result;
@@ -678,7 +669,7 @@ NsTclReturnBadRequestObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, i
 
 static int
 ReturnObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-             int UNUSED(objc), Tcl_Obj *const* UNUSED(objv),
+             TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv),
              Ns_ReturnCode (*proc) (Ns_Conn *conn))
 {
     Ns_Conn *conn = NULL;
@@ -693,31 +684,31 @@ ReturnObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 }
 
 int
-NsTclReturnNotFoundObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnNotFoundObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ReturnObjCmd(clientData, interp, objc, objv, Ns_ConnReturnNotFound);
 }
 
 int
-NsTclReturnUnauthorizedObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnUnauthorizedObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ReturnObjCmd(clientData, interp, objc, objv, Ns_ConnReturnUnauthorized);
 }
 
 int
-NsTclReturnForbiddenObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnForbiddenObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ReturnObjCmd(clientData, interp, objc, objv, Ns_ConnReturnForbidden);
 }
 
 int
-NsTclReturnUnavailableObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnUnavailableObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ReturnObjCmd(clientData, interp, objc, objv, Ns_ConnReturnUnavailable);
 }
 
 int
-NsTclReturnTooLargeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnTooLargeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ReturnObjCmd(clientData, interp, objc, objv, Ns_ConnReturnEntityTooLarge);
 }
@@ -742,7 +733,7 @@ NsTclReturnTooLargeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, T
  */
 
 int
-NsTclReturnErrorObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnErrorObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          httpStatus = 0, result;
     Ns_Conn     *conn = NULL;
@@ -780,7 +771,7 @@ NsTclReturnErrorObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  */
 
 int
-NsTclReturnMovedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnMovedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn     *conn = NULL;
     char        *location;
@@ -818,7 +809,7 @@ NsTclReturnMovedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  */
 
 int
-NsTclReturnNoticeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnNoticeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn      *conn = NULL;
     int           httpStatus = 0, result;
@@ -858,7 +849,7 @@ NsTclReturnNoticeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int o
  */
 
 int
-NsTclReturnRedirectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReturnRedirectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn       *conn = NULL;
     int            result;
@@ -895,7 +886,7 @@ NsTclReturnRedirectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
  */
 
 int
-NsTclInternalRedirectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclInternalRedirectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn       *conn = NULL;
     int            result;

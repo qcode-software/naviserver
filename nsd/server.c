@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -221,6 +203,40 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
 
     NS_NONNULL_ASSERT(server != NULL);
 
+#if 0
+    {
+        bool         found = NS_FALSE;
+        Ns_Set      *set = NULL, **sections;
+        Tcl_DString  ds, *dsPtr = &ds;
+
+        /*
+         * Before adding a hash entry, double-check, if the specified server was
+         * properly defined.
+         */
+        Tcl_DStringInit(dsPtr);
+        Tcl_DStringAppend(dsPtr, "ns/server/", 10);
+        Tcl_DStringAppend(dsPtr, server, TCL_INDEX_NONE);
+
+        sections = Ns_ConfigGetSections();
+
+        for (i = 0; sections[i] != NULL; i++) {
+            if (strncmp(dsPtr->string, sections[i]->name, (size_t)dsPtr->length) == 0) {
+                found = NS_TRUE;
+                break;
+            }
+        }
+        Tcl_DStringFree(dsPtr);
+
+        if (!found) {
+            Ns_Log(Error, "no section 'ns/server/%s' in configuration file", server);
+            return;
+        }
+    }
+#endif
+
+    /*
+     * Servers must not be defined twice.
+     */
     hPtr = Tcl_CreateHashEntry(&nsconf.servertable, server, &n);
     if (n == 0) {
         Ns_Log(Error, "duplicate server: %s", server);
@@ -258,6 +274,20 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     servPtr->opts.realm = ns_strcopy(Ns_ConfigString(path, "realm", server));
     servPtr->opts.modsince = Ns_ConfigBool(path, "checkmodifiedsince", NS_TRUE);
     servPtr->opts.noticedetail = Ns_ConfigBool(path, "noticedetail", NS_TRUE);
+    servPtr->opts.noticeADP = Ns_ConfigString(path, "noticeadp", "returnnotice.adp");
+
+    if (Ns_PathIsAbsolute(servPtr->opts.noticeADP) == NS_FALSE
+        && *servPtr->opts.noticeADP != '\0') {
+        Tcl_DString  ds;
+        const char  *fileName;
+
+        Tcl_DStringInit(&ds);
+        fileName = Ns_HomePath(&ds, "conf", "/",
+                               servPtr->opts.noticeADP, (char *)0L);
+        servPtr->opts.noticeADP = ns_strcopy(fileName);
+        Tcl_DStringFree(&ds);
+    }
+
     servPtr->opts.errorminsize = (int)Ns_ConfigMemUnitRange(path, "errorminsize", NULL, 514, 0, INT_MAX);
     servPtr->filter.rwlocks = Ns_ConfigBool(path, "filterrwlocks", NS_TRUE);
 
@@ -328,8 +358,13 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
     }
-    NsTclInitServer(server);
+
+    /*
+     * Initialize infrastructure of ns_http before Tcl init to make it usable
+     * from startup scripts.
+     */
     NsInitHttp(servPtr);
+    NsTclInitServer(server);
 
     NsInitStaticModules(server);
     initServPtr = NULL;
@@ -517,9 +552,9 @@ CreatePool(NsServer *servPtr, const char *pool)
 
         Tcl_DStringInit(&ds);
         Tcl_DStringAppend(&ds, "nsd:", 4);
-        Tcl_DStringAppend(&ds, servPtr->server, -1);
+        Tcl_DStringAppend(&ds, servPtr->server, TCL_INDEX_NONE);
         Tcl_DStringAppend(&ds, ":", 1);
-        Tcl_DStringAppend(&ds, NsPoolName(pool), -1);
+        Tcl_DStringAppend(&ds, NsPoolName(pool), TCL_INDEX_NONE);
 
         for (j = 0; j < maxconns; j++) {
             char suffix[64];
@@ -527,12 +562,14 @@ CreatePool(NsServer *servPtr, const char *pool)
             snprintf(suffix, 64u, "connthread:%d", j);
             Ns_MutexInit(&poolPtr->tqueue.args[j].lock);
             Ns_MutexSetName2(&poolPtr->tqueue.args[j].lock, ds.string, suffix);
+            Ns_CondInit(&poolPtr->tqueue.args[j].cond);
         }
         Ns_MutexInit(&poolPtr->tqueue.lock);
         Ns_MutexSetName2(&poolPtr->tqueue.lock, ds.string, "tqueue");
 
         Ns_MutexInit(&poolPtr->wqueue.lock);
         Ns_MutexSetName2(&poolPtr->wqueue.lock, ds.string, "wqueue");
+        Ns_CondInit(&poolPtr->wqueue.cond);
 
         Ns_MutexInit(&poolPtr->threads.lock);
         Ns_MutexSetName2(&poolPtr->threads.lock, ds.string, "threads");

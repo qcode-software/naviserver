@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -219,9 +201,10 @@ Ns_TclFreeSet(Tcl_Interp *interp, const char *setId)
 Ns_Set *
 Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
 {
-    int       result, objc;
-    Tcl_Obj **objv;
-    Ns_Set   *setPtr;
+    int        result;
+    TCL_SIZE_T objc;
+    Tcl_Obj  **objv;
+    Ns_Set    *setPtr;
 
     NS_NONNULL_ASSERT(listObj != NULL);
 
@@ -244,12 +227,12 @@ Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
         setPtr = NULL;
 
     } else {
-        int i;
+        TCL_SIZE_T i;
 
         setPtr = Ns_SetCreate(name);
         for (i = 0; i < objc; i += 2) {
             const char *keyString, *valueString;
-            int         keyLength, valueLength;
+            TCL_SIZE_T  keyLength, valueLength;
 
             keyString = Tcl_GetStringFromObj(objv[i], &keyLength);
             valueString = Tcl_GetStringFromObj(objv[i+1], &valueLength);
@@ -278,7 +261,7 @@ Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
  */
 
 int
-NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp            *itPtr = clientData;
     Ns_Set              *set = NULL;
@@ -294,7 +277,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         "icput", "idelkey", "ifind", "iget", "imerge",
         "isnull", "iunique", "iupdate", "key", "keys", "list",
         "merge", "move", "name", "new", "print", "put",
-        "size", "split", "truncate", "unique", "update",
+        "size", "split", "stats", "truncate", "unique", "update",
         "value", "values", NULL,
     };
     enum {
@@ -303,7 +286,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         SICPutIdx, SIDelkeyIdx, SIFindIdx, SIGetIdx, SIMergeIdx,
         SIsNullIdx, SIUniqueIdx, SIUpdateIdx, SKeyIdx, SKeysIdx, SListIdx,
         SMergeIdx, SMoveIdx, sINameIdx, SNewIdx, SPrintIdx, SPutIdx,
-        SSizeIdx, SSplitIdx, STruncateIdx, SUniqueIdx, SUpdateIdx,
+        SSizeIdx, SSplitIdx, SStatsIdx, STruncateIdx, SUniqueIdx, SUpdateIdx,
         SValueIdx, SValuesIdx
     };
 
@@ -349,16 +332,71 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                  hPtr = Tcl_NextHashEntry(&search)
                  ) {
                 const char *listKey = Tcl_GetHashKey(tablePtr, hPtr);
-                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(listKey, -1));
+                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(listKey, TCL_INDEX_NONE));
             }
             Tcl_SetObjResult(interp, listObj);
         }
         break;
 
+    case SStatsIdx:
+        {
+            Tcl_Obj *resultObj = Tcl_NewListObj(0, NULL);
+            size_t nr_dynamic = 0, size_dynamic = 0, allocated_dynamic = 0;
+            size_t nr_static = 0,  size_static = 0,  allocated_static = 0;
+
+            tablePtr = &itPtr->sets;
+            for (hPtr = Tcl_FirstHashEntry(tablePtr, &search);
+                 hPtr != NULL;
+                 hPtr = Tcl_NextHashEntry(&search)
+                 ) {
+                const char *key = Tcl_GetHashKey(tablePtr, hPtr);
+                set = (Ns_Set *) Tcl_GetHashValue(hPtr);
+                if (IS_DYNAMIC(key)) {
+                    nr_dynamic ++;
+#ifdef NS_SET_DSTRING
+                    allocated_dynamic += (size_t)set->data.spaceAvl;
+                    size_dynamic += (size_t)set->data.length;
+#endif
+                } else {
+                    nr_static++;
+#ifdef NS_SET_DSTRING
+                    allocated_static += (size_t)set->data.spaceAvl;
+                    size_static += (size_t)set->data.length;
+#endif
+                }
+            }
+
+            Tcl_DictObjPut(NULL, resultObj,
+                        Tcl_NewStringObj("nr_dynamic", 10),
+                        Tcl_NewWideIntObj((Tcl_WideInt)nr_dynamic));
+            Tcl_DictObjPut(NULL, resultObj,
+                        Tcl_NewStringObj("size_dynamic", 12),
+                        Tcl_NewWideIntObj((Tcl_WideInt)size_dynamic));
+            Tcl_DictObjPut(NULL, resultObj,
+                        Tcl_NewStringObj("allocated_dynamic", 17),
+                        Tcl_NewWideIntObj((Tcl_WideInt)allocated_dynamic));
+
+            Tcl_DictObjPut(NULL, resultObj,
+                        Tcl_NewStringObj("nr_static", 9),
+                        Tcl_NewWideIntObj((Tcl_WideInt)nr_static));
+            Tcl_DictObjPut(NULL, resultObj,
+                        Tcl_NewStringObj("size_static", 11),
+                        Tcl_NewWideIntObj((Tcl_WideInt)size_static));
+            Tcl_DictObjPut(NULL, resultObj,
+                        Tcl_NewStringObj("allocated_static", 16),
+                        Tcl_NewWideIntObj((Tcl_WideInt)allocated_static));
+
+            Tcl_SetObjResult(interp, resultObj);
+        }
+        break;
+
+
+
+
     case SNewIdx:   NS_FALL_THROUGH; /* fall through */
     case SCopyIdx:  NS_FALL_THROUGH; /* fall through */
     case SSplitIdx: {
-        int           offset = 2;
+        TCL_OBJC_T    offset = 2;
         const char   *name;
 
         /*
@@ -378,7 +416,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             set = Ns_SetCreate(name);
             while (offset < objc) {
                 const char *keyString, *valueString;
-                int         keyLength, valueLength;
+                TCL_SIZE_T  keyLength, valueLength;
 
                 keyString = Tcl_GetStringFromObj(objv[offset++], &keyLength);
                 valueString = Tcl_GetStringFromObj(objv[offset++], &valueLength);
@@ -410,7 +448,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                 Tcl_Obj     *listObj = Tcl_NewListObj(0, NULL);
                 Ns_Set     **sets;
                 const char  *split;
-                int          i;
+                TCL_OBJC_T   i;
 
                 split = (offset < objc) ? Tcl_GetString(objv[offset]) : ".";
                 sets = Ns_SetSplit(set, *split);
@@ -472,7 +510,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                         }
 
                     case sINameIdx:
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(set->name, -1));
+                        Tcl_SetObjResult(interp, Tcl_NewStringObj(set->name, TCL_INDEX_NONE));
                         break;
 
                     case SKeysIdx: {
@@ -580,11 +618,11 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
 
                     switch (opt) {
                     case SGetIdx:
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetGetValue(set, key, def), -1));
+                        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetGetValue(set, key, def), TCL_INDEX_NONE));
                         break;
 
                     case SIGetIdx:
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetIGetValue(set, key, def), -1));
+                        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetIGetValue(set, key, def), TCL_INDEX_NONE));
                         break;
 
                     default:
@@ -658,7 +696,8 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                  * These commands require a set and key/value index.
                  */
                 Ns_ObjvValueRange idxRange = {0, (Tcl_WideInt)Ns_SetSize(set)};
-                int               i, oc = 1;
+                int               i;
+                TCL_SIZE_T        oc = 1;
                 Ns_ObjvSpec       spec = {"?idx", Ns_ObjvInt, &i, &idxRange};
 
                 if (unlikely(objc != 4)) {
@@ -674,7 +713,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                     switch (opt) {
                     case SValueIdx:
                         val = Ns_SetValue(set, i);
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(val, -1));
+                        Tcl_SetObjResult(interp, Tcl_NewStringObj(val, TCL_INDEX_NONE));
                         break;
 
                     case SIsNullIdx:
@@ -685,7 +724,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
 
                     case SKeyIdx:
                         val = Ns_SetKey(set, i);
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(val, -1));
+                        Tcl_SetObjResult(interp, Tcl_NewStringObj(val, TCL_INDEX_NONE));
                         break;
 
                     case SDeleteIdx:
@@ -718,9 +757,9 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
                     Tcl_WrongNumArgs(interp, 2, objv, "setId key value");
                     result = TCL_ERROR;
                 } else {
-                    int i;
+                    int         i;
                     const char *keyString, *valueString;
-                    int         keyLength, valueLength;
+                    TCL_SIZE_T  keyLength, valueLength;
 
                     keyString = Tcl_GetStringFromObj(objv[3], &keyLength);
                     valueString = Tcl_GetStringFromObj(objv[4], &valueLength);
@@ -823,7 +862,7 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
  */
 
 int
-NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp    *itPtr = clientData;
     int          result = TCL_OK;
@@ -907,7 +946,8 @@ EnterSet(NsInterp *itPtr, Ns_Set *set, Ns_TclSetType type)
 {
     Tcl_HashTable  *tablePtr;
     Tcl_HashEntry  *hPtr;
-    int             isNew, len;
+    int             isNew;
+    TCL_SIZE_T      len;
     uint32_t        next;
     char            buf[TCL_INTEGER_SPACE + 1];
 
@@ -921,7 +961,7 @@ EnterSet(NsInterp *itPtr, Ns_Set *set, Ns_TclSetType type)
      * Allocate a new set IDs until we find an unused one.
      */
     for (next = (uint32_t)tablePtr->numEntries; ; ++ next) {
-        len = ns_uint32toa(buf+1, next);
+        len = (TCL_SIZE_T)ns_uint32toa(buf+1, next);
         hPtr = Tcl_CreateHashEntry(tablePtr, buf, &isNew);
         if (isNew != 0) {
             break;

@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -60,7 +42,7 @@ static Ns_Set *SetCreate(const char *name, size_t size);
 #ifdef NS_SET_DSTRING
 static void ShiftData(Ns_Set *set, const char *oldDataStart)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static char *AppendData(Ns_Set *set, size_t index, const char *value, ssize_t valueSize)
+static char *AppendData(Ns_Set *set, size_t index, const char *value, TCL_SIZE_T valueSize)
     NS_GNUC_NONNULL(1);
 #endif
 
@@ -111,7 +93,9 @@ static void hexPrint(const char *msg, const unsigned char *octets, size_t octetL
  */
 
 size_t
-Ns_SetIUpdateSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const char *valueString, ssize_t valueLength)
+Ns_SetIUpdateSz(Ns_Set *set,
+                const char *keyString, TCL_SIZE_T keyLength,
+                const char *valueString, TCL_SIZE_T valueLength)
 {
     ssize_t index;
     size_t result;
@@ -126,8 +110,8 @@ Ns_SetIUpdateSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const cha
          * If the capitalization of the key is different, keep the new one.
          */
         if (*(set->fields[index].name) != *keyString) {
-            if (keyLength == -1) {
-                keyLength = (ssize_t)strlen(keyString);
+            if (keyLength == TCL_INDEX_NONE) {
+                keyLength = (TCL_SIZE_T)strlen(keyString);
             }
             memcpy(set->fields[index].name, keyString, (size_t)keyLength);
         }
@@ -141,7 +125,7 @@ Ns_SetIUpdateSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const cha
 size_t
 Ns_SetIUpdate(Ns_Set *set, const char *keyString, const char *valueString)
 {
-    return Ns_SetIUpdateSz(set, keyString, -1, valueString, -1);
+    return Ns_SetIUpdateSz(set, keyString, TCL_INDEX_NONE, valueString, TCL_INDEX_NONE);
 }
 
 /*
@@ -160,7 +144,9 @@ Ns_SetIUpdate(Ns_Set *set, const char *keyString, const char *valueString)
  *----------------------------------------------------------------------
  */
 size_t
-Ns_SetUpdateSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const char *valueString, ssize_t valueLength)
+Ns_SetUpdateSz(Ns_Set *set,
+               const char *keyString, TCL_SIZE_T keyLength,
+               const char *valueString, TCL_SIZE_T valueLength)
 {
     ssize_t index;
     size_t result;
@@ -183,7 +169,7 @@ Ns_SetUpdateSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const char
 size_t
 Ns_SetUpdate(Ns_Set *set, const char *keyString, const char *valueString)
 {
-    return Ns_SetUpdateSz(set, keyString, -1, valueString, -1);
+    return Ns_SetUpdateSz(set, keyString, TCL_INDEX_NONE, valueString, TCL_INDEX_NONE);
 }
 
 #ifdef NS_SET_DSTRING
@@ -241,24 +227,27 @@ ShiftData(Ns_Set *set, const char *oldDataStart) {
  *----------------------------------------------------------------------
  */
 static char *
-AppendData(Ns_Set *set, size_t index, const char *value, ssize_t valueSize)
+AppendData(Ns_Set *set, size_t index, const char *value, TCL_SIZE_T valueSize)
 {
-    char *oldDataStart;
-    int   oldLength, oldAvail;
+    char      *oldDataStart;
+    TCL_SIZE_T oldLength, oldAvail;
 
     oldDataStart = set->data.string;
     oldLength = set->data.length;
     oldAvail = set->data.spaceAvl;
-    if (valueSize == -1 && value == NULL) {
+    if (valueSize == TCL_INDEX_NONE && value == NULL) {
         valueSize = 0;
     }
-    Tcl_DStringAppend(&set->data, value, (int)valueSize);
+    Tcl_DStringAppend(&set->data, value, (TCL_SIZE_T)valueSize);
     if (value != NULL) {
         Tcl_DStringSetLength(&set->data, set->data.length + 1);
         set->data.string[set->data.length-1] = '\0';
     }
     if (oldDataStart != set->data.string) {
-        Ns_Log(Ns_LogNsSetDebug, "MUST SHIFT %p '%s': length %d->%d buffer %d->%d (while appending %ld '%s')",
+        Ns_Log(Ns_LogNsSetDebug, "MUST SHIFT %p '%s':"
+               " length %" PRITcl_Size "->%" PRITcl_Size
+               " buffer %" PRITcl_Size "->%" PRITcl_Size
+               " (while appending %ld '%s')",
                (void*)set, set->name,
                oldLength, set->data.length,
                oldAvail, set->data.spaceAvl,
@@ -306,7 +295,7 @@ NsSetResize(Ns_Set *set, size_t newSize, int bufferSize)
     }
 #ifdef NS_SET_DSTRING
     oldDataStart = set->data.string;
-    Ns_SetDataPrealloc(set, (int)bufferSize);
+    Ns_SetDataPrealloc(set, (TCL_SIZE_T)bufferSize);
     ShiftData(set, oldDataStart);
 #endif
 }
@@ -338,7 +327,7 @@ SetCreate(const char *name, size_t size)
     setPtr->size = 0u;
     setPtr->maxSize = size;
     setPtr->name = ns_strcopy(name);
-    setPtr->fields = ns_malloc(sizeof(Ns_SetField) * setPtr->maxSize);
+    setPtr->fields = ns_calloc(1u, sizeof(Ns_SetField) * setPtr->maxSize);
 #ifdef NS_SET_DSTRING
     Tcl_DStringInit(&setPtr->data);
 #endif
@@ -392,7 +381,9 @@ Ns_SetFree(Ns_Set *set)
 
 #ifdef NS_SET_DSTRING
         Ns_Log(Ns_LogNsSetDebug,
-               "Ns_SetFree %p '%s': size %ld/%ld data %d/%d (created %ld)",
+               "Ns_SetFree %p '%s': size %ld/%ld"
+               " data %" PRITcl_Size "/%" PRITcl_Size
+               " (created %ld)",
                 (void*)set, set->name, set->size, set->maxSize,
                 set->data.length, set->data.spaceAvl, createdSets);
         Tcl_DStringFree(&set->data);
@@ -432,7 +423,9 @@ Ns_SetFree(Ns_Set *set)
  */
 
 size_t
-Ns_SetPutSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const char *valueString, ssize_t valueLength)
+Ns_SetPutSz(Ns_Set *set,
+            const char *keyString, TCL_SIZE_T keyLength,
+            const char *valueString, TCL_SIZE_T valueLength)
 {
     size_t idx;
 
@@ -452,6 +445,7 @@ Ns_SetPutSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const char *v
         Ns_Log(Ns_LogNsSetDebug, "Ns_SetPutSz %p '%s': [%lu] realloc from %lu to maxsize %lu"
                " (while adding '%s')",
                (void*)set, set->name, idx, oldSize, set->maxSize, valueString);
+        memset(&set->fields[idx], 0, sizeof(Ns_SetField) * (set->maxSize - set->size));
     }
 #ifdef NS_SET_DSTRING
     set->fields[idx].name = AppendData(set, idx, keyString, keyLength);
@@ -460,7 +454,7 @@ Ns_SetPutSz(Ns_Set *set, const char *keyString, ssize_t keyLength, const char *v
     set->fields[idx].name = ns_strncopy(keyString, keyLength);
     set->fields[idx].value = ns_strncopy(valueString, valueLength);
 #endif
-    Ns_Log(Ns_LogNsSetDebug, "Ns_SetPut %p [%lu] key '%s' value '%s' size %ld",
+    Ns_Log(Ns_LogNsSetDebug, "Ns_SetPut %p [%lu] key '%s' value '%s' size %" PRITcl_Size,
            (void*)set, idx, set->fields[idx].name, set->fields[idx].value, valueLength);
     return idx;
 }
@@ -471,7 +465,7 @@ Ns_SetPut(Ns_Set *set, const char *key, const char *value)
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(key != NULL);
 
-    return Ns_SetPutSz(set, key, -1, value, -1);
+    return Ns_SetPutSz(set, key, TCL_INDEX_NONE, value, TCL_INDEX_NONE);
 }
 
 /*
@@ -581,14 +575,14 @@ Ns_SetFindCmp(const Ns_Set *set, const char *key, StringCmpProc cmp)
 const char *
 Ns_SetGetCmp(const Ns_Set *set, const char *key, StringCmpProc cmp)
 {
-    int   i;
+    int idx;
 
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(cmp != NULL);
 
-    i = Ns_SetFindCmp(set, key, cmp);
-    return ((i == -1) ? NULL : set->fields[i].value);
+    idx = Ns_SetFindCmp(set, key, cmp);
+    return ((idx == -1) ? NULL : set->fields[idx].value);
 }
 
 
@@ -839,19 +833,19 @@ Ns_SetTrunc(Ns_Set *set, size_t size)
             hexPrint("before trunc", (unsigned char *)set->data.string, (size_t)set->data.length);
             Ns_SetPrint(set);
 # endif
-            Ns_Log(Notice, "... initial endPtr %p len %ld", (void*)endPtr, endPtr-set->data.string);
+            //Ns_Log(Notice, "... initial endPtr %p len %ld", (void*)endPtr, endPtr-set->data.string);
             for (i = 0; i <= size; i++) {
                 if (set->fields[i].name > endPtr) {
                     endPtr = set->fields[i].name + strlen(set->fields[i].name) + 1;
-                    Ns_Log(Notice, "... ext1 endPtr %p len %ld", (void*)endPtr, endPtr-set->data.string);
+                    //Ns_Log(Notice, "... ext1 endPtr %p len %ld", (void*)endPtr, endPtr-set->data.string);
                 }
                 if (set->fields[i].value > endPtr) {
                     endPtr = set->fields[i].value + strlen(set->fields[i].value) + 1;
-                    Ns_Log(Notice, "... [%lu] ext2 endPtr %p len %ld", i, (void*)endPtr, endPtr-set->data.string);
+                    //Ns_Log(Notice, "... [%lu] ext2 endPtr %p len %ld", i, (void*)endPtr, endPtr-set->data.string);
                 }
             }
-            Ns_Log(Notice, "... final can trunc data from %i to %ld",  set->data.length, endPtr-set->data.string);
-            Tcl_DStringSetLength(&set->data, (int)(endPtr - set->data.string));
+            //Ns_Log(Notice, "... final can trunc data from %i to %ld",  set->data.length, endPtr-set->data.string);
+            Tcl_DStringSetLength(&set->data, (TCL_SIZE_T)(endPtr - set->data.string));
 
 # ifdef NS_SET_DEBUG
             hexPrint("after trunc", (unsigned char *)set->data.string, (size_t)set->data.length);
@@ -941,22 +935,22 @@ Ns_SetDelete(Ns_Set *set, int index)
 void
 Ns_SetPutValue(Ns_Set *set, size_t index, const char *value)
 {
-    Ns_SetPutValueSz(set, index, value, -1);
+    Ns_SetPutValueSz(set, index, value, TCL_INDEX_NONE);
 }
 
 void
-Ns_SetPutValueSz(Ns_Set *set, size_t index, const char *value, ssize_t size)
+Ns_SetPutValueSz(Ns_Set *set, size_t index, const char *value, TCL_SIZE_T size)
 {
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(value != NULL);
 
-    Ns_Log(Ns_LogNsSetDebug, "Ns_SetPutValue %p [%lu] key '%s' value '%s' size %ld",
+    Ns_Log(Ns_LogNsSetDebug, "Ns_SetPutValue %p [%lu] key '%s' value '%s' size %" PRITcl_Size,
            (void*)set, index, set->fields[index].name, value, size);
 
     if (index < set->size) {
 #ifdef NS_SET_DSTRING
-        if (size == -1) {
-            size = (ssize_t)strlen(value);
+        if (size == TCL_INDEX_NONE) {
+            size = (TCL_SIZE_T)strlen(value);
         }
 #ifdef NS_SET_DEBUG
         Ns_Log(Notice, "Ns_SetPutValue %p [%lu] key '%s' value '%s' size %ld",
@@ -976,7 +970,8 @@ Ns_SetPutValueSz(Ns_Set *set, size_t index, const char *value, ssize_t size)
                 /*
                  * Old value is the same as the new value (same address, same size)
                  */
-                Ns_Log(Notice, "Ns_SetPutValueSz %p: old value is the same as the new value: '%s'", (void*)set, value);
+                Ns_Log(Debug, "Ns_SetPutValueSz %p: old value is the same as the new value: '%s'",
+                       (void*)set, value);
             } else if (oldSize >= (size_t)size && oldSize != 0) {
                 /*
                  * New value fits old slot
@@ -1000,7 +995,8 @@ Ns_SetPutValueSz(Ns_Set *set, size_t index, const char *value, ssize_t size)
             ns_free(set->fields[index].value);
             set->fields[index].value = ns_strncopy(value, size);
         } else {
-            Ns_Log(Notice, "Ns_SetPutValueSz %p: old value is the same as the new value: '%s'", (void*)set, value);
+            Ns_Log(Debug, "Ns_SetPutValueSz %p: old value is the same as the new value: '%s'",
+                   (void*)set, value);
         }
 #endif
     }
@@ -1022,7 +1018,7 @@ Ns_SetPutValueSz(Ns_Set *set, size_t index, const char *value, ssize_t size)
  *
  *----------------------------------------------------------------------
  */
-void Ns_SetClearValues(Ns_Set *set, int maxAlloc)
+void Ns_SetClearValues(Ns_Set *set, TCL_SIZE_T maxAlloc)
 {
     size_t i;
 
@@ -1036,7 +1032,9 @@ void Ns_SetClearValues(Ns_Set *set, int maxAlloc)
         }
     }
     Ns_Log(Ns_LogNsSetDebug,
-           "Ns_SetClearValues %p '%s': size %ld/%ld data %d/%d (created %ld)",
+           "Ns_SetClearValues %p '%s': size %ld/%ld"
+           " data %" PRITcl_Size "/%" PRITcl_Size
+           " (created %ld)",
            (void*)set, set->name, set->size, set->maxSize,
            set->data.length, set->data.spaceAvl, createdSets);
 
@@ -1044,14 +1042,14 @@ void Ns_SetClearValues(Ns_Set *set, int maxAlloc)
         Tcl_DString ds, *dsPtr = &ds;
         Ns_DList    dl, *dlPtr = &dl;
         char       *p;
-        int         oldLength = set->data.length;
+        TCL_SIZE_T  oldLength = set->data.length;
 
         Tcl_DStringInit(dsPtr);
         Ns_DListInit(dlPtr);
         for (i = 0u; i < set->size; ++i) {
             size_t nameSize = strlen(set->fields[i].name);
 
-            Tcl_DStringAppend(dsPtr, set->fields[i].name, (int)nameSize);
+            Tcl_DStringAppend(dsPtr, set->fields[i].name, (TCL_SIZE_T)nameSize);
             Tcl_DStringSetLength(dsPtr, dsPtr->length+1);
             Ns_DListAppend(dlPtr, (void*)(ptrdiff_t)(nameSize+1));
             set->fields[i].value = NULL;
@@ -1067,8 +1065,9 @@ void Ns_SetClearValues(Ns_Set *set, int maxAlloc)
          */
         if (set->data.spaceAvl > maxAlloc && (oldLength < maxAlloc/4)) {
             const char *oldBuffer = set->data.string;
-            set->data.string = ckalloc(maxAlloc);
-            ckfree(oldBuffer);
+
+            set->data.string = ckalloc((size_t)maxAlloc);
+            ckfree((void*)oldBuffer);
             set->data.spaceAvl = maxAlloc;
         }
         memcpy(set->data.string, dsPtr->string, (size_t)dsPtr->length);
@@ -1083,7 +1082,7 @@ void Ns_SetClearValues(Ns_Set *set, int maxAlloc)
         Ns_DListFree(dlPtr);
 
         Ns_Log(Ns_LogNsSetDebug,
-           "... final size %ld/%ld data %d/%d",
+           "... final size %ld/%ld data %" PRITcl_Size "/%" PRITcl_Size,
            set->size, set->maxSize,
            set->data.length, set->data.spaceAvl);
     }
@@ -1225,7 +1224,7 @@ Ns_SetSplit(const Ns_Set *set, char sep)
     NS_NONNULL_ASSERT(set != NULL);
 
     Ns_DStringInit(&ds);
-    Ns_DStringNAppend(&ds, (char *) &end, (int)sizeof(Ns_Set *));
+    Ns_DStringNAppend(&ds, (char *) &end, (TCL_SIZE_T)sizeof(Ns_Set *));
 
     for (i = 0u; i < set->size; ++i) {
         Ns_Set     *next;
@@ -1247,7 +1246,7 @@ Ns_SetSplit(const Ns_Set *set, char sep)
             next = Ns_SetCreate(name);
             sp = (Ns_Set **) (ds.string + ds.length - sizeof(Ns_Set *));
             *sp = next;
-            Ns_DStringNAppend(&ds, (char *) &end, (int)sizeof(Ns_Set *));
+            Ns_DStringNAppend(&ds, (char *) &end, (TCL_SIZE_T)sizeof(Ns_Set *));
         }
         (void)Ns_SetPut(next, key, set->fields[i].value);
         if (name != NULL) {
@@ -1389,9 +1388,9 @@ Ns_SetIMerge(Ns_Set *high, const Ns_Set *low)
  *
  *----------------------------------------------------------------------
  */
-void Ns_SetDataPrealloc(Ns_Set *set, int size)
+void Ns_SetDataPrealloc(Ns_Set *set, TCL_SIZE_T size)
 {
-    int oldStringSize = set->data.length;
+    TCL_SIZE_T oldStringSize = set->data.length;
 
     /*
      * Note that Tcl_DStringSetLength() allocates actually one byte more than
@@ -1553,7 +1552,9 @@ SetCopyElements(const char* msg, const Ns_Set *from, Ns_Set *const to)
 
     to->size = 0u;
     for (i = 0u; i < from->size; i++) {
-        Ns_SetPutSz(to, from->fields[i].name, -1, from->fields[i].value, -1);
+        Ns_SetPutSz(to,
+                    from->fields[i].name, TCL_INDEX_NONE,
+                    from->fields[i].value, TCL_INDEX_NONE);
     }
 #else
     (void)msg;

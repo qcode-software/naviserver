@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -113,7 +95,7 @@ NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
     NS_NONNULL_ASSERT(url != NULL);
 
     Ns_MutexLock(&lock);
-    limitsPtr = NsUrlSpecificGet(servPtr, method, url, limid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL);
+    limitsPtr = NsUrlSpecificGet(servPtr, method, url, limid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL, NULL);
     Ns_MutexUnlock(&lock);
 
     return ((limitsPtr != NULL) ? limitsPtr : defLimitsPtr);
@@ -137,7 +119,7 @@ NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
  */
 
 int
-NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     NsLimits    *limitsPtr;
@@ -174,7 +156,7 @@ NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  */
 
 int
-NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -194,7 +176,7 @@ NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
             if (pattern == NULL || Tcl_StringMatch(limits, pattern) != 0) {
                 Tcl_ListObjAppendElement(interp, listObj,
-                                         Tcl_NewStringObj(limits, -1));
+                                         Tcl_NewStringObj(limits, TCL_INDEX_NONE));
             }
             hPtr = Tcl_NextHashEntry(&search);
         }
@@ -224,7 +206,7 @@ NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 int
-NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsLimits         *limitsPtr;
     int               maxrun = -1, maxwait = -1, maxupload = -1, timeout = -1, result = TCL_OK;
@@ -281,7 +263,7 @@ NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  */
 
 int
-NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -388,7 +370,7 @@ FindLimits(const char *limits, int create)
  */
 
 static int
-ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr, Tcl_Obj *const* objv)
+ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Obj *const* objv)
 {
     NsLimits         **limitsPtrPtr = spec->dest;
     int                create = (spec->arg != NULL) ? 1 : 0, result = TCL_OK;

@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -685,10 +667,10 @@ Ns_ParseUrl(char *url, bool strict, Ns_URL *urlPtr, const char **errorMsg)
  */
 
 Ns_ReturnCode
-Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *url, const char *base)
+Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *urlString, const char *baseString)
 {
     Ns_DString    urlDs, baseDs;
-    Ns_URL        u, bu;
+    Ns_URL        url, base;
     const char   *errorMsg = NULL;
     Ns_ReturnCode status;
 
@@ -702,48 +684,48 @@ Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *url, const char *base)
     /*
      * The first part does not have to be a valid URL.
      */
-    Ns_DStringAppend(&urlDs, url);
-    (void) Ns_ParseUrl(urlDs.string, NS_FALSE, &u, &errorMsg);
+    Ns_DStringAppend(&urlDs, urlString);
+    (void) Ns_ParseUrl(urlDs.string, NS_FALSE, &url, &errorMsg);
 
-    Ns_DStringAppend(&baseDs, base);
-    status = Ns_ParseUrl(baseDs.string, NS_FALSE, &bu, &errorMsg);
+    Ns_DStringAppend(&baseDs, baseString);
+    status = Ns_ParseUrl(baseDs.string, NS_FALSE, &base, &errorMsg);
 
-    if (bu.protocol == NULL || bu.host == NULL || bu.path == NULL) {
+    if (base.protocol == NULL || base.host == NULL || base.path == NULL) {
         status = NS_ERROR;
         goto done;
     }
-    if (u.protocol == NULL) {
-        u.protocol = bu.protocol;
+    if (url.protocol == NULL) {
+        url.protocol = base.protocol;
     }
-    assert(u.protocol != NULL);
+    assert(url.protocol != NULL);
 
-    if (u.host == NULL) {
-        u.host = bu.host;
-        u.port = bu.port;
+    if (url.host == NULL) {
+        url.host = base.host;
+        url.port = base.port;
     }
-    assert(u.host != NULL);
+    assert(url.host != NULL);
 
-    if (u.path == NULL) {
-        u.path = bu.path;
+    if (url.path == NULL) {
+        url.path = base.path;
     }
-    assert(u.path != NULL);
+    assert(url.path != NULL);
 
-    if (strchr(u.host, INTCHAR(':')) == NULL) {
+    if (strchr(url.host, INTCHAR(':')) == NULL) {
         /*
          * We have to use IP literal notation to avoid ambiguity of colon
          * (part of address or separator for port).
          */
-        Ns_DStringVarAppend(dsPtr, u.protocol, "://", u.host, (char *)0L);
+        Ns_DStringVarAppend(dsPtr, url.protocol, "://", url.host, (char *)0L);
     } else {
-        Ns_DStringVarAppend(dsPtr, u.protocol, "://[", u.host, "]", (char *)0L);
+        Ns_DStringVarAppend(dsPtr, url.protocol, "://[", url.host, "]", (char *)0L);
     }
-    if (u.port != NULL) {
-        Ns_DStringVarAppend(dsPtr, ":", u.port, (char *)0L);
+    if (url.port != NULL) {
+        Ns_DStringVarAppend(dsPtr, ":", url.port, (char *)0L);
     }
-    if (*u.path == '\0') {
-        Ns_DStringVarAppend(dsPtr, "/", u.tail, (char *)0L);
+    if (*url.path == '\0') {
+        Ns_DStringVarAppend(dsPtr, "/", url.tail, (char *)0L);
     } else {
-        Ns_DStringVarAppend(dsPtr, "/", u.path, "/", u.tail, (char *)0L);
+        Ns_DStringVarAppend(dsPtr, "/", url.path, "/", url.tail, (char *)0L);
     }
 done:
     Ns_DStringFree(&urlDs);
@@ -772,7 +754,7 @@ done:
  */
 
 int
-NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, strict = 0;
     char       *urlString;
@@ -799,35 +781,35 @@ NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 
             if (u.protocol != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("proto", 5));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.protocol, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.protocol, TCL_INDEX_NONE));
             }
             if (u.userinfo != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("userinfo", 8));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.userinfo, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.userinfo, TCL_INDEX_NONE));
             }
             if (u.host != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("host", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.host, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.host, TCL_INDEX_NONE));
             }
             if (u.port != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("port", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.port, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.port, TCL_INDEX_NONE));
             }
             if (u.path != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("path", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.path, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.path, TCL_INDEX_NONE));
             }
             if (u.tail != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("tail", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.tail, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.tail, TCL_INDEX_NONE));
             }
             if (u.query != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("query", 5));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.query, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.query, TCL_INDEX_NONE));
             }
             if (u.fragment != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("fragment", 8));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.fragment, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.fragment, TCL_INDEX_NONE));
             }
             if (errorMsg != NULL) {
                 Ns_TclPrintfResult(interp, "Could not parse URL \"%s\": %s", urlString, errorMsg);
@@ -865,7 +847,7 @@ NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, strict = 0;
     char       *hostportString;
@@ -891,11 +873,11 @@ NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int 
 
             if (hostStart != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("host", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(hostStart, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(hostStart, TCL_INDEX_NONE));
             }
             if (portStart != NULL) {
                 Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("port", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(portStart, -1));
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(portStart, TCL_INDEX_NONE));
             }
 
             Tcl_SetObjResult(interp, resultObj);
@@ -927,7 +909,7 @@ NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int 
  *----------------------------------------------------------------------
  */
 int
-NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *urlString, *baseString;
@@ -981,12 +963,12 @@ bool Ns_PlainUrlPath(const char *url, const char **errorMsgPtr)
     NS_NONNULL_ASSERT(errorMsgPtr != NULL);
 
     Tcl_DStringInit(&ds);
-    Tcl_DStringAppend(&ds, url, -1);
+    Tcl_DStringAppend(&ds, url, TCL_INDEX_NONE);
 
     if (Ns_ParseUrl(ds.string, NS_FALSE, &parsedUrl, errorMsgPtr) != NS_OK) {
         result = NS_FALSE;
     } else if (parsedUrl.query != NULL || parsedUrl.fragment != NULL) {
-        *errorMsgPtr = "request patch contains query and/or fragment, which is not allowed";
+        *errorMsgPtr = "request path contains query and/or fragment, which is not allowed";
         result = NS_FALSE;
     }
     Tcl_DStringFree(&ds);

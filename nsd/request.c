@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -87,6 +69,7 @@ RequestCleanupMembers(Ns_Request *request)
     ns_free((char *)request->protocol);
     ns_free((char *)request->host);
     ns_free(request->query);
+    ns_free((char *)request->serverRoot);
     FreeUrl(request);
 }
 
@@ -176,6 +159,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
 {
     char       *url, *l, *p;
     Ns_DString  ds;
+    const char *errorMsg = "unknown error";
 
     NS_NONNULL_ASSERT(line != NULL);
 
@@ -227,10 +211,11 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
      * Make a copy of the line to chop up. Make sure it isn't blank.
      */
 
-    Ns_DStringNAppend(&ds, line, (int)len);
+    Ns_DStringNAppend(&ds, line, (TCL_SIZE_T)len);
     l = Ns_StrTrim(ds.string);
     if (*l == '\0') {
-        goto done;
+        errorMsg = "empty request line";
+        goto error;
     }
 
     /*
@@ -251,7 +236,8 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
         ++url;
     }
     if (*url == '\0') {
-        goto done;
+        errorMsg = "no method found";
+        goto error;
     }
 
     /*
@@ -267,7 +253,8 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
         ++url;
     }
     if (*url == '\0') {
-        goto done;
+        errorMsg = "no version information found";
+        goto error;
     }
 
 
@@ -301,7 +288,8 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
              * The last token does not have the form of an HTTP-version
              * string. Report result as invalid request.
              */
-            goto done;
+            errorMsg = "version information invalid";
+            goto error;
         }
     } else {
         /*
@@ -309,13 +297,15 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
          * slash. HTTP 0.9 did not have proxy functionality.
          */
         if (*url != '/') {
-            goto done;
+            errorMsg = "HTTP 0.9 URL does not start with a slash";
+            goto error;
         }
     }
 
     url = Ns_StrTrimRight(url);
     if (*url == '\0') {
-        goto done;
+        errorMsg = "URL is empty";
+        goto error;
     }
 
     /*
@@ -325,64 +315,167 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
     request->host = NULL;
     request->port = 0u;
 
+    /*
+     * If the content of "url" starts with a sluash, this is an "origin-form"
+     *
+     *    https://www.rfc-editor.org/rfc/rfc9112#name-origin-form
+     *
+     * Otherwise, it might be "absolute-form" (NS_REQUEST_TYPE_PROXY),
+     * "authority-form" (NS_REQUEST_TYPE_CONNECT) or "asterisk-form"
+     * (NS_REQUEST_TYPE_ASTERISK).
+     */
     if (*url != '/') {
+
+        /*
+         * Check for the scheme of the URL. The RFC 3986
+         * defines the scheme as
+         *
+         *      ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+         *
+         * but since we support just a subset of protocols, where all of these
+         * contain just ALPHA, we restrict to these. This has the advantacge
+         * that we can deal here with request lines for CONNECT, such as e.g.
+         *
+         *      CONNECT google.com:443 HTTP/1.1
+         *
+         * where "google.com" would be syntactically correct scheme. It sounds
+         * more locally to provide "google.com" as "host" and the "443" as
+         * port.
+         *
+         *      curl -v -X CONNECT http://localhost:8080 --request-target www.google.com:443
+         *      curl -v -x http://localhost:8080  https://someotherhost:8088/index.tcl
+         */
         p = url;
-        while (*p != '\0' && *p != '/' && *p != ':') {
+        while ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
             ++p;
         }
         if (*p == ':') {
 
             /*
-             * Found a protocol - copy it and search for host:port.
+             * Found a scheme; this must be a proxy request. Copy the scheme
+             * and search for host:port.
              */
-
+            request->requestType = NS_REQUEST_TYPE_PROXY;
             *p++ = '\0';
             request->protocol = ns_strdup(url);
-            url = p;
-            if ((strlen(url) > 3u)
-                && (*p++ == '/')
-                && (*p++ == '/')
-                && (*p != '\0')
-                && (*p != '/') ) {
-                bool  hostParsedOk;
-                char *h = p, *end;
 
-                while ((*p != '\0') && (*p != '/')) {
-                    p++;
-                }
-                if (*p == '/') {
-                    *p++ = '\0';
-                }
-                url = p;
-
-                /*
-                 * Check for port
-                 */
-                hostParsedOk = Ns_HttpParseHost2(h, NS_FALSE, NULL, &p, &end);
-                if (hostParsedOk) {
-                    if (p != NULL) {
-                        *p++ = '\0';
-                        request->port = (unsigned short)strtol(p, NULL, 10);
-                    }
-                    request->host = ns_strdup(h);
-                } else {
-                    ns_free((char*)request->protocol);
-                    request->protocol = NULL;
-                    goto done;
-                }
+            if (*p == '/' && *(p+1) == '/') {
+                p += 2;
             }
+        } else {
+            if (strcmp(url, "*") == 0) {
+                request->requestType = NS_REQUEST_TYPE_ASTERISK;
+            } else if (strcasecmp(request->method, "connect") == 0) {
+                request->requestType = NS_REQUEST_TYPE_CONNECT;
+            }
+            p = url;
+        }
+        /*
+         * Parse host:port.
+         */
+        if (*p != '\0' && *p != '/') {
+            bool  hostParsedOk;
+            char *h = p, *end;
+
+            /*
+             * Search for the next slash
+             */
+            p = strchr(p, INTCHAR('/'));
+            if (p != NULL) {
+                //*p++ = '\0';
+                url = p;
+            } else {
+                url = (char*)"";
+            }
+
+            /*
+             * Parse actually host and port
+             */
+            hostParsedOk = Ns_HttpParseHost2(h, NS_FALSE, NULL, &p, &end);
+            if (hostParsedOk) {
+                //Ns_Log(Notice, "Parse host+port <%s> -> %d p <%s> end <%s>", h, hostParsedOk, p, end);
+                if (p != NULL) {
+                    /*
+                     * We know, the port string is terminated by a slash or NUL.
+                     */
+                    request->port = (unsigned short)strtol(p, NULL, 10);
+                }
+                request->host = ns_strdup(h);
+            }
+
+            /*
+             * Here, the request is either a proxy request, or a CONNECT
+             * request (url == "") or something is wrong.
+             */
+            if (request->requestType == NS_REQUEST_TYPE_PLAIN) {
+                errorMsg = "invalid request";
+                if (*url != '/') {
+                    Ns_Log(Warning, "%s, request target must start with a slash"
+                           " setting host '%s' port %hu protocol '%s' path '%s' from line '%s'",
+                           errorMsg, request->host, request->port, request->protocol, url, line);
+                    goto error;
+                }
+
+            } else if (request->requestType == NS_REQUEST_TYPE_PROXY) {
+                errorMsg = "invalid proxy request";
+                if (*url == '\0') {
+                    Ns_Log(Warning, "%s, path must not be empty"
+                           " setting host '%s' port %hu protocol '%s' path '%s' from line '%s'",
+                           errorMsg, request->host, request->port, request->protocol, url, line);
+                    goto error;
+                }
+                if (request->protocol == NULL) {
+                    Ns_Log(Warning, "%s, protocol must be specified"
+                           " setting host '%s' port %hu path '%s' from line '%s'",
+                           errorMsg, request->host, request->port,  url, line);
+                    goto error;
+                }
+
+            } else if (request->requestType == NS_REQUEST_TYPE_CONNECT && *url != '\0') {
+                errorMsg = "invalid CONNECT request";
+                Ns_Log(Warning, "%s, path must be empty"
+                       " setting host '%s' port %hu protocol '%s' path '%s' from line '%s'",
+                       errorMsg, request->host, request->port, request->protocol, url, line);
+                goto error;
+
+            } else if (request->requestType == NS_REQUEST_TYPE_ASTERISK
+                       && strcasecmp(request->method, "OPTIONS") != 0) {
+                errorMsg = "invalid ASTERISK request, can only be used with method OPTIONS";
+                Ns_Log(Warning, "%s, path must be empty"
+                       " setting host '%s' port %hu protocol '%s' path '%s' from line '%s'",
+                       errorMsg, request->host, request->port, request->protocol, url, line);
+                goto error;
+            }
+
+
+            Ns_Log(Ns_LogRequestDebug, "Ns_ParseRequest processes valid %s request"
+                   " setting host '%s' port %hu protocol '%s' requestType '%d' path '%s' line '%s'",
+                   request->requestType == NS_REQUEST_TYPE_PLAIN ? "plain"
+                   : request->requestType == NS_REQUEST_TYPE_PROXY ? "proxy"
+                   : request->requestType == NS_REQUEST_TYPE_CONNECT ? "CONNECT"
+                   : "asterisk",
+                   request->host, request->port, request->protocol, request->requestType,
+                   url,line);
         }
     }
 
     SetUrl(request, url);
     Ns_DStringFree(&ds);
+
     return NS_OK;
 
- done:
+ error:
+    Ns_Log(Warning, "Ns_ParseRequest <%s> cannot parse request line: %s", line, errorMsg);
 
-    request->isProxyRequest = (request->host != NULL && request->protocol != NULL);
+    if (request->protocol != NULL) {
+        ns_free((char*)request->protocol);
+        request->protocol = NULL;
+    }
+    if (request->host != NULL) {
+        ns_free((char*)request->host);
+        request->host = NULL;
+    }
 
-    Ns_Log(Warning, "Ns_ParseRequest <%s> -> ERROR", line);
     Ns_DStringFree(&ds);
     return NS_ERROR;
 }
@@ -408,13 +501,13 @@ const char *
 Ns_SkipUrl(const Ns_Request *request, int n)
 {
     const char **elements, *result = NULL;
-    int          length;
+    TCL_SIZE_T   length;
 
     NS_NONNULL_ASSERT(request != NULL);
 
     Tcl_SplitList(NULL, request->urlv, &length, &elements);
 
-    if (n <= request->urlc) {
+    if (n <= (int)request->urlc) {
         size_t skip = 0u;
 
         while (--n >= 0) {
@@ -530,9 +623,7 @@ SetUrl(Ns_Request *request, char *url)
     p = strchr(url, INTCHAR('?'));
     if (p != NULL) {
         *p++ = '\0';
-        if (request->query != NULL) {
-            ns_free(request->query);
-        }
+        ns_free(request->query);
         if (*p != '\0') {
             request->query = ns_strdup(p);
         }
@@ -608,7 +699,7 @@ SetUrl(Ns_Request *request, char *url)
          */
         Tcl_ListObjLength(NULL, listPtr, &request->urlc);
         request->urlv = ns_strdup(Tcl_GetString(listPtr));
-        request->urlv_len = (int)strlen(request->urlv);
+        request->urlv_len = (TCL_SIZE_T)strlen(request->urlv);
 
         Tcl_DecrRefCount(listPtr);
     }
@@ -680,8 +771,8 @@ Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseD
 
         if (prefix != NULL) {
             Tcl_DStringInit(dsPtr);
-            Tcl_DStringAppend(dsPtr, prefix, -1);
-            Tcl_DStringAppend(dsPtr, line, -1);
+            Tcl_DStringAppend(dsPtr, prefix, TCL_INDEX_NONE);
+            Tcl_DStringAppend(dsPtr, line, TCL_INDEX_NONE);
             line = dsPtr->string;
         }
 
@@ -700,7 +791,7 @@ Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseD
             for (value = sep + 1; (*value != '\0') && CHARTYPE(space, *value) != 0; value++) {
                 ;
             }
-            idx = Ns_SetPutSz(set, line, sep-line, value, -1);
+            idx = Ns_SetPutSz(set, line, (TCL_SIZE_T)(sep - line), value, TCL_INDEX_NONE);
             key = Ns_SetKey(set, idx);
             if (disp == ToLower) {
                 while (*key != '\0') {

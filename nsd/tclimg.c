@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  *
  * Based on the work from Ayan George <ayan@ayan.net>
  * written originally for the AOLserver nsimage module.
@@ -92,7 +74,7 @@ static Tcl_Channel GetFileChan(Tcl_Interp *interp, const char *path) NS_GNUC_NON
  */
 
 int
-NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char        *file = NULL;
     int          result;
@@ -120,7 +102,7 @@ NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             case unknown: type = "unknown"; break;
             }
             result = Tcl_Close(interp, chan);
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(type, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(type, TCL_INDEX_NONE));
         }
     }
     return result;
@@ -143,7 +125,7 @@ NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  */
 
 int
-NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
@@ -171,7 +153,7 @@ NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
             }
 
             result = Tcl_Close(interp, chan);
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(mime, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(mime, TCL_INDEX_NONE));
         }
     }
     return result;
@@ -195,7 +177,7 @@ NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  */
 
 int
-NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result = TCL_OK;
@@ -257,7 +239,7 @@ NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  */
 
 int
-NsTclGifSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclGifSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
@@ -307,7 +289,7 @@ NsTclGifSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  */
 
 int
-NsTclPngSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclPngSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
@@ -357,7 +339,7 @@ NsTclPngSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  */
 
 int
-NsTclJpegSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclJpegSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
@@ -436,7 +418,7 @@ GifSize(Tcl_Channel chan, uint32_t *wPtr, uint32_t *hPtr)
         colormap = (((buf[4] & 0x80u) != 0u) ? 1u : 0u);
 
         if (colormap != 0u) {
-            int bytesToRead = 3 * (int)depth;
+            TCL_SIZE_T bytesToRead = 3 * (TCL_SIZE_T)depth;
             if (Tcl_Read(chan, (char *)buf, bytesToRead) != bytesToRead) {
                 result = TCL_ERROR;
                 break;
@@ -444,13 +426,13 @@ GifSize(Tcl_Channel chan, uint32_t *wPtr, uint32_t *hPtr)
         }
 
     outerloop:
-        if (Tcl_Read(chan, (char *)buf, 1) != 1) {
+        if (Tcl_Read(chan, (char *)buf, 1) == TCL_IO_FAILURE) {
             result = TCL_ERROR;
             break;
         }
 
         if (buf[0] == UCHAR('!')) {
-            if (Tcl_Read(chan, (char *)buf, 1) != 1) {
+            if (Tcl_Read(chan, (char *)buf, 1) == TCL_IO_FAILURE) {
                 result = TCL_ERROR;
                 break;
             }
@@ -462,7 +444,7 @@ GifSize(Tcl_Channel chan, uint32_t *wPtr, uint32_t *hPtr)
                 goto outerloop;
             }
 
-            if (Tcl_Read(chan, (char *)buf, (int)count) != (int)count) {
+            if (Tcl_Read(chan, (char *)buf, (TCL_SIZE_T)count) != (TCL_SIZE_T)count) {
                 result = TCL_ERROR;
                 break;
             }
@@ -695,7 +677,7 @@ static enum imgtype
 GetImageType(Tcl_Channel chan)
 {
     unsigned char buf[8];
-    int           toRead;
+    TCL_SIZE_T    toRead;
     enum imgtype  type = unknown;
     static const unsigned char jpeg_magic  [] = {0xffu, 0xd8u};
     static const          char gif87_magic [] = {'G','I','F','8','7','a'};

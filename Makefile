@@ -1,30 +1,12 @@
 #
-# The contents of this file are subject to the Mozilla Public License
-# Version 1.1 (the "License"); you may not use this file except in
-# compliance with the License. You may obtain a copy of the License at
-# http://www.mozilla.org/.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# The Initial Developer of the Original Code and related documentation
+# is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+# America Online, Inc. All Rights Reserved.
 #
-# The Original Code is AOLserver Code and related documentation
-# distributed by AOL.
-#
-# The Initial Developer of the Original Code is America Online,
-# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
-# Inc. All Rights Reserved.
-#
-# Alternatively, the contents of this file may be used under the terms
-# of the GNU General Public License (the "GPL"), in which case the
-# provisions of GPL are applicable instead of those above.  If you wish
-# to allow use of your version of this file only under the terms of the
-# GPL and not to allow others to use your version of this file under the
-# License, indicate your decision by deleting the provisions above and
-# replace them with the notice and other provisions required by the GPL.
-# If you do not delete the provisions above, a recipient may use your
-# version of this file under either the License or the GPL.
 #
 #
 #
@@ -52,6 +34,9 @@ all:
 	@for i in $(dirs); do \
 		( cd $$i && $(MAKE) all ) || exit 1; \
 	done
+	@if [ -n "${PEM_FILE}" ]; then \
+		$(MAKE) $(PEM_FILE) ; \
+	fi
 
 help:
 	@echo 'Commonly used make targets:'
@@ -74,7 +59,9 @@ help:
 	@echo
 
 install: install-dirs install-include install-tcl install-modules \
-	install-config install-doc install-examples install-notice
+	install-config install-certificate install-doc install-examples install-notice
+
+HAVE_NSADMIN := $(shell id -u nsadmin 2> /dev/null)
 
 install-notice:
 	@echo ""
@@ -82,24 +69,29 @@ install-notice:
 	@echo "Congratulations, you have installed NaviServer."
 	@echo ""
 	@if [ "`whoami`" = "root" ]; then \
-	  echo "  Because you are running as root, the server needs an unprivileged user to be"; \
-	  echo "  specified (e.g. nsadmin). This user can be created on a Linux-like system with"; \
-	  echo "  the command"; \
-	  echo ""; \
-	  echo "  useradd nsadmin"; \
-	  echo ""; \
-	  echo "The permissions for log directory have to be set up:"; \
-	  echo ""; \
-	  echo "  chown -R nsadmin:nsadmin $(NAVISERVER)/logs"; \
-	  echo ""; \
-	  user="-u nsadmin"; \
+	    if [ "x${HAVE_NSADMIN}" = "x" ] ; then \
+		echo "  When running as root, the server needs an unprivileged user to be"; \
+		echo "  specified (e.g. nsadmin). This user can be created on a Linux-like system with"; \
+		echo "  the command"; \
+		echo ""; \
+		echo "  useradd nsadmin"; \
+		echo ""; \
+	    else \
+		if [ ! `sudo -u nsadmin test -w $(NAVISERVER)/logs && echo 1` ] ; then \
+		    echo "The permissions for log directory have to be set up:"; \
+		    echo ""; \
+		    echo "  chown -R nsadmin:nsadmin $(NAVISERVER)/logs"; \
+		    echo ""; \
+		fi; \
+	    fi; \
+	    user="-u nsadmin"; \
 	fi; \
 	echo "You can now run NaviServer by typing the following command: "; \
 	echo ""; \
 	echo "  $(NAVISERVER)/bin/nsd $$user -t $(NAVISERVER)/conf/nsd-config.tcl -f"; \
 	echo ""; \
 	echo "As a next step, you need to configure the server according to your needs."; \
-	echo "Consult as a reference the alternate configuration files in $(NAVISERVER)/conf/"; \
+	echo "Consult the sample configuration files in $(NAVISERVER)/conf/ as a reference."; \
 	echo ""
 
 install-dirs: all
@@ -109,13 +101,19 @@ install-dirs: all
 
 install-config: all
 	@mkdir -p $(DESTDIR)$(NAVISERVER)/conf $(DESTDIR)$(NAVISERVER)/pages/
-	@for i in nsd-config.tcl sample-config.tcl simple-config.tcl openacs-config.tcl ; do \
+	@for i in returnnotice.adp nsd-config.tcl sample-config.tcl simple-config.tcl openacs-config.tcl ; do \
 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/conf/; \
 	done
 	@for i in index.adp bitbucket-install.tcl; do \
 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/pages/; \
 	done
 	$(INSTALL_SH) install-sh $(DESTDIR)$(INSTBIN)/
+
+install-certificate: $(PEM_FILE)
+	@mkdir -p $(DESTDIR)$(NAVISERVER)/etc
+	for i in $(PEM_FILE) ; do \
+		$(INSTALL_DATA) $(PEM_FILE) $(DESTDIR)$(NAVISERVER)/etc/; \
+	done
 
 install-modules: all
 	@for i in $(dirs); do \
@@ -181,36 +179,36 @@ build-doc:
 		       nsperm \
 		       nssock \
 		       nsssl \
-                       doc/src/manual \
-                       doc/src/naviserver \
-                       modules/nsexpat \
-                       modules/nsconfigrw \
-                       modules/nsdbi \
-                       modules/nsloopctl \
-                       modules/nsvfs; do \
+		       doc/src/manual \
+		       doc/src/naviserver \
+		       modules/nsexpat \
+		       modules/nsconfigrw \
+		       modules/nsdbi \
+		       modules/nsloopctl \
+		       modules/nsvfs; do \
 		if [ -d $$srcdir ]; then \
 		   echo $$srcdir; \
-                   $(MKDIR) doc/tmp/`basename $$srcdir`; \
-	           find $$srcdir -name '*.man' -exec $(CP) "{}" doc/tmp/`basename $$srcdir` ";"; \
+		   $(MKDIR) doc/tmp/`basename $$srcdir`; \
+		   find $$srcdir -name '*.man' -exec $(CP) "{}" doc/tmp/`basename $$srcdir` ";"; \
 		fi; \
 	done
 	$(CP) doc/images/manual/*.png doc/tmp/manual/
 	@cd doc/tmp; \
 	for srcdir in `ls`; do \
 	    echo $$srcdir; \
-            if [ -f $$srcdir/version_include.man ]; then \
-               $(CP) $$srcdir/version_include.man .; \
+	    if [ -f $$srcdir/version_include.man ]; then \
+	       $(CP) $$srcdir/version_include.man .; \
 	    else \
-               $(CP) ../../version_include.man .; \
-            fi; \
+	       $(CP) ../../version_include.man .; \
+	    fi; \
 	    echo $(DTPLITE) -merge -style ../src/$(MAN_CSS) \
-                       -header ../src/$(HEADER_INC) \
-                       -footer ../src/footer.inc \
-                       -o ../html/ html $$srcdir; \
+		       -header ../src/$(HEADER_INC) \
+		       -footer ../src/footer.inc \
+		       -o ../html/ html $$srcdir; \
 	    $(DTPLITE) -merge -style ../src/$(MAN_CSS) \
-                       -header ../src/$(HEADER_INC) \
-                       -footer ../src/footer.inc \
-                       -o ../html/ html $$srcdir; \
+		       -header ../src/$(HEADER_INC) \
+		       -footer ../src/footer.inc \
+		       -o ../html/ html $$srcdir; \
 	    $(DTPLITE) -merge -o ../man/ nroff $$srcdir; \
 	done
 	$(RM) doc/tmp
@@ -246,6 +244,7 @@ $(PEM_FILE): $(PEM_PRIVATE)
 $(PEM_PRIVATE):
 	openssl genrsa -out $(PEM_PRIVATE) 512
 	openssl rsa -in $(PEM_PRIVATE) -pubout > $(PEM_PUBLIC)
+	chmod 644 $(PEM_PRIVATE)
 
 check: test
 
@@ -259,12 +258,13 @@ runtest: all
 	$(NS_LD_LIBRARY_PATH) ./nsd/nsd $(NS_TEST_CFG)
 
 gdbtest: all
-	@echo set args $(NS_TEST_CFG) $(NS_TEST_ALL) > gdb.run
-	$(NS_LD_LIBRARY_PATH) gdb -x gdb.run ./nsd/nsd
-	rm gdb.run
+	$(NS_LD_LIBRARY_PATH) gdb -ex=run --args ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
+#	@echo set args $(NS_TEST_CFG) $(NS_TEST_ALL) > gdb.run
+#	$(NS_LD_LIBRARY_PATH) gdb -x gdb.run ./nsd/nsd
+#	rm gdb.run
 
 lldbtest: all
-	$(NS_LD_LIBRARY_PATH) lldb -- ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL) 
+	$(NS_LD_LIBRARY_PATH) lldb -- ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 
 lldb-sample: all
 	lldb -o run -- $(DESTDIR)$(NAVISERVER)/bin/nsd -f -u nsadmin -t $(DESTDIR)$(NAVISERVER)/conf/nsd-config.tcl
@@ -340,4 +340,6 @@ dist: config.guess config.sub clean
 	$(RM) naviserver-$(NS_PATCH_LEVEL)
 
 
-.PHONY: all install install-binaries install-doc install-tests clean distclean
+.PHONY: all install clean distclean \
+	install-dirs install-include install-tcl install-modules \
+	install-config install-certificate install-doc install-examples install-notice

@@ -1,31 +1,11 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1(the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright(C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License(the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
- *
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  */
 
 /*
@@ -64,11 +44,11 @@ typedef struct {
     const char **requestHeaders;
     const char **responseHeaders;
     const char  *driverPattern;
-    int          nrRequestHeaders;
-    int          nrResponseHeaders;
+    TCL_SIZE_T   maxbackup;
+    TCL_SIZE_T   nrRequestHeaders;
+    TCL_SIZE_T   nrResponseHeaders;
     int          fd;
     unsigned int flags;
-    int          maxbackup;
     int          maxlines;
     int          curlines;
     struct NS_SOCKADDR_STORAGE  ipv4maskStruct;
@@ -89,7 +69,7 @@ static Ns_ShutdownProc LogCloseCallback;
 static Ns_TraceProc    LogTrace;
 static Ns_ArgProc      LogArg;
 static Ns_TclTraceProc AddCmds;
-static Tcl_ObjCmdProc  LogObjCmd;
+static TCL_OBJCMDPROC_T  LogObjCmd;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
@@ -192,7 +172,7 @@ Ns_ModuleInit(const char *server, const char *module)
 
             Tcl_DStringSetLength(&ds, 0);
             (void) Ns_ModulePath(&ds, server, module, (char *)0L);
-            dirpath = Tcl_NewStringObj(ds.string, -1);
+            dirpath = Tcl_NewStringObj(ds.string, TCL_INDEX_NONE);
             Tcl_IncrRefCount(dirpath);
             rc = Tcl_FSCreateDirectory(dirpath);
             Tcl_DecrRefCount(dirpath);
@@ -213,7 +193,7 @@ Ns_ModuleInit(const char *server, const char *module)
      */
 
     logPtr->rollfmt = ns_strcopy(Ns_ConfigGetValue(path, "rollfmt"));
-    logPtr->maxbackup = Ns_ConfigIntRange(path, "maxbackup", 100, 1, INT_MAX);
+    logPtr->maxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(path, "maxbackup", 100, 1, INT_MAX);
     logPtr->maxlines = Ns_ConfigIntRange(path, "maxbuffer", 0, 0, INT_MAX);
     if (Ns_ConfigBool(path, "formattedtime", NS_TRUE)) {
         logPtr->flags |= LOG_FMTTIME;
@@ -311,8 +291,8 @@ AddCmds(Tcl_Interp *interp, const void *arg)
 {
     const Log *logPtr = arg;
 
-    Tcl_CreateObjCommand(interp, "ns_accesslog", LogObjCmd, (ClientData)logPtr, NULL);
-    return NS_OK;
+    TCL_CREATEOBJCOMMAND(interp, "ns_accesslog", LogObjCmd, (ClientData)logPtr, NULL);
+    return TCL_OK;
 }
 
 /*
@@ -345,7 +325,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
     NS_NONNULL_ASSERT(logPtr != NULL);
 
     if (str != NULL) {
-        int          argc;
+        TCL_SIZE_T   argc;
         const char **argv;
 
         if (Tcl_SplitList(NULL, str, &argc, &argv) != TCL_OK) {
@@ -353,11 +333,10 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
             result = NS_ERROR;
 
         } else {
-            int i, tagged = 0;
+            int        tagged = 0;
+            TCL_SIZE_T i;
 
-            if (logPtr->extendedHeaders != NULL) {
-                ns_free((char *)logPtr->extendedHeaders);
-            }
+            ns_free((char *)logPtr->extendedHeaders);
             if (logPtr->requestHeaders != NULL) {
                 Tcl_Free((char *) logPtr->requestHeaders);
             }
@@ -439,7 +418,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
  */
 
 static int
-LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const char    *strarg;
     int            rc, cmd, result = TCL_OK;
@@ -469,15 +448,13 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
         Ns_MutexLock(&logPtr->lock);
         if (objc > 2) {
             strarg = ns_strdup(Tcl_GetString(objv[2]));
-            if (logPtr->rollfmt != NULL) {
-                ns_free((char *)logPtr->rollfmt);
-            }
+            ns_free((char *)logPtr->rollfmt);
             logPtr->rollfmt = strarg;
         }
         strarg = logPtr->rollfmt;
         Ns_MutexUnlock(&logPtr->lock);
         if (strarg != NULL) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(strarg, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(strarg, TCL_INDEX_NONE));
         }
         break;
 
@@ -497,9 +474,9 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             if (result == TCL_OK) {
                 Ns_MutexLock(&logPtr->lock);
                 if (objc > 2) {
-                    logPtr->maxbackup = intarg;
+                    logPtr->maxbackup = (TCL_SIZE_T)intarg;
                 } else {
-                    intarg = logPtr->maxbackup;
+                    intarg = (int)logPtr->maxbackup;
                 }
                 Ns_MutexUnlock(&logPtr->lock);
                 Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
@@ -540,7 +517,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
                 result = ParseExtendedHeaders(logPtr, Tcl_GetString(objv[2]));
             }
             if (result == TCL_OK) {
-                Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->extendedHeaders, -1));
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->extendedHeaders, TCL_INDEX_NONE));
             } else {
                 Ns_TclPrintfResult(interp, "invalid value: %s",
                                    Tcl_GetString(objv[2]));
@@ -556,7 +533,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
             Tcl_DStringInit(&ds);
             if (objc > 2) {
                 flags = 0u;
-                Tcl_DStringAppend(&ds, Tcl_GetString(objv[2]), -1);
+                Tcl_DStringAppend(&ds, Tcl_GetString(objv[2]), TCL_INDEX_NONE);
                 Ns_StrToLower(ds.string);
                 if (strstr(ds.string, "logcombined")) {
                     flags |= LOG_COMBINED;
@@ -586,22 +563,22 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
                 Ns_MutexUnlock(&logPtr->lock);
             }
             if ((flags & LOG_COMBINED)) {
-                Tcl_DStringAppend(&ds, "logcombined ", -1);
+                Tcl_DStringAppend(&ds, "logcombined ", TCL_INDEX_NONE);
             }
             if ((flags & LOG_FMTTIME)) {
-                Tcl_DStringAppend(&ds, "formattedtime ", -1);
+                Tcl_DStringAppend(&ds, "formattedtime ", TCL_INDEX_NONE);
             }
             if ((flags & LOG_REQTIME)) {
-                Tcl_DStringAppend(&ds, "logreqtime ", -1);
+                Tcl_DStringAppend(&ds, "logreqtime ", TCL_INDEX_NONE);
             }
             if ((flags & LOG_PARTIALTIMES)) {
-                Tcl_DStringAppend(&ds, "logpartialtimes ", -1);
+                Tcl_DStringAppend(&ds, "logpartialtimes ", TCL_INDEX_NONE);
             }
             if ((flags & LOG_CHECKFORPROXY)) {
-                Tcl_DStringAppend(&ds, "checkforproxy ", -1);
+                Tcl_DStringAppend(&ds, "checkforproxy ", TCL_INDEX_NONE);
             }
             if ((flags & LOG_SUPPRESSQUERY)) {
-                Tcl_DStringAppend(&ds, "suppressquery ", -1);
+                Tcl_DStringAppend(&ds, "suppressquery ", TCL_INDEX_NONE);
             }
             Tcl_DStringResult(interp, &ds);
         }
@@ -624,7 +601,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
         } else {
             Ns_MutexLock(&logPtr->lock);
         }
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->filename, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->filename, TCL_INDEX_NONE));
         Ns_MutexUnlock(&logPtr->lock);
         break;
 
@@ -640,7 +617,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* o
                 if (Tcl_FSAccess(objv[2], F_OK) == 0) {
                     status = Ns_RollFile(strarg, logPtr->maxbackup);
                 } else {
-                    Tcl_Obj *path = Tcl_NewStringObj(logPtr->filename, -1);
+                    Tcl_Obj *path = Tcl_NewStringObj(logPtr->filename, TCL_INDEX_NONE);
 
                     Tcl_IncrRefCount(path);
                     rc = Tcl_FSRenameFile(path, objv[2]);
@@ -698,12 +675,12 @@ AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
             /*
              * No break-char found, append all and stop
              */
-            Tcl_DStringAppend(dsPtr, toProcess, -1);
+            Tcl_DStringAppend(dsPtr, toProcess, TCL_INDEX_NONE);
         } else {
             /*
              * Append the break-char free prefix
              */
-            Tcl_DStringAppend(dsPtr, toProcess, (int)(breakChar - toProcess));
+            Tcl_DStringAppend(dsPtr, toProcess, (TCL_SIZE_T)(breakChar - toProcess));
 
             /*
              * Escape the break-char
@@ -798,7 +775,7 @@ LogTrace(void *arg, Ns_Conn *conn)
     Log          *logPtr = arg;
     const char   *user, *p, *driverName;
     char          buffer[PIPE_BUF], *bufferPtr = NULL;
-    int           n, i;
+    int           n;
     Ns_ReturnCode status;
     size_t        bufferSize = 0u;
     Tcl_DString   ds, *dsPtr = &ds;
@@ -829,7 +806,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
     if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
         /*
-         * This branch of the if is deprecated and kept only for backward
+         * This branch is deprecated and kept only for backward
          * compatibility (added Dec 2020).
          */
         p = Ns_ConnForwardedPeerAddr(conn);
@@ -869,7 +846,7 @@ LogTrace(void *arg, Ns_Conn *conn)
         }
     }
 
-    Tcl_DStringAppend(dsPtr, p, -1);
+    Tcl_DStringAppend(dsPtr, p, TCL_INDEX_NONE);
 
     /*
      * Append the thread name, if requested.
@@ -877,7 +854,7 @@ LogTrace(void *arg, Ns_Conn *conn)
      */
     Tcl_DStringAppend(dsPtr, " ", 1);
     if ((logPtr->flags & LOG_THREADNAME) != 0) {
-        Tcl_DStringAppend(dsPtr, Ns_ThreadGetName(), -1);
+        Tcl_DStringAppend(dsPtr, Ns_ThreadGetName(), TCL_INDEX_NONE);
         Tcl_DStringAppend(dsPtr, " ", 1);
     } else {
         Tcl_DStringAppend(dsPtr, "- ", 2);
@@ -899,10 +876,10 @@ LogTrace(void *arg, Ns_Conn *conn)
         }
         if (quote != 0) {
             Tcl_DStringAppend(dsPtr, "\"", 1);
-            Tcl_DStringAppend(dsPtr, user, -1);
+            Tcl_DStringAppend(dsPtr, user, TCL_INDEX_NONE);
             Tcl_DStringAppend(dsPtr, "\" ", 2);
         } else {
-            Tcl_DStringAppend(dsPtr, user, -1);
+            Tcl_DStringAppend(dsPtr, user, TCL_INDEX_NONE);
             Tcl_DStringAppend(dsPtr, " ", 1);
         }
     }
@@ -917,7 +894,7 @@ LogTrace(void *arg, Ns_Conn *conn)
         char buf[41]; /* Big enough for Ns_LogTime(). */
 
         Ns_LogTime(buf);
-        Tcl_DStringAppend(dsPtr, buf, -1);
+        Tcl_DStringAppend(dsPtr, buf, TCL_INDEX_NONE);
     }
 
     /*
@@ -1004,13 +981,16 @@ LogTrace(void *arg, Ns_Conn *conn)
     AppendExtHeaders(dsPtr, logPtr->requestHeaders, conn->headers);
     AppendExtHeaders(dsPtr, logPtr->responseHeaders, conn->outputheaders);
 
-    for (i = 0; i < dsPtr->length; i++) {
-        /*
-         * Quick fix to disallow terminal escape characters in the log
-         * file. See e.g. http://www.securityfocus.com/bid/37712/info
-         */
-        if (unlikely(dsPtr->string[i] == 0x1b)) {
-            dsPtr->string[i] = 7; /* bell */
+    {
+        TCL_SIZE_T l;
+        for (l = 0; l < dsPtr->length; l++) {
+            /*
+             * Quick fix to disallow terminal escape characters in the log
+             * file. See e.g. http://www.securityfocus.com/bid/37712/info
+             */
+            if (unlikely(dsPtr->string[l] == 0x1b)) {
+                dsPtr->string[l] = 7; /* bell */
+            }
         }
     }
 
@@ -1164,11 +1144,11 @@ LogClose(void *arg)
 static Ns_ReturnCode
 LogFlush(Log *logPtr, Tcl_DString *dsPtr)
 {
-    int   len = dsPtr->length;
-    char *buf = dsPtr->string;
+    TCL_SIZE_T len = dsPtr->length;
+    char      *buf = dsPtr->string;
 
     if (len > 0) {
-        if (logPtr->fd >= 0 && ns_write(logPtr->fd, buf, (size_t)len) != len) {
+        if (logPtr->fd >= 0 && ns_write(logPtr->fd, buf, (size_t)len) != (ssize_t)len) {
             Ns_Log(Error, "nslog: logging disabled: ns_write() failed: '%s'",
                    strerror(errno));
             ns_close(logPtr->fd);

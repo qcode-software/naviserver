@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 #include "nsd.h"
@@ -35,6 +17,49 @@
  *      Generic Interface for IPv4 and IPv6
  */
 
+static const char *nonPublicCIDR[] = {
+    /*
+     * Private network addresses
+     */
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "fd00::/8",
+
+    /*
+     * Private loopback addresses
+     */
+    "127.0.0.0/8",
+    "::1/128",
+
+    /*
+     * Link-local addresses
+     */
+    "69.254.0.0/16",
+    "fe80::/10",
+
+    /*
+     * Current network
+     */
+    "0.0.0.0/8",
+    "::/128",
+    NULL
+};
+
+typedef struct MaskedEntry {
+    const char *cdirString;
+    struct NS_SOCKADDR_STORAGE mask;
+    struct NS_SOCKADDR_STORAGE masked;
+} MaskedEntry;
+
+static MaskedEntry *trustedServersEntries = NULL;
+static MaskedEntry *nonPublicEntries = NULL;
+
+
+static void SockkAddrInitMaskedEntry(const char *cdirString, MaskedEntry *entryPtr, const char *errorString)
+    NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(2)  NS_GNUC_NONNULL(3);
+
+static bool SockAddrInit(void);
 
 
 /*
@@ -194,6 +219,8 @@ Ns_SockaddrMaskedMatch(const struct sockaddr *addr, const struct sockaddr *mask,
     NS_NONNULL_ASSERT(mask != NULL);
     NS_NONNULL_ASSERT(masked != NULL);
 
+    //fprintf(stderr, "addr family %d mask family %d\n", addr->sa_family, mask->sa_family);
+
     if (addr == mask) {
         success = NS_TRUE;
 
@@ -201,7 +228,6 @@ Ns_SockaddrMaskedMatch(const struct sockaddr *addr, const struct sockaddr *mask,
         const struct in6_addr *addrBits   = &(((struct sockaddr_in6 *)addr)->sin6_addr);
         const struct in6_addr *maskBits   = &(((struct sockaddr_in6 *)mask)->sin6_addr);
         const struct in6_addr *maskedBits = &(((struct sockaddr_in6 *)masked)->sin6_addr);
-
         int i;
 
         success = NS_TRUE;
@@ -225,7 +251,7 @@ Ns_SockaddrMaskedMatch(const struct sockaddr *addr, const struct sockaddr *mask,
         }
 #endif
     } else if (addr->sa_family == AF_INET && mask->sa_family == AF_INET) {
-        /* fprintf(stderr, "addr %.8x & mask %.8x masked %.8x <-> %.8x\n",
+        /*fprintf(stderr, "addr %.8x & mask %.8x masked %.8x <-> %.8x\n",
                 ((struct sockaddr_in *)addr)->sin_addr.s_addr,
                 ((struct sockaddr_in *)mask)->sin_addr.s_addr,
                 ((struct sockaddr_in *)masked)->sin_addr.s_addr,
@@ -332,7 +358,9 @@ Ns_SockaddrMaskBits(const struct sockaddr *mask, unsigned int nrBits)
  * Ns_SockaddrParseIPMask --
  *
  *      Build a mask and IPv4 or IpV6 address from an IP string notation,
- *      potentially containing a '/' for denoting the number of bits.
+ *      potentially containing a '/' for denoting the number of bits (CIDR
+ *      notation)
+ *
  *      Example: "137.208.1.10/16"
  *
  * Results:
@@ -475,7 +503,12 @@ ns_inet_ntop(const struct sockaddr *NS_RESTRICT saPtr, char *NS_RESTRICT buffer,
 
                     if (len > 6 && len < size) {
                         tail ++;
-                        memcpy(buffer, tail, len);
+                        /*
+                         * The memory is overlapping. Do not use memcpy()
+                         * since this might fail on some platforms with a hard
+                         * trap (e.g., aarch64 musl).
+                         */
+                        memmove(buffer, tail, len);
                         buffer[len] = '\0';
                     }
                 }
@@ -749,6 +782,163 @@ Ns_LogSockaddr(Ns_LogSeverity severity, const char *prefix, const struct sockadd
 
     Ns_Log(severity, "%s: SockAddr family %s, ip %s, port %d",
            prefix, family, ipStrPtr, Ns_SockaddrGetPort(saPtr));
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * SockAddrInit, SockkAddrInitMaskedEntry --
+ *
+ *      Initialization function for global data for efficient check of
+ *      addresses and address ranges.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+SockkAddrInitMaskedEntry(const char *cdirString, MaskedEntry *entryPtr, const char *errorString)
+{
+    //fprintf(stderr, "SockkAddrInitMaskedEntry entryPtr %p cdir <%s>\n", (void*)entryPtr, cdirString);
+    entryPtr->cdirString = ns_strdup(cdirString);
+    if (Ns_SockaddrParseIPMask(NULL, entryPtr->cdirString,
+                               (struct sockaddr *) &entryPtr->masked,
+                               (struct sockaddr *) &entryPtr->mask,
+                               NULL
+                               ) != NS_OK) {
+        Ns_Log(Error, "invalid CIDR %s during initialization: '%s'", errorString,  entryPtr->cdirString);
+    }
+}
+
+static bool
+SockAddrInit(void)
+{
+    size_t i;
+
+    nonPublicEntries = ns_calloc(Ns_NrElements(nonPublicCIDR), sizeof(MaskedEntry));
+
+    for (i = 0; i < Ns_NrElements(nonPublicCIDR) -1; i++) {
+        SockkAddrInitMaskedEntry(nonPublicCIDR[i], &nonPublicEntries[i], "builtin value");
+    }
+
+    if (nsconf.reverseproxymode.trustedservers != NULL) {
+        const char **elements;
+        TCL_SIZE_T   length = 0;
+
+        (void)Tcl_SplitList(NULL, nsconf.reverseproxymode.trustedservers, &length, &elements);
+        if (length > 0) {
+            size_t l = (size_t)length ++;
+
+            trustedServersEntries = ns_calloc(l+1, sizeof(MaskedEntry));
+
+            for (i = 0; i < l; i++) {
+                SockkAddrInitMaskedEntry(elements[i], &trustedServersEntries[i], "value for reverseproxy");
+            }
+            Tcl_Free((char *) elements);
+        }
+    }
+
+    return NS_OK;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockaddrTrustedReverseProxy --
+ *
+ *      Check, if the passed in socket address belongs to a trusted reverse
+ *      proxy server.
+ *
+ * Results:
+ *      Boolean.
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+bool
+Ns_SockaddrTrustedReverseProxy(const struct sockaddr *saPtr) {
+    bool   success = NS_FALSE;
+    size_t i;
+
+    NS_NONNULL_ASSERT(saPtr != NULL);
+
+    NS_INIT_ONCE(SockAddrInit);
+
+    for (i = 0u; trustedServersEntries[i].cdirString != NULL; i++) {
+        //Ns_Log(Notice, "[%ld] trusted reverse proxy check %p> ", i, (void*)trustedServersEntries[i].cdirString) ;
+        //Ns_Log(Notice, "[%ld] trusted reverse proxy check <%s> ", i, trustedServersEntries[i].cdirString);
+        if (Ns_SockaddrMaskedMatch(saPtr,
+                                   (struct sockaddr *) &trustedServersEntries[i].mask,
+                                   (struct sockaddr *) &trustedServersEntries[i].masked)) {
+            success = NS_TRUE;
+            break;
+        }
+    }
+#if 0
+    {
+        char   ipString[NS_IPADDR_SIZE];
+        size_t j;
+        for (j = 0u; trustedServersEntries[j].cdirString != NULL; j++) {}
+        (void)ns_inet_ntop(saPtr, ipString, NS_IPADDR_SIZE);
+        Ns_Log(Notice, "...... checked %ld/%ld trusted %s -> %d", i, j, ipString, success);
+    }
+#endif
+    return success;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockaddrPublicIpAddress --
+ *
+ *      Check, if the passed in socket address is a public (non-local and
+ *      routable) IP address.
+ *
+ * Results:
+ *      Boolean.
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+bool
+Ns_SockaddrPublicIpAddress(const struct sockaddr *saPtr) {
+    bool   success = NS_TRUE;
+    size_t i;
+
+    NS_NONNULL_ASSERT(saPtr != NULL);
+
+    NS_INIT_ONCE(SockAddrInit);
+
+    for (i = 0u; nonPublicCIDR[i] != NULL; i++) {
+        //Ns_Log(Notice, "public IP check <%s> ", nonPublicCIDR[i]);
+
+        if (Ns_SockaddrMaskedMatch(saPtr,
+                                   (struct sockaddr *) &nonPublicEntries[i].mask,
+                                   (struct sockaddr *) &nonPublicEntries[i].masked)) {
+            success = NS_FALSE;
+            break;
+        }
+    }
+#if 0
+    {
+        char   ipString[NS_IPADDR_SIZE];
+        size_t j;
+        for (j = 0u; nonPublicCIDR[j] != NULL; j++) {}
+        (void)ns_inet_ntop(saPtr, ipString, NS_IPADDR_SIZE);
+        Ns_Log(Notice, "...... checked %ld/%ld public %s -> %d", i,j, ipString, success);
+    }
+#endif
+    return success;
 }
 
 /*

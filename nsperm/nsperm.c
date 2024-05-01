@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -103,24 +85,24 @@ typedef struct {
  */
 
 static Ns_TclTraceProc AddCmds;
-static Tcl_ObjCmdProc PermObjCmd;
-static Tcl_ObjCmdProc AddUserObjCmd;
-static Tcl_ObjCmdProc DelUserObjCmd;
-static Tcl_ObjCmdProc AddGroupObjCmd;
-static Tcl_ObjCmdProc DelGroupObjCmd;
-static Tcl_ObjCmdProc ListUsersObjCmd;
-static Tcl_ObjCmdProc ListGroupsObjCmd;
-static Tcl_ObjCmdProc ListPermsObjCmd;
-static Tcl_ObjCmdProc DelPermObjCmd;
-static Tcl_ObjCmdProc CheckPassObjCmd;
-static Tcl_ObjCmdProc SetPassObjCmd;
+static TCL_OBJCMDPROC_T PermObjCmd;
+static TCL_OBJCMDPROC_T AddUserObjCmd;
+static TCL_OBJCMDPROC_T DelUserObjCmd;
+static TCL_OBJCMDPROC_T AddGroupObjCmd;
+static TCL_OBJCMDPROC_T DelGroupObjCmd;
+static TCL_OBJCMDPROC_T ListUsersObjCmd;
+static TCL_OBJCMDPROC_T ListGroupsObjCmd;
+static TCL_OBJCMDPROC_T ListPermsObjCmd;
+static TCL_OBJCMDPROC_T DelPermObjCmd;
+static TCL_OBJCMDPROC_T CheckPassObjCmd;
+static TCL_OBJCMDPROC_T SetPassObjCmd;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
 static int AllowDenyObjCmd(
     ClientData data,
     Tcl_Interp *interp,
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const* objv,
     bool allow,
     bool user
@@ -225,8 +207,8 @@ Ns_ModuleInit(const char *server, const char *UNUSED(module))
 
 static int AddCmds(Tcl_Interp *interp, const void *arg)
 {
-    Tcl_CreateObjCommand(interp, "ns_perm", PermObjCmd, (ClientData)arg, NULL);
-    return NS_OK;
+    TCL_CREATEOBJCOMMAND(interp, "ns_perm", PermObjCmd, (ClientData)arg, NULL);
+    return TCL_OK;
 }
 
 
@@ -246,7 +228,7 @@ static int AddCmds(Tcl_Interp *interp, const void *arg)
  *----------------------------------------------------------------------
  */
 
-static int PermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int PermObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server *servPtr = data;
     int opt, status = TCL_OK;
@@ -739,9 +721,7 @@ FreeUserInfo(User *userPtr, const char *name)
     while (hPtr != NULL) {
         char *maskString = Tcl_GetHashValue(hPtr);
 
-        if (maskString != NULL) {
-            ns_free(maskString);
-        }
+        ns_free(maskString);
         Tcl_DeleteHashEntry(hPtr);
         hPtr = Tcl_NextHashEntry(&search);
     }
@@ -769,7 +749,7 @@ FreeUserInfo(User *userPtr, const char *name)
  *----------------------------------------------------------------------
  */
 
-static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server             *servPtr = data;
     User               *userPtr;
@@ -778,7 +758,8 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
     struct sockaddr    *ipPtr = (struct sockaddr *)&ip, *maskPtr = (struct sockaddr *)&mask;
     char buf[NS_ENCRYPT_BUFSIZE];
     char               *name, *pwd, *field = NULL, *salt = NULL;
-    int                 isNew, i, nargs = 0, allow = 0, deny = 0, clear = 0;
+    int                 isNew, allow = 0, deny = 0, clear = 0;
+    TCL_SIZE_T          nargs = 0, i;
 
     Ns_ObjvSpec opts[] = {
         {"-allow", Ns_ObjvBool, &allow, INT2PTR(NS_TRUE)},
@@ -832,7 +813,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
      * 192.168.2.3/255.255.255.0, foo.bar.com, or .bar.com
      */
 
-    for (i = objc - nargs; i < objc; ++i) {
+    for (i = (TCL_SIZE_T)objc - nargs; i < (TCL_SIZE_T)objc; ++i) {
         Ns_ReturnCode status;
         char         *net = Tcl_GetString(objv[i]);
 
@@ -905,7 +886,7 @@ static int AddUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server        *servPtr = data;
     char          *name = NULL;
@@ -949,7 +930,7 @@ static int DelUserObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     Server         *servPtr = data;
     Tcl_HashSearch  search, msearch;
@@ -1028,15 +1009,16 @@ static int ListUsersObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc
  *----------------------------------------------------------------------
  */
 
-static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    Server *servPtr = data;
-    char *name, *user;
-    User *userPtr;
-    Group *groupPtr;
+    Server        *servPtr = data;
+    char          *name, *user;
+    User          *userPtr;
+    Group         *groupPtr;
     Tcl_HashSearch search;
     Tcl_HashEntry *hPtr;
-    int isNew, param;
+    int            isNew;
+    TCL_OBJC_T     param;
 
     if (objc < 4) {
         Tcl_WrongNumArgs(interp, 2, objv, "name user ?user ...?");
@@ -1137,7 +1119,7 @@ static int AddGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 
-static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server *servPtr = data;
     char *name = NULL;
@@ -1194,7 +1176,7 @@ static int DelGroupObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 
-static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     Server         *servPtr = data;
     Tcl_HashSearch  search;
@@ -1260,13 +1242,14 @@ static int ListGroupsObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(obj
 static int AllowDenyObjCmd(
     ClientData data,
     Tcl_Interp *interp,
-    int objc,
+    TCL_OBJC_T objc,
     Tcl_Obj *const* objv,
     bool allow,
     bool user
 ) {
-    char *method = NULL, *url = NULL;
-    int   noinherit = 0, nargs = 0, result;
+    char      *method = NULL, *url = NULL;
+    int        noinherit = 0, result;
+    TCL_SIZE_T nargs = 0;
 
     Ns_ObjvSpec opts[] = {
         {"-noinherit", Ns_ObjvBool,   &noinherit,  INT2PTR(NS_TRUE)},
@@ -1286,7 +1269,8 @@ static int AllowDenyObjCmd(
         Server      *servPtr = data;
         Perm        *permPtr;
         Ns_DString   base;
-        int          i, isNew;
+        int          isNew;
+        TCL_SIZE_T   i;
         unsigned int flags = 0u;
 
         if (noinherit != 0) {
@@ -1323,7 +1307,7 @@ static int AllowDenyObjCmd(
             permPtr->flags |= PERM_IMPLICIT_ALLOW;
         }
 
-        for (i = objc - nargs; i < objc; i++) {
+        for (i = (TCL_SIZE_T)objc - nargs; i < (TCL_SIZE_T)objc; i++) {
             char *key = Tcl_GetString(objv[i]);
 
             if (user) {
@@ -1363,7 +1347,7 @@ static int AllowDenyObjCmd(
  *----------------------------------------------------------------------
  */
 
-static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server      *servPtr = data;
     Perm        *permPtr;
@@ -1433,7 +1417,7 @@ static int DelPermObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 
-static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+static int ListPermsObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     Server *servPtr = data;
     Ns_DString ds;
@@ -1500,7 +1484,7 @@ static void WalkCallback(Tcl_DString * dsPtr, const void *arg)
  */
 
 static int
-CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+CheckPassObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server *servPtr = data;
     int rc = TCL_ERROR;
@@ -1559,7 +1543,7 @@ CheckPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* 
  */
 
 static int
-SetPassObjCmd(ClientData data, Tcl_Interp * interp, int objc, Tcl_Obj *const* objv)
+SetPassObjCmd(ClientData data, Tcl_Interp * interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Server        *servPtr = data;
     int            rc = 0;

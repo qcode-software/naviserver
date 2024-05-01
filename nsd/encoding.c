@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -59,8 +41,8 @@ static Tcl_HashTable  charsets;     /* Maps Internet charset names to Tcl encodi
 static Tcl_HashTable  encnames;     /* Maps Tcl encoding names to Internet charset names. */
 static Tcl_HashTable  encodings;    /* Cache of loaded Tcl encodings */
 
-static Ns_Mutex       lock;         /* Lock around encodings. */
-static Ns_Cond        cond;
+static Ns_Mutex       lock = NULL;  /* Lock around encodings. */
+static Ns_Cond        cond = NULL;
 
 Tcl_Encoding          NS_utf8Encoding = NULL; /* Cached pointer to utf-8 encoding. */
 
@@ -224,11 +206,12 @@ NsConfigEncodings(void)
     size_t        i;
 
     Ns_MutexSetName(&lock, "ns:encodings");
+    Ns_CondInit(&cond);
     Tcl_InitHashTable(&extensions, TCL_STRING_KEYS);
     Tcl_InitHashTable(&charsets, TCL_STRING_KEYS);
     Tcl_InitHashTable(&encnames, TCL_STRING_KEYS);
     Tcl_InitHashTable(&encodings, TCL_STRING_KEYS);
-    NS_utf8Encoding = Ns_GetCharsetEncoding("utf-8");
+    NS_utf8Encoding = Ns_GetCharsetEncodingEx("utf-8", 5);
 
     /*
      * Add default charsets and file mappings.
@@ -391,7 +374,7 @@ Ns_GetTypeEncoding(const char *mimeType)
     NS_NONNULL_ASSERT(mimeType != NULL);
 
     charset = NsFindCharset(mimeType, &len);
-    return (charset != NULL) ? Ns_GetCharsetEncodingEx(charset, (int)len) : NULL;
+    return (charset != NULL) ? Ns_GetCharsetEncodingEx(charset, (TCL_SIZE_T)len) : NULL;
 }
 
 
@@ -417,11 +400,11 @@ Ns_GetCharsetEncoding(const char *charset)
 {
     NS_NONNULL_ASSERT(charset != NULL);
 
-    return Ns_GetCharsetEncodingEx(charset, -1);
+    return Ns_GetCharsetEncodingEx(charset, TCL_INDEX_NONE);
 }
 
 Tcl_Encoding
-Ns_GetCharsetEncodingEx(const char *charset, int len)
+Ns_GetCharsetEncodingEx(const char *charset, TCL_SIZE_T len)
 {
     const Tcl_HashEntry *hPtr;
     Tcl_Encoding         encoding;
@@ -553,7 +536,7 @@ NsFindCharset(const char *mimetype, size_t *lenPtr)
 
 int
 NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+                    TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
@@ -564,7 +547,7 @@ NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
          hPtr = Tcl_NextHashEntry(&search)
          ) {
         const char *key = Tcl_GetHashKey(&charsets, hPtr);
-        Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, -1));
+        Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
     }
     Tcl_SetObjResult(interp, listObj);
 
@@ -591,7 +574,7 @@ NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  */
 
 int
-NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -599,12 +582,12 @@ NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         Tcl_WrongNumArgs(interp, 1, objv, "charset");
         result =  TCL_ERROR;
     } else {
-        int          encodingNameLen;
+        TCL_SIZE_T   encodingNameLen;
         const char  *encodingName = Tcl_GetStringFromObj(objv[1], &encodingNameLen);
         Tcl_Encoding encoding = Ns_GetCharsetEncodingEx(encodingName, encodingNameLen);
 
         if (encoding != NULL) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetEncodingName(encoding), -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetEncodingName(encoding), TCL_INDEX_NONE));
         }
     }
 
