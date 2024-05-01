@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -90,7 +72,7 @@ static void GenSeeds(unsigned long seeds[], int nseeds);
  */
 
 int
-NsTclRandObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRandObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               maxValue = -1, result = TCL_OK;
     Ns_ObjvValueRange range = {1, INT_MAX};
@@ -136,21 +118,11 @@ double
 Ns_DRand(void)
 {
     if (!initialized) {
-        Ns_CsEnter(&lock);
-        if (!initialized) {
-            unsigned long seed[1];
-
-            GenSeeds(seed, 1);
-#if defined(HAVE_DRAND48)
-            srand48((long) seed[0]);
-#elif defined(HAVE_RANDOM)
-            srandom((unsigned int) seed[0]);
-#else
-            srand((unsigned int) seed[0]);
+#ifndef _WIN32
+        fprintf(stderr, "Ns_DRand: called before initialization. "
+                "This should not happen, call NsInitRandom() before this call\n");
 #endif
-            initialized = NS_TRUE;
-        }
-        Ns_CsLeave(&lock);
+        NsInitRandom();
     }
 #if defined(HAVE_ARC4RANDOM)
     return ((double)(arc4random() % (unsigned)RAND_MAX) / ((double)RAND_MAX + 1.0));
@@ -185,8 +157,14 @@ GenSeeds(unsigned long seeds[], int nseeds)
 {
     Ns_Thread thr;
 
-    Ns_Log(Notice, "random: generating %d seed%s", nseeds,
-        nseeds == 1 ? NS_EMPTY_STRING : "s");
+    /*
+     * We do not want to get this message when, e.g., the nsproxy
+     * helper is started.
+     */
+    if (nsconf.argv0 != NULL) {
+        Ns_Log(Notice, "random: generating %d seed%s", nseeds,
+               nseeds == 1 ? NS_EMPTY_STRING : "s");
+    }
     Ns_CsEnter(&lock);
     Ns_SemaInit(&sema, 0);
     fRun = NS_TRUE;
@@ -261,7 +239,7 @@ CounterThread(void *UNUSED(arg))
 static unsigned long
 TrueRand(void)
 {
-    int i;
+    TCL_OBJC_T i;
 
     for (i = 0; i < ROULETTE_PRE_ITERS; i++) {
         (void) Roulette();
@@ -287,6 +265,36 @@ Roulette(void)
     ocount = counter;
     randbuf = (randbuf<<3) ^ counter;
     return randbuf;
+}
+
+/*----------------------------------------------------------------------
+ *
+ * NsInitRandom --
+ *
+ *      Initialize once the critical section and the seeds.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      One-time initialization.
+ *
+ *----------------------------------------------------------------------
+ */
+void NsInitRandom(void) {
+    unsigned long seed[1];
+
+    //fprintf(stderr, "==== NsInitRandom =====================================\n");
+    Ns_CsInit(&lock);
+    GenSeeds(seed, 1);
+#if defined(HAVE_DRAND48)
+    srand48((long) seed[0]);
+#elif defined(HAVE_RANDOM)
+    srandom((unsigned int) seed[0]);
+#else
+    srand((unsigned int) seed[0]);
+#endif
+    initialized = NS_TRUE;
 }
 
 /*

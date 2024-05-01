@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -51,6 +33,11 @@ typedef enum {
 
 } ValueOperation;
 
+/*
+ * Older versions of gcc (and probably some other compilers as well)
+ * do not accept const variables as const expressions. Therefore, we 
+ * introduced here the const expression NS_BITELEMENTS.
+ */
 #define NS_BITELEMENTS (sizeof(uintmax_t) * 8)
 static const unsigned int bitElements = NS_BITELEMENTS;
 static const unsigned int maxBitElements = NS_BITELEMENTS *
@@ -61,8 +48,8 @@ static const unsigned int maxBitElements = NS_BITELEMENTS *
  * Local functions defined in this file.
  */
 
-static Tcl_ObjCmdProc SectionObjCmd;
-static Tcl_ObjCmdProc ParamObjCmd;
+static TCL_OBJCMDPROC_T SectionObjCmd;
+static TCL_OBJCMDPROC_T ParamObjCmd;
 
 static void ConfigMark(Section *sectionPtr, size_t i, ValueOperation op)
     NS_GNUC_NONNULL(1);
@@ -154,7 +141,7 @@ Ns_ConfigSet(const char *section, const char *key, const char *name)
            NS_EMPTY_STRING);
 
     if (value != NULL) {
-        Tcl_Obj *valueObj = Tcl_NewStringObj(value, -1);
+        Tcl_Obj *valueObj = Tcl_NewStringObj(value, TCL_INDEX_NONE);
 
         setPtr = Ns_SetCreateFromDict(NULL, name, valueObj);
         Tcl_DecrRefCount(valueObj);
@@ -307,11 +294,11 @@ Ns_ConfigIntRange(const char *section, const char *key, int defaultValue,
         update = NS_TRUE;
     }
     if (update) {
-        Section *sectionPtr = GetSection(section, NS_FALSE);
-        int      length;
+        Section   *sectionPtr = GetSection(section, NS_FALSE);
+        TCL_SIZE_T length;
 
-        length = snprintf(strBuffer, sizeof(strBuffer), "%d", value);
-        Ns_SetUpdateSz(sectionPtr->set, key, -1, strBuffer, length);
+        length = (TCL_SIZE_T)snprintf(strBuffer, sizeof(strBuffer), "%d", value);
+        Ns_SetUpdateSz(sectionPtr->set, key, TCL_INDEX_NONE, strBuffer, length);
     }
 
     return value;
@@ -334,14 +321,6 @@ Ns_ConfigIntRange(const char *section, const char *key, int defaultValue,
  *
  *----------------------------------------------------------------------
  */
-#ifdef TCL_WIDE_INT_IS_LONG
-# define WIDE_INT_MAX (LONG_MAX)
-# define WIDE_INT_MIN (LONG_MIN)
-#else
-# define WIDE_INT_MAX (LLONG_MAX)
-# define WIDE_INT_MIN (LLONG_MIN)
-#endif
-
 Tcl_WideInt
 Ns_ConfigWideInt(const char *section, const char *key, Tcl_WideInt defaultValue)
 {
@@ -740,11 +719,11 @@ PathAppend(Tcl_DString *dsPtr, const char *server, const char *module, va_list a
     Tcl_DStringAppend(dsPtr, "ns", 2);
     if (server != NULL) {
         Tcl_DStringAppend(dsPtr, "/server/", 8);
-        Tcl_DStringAppend(dsPtr, server, -1);
+        Tcl_DStringAppend(dsPtr, server, TCL_INDEX_NONE);
     }
     if (module != NULL) {
         Tcl_DStringAppend(dsPtr, "/module/", 8);
-        Tcl_DStringAppend(dsPtr, module, -1);
+        Tcl_DStringAppend(dsPtr, module, TCL_INDEX_NONE);
     }
 
     for (s = va_arg(ap, char *); s != NULL; s = va_arg(ap, char *)) {
@@ -752,7 +731,7 @@ PathAppend(Tcl_DString *dsPtr, const char *server, const char *module, va_list a
         while (*s != '\0' && ISSLASH(*s)) {
             ++s;
         }
-        Tcl_DStringAppend(dsPtr, s, -1);
+        Tcl_DStringAppend(dsPtr, s, TCL_INDEX_NONE);
         while (ISSLASH(dsPtr->string[dsPtr->length - 1])) {
             dsPtr->string[--dsPtr->length] = '\0';
         }
@@ -864,7 +843,7 @@ Ns_ConfigGetSections(void)
     Ns_Set             **sets;
     const Tcl_HashEntry *hPtr;
     Tcl_HashSearch       search;
-    int                  n;
+    TCL_SIZE_T           n;
 
     n = nsconf.sections.numEntries + 1;
     sets = ns_malloc(sizeof(Ns_Set *) * (size_t)n);
@@ -937,13 +916,13 @@ void NsConfigMarkAsRead(const char *section, size_t i) {
 /* currently not needed */
 const char *NsConfigGetDefault(const char *section, const char *key) {
     const char *result = NULL;
-    int         i;
+    int         idx;
     Section    *sectionPtr = GetSection(section, NS_FALSE);
 
     if (sectionPtr != NULL) {
-        i = Ns_SetIFind(sectionPtr->defaults, key);
-        if (i > -1) {
-            result = sectionPtr->defaults->fields[i].value;
+        idx = Ns_SetIFind(sectionPtr->defaults, key);
+        if (idx > -1) {
+            result = sectionPtr->defaults->fields[idx].value;
         }
     }
     return result;
@@ -1093,14 +1072,14 @@ NsConfigRead(const char *file)
          */
         buf = Tcl_NewObj();
         Tcl_IncrRefCount(buf);
-        if (Tcl_ReadChars(chan, buf, -1, 0) == -1) {
+        if (Tcl_ReadChars(chan, buf, TCL_INDEX_NONE, 0) == TCL_IO_FAILURE) {
             call = "read";
 
         } else {
-            int         length;
+            TCL_SIZE_T  length;
             const char *data = Tcl_GetStringFromObj(buf, &length);
 
-            fileContent = ns_strncopy(data, length);
+            fileContent = ns_strncopy(data, (ssize_t)length);
         }
     }
 
@@ -1151,8 +1130,8 @@ NsConfigEval(const char *config, const char *configFileName,
      */
 
     interp = Ns_TclCreateInterp();
-    (void)Tcl_CreateObjCommand(interp, "ns_section", SectionObjCmd, &sectionPtr, NULL);
-    (void)Tcl_CreateObjCommand(interp, "ns_param", ParamObjCmd, &sectionPtr, NULL);
+    (void)TCL_CREATEOBJCOMMAND(interp, "ns_section", SectionObjCmd, &sectionPtr, NULL);
+    (void)TCL_CREATEOBJCOMMAND(interp, "ns_param", ParamObjCmd, &sectionPtr, NULL);
     for (i = 0; argv[i] != NULL; ++i) {
         (void) Tcl_SetVar(interp, "argv", argv[i], TCL_APPEND_VALUE|TCL_LIST_ELEMENT|TCL_GLOBAL_ONLY);
     }
@@ -1189,7 +1168,7 @@ NsConfigEval(const char *config, const char *configFileName,
  */
 
 static int
-ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ParamObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     Tcl_Obj    *nameObj, *valueObj;
@@ -1207,7 +1186,7 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
 
         if (likely(sectionPtr != NULL)) {
             const char *nameString, *valueString;
-            int         nameLength, valueLength;
+            TCL_SIZE_T  nameLength, valueLength;
             size_t      i;
 
             nameString = Tcl_GetStringFromObj(nameObj, &nameLength);
@@ -1246,7 +1225,7 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const*
  */
 
 static int
-SectionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+SectionObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *sectionName = NULL;
@@ -1305,20 +1284,20 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defaultS
     sectionPtr = GetSection(section, NS_FALSE);
 
     if (sectionPtr != NULL && sectionPtr->set != NULL) {
-        int  i;
+        int idx;
 
         if (exact) {
-            i = Ns_SetFind(sectionPtr->set, key);
+            idx = Ns_SetFind(sectionPtr->set, key);
         } else {
-            i = Ns_SetIFind(sectionPtr->set, key);
+            idx = Ns_SetIFind(sectionPtr->set, key);
         }
 
-        if (i >= 0) {
+        if (idx >= 0) {
             /*
              * The configuration value was found in the ns_set for this
              * section.
              */
-            s = Ns_SetValue(sectionPtr->set, i);
+            s = Ns_SetValue(sectionPtr->set, idx);
 
         } else if (!nsconf.state.started /*&& defaultString != NULL && *defaultString != '\0'*/) {
             /*
@@ -1329,18 +1308,20 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defaultS
              * startup when we there is a single thread. Changing ns_sets is
              * not thread safe.
              */
-            i = (int)Ns_SetPutSz(sectionPtr->set, key, -1,
-                                 defaultString, defaultString == NULL ? 0 : -1);
-            ConfigMark(sectionPtr, (size_t)i, value_defaulted);
-            s = Ns_SetValue(sectionPtr->set, i);
+            idx = (int)Ns_SetPutSz(sectionPtr->set, key, TCL_INDEX_NONE,
+                                 defaultString, defaultString == NULL ? 0 : TCL_INDEX_NONE);
+            ConfigMark(sectionPtr, (size_t)idx, value_defaulted);
+            s = Ns_SetValue(sectionPtr->set, idx);
 
         } else {
             s = defaultString;
         }
-        if (!nsconf.state.started) {
-            ConfigMark(sectionPtr, (size_t)i, value_read);
+        if (!nsconf.state.started && idx >= 0) {
+            ConfigMark(sectionPtr, (size_t)idx, value_read);
             if (defaultString != NULL) {
-                (void)Ns_SetPutSz(sectionPtr->defaults, key, -1, defaultString, -1);
+                (void)Ns_SetPutSz(sectionPtr->defaults,
+                                  key, TCL_INDEX_NONE,
+                                  defaultString, TCL_INDEX_NONE);
             }
         }
     }
@@ -1375,12 +1356,16 @@ NsConfigSectionGetFiltered(const char *section, char filter)
                     if (filter == 'u' && (sectionPtr->readArray[index] & mask) == 0u) {
                         /*fprintf(stderr, "unused parameter: %s/%s (%lu)\n",
                           section, set->fields[i].name, i);*/
-                        Ns_SetPutSz(result, set->fields[i].name, -1, set->fields[i].value, -1);
+                        Ns_SetPutSz(result,
+                                    set->fields[i].name, TCL_INDEX_NONE,
+                                    set->fields[i].value, TCL_INDEX_NONE);
                     } else if  (filter == 'd' && (sectionPtr->defaultArray[index] & mask) != 0u) {
                         /*fprintf(stderr, "defaulted parameter: %s/%s (%lu) defaults %p mask %p\n",
                           section, set->fields[i].name, i,
                           (void*)sectionPtr->defaultArray[0], (void*)mask);*/
-                        Ns_SetPutSz(result, set->fields[i].name, -1, set->fields[i].value, -1);
+                        Ns_SetPutSz(result,
+                                    set->fields[i].name, TCL_INDEX_NONE,
+                                    set->fields[i].value, TCL_INDEX_NONE);
                     }
                 }
             }
@@ -1429,7 +1414,7 @@ GetSection(const char *section, bool create)
     while (CHARTYPE(space, *p) != 0) {
         ++p;
     }
-    Tcl_DStringAppend(&ds, p, -1);
+    Tcl_DStringAppend(&ds, p, TCL_INDEX_NONE);
     s = ds.string;
     while (likely(*s != '\0')) {
         if (unlikely(*s == '\\')) {

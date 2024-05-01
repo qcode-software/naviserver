@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -71,7 +53,7 @@ typedef struct Sess {
  */
 
 static Ns_SockProc AcceptProc;
-static Tcl_ObjCmdProc ExitObjCmd;
+static TCL_OBJCMDPROC_T ExitObjCmd;
 static bool Login(const Sess *sessPtr, Tcl_DString *unameDSPtr);
 static bool GetLine(NS_SOCKET sock, const char *prompt, Tcl_DString *dsPtr, bool echo)
     NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
@@ -79,7 +61,7 @@ static void LoadUsers(Mod *localModPtr, const char *server, const char *module)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 static Ns_ArgProc ArgProc;
 static Ns_TclTraceProc NscpAddCmds;
-static Tcl_ObjCmdProc NsTclNscpObjCmd;
+static TCL_OBJCMDPROC_T NsTclNscpObjCmd;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 /*
@@ -437,7 +419,7 @@ EvalThread(void *arg)
      */
 
     stop = 0;
-    (void)Tcl_CreateObjCommand(interp, "exit", ExitObjCmd, (ClientData) &stop, NULL);
+    (void)TCL_CREATEOBJCOMMAND(interp, "exit", ExitObjCmd, (ClientData) &stop, NULL);
 
     ncmd = 0;
     while (stop == 0) {
@@ -591,7 +573,7 @@ GetLine(NS_SOCKET sock, const char *prompt, Tcl_DString *dsPtr, bool echo)
             }
         }
 
-        Tcl_DStringAppend(dsPtr, buf, (int)n);
+        Tcl_DStringAppend(dsPtr, buf, (TCL_SIZE_T)n);
         result = NS_TRUE;
 
     } while (buf[n-1] != '\n');
@@ -657,7 +639,7 @@ Login(const Sess *sessPtr, Tcl_DString *unameDSPtr)
     Ns_DStringInit(&msgDs);
     if (ok) {
         Ns_Log(Notice, "nscp: %s logged in", user);
-        Tcl_DStringAppend(unameDSPtr, user, -1);
+        Tcl_DStringAppend(unameDSPtr, user, TCL_INDEX_NONE);
         Ns_DStringPrintf(&msgDs,
             "\nWelcome to %s running at %s (pid %d)\n"
             "%s/%s for %s built on %s\nTag: %s\n",
@@ -696,7 +678,7 @@ Login(const Sess *sessPtr, Tcl_DString *unameDSPtr)
  */
 
 static int
-ExitObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ExitObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -735,7 +717,7 @@ NscpAddCmds(Tcl_Interp *interp, const void *UNUSED(arg))
 {
     /*const char *server = arg;*/
 
-    (void)Tcl_CreateObjCommand(interp, "nscp", NsTclNscpObjCmd, NULL, NULL);
+    (void)TCL_CREATEOBJCOMMAND(interp, "nscp", NsTclNscpObjCmd, NULL, NULL);
 
     return TCL_OK;
 }
@@ -755,7 +737,7 @@ NscpAddCmds(Tcl_Interp *interp, const void *UNUSED(arg))
  *----------------------------------------------------------------------
  */
 static int
-NscpUsersObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NscpUsersObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -769,7 +751,7 @@ NscpUsersObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
         while (hPtr != NULL) {
             char *userName = Tcl_GetHashKey(&modPtr->users, hPtr);
 
-            Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(userName, -1));
+            Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(userName, TCL_INDEX_NONE));
             hPtr = Tcl_NextHashEntry(&search);
         }
 
@@ -796,7 +778,7 @@ NscpUsersObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  */
 
 static int
-NsTclNscpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclNscpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"users", NscpUsersObjCmd},

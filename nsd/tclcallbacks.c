@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -45,7 +27,7 @@ typedef void *(AtProc)(Ns_Callback *proc, void *data);
  */
 
 static Ns_ShutdownProc ShutdownProc;
-static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -71,7 +53,7 @@ static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const
  */
 Ns_TclCallback *
 Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr,
-                  int objc, Tcl_Obj *const* objv)
+                  TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Ns_TclCallback *cbPtr;
 
@@ -92,7 +74,7 @@ Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr
         cbPtr->argv   = (char **)&cbPtr->args;
 
         if (objc > 0) {
-            int i;
+            TCL_SIZE_T i;
 
             for (i = 0; i < objc; i++) {
                 cbPtr->argv[i] = ns_strdup(Tcl_GetString(objv[i]));
@@ -122,7 +104,7 @@ Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr
 void
 Ns_TclFreeCallback(void *arg)
 {
-    int             ii;
+    TCL_SIZE_T      ii;
     Ns_TclCallback *cbPtr = arg;
 
     for (ii = 0; ii < cbPtr->argc; ii++) {
@@ -168,7 +150,7 @@ Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
     }
     if (interp != NULL) {
         const char *arg;
-        int         ii;
+        TCL_SIZE_T  ii;
         va_list     ap;
 
         Ns_DStringInit(&ds);
@@ -249,7 +231,7 @@ Ns_TclCallbackProc(void *arg)
 void
 Ns_TclCallbackArgProc(Tcl_DString *dsPtr, const void *arg)
 {
-    int             ii;
+    TCL_SIZE_T            ii;
     const Ns_TclCallback *cbPtr = arg;
 
     Tcl_DStringAppendElement(dsPtr, cbPtr->script);
@@ -277,7 +259,7 @@ Ns_TclCallbackArgProc(Tcl_DString *dsPtr, const void *arg)
  */
 
 static int
-AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -290,7 +272,7 @@ AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
     } else {
         Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp,
                                                   (ns_funcptr_t)Ns_TclCallbackProc, objv[1],
-                                                  objc - 2, objv + 2);
+                                                  (TCL_SIZE_T)(objc - 2), objv + 2);
         (void) (*atProc)(Ns_TclCallbackProc, cbPtr);
     }
 
@@ -298,25 +280,25 @@ AtObjCmd(AtProc *atProc, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 }
 
 int
-NsTclAtPreStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAtPreStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtPreStartup, interp, objc, objv);
 }
 
 int
-NsTclAtStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAtStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtStartup, interp, objc, objv);
 }
 
 int
-NsTclAtSignalObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAtSignalObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtSignal, interp, objc, objv);
 }
 
 int
-NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtExit, interp, objc, objv);
 }
@@ -340,7 +322,7 @@ NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  */
 
 int
-NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     static bool initialized = NS_FALSE;
@@ -356,7 +338,7 @@ NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
     } else {
         Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)ShutdownProc,
-                                                  objv[1], objc - 2, objv + 2);
+                                                  objv[1], (TCL_SIZE_T)(objc - 2), objv + 2);
         (void) Ns_RegisterAtShutdown(ShutdownProc, cbPtr);
     }
     return result;

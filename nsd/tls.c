@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -147,6 +129,9 @@ static bool
 OCSP_ResponseIsValid(OCSP_RESPONSE *resp, OCSP_CERTID *id)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 # endif
+
+static void DrainErrorStack(Ns_LogSeverity severity, const char *errorContext, unsigned long sslERRcode)
+    NS_GNUC_NONNULL(2);
 
 static Ns_ReturnCode WaitFor(NS_SOCKET sock, unsigned int st, Ns_Time *timeoutPtr);
 
@@ -369,7 +354,7 @@ SSL_serverNameCB(SSL *ssl, int *al, void *UNUSED(arg))
 
         /*
          * Perform lookup from host table only, when doSNI is true
-         * (i.e. when per virtual server certificates weres specified.
+         * (i.e., when per virtual server certificates were specified.
          */
         if (doSNI) {
             Tcl_DString     ds;
@@ -384,9 +369,9 @@ SSL_serverNameCB(SSL *ssl, int *al, void *UNUSED(arg))
             Tcl_DStringInit(&ds);
             Ns_DStringPrintf(&ds, "%s:%hu", serverName, port);
 
-            ctx = NsDriverLookupHostCtx(&ds, sockPtr->driver);
+            ctx = NsDriverLookupHostCtx(&ds, serverName, sockPtr->driver);
 
-            Ns_Log(Debug, "SSL_serverNameCB lookup of <%s> location %s port %hu -> %p",
+            Ns_Log(Debug, "SSL_serverNameCB lookup result of <%s> location %s port %hu -> ctx %p",
                    serverName, ds.string, port, (void*)ctx);
 
             /*
@@ -460,11 +445,11 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
 
     /*
      * If we have no in-memory cached OCSP response, fetch the value
-     * either form the disk cache or from the URL provided via the DER
+     * either from the disk cache or from the URL provided via the DER
      * encoded OCSP request.
      *
      * In failure cases, avoid a too eager generation of error
-     * messages in the logfile by performin also retries to obtain the
+     * messages in the logfile by performing also retries to obtain the
      * OCSP response based on the timeout.
      */
 
@@ -690,9 +675,9 @@ OCSP_FromCacheFile(Tcl_DString *dsPtr, OCSP_CERTID *id, OCSP_RESPONSE **resp)
         Tcl_DString outputBuffer;
 
         Tcl_DStringInit(&outputBuffer);
-        Tcl_DStringSetLength(&outputBuffer, pserial->length*2 + 1);
+        Tcl_DStringSetLength(&outputBuffer, (TCL_SIZE_T)(pserial->length*2 + 1));
 
-        Ns_HexString(pserial->data, outputBuffer.string, pserial->length, NS_TRUE);
+        Ns_HexString(pserial->data, outputBuffer.string, (TCL_SIZE_T)pserial->length, NS_TRUE);
         /*
          * Check for the "logs" directory below NaviServer home.
          */
@@ -906,15 +891,15 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
         Ns_Log(Error, "cert_status: invalid OCSP request size");
 
     } else {
-        Tcl_DString dsBinary, dsBase64, dsCMD;
+        Tcl_DString    dsBinary, dsBase64, dsCMD;
         unsigned char *ppout;
-        size_t base64len;
+        TCL_SIZE_T     base64len;
 
         Tcl_DStringInit(&dsBinary);
         Tcl_DStringInit(&dsBase64);
         Tcl_DStringInit(&dsCMD);
 
-        Tcl_DStringSetLength(&dsBinary, derLength + 1);
+        Tcl_DStringSetLength(&dsBinary, (TCL_SIZE_T)derLength + 1);
         ppout = (unsigned char *)dsBinary.string;
         derLength = i2d_OCSP_REQUEST(req, &ppout);
 
@@ -922,13 +907,13 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
          * Append DER encoding of the OCSP request via URL-encoding of base64
          * encoding, as defined in https://tools.ietf.org/html/rfc6960#appendix-A
          */
-        base64len = MAX(4, ((size_t)derLength * 4/3) + 4);
-        Tcl_DStringSetLength(&dsBase64, (int)base64len);
+        base64len = MAX(4, ((TCL_SIZE_T)derLength * 4/3) + 4);
+        Tcl_DStringSetLength(&dsBase64, base64len);
         (void) Ns_Base64Encode((unsigned char *)dsBinary.string,
                                (size_t)derLength, dsBase64.string,
                                0, 0);
-        Tcl_DStringAppend(&dsCMD, "ns_http run ", -1);
-        Tcl_DStringAppend(&dsCMD, aiaURL, -1);
+        Tcl_DStringAppend(&dsCMD, "ns_http run ", TCL_INDEX_NONE);
+        Tcl_DStringAppend(&dsCMD, aiaURL, TCL_INDEX_NONE);
 
         /*
          * Append slash to URI if necessary.
@@ -958,8 +943,8 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
                     resultObj = Tcl_GetObjResult(interp);
                     Ns_Log(Error, "OCSP_REQUEST '%s' returned error '%s'", dsCMD.string, Tcl_GetString(resultObj));
                 } else {
-                    Tcl_Obj *statusObj = Tcl_NewStringObj("status", -1);
-                    Tcl_Obj *bodyObj = Tcl_NewStringObj("body", -1);
+                    Tcl_Obj *statusObj = Tcl_NewStringObj("status", TCL_INDEX_NONE);
+                    Tcl_Obj *bodyObj = Tcl_NewStringObj("body", TCL_INDEX_NONE);
                     Tcl_Obj *valueObj = NULL;
                     Ns_ReturnCode status;
 
@@ -987,7 +972,7 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
                     }
                     if (status == NS_OK) {
                         if (Tcl_DictObjGet(interp, resultObj, bodyObj, &valueObj) == TCL_OK) {
-                            int                  length;
+                            TCL_SIZE_T           length;
                             const unsigned char *bytes;
 
                             bytes = Tcl_GetByteArrayFromObj(valueObj, &length);
@@ -1084,7 +1069,14 @@ NsInitOpenSSL(void)
         OPENSSL_init_ssl(0, NULL);
 #  endif
         initialized = 1;
-        Ns_Log(Notice, "%s initialized", SSLeay_version(SSLEAY_VERSION));
+        /*
+         * We do not want to get this message when, e.g., the nsproxy
+         * helper is started.
+         */
+        if (nsconf.argv0 != NULL) {
+            Ns_Log(Notice, "%s initialized (pid %d)",
+                   SSLeay_version(SSLEAY_VERSION), getpid());
+        }
 
         CertTableInit();
     }
@@ -1365,6 +1357,35 @@ SSLPassword(char *buf, int num, int UNUSED(rwflag), void *UNUSED(userdata))
 /*
  *----------------------------------------------------------------------
  *
+ * DrainErrorStack --
+ *
+ *      Report 0 to n errors from the OpenSSL error stack. This
+ *      function reports the errors and clears it as well.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Error reporting.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+DrainErrorStack(Ns_LogSeverity severity, const char *errorContext, unsigned long sslERRcode)
+{
+    char errorBuffer[256];
+
+    while (sslERRcode != 0u) {
+        Ns_Log(severity, "%s: OpenSSL errorCode:%lu errorString: %s",
+               errorContext, sslERRcode, ERR_error_string(sslERRcode, errorBuffer));
+
+        sslERRcode = ERR_get_error();
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * NsSSLConfigNew --
  *
  *      Creates a new NsSSLConfig structure and sets standard
@@ -1395,7 +1416,9 @@ NsSSLConfigNew(const char *path)
  *
  * Ns_TLS_CtxServerInit --
  *
- *      Read config information, create and initialize OpenSSL context.
+ *      Read config information, create and initialize OpenSSL
+ *      context.  This function is called at startup to define OpenSSL
+ *      contexts for the defined servers.
  *
  * Results:
  *      A standard Tcl result.
@@ -1422,10 +1445,18 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
         result = NS_ERROR;
     } else {
         const char *ciphers, *ciphersuites, *protocols;
+        Ns_DList dl, *dlPtr = &dl;
 
-        ciphers      = Ns_ConfigGetValue(path, "ciphers");
-        ciphersuites = Ns_ConfigGetValue(path, "ciphersuites");
-        protocols    = Ns_ConfigGetValue(path, "protocols");
+        /*
+         * Keep configuration values in an Ns_DList to protect against
+         * potential changes in the configuration Ns_Set.
+         */
+        Ns_DListInit(dlPtr);
+
+        cert         = Ns_DListSaveString(dlPtr, cert);
+        ciphers      = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(path, "ciphers"));
+        ciphersuites = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(path, "ciphersuites"));
+        protocols    = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(path, "protocols"));
 
         Ns_Log(Debug, "Ns_TLS_CtxServerInit calls Ns_TLS_CtxServerCreate with app data %p",
                (void*) app_data);
@@ -1588,6 +1619,7 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
             }
 #endif
         }
+        Ns_DListFreeElements(dlPtr);
     }
     return result;
 }
@@ -1771,18 +1803,21 @@ Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
     SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
     SSL_CTX_set_default_passwd_cb(ctx, SSLPassword);
+    DrainErrorStack(Warning, "Ns_TLS_CtxServerCreate", ERR_get_error());
 
     if (cert != NULL) {
         /*
          * Load certificate and private key
          */
         if (SSL_CTX_use_certificate_chain_file(ctx, cert) != 1) {
-            ReportError(interp, "certificate load error: %s", ERR_error_string(ERR_get_error(), NULL));
+            ReportError(interp, "certificate '%s' load chain error: %s",
+                        cert, ERR_error_string(ERR_get_error(), NULL));
             goto fail;
         }
 
         if (SSL_CTX_use_PrivateKey_file(ctx, cert, SSL_FILETYPE_PEM) != 1) {
-            ReportError(interp, "private key load error: %s", ERR_error_string(ERR_get_error(), NULL));
+            ReportError(interp, "certificate '%s' private key load error: %s",
+                        cert, ERR_error_string(ERR_get_error(), NULL));
             goto fail;
         }
         /*
@@ -2062,12 +2097,10 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
          * Report all sslERRcodes from the OpenSSL error stack as
          * "notices" in the system log file.
          */
-        while (sslERRcode != 0u) {
-            Ns_Log(Notice, "SSL_read(%d) error received:%d, got:%d, err:%d,"
-                   " get_error:%lu, %s", sock, n, got, err, sslERRcode,
-                   ERR_error_string(sslERRcode, errorBuffer));
-
-            sslERRcode = ERR_get_error();
+        if (sslERRcode != 0u) {
+            Ns_Log(Notice, "SSL_read(%d) error received:%d, got:%d, err:%d",
+                   sock, n, got, err);
+            DrainErrorStack(Notice, "... SSL_read error", sslERRcode);
         }
 
         SSL_set_shutdown(sslPtr, SSL_RECEIVED_SHUTDOWN);
@@ -2184,6 +2217,138 @@ Ns_SSLSetErrorCode(Tcl_Interp *interp, unsigned long sslERRcode)
     return errorMsg;
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsCertCtlListCmd - subcommand of NsTclCertCtlObjCmd --
+ *
+ *      Implements "ns_certctl list" command.
+ *      List loaded certificates.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+NsCertCtlListCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+{
+    int result = TCL_OK;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_HashEntry  *hPtr;
+        Tcl_HashSearch  search;
+        Tcl_Obj        *resultListObj = Tcl_NewListObj(0, NULL);
+        Tcl_DString     ds;
+
+        Tcl_DStringInit(&ds);
+        Ns_MasterLock();
+        hPtr = Tcl_FirstHashEntry(&certTable, &search);
+        while (hPtr != NULL) {
+            Tcl_Obj         *listObj = Tcl_NewListObj(0, NULL);
+            NS_TLS_SSL_CTX  *ctx = Tcl_GetHashKey(&certTable, hPtr);
+            const char      *cert = Tcl_GetHashValue(hPtr);
+            X509            *x509 = SSL_CTX_get0_certificate(ctx);
+            const ASN1_TIME *notAfter = X509_get0_notAfter(x509);
+            int              remaining_days = 0, remaining_seconds = 0, rc;
+
+            Tcl_ListObjAppendElement(interp, listObj,
+                                     Tcl_NewStringObj(cert, TCL_INDEX_NONE));
+            rc = ASN1_TIME_diff(&remaining_days, &remaining_seconds, NULL, notAfter);
+            if (rc == 1) {
+                Tcl_ListObjAppendElement(interp, listObj,
+                                         Tcl_NewStringObj("remaining_days", 14));
+                Ns_DStringPrintf(&ds, "%5.2f",
+                                 remaining_days + (remaining_seconds/(60*60*24.0)));
+                Tcl_ListObjAppendElement(interp, listObj,
+                                         Tcl_NewStringObj(ds.string, ds.length));
+
+                Tcl_ListObjAppendElement(interp, resultListObj, listObj);
+                Tcl_DStringSetLength(&ds, 0);
+            }
+            hPtr = Tcl_NextHashEntry(&search);
+        }
+        Ns_MasterUnlock();
+        Tcl_DStringFree(&ds);
+
+        Tcl_SetObjResult(interp, resultListObj);
+
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsCertCtlListCmd - subcommand of NsTclCertCtlObjCmd --
+ *
+ *      Implements "ns_certctl reload" command.
+ *      Reload certificates.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+NsCertCtlReloadCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+{
+    int result;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        void *arg = NULL;
+
+        CertTableReload(arg);
+        result = TCL_OK;
+
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclICtlObjCmd --
+ *
+ *      Implements "ns_certctl". This command is used to manage
+ *      information about tls interactions, include certificate
+ *      management.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      Depends on the subcommand.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+NsTclCertCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+{
+    const Ns_SubCmdSpec subcmds[] = {
+        {"list",                 NsCertCtlListCmd},
+        {"reload",               NsCertCtlReloadCmd},
+        {NULL, NULL}
+    };
+
+    return Ns_SubcmdObjv(subcmds, clientData, interp, objc, objv);
+}
+
 
 
 #else
@@ -2239,6 +2404,13 @@ void
 Ns_TLS_CtxFree(NS_TLS_SSL_CTX *UNUSED(ctx))
 {
     /* dummy stub */
+}
+
+int
+NsTclCertCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+{
+    ReportError(interp, "ns_certctl failed: no support for OpenSSL built in");
+    return TCL_ERROR;
 }
 
 int

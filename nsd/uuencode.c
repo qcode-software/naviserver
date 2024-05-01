@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -55,7 +37,7 @@ static const char six2pr[64] = {
  * either the corresponding 6-bit value or -1 for invalid character.
  */
 
-static const char pr2six[256] = {
+static const signed char pr2six[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
@@ -90,7 +72,7 @@ static const char six2pr_url[64] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '_'
 };
 
-static const char pr2six_url[256] = {
+static const signed char pr2six_url[256] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1,
@@ -264,7 +246,7 @@ Ns_HtuuDecode2(const char *input, unsigned char *buf, size_t bufSize, int encodi
     unsigned char                 chars[4] = {0u, 0u, 0u, 0u};
     register const unsigned char *p;
     register unsigned char       *q;
-    static const char            *decode_table;
+    static const signed char     *decode_table;
 
 
     NS_NONNULL_ASSERT(input != NULL);
@@ -293,7 +275,7 @@ Ns_HtuuDecode2(const char *input, unsigned char *buf, size_t bufSize, int encodi
     p = (const unsigned char *) input;
     q = buf;
     while (*p != 0u) {
-        if (decode_table[(int)(*p)] >= 0) {
+        if (decode_table[(int)(*p)] != (const signed char)-1) {
             chars[n++] = *p;
             if (n == 4) {
                 *q++ = UCHAR(Decode(decode_table, chars[0]) << 2) | Decode(decode_table, chars[1]) >> 4;

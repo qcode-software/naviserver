@@ -1,32 +1,14 @@
 # Emacs mode:  -*-Makefile-*-
 
 #
-# The contents of this file are subject to the AOLserver Public License
-# Version 1.1 (the "License"); you may not use this file except in
-# compliance with the License. You may obtain a copy of the License at
-# http://aolserver.com/.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# The Initial Developer of the Original Code and related documentation
+# is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+# America Online, Inc. All Rights Reserved.
 #
-# The Original Code is AOLserver Code and related documentation
-# distributed by AOL.
-#
-# The Initial Developer of the Original Code is America Online,
-# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
-# Inc. All Rights Reserved.
-#
-# Alternatively, the contents of this file may be used under the terms
-# of the GNU General Public License (the "GPL"), in which case the
-# provisions of GPL are applicable instead of those above.  If you wish
-# to allow use of your version of this file only under the terms of the
-# GPL and not to allow others to use your version of this file under the
-# License, indicate your decision by deleting the provisions above and
-# replace them with the notice and other provisions required by the GPL.
-# If you do not delete the provisions above, a recipient may use your
-# version of this file under either the License or the GPL.
 #
 #
 # $Header: /Volumes/DATEN0/develop/local/CVS/dev/naviserver/include/Makefile.win32,v 1.1.1.1 2008/02/18 15:49:10 zoran Exp $
@@ -134,14 +116,11 @@ NS_DB_P=0
 !endif
 !endif
 
-
-# To enable OpenSSL (for both core nsd.exe and nsssl.dll), you must
-# define HAVE_OPENSSL_EVP_H in TWO files in "naviserver/include/":
-#   Makefile.win32 and nsconfig-win32.h
-# I tried many other approaches but could not get the build to work
-# any other way.  --atp@piskorski.com, 2020/05/01 12:17 EDT
-
-HAVE_OPENSSL_EVP_H=1
+# To activate zlib, provide location of include and library files here
+# and activate HAVE_ZLIB in nsconfig-win32.h, and make sure, zlib is
+# installed on your system
+zlib_lib=c:\P\lib
+zlib_include=c:\P\include
 
 # For past OpenSSL-related link problems, see:
 #   https://sourceforge.net/p/naviserver/mailman/message/36519758/
@@ -158,7 +137,7 @@ HAVE_OPENSSL_EVP_H=1
 # - openssl-1.0.2q-x64_86-win64.zip, openssl-1.0.2q-x64_86-win64_LinkLibs.zip
 #   Use:  openssl_libs = ssleay32.lib libeay32.lib
 
-openssl_64 = C:\P\OpenSSL-Win64
+openssl_64 = C:\P\OpenSSL-Win64-3.1.0
 openssl_32 = C:\P\OpenSSL-Win32
 #openssl_64 = C:\P\openssl-indy_1.0.2q\64
 #openssl_32 = C:\P\openssl-indy_1.0.2q\32
@@ -206,7 +185,7 @@ DEFS = $(DEFS) /I "$(NS_DIR)\nsdb"
 !endif
 
 !else
-!  message Debug: Building NaviServer core.  DLL: $(DLL)  PGM: $(PGM)
+!  message Debug: Building NaviServer core.  DLL: $(DLL)  PGM: $(PGM)  zlib: $(zlib_lib)
 
    # Ok to link everything against nsthread EXCEPT for nsthread itself:
 !  if "$(DLL)" != "nsthread"
@@ -223,6 +202,10 @@ LIBS = $(LIBS) /LIBPATH:"$(NS_DIR)\nsd" libnsd.lib
    # Since c. 2016, nsd.exe needs to link against OpenSSL, otherwise you get
    # "unresolved external symbol" for _SSL_get_version and _SSL_get_cipher:
 LIBS = $(LIBS) "/LIBPATH:$(openssl_dir)\lib\VC" $(openssl_libs)
+!  endif
+
+!  if ("nsd" == "$(PGM)" && "$(zlib_lib)" != "")
+LIBS = $(LIBS) /LIBPATH:"$(zlib_lib)" zlib.lib
 !  endif
 
 !endif
@@ -335,13 +318,18 @@ PGMLIBS  = $(PGMLIBS) $(DLLLIB)
 #
 # Update options for release or debug build.
 #
+# /GS, GuardStack info:
+#   https://learn.microsoft.com/en-us/archive/msdn-magazine/2017/december/c-visual-c-support-for-stack-based-buffer-protection
+# /RTC1, Native Run-Time Checks:
+#   https://learn.microsoft.com/en-us/previous-versions/ms856580(v=msdn.10)
+#   https://learn.microsoft.com/en-us/previous-versions/visualstudio/visual-studio-2012/8wtf2dfz(v=vs.110)
 
 !if "$(DEBUG)" == "1"
-COPTS	= $(COPTS) /MDd /Od /Zi /RTC1
+COPTS	= $(COPTS) /MDd /Od /Zi /RTC1 /GS
 DEFS	= $(DEFS) /D "_DEBUG"
 LOPTS	= $(LOPTS) /DEBUG
 !else
-COPTS	= $(COPTS) /MD /O2
+COPTS	= $(COPTS) /MD /O2 /GS
 DEFS	= $(DEFS) /D "NDEBUG"
 !endif
 
@@ -350,7 +338,7 @@ DEFS	= $(DEFS) /D "NDEBUG"
 # Final flags for compiler and linker
 #
 
-CFLAGS  = $(COPTS) /I "$(INCDIR)" /I "$(openssl_dir)\include" $(DEFS)
+CFLAGS  = $(COPTS) /I "$(INCDIR)" /I "$(openssl_dir)\include" /I "$(zlib_include)" $(DEFS)
 LIBS	= $(LIBS) $(TCLLIB) kernel32.lib advapi32.lib ws2_32.lib user32.lib
 
 

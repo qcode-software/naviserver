@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -151,13 +133,32 @@ ns_strcopy(const char *old)
     return (old == NULL ? NULL : ns_strdup(old));
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_strncopy --
+ *
+ *      Copy a string when "old" is not NULL, and compute its size when "size"
+ *      is provided as -1.  We stick there to the NaviServer 4.* type of
+ *      "ssize_t" instead of "NS_SIZE_T", since the latter falls back to "int"
+ *      on NaviServer 4 (which is maybe too small).
+ *
+ * Results:
+ *      The copied string
+ *
+ * Side effects:
+ *      Memory allocation
+ *
+ *----------------------------------------------------------------------
+ */
+
 char *
 ns_strncopy(const char *old, ssize_t size)
 {
     char *new = NULL;
 
     if (likely(old != NULL)) {
-        size_t new_size = likely(size > 0) ? (size_t)size : strlen(old);
+        size_t new_size = likely((size_t)size != (size_t)TCL_INDEX_NONE) ? (size_t)size : strlen(old);
         new_size ++;
         new = ns_malloc(new_size);
         if (new != NULL) {
@@ -280,6 +281,46 @@ ns_uint64toa(
 
     return len;
 }
+
+#ifndef HAVE_MEMMEM
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_memmem --
+ *
+ *      Locate a byte substring in a byte string. The function locates the
+ *      first occurrence of the octet sequence "needle" in the octet sequence
+ *      "haystack" .
+ *
+ * Results:
+ *      In success, a pointer to the first character of the first occurrence
+ *      of needed is returned. Otherwise the result is NULL.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+void *
+ns_memmem(const void *haystack, size_t haystackLength,
+          const void *const needle, const size_t needleLength)
+{
+    NS_NONNULL_ASSERT(haystack != NULL);
+    NS_NONNULL_ASSERT(needle != NULL);
+
+    if (haystackLength > 0 && needleLength > 0) {
+        const char *p;
+
+        for (p = (const char *)haystack; haystackLength >= needleLength; ++p, --haystackLength) {
+            if (memcmp(p, needle, needleLength) == 0) {
+                return (void *)p;
+            }
+        }
+    }
+    return NULL;
+}
+#endif
+
 /*
  * Local Variables:
  * mode: c

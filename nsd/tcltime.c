@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -62,7 +44,7 @@ static int SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
 static void UpdateStringOfTime(Tcl_Obj *objPtr)
     NS_GNUC_NONNULL(1);
 
-static int TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+static int TmObjCmd(ClientData isGmt, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
     NS_GNUC_NONNULL(2);
 
 static int GetTimeFromString(Tcl_Interp *interp, const char *str, char separator, Ns_Time *tPtr)
@@ -84,9 +66,11 @@ static const Tcl_ObjType timeType = {
     NULL,
     UpdateStringOfTime,
     SetTimeFromAny
+#ifdef TCL_OBJTYPE_V0
+   ,TCL_OBJTYPE_V0
+#endif
 };
 
-static const Tcl_ObjType *intTypePtr;
 static Ns_ObjvValueRange poslongRange0 = {0, LONG_MAX};
 static Ns_ObjvTimeRange nonnegTimeRange = {{0, 0}, {LONG_MAX, 0}};
 
@@ -116,9 +100,8 @@ NsTclInitTimeType(void)
         Tcl_Panic("NsTclInitObjs: sizeof(obj.internalRep) < sizeof(Ns_Time)");
     }
 #endif
-    intTypePtr = Tcl_GetObjType("int");
-    if (intTypePtr == NULL) {
-        Tcl_Panic("NsTclInitObjs: no int type");
+    if (NS_intTypePtr == NULL) {
+        Tcl_Panic("tcltime: no tclIntType");
     }
     Tcl_RegisterObjType(&timeType);
 }
@@ -211,7 +194,7 @@ Ns_TclGetTimeFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time *timePtr)
     NS_NONNULL_ASSERT(objPtr != NULL);
     NS_NONNULL_ASSERT(timePtr != NULL);
 
-    if (objPtr->typePtr == intTypePtr) {
+    if (objPtr->typePtr == NS_intTypePtr) {
         if (likely(Tcl_GetLongFromObj(interp, objPtr, &sec) == TCL_OK)) {
             timePtr->sec = sec;
             timePtr->usec = 0;
@@ -290,7 +273,7 @@ Ns_TclGetTimePtrFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, Ns_Time **timePtrPt
  */
 
 int
-NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int     opt, rc = TCL_OK;
     Ns_Time resultTime;
@@ -462,7 +445,7 @@ NsTclTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  */
 
 static int
-TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+TmObjCmd(ClientData isGmt, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int              rc = TCL_OK;
 
@@ -498,13 +481,13 @@ TmObjCmd(ClientData isGmt, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
 }
 
 int
-NsTclGmTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclGmTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return TmObjCmd(INT2PTR(1), interp, objc, objv);
 }
 
 int
-NsTclLocalTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclLocalTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return TmObjCmd(NULL, interp, objc, objv);
 }
@@ -528,7 +511,7 @@ NsTclLocalTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  */
 
 int
-NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          rc = TCL_OK;
     Ns_Time     *tPtr = NULL;
@@ -570,7 +553,7 @@ NsTclSleepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  */
 
 int
-NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK;
     long              sec = 0;
@@ -597,7 +580,7 @@ NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                                    Tcl_GetString(objv[1]), (char *)0L);
             result = TCL_ERROR;
         } else {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, (int)bufLength));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, (TCL_SIZE_T)bufLength));
         }
     }
 
@@ -628,9 +611,9 @@ NsTclStrftimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 static void
 UpdateStringOfTime(Tcl_Obj *objPtr)
 {
-    Ns_Time *timePtr;
-    int      len;
-    char     buf[(TCL_INTEGER_SPACE * 2) + 1];
+    Ns_Time   *timePtr;
+    TCL_SIZE_T len;
+    char       buf[(TCL_INTEGER_SPACE * 2) + 1];
 
     NS_NONNULL_ASSERT(objPtr != NULL);
 
@@ -638,10 +621,10 @@ UpdateStringOfTime(Tcl_Obj *objPtr)
     Ns_AdjTime(timePtr);
 
     if (timePtr->usec == 0 && timePtr->sec >= 0) {
-        len = ns_uint64toa(buf, (uint64_t)timePtr->sec);
+        len = (TCL_SIZE_T)ns_uint64toa(buf, (uint64_t)timePtr->sec);
     } else {
-        len = snprintf(buf, sizeof(buf), "%" PRId64 ":%ld",
-                       (int64_t)timePtr->sec, timePtr->usec);
+        len = (TCL_SIZE_T)snprintf(buf, sizeof(buf), "%" PRId64 ":%ld",
+                                   (int64_t)timePtr->sec, timePtr->usec);
     }
     Ns_TclSetStringRep(objPtr, buf, len);
 }
@@ -948,7 +931,7 @@ SetTimeFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(objPtr != NULL);
 
-    if (objPtr->typePtr == intTypePtr) {
+    if (objPtr->typePtr == NS_intTypePtr) {
         /*
          * When the type is "int", usec is 0.
          */

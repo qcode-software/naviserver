@@ -38,6 +38,10 @@ dict set defaultConfig pagedir     {$home/pages}
 dict set defaultConfig logdir      {$home/logs}
 dict set defaultConfig certificate {$home/etc/server.pem}
 dict set defaultConfig vhostcertificates {$home/etc/certificates}
+dict set defaultConfig reverseproxymode false
+dict set defaultConfig serverprettyname "My NaviServer Instance"
+
+
 #
 # For all potential variables defined by the dict "defaultConfig",
 # allow environment variables such as "nsd_httpport" or
@@ -90,7 +94,7 @@ ns_section ns/parameters {
 
     # Reject output operations on already closed or detached connections (e.g. subsequent ns_return statements)
     #ns_param   rejectalreadyclosedconn false;# default: true
-    #ns_param   reverseproxymode    true     ;# running behind a reverse proxy server? (default: false
+    ns_param    reverseproxymode $reverseproxymode   ;# running behind a reverse proxy server? (default: false
 
     #
     # Tcl settings
@@ -168,7 +172,7 @@ ns_section ns/fastpath {
 }
 
 ns_section ns/servers {
-    ns_param default "My First NaviServer Instance"
+    ns_param default $serverprettyname
 }
 
 #
@@ -229,9 +233,13 @@ if {[info exists httpport] && $httpport ne ""} {
     # server. This parameter is for virtual servers. Here we have just
     # the "default" server and we register the $hostname and the
     # $address (in case, the server is addressed via its IP address).
+    # The variable "hostname" can contain multiple host names (domain
+    # names) which are all registered for the server "default".
     #
     ns_section ns/module/http/servers {
-        ns_param default $hostname
+        foreach domainname $hostname {
+            ns_param default $domainname
+        }
         ns_param default [ns_info hostname]
         foreach address $ipaddress {
             ns_param default $address
@@ -314,9 +322,13 @@ if {[info exists httpsport] && $httpsport ne ""} {
     # server. This parameter is for virtual servers. Here we have just
     # the "default" server and we register the $hostname and the
     # $address (in case, the server is addressed via its IP address).
+    # The variable "hostname" can contain multiple host names (domain
+    # names) which are all registered for the server "default".
     #
     ns_section ns/module/https/servers {
-        ns_param default $hostname
+        foreach domainname $hostname {
+            ns_param default $domainname
+        }
         ns_param default [ns_info hostname]
         foreach address $ipaddress {
             ns_param default $address

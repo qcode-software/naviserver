@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -40,6 +22,7 @@
  * Static variables defined in this file.
  */
 static Ns_ObjvValueRange posintRange0 = {0, INT_MAX};
+static Ns_ObjvValueRange posSizeRange0 = {0, TCL_SIZE_MAX};
 
 /*
  * Structure handling one registered channel for the [ns_chan] command
@@ -56,14 +39,14 @@ static void SpliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
 static void UnspliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int  FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
+static int  FileObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *cmd)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
-static Tcl_ObjCmdProc ChanCleanupObjCmd;
-static Tcl_ObjCmdProc ChanListObjCmd;
-static Tcl_ObjCmdProc ChanCreateObjCmd;
-static Tcl_ObjCmdProc ChanPutObjCmd;
-static Tcl_ObjCmdProc ChanGetObjCmd;
+static TCL_OBJCMDPROC_T ChanCleanupObjCmd;
+static TCL_OBJCMDPROC_T ChanListObjCmd;
+static TCL_OBJCMDPROC_T ChanCreateObjCmd;
+static TCL_OBJCMDPROC_T ChanPutObjCmd;
+static TCL_OBJCMDPROC_T ChanGetObjCmd;
 
 
 /*
@@ -174,7 +157,7 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, const char *chanId, int write, int *fdPtr)
  */
 
 static int
-FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
+FileObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *cmd)
 {
     int               maxFiles = 0, result;
     Tcl_Obj          *fileObj = NULL;
@@ -200,9 +183,9 @@ FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
         const char   *path = Tcl_GetString(fileObj);
 
         if (*cmd == 'p' /* "purge" */ ) {
-            status = Ns_PurgeFiles(path, maxFiles);
+            status = Ns_PurgeFiles(path, (TCL_SIZE_T)maxFiles);
         } else /* must be "roll" */ {
-            status = Ns_RollFile(path, maxFiles);
+            status = Ns_RollFile(path, (TCL_SIZE_T)maxFiles);
         }
         if (status != NS_OK) {
             Ns_TclPrintfResult(interp, "could not %s \"%s\": %s",
@@ -217,13 +200,13 @@ FileObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, const char *cmd)
 }
 
 int
-NsTclRollFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRollFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return FileObjCmd(interp, objc, objv, "roll");
 }
 
 int
-NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return FileObjCmd(interp, objc, objv, "purge");
 }
@@ -253,7 +236,7 @@ NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  *----------------------------------------------------------------------
  */
 int
-NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *templateString = (char *)NS_EMPTY_STRING;
@@ -269,7 +252,7 @@ NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
         char buffer[PATH_MAX] = "";
 
         snprintf(buffer, sizeof(buffer), "%s/ns-XXXXXX", nsconf.tmpDir);
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(mktemp(buffer), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(mktemp(buffer), TCL_INDEX_NONE));
 
     } else /*if (objc == 2)*/ {
         char *buffer;
@@ -299,7 +282,7 @@ NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *----------------------------------------------------------------------
  */
 int
-NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         pid = 0, sig = 0, nocomplain = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
@@ -343,7 +326,7 @@ NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 int
-NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *file1, *file2;
     int         nocomplain = (int)NS_FALSE, result;
@@ -390,7 +373,7 @@ NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 int
-NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Channel chan = NULL;
     Tcl_WideInt nbytes = -1;
@@ -449,13 +432,14 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  *----------------------------------------------------------------------
  */
 int
-NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char             *fileString;
-    int               length = 0, result = TCL_OK;
-    Ns_ObjvSpec args[] = {
-        {"file",      Ns_ObjvString, &fileString, NULL},
-        {"?length",   Ns_ObjvInt,    &length, &posintRange0},
+    int               result = TCL_OK;
+    Tcl_WideInt       length = 0;
+    Ns_ObjvSpec       args[] = {
+        {"file",      Ns_ObjvString,  &fileString, NULL},
+        {"?length",   Ns_ObjvWideInt, &length, &posSizeRange0},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -490,13 +474,14 @@ NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *----------------------------------------------------------------------
  */
 int
-NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    int               fd, length = 0, result = TCL_OK;
+    int               fd, result = TCL_OK;
+    Tcl_WideInt       length = 0;
     char             *fileIdString;
     Ns_ObjvSpec args[] = {
-        {"fileId",    Ns_ObjvString, &fileIdString, NULL},
-        {"?length",   Ns_ObjvInt,    &length,       &posintRange0},
+        {"fileId",    Ns_ObjvString,  &fileIdString, NULL},
+        {"?length",   Ns_ObjvWideInt, &length,       &posSizeRange0},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -533,7 +518,7 @@ NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *----------------------------------------------------------------------
  */
 int
-NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_DString ds;
     int        result = TCL_OK;
@@ -568,7 +553,7 @@ NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int 
  *----------------------------------------------------------------------
  */
 static int
-ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char           *name, *chanName;
     int             result = TCL_OK;
@@ -643,7 +628,7 @@ ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *c
  *----------------------------------------------------------------------
  */
 static int
-ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char        *name;
     int          result = TCL_OK;
@@ -680,7 +665,7 @@ ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
              */
             assert(regChan != NULL);
             SpliceChannel(interp, regChan->chan);
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(regChan->name, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(regChan->name, TCL_INDEX_NONE));
             hPtr = Tcl_CreateHashEntry(&itPtr->chans, name, &isNew);
             Tcl_SetHashValue(hPtr, regChan);
         }
@@ -705,7 +690,7 @@ ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
  *----------------------------------------------------------------------
  */
 static int
-ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char         *name;
     int           result = TCL_OK;
@@ -772,7 +757,7 @@ ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *cons
  *----------------------------------------------------------------------
  */
 static int
-ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isShared = (int)NS_FALSE;
     Ns_ObjvSpec lopts[] = {
@@ -804,7 +789,7 @@ ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         for (hPtr = Tcl_FirstHashEntry(tabPtr, &search); hPtr != NULL;
              hPtr = Tcl_NextHashEntry(&search)) {
             const char *key = Tcl_GetHashKey(tabPtr, hPtr);
-            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, -1));
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
         }
         if (isShared != (int)NS_FALSE) {
             Ns_MutexUnlock(&servPtr->chans.lock);
@@ -832,7 +817,7 @@ ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
  *----------------------------------------------------------------------
  */
 static int
-ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isShared = (int)NS_FALSE;
     Ns_ObjvSpec lopts[] = {
@@ -899,7 +884,7 @@ ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  */
 
 int
-NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"cleanup", ChanCleanupObjCmd},

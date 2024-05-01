@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -41,8 +23,8 @@
  */
 
 typedef struct Args {
-    char **argv;
-    int    argc;
+    char     **argv;
+    TCL_OBJC_T argc;
 } Args;
 
 /*
@@ -75,6 +57,11 @@ extern void NsthreadsInit();
 extern void NsdInit();
 #endif
 
+static const char *configParametersReverseproxySection = "ns/parameters/reverseproxymode";
+
+/*
+ * Used by other files as well.
+ */
 const char *NS_EMPTY_STRING = "";
 
 
@@ -256,8 +243,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     if (mode == 'V') {
         printf("%s/%s\n", PACKAGE_NAME, PACKAGE_VERSION);
         printf("   Tag:             %s\n", Ns_InfoTag());
-        printf("   Built:           %s\n", Ns_InfoBuildDate());
-        printf("   Tcl version:     %s\n", nsconf.tcl.version);
+        printf("   Built:           %s\n", nsBuildDate);
+        printf("   Tcl version:     %s\n", TCL_PATCH_LEVEL);
         printf("   Platform:        %s\n", Ns_InfoPlatform());
         return 0;
     }
@@ -592,12 +579,13 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     }
 
     /*
-     * This is the first place, where we can use values from the configuration file.
+     * This is the first place, where we can use values from the configuration
+     * file.
      *
-     * Turn on logging of long mutex calls if desired. For whatever reason, we
-     * can't access NS_mutexlocktrace from here (unknown external symbol),
-     * although it is defined exactly like NS_finalshutdown;
+     * In order to debug configuration values, the following severity setting
+     * might be useful.
      */
+    /*Ns_LogSeveritySetEnabled(Ns_LogNsSetDebug, NS_TRUE);*/
 
     /*
      * Internationalized programs must call setlocale() to initiate specific
@@ -605,7 +593,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
     {
         char *localeString =  getenv("LC_ALL");
-        const char *source = "unknown source", *response;
+        const char *source = "environment variable LC_ALL", *response;
 
         if (localeString == NULL) {
             source = "environment variable LC_COLLATE";
@@ -647,7 +635,11 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         Ns_Log(Notice, "initialized locale %s from %s", localeString, source);
     }
 
-
+    /*
+     * Turn on logging of long mutex calls if desired. For whatever reason, we
+     * can't access NS_mutexlocktrace from here (unknown external symbol),
+     * although it is defined exactly like NS_finalshutdown;
+     */
 #ifndef _WIN32
     NS_mutexlocktrace = Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "mutexlocktrace", NS_FALSE);
 #endif
@@ -680,15 +672,15 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     if (server != NULL) {
-        int i = Ns_SetFind(servers, server);
-        if (i < 0) {
+        int idx = Ns_SetFind(servers, server);
+        if (idx < 0) {
             Ns_Log(Error, "nsmain: no such server '%s' in configuration file '%s'",
                    server, nsconf.configFile);
             Ns_Log(Warning, "nsmain: Writing the server names we DO have to stderr now:");
             Ns_SetPrint(servers);
             Ns_Fatal("nsmain: no such server '%s'", server);
         }
-        server = Ns_SetKey(servers, i);
+        server = Ns_SetKey(servers, idx);
     }
 
     /*
@@ -746,8 +738,29 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "rejectalreadyclosedconn", NS_TRUE);
     nsconf.sanitize_logfiles =
         Ns_ConfigIntRange(NS_GLOBAL_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 2);
-    nsconf.reverseproxymode =
+    /*
+     * Old-style, backward compatible. Can be overridden by "ns/params/reverseproxy"
+     */
+    nsconf.reverseproxymode.enabled =
         Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "reverseproxymode", NS_FALSE);
+
+    /*
+     * New-style reverse proxy server configuration. Overridden old-style.
+     */
+
+    nsconf.reverseproxymode.enabled =
+        Ns_ConfigBool(configParametersReverseproxySection, "enabled", NS_FALSE);
+    nsconf.reverseproxymode.skipnonpublic =
+        Ns_ConfigBool(configParametersReverseproxySection, "skipnonpublic", NS_FALSE);
+    nsconf.reverseproxymode.trustedservers =
+        Ns_ConfigGetValue(configParametersReverseproxySection, "trustedservers");
+    if (nsconf.reverseproxymode.trustedservers != NULL) {
+        if (*nsconf.reverseproxymode.trustedservers == '\0') {
+            nsconf.reverseproxymode.trustedservers = NULL;
+        } else {
+            nsconf.reverseproxymode.trustedservers = ns_strdup(nsconf.reverseproxymode.trustedservers);
+        }
+    }
 
     {
         /*
@@ -767,7 +780,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      */
 
     set = Ns_ConfigCreateSection(NS_GLOBAL_CONFIG_PARAMETERS);
-    Ns_SetUpdateSz(set, "home", 4, nsconf.home, -1);
+    Ns_SetUpdateSz(set, "home", 4, nsconf.home, TCL_INDEX_NONE);
 
     /*
      * Update core config values.
@@ -781,7 +794,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         if (nsconf.tmpDir == NULL) {
             nsconf.tmpDir = P_tmpdir;
         }
-        Ns_SetUpdateSz(set, "tmpdir", 6, nsconf.tmpDir, -1);
+        Ns_SetUpdateSz(set, "tmpdir", 6, nsconf.tmpDir, TCL_INDEX_NONE);
     }
 
 #ifdef _WIN32
@@ -874,6 +887,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         }
     }
 #endif
+
+    //(void)Ns_LogSeveritySetEnabled(Debug, NS_TRUE);
 
     /*
      * Create the pid file.
@@ -1141,7 +1156,7 @@ Ns_StopServer(char *server)
  */
 
 int
-NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         sig = NS_SIGTERM, result = TCL_OK;
     Ns_Time    *timeoutPtr = NULL;
@@ -1363,7 +1378,7 @@ MakePath(const char *file)
             /*
              * Make sure we have valid path on all platforms
              */
-            obj = Tcl_NewStringObj(nsconf.nsd, (int)(str - nsconf.nsd));
+            obj = Tcl_NewStringObj(nsconf.nsd, (TCL_SIZE_T)(str - nsconf.nsd));
             Tcl_AppendStringsToObj(obj, "/", file, (char *)0L);
 
             Tcl_IncrRefCount(obj);
@@ -1412,7 +1427,7 @@ SetCwd(const char *path)
 
     NS_NONNULL_ASSERT(path != NULL);
 
-    pathObj = Tcl_NewStringObj(path, -1);
+    pathObj = Tcl_NewStringObj(path, TCL_INDEX_NONE);
     Tcl_IncrRefCount(pathObj);
     if (Tcl_FSChdir(pathObj) == -1) {
         Ns_Fatal("nsmain: chdir(%s) failed: '%s'", path, strerror(Tcl_GetErrno()));
@@ -1459,7 +1474,7 @@ CmdThread(void *arg)
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    Tcl_Main(cmd->argc, cmd->argv, NsTclAppInit);
+    Tcl_Main((TCL_SIZE_T)cmd->argc, cmd->argv, NsTclAppInit);
 }
 
 /*

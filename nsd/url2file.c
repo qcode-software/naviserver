@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -73,7 +55,7 @@ static Ns_ServerInitProc ConfigServerUrl2File;
  * Static variables defined in this file.
  */
 
-static Ns_Mutex   ulock;
+static Ns_Mutex   ulock = NULL;
 static int        uid;
 
 
@@ -153,7 +135,6 @@ Ns_RegisterUrl2FileProc(const char *server, const char *url,
                         unsigned int flags)
 {
     NsServer *servPtr = NsGetServer(server);
-    /*Ns_Log(Warning, "Ns_RegisterUrl2FileProc CALLED for url '%s'", url);*/
 
     if (servPtr != NULL) {
         Url2File *u2fPtr;
@@ -282,7 +263,7 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
         Ns_Log(Debug, "url2file: url '%s' use NsUrlSpecificGet to determine filename", url);
 
         Ns_MutexLock(&ulock);
-        u2fPtr = NsUrlSpecificGet(servPtr, "x", url, uid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL);
+        u2fPtr = NsUrlSpecificGet(servPtr, "x", url, uid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL, NULL);
         if (u2fPtr == NULL) {
             Ns_Log(Error, "url2file: no proc found for url: %s", url);
             status = NS_ERROR;
@@ -327,8 +308,8 @@ void
 Ns_SetUrlToFileProc(const char *server, Ns_UrlToFileProc *procPtr)
 {
     NsServer *servPtr = NsGetServer(server);
-    Ns_Log(Warning, "DEPRECATED proc called");
 
+    Ns_Log(Warning, "DEPRECATED function Ns_SetUrlToFileProc called");
     if (servPtr != NULL) {
         servPtr->fastpath.url2file = procPtr;
     }
@@ -383,7 +364,7 @@ NsUrlToFileProc(Ns_DString *dsPtr, const char *server, const char *url)
  */
 
 int
-NsTclUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -424,11 +405,12 @@ NsTclUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *url;
     Tcl_Obj    *scriptObj;
-    int         remain = 0, noinherit = 0, result = TCL_OK;
+    TCL_SIZE_T  remain = 0;
+    int         noinherit = 0, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
         {"--",         Ns_ObjvBreak,  NULL,       NULL},
@@ -448,7 +430,7 @@ NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc,
         Ns_TclCallback *cbPtr;
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclUrl2FileProc,
-                                  scriptObj, remain, objv + (objc - remain));
+                                  scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
         flags = (noinherit != 0) ? NS_OP_NOINHERIT : 0u;
         Ns_RegisterUrl2FileProc(itPtr->servPtr->server, url,
                                 NsTclUrl2FileProc, Ns_TclFreeCallback, cbPtr, flags);
@@ -474,7 +456,7 @@ NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -515,6 +497,49 @@ NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int obj
  *
  * NsTclRegisterFastUrl2FileObjCmd --
  *
+ *      Register an Ns_RegisterUrl2FileProc() with either the
+ *      Ns_FastUrl2FileProc() or NsMountUrl2FileProc() depending on the
+ *      provided basePath.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Registered callback.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_RegisterFastUrl2File(const char *server, const char *url, const char *basePath, unsigned int flags)
+{
+    NsServer *servPtr;
+
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+
+    servPtr = NsGetServer(server);
+    if (likely(servPtr != NULL)) {
+        if (basePath == NULL) {
+            Ns_RegisterUrl2FileProc(server, url,
+                                    Ns_FastUrl2FileProc, NULL, servPtr, flags);
+        } else {
+            Mount *mPtr;
+
+            mPtr = ns_malloc(sizeof(Mount));
+            mPtr->basepath = ns_strdup(basePath);
+            mPtr->url = ns_strdup(url);
+            mPtr->server = server;
+            Ns_RegisterUrl2FileProc(server, url,
+                                    NsMountUrl2FileProc, FreeMount, mPtr, flags);
+        }
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclRegisterFastUrl2FileObjCmd --
+ *
  *      Implements "ns_register_fasturl2file".  Register the default fast
  *      url2file proc for the given URL.
  *
@@ -526,9 +551,8 @@ NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int obj
  *
  *----------------------------------------------------------------------
  */
-
 int
-NsTclRegisterFastUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterFastUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *url = NULL, *basepath = NULL;
     int         noinherit = 0, result = TCL_OK;
@@ -551,21 +575,7 @@ NsTclRegisterFastUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, int o
         if (noinherit != 0) {
             flags |= NS_OP_NOINHERIT;
         }
-
-        if (basepath == NULL) {
-            Ns_RegisterUrl2FileProc(itPtr->servPtr->server, url,
-                                    Ns_FastUrl2FileProc, NULL, itPtr->servPtr,
-                                    flags);
-        } else {
-            Mount *mPtr;
-
-            mPtr = ns_malloc(sizeof(Mount));
-            mPtr->basepath = ns_strdup(basepath);
-            mPtr->url = ns_strdup(url);
-            mPtr->server = itPtr->servPtr->server;
-            Ns_RegisterUrl2FileProc(itPtr->servPtr->server, url,
-                                    NsMountUrl2FileProc, FreeMount, mPtr, flags);
-        }
+        Ns_RegisterFastUrl2File(itPtr->servPtr->server, url, basepath, flags);
     }
     return result;
 }

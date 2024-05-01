@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -188,20 +170,20 @@ typedef struct ThreadPool {
  */
 static Ns_ObjvProc ObjvQueue;
 
-static Tcl_ObjCmdProc  JobCancelObjCmd;
-static Tcl_ObjCmdProc  JobConfigureObjCmd;
-static Tcl_ObjCmdProc  JobCreateObjCmd;
-static Tcl_ObjCmdProc  JobDeleteObjCmd;
-static Tcl_ObjCmdProc  JobExistsObjCmd;
-static Tcl_ObjCmdProc  JobGenIDObjCmd;
-static Tcl_ObjCmdProc  JobJobListObjCmd;
-static Tcl_ObjCmdProc  JobJobsObjCmd;
-static Tcl_ObjCmdProc  JobQueueListObjCmd;
-static Tcl_ObjCmdProc  JobQueueObjCmd;
-static Tcl_ObjCmdProc  JobQueuesObjCmd;
-static Tcl_ObjCmdProc  JobThreadListObjCmd;
-static Tcl_ObjCmdProc  JobWaitAnyObjCmd;
-static Tcl_ObjCmdProc  JobWaitObjCmd;
+static TCL_OBJCMDPROC_T  JobCancelObjCmd;
+static TCL_OBJCMDPROC_T  JobConfigureObjCmd;
+static TCL_OBJCMDPROC_T  JobCreateObjCmd;
+static TCL_OBJCMDPROC_T  JobDeleteObjCmd;
+static TCL_OBJCMDPROC_T  JobExistsObjCmd;
+static TCL_OBJCMDPROC_T  JobGenIDObjCmd;
+static TCL_OBJCMDPROC_T  JobJobListObjCmd;
+static TCL_OBJCMDPROC_T  JobJobsObjCmd;
+static TCL_OBJCMDPROC_T  JobQueueListObjCmd;
+static TCL_OBJCMDPROC_T  JobQueueObjCmd;
+static TCL_OBJCMDPROC_T  JobQueuesObjCmd;
+static TCL_OBJCMDPROC_T  JobThreadListObjCmd;
+static TCL_OBJCMDPROC_T  JobWaitAnyObjCmd;
+static TCL_OBJCMDPROC_T  JobWaitObjCmd;
 
 static void   JobThread(void *arg);
 static Job*   GetNextJob(void);
@@ -282,6 +264,7 @@ NsTclInitQueueType(void)
 {
     Tcl_InitHashTable(&tp.queues, TCL_STRING_KEYS);
     Ns_MutexSetName(&tp.queuelock, "jobThreadPool");
+    Ns_CondInit(&tp.cond);
     tp.nextThreadId = 0u;
     tp.nextQueueId = 0u;
     tp.maxThreads = 0;
@@ -384,7 +367,7 @@ NsWaitJobsShutdown(const Ns_Time *toPtr)
  *----------------------------------------------------------------------
  */
 static int
-JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK;
     int               jpt = -1;
@@ -441,7 +424,7 @@ JobConfigureObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 static int
-JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK, maxThreads = NS_JOB_DEFAULT_MAXTHREADS;
     Tcl_Obj          *queueIdObj;
@@ -502,7 +485,7 @@ JobCreateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 static int
-JobDeleteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobDeleteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Queue  *queue = NULL;
     int     result = TCL_OK;
@@ -543,7 +526,7 @@ JobDeleteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 static int
-JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, head = 0, detached = 0;
     bool        create = NS_FALSE;
@@ -653,7 +636,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             create = NS_FALSE;
         }
 
-        Tcl_DStringAppend(&jobPtr->id, jobIdString, -1);
+        Tcl_DStringAppend(&jobPtr->id, jobIdString, TCL_INDEX_NONE);
         Tcl_SetHashValue(hPtr, jobPtr);
         Ns_CondBroadcast(&tp.cond);
 
@@ -666,7 +649,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
             Ns_ThreadCreate(JobThread, NULL, 0, NULL);
         }
         if (result == TCL_OK) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(jobIdString, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(jobIdString, TCL_INDEX_NONE));
         }
     }
     return result;
@@ -690,7 +673,7 @@ JobQueueObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
  *----------------------------------------------------------------------
  */
 static int
-JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int            result = TCL_OK;
     Ns_Time       *deltaTimeoutPtr = NULL;
@@ -796,7 +779,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
                 }
                 if (jobPtr->errorInfo != NULL) {
                     Tcl_AddObjErrorInfo(interp, "\n", 1);
-                    Tcl_AddObjErrorInfo(interp, jobPtr->errorInfo, -1);
+                    Tcl_AddObjErrorInfo(interp, jobPtr->errorInfo, TCL_INDEX_NONE);
                 }
             }
         }
@@ -826,7 +809,7 @@ JobWaitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 static int
-JobCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Queue        *queue = NULL;
     int          result = TCL_OK;
@@ -895,7 +878,7 @@ JobCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 static int
-JobExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Queue       *queue = NULL;
     int          result = TCL_OK;
@@ -938,7 +921,7 @@ JobExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 static int
-JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Queue         *queue;
     int            result = TCL_OK;
@@ -1021,7 +1004,7 @@ JobWaitAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *----------------------------------------------------------------------
  */
 static int
-JobJobsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobJobsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Queue         *queue = NULL;
     int            result = TCL_OK;
@@ -1048,7 +1031,7 @@ JobJobsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
              ) {
             const char *jobIdString = Tcl_GetHashKey(&queue->jobs, hPtr);
 
-            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(jobIdString, -1));
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(jobIdString, TCL_INDEX_NONE));
         }
         (void)ReleaseQueue(queue, NS_FALSE);
         Tcl_SetObjResult(interp, listObj);
@@ -1074,7 +1057,7 @@ JobJobsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_O
  *----------------------------------------------------------------------
  */
 static int
-JobQueuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobQueuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -1095,7 +1078,7 @@ JobQueuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
              hPtr = Tcl_NextHashEntry(&search)
              ) {
             const Queue *queue = Tcl_GetHashValue(hPtr);
-            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(queue->name, -1));
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(queue->name, TCL_INDEX_NONE));
         }
         Ns_MutexUnlock(&tp.queuelock);
         Tcl_SetObjResult(interp, listObj);
@@ -1128,7 +1111,7 @@ JobQueuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 static int
-JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Queue        *queue = NULL;
     int           result = TCL_OK;
@@ -1232,7 +1215,7 @@ JobJobListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  *----------------------------------------------------------------------
  */
 static int
-JobQueueListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobQueueListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -1310,7 +1293,7 @@ JobQueueListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 static int
-JobGenIDObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobGenIDObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int  result = TCL_OK;
 
@@ -1327,7 +1310,7 @@ JobGenIDObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
                  tp.nextQueueId++, (Tcl_WideInt) currentTime.sec);
         Ns_MutexUnlock(&tp.queuelock);
 
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(buf, TCL_INDEX_NONE));
     }
     return result;
 }
@@ -1350,7 +1333,7 @@ JobGenIDObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  *----------------------------------------------------------------------
  */
 static int
-JobThreadListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+JobThreadListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
 
@@ -1403,7 +1386,7 @@ JobThreadListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *----------------------------------------------------------------------
  */
 int
-NsTclJobObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclJobObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"cancel",     JobCancelObjCmd},
@@ -1541,7 +1524,7 @@ JobThread(void *UNUSED(arg))
         /*
          * ... and execute the job.
          */
-        code = Tcl_EvalEx(interp, jobPtr->script.string, -1, 0);
+        code = Tcl_EvalEx(interp, jobPtr->script.string, TCL_INDEX_NONE, 0);
 
         Ns_MutexLock(&tp.queuelock);
         Ns_MutexLock(&queue->lock);
@@ -1583,7 +1566,7 @@ JobThread(void *UNUSED(arg))
          * Save the results.
          */
 
-        Tcl_DStringAppend(&jobPtr->results, Tcl_GetStringResult(interp), -1);
+        Tcl_DStringAppend(&jobPtr->results, Tcl_GetStringResult(interp), TCL_INDEX_NONE);
         if (jobPtr->code == TCL_ERROR) {
             err = Tcl_GetVar(interp, "errorCode", TCL_GLOBAL_ONLY);
             if (err != NULL) {
@@ -1755,8 +1738,9 @@ NewQueue(const char *queueName, const char *queueDesc, int maxThreads)
     queue->refCount = 0;
 
     Ns_MutexSetName2(&queue->lock, "tcljob", queueName);
-    Tcl_InitHashTable(&queue->jobs, TCL_STRING_KEYS);
+    Ns_CondInit(&queue->cond);
 
+    Tcl_InitHashTable(&queue->jobs, TCL_STRING_KEYS);
     tp.maxThreads += maxThreads;
 
     return queue;
@@ -1827,7 +1811,7 @@ NewJob(const char* server, const char* queueName, JobTypes type, const char *scr
 
     Tcl_DStringInit(&jobPtr->id);
     Tcl_DStringInit(&jobPtr->script);
-    Tcl_DStringAppend(&jobPtr->script, script, -1);
+    Tcl_DStringAppend(&jobPtr->script, script, TCL_INDEX_NONE);
     Tcl_DStringInit(&jobPtr->results);
 
     return jobPtr;
@@ -1860,14 +1844,8 @@ FreeJob(Job *jobPtr)
     Tcl_DStringFree(&jobPtr->id);
 
     ns_free((char *)jobPtr->queueId);
-
-    if (jobPtr->errorCode != NULL) {
-        ns_free(jobPtr->errorCode);
-    }
-    if (jobPtr->errorInfo != NULL) {
-        ns_free(jobPtr->errorInfo);
-    }
-
+    ns_free(jobPtr->errorCode);
+    ns_free(jobPtr->errorInfo);
     ns_free(jobPtr);
 }
 
@@ -1947,8 +1925,7 @@ LookupQueue(Tcl_Interp *interp, const char *queueName, Queue **queuePtr,
  *----------------------------------------------------------------------
  */
 static int
-ObjvQueue(Ns_ObjvSpec *spec, Tcl_Interp *interp, int *objcPtr,
-          Tcl_Obj *const* objv)
+ObjvQueue(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Obj *const* objv)
 {
     int result;
 
@@ -2304,11 +2281,11 @@ AppendField(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
      * it will set the result anyway.
      */
 
-    elObj = Tcl_NewStringObj(name, -1);
+    elObj = Tcl_NewStringObj(name, TCL_INDEX_NONE);
 
     result = Tcl_ListObjAppendElement(interp, list, elObj);
     if (likely( result == TCL_OK) ) {
-        elObj = Tcl_NewStringObj(value, -1);
+        elObj = Tcl_NewStringObj(value, TCL_INDEX_NONE);
         result = Tcl_ListObjAppendElement(interp, list, elObj);
     }
 
@@ -2343,7 +2320,7 @@ AppendFieldInt(Tcl_Interp *interp, Tcl_Obj *list, const char *name, int value)
      * it will set the result anyway.
      */
 
-    elObj = Tcl_NewStringObj(name, -1);
+    elObj = Tcl_NewStringObj(name, TCL_INDEX_NONE);
     result = Tcl_ListObjAppendElement(interp, list, elObj);
     if (likely (result == TCL_OK) ) {
         elObj = Tcl_NewIntObj(value);
@@ -2379,7 +2356,7 @@ AppendFieldLong(Tcl_Interp *interp, Tcl_Obj *list, const char *name,
     NS_NONNULL_ASSERT(list != NULL);
     NS_NONNULL_ASSERT(name != NULL);
 
-    elObj = Tcl_NewStringObj(name, -1);
+    elObj = Tcl_NewStringObj(name, TCL_INDEX_NONE);
     result = Tcl_ListObjAppendElement(interp, list, elObj);
     if (likely( result == TCL_OK )) {
         elObj = Tcl_NewLongObj(value);

@@ -4,6 +4,7 @@ package require tcltest 2.2
 namespace import -force ::tcltest::*
 
 tcltest::testConstraint nsf [expr {[info commands ::nsf::proc] ne ""}]
+tcltest::testConstraint pre_tcl90 [expr {$::tcl_version < 9.0}]
 
 ::tcltest::configure {*}$argv
 
@@ -168,16 +169,17 @@ test ns_base64encode-2.3.2 {ns_base64encode and decode with 2 byte UTF-8 charact
     #set decoded [encoding convertfrom utf-8 $decoded]
     list [string length $string] [string equal $string $decoded] [string length $decoded] \
         $encoded $decoded
-} -result {1 1 1 w7w= ü}
+} -returnCodes {error ok} -result {1 1 1 w7w= ü}
 
-test ns_base64encode-2.3.3 {ns_base64encode and decode with 3 byte UTF-8 character "☀"} -body {
-    set string "☀"
-    set encoded [ns_base64encode $string]
-    set decoded [ns_base64decode $encoded]
-    #set decoded [encoding convertfrom utf-8 $decoded]
-    list [string length $string] [string equal $string $decoded] [string length $decoded] \
-        $encoded $decoded
-} -result {1 1 1 4piA ☀}
+test ns_base64encode-2.3.3 {ns_base64encode and decode with 3 byte UTF-8 character "☀"} \
+    -body {
+        set string "☀"
+        set encoded [ns_base64encode $string]
+        set decoded [ns_base64decode $encoded]
+        #set decoded [encoding convertfrom utf-8 $decoded]
+        list [string length $string] [string equal $string $decoded] [string length $decoded] \
+            $encoded $decoded
+    } -result {1 1 1 4piA ☀}
 
 
 # test tcl_base64encode-2.3.4.0 {tcl base64 encode and decode with 3 byte UTF-8 character "☀"} -body {
@@ -191,10 +193,15 @@ test ns_base64encode-2.3.3 {ns_base64encode and decode with 3 byte UTF-8 charact
 test tcl_base64encode-2.3.4.1 {tcl base64 encode and decode with 2 byte UTF-8 character "ü"} -body {
     set string "ü"
     set encoded [ns_base64encode [encoding convertto utf-8 $string]]
-    set decoded [encoding convertfrom utf-8 [ns_base64decode $encoded]]
+    # handle Tcl 9.0 (tcl90) inside the test
+    if {[package vcompare $::tcl_patchLevel 8.99.0] == -1} {
+        set decoded [encoding convertfrom utf-8 [ns_base64decode $encoded]]
+    } else {
+        set decoded [ns_base64decode $encoded]
+    }
     list [string length $string] [string equal $string $decoded] [string length $decoded] \
         $encoded $decoded
-} -result {1 1 1 w7w= ü}
+} -returnCodes {error ok} -result {1 1 1 w7w= ü}
 
 test tcl_base64encode-2.3.4.2 {tcl base64 encode and decode with 3 byte UTF-8 character "☀"} -body {
     set string "a"
@@ -214,7 +221,7 @@ test tcl_base64encode-2.3.4.2 {tcl base64 encode and decode with 3 byte UTF-8 ch
 # } -result {3 1 3}
 
 
-if {$tcl_version > 8.5} {
+if {$::tcl_version > 8.5} {
     #
     # Show equivalence of the above cases with Tcl built-in behavior in Tcl 8.6 or newer
     #
@@ -240,7 +247,8 @@ if {$tcl_version > 8.5} {
             $encoded $decoded
     } -result {1 1 1 /A== ü}
 
-    test tcl_base64encode-2.3.3 {tcl base64 encode and decode with 3 byte UTF-8 character "☀"} -body {
+    test tcl_base64encode-2.3.3 {tcl base64 encode and decode with 3 byte UTF-8 character "☀"} \
+        -constraints {pre_tcl90} -body {
         set string "☀"
         set encoded [binary encode base64 $string]
         set decoded [binary decode base64 $encoded]
@@ -256,7 +264,7 @@ if {$tcl_version > 8.5} {
             $encoded $decoded
     } -result {1 1 1 4piA ☀}
 
-    test tcl_base64encode-2.3.4.1 {tcl base64 encode and decode with 3 byte UTF-8 character "☀"} -body {
+    test tcl_base64encode-2.3.4.1 {tcl base64 encode and decode with 2 byte UTF-8 character "ü"} -body {
         set string "ü"
         set encoded [binary encode base64 [encoding convertto utf-8 $string]]
         set decoded [encoding convertfrom utf-8 [binary decode base64 $encoded]]
@@ -264,7 +272,7 @@ if {$tcl_version > 8.5} {
             $encoded $decoded
     } -result {1 1 1 w7w= ü}
 
-    test tcl_base64encode-2.3.4.2 {tcl base64 encode and decode with 3 byte UTF-8 character "☀"} -body {
+    test tcl_base64encode-2.3.4.2 {tcl base64 encode and decode with 1 byte UTF-8 character "a"} -body {
         set string "a"
         set encoded [binary encode base64 [encoding convertto utf-8 $string]]
         set decoded [encoding convertfrom utf-8 [binary decode base64 $encoded]]
@@ -328,22 +336,27 @@ test ns_base64encode-3.0 {
     ns_log notice "obj(c) [nsf::__db_get_obj $c]"
 
     set r [list $a $b $c]
-    set types [list \
-                   [lindex [nsf::__db_get_obj $a] 1] \
-                   [lindex [nsf::__db_get_obj $b] 1] \
-                   [lindex [nsf::__db_get_obj $c] 1]]
-    #ns_log notice $types
+    #lappend r [list \
+    #               [lindex [nsf::__db_get_obj $a] 1] \
+    #               [lindex [nsf::__db_get_obj $b] 1] \
+    #               [lindex [nsf::__db_get_obj $c] 1]]
+    #ns_log notice $r
     lappend r [list [ns_base64encode $a] [ns_base64encode $b] [ns_base64encode $c]]
     #ns_log notice [list [ns_base64encode $a] [ns_base64encode $b] [ns_base64encode $c]]
     ns_log notice [list [ns_md string -digest sha1 $a] [ns_md string -digest sha1 $b] [ns_md string -digest sha1 $c]]
     #ns_log notice [list [ns_sha1 $a] [ns_sha1 $b] [ns_sha1 $c]]
     #ns_log notice [list [ns_md5 $a] [ns_md5 $b] [ns_md5 $c]]
 
-    set F [::open [ns_mktemp] w]; ::fconfigure $F -translation binary
-    ::puts -nonewline $F $a
-    ::puts -nonewline $F $b
-    ::puts -nonewline $F $c
-    ::close $F
+    #
+    # Tcl9 raises an error with invalid byte sequence for the "puts"
+    # operation, even when everything is set to binary. The "puts"
+    # operations were converting the tcl objs to bytearrays.
+    #
+    #set F [::open [ns_mktemp] wb]; ::fconfigure $F -encoding binary -translation binary
+    #::puts -nonewline $F $a
+    #::puts -nonewline $F $b
+    #::puts -nonewline $F $c
+    #::close $F
 
     ns_log notice "obj(a) [nsf::__db_get_obj $a]"
     ns_log notice "obj(b) [nsf::__db_get_obj $b]"
@@ -351,7 +364,7 @@ test ns_base64encode-3.0 {
     #ns_logctl severity Debug on
     #set md [ns_md string -digest sha1 $a]
     #ns_log notice "====== WQ [string equal 7e32f884eaf0cbdf8c2df9e481ea9bef3ddbc4cf $md]==========================="
-    set types  [list \
+    set types [list \
                    [lindex [nsf::__db_get_obj $a] 1] \
                    [lindex [nsf::__db_get_obj $b] 1] \
                    [lindex [nsf::__db_get_obj $c] 1]]
@@ -388,22 +401,26 @@ test ns_base64encode-3.1 {
     # % echo -n "€"| base64
     # 4oKs
 
-    set F [::open [ns_mktemp] w]; ::fconfigure $F -translation binary
-    ::puts -nonewline $F $a
-    ::puts -nonewline $F $b
-    ::puts -nonewline $F $c
-    ::close $F
+    #
+    # Tcl9 raises an error with invalid byte sequence for the "puts"
+    # operation, even when everything is set to binary.  The "puts"
+    # operations were converting the tcl objs to bytearrays.
+    #
+    #set F [::open [ns_mktemp] wb]; ::fconfigure $F -encoding binary -translation binary
+    #::puts -nonewline $F $a
+    #::puts -nonewline $F $b
+    #::puts -nonewline $F $c
+    #::close $F
 
-    lappend r [list \
+    set types [list \
                    [lindex [nsf::__db_get_obj $a] 1] \
                    [lindex [nsf::__db_get_obj $b] 1] \
                    [lindex [nsf::__db_get_obj $c] 1]]
-
-
-    ns_log notice [list [ns_base64encode $a] [ns_base64encode $b] [ns_base64encode $c]]
+    #ns_log notice types=$types
+    lappend r [string equal $types "{} {} bytearray"]
     lappend r [list [ns_base64encode $a] [ns_base64encode $b] [ns_base64encode $c]]
 
-} -returnCodes {error ok} -result {{} {} bytearray {4oKs 4oKs 4oKs} {bytearray bytearray bytearray} {4oKs 4oKs 4oKs}}
+} -returnCodes {error ok} -result {{} {} bytearray {4oKs 4oKs 4oKs} 1 {4oKs 4oKs 4oKs}}
 
 
 test ns_base64encode-3.2 {
@@ -426,10 +443,14 @@ test ns_base64encode-3.2 {
     # % echo -n "äöüʃɪbəlɛθ"| base64
     # w6TDtsO8yoPJqmLJmWzJm864
 
-    set F [::open [ns_mktemp] w]; ::fconfigure $F -translation binary
-    ::puts -nonewline $F $a
-    ::puts -nonewline $F $b
-    ::close $F
+    #
+    # Tcl9 raises an error with invalid byte sequence for the puts operation,
+    # even when everything is set to binary
+    #
+    #set F [::open [ns_mktemp] wb]; ::fconfigure $F -encoding binary -translation binary
+    #::puts -nonewline $F $a
+    #::puts -nonewline $F $b
+    #::close $F
 
     lappend r [list \
                    [lindex [nsf::__db_get_obj $a] 1] \
@@ -437,10 +458,9 @@ test ns_base64encode-3.2 {
                   ]
 
 
-    ns_log notice [list [ns_base64encode $a] [ns_base64encode $b] ]
     lappend r [list [ns_base64encode $a] [ns_base64encode $b] ]
 
-} -returnCodes {error ok} -result {{} bytearray {w6TDtsO8yoPJqmLJmWzJm864 w6TDtsO8yoPJqmLJmWzJm864} {bytearray bytearray} {w6TDtsO8yoPJqmLJmWzJm864 w6TDtsO8yoPJqmLJmWzJm864}}
+} -returnCodes {error ok} -result {{} bytearray {w6TDtsO8yoPJqmLJmWzJm864 w6TDtsO8yoPJqmLJmWzJm864} {{} bytearray} {w6TDtsO8yoPJqmLJmWzJm864 w6TDtsO8yoPJqmLJmWzJm864}}
 
 
 test ns_base64encode-3.3 {binary data, from file or memory} -constraints {nsf} -body {
@@ -472,12 +492,16 @@ test ns_base64encode-3.3 {binary data, from file or memory} -constraints {nsf} -
     #ns_log notice [list [ns_sha1 $a] [ns_sha1 $b] [ns_sha1 $c]]
     #ns_log notice [list [ns_md5 $a] [ns_md5 $b] [ns_md5 $c]]
 
-    set F [::open [ns_mktemp] w]; ::fconfigure $F -translation binary
-    ::puts -nonewline $F $_
-    ::puts -nonewline $F $a
-    ::puts -nonewline $F $b
-    ::puts -nonewline $F $c
-    ::close $F
+    #
+    # Tcl9 raises an error with invalid byte sequence for the puts operation,
+    # even when everything is set to binary
+    #
+    #set F [::open [ns_mktemp] wb]; ::fconfigure $F -encoding binary -translation binary
+    #::puts -nonewline $F $_
+    #::puts -nonewline $F $a
+    #::puts -nonewline $F $b
+    #::puts -nonewline $F $c
+    #::close $F
 
     ns_log notice "obj(_) [nsf::__db_get_obj $_]"
     ns_log notice "obj(a) [nsf::__db_get_obj $a]"
@@ -492,7 +516,7 @@ test ns_base64encode-3.3 {binary data, from file or memory} -constraints {nsf} -
     lappend r [list [ns_base64encode $a] [ns_base64encode $b] [ns_base64encode $c]]
 } -cleanup {
     unset -nocomplain _ r fn a b c F
-} -returnCodes {error ok} -result {{} bytearray bytearray string {AAECA+KYgA== AAECA+KYgA== AAECA+KYgA==} {bytearray bytearray bytearray} {AAECA+KYgA== AAECA+KYgA== AAECA+KYgA==}}
+} -returnCodes {error ok} -result {{} bytearray bytearray string {AAECA+KYgA== AAECA+KYgA== AAECA+KYgA==} {bytearray bytearray string} {AAECA+KYgA== AAECA+KYgA== AAECA+KYgA==}}
 
 
 test ns_base64decode-4.0 {
@@ -505,6 +529,15 @@ test ns_base64decode-4.0 {
         [string equal $var 23ec3e62bf825d6195b24d996eaab366529c4ee10cf1308c2ce62306fd61f31a36b71034439517eefe607798fa7bcc7578858671f7773911f6560b761dc0d447]
 } -result {64 128 1}
 
+
+test ns_base64decode-4.1 {
+    Check skipping white space.
+    This was a problem with musl on aarch64.
+} -constraints {nsf} -body {
+    binary scan [ns_base64decode -binary "iV\n AAAF=="] H* hex1
+    binary scan [ns_base64decode -binary "iVAAAF=="] H* hex2
+    list $hex1 $hex2
+} -result {89500000 89500000}
 
 
 cleanupTests

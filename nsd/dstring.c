@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -147,7 +129,7 @@ Ns_DStringAppendArg(Ns_DString *dsPtr, const char *bytes)
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(bytes != NULL);
 
-    return Ns_DStringNAppend(dsPtr, bytes, (int) strlen(bytes) + 1);
+    return Ns_DStringNAppend(dsPtr, bytes, (TCL_SIZE_T)strlen(bytes) + 1);
 }
 
 
@@ -201,10 +183,11 @@ Ns_DStringPrintf(Ns_DString *dsPtr, const char *fmt, ...)
 char *
 Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
 {
-    char    *buf;
-    int      origLength, newLength, result;
-    size_t   bufLength;
-    va_list  ap;
+    char      *buf;
+    int        result;
+    TCL_SIZE_T origLength, newLength;
+    size_t     bufLength;
+    va_list    ap;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(fmt != NULL);
@@ -246,7 +229,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
         newLength = dsPtr->spaceAvl * 2;
 #else
     if ((size_t)result >= bufLength) {
-         newLength = dsPtr->spaceAvl + (result - (int)bufLength);
+        newLength = dsPtr->spaceAvl + ((TCL_SIZE_T)result - (TCL_SIZE_T)bufLength);
 #endif
         Ns_DStringSetLength(dsPtr, newLength);
 
@@ -264,7 +247,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
      */
 
     if (result > 0) {
-        Ns_DStringSetLength(dsPtr, origLength + result);
+        Ns_DStringSetLength(dsPtr, origLength + (TCL_SIZE_T)result);
     } else {
         Ns_DStringSetLength(dsPtr, origLength);
     }
@@ -292,8 +275,8 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
 char **
 Ns_DStringAppendArgv(Ns_DString *dsPtr)
 {
-    char *s, **argv;
-    int   i, argc, len, size;
+    char      *s, **argv;
+    TCL_SIZE_T len, size, i, argc;
 
     /*
      * Determine the number of strings.
@@ -314,7 +297,7 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
      */
 
     len = ((dsPtr->length / 8) + 1) * 8;
-    size = len + ((int)sizeof(char *) * (argc + 1));
+    size = len + ((TCL_SIZE_T)sizeof(char *) * (argc + 1));
     Ns_DStringSetLength(dsPtr, size);
 
     /*
@@ -460,6 +443,54 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
     return dsPtr->string;
 }
 
+/*----------------------------------------------------------------------
+ *
+ * Ns_DStringAppendSockState --
+ *
+ *      Append the provided Ns_SockState in human readable form
+ *
+ * Results:
+ *      DString value
+ *
+ * Side effects:
+ *      Appends to the DString
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_DStringAppendSockState(Tcl_DString *dsPtr, Ns_SockState state)
+{
+    int    count = 0;
+    size_t i;
+    static const struct {
+        Ns_SockState state;
+        const char  *label;
+    } options[] = {
+        { NS_SOCK_NONE,      "NONE"},
+        { NS_SOCK_READ,      "READ"},
+        { NS_SOCK_WRITE,     "WRITE"},
+        { NS_SOCK_EXCEPTION, "EXCEPTION"},
+        { NS_SOCK_EXIT,      "EXIT"},
+        { NS_SOCK_DONE,      "DONE"},
+        { NS_SOCK_CANCEL,    "CANCEL"},
+        { NS_SOCK_TIMEOUT,   "TIMEOUT"},
+        { NS_SOCK_AGAIN,     "AGAIN"},
+        { NS_SOCK_INIT,      "INIT"}
+    };
+
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+
+    for (i = 0; i<sizeof(options)/sizeof(options[0]); i++) {
+        if ((options[i].state & state) != 0u) {
+            if (count > 0) {
+                Tcl_DStringAppend(dsPtr, "|", 1);
+            }
+            Tcl_DStringAppend(dsPtr, options[i].label, TCL_INDEX_NONE);
+            count ++;
+        }
+    }
+    return dsPtr->string;
+}
 
 
 /*
@@ -479,7 +510,8 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
 
 #undef Ns_DStringInit
 
-NS_EXTERN void Ns_DStringInit(Ns_DString *dsPtr) NS_GNUC_DEPRECATED_FOR(Tcl_DStringInit);
+NS_EXTERN void Ns_DStringInit(Ns_DString *dsPtr)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringInit);
 
 void
 Ns_DStringInit(Ns_DString *dsPtr)
@@ -489,7 +521,8 @@ Ns_DStringInit(Ns_DString *dsPtr)
 
 #undef Ns_DStringFree
 
-NS_EXTERN void Ns_DStringFree(Ns_DString *dsPtr) NS_GNUC_DEPRECATED_FOR(Tcl_DStringFree);
+NS_EXTERN void Ns_DStringFree(Ns_DString *dsPtr)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringFree);
 
 void
 Ns_DStringFree(Ns_DString *dsPtr)
@@ -499,47 +532,52 @@ Ns_DStringFree(Ns_DString *dsPtr)
 
 #undef Ns_DStringSetLength
 
-NS_EXTERN void Ns_DStringSetLength(Ns_DString *dsPtr, int length) NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
+NS_EXTERN void Ns_DStringSetLength(Ns_DString *dsPtr, TCL_SIZE_T length)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
 
 void
-Ns_DStringSetLength(Ns_DString *dsPtr, int length)
+Ns_DStringSetLength(Ns_DString *dsPtr, TCL_SIZE_T length)
 {
     Tcl_DStringSetLength(dsPtr, length);
 }
 
 #undef Ns_DStringTrunc
 
-NS_EXTERN void Ns_DStringTrunc(Ns_DString *dsPtr, int length) NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
+NS_EXTERN void Ns_DStringTrunc(Ns_DString *dsPtr, TCL_SIZE_T length)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
 
 void
-Ns_DStringTrunc(Ns_DString *dsPtr, int length)
+Ns_DStringTrunc(Ns_DString *dsPtr, TCL_SIZE_T length)
 {
     Tcl_DStringSetLength(dsPtr, length);
 }
 
 #undef Ns_DStringNAppend
 
-NS_EXTERN char *Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, int length) NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppend);
+NS_EXTERN char *Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, TCL_SIZE_T length)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppend);
 
 char *
-Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, int length)
+Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, TCL_SIZE_T length)
 {
     return Tcl_DStringAppend(dsPtr, bytes, length);
 }
 
 #undef Ns_DStringAppend
 
-NS_EXTERN char *Ns_DStringAppend(Ns_DString *dsPtr, const char *bytes) NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppend);
+NS_EXTERN char *Ns_DStringAppend(Ns_DString *dsPtr, const char *bytes)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppend);
 
 char *
 Ns_DStringAppend(Ns_DString *dsPtr, const char *bytes)
 {
-    return Tcl_DStringAppend(dsPtr, bytes, -1);
+    return Tcl_DStringAppend(dsPtr, bytes, TCL_INDEX_NONE);
 }
 
 #undef Ns_DStringAppendElement
 
-NS_EXTERN char *Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes) NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppendElement);
+NS_EXTERN char *Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppendElement);
 
 char *
 Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes)
@@ -549,9 +587,10 @@ Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes)
 
 #undef Ns_DStringLength
 
-NS_EXTERN int Ns_DStringLength(const Ns_DString *dsPtr) NS_GNUC_DEPRECATED_FOR(TclstringlDStringLength);
+NS_EXTERN TCL_SIZE_T Ns_DStringLength(const Ns_DString *dsPtr)
+    NS_GNUC_DEPRECATED_FOR(TclstringlDStringLength);
 
-int
+TCL_SIZE_T
 Ns_DStringLength(const Ns_DString *dsPtr)
 {
     return dsPtr->length;
@@ -559,7 +598,8 @@ Ns_DStringLength(const Ns_DString *dsPtr)
 
 #undef Ns_DStringValue
 
-NS_EXTERN char *Ns_DStringValue(const Ns_DString *dsPtr) NS_GNUC_DEPRECATED_FOR(Tcl_DStringValue);
+NS_EXTERN char *Ns_DStringValue(const Ns_DString *dsPtr)
+    NS_GNUC_DEPRECATED_FOR(Tcl_DStringValue);
 
 char *
 Ns_DStringValue(const Ns_DString *dsPtr)

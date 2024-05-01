@@ -20,7 +20,7 @@ code.
 [section {When to Use ADPs}]
 
 ADPs are ideal in situations where you want to generate all or part of
-a specific page dynamically. You can re-use code by storing Tcl
+a specific page dynamically. You can reuse code by storing Tcl
 scripts in Tcl libraries and invoking them from within multiple ADPs.
 You can also include files and parse other ADPs from within your ADPs.
 
@@ -628,8 +628,8 @@ includes a file, executes another ADP, and uses streaming.
  %>
  
  Number of accesses since server start: <%= $count %><br>
- tcl_version: <%= $tcl_version %><br>
- tcl_library: <%= $tcl_library %><br>
+ tcl_version: <%= $::tcl_version %><br>
+ tcl_library: <%= $::tcl_library %><br>
  Host: <%= $host %><br>
  
  <!-- Include the contents of a file: -->
@@ -676,6 +676,6 @@ Because of the streaming used in the last script, the output "1...", "2...",
 "3!" and "End" will be displayed incrementally in the page.
 
 [see_also ns_adp ns_adp_puts ns_adp_eval ns_adp_argv ns_adp_include ns_sleep ns_adp_register]
-[keywords ADP configuration]
+[keywords ADP configuration templates]
 
 [manpage_end]
