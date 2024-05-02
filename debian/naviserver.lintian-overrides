@@ -2,3 +2,5 @@
 naviserver binary: binary-or-shlib-defines-rpath *
 # Tentative false positive for linking to libc
 naviserver binary: library-not-linked-against-libc *
+# Links to bootstrap causing this error
+naviserver binary: privacy-breach-uses-embedded-file *
