@@ -1,3 +1,9 @@
+naviserver (4.99.31~20240503deb12-1+deb12u1) bookworm; urgency=medium
+
+  * Import from upstream. X-Forwarded-For header changes.
+
+ -- Qcode Software Ltd <hackers@qcode.co.uk>  Fri, 03 May 2024 15:00:46 +0100
+
 naviserver (4.99.31~20240501deb12-1+deb12u1) bookworm; urgency=medium
 
   * Import from upstream 4.99.31~20240501
