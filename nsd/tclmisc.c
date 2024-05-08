@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -47,8 +29,8 @@ static void SHATransform(Ns_CtxSHA1 *sha)
 static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
-static int Base64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int encoding);
+static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int encoding);
+static int Base64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int encoding);
 
 
 /*
@@ -101,7 +83,7 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
  */
 
 int
-NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *script = NULL;
     int         global = (int)NS_FALSE, result = TCL_OK;
@@ -167,7 +149,7 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
     Tcl_DString     ds;
 
     if (extraInfo != NULL) {
-        Tcl_AddObjErrorInfo(interp, extraInfo, -1);
+        Tcl_AddObjErrorInfo(interp, extraInfo, TCL_INDEX_NONE);
     }
     errorInfo = Tcl_GetVar(interp, "errorInfo", TCL_GLOBAL_ONLY);
     if (errorInfo == NULL) {
@@ -271,29 +253,29 @@ Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *UNUSED(conn))
  */
 
 void
-Ns_LogDeprecated(Tcl_Obj *const* objv, int objc, const char *alternative, const char *explanation)
+Ns_LogDeprecated(Tcl_Obj *const* objv, TCL_OBJC_T objc, const char *alternative, const char *explanation)
 {
     Tcl_DString ds;
-    int i;
+    TCL_OBJC_T         i;
 
     Tcl_DStringInit(&ds);
     Tcl_DStringAppend(&ds, "'", 1);
     for (i = 0; i < objc; i++) {
         const char *s;
-        int len;
+        TCL_SIZE_T  len;
 
         s = Tcl_GetStringFromObj(objv[i], &len);
         Tcl_DStringAppend(&ds, s, len);
         Tcl_DStringAppend(&ds, " ", 1);
     }
-    Tcl_DStringAppend(&ds, "' is deprecated. ", -1);
+    Tcl_DStringAppend(&ds, "' is deprecated. ", TCL_INDEX_NONE);
     if (alternative != NULL) {
-        Tcl_DStringAppend(&ds, "Use '", -1);
-        Tcl_DStringAppend(&ds, alternative, -1);
-        Tcl_DStringAppend(&ds, "' instead. ", -1);
+        Tcl_DStringAppend(&ds, "Use '", TCL_INDEX_NONE);
+        Tcl_DStringAppend(&ds, alternative, TCL_INDEX_NONE);
+        Tcl_DStringAppend(&ds, "' instead. ", TCL_INDEX_NONE);
     }
     if (explanation != NULL) {
-        Tcl_DStringAppend(&ds, explanation, -1);
+        Tcl_DStringAppend(&ds, explanation, TCL_INDEX_NONE);
     }
     Ns_Log(Notice, "%s", Tcl_DStringValue(&ds));
     Tcl_DStringFree(&ds);
@@ -354,7 +336,7 @@ InsertFreshNewline(Tcl_DString *dsPtr, const char *prefixString, size_t prefixLe
         dsPtr->string[*outputPosPtr] = '\n';
         (*outputPosPtr)++;
     } else {
-        Tcl_DStringSetLength(dsPtr, dsPtr->length + (int)prefixLength);
+        Tcl_DStringSetLength(dsPtr, dsPtr->length + (TCL_SIZE_T)prefixLength);
         dsPtr->string[*outputPosPtr] = '\n';
         (*outputPosPtr)++;
         memcpy(&dsPtr->string[*outputPosPtr], prefixString, prefixLength);
@@ -364,7 +346,7 @@ InsertFreshNewline(Tcl_DString *dsPtr, const char *prefixString, size_t prefixLe
 
 
 int
-NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK, lineWidth = 80, offset = 0;
     char             *textString = (char *)NS_EMPTY_STRING, *prefixString = NULL;
@@ -421,7 +403,7 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
          * Set the length of the Tcl_DString to the same size as the input
          * string plus for every linebreak+1 the prefixString.
          */
-        Tcl_DStringSetLength(dsPtr, (int)(textLength + nrPrefixes * prefixLength));
+        Tcl_DStringSetLength(dsPtr, (TCL_SIZE_T)(textLength + nrPrefixes * prefixLength));
 
         while (inputPos < textLength && !done) {
             size_t processedPos;
@@ -532,7 +514,7 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 int
-NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK, substInt = 0;
     Tcl_Obj          *textObj;
@@ -563,7 +545,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
 
     } else {
         Tcl_DString ds, *dsPtr = &ds;
-        int         textLength;
+        TCL_SIZE_T  textLength;
         char       *p;
         const char *endOfString;
 
@@ -594,7 +576,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
                 } else {
                     length = (endOfString - j);
                 }
-                Tcl_DStringAppend(dsPtr, j, (int)length);
+                Tcl_DStringAppend(dsPtr, j, (TCL_SIZE_T)length);
 
                 p = j + length;
             }
@@ -623,7 +605,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
                 } else {
                     length = (endOfString - j);
                 }
-                Tcl_DStringAppend(dsPtr, j, (int)length);
+                Tcl_DStringAppend(dsPtr, j, (TCL_SIZE_T)length);
 
                 p = j + length;
             }
@@ -653,7 +635,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  */
 
 int
-NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *htmlString = (char *)NS_EMPTY_STRING;
@@ -714,7 +696,7 @@ NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
                             }
                             save = *he;
                             *he = '\0';
-                            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(s, -1));
+                            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(s, TCL_INDEX_NONE));
                             *he = save;
                             break;
                         }
@@ -770,7 +752,7 @@ static void hexPrint(const char *msg, const unsigned char *octets, size_t octetL
 #endif
 
 static int
-Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,
                    int encoding)
 {
     int         result = TCL_OK, isBinary = 0;
@@ -791,7 +773,7 @@ Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
     } else {
         char                *buffer;
         size_t               size;
-        int                  nbytes = 0;
+        TCL_SIZE_T           nbytes = 0;
         Tcl_DString          ds;
         const unsigned char *bytes;
 
@@ -810,12 +792,12 @@ Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 }
 
 int
-NsTclBase64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclBase64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return Base64EncodeObjCmd(clientData, interp, objc, objv, 0);
 }
 int
-NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return Base64EncodeObjCmd(clientData, interp, objc, objv, 1);
 }
@@ -838,7 +820,7 @@ NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
  */
 
 static int
-Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv,
+Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,
                    int encoding)
 {
     int      result = TCL_OK, isBinary = 0;
@@ -857,7 +839,7 @@ Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         result = TCL_ERROR;
 
     } else {
-        int            len;
+        TCL_SIZE_T     len;
         size_t         size;
         unsigned char *decoded;
         const char    *chars = Tcl_GetStringFromObj(charsObj, &len);
@@ -868,13 +850,13 @@ Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         //NsHexPrint("base64 decoded", decoded, size, 30, NS_FALSE);
 
         if (isBinary) {
-            Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (int)size));
+            Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (TCL_SIZE_T)size));
 
         } else {
             Tcl_DString ds, *dsPtr = &ds;
 
             Tcl_DStringInit(dsPtr);
-            (void)Tcl_ExternalToUtfDString(NULL, (char *)decoded, (int)size, dsPtr);
+            (void)Tcl_ExternalToUtfDString(NULL, (char *)decoded, (TCL_SIZE_T)size, dsPtr);
             Tcl_DStringResult(interp, dsPtr);
         }
 
@@ -884,12 +866,12 @@ Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
     return result;
 }
 int
-NsTclBase64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclBase64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return Base64DecodeObjCmd(clientData, interp, objc, objv, 0);
 }
 int
-NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return Base64DecodeObjCmd(clientData, interp, objc, objv, 1);
 }
@@ -914,7 +896,7 @@ NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, 
 
 int
 NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
-                 int UNUSED(argc), Tcl_Obj *const* UNUSED(objv))
+                 TCL_OBJC_T UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
 {
     char *death;
 
@@ -942,7 +924,7 @@ NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
  */
 
 int
-NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int  result = TCL_OK;
     char       *keyString, *saltString;
@@ -964,7 +946,7 @@ NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
             char buf[NS_ENCRYPT_BUFSIZE];
 
             Tcl_SetObjResult(interp,
-                             Tcl_NewStringObj(Ns_Encrypt(keyString, saltString, buf), -1));
+                             Tcl_NewStringObj(Ns_Encrypt(keyString, saltString, buf), TCL_INDEX_NONE));
        }
     }
     return result;
@@ -1391,9 +1373,9 @@ void Ns_CtxSHAFinal(Ns_CtxSHA1 *ctx, unsigned char digest[20])
  *----------------------------------------------------------------------
  */
 char *
-Ns_HexString(const unsigned char *octets, char *outputBuffer, int size, bool isUpper)
+Ns_HexString(const unsigned char *octets, char *outputBuffer, TCL_SIZE_T size, bool isUpper)
 {
-    int i;
+    TCL_SIZE_T i;
     static const char hexCharsUpper[] = "0123456789ABCDEF";
     static const char hexCharsLower[] = "0123456789abcdef";
 
@@ -1435,7 +1417,7 @@ Ns_HexString(const unsigned char *octets, char *outputBuffer, int size, bool isU
  */
 
 int
-NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isBinary = 0;
     Tcl_Obj    *charsObj;
@@ -1456,7 +1438,7 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
         unsigned char  digest[20];
         char           digestChars[41];
         Ns_CtxSHA1     ctx;
-        int            nbytes;
+        TCL_SIZE_T     nbytes;
         const unsigned char *bytes;
         Tcl_DString    ds;
 
@@ -1497,7 +1479,7 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  */
 
 int
-NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     struct stat st;
@@ -1540,7 +1522,7 @@ NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 #ifdef S_ISSOCK
                                   S_ISSOCK(st.st_mode) ? "socket" :
 #endif
-                   NS_EMPTY_STRING), -1), 0);
+                   NS_EMPTY_STRING), TCL_INDEX_NONE), 0);
         }
         Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
     }
@@ -1877,7 +1859,7 @@ static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
  */
 
 int
-NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isBinary = 0;
     Tcl_Obj    *charsObj;
@@ -1898,7 +1880,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
         Ns_CtxMD5            ctx;
         unsigned char        digest[16];
         char                 digestChars[33];
-        int                  length;
+        TCL_SIZE_T           length;
         Tcl_DString          ds;
         const unsigned char *str;
 
@@ -1936,7 +1918,7 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
 
 int
 NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                   int objc, Tcl_Obj *const* objv)
+                   TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -1953,7 +1935,7 @@ NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int objc, Tcl_Obj *const* objv)
+                    TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -1990,7 +1972,7 @@ GetLimitObj(rlim_t value)
     Tcl_Obj *obj;
 
     if (value == RLIM_INFINITY) {
-        obj = Tcl_NewStringObj("unlimited", -1);
+        obj = Tcl_NewStringObj("unlimited", TCL_INDEX_NONE);
     } else {
         obj = Tcl_NewWideIntObj((Tcl_WideInt)value);
     }
@@ -2016,7 +1998,7 @@ GetLimitObj(rlim_t value)
  *----------------------------------------------------------------------
  */
 int
-NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
 #ifndef _WIN32
 # ifndef RLIMIT_AS
@@ -2149,7 +2131,7 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, T
  *----------------------------------------------------------------------
  */
 int
-NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *inputString = (char*)"";
@@ -2194,7 +2176,7 @@ NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl
  *----------------------------------------------------------------------
  */
 int
-NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         result;
     Tcl_Obj    *stringObj = NULL, *errorVarnameObj = NULL;
@@ -2208,7 +2190,7 @@ NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
         result = TCL_ERROR;
     } else {
         Tcl_DString          stringDS, errorDS;
-        int                  stringLength;
+        TCL_SIZE_T           stringLength;
         const unsigned char *bytes;
         bool                 isValid;
 
@@ -2270,7 +2252,7 @@ ns_valid_utf8 "foo\xc3\x85"
  *----------------------------------------------------------------------
  */
 int
-NsTclBaseUnitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclBaseUnitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result;
     Tcl_WideInt  memUnitValue = -1;
@@ -2332,7 +2314,7 @@ ns_baseunit -size 1KB
  *----------------------------------------------------------------------
  */
 int
-NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     Tcl_Obj     *arg1Obj, *arg2Obj;
@@ -2369,7 +2351,8 @@ NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 
         if (result == TCL_OK) {
             Tcl_DString ds1, ds2, *ds1Ptr = &ds1, *ds2Ptr = &ds2;
-            int         length1, length2, comparisonValue;
+            TCL_SIZE_T  length1, length2;
+            int         comparisonValue;
             const char *string1, *string2;
 
             Tcl_DStringInit(ds1Ptr);
@@ -2421,6 +2404,9 @@ NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *
  *      Implements "ns_subnetmatch".
  *
+ *      Example:
+ *          ns_subnetmatch 137.208.0.0/16 137.208.116.31
+ *
  * Results:
  *      Tcl result code
  *
@@ -2430,7 +2416,7 @@ NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 int
-NsTclSubnetmatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSubnetmatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *cidrString, *ipString;
@@ -2465,9 +2451,6 @@ NsTclSubnetmatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     }
     return result;
 }
-#if 0
-ns_subnetmatch 137.208.0.0/16 137.208.116.31
-#endif
 
 /*
  * Local Variables:

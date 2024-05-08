@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 #ifdef _WIN32
@@ -53,8 +35,8 @@ static bool SockAddrEqual(const struct sockaddr *saPtr1, const struct sockaddr *
  * Static variables used in this file
  */
 
-static Ns_Mutex lock;
-static Ns_Cond cond;
+static Ns_Mutex lock = NULL;
+static Ns_Cond cond = NULL;
 static Ns_Thread tickThread;
 static SERVICE_STATUS_HANDLE hStatus = NULL;
 static SERVICE_STATUS curStatus;
@@ -452,6 +434,7 @@ NsHandleSignals(void)
         ReportStatus((DWORD)SERVICE_RUNNING, NO_ERROR, 0u);
     }
     Ns_MutexSetName2(&lock, "ns", "signal");
+    Ns_CondInit(&cond);
     do {
         Ns_MutexLock(&lock);
         while (sigpending == 0u) {
@@ -1366,8 +1349,120 @@ ns_send(NS_SOCKET socket, const void *buffer, size_t length, int flags)
     return send(socket, buffer, (int)length, flags);
 }
 
+
+// MSVC specific implementation
+static void fseterr(FILE *fp)
+{
+    struct file { // Undocumented implementation detail
+        unsigned char *_ptr;
+        unsigned char *_base;
+        int _cnt;
+        int _flag;
+        int _file;
+        int _charbuf;
+        int _bufsiz;
+    };
+    #define _IOERR 0x10
+
+    ((struct file *)fp)->_flag |= _IOERR;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_getline --
+ *
+ *      Basic implementation of the POSIX function getline for windows.
+ *
+ * Results:
+ *      For details, see getline man pages.
+ *
+ * Side effects:
+ *      Potentially allocating / reallocating memory.
+ *
+ *----------------------------------------------------------------------
+ */
+ssize_t
+ns_getline(char **lineptr, size_t *n, FILE *stream)
+{
+    ssize_t nread = 0;
+    int c = EOF;
+
+    /*
+     * Check input parameters
+     */
+    if (lineptr == NULL || n == NULL || stream == NULL || (*lineptr == NULL && *n != 0)) {
+        errno = EINVAL;
+        return -1;
+    }
+    /*
+     * Return -1, when we are at EOF or in an error state of the stream.
+     */
+    if (feof(stream) || ferror(stream)) {
+        return -1;
+    }
+
+    /*
+     * If there is no buffer provided, allocate one via malloc()
+     */
+    if (*lineptr == NULL) {
+        *n = 256;
+        *lineptr = malloc(*n);
+        if (*lineptr == NULL) {
+            fseterr(stream);
+            errno = ENOMEM;
+            return -1;
+        }
+    }
+    /*
+     * Read char by char until we reach a newline. We could do
+     * performance-wise better than this, but this is straightforward for EOF
+     * handling, and eay to understand.
+     */
+    while (c != '\n') {
+        c = fgetc(stream);
+        if (c == EOF) {
+            break;
+        }
+
+        /*
+         * In case, the buffer was filled up, double it via realloc().
+         */
+        if (nread >= (ssize_t)(*n - 1)) {
+            size_t newn = *n * 2;
+            char  *newptr = realloc(*lineptr, newn);
+
+            if (newptr == NULL) {
+                /*
+                 * When realloc() failed, give up.
+                 */
+                fseterr(stream);
+                errno = ENOMEM;
+                return -1;
+            }
+            *lineptr = newptr;
+            *n = newn;
+        }
+        (*lineptr)[nread++] = (char)c;
+    }
+    /*
+     * When we reach EOF or we could not read anything, return -1.
+     */
+    if (c == EOF && nread == 0) {
+        return -1;
+    }
+    /*
+     * Terminate the returned string with a NUL character.
+     */
+    (*lineptr)[nread] = 0;
+
+    return nread;
+}
+
 #else
-/* avoid empty translation unit */
+/*
+ * Avoid empty translation unit
+ */
    typedef void empty;
 #endif
 

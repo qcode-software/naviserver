@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -34,6 +16,10 @@
  */
 
 #include "nsd.h"
+
+#if defined(HAVE_MEMMEM)
+# include <string.h>
+#endif
 
 /*
  * Local functions defined in this file.
@@ -57,8 +43,14 @@ static char *Ext2utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Enco
 static bool GetBoundary(Tcl_DString *dsPtr, const char *contentType)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static char *NextBoundary(const Tcl_DString *dsPtr, char *s, const char *e)
+#define NS_USE_MEMMEM 1
+#if defined(NS_USE_MEMMEM)
+static char *NextBoundary(char *content, size_t contentLength, const Tcl_DString *boundaryDsPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_PURE;
+#else
+static char *NextBoundary(const Tcl_DString *boundaryDsPtr, char *s, const char *e)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_PURE;
+#endif
 
 static bool GetValue(const char *hdr, const char *att, const char **vsPtr, const char **vePtr, char *uPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
@@ -84,7 +76,6 @@ static bool GetValue(const char *hdr, const char *att, const char **vsPtr, const
  *
  *----------------------------------------------------------------------
  */
-
 Ns_Set *
 Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj, Ns_ReturnCode *rcPtr)
 {
@@ -131,6 +122,7 @@ Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj, 
              */
             if ((connPtr->flags & NS_CONN_CLOSED) == 0u) {
                 content = connPtr->reqPtr->content;
+                // Ns_Log(Debug, "content <%s>", content);
             } else {
                 /*
                  * Formdata is unavailable, but do not fall back to the
@@ -200,8 +192,17 @@ Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj, 
                  * GetBoundary cares for "multipart/form-data; boundary=...".
                  */
                 const char  *formEndPtr = content + connPtr->reqPtr->length;
-                char        *firstBoundary = NextBoundary(&boundaryDs, content, formEndPtr), *s;
+                char        *firstBoundary, *s;
                 Tcl_Encoding valueEncoding = connPtr->urlEncoding;
+
+#if defined(NS_USE_MEMMEM)
+                firstBoundary = NextBoundary(content, connPtr->reqPtr->length, &boundaryDs);
+#else
+                firstBoundary = NextBoundary(&boundaryDs, content, formEndPtr);
+#endif
+                /*NsHexPrint("multipart content",
+                           (const unsigned char *)content, connPtr->reqPtr->length,
+                           20, NS_TRUE);*/
 
                 s = firstBoundary;
                 for (;;) {
@@ -210,22 +211,28 @@ Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj, 
                     while (s != NULL) {
                         char  *e;
 
-                        s += boundaryDs.length;
+                        s += boundaryDs.length + 1;
                         if (*s == '\r') {
                             ++s;
                         }
                         if (*s == '\n') {
                             ++s;
                         }
+#if defined(NS_USE_MEMMEM)
+                        e = NextBoundary(s, (size_t)(formEndPtr - s), &boundaryDs);
+#else
                         e = NextBoundary(&boundaryDs, s, formEndPtr);
+#endif
                         if (e != NULL) {
                             status = ParseMultipartEntry(connPtr, valueEncoding, s, e);
                             if (status == NS_ERROR) {
+                                Ns_Log(Debug, "ParseMultipartEntry -> error");
                                 toParse = s;
                             }
                         }
                         s = e;
                     }
+
                     /*
                      * We have now parsed all form fields into
                      * connPtr->query. According to the HTML5 standard, we
@@ -253,7 +260,26 @@ Ns_ConnGetQuery(Tcl_Interp *interp, Ns_Conn *conn, Tcl_Obj *fallbackCharsetObj, 
                             Ns_Log(Error, "multipart form: invalid charset specified"
                                    " inside of form '%s'", defaultCharset);
                             status = NS_ERROR;
+                            break;
                         }
+                    }
+                    /*
+                     * In case, we have still an unhandled error, we might
+                     * provide more mechanism in the future, when client could
+                     * not pass a proper fallbackEncoding. For now, just
+                     * provide a warning.
+                     */
+                    if (status == NS_ERROR) {
+                        Ns_ReturnCode rc;
+                        Tcl_Encoding fallbackEncoding = NULL;
+
+                        rc = NsGetFallbackEncoding(interp, connPtr->poolPtr->servPtr,
+                                                   fallbackCharsetObj, NS_TRUE, &fallbackEncoding);
+                        Ns_Log(Warning, "multipart form: error rc %d fallbackCharsetObj '%s'"
+                               " valueEncoding %p"
+                               " fallbackencoding %p",
+                               rc, fallbackCharsetObj == NULL ? "NONE" : Tcl_GetString(fallbackCharsetObj),
+                               (void*)valueEncoding, (void*)fallbackEncoding);
                     }
                     break;
                 }
@@ -382,7 +408,7 @@ Ns_QueryToSet(char *query, Ns_Set *set, Tcl_Encoding encoding)
  */
 
 int
-NsTclParseQueryObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclParseQueryObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int       result;
     NsInterp *itPtr = clientData;
@@ -490,14 +516,14 @@ ParseQuery(char *form, Ns_Set *set, Tcl_Encoding encoding, bool translate)
                      */
                     Ns_DStringSetLength(&vds2, 0);
                     do {
-                        Tcl_DStringAppend(&vds2, v, (int)(q - v));
+                        Tcl_DStringAppend(&vds2, v, (TCL_SIZE_T)(q - v));
                         v = q +1;
                         q = strchr(v, INTCHAR('\r'));
                     } while (q != NULL);
                     /*
                      * Append the remaining string.
                      */
-                    Tcl_DStringAppend(&vds2, v, -1);
+                    Tcl_DStringAppend(&vds2, v, TCL_INDEX_NONE);
                     v = vds2.string;
                 }
             }
@@ -674,6 +700,7 @@ ParseMultipartEntry(Conn *connPtr, Tcl_Encoding valueEncoding, const char *start
 
             assert(fs != NULL);
             value = Ext2utf(&vds, fs, (size_t)(fe - fs), encoding, unescape);
+
             if (value == NULL) {
                 status = NS_ERROR;
                 goto bailout;
@@ -762,7 +789,7 @@ GetBoundary(Tcl_DString *dsPtr, const char *contentType)
             ++be;
         }
         Tcl_DStringAppend(dsPtr, "--", 2);
-        Tcl_DStringAppend(dsPtr, bs, (int)(be - bs));
+        Tcl_DStringAppend(dsPtr, bs, (TCL_SIZE_T)(be - bs));
         success = NS_TRUE;
     }
     return success;
@@ -774,7 +801,8 @@ GetBoundary(Tcl_DString *dsPtr, const char *contentType)
  *
  * NextBoundary --
  *
- *      Locate the next form boundary.
+ *      Locate the next form boundary. On success, the result points to the
+ *      character before the boundary.
  *
  * Results:
  *      Pointer to start of next input field or NULL on end of fields.
@@ -784,21 +812,43 @@ GetBoundary(Tcl_DString *dsPtr, const char *contentType)
  *
  *----------------------------------------------------------------------
  */
-
+#if defined(NS_USE_MEMMEM)
 static char *
-NextBoundary(const Tcl_DString *dsPtr, char *s, const char *e)
+NextBoundary(char *content, size_t contentLength, const Tcl_DString *boundaryDsPtr)
 {
-    char c, sc;
-    const char *find;
-    size_t len;
+    char *result;
 
-    NS_NONNULL_ASSERT(dsPtr != NULL);
+    result = ns_memmem(content, contentLength,
+                       boundaryDsPtr->string, (size_t)boundaryDsPtr->length);
+    if (result != NULL) {
+        /*Ns_Log(Notice, "NextBoundary found boundary offset %ld", result-start);*/
+        result--;
+        /*
+         * We could check, whether the preceding character is an expected
+         * delimiter such as \0x0, 0xa, 0xd. However, previous version did not
+         * test this as well.
+         */
+        //NsHexPrint("boundary previous", (const unsigned char *)result, 10, 30, NS_TRUE);
+    }
+    return result;
+}
+#else
+static char *
+NextBoundary(const Tcl_DString *boundaryDsPtr, char *s, const char *e)
+{
+    char        c, sc;
+    const char *find;
+    size_t      len;
+
+    NS_NONNULL_ASSERT(boundaryDsPtr != NULL);
     NS_NONNULL_ASSERT(s != NULL);
     NS_NONNULL_ASSERT(e != NULL);
 
-    find = dsPtr->string;
+    find = boundaryDsPtr->string;
     c = *find++;
-    len = (size_t)(dsPtr->length - 1);
+    len = (size_t)(boundaryDsPtr->length - 1);
+    /* Ns_Log(Notice, "search for boundary <%s> (boundary len %lu) firstchar '%c' in <%s>",
+       boundaryDsPtr->string, len, c, s);*/
     e -= len;
     do {
         do {
@@ -812,6 +862,7 @@ NextBoundary(const Tcl_DString *dsPtr, char *s, const char *e)
 
     return s;
 }
+#endif
 
 
 /*
@@ -914,9 +965,12 @@ Ext2utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(start != NULL);
 
+    /*Ns_Log(Notice, "Ext2utf start '%s' (len %lu), encoding %p %s", start, len,
+      (void*)encoding, encoding == NULL ? "default" : Tcl_GetEncodingName(encoding));*/
+
     if (encoding == NULL) {
         Tcl_DStringSetLength(dsPtr, 0);
-        Tcl_DStringAppend(dsPtr, start, (int)len);
+        Tcl_DStringAppend(dsPtr, start, (TCL_SIZE_T)len);
         buffer = dsPtr->string;
     } else {
         Tcl_DString ds;
@@ -932,7 +986,7 @@ Ext2utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding
              * ExternalToUtfDString will re-init dstring.
              */
             Tcl_DStringFree(dsPtr);
-            (void) Tcl_ExternalToUtfDString(encoding, start, (int)len, dsPtr);
+            (void) Tcl_ExternalToUtfDString(encoding, start, (TCL_SIZE_T)len, dsPtr);
             buffer = dsPtr->string;
         }
     }
@@ -943,18 +997,18 @@ Ext2utf(Tcl_DString *dsPtr, const char *start, size_t len, Tcl_Encoding encoding
      * string.
      */
     if (buffer != NULL && unescape != '\0') {
-      int i, j, l = (int)len;
+        TCL_SIZE_T j, i, l = (TCL_SIZE_T)len;
 
-      for (i = 0; i<l; i++) {
-        if (buffer[i] == '\\' && buffer[i+1] == unescape) {
-          for (j = i; j < l; j++) {
-            buffer[j] = buffer[j+1];
-          }
-          l --;
+        for (i = 0; i<l; i++) {
+            if (buffer[i] == '\\' && buffer[i+1] == unescape) {
+                for (j = i; j < l; j++) {
+                    buffer[j] = buffer[j+1];
+                }
+                l --;
+            }
         }
-      }
-      Tcl_DStringSetLength(dsPtr, l);
-      buffer = dsPtr->string;
+        Tcl_DStringSetLength(dsPtr, l);
+        buffer = dsPtr->string;
     }
 
     return buffer;

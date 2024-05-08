@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -114,13 +96,18 @@ static void LogEntriesFree(void *arg);
  */
 
 static Ns_TlsCleanup FreeCache;
-static Tcl_PanicProc Panic;
+static
+#ifndef NS_TCL_PRE9
+ TCL_NORETURN1
+#endif
+Tcl_PanicProc Panic;
 
 static Ns_LogFilter LogToFile;
 static Ns_LogFilter LogToTcl;
 static Ns_LogFilter LogToDString;
 
-static Tcl_ObjCmdProc NsLogCtlSeverityObjCmd;
+static TCL_OBJCMDPROC_T LogCtlSeverityObjCmd;
+static TCL_OBJCMDPROC_T LogCtlGrepObjCmd;
 
 static LogCache* GetCache(void)
     NS_GNUC_RETURNS_NONNULL;
@@ -157,14 +144,14 @@ static Ns_Tls       tls;
 #if !defined(NS_THREAD_LOCAL)
 static Ns_Tls       tlsEntry;
 #endif
-static Ns_Mutex     lock;
-static Ns_Cond      cond;
+static Ns_Mutex     lock = NULL;
+static Ns_Cond      cond = NULL;
 
 static bool         logOpenCalled = NS_FALSE;
 static const char  *logfileName = NULL;
 static const char  *rollfmt = NULL;
 static unsigned int flags = 0u;
-static int          maxbackup;
+static TCL_SIZE_T   maxbackup;
 
 static LogFilter   *filters;
 static const char  *const filterType = "ns:logfilter";
@@ -268,6 +255,8 @@ NsInitLog(void)
     Ns_LogSeverity i;
 
     Ns_MutexSetName(&lock, "ns:log");
+    Ns_CondInit(&cond);
+
     Ns_TlsAlloc(&tls, FreeCache);
 #if !defined(NS_THREAD_LOCAL)
     Ns_TlsAlloc(&tlsEntry, LogEntriesFree);
@@ -330,7 +319,8 @@ static int
 ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int *idxPtr)
 {
     size_t       len;
-    int          result, pos = 1;
+    int          result;
+    TCL_SIZE_T   pos = 1;
     const char  *valueString;
 
     NS_NONNULL_ASSERT(path != NULL);
@@ -344,7 +334,7 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
     len = strlen(valueString);
     if (len > 0u) {
         Ns_ObjvSpec  spec;
-        Tcl_Obj     *objPtr = Tcl_NewStringObj(valueString, (int)len);
+        Tcl_Obj     *objPtr = Tcl_NewStringObj(valueString, (TCL_SIZE_T)len);
 
         spec.arg  = tablePtr;
         spec.dest = idxPtr;
@@ -355,7 +345,7 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
 
             Ns_DStringInit(dsPtr);
             while (tablePtr->key != NULL) {
-                Ns_DStringNAppend(dsPtr, tablePtr->key, -1);
+                Ns_DStringNAppend(dsPtr, tablePtr->key, TCL_INDEX_NONE);
                 Ns_DStringNAppend(dsPtr, " ", 1);
                 tablePtr++;
             }
@@ -442,11 +432,11 @@ NsConfigLog(void)
         (void) Ns_ConfigString(path, "logprefixintensity", NS_EMPTY_STRING);
     }
 
-    maxbackup = Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
+    maxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
 
     logfileName = ns_strcopy(Ns_ConfigString(path, "serverlog", "nsd.log"));
     if (Ns_PathIsAbsolute(logfileName) == NS_FALSE) {
-        int length;
+        TCL_SIZE_T length;
 
         Ns_DStringInit(&ds);
         if (Ns_HomePathExists("logs", (char *)0L)) {
@@ -694,7 +684,7 @@ LogStats(void)
 
     listObj = Tcl_NewListObj(0, NULL);
     for (s = 0; s < severityIdx; s++) {
-        (void)Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewStringObj(severityConfig[s].label, -1));
+        (void)Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewStringObj(severityConfig[s].label, TCL_INDEX_NONE));
         (void)Tcl_ListObjAppendElement(NULL, listObj, Tcl_NewLongObj(severityConfig[s].count));
     }
     return listObj;
@@ -1132,7 +1122,7 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
  */
 
 int
-NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     void *addrPtr;
     int   result = TCL_OK;
@@ -1149,7 +1139,7 @@ NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
         if (likely(objc == 3)) {
             Ns_Log(severity, "%s", Tcl_GetString(objv[2]));
         } else {
-            int i;
+            TCL_OBJC_T i;
 
             Ns_DStringInit(&ds);
             for (i = 2; i < objc; ++i) {
@@ -1167,7 +1157,7 @@ NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
 /*
  *----------------------------------------------------------------------
  *
- * NsLogCtlSeverityObjCmd --
+ * LogCtlSeverityObjCmd --
  *
  *      Implements "ns_logctl severtiy" command.
  *
@@ -1181,7 +1171,7 @@ NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_
  */
 
 static int
-NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+LogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogSeverity    severity = 0; /* default value for the error cases */
     void             *addrPtr = NULL;
@@ -1262,6 +1252,176 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     return result;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * StripColorCodes --
+ *
+ *      Strip ANSI color codes from the specified string.
+ *
+ * Results:
+ *      Stripped string
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static char *
+StripColorCodes(char *line, ssize_t len, TCL_SIZE_T *resultLen)
+{
+    /*
+     * Sample color codes:
+     *
+     *  1b5b303b33326d ; ESC [ 0 ; 3 2 m
+     *  1b5b303b33396d ; ESC [ 0 ; 3 9 m
+     *  1b5b306d       ; ESC [ 0 m
+     *  1b5b313b33316d ; ESC [ 1 ; 3 1 m
+     *  1b5b313b33396d ; ESC [ 1 ; 3 9 m
+     */
+    char *startEsc;
+    *resultLen = (TCL_SIZE_T)len;
+
+    startEsc = strchr(line, 27);
+    while (startEsc != NULL && *(startEsc + 1) == INTCHAR('[')) {
+        char *p;
+        /*
+         * In escape mode, strip everything up to the next 'm';
+         */
+        p = strchr(startEsc + 2, INTCHAR('m'));
+        if (p == NULL) {
+            /*
+             * False alarm (it looked like an escape code, but it is
+             * apparently none). Continue after this.
+             */
+            startEsc += 2;
+        } else {
+            ptrdiff_t skip = p - startEsc;
+
+            memcpy(startEsc, p+1, (size_t)(*resultLen - (p-line)));
+            *resultLen = *resultLen - (TCL_SIZE_T)(skip+1);
+        }
+        startEsc = strchr(startEsc, 27);
+    }
+
+    return line;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * LogCtlGrepObjCmd --
+ *
+ *      Read the logfile line by line, clean it from color codes,
+ *      concatenate continuation lines and grep for content.
+ *      Implements "ns_logctl grep" command.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int
+LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+{
+    int          result = TCL_OK;
+    char        *string, *filename = (char *)logfileName;
+    Ns_ObjvSpec  lopts[] = {
+        {"-filename", Ns_ObjvString, &filename, NULL},
+        {"--",        Ns_ObjvBreak,  NULL,      NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  largs[] = {
+        {"string", Ns_ObjvString, &string, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(lopts, largs, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        FILE *file;
+
+        /*
+         * Open the file in read mode
+         */
+        file = fopen(filename, "r");
+
+        if (file == NULL) {
+            Ns_TclPrintfResult(interp, "Unable to open the file '%s'", filename);
+            result = TCL_ERROR;
+        } else {
+            TCL_SIZE_T  strippedLen;
+            char       *line = NULL, *strippedLine;
+            Tcl_DString resultDs, fullLineDs;
+
+            Tcl_DStringInit(&resultDs);
+            Tcl_DStringInit(&fullLineDs);
+
+            /*
+             * Read the file line by line.
+             */
+            while (1) {
+                size_t  len;
+                ssize_t read;
+
+                read = ns_getline(&line, &len, file);
+                if (read == -1) {
+                    break;
+                }
+
+                if (fullLineDs.length != 0) {
+                    /*
+                     * fullLineDs had already content, append to it.
+                     */
+                    if (*line != ':') {
+                        /*
+                         * If the read line starts with a character
+                         * different to a colon, it is not a
+                         * continuation line, concatenation is done
+                         * and we can grep full line.
+                         */
+                        if (*string != '\0' && strstr(fullLineDs.string, string) != NULL) {
+                            strippedLine = StripColorCodes(fullLineDs.string, fullLineDs.length,
+                                                           &strippedLen);
+                            Ns_DStringNAppend(&resultDs, strippedLine, strippedLen);
+                        }
+                        Tcl_DStringSetLength(&fullLineDs, 0);
+                    }
+                }
+                /*
+                 * Always append the read line to full line.
+                 */
+                Ns_DStringNAppend(&fullLineDs, line, (TCL_SIZE_T)read);
+            }
+            if (fullLineDs.length != 0) {
+                if (*string != '\0' && strstr(fullLineDs.string, string) != NULL) {
+                    strippedLine = StripColorCodes(fullLineDs.string, fullLineDs.length,
+                                                   &strippedLen);
+                    Ns_DStringNAppend(&resultDs, strippedLine, strippedLen);
+                }
+            }
+
+            /*
+             * Final cleanup.
+             */
+            fclose(file);
+            if (line != NULL) {
+                free(line);
+            }
+            Tcl_DStringFree(&fullLineDs);
+            Tcl_DStringResult(interp, &resultDs);
+        }
+    }
+    return result;
+}
+
+
 
 /*
  *----------------------------------------------------------------------
@@ -1281,9 +1441,9 @@ NsLogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  */
 
 int
-NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    int             result = TCL_OK, count, opt, i;
+    int             result = TCL_OK, opt, i;
     Ns_DString      ds;
     Tcl_Obj        *objPtr;
     LogCache       *cachePtr = GetCache();
@@ -1295,6 +1455,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         "count",
         "flush",
         "get",
+        "grep",
         "hold",
         "peek",
         "register",
@@ -1310,6 +1471,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         CCountIdx,
         CFlushIdx,
         CGetIdx,
+        CGrepIdx,
         CHoldIdx,
         CPeekIdx,
         CRegisterIdx,
@@ -1345,7 +1507,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
                 result = TCL_ERROR;
             } else {
                 cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)Ns_TclCallbackProc,
-                                          objv[2], objc - 3, objv + 3);
+                                          objv[2], (TCL_SIZE_T)(objc - 3), objv + 3);
                 Ns_AddLogFilter(LogToTcl, cbPtr, Ns_TclFreeCallback);
                 Ns_TclSetAddrObj(Tcl_GetObjResult(interp), filterType, cbPtr);
             }
@@ -1367,7 +1529,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             cachePtr->hold = NS_TRUE;
             break;
 
-        case CPeekIdx:
+        case CPeekIdx: NS_FALL_THROUGH; /* fall through */
         case CGetIdx:
             memset(filterPtr, 0, sizeof(*filterPtr));
             filterPtr->proc = LogToDString;
@@ -1388,25 +1550,28 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             Tcl_SetObjResult(interp, Tcl_NewIntObj(cachePtr->count));
             break;
 
-        case CTruncIdx:
-            count = 0;
-            if (objc > 2) {
-                Ns_ObjvValueRange countRange = {0, INT_MAX};
-                int               oc = 1;
-                Ns_ObjvSpec       spec = {"?count", Ns_ObjvInt, &count, &countRange};
-
-                if (Ns_ObjvInt(&spec, interp, &oc, &objv[2]) != TCL_OK) {
-                    result = TCL_ERROR;
-                }
-            }
-            if (result == TCL_OK) {
+        case CTruncIdx: {
+            int count = 0;
+            Ns_ObjvValueRange countRange = {0, INT_MAX};
+            Ns_ObjvSpec       args[] = {
+                {"?count", Ns_ObjvInt, &count, &countRange},
+                {NULL, NULL, NULL, NULL}
+            };
+            if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+                result = TCL_ERROR;
+            } else {
                 memset(filterPtr, 0, sizeof(*filterPtr));
                 LogFlush(cachePtr, filterPtr, count, NS_TRUE, NS_TRUE);
             }
             break;
+        }
+
+        case CGrepIdx:
+            result = LogCtlGrepObjCmd(clientData, interp, objc, objv);
+            break;
 
         case CSeverityIdx:
-            result = NsLogCtlSeverityObjCmd(clientData, interp, objc, objv);
+            result = LogCtlSeverityObjCmd(clientData, interp, objc, objv);
             break;
 
         case CSeveritiesIdx:
@@ -1416,7 +1581,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
             objPtr = Tcl_GetObjResult(interp);
             for (i = 0; i < severityIdx; i++) {
                 if (Tcl_ListObjAppendElement(interp, objPtr,
-                                             Tcl_NewStringObj(severityConfig[i].label, -1))
+                                             Tcl_NewStringObj(severityConfig[i].label, TCL_INDEX_NONE))
                     != TCL_OK) {
                     result = TCL_ERROR;
                     break;
@@ -1458,7 +1623,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
 int
 NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                   int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+                   TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     if (Ns_LogRoll() != NS_OK) {
         Ns_TclPrintfResult(interp, "could not roll server log");
@@ -1694,7 +1859,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
             size_t length = (ePtr != NULL) ? (ePtr->offset + ePtr->length) : 0u;
             cachePtr->count = (length != 0u) ? nentry : 0;
             cachePtr->currentEntry = ePtr;
-            Ns_DStringSetLength(&cachePtr->buffer, (int)length);
+            Ns_DStringSetLength(&cachePtr->buffer, (TCL_SIZE_T)length);
         } else {
             LogEntry *entryPtr, *tmpPtr;
 
@@ -1793,7 +1958,7 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     }
 
     /*
-     * In case colorization was configured, add the escape necessary
+     * In case colorization was configured, add the necessary escape
      * sequences.
      */
     if ((flags & LOG_COLORIZE) != 0u) {
@@ -1809,7 +1974,7 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
          */
         timeString = LogTime(cachePtr, stamp, NS_FALSE);
         timeStringLength = cachePtr->lbufSize;
-        Ns_DStringNAppend(dsPtr, timeString, (int)timeStringLength);
+        Ns_DStringNAppend(dsPtr, timeString, (TCL_SIZE_T)timeStringLength);
     }
 
     if ((flags & LOG_USEC) != 0u) {
@@ -1873,7 +2038,7 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     if (nsconf.sanitize_logfiles > 0) {
         Ns_DStringAppendPrintable(dsPtr, nsconf.sanitize_logfiles == 2, msg, len);
     } else {
-        Ns_DStringNAppend(dsPtr, msg, (int)len);
+        Ns_DStringNAppend(dsPtr, msg, (TCL_SIZE_T)len);
     }
     if ((flags & LOG_COLORIZE) != 0u) {
         Ns_DStringNAppend(dsPtr, (const char *)LOG_COLOREND, 4);
@@ -1967,7 +2132,8 @@ LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
         status = NS_OK;
 
     } else {
-        int                   ii, ret;
+        int                   ret;
+        TCL_SIZE_T            ii;
         void                 *logfile = INT2PTR(STDERR_FILENO);
         Tcl_Obj              *stampObj;
         Ns_DString            ds, ds2;
@@ -2007,7 +2173,7 @@ LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
              * to use a temporary DString here.
              */
             Ns_DStringInit(&ds2);
-            Ns_DStringNAppend(&ds2, msg, (int)len);
+            Ns_DStringNAppend(&ds2, msg, (TCL_SIZE_T)len);
             Ns_DStringAppendElement(&ds, ds2.string);
             Ns_DStringFree(&ds2);
 
@@ -2203,7 +2369,7 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
         if (hPtr != NULL) {
             *addrPtrPtr = Tcl_GetHashValue(hPtr);
         } else {
-            int  i;
+            int i;
             /*
              * Check for a legacy integer severity.
              */

@@ -1,30 +1,11 @@
 /*
- * The contents of this file are subject to the NaviServer Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- *
- * The Original Code is NaviServer Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  */
 
 /*
@@ -146,8 +127,8 @@ PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr, unsi
         Tcl_DStringInit(&ds);
         dsPtr = &ds;
 
-        Tcl_DStringAppend(dsPtr, fileName, -1);
-        Tcl_DStringAppend(dsPtr, servPtr->adp.defaultExtension, -1);
+        Tcl_DStringAppend(dsPtr, fileName, TCL_INDEX_NONE);
+        Tcl_DStringAppend(dsPtr, servPtr->adp.defaultExtension, TCL_INDEX_NONE);
 
         if (access(dsPtr->string, R_OK) == 0) {
             fileName = dsPtr->string;
@@ -210,8 +191,11 @@ PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr, unsi
         itPtr->adp.conn = conn;
 
         start = ((servPtr->adp.startpage != NULL) ? servPtr->adp.startpage : fileName);
-        objv[0] = Tcl_NewStringObj(start, -1);
-        objv[1] = Tcl_NewStringObj(fileName, -1);
+        //Ns_Log(Notice, "start ADP request '%s' timeoutstatus %d exception %.8x savedFlags %.8x",
+        //       conn->request.line, NsTclTimeoutException(interp), itPtr->adp.exception, savedAdpFlags);
+
+        objv[0] = Tcl_NewStringObj(start, TCL_INDEX_NONE);
+        objv[1] = Tcl_NewStringObj(fileName, TCL_INDEX_NONE);
         Tcl_IncrRefCount(objv[0]);
         Tcl_IncrRefCount(objv[1]);
         result = NsAdpInclude(itPtr, 2, objv, start, expiresPtr);
@@ -257,7 +241,7 @@ PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr, unsi
  */
 
 int
-NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char          *method, *url, *file = NULL;
     int            noinherit = 0, result;
@@ -292,7 +276,7 @@ NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
 }
 
 int
-NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int         noinherit = 0, result;
     char       *method, *url, *file = NULL;
@@ -502,7 +486,8 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
 {
     const Ns_Conn *conn;
     Tcl_Interp    *interp;
-    int            len, result = TCL_ERROR;
+    int            result = TCL_ERROR;
+    TCL_SIZE_T     len;
     unsigned int   flags;
     char          *buf;
 
@@ -570,8 +555,8 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
     } else {
         if (itPtr->adp.chan != NULL) {
             while (len > 0) {
-                int wrote = Tcl_Write(itPtr->adp.chan, buf, len);
-                if (wrote < 0) {
+                TCL_SIZE_T wrote = Tcl_Write(itPtr->adp.chan, buf, len);
+                if (wrote == TCL_IO_FAILURE) {
                     Ns_TclPrintfResult(interp, "write failed: %s", Tcl_PosixError(interp));
                     break;
                 }

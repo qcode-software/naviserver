@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -67,37 +49,98 @@
 void
 Ns_DListInit(Ns_DList *dlPtr)
 {
-  dlPtr->data = &dlPtr->static_data[0];
-  dlPtr->avail = Ns_NrElements(dlPtr->static_data);
-  dlPtr->size = 0u;
+    dlPtr->data = &dlPtr->static_data[0];
+    dlPtr->avail = Ns_NrElements(dlPtr->static_data);
+    dlPtr->size = 0u;
 }
 
 void
 Ns_DListAppend(Ns_DList *dlPtr, void *element)
 {
-  if (dlPtr->avail < 1) {
-    size_t requiredSize = dlPtr->size * 2u;
+    if (dlPtr->avail < 1) {
+        size_t requiredSize = dlPtr->size * 2u;
 
-    if (dlPtr->data != &dlPtr->static_data[0]) {
-      dlPtr->data = (void *)ckrealloc((char *)dlPtr->data, sizeof(dlPtr->data[0]) * requiredSize);
-    } else {
-      dlPtr->data = (void *)ckalloc(sizeof(dlPtr->data[0]) * requiredSize);
-      memcpy(dlPtr->data, &dlPtr->static_data[0], dlPtr->size * sizeof(dlPtr->data[0]));
+        if (dlPtr->data != &dlPtr->static_data[0]) {
+            dlPtr->data = (void *)ckrealloc((char *)dlPtr->data, sizeof(dlPtr->data[0]) * requiredSize);
+        } else {
+            dlPtr->data = (void *)ckalloc(sizeof(dlPtr->data[0]) * requiredSize);
+            memcpy(dlPtr->data, &dlPtr->static_data[0], dlPtr->size * sizeof(dlPtr->data[0]));
+        }
+        dlPtr->avail = requiredSize - dlPtr->size;
     }
-    dlPtr->avail = requiredSize - dlPtr->size;
-  }
-  dlPtr->avail --;
-  dlPtr->data[dlPtr->size] = element;
-  dlPtr->size ++;
+    dlPtr->avail --;
+    dlPtr->data[dlPtr->size] = element;
+    dlPtr->size ++;
 }
 
 void
 Ns_DListFree(Ns_DList *dlPtr)
 {
-  if (dlPtr->data != &dlPtr->static_data[0]) {
-    ckfree((char*)dlPtr->data);
-  }
-  Ns_DListInit(dlPtr);
+    if (dlPtr->data != &dlPtr->static_data[0]) {
+        ckfree((char*)dlPtr->data);
+    }
+    Ns_DListInit(dlPtr);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_DListSaveString --
+ *
+ *      Keep copies of potentially volatile strings in an Ns_DList. Aside of
+ *      making copies of the string, the function behaves like
+ *      Ns_DListAppend(). This function can be used for saving multiple
+ *      volatile strings, which can be freed later by freeing the single API
+ *      call Ns_DList via Ns_DListFreeStrings().
+ *
+ * Results:
+ *      Copy of the provided string or NULL.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+char *
+Ns_DListSaveString(Ns_DList *dlPtr, const char *string)
+{
+    char *result;
+
+    if (string != NULL) {
+        result = ns_strdup(string);
+        Ns_DListAppend(dlPtr, result);
+    } else {
+        result = NULL;
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_DListFreeElements --
+ *
+ *      Free every Ns_DList element via ns_free() and free finally the Ns_DList
+ *      as well.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Freeing memory
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_DListFreeElements(Ns_DList *dlPtr)
+{
+    size_t element;
+
+    for (element = 0; element < dlPtr->size; element ++) {
+        ns_free((char*)dlPtr->data[element]);
+    }
+    Ns_DListFree(dlPtr);
 }
 
 /*

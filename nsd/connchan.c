@@ -1,23 +1,8 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -154,16 +139,16 @@ static void WebsocketFrameSetCommonMembers(Tcl_Obj *resultObj, ssize_t nRead, co
 
 static Ns_SockProc NsTclConnChanProc;
 
-static Tcl_ObjCmdProc   ConnChanCallbackObjCmd;
-static Tcl_ObjCmdProc   ConnChanCloseObjCmd;
-static Tcl_ObjCmdProc   ConnChanDetachObjCmd;
-static Tcl_ObjCmdProc   ConnChanExistsObjCmd;
-static Tcl_ObjCmdProc   ConnChanListObjCmd;
-static Tcl_ObjCmdProc   ConnChanListenObjCmd;
-static Tcl_ObjCmdProc   ConnChanOpenObjCmd;
-static Tcl_ObjCmdProc   ConnChanReadObjCmd;
-static Tcl_ObjCmdProc   ConnChanWriteObjCmd;
-static Tcl_ObjCmdProc   ConnChanWsencodeObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanCallbackObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanCloseObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanDetachObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanExistsObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanListObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanListenObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanOpenObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanReadObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanWriteObjCmd;
+static TCL_OBJCMDPROC_T   ConnChanWsencodeObjCmd;
 
 static Ns_SockProc CallbackFree;
 
@@ -431,9 +416,7 @@ ConnChanFree(NsConnChan *connChanPtr, NsServer *servPtr) {
             connChanPtr->cbPtr = NULL;
         }
         ns_free((char *)connChanPtr->channelName);
-        if (connChanPtr->clientData != NULL) {
-            ns_free((char *)connChanPtr->clientData);
-        }
+        ns_free((char *)connChanPtr->clientData);
 
         if (connChanPtr->sockPtr != NULL) {
             NsSockClose(connChanPtr->sockPtr, (int)NS_FALSE);
@@ -572,7 +555,7 @@ NsTclConnChanProc(NS_SOCKET UNUSED(sock), void *arg, unsigned int why)
             assert(servPtr != NULL);
 
             Tcl_DStringInit(&script);
-            Tcl_DStringAppend(&script, cbPtr->script, (int)cbPtr->scriptLength);
+            Tcl_DStringAppend(&script, cbPtr->script, (TCL_SIZE_T)cbPtr->scriptLength);
 
             if ((why & (unsigned int)NS_SOCK_TIMEOUT) != 0u) {
                 w = "t";
@@ -616,7 +599,7 @@ NsTclConnChanProc(NS_SOCKET UNUSED(sock), void *arg, unsigned int why)
 
                 if (logEnabled) {
                     Tcl_DStringInit(&ds);
-                    Ns_DStringNAppend(&ds, script.string, (int)scriptCmdNameLength);
+                    Ns_DStringNAppend(&ds, script.string, (TCL_SIZE_T)scriptCmdNameLength);
                     Ns_Log(Ns_LogConnchanDebug,
                            "%s NsTclConnChanProc Tcl eval <%s> returned <%s>",
                            channelName, ds.string, Tcl_GetString(objPtr));
@@ -661,7 +644,7 @@ NsTclConnChanProc(NS_SOCKET UNUSED(sock), void *arg, unsigned int why)
                     }
                 } else {
                     Tcl_DStringInit(&ds);
-                    Ns_DStringNAppend(&ds, script.string, (int)scriptCmdNameLength);
+                    Ns_DStringNAppend(&ds, script.string, (TCL_SIZE_T)scriptCmdNameLength);
 
                     Ns_Log(Warning, "%s callback <%s> returned unhandled result '%s' (must be 0, 1, or 2)",
                            channelName,
@@ -670,9 +653,8 @@ NsTclConnChanProc(NS_SOCKET UNUSED(sock), void *arg, unsigned int why)
                     Tcl_DStringFree(&ds);
                 }
             }
-            if (channelName != NULL) {
-                ns_free((char *)channelName);
-            }
+            ns_free((char *)channelName);
+
             Ns_TclDeAllocateInterp(interp);
             Tcl_DStringFree(&script);
 
@@ -724,9 +706,9 @@ ArgProc(Tcl_DString *dsPtr, const void *arg)
          * It might be the case that the connChanPtr was canceled, but
          * the updatecmd not yet executed.
          */
-        Ns_DStringNAppend(dsPtr, cbPtr->connChanPtr->channelName, -1);
+        Ns_DStringNAppend(dsPtr, cbPtr->connChanPtr->channelName, TCL_INDEX_NONE);
         Ns_DStringNAppend(dsPtr, " ", 1);
-        Ns_DStringNAppend(dsPtr, cbPtr->script, (int)cbPtr->scriptCmdNameLength);
+        Ns_DStringNAppend(dsPtr, cbPtr->script, (TCL_SIZE_T)cbPtr->scriptCmdNameLength);
     } else {
         Ns_Log(Notice, "connchan ArgProc cbPtr %p has no connChanPtr", (void*)cbPtr);
     }
@@ -1009,7 +991,7 @@ ConnchanDriverSend(Tcl_Interp *interp, const NsConnChan *connChanPtr,
  *----------------------------------------------------------------------
  */
 static int
-ConnChanDetachObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanDetachObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     Conn           *connPtr = (Conn *)itPtr->conn;
@@ -1052,7 +1034,7 @@ ConnChanDetachObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
          */
         connPtr->flags |= NS_CONN_CLOSED;
 
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, TCL_INDEX_NONE));
         Ns_Log(Ns_LogConnchanDebug, "%s ns_connchan detach returns %d", connChanPtr->channelName, result);
     }
     return result;
@@ -1074,7 +1056,7 @@ ConnChanDetachObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 static int
-ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int           result;
     Sock         *sockPtr = NULL;
@@ -1100,10 +1082,14 @@ ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
         result = TCL_ERROR;
     } else {
         //const NsInterp *itPtr = clientData;
-        NsServer       *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
-        NsConnChan     *connChanPtr;
+        NsServer    *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
+        NsConnChan  *connChanPtr;
+        Tcl_DString  ds;
+        Ns_URL       parsedUrl;
 
-        result = NSDriverClientOpen(interp, driverName, url, method, version, timeoutPtr, &sockPtr);
+        Tcl_DStringInit(&ds);
+        result = NSDriverClientOpen(interp, driverName, url, method, version, timeoutPtr, &ds,
+                                    &parsedUrl, &sockPtr);
         if (likely(result == TCL_OK)) {
 
             if (STREQ(sockPtr->drvPtr->protocol, "https")) {
@@ -1122,6 +1108,11 @@ ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
                                                 &ctx);
                 if (likely(result == TCL_OK)) {
                     Ns_DriverClientInitArg params = {ctx, sniHostname};
+
+                    if (sniHostname == NULL && !NsHostnameIsNumericIP(parsedUrl.host)) {
+                        params.sniHostname = parsedUrl.host;
+                        Ns_Log(Debug, "automatically use SNI <%s>", parsedUrl.host);
+                    }
                     result = (*sockPtr->drvPtr->clientInitProc)(interp, (Ns_Sock *)sockPtr, &params);
 
                     /*
@@ -1182,12 +1173,13 @@ ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
 
                 if (nSent > -1) {
                     connChanPtr->wBytes += (size_t)nSent;
-                    Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, -1));
+                    Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, TCL_INDEX_NONE));
                 } else {
                     result = TCL_ERROR;
                 }
             }
         }
+        Tcl_DStringFree(&ds);
 
         if (unlikely(result != TCL_OK && sockPtr != NULL && sockPtr->sock > 0)) {
             ns_sockclose(sockPtr->sock);
@@ -1212,7 +1204,7 @@ ConnChanOpenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 static int
-ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int            result, doTLS = (int)NS_FALSE;
     unsigned short portNr = 0u;
@@ -1266,6 +1258,7 @@ ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
                                                 &ctx);
                 if (likely(result == TCL_OK)) {
                     Ns_DriverClientInitArg params = {ctx, host};
+
                     result = (*sockPtr->drvPtr->clientInitProc)(interp, (Ns_Sock *)sockPtr, &params);
 
                     /*
@@ -1291,7 +1284,7 @@ ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
                                              NS_TRUE /* binary, fixed for the time being */,
                                              NULL);
 
-                Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, -1));
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(connChanPtr->channelName, TCL_INDEX_NONE));
             }
 
         }
@@ -1321,7 +1314,7 @@ ConnChanConnectObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 static int
-ConnChanListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     //const NsInterp *itPtr = clientData;
     NsServer       *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
@@ -1397,7 +1390,7 @@ ConnChanListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                     char      ipString[NS_IPADDR_SIZE];
 
                     Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("channel", 7));
-                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(connChanPtr->channelName, -1));
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(connChanPtr->channelName, TCL_INDEX_NONE));
 
                     port = Ns_SockaddrGetPort((struct sockaddr *) &sa);
                     Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("port", 4));
@@ -1408,7 +1401,7 @@ ConnChanListenObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
 
                     ns_inet_ntop((struct sockaddr *) &sa, ipString, sizeof(ipString));
                     Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj("address", 7));
-                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(ipString, -1));
+                    Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(ipString, TCL_INDEX_NONE));
 
                     Tcl_SetObjResult(interp, listObj);
                 }
@@ -1469,7 +1462,7 @@ SockListenCallback(NS_SOCKET sock, void *arg, unsigned int UNUSED(why))
         Tcl_DString script;
 
         Tcl_DStringInit(&script);
-        Tcl_DStringAppend(&script, lcbPtr->script, -1);
+        Tcl_DStringAppend(&script, lcbPtr->script, TCL_INDEX_NONE);
         Tcl_DStringAppendElement(&script, connChanPtr->channelName);
         result = Tcl_EvalEx(interp, script.string, script.length, 0);
         Tcl_DStringFree(&script);
@@ -1514,7 +1507,7 @@ SockListenCallback(NS_SOCKET sock, void *arg, unsigned int UNUSED(why))
  *----------------------------------------------------------------------
  */
 static int
-ConnChanListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     //const NsInterp *itPtr = clientData;
     NsServer       *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
@@ -1567,7 +1560,7 @@ ConnChanListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
                 char whenBuffer[6];
 
                 Ns_DStringNAppend(dsPtr, " ", 1);
-                Ns_DStringNAppend(dsPtr, connChanPtr->cbPtr->script, (int)connChanPtr->cbPtr->scriptCmdNameLength);
+                Ns_DStringNAppend(dsPtr, connChanPtr->cbPtr->script, (TCL_SIZE_T)connChanPtr->cbPtr->scriptCmdNameLength);
                 Ns_DStringAppendElement(dsPtr, WhenToString(whenBuffer, connChanPtr->cbPtr->when));
             } else {
                 Ns_DStringNAppend(dsPtr, " {} {}", 6);
@@ -1602,7 +1595,7 @@ ConnChanListObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 static int
-ConnChanStatusObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanStatusObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     //const NsInterp *itPtr = clientData;
     NsServer       *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
@@ -1636,10 +1629,10 @@ ConnChanStatusObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                            Tcl_NewStringObj(ds.string, ds.length));
             Tcl_DictObjPut(NULL, dictObj,
                            Tcl_NewStringObj("driver", 6),
-                           Tcl_NewStringObj(connChanPtr->sockPtr->drvPtr->moduleName, -1));
+                           Tcl_NewStringObj(connChanPtr->sockPtr->drvPtr->moduleName, TCL_INDEX_NONE));
             Tcl_DictObjPut(NULL, dictObj,
                            Tcl_NewStringObj("peer", 4),
-                           Tcl_NewStringObj(*connChanPtr->peer == '\0' ? "" : connChanPtr->peer, -1));
+                           Tcl_NewStringObj(*connChanPtr->peer == '\0' ? "" : connChanPtr->peer, TCL_INDEX_NONE));
             Tcl_DictObjPut(NULL, dictObj,
                            Tcl_NewStringObj("sent", 4),
                            Tcl_NewWideIntObj((Tcl_WideInt)connChanPtr->wBytes));
@@ -1660,9 +1653,9 @@ ConnChanStatusObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
                 char whenBuffer[6];
 
                 Tcl_DictObjPut(NULL, dictObj, Tcl_NewStringObj("callback", 8),
-                               Tcl_NewStringObj(connChanPtr->cbPtr->script, -1));
+                               Tcl_NewStringObj(connChanPtr->cbPtr->script, TCL_INDEX_NONE));
                 Tcl_DictObjPut(NULL, dictObj, Tcl_NewStringObj("condition", 9),
-                               Tcl_NewStringObj(WhenToString(whenBuffer, connChanPtr->cbPtr->when), -1));
+                               Tcl_NewStringObj(WhenToString(whenBuffer, connChanPtr->cbPtr->when), TCL_INDEX_NONE));
             }
             Tcl_DStringFree(&ds);
             Tcl_SetObjResult(interp, dictObj);
@@ -1691,7 +1684,7 @@ ConnChanStatusObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc
  *----------------------------------------------------------------------
  */
 static int
-ConnChanCloseObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanCloseObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     //const NsInterp *itPtr = clientData;
     NsServer       *servPtr = NsGetServer(nsconf.defaultServer); //itPtr->servPtr;
@@ -1741,7 +1734,7 @@ ConnChanCloseObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  *----------------------------------------------------------------------
  */
 static int
-ConnChanCallbackObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanCallbackObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int      result = TCL_OK;
     char    *name = (char*)NS_EMPTY_STRING,
@@ -1860,7 +1853,7 @@ ConnChanCallbackObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  *----------------------------------------------------------------------
  */
 static int
-ConnChanExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char         *name = (char*)NS_EMPTY_STRING;
     int           result = TCL_OK;
@@ -2035,7 +2028,8 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
 {
     unsigned char *data;
     bool           finished, masked;
-    int            opcode, frameLength, fragmentsBufferLength;
+    int            opcode;
+    TCL_SIZE_T     frameLength, fragmentsBufferLength;
     size_t         payloadLength, offset;
     unsigned char  mask[4] = {0u,0u,0u,0u};
     Tcl_Obj       *resultObj;
@@ -2046,7 +2040,7 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         goto exception;
     }
 
-    Ns_Log(Ns_LogConnchanDebug, "WS: received %ld bytes, have already %d",
+    Ns_Log(Ns_LogConnchanDebug, "WS: received %ld bytes, have already %" PRITcl_Size,
            nRead, ConnChanBufferSize(connChanPtr, frameBuffer));
     /*
      * Make sure, the frame buffer exists.
@@ -2056,7 +2050,7 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
     /*
      * Append the newly read data.
      */
-    Tcl_DStringAppend(connChanPtr->frameBuffer, buffer, (int)nRead);
+    Tcl_DStringAppend(connChanPtr->frameBuffer, buffer, (TCL_SIZE_T)nRead);
 
     /*
      * On very small buffers, the interpretation of the first bytes
@@ -2102,8 +2096,8 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
         offset += 4;
     }
 
-    frameLength = (int)(offset + payloadLength);
-    if (connChanPtr->frameBuffer->length < (int)frameLength) {
+    frameLength = (TCL_SIZE_T)(offset + payloadLength);
+    if (connChanPtr->frameBuffer->length < (TCL_SIZE_T)frameLength) {
         goto incomplete;
     }
 
@@ -2112,7 +2106,7 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
 
     if (!finished) {
         Ns_Log(Warning, "WS: unfinished frame, bytes %ld payload length %zu offset %zu "
-               "avail %d opcode %d fin %d, masked %d",
+               "avail %" PRITcl_Size " opcode %d fin %d, masked %d",
                nRead, payloadLength, offset, connChanPtr->frameBuffer->length,
                opcode, finished, masked);
 
@@ -2142,17 +2136,17 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
          */
 
         if (fragmentsBufferLength == 0) {
-            payloadObj = Tcl_NewByteArrayObj(&data[offset], (int)payloadLength);
+            payloadObj = Tcl_NewByteArrayObj(&data[offset], (TCL_SIZE_T)payloadLength);
         } else {
             Tcl_DStringAppend(connChanPtr->fragmentsBuffer,
-                              (const char *)&data[offset], (int)payloadLength);
+                              (const char *)&data[offset], (TCL_SIZE_T)payloadLength);
             payloadObj = Tcl_NewByteArrayObj((const unsigned char *)connChanPtr->fragmentsBuffer->string,
                                              connChanPtr->fragmentsBuffer->length);
             Ns_Log(Ns_LogConnchanDebug,
-                   "WS: append final payload opcode %d (fragments opcode %d) %d bytes, "
-                   "totaling %d bytes, clear fragmentsBuffer",
+                   "WS: append final payload opcode %d (fragments opcode %d) %" PRITcl_Size" bytes, "
+                   "totaling %" PRITcl_Size " bytes, clear fragmentsBuffer",
                    opcode, connChanPtr->fragmentsOpcode,
-                   (int)payloadLength, connChanPtr->fragmentsBuffer->length);
+                   (TCL_SIZE_T)payloadLength, connChanPtr->fragmentsBuffer->length);
             Tcl_DStringSetLength(connChanPtr->fragmentsBuffer, 0);
             opcode = connChanPtr->fragmentsOpcode;
         }
@@ -2177,18 +2171,19 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
             connChanPtr->fragmentsOpcode = opcode;
         }
         Tcl_DStringAppend(connChanPtr->fragmentsBuffer,
-                          (const char *)&data[offset], (int)payloadLength);
+                          (const char *)&data[offset], (TCL_SIZE_T)payloadLength);
         Ns_Log(Ns_LogConnchanDebug,
                "WS: fin 0 opcode %d (fragments opcode %d) "
-               "append %d to bytes to the fragmentsBuffer, totaling %d bytes",
+               "append %" PRITcl_Size " to bytes to the fragmentsBuffer, "
+               "totaling %" PRITcl_Size " bytes",
                opcode, connChanPtr->fragmentsOpcode,
-               (int)payloadLength, connChanPtr->fragmentsBuffer->length);
+               (TCL_SIZE_T)payloadLength, connChanPtr->fragmentsBuffer->length);
     }
     /*
      * Finally, compact the frameBuffer.
      */
     if (connChanPtr->frameBuffer->length > frameLength) {
-        int copyLength = connChanPtr->frameBuffer->length - frameLength;
+        TCL_SIZE_T copyLength = connChanPtr->frameBuffer->length - frameLength;
 
         memmove(connChanPtr->frameBuffer->string,
                 connChanPtr->frameBuffer->string + frameLength,
@@ -2205,8 +2200,8 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
 
  incomplete:
     connChanPtr->frameNeedsData = NS_TRUE;
-    Ns_Log(Notice, "WS: incomplete frameLength %d avail %d",
-            frameLength, connChanPtr->frameBuffer->length);
+    Ns_Log(Notice, "WS: incomplete frameLength %" PRITcl_Size " avail %" PRITcl_Size,
+           frameLength, connChanPtr->frameBuffer->length);
     Tcl_DictObjPut(NULL, resultObj, Tcl_NewStringObj("frame", 5), Tcl_NewStringObj("incomplete", 10));
     WebsocketFrameSetCommonMembers(resultObj, nRead, connChanPtr);
     return resultObj;
@@ -2237,7 +2232,7 @@ GetWebsocketFrame(NsConnChan *connChanPtr, char *buffer, ssize_t nRead)
  *----------------------------------------------------------------------
  */
 static int
-ConnChanReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char        *name = (char*)NS_EMPTY_STRING;
     int          result = TCL_OK, webSocketFrame = 0;
@@ -2276,12 +2271,12 @@ ConnChanReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
                     const char *errorMsg;
 
                     errorMsg = NsSockSetRecvErrorCode(connChanPtr->sockPtr, interp);
-                    Tcl_SetObjResult(interp, Tcl_NewStringObj(errorMsg, -1));
+                    Tcl_SetObjResult(interp, Tcl_NewStringObj(errorMsg, TCL_INDEX_NONE));
                     result = TCL_ERROR;
 
                 } else if (webSocketFrame == 0 && nRead > 0) {
                     connChanPtr->rBytes += (size_t)nRead;
-                    Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)buffer, (int)nRead));
+                    Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)buffer, (TCL_SIZE_T)nRead));
                 } else if (webSocketFrame == 1) {
                     connChanPtr->rBytes += (size_t)nRead;
                     Tcl_SetObjResult(interp, GetWebsocketFrame(connChanPtr, buffer, nRead));
@@ -2321,7 +2316,7 @@ ConnChanReadObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, 
  *----------------------------------------------------------------------
  */
 static int
-ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *name = (char*)NS_EMPTY_STRING;
     int         result = TCL_OK, buffered = 0;
@@ -2353,7 +2348,8 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
             struct iovec bufs[2];
             ssize_t      nSent;
             size_t       toSend;
-            int          msgLen, nBufs = 1;
+            int          nBufs = 1;
+            TCL_SIZE_T   msgLen;
             const char  *msgString = (const char *)Tcl_GetByteArrayFromObj(msgObj, &msgLen);
 #ifdef WS_RECORD_OUTPUT
             static int FD;
@@ -2382,7 +2378,7 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 buffered = 1;
             }
 
-            Ns_Log(Ns_LogConnchanDebug, "%s new message length %d buffered %d",
+            Ns_Log(Ns_LogConnchanDebug, "%s new message length %" PRITcl_Size " buffered %d",
                    name, msgLen, buffered);
 
             /*
@@ -2413,7 +2409,9 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 toSend = (size_t)msgLen;
             }
 
-            Ns_Log(Ns_LogConnchanDebug, "%s new message length %d buffered length %d total %" PRIdz,
+            Ns_Log(Ns_LogConnchanDebug, "%s new message length %" PRITcl_Size
+                   " buffered length %" PRITcl_Size
+                   " total %" PRIdz,
                    name, msgLen, connChanPtr->sendBuffer != NULL ? connChanPtr->sendBuffer->length : 0,
                    toSend);
 
@@ -2441,19 +2439,21 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                 Tcl_SetObjResult(interp, Tcl_NewLongObj((long)nSent));
 
                 if (buffered && remaining > 0) {
-                    int freshDataRemaining;
+                    TCL_SIZE_T freshDataRemaining;
 
                     RequireDsBuffer(&connChanPtr->sendBuffer);
                     /*
                      * Compact old data. How much of the (old) sendBuffer was sent?
                      */
                     if (nBufs == 2) {
-                        Ns_Log(Ns_LogConnchanDebug, "... two-buffer old buffer length %d + new %d"
+                        Ns_Log(Ns_LogConnchanDebug, "... two-buffer old buffer length %"
+                               PRITcl_Size " + new %" PRITcl_Size
                                " = %" PRIdz " sent %ld (old not fully sent %d)",
                                connChanPtr->sendBuffer->length, msgLen,
                                (size_t)connChanPtr->sendBuffer->length + (size_t)msgLen,
-                               nSent, (connChanPtr->sendBuffer->length > nSent));
-                        if (connChanPtr->sendBuffer->length > nSent) {
+                               nSent,
+                               (connChanPtr->sendBuffer->length > (TCL_SIZE_T)nSent));
+                        if (connChanPtr->sendBuffer->length > (TCL_SIZE_T)nSent) {
                             /*
                              * The old send buffer was not completely
                              * sent.
@@ -2466,7 +2466,7 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
 
                             freshDataRemaining = msgLen;
 
-                            if (nSent>0) {
+                            if (nSent > 0) {
                                 Ns_Log(Ns_LogConnchanDebug,
                                        "... have sent part of old buffer %ld "
                                        "(BYTES from %" PRIdz " to %" PRIdz ")",
@@ -2481,7 +2481,7 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                                 memmove(connChanPtr->sendBuffer->string,
                                         bufs[0].iov_base,
                                         bufs[0].iov_len);
-                                Tcl_DStringSetLength(connChanPtr->sendBuffer, (int)bufs[0].iov_len);
+                                Tcl_DStringSetLength(connChanPtr->sendBuffer, (TCL_SIZE_T)bufs[0].iov_len);
                             }
                         } else {
                             /*
@@ -2491,13 +2491,15 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                             assert(bufs[0].iov_len == 0);
                             Tcl_DStringSetLength(connChanPtr->sendBuffer, 0);
 
-                            freshDataRemaining = msgLen - (int)(nSent - connChanPtr->sendBuffer->length);
+                            freshDataRemaining = msgLen - ((TCL_SIZE_T)nSent - connChanPtr->sendBuffer->length);
                             Ns_Log(Ns_LogConnchanDebug,
-                                   "... have sent all of old buffer %d and %ld of new buffer "
+                                   "... have sent all of old buffer %" PRITcl_Size
+                                   " and %" PRITcl_Size " of new buffer "
                                    "(BYTES from %" PRIdz " to %" PRIdz ")",
                                    connChanPtr->sendBuffer->length,
-                                   (nSent - connChanPtr->sendBuffer->length),
-                                   connChanPtr->wBytes - (size_t)nSent, connChanPtr->wBytes);
+                                   ((TCL_SIZE_T)nSent - connChanPtr->sendBuffer->length),
+                                   connChanPtr->wBytes - (size_t)nSent,
+                                   connChanPtr->wBytes);
 #ifdef WS_RECORD_OUTPUT
                             write(FD, connChanPtr->sendBuffer->string, (size_t)connChanPtr->sendBuffer->length);
                             write(FD, msgString, (size_t)(nSent - connChanPtr->sendBuffer->length));
@@ -2521,12 +2523,12 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                         memmove(connChanPtr->sendBuffer->string,
                                 bufs[0].iov_base,
                                 bufs[0].iov_len);
-                        Tcl_DStringSetLength(connChanPtr->sendBuffer, (int)bufs[0].iov_len);
+                        Tcl_DStringSetLength(connChanPtr->sendBuffer, (TCL_SIZE_T)bufs[0].iov_len);
                     } else {
                         /*
                          * There is only fresh data.
                          */
-                        freshDataRemaining = msgLen - (int)nSent;
+                        freshDataRemaining = msgLen - (TCL_SIZE_T)nSent;
 #ifdef WS_RECORD_OUTPUT
                         if (nSent > 0) {
                             write(FD, msgString, (size_t)nSent);
@@ -2539,16 +2541,21 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                     }
 
                     if (freshDataRemaining > 0) {
-                        Ns_Log(Ns_LogConnchanDebug, "... appending to sendbuffer old %d + remaining %d "
-                               "will be %d",
+                        Ns_Log(Ns_LogConnchanDebug, "... appending to sendbuffer old %" PRITcl_Size
+                               " + remaining %" PRITcl_Size
+                               " will be %" PRITcl_Size,
                                connChanPtr->sendBuffer->length, freshDataRemaining,
                                connChanPtr->sendBuffer->length + freshDataRemaining);
                         Tcl_DStringAppend(connChanPtr->sendBuffer,
                                           msgString + (msgLen - freshDataRemaining),
                                           freshDataRemaining);
-                        Ns_Log(Ns_LogConnchanDebug, "... keep for later %d bytes of %d "
-                               "(buffered %d) will be BYTES from %" PRIdz " to %" PRIdz,
-                               freshDataRemaining, msgLen, connChanPtr->sendBuffer->length,
+                        Ns_Log(Ns_LogConnchanDebug, "... keep for later %" PRITcl_Size
+                               " bytes of %" PRITcl_Size
+                               " (buffered %" PRITcl_Size ") will be BYTES from %" PRIdz
+                               " to %" PRIdz,
+                               freshDataRemaining,
+                               msgLen,
+                               connChanPtr->sendBuffer->length,
                                connChanPtr->wBytes,
                                connChanPtr->wBytes + (size_t)connChanPtr->sendBuffer->length);
                     }
@@ -2560,9 +2567,12 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
                         /*
                          * Everything was sent
                          */
-                        int buffedLen = ConnChanBufferSize(connChanPtr, sendBuffer);
-                        Ns_Log(Ns_LogConnchanDebug, "... buffered %d buffedLen %d msgLength %d "
-                               "everything was sent, remaining %" PRIdz ", (BYTES from %" PRIdz " to %" PRIdz ")",
+                        TCL_SIZE_T buffedLen = ConnChanBufferSize(connChanPtr, sendBuffer);
+
+                        Ns_Log(Ns_LogConnchanDebug, "... buffered %d buffedLen %" PRITcl_Size
+                               " msgLength %" PRITcl_Size
+                               " everything was sent, remaining %" PRIdz
+                               ", (BYTES from %" PRIdz " to %" PRIdz ")",
                                buffered, buffedLen, msgLen, remaining,
                                connChanPtr->wBytes - (size_t)nSent, connChanPtr->wBytes);
                         assert(remaining == 0);
@@ -2618,7 +2628,7 @@ ConnChanWriteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  */
 
 static int
-ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int                      result = TCL_OK, isBinary = 0, opcode = 1, fin = 1, masked = 0;
     static Ns_ObjvValueRange finRange = {0, 1};
@@ -2650,7 +2660,7 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
     } else {
         const unsigned char *messageString;
         unsigned char       *data;
-        int                  messageLength;
+        TCL_SIZE_T           messageLength;
         Tcl_DString          messageDs, frameDs;
         size_t               offset;
 
@@ -2731,7 +2741,7 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
                 }
             }
 #endif
-            Tcl_DStringSetLength(&frameDs, (int)offset + 4 + messageLength);
+            Tcl_DStringSetLength(&frameDs, (TCL_SIZE_T)offset + 4 + messageLength);
             data = (unsigned char *)frameDs.string;
             memcpy(&data[offset], &mask[0], 4);
             offset += 4;
@@ -2739,7 +2749,7 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
                 data[ i ] = messageString[ j ] ^ mask[ j % 4];
             }
         } else {
-            Tcl_DStringSetLength(&frameDs, (int)offset + messageLength);
+            Tcl_DStringSetLength(&frameDs, (TCL_SIZE_T)offset + messageLength);
             data = (unsigned char *)frameDs.string;
             memcpy(&data[offset], &messageString[0], (size_t)messageLength);
         }
@@ -2772,7 +2782,7 @@ ConnChanWsencodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  */
 
 int
-NsTclConnChanObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclConnChanObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"callback", ConnChanCallbackObjCmd},

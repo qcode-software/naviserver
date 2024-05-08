@@ -1,30 +1,11 @@
 /*
- * The contents of this file are subject to the Mozilla  Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS" basis,
- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
- * for the specific language governing rights and limitations under the
- * License.
- *
- * The Original Code is AOLserver Code and related documentation distributed by
- * AOL.
- *
- * The Initial Developer of the Original Code is America Online, Inc. Portions
- * created by AOL are Copyright (C) 1999 America Online, Inc. All Rights
- * Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms of the
- * GNU General Public License (the "GPL"), in which case the provisions of
- * GPL are applicable instead of those above.  If you wish to allow use of
- * your version of this file only under the terms of the GPL and not to allow
- * others to use your version of this file under the License, indicate your
- * decision by deleting the provisions above and replace them with the notice
- * and other provisions required by the GPL. If you do not delete the
- * provisions above, a recipient may use your version of this file under
- * either the License or the GPL.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  */
 
 /*
@@ -56,10 +37,10 @@ static Ns_Mutex block = NULL;
 static Ns_Mutex slock = NULL;
 static Ns_Mutex lock  = NULL;
 static Ns_Cond  cond  = NULL;
-static Ns_Tls   key;
-static Ns_RWLock rwlock;
-static Ns_Sema  sema;
-static Ns_Cs    cs;
+static Ns_Tls   key   = NULL;
+static Ns_RWLock rwlock = NULL;
+static Ns_Sema  sema  = NULL;
+static Ns_Cs    cs    = NULL;
 static Ns_Mutex dlock = NULL;
 static Ns_Cond  dcond = NULL;
 static int      dstop = 0;
@@ -258,9 +239,7 @@ MemThread(void *arg)
     for (i = 0; i < NA; ++i) {
         size_t n = (size_t)rand() % BS;
         if (arg != NULL) {
-            if (ptr != NULL) {
-                ns_free(ptr);
-            }
+            ns_free(ptr);
             ptr = ns_malloc(n);
         } else {
             if (ptr != NULL) {
@@ -311,10 +290,10 @@ static void
 DumpString(Tcl_DString *dsPtr)
 {
     char **largv;
-    int largc;
+    TCL_SIZE_T largc;
 
     if (Tcl_SplitList(NULL, dsPtr->string, &largc, (const char***)&largv) == TCL_OK) {
-        int i;
+        TCL_SIZE_T i;
 
         for (i = 0; i < largc; ++i) {
             printf("\t%s\n", largv[i]);
@@ -456,6 +435,12 @@ int main(int argc, char *argv[])
     Ns_MutexSetName(&slock, "msglock");
     Ns_MutexSetName(&block, "busylock");
     Ns_RWLockSetName2(&rwlock, "rwlock", NULL);
+    Ns_CsInit(&cs);
+    Ns_CondInit(&cond);
+    Ns_CondInit(&dcond);
+#if PTHREAD_TEST
+    Ns_CondInit(&pcond);
+#endif
 
     Ns_ThreadStackSize(81920);
     Ns_SemaInit(&sema, 3);

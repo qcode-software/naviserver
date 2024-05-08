@@ -11,7 +11,7 @@ test ns_server-1.1 {basic syntax: plain call} -body {
 
 test ns_server-1.2 {basic syntax: wrong argument} -body {
     ns_server ?
-} -returnCodes error -result {bad option "?": must be active, all, connectionratelimit, connections, filters, keepalive, map, mapped, maxthreads, minthreads, pagedir, poolratelimit, pools, queued, requestprocs, serverdir, stats, tcllib, threads, traces, unmap, url2file, or waiting}
+} -returnCodes error -result {bad option "?": must be active, all, connectionratelimit, connections, filters, keepalive, map, mapped, maxthreads, minthreads, pagedir, poolratelimit, pools, queued, requestprocs, serverdir, stats, tcllib, threads, traces, unmap, url2file, vhostenabled, or waiting}
 
 test ns_server-1.3.1 {plain call, option but no argument} -body {
     ns_server -pool {}
@@ -224,6 +224,16 @@ test ns_server-2.13.4 {basic operation} -body {
     ns_server -server testvhost2 serverdir
 } -match "glob" -result "*tests/testserver"
 
+
+test ns_server-2.14.1 {query alternate pool from default server} -body {
+    ns_server -server test vhostenabled
+} -match exact -result 0
+
+test ns_server-2.14.2 {query alternate pool from specified server} -body {
+    ns_server -server testvhost vhostenabled
+} -match exact -result 1
+
+
 #
 # Test mapping/unmapping of requests to connection pools.
 # Test with the pool "emergency"
@@ -264,7 +274,7 @@ test ns_server-2.14.3 {check, if cleanup of last test was successful} -body {
 #
 # Map some GET request, query the mapping, and unmap the GET requests
 #
-test ns_server-2.14.4 {mapping and unmapping of requests, return mapping} -setup {
+test ns_server-2.14.4a {mapping and unmapping of requests, return mapping} -setup {
     ns_server -pool emergency map "GET /foo"
     ns_server -pool emergency map "GET /* {X-NS-ip 127.0.0.1}"
 } -body {
@@ -273,16 +283,51 @@ test ns_server-2.14.4 {mapping and unmapping of requests, return mapping} -setup
     ns_server -pool emergency unmap "GET /foo"
 } -result {emergency}
 
+test ns_server-2.14.4b {mapping and unmapping of requests, return mapping} -setup {
+    ns_server -pool emergency map "GET /foo"
+    ns_server -pool emergency map "GET /* {X-NS-ip 127.0.0.1}"
+} -body {
+    ns_server mapped -all "GET /foo"
+} -cleanup {
+    ns_server -pool emergency unmap "GET /foo"
+} -result {pool emergency handler {ns:fastpath a:0x0}}
+
 #
 # Map some GET request, query the mapping, and unmap the GET requests
 #
-test ns_server-2.14.5 {mapping and unmapping of requests, return mapping with inheritance} -setup {
+test ns_server-2.14.5a {mapping and unmapping of requests, return mapping with inheritance} -setup {
     ns_server -pool emergency map "GET /foo/*.png"
 } -body {
-    return [list [ns_server mapped "GET /foo"] [ns_server mapped "GET /foo/1.png"] [ns_server mapped "GET /foo/bar/2.png"]]
+    return [list \
+                [ns_server mapped "GET /foo"] \
+                [ns_server mapped "GET /foo/1.png"] \
+                [ns_server mapped "GET /foo/bar/2.png"]]
 } -cleanup {
     ns_server -pool emergency unmap "GET /foo"
 } -result {{} emergency emergency}
+
+test ns_server-2.14.5b {mapping and unmapping of requests, return mapping with inheritance} -setup {
+    ns_server -pool emergency map "GET /foo/*.png"
+} -body {
+    return [list \
+                [ns_server mapped -all "GET /foo"] \
+                [ns_server mapped -all "GET /foo/1.png"] \
+                [ns_server mapped -all "GET /foo/bar/2.png"]]
+} -cleanup {
+    ns_server -pool emergency unmap "GET /foo"
+} -result {{pool {} handler {ns:fastpath a:0x0}} {pool emergency handler {ns:fastpath a:0x0}} {pool emergency handler {ns:fastpath a:0x0}}}
+
+test ns_server-2.14.5c {providing invalid URL path} -setup {
+    ns_server -pool emergency map "GET /foo/*.png"
+} -body {
+    return [list \
+                [ns_server mapped -all "GET /foo?X=1"] \
+                [ns_server mapped -all "GET /foo/bar/2.png"]]
+} -cleanup {
+    ns_server -pool emergency unmap "GET /foo"
+} -returnCodes {error ok} -result {invalid mapspec 'GET /foo?X=1'; must be 2- or 3-element list containing HTTP method, plain URL path, and optionally a filtercontext}
+
+
 
 #
 # Filter tests
@@ -315,7 +360,7 @@ test ns_server-3.3 {
     serving no content
 } -setup {
     ns_register_filter preauth GET /ns_server-3.3 ::_ns_filter_test filter_break {
-        ns_log notice "inside the filter 3.3"
+        #ns_log notice "inside the filter 3.3"
     }
 } -body {
     nstest::http GET /ns_server-3.3
@@ -327,7 +372,7 @@ test ns_server-3.4 {
     serving some content
 } -setup {
     ns_register_filter preauth GET /ns_server-3.4 ::_ns_filter_test filter_break {
-        ns_log notice "inside the filter 3.4"
+        #ns_log notice "inside the filter 3.4"
         ns_return 200 text/plain ok
     }
 } -body {

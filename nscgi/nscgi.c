@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 #include "ns.h"
@@ -109,6 +91,8 @@ NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
+static Ns_TclTraceProc AddCmds;
+static Ns_ArgProc ArgProc;
 
 static const char *NS_EMPTY_STRING = "";
 
@@ -121,19 +105,84 @@ static Ns_Callback CgiFreeMap;
 static Ns_ReturnCode CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static void          CgiRegister(Mod *modPtr, const char *map)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Ns_DString   *CgiDs(Cgi *cgiPtr)                      NS_GNUC_NONNULL(1);
-static void          CgiFree(Cgi *cgiPtr)                       NS_GNUC_NONNULL(1);
-static Ns_ReturnCode CgiExec(Cgi *cgiPtr, Ns_Conn *conn)        NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Ns_ReturnCode CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Ns_ReturnCode CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static ssize_t       CgiRead(Cgi *cgiPtr)                       NS_GNUC_NONNULL(1);
+static void          CgiRegister(Mod *modPtr, const char *map)   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Ns_DString   *CgiDs(Cgi *cgiPtr)                          NS_GNUC_NONNULL(1);
+static Ns_ReturnCode CgiFree(Cgi *cgiPtr)                        NS_GNUC_NONNULL(1);
+static Ns_ReturnCode CgiExec(Cgi *cgiPtr, Ns_Conn *conn)         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Ns_ReturnCode CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static Ns_ReturnCode CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static ssize_t       CgiRead(Cgi *cgiPtr)                        NS_GNUC_NONNULL(1);
 static ssize_t       CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static char         *NextWord(char *s)                          NS_GNUC_NONNULL(1);
+static char         *NextWord(char *s)                           NS_GNUC_NONNULL(1);
 static void          SetAppend(Ns_Set *set, int index, const char *sep, char *value)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
+static void          CgiRegisterFastUrl2File(const char *server, char *url, const char *path)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
+static TCL_OBJCMDPROC_T NsTclRegisterCGIObjCmd;
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * ArgProc --
+ *
+ *      Append listen port info for query callback.
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void
+ArgProc(Tcl_DString *dsPtr, const void *arg)
+{
+    const Map    *mapPtr = arg;
+
+    assert(mapPtr != NULL);
+
+    Tcl_DStringAppend(dsPtr, " url", 4);
+    Tcl_DStringAppendElement(dsPtr, mapPtr->url);
+    Tcl_DStringAppend(dsPtr, " path", 5);
+    Tcl_DStringAppendElement(dsPtr, mapPtr->path);
+
+    if (mapPtr->modPtr != NULL) {
+        Tcl_DStringAppend(dsPtr, " module", 7);
+        Tcl_DStringAppendElement(dsPtr, mapPtr->modPtr->module);
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * AddCmds --
+ *
+ *      Add the commands provided by the nscgi module.
+ *
+ * Results:
+ *      TCL_OK.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+AddCmds(Tcl_Interp *interp, const void *arg)
+{
+    const Mod *modPtr = arg;
+
+    Ns_Log(Ns_LogCGIDebug, "nscgi: adding command ns_register_cgi");
+    (void)TCL_CREATEOBJCOMMAND(interp, "ns_register_cgi",
+                               NsTclRegisterCGIObjCmd, (ClientData)modPtr,
+                               NULL);
+    return TCL_OK;
+}
+
+
 /*
  *----------------------------------------------------------------------
  *
@@ -150,7 +199,6 @@ static void          SetAppend(Ns_Set *set, int index, const char *sep, char *va
  *
  *----------------------------------------------------------------------
  */
-
 NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
@@ -245,8 +293,21 @@ Ns_ModuleInit(const char *server, const char *module)
     }
     Ns_DStringFree(&ds);
 
+    if (server == NULL) {
+        Ns_Log(Warning, "nscgi: loaded as a global module,"
+               " module specific commands are not loaded");
+    } else {
+        if (Ns_TclRegisterTrace(server, AddCmds, modPtr,
+                                NS_TCL_TRACE_CREATE) != NS_OK) {
+        } else {
+            Ns_RegisterProcInfo((ns_funcptr_t)AddCmds, "nscgi:initinterp", NULL);
+        }
+        Ns_RegisterProcInfo((ns_funcptr_t)CgiRequest, "ns:cgirequest", ArgProc);
+    }
+
     return NS_OK;
 }
+
 
 
 /*
@@ -291,6 +352,9 @@ CgiRequest(const void *arg, Ns_Conn *conn)
         /*
          * Can't execute interpreter. Maybe return file a static file?
          */
+        Ns_Log(Ns_LogCGIDebug, "cannot execute interpreter."
+               " Maybe a a static file <%s>", cgi.exec);
+
         if (((modPtr->flags & CGI_ALLOW_STATIC) != 0u) &&
             ( STREQ(conn->request.method, "GET") ||
               STREQ(conn->request.method, "HEAD")) ) {
@@ -300,9 +364,23 @@ CgiRequest(const void *arg, Ns_Conn *conn)
              * their cgi bin directory and they expect us to
              * return these files directly.
              */
+            Ns_Log(Ns_LogCGIDebug, "allowstaticresources returns static file: %s", cgi.exec);
             status = Ns_ConnReturnFile(conn, 200, NULL, cgi.exec);
+
         } else {
-            status = Ns_ConnReturnNotFound(conn);
+            Ns_Log(Warning, "nscgi: CGI file not executable: %s", cgi.exec);
+
+            if ( STREQ(conn->request.method, "GET") ||
+                 STREQ(conn->request.method, "HEAD"))  {
+                /*
+                 * CGI_ALLOW_STATIC is not set, maybe the admin might want to
+                 * activate it?
+                 */
+                Ns_Log(Warning, "nscgi: if this is a static resource, consider"
+                       " serving this file via fastpath, or"
+                       " setting 'allowstaticresources' in the CGI section"
+                       " of the CGI configuration section");
+            }
         }
         goto done;
 
@@ -347,13 +425,16 @@ CgiRequest(const void *arg, Ns_Conn *conn)
      */
 
     status = CgiExec(&cgi, conn);
+    //Ns_Log(Notice, "CgiExec returned OK %d closed %d", status == NS_OK, Ns_ConnIsClosed(conn));
+
     if (status != NS_OK) {
-        status = Ns_ConnTryReturnInternalError(conn, status, "nscgi: cgi exec failed");
+        status = Ns_ConnTryReturnInternalError(conn, status, "nscgi: CGI exec failed");
     } else {
         status = CgiCopy(&cgi, conn);
     }
 
-    Ns_Log(Ns_LogCGIDebug, "nscgi: cgi returned status %d", status);
+    Ns_Log(Ns_LogCGIDebug, "nscgi: CGI returned status %d", status);
+    //Ns_Log(Notice, "nscgi after COPY OK %d closed %d", status == NS_OK, Ns_ConnIsClosed(conn));
 
     /*
      * Release CGI access.
@@ -367,7 +448,29 @@ CgiRequest(const void *arg, Ns_Conn *conn)
     }
 
 done:
-    CgiFree(&cgi);
+    { Ns_ReturnCode reapStatus;
+
+        reapStatus = CgiFree(&cgi);
+        //Ns_Log(Notice, "CgiFree returned %d closed %d", reapStatus, Ns_ConnIsClosed(conn));
+        if (reapStatus != NS_OK) {
+            status = reapStatus;
+            //Ns_Log(Notice, "nscgi reap failed status %d closed %d", status, Ns_ConnIsClosed(conn));
+            status = Ns_ConnTryReturnInternalError(conn, status, "nscgi: CGI exec failed");
+
+        } else if (status != NS_OK) {
+            //Ns_Log(Notice, "nscgi: reap ok, but still, the status is not correct");
+            status = Ns_ConnTryReturnInternalError(conn, status, "nscgi: invalid response from CGI");
+        }
+    }
+
+    //Ns_Log(Notice, "nscgi done status %d closed %d", status, Ns_ConnIsClosed(conn));
+
+    /*
+     * Close connection unless it was closed earlier due to some error.
+     */
+    if (!Ns_ConnIsClosed(conn)) {
+        status = Ns_ConnClose(conn);
+    }
     return status;
 }
 
@@ -392,13 +495,13 @@ done:
 static Ns_ReturnCode
 CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
 {
-    Mod            *modPtr;
-    Ns_DString     *dsPtr;
-    int             i;
-    size_t          ulen, plen;
-    struct stat     st;
-    char           *e, *s;
-    const char     *url, *server;
+    Mod                        *modPtr;
+    Ns_DString                 *dsPtr;
+    TCL_OBJC_T                  i;
+    size_t                      ulen;
+    char                       *e, *s;
+    const char                 *url, *server, *fileName;
+    const Ns_UrlSpaceMatchInfo *matchInfoPtr;
 
     NS_NONNULL_ASSERT(cgiPtr != NULL);
     NS_NONNULL_ASSERT(mapPtr != NULL);
@@ -421,112 +524,66 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     /*
      * Determine the executable or script to run.
      */
-
+    matchInfoPtr = Ns_ConnGetUrlSpaceMatchInfo(conn);
     ulen = strlen(url);
-    plen = strlen(mapPtr->url);
-    if ((strncmp(mapPtr->url, url, plen) == 0) &&
-        (ulen == plen || url[plen] == '/')) {
+    fileName = url;
 
-        if (mapPtr->path == NULL) {
+    Ns_Log(Ns_LogCGIDebug, "provided URL: '%s'", url);
 
-            /*
-             * No path mapping, script in pages directory:
-             *
-             * 1. Path is Url2File up to the URL prefix.
-             * 2. SCRIPT_NAME is the URL prefix.
-             * 3. PATH_INFO is everything past SCRIPT_NAME in the URL.
-             */
-
-            cgiPtr->name = Ns_DStringNAppend(CgiDs(cgiPtr), url, (int)plen);
-            dsPtr = CgiDs(cgiPtr);
-            (void) Ns_UrlToFile(dsPtr, server, cgiPtr->name);
-            cgiPtr->path =  dsPtr->string;
-            cgiPtr->pathinfo = url + plen;
-            Ns_Log(Ns_LogCGIDebug, "nscgi: no path mapping exist, path: '%s'", cgiPtr->path);
-
-        } else if (stat(mapPtr->path, &st) != 0) {
-            goto err;
-
-        } else if (S_ISDIR(st.st_mode)) {
-
-            /*
-             * Path mapping is a directory:
-             *
-             * 1. The script file is the first path element in the URL past
-             *    the mapping prefix.
-             * 2. SCRIPT_NAME is the URL up to and including the
-             *    script file.
-             * 3. PATH_INFO is everything in the URL past SCRIPT_NAME.
-             * 4. The script pathname is the script prefix plus the
-             *    script file.
-             */
-
-            if (plen == ulen) {
-                goto err;
-            }
-
-            s = (char *)url + plen + 1;
-            e = strchr(s, INTCHAR('/'));
-            if (e != NULL) {
-                *e = '\0';
-            }
-            cgiPtr->name = Ns_DStringAppend(CgiDs(cgiPtr), url);
-            cgiPtr->path = Ns_DStringVarAppend(CgiDs(cgiPtr),
-                                              mapPtr->path, "/", s, (char *)0L);
-            if (e == NULL) {
-                cgiPtr->pathinfo = NS_EMPTY_STRING;
-            } else {
-                *e = '/';
-                cgiPtr->pathinfo = e;
-            }
-
-            Ns_Log(Ns_LogCGIDebug, "nscgi: path mapping to a directory, path: '%s'", cgiPtr->path);
-
-        } else if (S_ISREG(st.st_mode)) {
-
-            /*
-             * When the path mapping is (or at least could be) a file:
-             *
-             * 1. The script pathname is the mapping.
-             * 2. SCRIPT_NAME is the url prefix.
-             * 3. PATH_INFO is everything in the URL past SCRIPT_NAME.
-             */
-
-            cgiPtr->path = Ns_DStringAppend(CgiDs(cgiPtr), mapPtr->path);
-            cgiPtr->name = Ns_DStringAppend(CgiDs(cgiPtr), mapPtr->url);
-            cgiPtr->pathinfo = url + plen;
-
-            Ns_Log(Ns_LogCGIDebug, "nscgi: path mapping to a file, path: '%s'", cgiPtr->path);
-
-        } else {
-            goto err;
-        }
+    /*
+     * The returned matchInfoPtr provides information, whether we have am
+     * (inner) segment match. In this case PATH_INFO is the reminder of the
+     * path.
+     */
+    if (matchInfoPtr->isSegmentMatch == NS_FALSE) {
+        /*
+         * Tail match (match on the last segment)
+         *    SCRIPT_NAME = URL
+         *    PATH_INFO   = ""
+         */
+        Ns_Log(Ns_LogCGIDebug, "nscgi: lastMapSegment match <%s>", mapPtr->url);
 
     } else {
-
+        ssize_t offset;
         /*
-         * The prefix didn't match.  Assume the mapping was a wildcard
-         * mapping like *.cgi which was fetched by UrlSpecificGet() but
-         * skipped by strncmp() above. In this case:
+         * Match on an inner segment:
+         * 1. SCRIPT_NAME is the URL prefix.
+         * 2. PATH_INFO is everything in the URL past SCRIPT_NAME.
          *
-         * 1. The script pathname is the URL file in the pages directory.
-         * 2. SCRIPT_NAME is the URL.
-         * 3. PATH_INFO is "".
+         * The provided offset is the determined on the request line including
+         * the method. Therefore, we have to reduce the provided value by the
+         * length of the method.
          */
+        offset = matchInfoPtr->offset - (ssize_t)strlen(conn->request.method);
+
+        Ns_Log(Ns_LogCGIDebug, "nscgi: url <%s> isSegmentMatch %d, offset %ld length %ld segment <%s>",
+               url, matchInfoPtr->isSegmentMatch,
+               matchInfoPtr->offset, matchInfoPtr->segmentLength, &url[offset]);
 
         dsPtr = CgiDs(cgiPtr);
-        (void) Ns_UrlToFile(dsPtr, server, url);
-        cgiPtr->path = dsPtr->string;
-        cgiPtr->name = url;
-        cgiPtr->pathinfo = url + ulen;
-
-        Ns_Log(Ns_LogCGIDebug, "nscgi: prefix did not match, path: '%s'", cgiPtr->path);
+        ulen = (size_t)offset + matchInfoPtr->segmentLength;
+        fileName = Tcl_DStringAppend(dsPtr, url, (TCL_SIZE_T)ulen);
     }
+
+    /*
+     * Finally, perform the Url2File mapping invoking potentially
+     * registered callbacks and provide the CGI context with path, name,
+     * and pathinfo.
+     */
+
+    dsPtr = CgiDs(cgiPtr);
+    (void) Ns_UrlToFile(dsPtr, server, fileName);
+    cgiPtr->path = dsPtr->string;
+    cgiPtr->name = fileName;
+    cgiPtr->pathinfo = url + ulen;
+
+    Ns_Log(Ns_LogCGIDebug,
+           "nscgi: mapping for '%s'; url2file determined '%s'",
+           fileName, cgiPtr->path);
 
     /*
      * Copy the script directory and see if the script is NPH.
      */
-
     s = strrchr(cgiPtr->path, INTCHAR('/'));
     if (s == NULL || access(cgiPtr->path, R_OK) != 0) {
         Ns_Log(Ns_LogCGIDebug, "nscgi: no such file: '%s'", cgiPtr->path);
@@ -534,6 +591,10 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     }
     *s = '\0';
     cgiPtr->dir = Ns_DStringAppend(CgiDs(cgiPtr), cgiPtr->path);
+    Ns_Log(Ns_LogCGIDebug, "nscgi: dir <%s>", cgiPtr->dir);
+    Ns_Log(Ns_LogCGIDebug, "nscgi: path <%s>", cgiPtr->path);
+    Ns_Log(Ns_LogCGIDebug, "nscgi: name <%s>", cgiPtr->name);
+    Ns_Log(Ns_LogCGIDebug, "nscgi: pathinfo <%s>", cgiPtr->pathinfo);
     *s++ = '/';
     if (strncmp(s, "nph-", 4u) == 0) {
         cgiPtr->flags |= CGI_NPH;
@@ -567,7 +628,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     return NS_OK;
 
 err:
-    CgiFree(cgiPtr);
+    (void)CgiFree(cgiPtr);
     return NS_ERROR;
 }
 
@@ -675,9 +736,11 @@ CgiDs(Cgi *cgiPtr)
  *----------------------------------------------------------------------
  */
 
-static void
+static Ns_ReturnCode
 CgiFree(Cgi *cgiPtr)
 {
+    Ns_ReturnCode result = NS_OK;
+
     NS_NONNULL_ASSERT(cgiPtr != NULL);
 
     /*
@@ -707,10 +770,18 @@ CgiFree(Cgi *cgiPtr)
     /*
      * Reap the process.
      */
+    if (cgiPtr->pid != NS_INVALID_PID) {
+        int exitCode;
 
-    if (cgiPtr->pid != NS_INVALID_PID && Ns_WaitForProcessStatus(cgiPtr->pid, NULL, NULL) != NS_OK) {
-        Ns_Log(Error, "nscgi: wait for %s failed: %s",
-               cgiPtr->exec, strerror(errno));
+        if (Ns_WaitForProcessStatus(cgiPtr->pid, &exitCode, NULL) != NS_OK) {
+            Ns_Log(Error, "nscgi: wait for %s failed: %s",
+                   cgiPtr->exec, strerror(errno));
+        } else {
+            Ns_Log(Ns_LogCGIDebug, "exit code: %d", (int8_t)exitCode);
+            if (exitCode != 0) {
+                result = NS_ERROR;
+            }
+        }
     }
 
     /*
@@ -720,6 +791,7 @@ CgiFree(Cgi *cgiPtr)
     while (cgiPtr->nextds-- > 0) {
         Ns_DStringFree(&cgiPtr->ds[cgiPtr->nextds]);
     }
+    return result;
 }
 
 
@@ -743,7 +815,7 @@ CgiFree(Cgi *cgiPtr)
 static Ns_ReturnCode
 CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
 {
-    int           i, opipe[2];
+    int           opipe[2], i;
     Ns_ReturnCode status;
     char         *s, *e;
     Ns_DString   *dsPtr;
@@ -780,15 +852,15 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
             s = *envp;
             e = strchr(s, INTCHAR('='));
             if (e != NULL) {
+                int idx;
+
                 *e = '\0';
-                i = Ns_SetFind(cgiPtr->env, s);
-                if (i < 0) {
-                    /*
-                     * TODO: we should use Ns_SetPutSz instead, but this
-                     * change should be done once we have test cases for
-                     * nscgi.
-                     */
-                    (void)Ns_SetPut(cgiPtr->env, s, e+1);
+                /*
+                 * Do not overwrite already computed values in the Ns_Set.
+                 */
+                idx = Ns_SetFind(cgiPtr->env, s);
+                if (idx < 0) {
+                    (void)Ns_SetPutSz(cgiPtr->env, s, (TCL_SIZE_T)(e-s), e+1, -1);
                 }
                 *e = '=';
             }
@@ -805,7 +877,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     if (Ns_SetFind(cgiPtr->env, "PATH") < 0) {
         s = getenv("PATH");
         if (s != NULL) {
-            Ns_SetUpdateSz(cgiPtr->env, "PATH", 4, s, -1);
+            Ns_SetUpdateSz(cgiPtr->env, "PATH", 4, s, TCL_INDEX_NONE);
         }
     }
 
@@ -813,28 +885,34 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
      * Set all the CGI specified variables.
      */
 
-    Ns_SetUpdateSz(cgiPtr->env, "SCRIPT_NAME", 11, cgiPtr->name, -1);
+    Ns_SetUpdateSz(cgiPtr->env, "SCRIPT_NAME", 11, cgiPtr->name, TCL_INDEX_NONE);
+    Ns_SetUpdateSz(cgiPtr->env, "SCRIPT_FILENAME", 15, cgiPtr->path, -1);
+    Ns_SetUpdateSz(cgiPtr->env, "REQUEST_URI", 11, Ns_ConnTarget(conn, dsPtr), TCL_INDEX_NONE);
+    Ns_DStringSetLength(dsPtr, 0);
+
     if (cgiPtr->pathinfo != NULL && *cgiPtr->pathinfo != '\0') {
-        Ns_DString tmp;
 
         if (Ns_UrlPathDecode(dsPtr, cgiPtr->pathinfo, NULL) != NULL) {
             Ns_SetUpdateSz(cgiPtr->env, "PATH_INFO", 9, dsPtr->string, dsPtr->length);
         } else {
-            Ns_SetUpdateSz(cgiPtr->env, "PATH_INFO", 9, cgiPtr->pathinfo, -1);
+            Ns_SetUpdateSz(cgiPtr->env, "PATH_INFO", 9, cgiPtr->pathinfo, TCL_INDEX_NONE);
         }
-        Ns_DStringSetLength(dsPtr, 0);
-        Ns_DStringInit(&tmp);
-        (void)Ns_UrlToFile(dsPtr, modPtr->server, cgiPtr->pathinfo);
-        if (Ns_UrlPathDecode(&tmp, dsPtr->string, NULL) != NULL) {
-            Ns_SetUpdateSz(cgiPtr->env, "PATH_TRANSLATED", 15, tmp.string, tmp.length);
-        } else {
-            Ns_SetUpdateSz(cgiPtr->env, "PATH_TRANSLATED", 15, dsPtr->string, dsPtr->length);
-        }
-        Ns_DStringFree(&tmp);
-        Ns_DStringSetLength(dsPtr, 0);
     } else {
+        /*
+         * We have no pathinfo, must be a wildcard map
+         */
         Ns_SetUpdateSz(cgiPtr->env, "PATH_INFO", 9, NS_EMPTY_STRING, 0);
     }
+    Ns_SetUpdateSz(cgiPtr->env, "PATH_TRANSLATED", 15, cgiPtr->path, TCL_INDEX_NONE);
+
+    if (cgiPtr->interp != NULL) {
+        /*
+         * We have a registered interpreter. In the PHP case, one has to
+         * communicate this fact via the "REDIRECT_STATUS" variable.
+         */
+        Ns_SetUpdateSz(cgiPtr->env, "REDIRECT_STATUS", 15, "1", 1);
+    }
+    Ns_DStringSetLength(dsPtr, 0);
     Ns_SetUpdateSz(cgiPtr->env, "GATEWAY_INTERFACE", 17, "CGI/1.1", 7);
     Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), (char *)0L);
     Ns_SetUpdateSz(cgiPtr->env, "SERVER_SOFTWARE", 15, dsPtr->string, dsPtr->length);
@@ -843,6 +921,19 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_SetUpdateSz(cgiPtr->env, "SERVER_PROTOCOL", 15, dsPtr->string, dsPtr->length);
     Ns_DStringSetLength(dsPtr, 0);
 
+#if 0
+    /*
+     * Determine SERVER_NAME and SERVER_PORT from the request information. The
+     * values in the request structure are already syntactically
+     * validated. However, the "request.host" will contain as well untrusted
+     * host header fields, whereas the location contains for untrusted hoost
+     * values the default name (see e.g., hacker.com) in nscgi.test
+     */
+    Ns_SetUpdateSz(cgiPtr->env, "SERVER_NAME", 11, conn->request.host, TCL_INDEX_NONE);
+    Ns_DStringPrintf(dsPtr, "%hu", conn->request.port);
+    Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, dsPtr->string, dsPtr->length);
+    Ns_DStringSetLength(dsPtr, 0);
+#else
     /*
      * Determine SERVER_NAME and SERVER_PORT from the conn location.
      */
@@ -864,9 +955,9 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
             Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
             Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, dsPtr->string, dsPtr->length);
         } else {
-            Ns_SetUpdateSz(cgiPtr->env, "SERVER_NAME", 11, hostString, -1);
+            Ns_SetUpdateSz(cgiPtr->env, "SERVER_NAME", 11, hostString, TCL_INDEX_NONE);
             if (portString != NULL) {
-                Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, portString, -1);
+                Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, portString, TCL_INDEX_NONE);
             } else {
                 Ns_DStringSetLength(dsPtr, 0);
                 Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
@@ -875,26 +966,35 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
         }
         Ns_DStringSetLength(dsPtr, 0);
     }
-
+#endif
     /*
      * Provide Authentication information
      */
+    {
+        const Ns_Set *authSet =  Ns_ConnAuth(conn);
 
-    Ns_SetUpdateSz(cgiPtr->env, "AUTH_TYPE", 9, "Basic", 5);
-    Ns_SetUpdateSz(cgiPtr->env, "REMOTE_USER", 11, Ns_ConnAuthUser(conn), -1);
+        if (authSet != NULL) {
+            const char *authMethod = Ns_SetIGet(authSet, "AuthMethod");
+
+            Ns_SetUpdateSz(cgiPtr->env, "AUTH_TYPE", 9, authMethod ? authMethod : "", TCL_INDEX_NONE);
+        } else {
+            Ns_SetUpdateSz(cgiPtr->env, "AUTH_TYPE", 9, "", 0);
+        }
+    }
+    Ns_SetUpdateSz(cgiPtr->env, "REMOTE_USER", 11, Ns_ConnAuthUser(conn), TCL_INDEX_NONE);
 
     {
         const char *peer = Ns_ConnPeerAddr(conn);
 
         if (peer != NULL) {
-            Ns_SetUpdateSz(cgiPtr->env, "REMOTE_ADDR", 11, peer, -1);
+            Ns_SetUpdateSz(cgiPtr->env, "REMOTE_ADDR", 11, peer, TCL_INDEX_NONE);
             if ((modPtr->flags & CGI_GETHOST) != 0u) {
                 if (Ns_GetHostByAddr(dsPtr, peer) == NS_TRUE) {
                     Ns_SetUpdateSz(cgiPtr->env, "REMOTE_HOST", 11, dsPtr->string, dsPtr->length);
                 }
                 Ns_DStringSetLength(dsPtr, 0);
             } else {
-                Ns_SetUpdateSz(cgiPtr->env, "REMOTE_HOST", 11, peer, -1);
+                Ns_SetUpdateSz(cgiPtr->env, "REMOTE_HOST", 11, peer, TCL_INDEX_NONE);
             }
         }
     }
@@ -903,8 +1003,8 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
      * Provide request information.
      */
 
-    Ns_SetUpdateSz(cgiPtr->env, "REQUEST_METHOD", 14, conn->request.method, -1);
-    Ns_SetUpdateSz(cgiPtr->env, "QUERY_STRING", 12, conn->request.query, -1);
+    Ns_SetUpdateSz(cgiPtr->env, "REQUEST_METHOD", 14, conn->request.method, TCL_INDEX_NONE);
+    Ns_SetUpdateSz(cgiPtr->env, "QUERY_STRING", 12, conn->request.query, TCL_INDEX_NONE);
 
     value = Ns_SetIGet(conn->headers, "Content-Type");
     if (value == NULL) {
@@ -914,7 +1014,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
             value = NS_EMPTY_STRING;
         }
     }
-    Ns_SetUpdateSz(cgiPtr->env, "CONTENT_TYPE", 12, value, -1);
+    Ns_SetUpdateSz(cgiPtr->env, "CONTENT_TYPE", 12, value, TCL_INDEX_NONE);
 
     if (conn->contentLength == 0u) {
         Ns_SetUpdateSz(cgiPtr->env, "CONTENT_LENGTH", 14, NS_EMPTY_STRING, 0);
@@ -1122,7 +1222,8 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_ReturnCode   status;
     char           *value;
     Ns_Set         *hdrs;
-    ssize_t         n;
+    ssize_t         n, lines = 0;
+    bool            statusProvided = NS_FALSE;
 
     NS_NONNULL_ASSERT(cgiPtr != NULL);
     NS_NONNULL_ASSERT(conn != NULL);
@@ -1138,12 +1239,12 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     /*
      * Read and parse headers up to the blank line or end of file.
      */
-
     Ns_DStringInit(&ds);
     last = -1;
     httpstatus = 200;
     hdrs = conn->outputheaders;
     while ((n = CgiReadLine(cgiPtr, &ds)) > 0) {
+        Ns_Log(Ns_LogCGIDebug, "=== header line n %ld <%s>", n, ds.string);
 
         if (CHARTYPE(space, *ds.string) != 0) {
             /*
@@ -1156,6 +1257,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
                 continue;
             }
             SetAppend(hdrs, last, "\n", ds.string);
+            lines ++;
         } else {
             value = strchr(ds.string, INTCHAR(':'));
             if (value == NULL) {
@@ -1168,10 +1270,15 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
             while (CHARTYPE(space, *value) != 0) {
                 ++value;
             }
+            lines ++;
             if (STRIEQ(ds.string, "status")) {
+                statusProvided = NS_TRUE;
                 httpstatus = (int)strtol(value, NULL, 10);
+
             } else if (STRIEQ(ds.string, "location")) {
-                httpstatus = 302;
+                if (!statusProvided) {
+                    httpstatus = 302;
+                }
                 if (*value == '/') {
                     Ns_DStringInit(&redir);
                     (void)Ns_ConnLocationAppend(conn, &redir);
@@ -1188,8 +1295,14 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
         Ns_DStringSetLength(&ds, 0);
     }
     Ns_DStringFree(&ds);
+    Ns_Log(Ns_LogCGIDebug, "=== header lines %ld", lines);
+
     if (n < 0) {
         status = Ns_ConnTryReturnInternalError(conn, NS_ERROR, "nscgi: reading client data failed");
+
+    } else if (lines == 0) {
+        status = NS_ERROR;
+
     } else {
 
         /*
@@ -1204,8 +1317,10 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
             vbuf.iov_base = cgiPtr->ptr;
             vbuf.iov_len  = (size_t)cgiPtr->cnt;
             status = Ns_ConnWriteVData(conn, &vbuf, 1, NS_CONN_STREAM);
-        } while (status == NS_OK && CgiRead(cgiPtr) > 0);
+            //Ns_Log(Ns_LogCGIDebug, "=== content %ld\n%s", cgiPtr->cnt, (char*)cgiPtr->ptr);
 
+        } while (status == NS_OK && CgiRead(cgiPtr) > 0);
+#if 0
         /*
          * Close connection now so it will not linger on
          * waiting for process exit.
@@ -1214,6 +1329,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
         if (status == NS_OK) {
             status = Ns_ConnClose(conn);
         }
+#endif
     }
     return status;
 }
@@ -1250,6 +1366,46 @@ NextWord(char *s)
         }
     }
     return s;
+}
+
+/*----------------------------------------------------------------------
+ *
+ * CgiRegisterFastUrl2File -
+ *
+ *      Helper file for achieving consistent behavior when an FastUrl2File
+ *      handler is registered via the configuration file or via
+ *      NsTclRegisterCGIObjCmd (Tcl command "ns_register_cgi").
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      May register or re-register a mapping.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+CgiRegisterFastUrl2File(const char *server, char *url, const char *path)
+{
+    char *tailSegment;
+
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(path != NULL);
+
+    tailSegment = strrchr(url, INTCHAR('/'));
+    /*
+     * When there is a tail segment and it contains a wildchard character,
+     * strip it away for the mapping. This means, that all files in this
+     * folder are mapped.
+     */
+    if (tailSegment != NULL && strchr(tailSegment, INTCHAR('*')) != NULL) {
+        *tailSegment = '\0';
+        Ns_RegisterFastUrl2File(server, url, path, 0u);
+        *tailSegment = '/';
+    } else {
+        Ns_RegisterFastUrl2File(server, url, path, 0u);
+    }
 }
 
 
@@ -1310,8 +1466,17 @@ CgiRegister(Mod *modPtr, const char *map)
     Ns_Log(Notice, "nscgi: %s %s%s%s", method, url,
            (path != NULL) ? " -> " : NS_EMPTY_STRING,
            (path != NULL) ? path : NS_EMPTY_STRING);
-    (void)Ns_RegisterRequest2(NULL, modPtr->server, method, url,
-                              CgiRequest, CgiFreeMap, mapPtr, 0u);
+
+    (void) Ns_RegisterRequest2(NULL, modPtr->server, method, url,
+                               CgiRequest, CgiFreeMap, mapPtr, NS_OP_SEGMENT_MATCH);
+    if (path != NULL) {
+        /*
+         * When a path is provided, register it to the Url2File
+         * mappings. These are used for determining the source locations for
+         * static files and CGI programs.
+         */
+        CgiRegisterFastUrl2File(modPtr->server, url, mapPtr->path);
+    }
 
 done:
     Ns_DStringFree(&ds1);
@@ -1376,6 +1541,76 @@ SetAppend(Ns_Set *set, int index, const char *sep, char *value)
                         sep, value, (char *)0L);
     Ns_SetPutValueSz(set, (size_t)index, ds.string, ds.length);
     Ns_DStringFree(&ds);
+}
+
+
+/*----------------------------------------------------------------------
+ *
+ * NsTclRegisterCGIObjCmd --
+ *
+ *      Implements "ns_register_cgi".
+ *
+ * Results:
+ *      Return TCL_OK upon success and TCL_ERROR otherwise.
+ *
+ * Side effects:
+ *      Might register CGI handlers.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+NsTclRegisterCGIObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+{
+    char       *method, *url, *path = NULL;
+    int         noinherit = 0, matchsegments = 0, result = TCL_OK;
+    Ns_ObjvSpec opts[] = {
+        {"-noinherit",     Ns_ObjvBool,   &noinherit,     INT2PTR(NS_OP_NOINHERIT)},
+        {"-matchsegments", Ns_ObjvBool,   &matchsegments, INT2PTR(NS_OP_NOINHERIT)},
+        {"-path",          Ns_ObjvString, &path,          NULL},
+        {"--",             Ns_ObjvBreak,  NULL,           NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"method",     Ns_ObjvString, &method, NULL},
+        {"url",        Ns_ObjvString, &url,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Map            *mapPtr;
+        Mod            *modPtr = clientData;
+        unsigned int    flags = 0u;
+
+        if (noinherit != 0) {
+            flags |= NS_OP_NOINHERIT;
+        }
+        if (matchsegments != 0) {
+            flags |= NS_OP_SEGMENT_MATCH;
+        }
+
+        mapPtr = ns_malloc(sizeof(Map));
+        mapPtr->modPtr = modPtr;
+        mapPtr->url = ns_strdup(url);
+        mapPtr->path = ns_strcopy(path);
+        Ns_Log(Notice, "nscgi: %s %s%s%s", method, url,
+               (path != NULL) ? " -> " : NS_EMPTY_STRING,
+               (path != NULL) ? path : NS_EMPTY_STRING);
+
+        result = Ns_RegisterRequest2(interp, modPtr->server, method, url,
+                                     CgiRequest, CgiFreeMap, mapPtr, flags);
+        if (path != NULL) {
+            /*
+             * When a path is provided, register it to the Url2File
+             * mappings. These are used for determining the source locations
+             * for static files and CGI programs.
+             */
+            CgiRegisterFastUrl2File(modPtr->server, url, mapPtr->path);
+        }
+    }
+
+    return result;
 }
 
 /*

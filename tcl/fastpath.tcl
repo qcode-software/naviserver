@@ -1,30 +1,12 @@
 #
-# The contents of this file are subject to the Mozilla Public License
-# Version 1.1 (the "License"); you may not use this file except in
-# compliance with the License. You may obtain a copy of the License at
-# http://www.mozilla.org/.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# The Initial Developer of the Original Code and related documentation
+# is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+# America Online, Inc. All Rights Reserved.
 #
-# The Original Code is AOLserver Code and related documentation
-# distributed by AOL.
-# 
-# The Initial Developer of the Original Code is America Online,
-# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
-# Inc. All Rights Reserved.
-#
-# Alternatively, the contents of this file may be used under the terms
-# of the GNU General Public License (the "GPL"), in which case the
-# provisions of GPL are applicable instead of those above.  If you wish
-# to allow use of your version of this file only under the terms of the
-# GPL and not to allow others to use your version of this file under the
-# License, indicate your decision by deleting the provisions above and
-# replace them with the notice and other provisions required by the GPL.
-# If you do not delete the provisions above, a recipient may use your
-# version of this file under either the License or the GPL.
 #
 
 #
@@ -108,19 +90,51 @@ proc _ns_dirlist {} {
     }
 
     set prefix "${loc}${url}"
-    set uptree "<a href=..>..</a>"
+    set uptree "<a href='..'>..</a>"
+    set html [ns_trim -delimiter | {
+        |<style type="text/css">
+        |body {
+        |    font-family: Arial, sans-serif;
+        |    margin: 20px;
+        |}
+        |.directory-listing {
+        |    width: 100%;
+        |    max-width: 600px;
+        |    border: 1px solid #e0e0e0;
+        |}
+        |.header, .item {
+        |    display: flex;
+        |    justify-content: space-between;
+        |    padding: 10px 15px;
+        |    border-bottom: 1px solid #e0e0e0;
+        |}
+        |.header {
+        |    background-color: #f5f5f5;
+        |    font-weight: bold;
+        |}
+        |.item-name {flex-basis: 60%;}
+        |.date-modified {flex-basis: 30%;}
+        |.size {flex-basis: 10%;text-align: right;}
+        |</style>
+    }]
 
     if {$simple} {
-        append html "
-<pre>
-$uptree
-"
+        append html [subst [ns_trim -delimiter | {
+            |<pre>
+            |$uptree
+        }]]
     } else {
-        append html "
-<table>
-<tr align=left><th>File</th><th>Size</th><th>Date</th></tr>
-<tr align=left><td colspan=3>$uptree</td></tr>
-"
+        append html [subst [ns_trim -delimiter | {
+            |<div class="directory-listing">
+            | <div class="header">
+            |  <div class="item-name">Item Name</div>
+            |  <div class="date-modified">Date Modified</div>
+            |  <div class="size">Size</div>
+            | </div>
+            | <div class="item">
+            |  <div class="item-name">$uptree</div>
+            | </div>
+        }]]
     }
 
     if {[nsv_get _ns_fastpath hidedot]} {
@@ -135,7 +149,7 @@ $uptree
 
     foreach f [lsort $files] {
         set tail [file tail $f]
-        if {[file isdirectory $f]} { 
+        if {[file isdirectory $f]} {
             append tail "/"
         }
         set link "<a href=\"${prefix}${tail}\">${tail}</a>"
@@ -143,25 +157,27 @@ $uptree
             append html $link \n
         } else {
             if {[catch {file stat $f stat}]} {
-                append html "
-<tr align=left><td>$link</td><td>N/A</td><td>N/A</td></tr>
-" \n
+                set size N/A
+                set time N/A
             } else {
                 set size  [expr {$stat(size)/1000 + 1}]K
                 set mtime $stat(mtime)
                 set time  [clock format $mtime -format "%d-%h-%Y %H:%M"]
-                append html "
-<tr align=left><td>$link</td><td>$size</td><td>$time</td></tr>
-" \n
             }
+            append html [subst [ns_trim -delimiter | {
+                | <div class="item">
+                |  <div class="item-name">$link</div>
+                |  <div class="date-modified">$time</div>
+                |  <div class="size">$size</div>
+                | </div>
+            }]]
         }
     }
     if {$simple} {
         append html "</pre>"
     } else {
-        append html "</table>"
+        append html "</div>"
     }
-    
     ns_returnnotice 200 $url $html
 }
 

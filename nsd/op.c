@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -203,10 +185,12 @@ Ns_RegisterRequest(const char *server, const char *method, const char *url,
 /*
  *----------------------------------------------------------------------
  *
- * Ns_GetRequest --
+ * Ns_GetRequest, NsGetRequest2 --
  *
  *      Return the procedures and context for a given method and url
- *      pattern.
+ *      pattern. While Ns_GetRequest() provides the legacy interface,
+ *      NsGetRequest2() gives more fine granular input to without exposing
+ *      static definitions.
  *
  * Results:
  *      None.
@@ -216,15 +200,17 @@ Ns_RegisterRequest(const char *server, const char *method, const char *url,
  *
  *----------------------------------------------------------------------
  */
-
 void
-Ns_GetRequest(const char *server, const char *method, const char *url,
+NsGetRequest2(NsServer *servPtr, const char *method, const char *url,
+              unsigned int flags, NsUrlSpaceOp op,
+              NsUrlSpaceContextFilterProc proc, void *context,
               Ns_OpProc **procPtr, Ns_Callback **deletePtr, void **argPtr,
               unsigned int *flagsPtr)
 {
     const RegisteredProc *regPtr;
+    Ns_UrlSpaceMatchInfo  matchInfo;
 
-    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
     NS_NONNULL_ASSERT(method != NULL);
     NS_NONNULL_ASSERT(url != NULL);
     NS_NONNULL_ASSERT(procPtr != NULL);
@@ -232,8 +218,10 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
     NS_NONNULL_ASSERT(flagsPtr != NULL);
 
     Ns_MutexLock(&ulock);
-    regPtr = NsUrlSpecificGet(NsGetServer(server), method, url, uid,
-                              0u, NS_URLSPACE_DEFAULT, NULL, NULL);
+    regPtr = NsUrlSpecificGet(servPtr, method, url,
+                              uid, flags, op, &matchInfo, proc, context);
+    Ns_Log(Notice, "NsGetRequest2 %s %s -> %p",  method, url, (void*)regPtr);
+
     if (regPtr != NULL) {
         *procPtr = regPtr->proc;
         *deletePtr = regPtr->deleteCallback;
@@ -246,6 +234,26 @@ Ns_GetRequest(const char *server, const char *method, const char *url,
         *flagsPtr = 0u;
     }
     Ns_MutexUnlock(&ulock);
+}
+
+
+void
+Ns_GetRequest(const char *server, const char *method, const char *url,
+              Ns_OpProc **procPtr, Ns_Callback **deletePtr, void **argPtr,
+              unsigned int *flagsPtr)
+{
+
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(url != NULL);
+    NS_NONNULL_ASSERT(procPtr != NULL);
+    NS_NONNULL_ASSERT(argPtr != NULL);
+    NS_NONNULL_ASSERT(flagsPtr != NULL);
+
+    NsGetRequest2(NsGetServer(server), method, url,
+                  0u, NS_URLSPACE_DEFAULT,
+                  NULL, NULL,
+                  procPtr, deletePtr, argPtr, flagsPtr);
 }
 
 
@@ -358,12 +366,17 @@ Ns_ConnRunRequest(Ns_Conn *conn)
          */
 
         if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
-            RegisteredProc *regPtr;
+            RegisteredProc       *regPtr;
+            Ns_UrlSpaceMatchInfo  matchInfo;
 
             Ns_MutexLock(&ulock);
             regPtr = NsUrlSpecificGet(connPtr->poolPtr->servPtr,
                                       conn->request.method, conn->request.url, uid,
-                                      0u, NS_URLSPACE_DEFAULT, NULL, NULL);
+                                      0u, NS_URLSPACE_DEFAULT, &matchInfo, NULL, NULL);
+            /*Ns_Log(Notice, "Ns_ConnRunRequest %s %s -> %p (isSegmentMatch %d, offset %ld)",
+                   conn->request.method, conn->request.url, (void*)regPtr,
+                   matchInfo.isSegmentMatch, matchInfo.offset);*/
+
             if (regPtr == NULL) {
                 Ns_MutexUnlock(&ulock);
                 if (STREQ(conn->request.method, "BAD")) {
@@ -374,6 +387,7 @@ Ns_ConnRunRequest(Ns_Conn *conn)
             } else {
                 ++regPtr->refcnt;
                 Ns_MutexUnlock(&ulock);
+                connPtr->matchInfo = matchInfo;
                 status = (*regPtr->proc) (regPtr->arg, conn);
 
                 Ns_MutexLock(&ulock);

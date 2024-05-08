@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -136,7 +118,7 @@ Ns_ConnWriteVChars(Ns_Conn *conn, struct iovec *bufs, int nbufs, unsigned int fl
 
             if (utfLen > 0u) {
                 (void) Tcl_UtfToExternalDString(connPtr->outputEncoding,
-                                                utfBytes, (int)utfLen, &encDs);
+                                                utfBytes, (TCL_SIZE_T)utfLen, &encDs);
             }
         }
         (void)Ns_SetVec(&iov, 0, encDs.string, (size_t)encDs.length);
@@ -505,12 +487,12 @@ ConnSend(Ns_Conn *conn, ssize_t nsend, Tcl_Channel chan, FILE *fp, int fd)
                 toRead = ((size_t)nsend > sizeof(buf)) ? sizeof(buf) : (size_t)nsend;
             }
             if (chan != NULL) {
-                nread = Tcl_Read(chan, buf, (int)toRead);
+                nread = (ssize_t)Tcl_Read(chan, buf, (TCL_SIZE_T)toRead);
                 if (stream && Tcl_Eof(chan)) {
                     eod = NS_TRUE;
                 }
             } else if (fp != NULL) {
-                nread = (int)fread(buf, 1u, toRead, fp);
+                nread = (ssize_t)fread(buf, 1u, toRead, fp);
                 if (ferror(fp)) {
                     nread = -1;
                 } else if (stream && feof(fp)) {
@@ -827,7 +809,6 @@ Ns_ConnClose(Ns_Conn *conn)
             NsSockClose(connPtr->sockPtr, connPtr->keep);
         }
 
-
         connPtr->sockPtr = NULL;
         connPtr->flags |= NS_CONN_CLOSED;
         Ns_Log(Ns_LogRequestDebug, "connection closed");
@@ -1046,7 +1027,7 @@ Ns_ConnReadLine(const Ns_Conn *conn, Ns_DString *dsPtr, size_t *nreadPtr)
             if (ncopy > 0u && *(eol-1) == '\r') {
                 --ncopy;
             }
-            Ns_DStringNAppend(dsPtr, reqPtr->next, (int)ncopy);
+            Ns_DStringNAppend(dsPtr, reqPtr->next, (TCL_SIZE_T)ncopy);
             reqPtr->next  += nread;
             reqPtr->avail -= (size_t)nread;
 
@@ -1144,7 +1125,7 @@ Ns_ConnCopyToDString(const Ns_Conn *conn, size_t toCopy, Ns_DString *dsPtr)
     if (connPtr->sockPtr == NULL || reqPtr->avail < toCopy) {
         status = NS_ERROR;
     } else {
-        Ns_DStringNAppend(dsPtr, reqPtr->next, (int)toCopy);
+        Ns_DStringNAppend(dsPtr, reqPtr->next, (TCL_SIZE_T)toCopy);
         reqPtr->next  += toCopy;
         reqPtr->avail -= toCopy;
     }
@@ -1216,7 +1197,7 @@ ConnCopy(const Ns_Conn *conn, size_t toCopy, Tcl_Channel chan, FILE *fp, int fd)
              * was provided.
              */
             if (chan != NULL) {
-                nwrote = Tcl_Write(chan, reqPtr->next, (int)ncopy);
+                nwrote = (ssize_t)Tcl_Write(chan, reqPtr->next, (TCL_SIZE_T)ncopy);
             } else if (fp != NULL) {
                 nwrote = (ssize_t)fwrite(reqPtr->next, 1u, ncopy, fp);
                 if (ferror(fp) != 0) {

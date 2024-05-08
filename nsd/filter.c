@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -60,6 +42,9 @@ static Trace *NewTrace(Ns_TraceProc *proc, void *arg)
 
 static void RunTraces(Ns_Conn *conn, const Trace *tracePtr)
     NS_GNUC_NONNULL(1);
+
+static void RunSelectedTraces(Ns_Conn *conn, const Trace *tracePtr, Ns_TraceProc *traceProc)
+     NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(3);
 
 static void *RegisterCleanup(NsServer *servPtr, Ns_TraceProc *proc, void *arg)
     NS_GNUC_NONNULL(2);
@@ -391,6 +376,53 @@ RunTraces(Ns_Conn *conn, const Trace *tracePtr)
     }
 }
 
+/*
+ *----------------------------------------------------------------------
+ * RunSelectedTraces, NsRunSelectedTraces --
+ *
+ *      Execute each registered trace matching the traceProcDescriptiion
+ *      (e.g., "nslog:conntrace");
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Depends on registered traces, if any.
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
+NsRunSelectedTraces(Ns_Conn *conn, const char *traceProcDescription)
+{
+    Ns_TraceProc *traceProc;
+
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(traceProcDescription != NULL);
+
+    traceProc = (Ns_TraceProc *)NsGetProcFunction(traceProcDescription /*"nslog:conntrace"*/);
+    if (traceProc != NULL) {
+        const ConnPool *poolPtr = ((const Conn *) conn)->poolPtr;
+
+        if (likely(poolPtr != NULL)) {
+            RunSelectedTraces(conn, poolPtr->servPtr->filter.firstTracePtr, traceProc);
+        } else {
+            Ns_Log(Warning, "NsRunSelectedTraces was called without pool, traces ignored");
+        }
+    }
+}
+
+static void
+RunSelectedTraces(Ns_Conn *conn, const Trace *tracePtr, Ns_TraceProc *traceProc)
+{
+    NS_NONNULL_ASSERT(conn != NULL);
+    NS_NONNULL_ASSERT(traceProc != NULL);
+
+    while (tracePtr != NULL && tracePtr->proc == traceProc) {
+        (*tracePtr->proc)(tracePtr->arg, conn);
+        tracePtr = tracePtr->nextPtr;
+    }
+}
 
 /*
  *----------------------------------------------------------------------

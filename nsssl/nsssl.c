@@ -1,27 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/.
- *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
  * Copyright (C) 2001-2012 Vlad Seryakov
  * Copyright (C) 2012-2018 Gustaf Neumann
  * All rights reserved.
  *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -69,6 +54,7 @@ static Ns_DriverAcceptProc Accept;
 static Ns_DriverRecvProc Recv;
 static Ns_DriverSendProc Send;
 static Ns_DriverKeepProc Keep;
+static Ns_DriverConnInfoProc ConnInfo;
 static Ns_DriverCloseProc Close;
 static Ns_DriverClientInitProc ClientInit;
 
@@ -82,7 +68,7 @@ static unsigned long SSLThreadId(void);
  */
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-static Ns_Mutex *driver_locks;
+static Ns_Mutex *driver_locks = NULL;
 #endif
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
@@ -92,7 +78,7 @@ Ns_ModuleInit(const char *server, const char *module)
 {
     Tcl_DString        ds;
     int                num, result;
-    const char        *path;
+    const char        *path, *vhostcertificates;
     NsSSLConfig       *drvCfgPtr;
     Ns_DriverInitData  init;
 
@@ -102,7 +88,7 @@ Ns_ModuleInit(const char *server, const char *module)
     path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
     drvCfgPtr = NsSSLConfigNew(path);
 
-    init.version = NS_DRIVER_VERSION_4;
+    init.version = NS_DRIVER_VERSION_5;
     init.name = "nsssl";
     init.listenProc = Listen;
     init.acceptProc = Accept;
@@ -110,6 +96,7 @@ Ns_ModuleInit(const char *server, const char *module)
     init.sendProc = Send;
     init.sendFileProc = NULL;
     init.keepProc = Keep;
+    init.connInfoProc = ConnInfo;
     init.requestProc = NULL;
     init.closeProc = Close;
     init.clientInitProc = ClientInit;
@@ -118,6 +105,34 @@ Ns_ModuleInit(const char *server, const char *module)
     init.path = path;
     init.protocol = "https";
     init.defaultPort = 443;
+#ifdef OPENSSL_VERSION_TEXT
+    init.libraryVersion = OPENSSL_VERSION_TEXT;
+#else
+    init.libraryVersion = ns_strdup(SSLeay_version(SSLEAY_VERSION));
+#endif
+
+    /*
+     * In case "vhostcertificates" was specified in the configuration file,
+     * and it is valid, activate NS_DRIVER_SNI.
+     */
+    vhostcertificates = Ns_ConfigGetValue(path, "vhostcertificates");
+    if (vhostcertificates != NULL && *vhostcertificates != '\0') {
+        struct stat st;
+
+        if (stat(vhostcertificates, &st) != 0) {
+            Ns_Log(Warning, "vhostcertificates directory '%s' does not exist",
+                   vhostcertificates);
+
+        } else if (S_ISDIR(st.st_mode) == 0) {
+            Ns_Log(Warning, "value specified for vhostcertificates is not a directory: '%s'",
+                   vhostcertificates);
+
+        } else {
+            Ns_Log(Notice, "vhostcertificates directory '%s' is valid, activating SNI",
+                   vhostcertificates);
+            init.opts |= NS_DRIVER_SNI;
+        }
+    }
 
     if (Ns_DriverInit(server, module, &init) != NS_OK) {
         Ns_Log(Error, "nsssl: driver init failed.");
@@ -139,7 +154,7 @@ Ns_ModuleInit(const char *server, const char *module)
     CRYPTO_set_locking_callback(SSLLock);
     CRYPTO_set_id_callback(SSLThreadId);
 #endif
-    Ns_Log(Notice, "OpenSSL %s initialized", SSLeay_version(SSLEAY_VERSION));
+    Ns_Log(Notice, "nsssl: OpenSSL %s initialized", SSLeay_version(SSLEAY_VERSION));
 
     result = Ns_TLS_CtxServerInit(path, NULL, NS_DRIVER_SNI, drvCfgPtr, &drvCfgPtr->ctx);
     if (result != TCL_OK) {
@@ -166,7 +181,7 @@ Ns_ModuleInit(const char *server, const char *module)
 
     Tcl_DStringFree(&ds);
     Ns_Log(Notice, "nsssl: version %s loaded, based on %s",
-           NSSSL_VERSION, SSLeay_version(SSLEAY_VERSION));
+           NSSSL_VERSION, init.libraryVersion);
     return NS_OK;
 }
 
@@ -455,6 +470,48 @@ Keep(Ns_Sock *sock)
     /*fprintf(stderr, "##### Keep (%d) => 0\n", sock->sock);*/
     return NS_FALSE;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ConnInfo --
+ *
+ *      Return Tcl_Obj hinting connection details
+ *
+ * Results:
+ *      Tcl_Obj *
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Tcl_Obj*
+ConnInfo(Ns_Sock *sock)
+{
+    SSLContext *sslCtx = sock->arg;
+    Tcl_Obj    *resultObj;
+
+    resultObj = Tcl_NewDictObj();
+
+    /*Tcl_DictObjPut(NULL, resultObj,
+                   Tcl_NewStringObj("protocol", 8),
+                   Tcl_NewStringObj(sock->driver->protocol, TCL_INDEX_NONE));*/
+    Tcl_DictObjPut(NULL, resultObj,
+                   Tcl_NewStringObj("sslversion", 10),
+                   Tcl_NewStringObj(SSL_get_version(sslCtx->ssl), TCL_INDEX_NONE));
+    Tcl_DictObjPut(NULL, resultObj,
+                   Tcl_NewStringObj("cipher", 6),
+                   Tcl_NewStringObj(SSL_get_cipher(sslCtx->ssl), TCL_INDEX_NONE));
+    Tcl_DictObjPut(NULL, resultObj,
+                   Tcl_NewStringObj("servername", 10),
+                   Tcl_NewStringObj(SSL_get_servername(sslCtx->ssl, TLSEXT_NAMETYPE_host_name), TCL_INDEX_NONE));
+
+    return resultObj;
+}
+
 
 
 /*

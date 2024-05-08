@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -34,6 +16,12 @@
  */
 
 #include "nsd.h"
+
+#define AdpCodeLen(cp,i)    ((cp)->len[(i)])
+#define AdpCodeLine(cp,i)   ((cp)->line[(i)])
+#define AdpCodeText(cp)     ((cp)->text.string)
+#define AdpCodeBlocks(cp)   ((cp)->nblocks)
+#define AdpCodeScripts(cp)  ((cp)->nscripts)
 
 /*
  * The following structure defines a cached ADP page result.  A cached
@@ -99,19 +87,19 @@ typedef struct InterpPage {
 static Page *ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static int AdpEval(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
+static int AdpEval(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *resvar)
     NS_GNUC_NONNULL(1);
 
-static int AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
+static int AdpExec(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *file,
                    const AdpCode *codePtr, Objs *objsPtr, Tcl_DString *outputPtr,
                    const struct stat *stPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(7);
 
-static int AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
+static int AdpSource(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *file,
                      const Ns_Time *expiresPtr, Tcl_DString *outputPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(6);
 
-static int AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
+static int AdpDebug(const NsInterp *itPtr, const char *ptr, TCL_SIZE_T len, int nscript)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void DecrCache(AdpCache *cachePtr)
@@ -225,7 +213,7 @@ ConfigServerAdp(const char *server)
  */
 
 int
-NsAdpEval(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
+NsAdpEval(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *resvar)
 {
     NS_NONNULL_ASSERT(itPtr != NULL);
 
@@ -233,7 +221,7 @@ NsAdpEval(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
 }
 
 int
-NsAdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
+NsAdpSource(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *resvar)
 {
     NS_NONNULL_ASSERT(itPtr != NULL);
 
@@ -242,7 +230,7 @@ NsAdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
 }
 
 static int
-AdpEval(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
+AdpEval(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *resvar)
 {
     Tcl_Interp   *interp;
     AdpCode       code;
@@ -310,7 +298,7 @@ AdpEval(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *resvar)
  */
 
 int
-NsAdpInclude(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file, const Ns_Time *expiresPtr)
+NsAdpInclude(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *file, const Ns_Time *expiresPtr)
 {
     Ns_DString *outputPtr;
 
@@ -427,7 +415,7 @@ NsAdpReset(NsInterp *itPtr)
  */
 
 static int
-AdpSource(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
+AdpSource(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *file,
           const Ns_Time *expiresPtr, Tcl_DString *outputPtr)
 {
     NsServer       *servPtr;
@@ -792,7 +780,7 @@ NsAdpDebug(NsInterp *itPtr, const char *host, const char *port, const char *proc
 
 int
 NsTclAdpStatsObjCmd(ClientData clientData, Tcl_Interp *interp,
-                    int UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+                    TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -916,7 +904,7 @@ ParseFile(const NsInterp *itPtr, const char *file, struct stat *stPtr, unsigned 
         if (encoding == NULL) {
             page = buf;
         } else {
-            page = Tcl_ExternalToUtfDString(encoding, buf, (int)n, &utf);
+            page = Tcl_ExternalToUtfDString(encoding, buf, (TCL_SIZE_T)n, &utf);
         }
         pagePtr = ns_malloc(sizeof(Page));
         pagePtr->servPtr = itPtr->servPtr;
@@ -966,7 +954,7 @@ NsAdpLogError(NsInterp *itPtr)
     const Ns_Conn  *conn;
     Ns_DString      ds;
     const AdpFrame *framePtr;
-    int             len;
+    TCL_SIZE_T      len;
     const char     *err, *adp, *inc, *dot;
 
     NS_NONNULL_ASSERT(itPtr != NULL);
@@ -1003,7 +991,7 @@ NsAdpLogError(NsInterp *itPtr)
                 dot = "...";
             }
             Ns_DStringPrintf(&ds, "%sadp script:\n\"%.*s%s\"",
-                             inc, len, adp, dot);
+                             inc, (int)len, adp, dot);
         }
         framePtr = framePtr->prevPtr;
         inc = "\n    included from ";
@@ -1034,7 +1022,7 @@ NsAdpLogError(NsInterp *itPtr)
         Tcl_Obj *objv[2];
 
         ++itPtr->adp.errorLevel;
-        objv[0] = Tcl_NewStringObj(adp, -1);
+        objv[0] = Tcl_NewStringObj(adp, TCL_INDEX_NONE);
         Tcl_IncrRefCount(objv[0]);
         objv[1] = Tcl_GetVar2Ex(interp, "errorInfo", NULL, TCL_GLOBAL_ONLY);
         if (objv[1] == NULL) {
@@ -1065,7 +1053,7 @@ NsAdpLogError(NsInterp *itPtr)
  */
 
 static int
-AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
+AdpExec(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *file,
         const AdpCode *codePtr, Objs *objsPtr, Tcl_DString *outputPtr,
         const struct stat *stPtr)
 {
@@ -1103,7 +1091,7 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
     if (file != NULL) {
         const char *slash = strrchr(file, INTCHAR('/'));
         if (slash != NULL) {
-            Ns_DStringNAppend(&cwd, file, (int)(slash - file));
+            Ns_DStringNAppend(&cwd, file, (TCL_SIZE_T)(slash - file));
             itPtr->adp.cwd = cwd.string;
         }
     }
@@ -1121,6 +1109,13 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
     nscript = 0;
     result = TCL_OK;
     for (i = 0; itPtr->adp.exception == ADP_OK && i < nblocks; ++i) {
+        /*
+         * So far, we keep "len" as int and not as TCL_SIZE_T due to the
+         * logic with the negative lengths below.
+         *
+         * See also: comment "size" should be TCL_SIZE_T.
+         * in AdpParseTclFile() in adpparse.c.
+         */
         int len;
 
         frame.line = (unsigned short)AdpCodeLine(codePtr, i);
@@ -1129,18 +1124,18 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
             AdpTrace(itPtr, ptr, len);
         }
         if (len > 0) {
-            result = NsAdpAppend(itPtr, ptr, len);
+            result = NsAdpAppend(itPtr, ptr, (TCL_SIZE_T)len);
         } else {
             len = -len;
             if (itPtr->adp.debugLevel > 0) {
-                result = AdpDebug(itPtr, ptr, len, nscript);
+                result = AdpDebug(itPtr, ptr, (TCL_SIZE_T)len, nscript);
             } else if (objsPtr == NULL) {
-                result = Tcl_EvalEx(interp, ptr, len, 0);
+                result = Tcl_EvalEx(interp, ptr, (TCL_SIZE_T)len, 0);
             } else {
                 assert(nscript < objsPtr->nobjs);
                 objPtr = objsPtr->objs[nscript];
                 if (objPtr == NULL) {
-                    objPtr = Tcl_NewStringObj(ptr, len);
+                    objPtr = Tcl_NewStringObj(ptr, (TCL_SIZE_T)len);
                     Tcl_IncrRefCount(objPtr);
                     objsPtr->objs[nscript] = objPtr;
                 }
@@ -1230,7 +1225,7 @@ AdpExec(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, const char *file,
  */
 
 static int
-AdpDebug(const NsInterp *itPtr, const char *ptr, int len, int nscript)
+AdpDebug(const NsInterp *itPtr, const char *ptr, TCL_SIZE_T len, int nscript)
 {
     Tcl_Interp *interp;
     int         level;

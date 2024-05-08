@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -51,7 +33,7 @@ static const Ns_ObjvTimeRange nonnegTimeRange = {{0, 0}, {LONG_MAX, 0}};
  */
 
 static Ns_SchedProc FreeSchedCallback;
-static int SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd);
+static int SchedObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, char cmd);
 static int ReturnValidId(Tcl_Interp *interp, int id, Ns_TclCallback *cbPtr)
     NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(3);
 
@@ -76,11 +58,12 @@ static int ReturnValidId(Tcl_Interp *interp, int id, Ns_TclCallback *cbPtr)
  */
 
 int
-NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj          *scriptObj;
     Ns_Time          *interval;
-    int               remain = 0, result = TCL_OK;
+    TCL_SIZE_T        remain = 0;
+    int               result = TCL_OK;
     Ns_ObjvSpec       args[] = {
         {"interval", Ns_ObjvTime, &interval,  (void*)&nonnegTimeRange},
         {"script",   Ns_ObjvObj,  &scriptObj, NULL},
@@ -94,7 +77,7 @@ NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
     } else {
         int             id;
         Ns_TclCallback *cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
-                                                  scriptObj, objc - 3, objv + 3);
+                                                  scriptObj, (TCL_SIZE_T)(objc - 3), objv + 3);
         id = Ns_After(interval, NsTclSchedProc, cbPtr, (ns_funcptr_t)Ns_TclFreeCallback);
         result = ReturnValidId(interp, id, cbPtr);
     }
@@ -121,7 +104,7 @@ NsTclAfterObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
  */
 
 static int
-SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
+SchedObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, char cmd)
 {
     int id, result = TCL_OK;
 
@@ -164,25 +147,25 @@ SchedObjCmd(Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
 }
 
 int
-NsTclCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclCancelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return SchedObjCmd(interp, objc, objv, 'c');
 }
 
 int
-NsTclPauseObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclPauseObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return SchedObjCmd(interp, objc, objv, 'p');
 }
 
 int
-NsTclResumeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclResumeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return SchedObjCmd(interp, objc, objv, 'r');
 }
 
 int
-NsTclUnscheduleObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclUnscheduleObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return SchedObjCmd(interp, objc, objv, 'u');
 }
@@ -205,10 +188,11 @@ NsTclUnscheduleObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 int
-NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    Tcl_Obj          *scriptObj;
-    int               hour = 0, minute = 0, remain = 0, once = 0, thread = 0, result;
+    Tcl_Obj    *scriptObj;
+    int         hour = 0, minute = 0, once = 0, thread = 0, result;
+    TCL_SIZE_T  remain = 0;
     Ns_ObjvSpec opts[] = {
         {"-once",   Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
         {"-thread", Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
@@ -238,7 +222,7 @@ NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
             flags |= NS_SCHED_THREAD;
         }
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
-                                  scriptObj, remain, objv + (objc - remain));
+                                  scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
         id = Ns_ScheduleDaily(NsTclSchedProc, cbPtr, flags, hour, minute,
                               FreeSchedCallback);
 
@@ -265,10 +249,11 @@ NsTclSchedDailyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
  */
 
 int
-NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj    *scriptObj;
-    int         day = 0, hour = 0, minute = 0, remain = 0, once = 0, thread = 0, result;
+    int         day = 0, hour = 0, minute = 0, once = 0, thread = 0, result;
+    TCL_SIZE_T  remain = 0;
     Ns_ObjvSpec opts[] = {
         {"-once",   Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
         {"-thread", Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
@@ -299,7 +284,7 @@ NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
         }
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
-                                  scriptObj, remain, objv + (objc - remain));
+                                  scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
         id = Ns_ScheduleWeekly(NsTclSchedProc, cbPtr, flags, day, hour, minute,
                                FreeSchedCallback);
 
@@ -327,11 +312,12 @@ NsTclSchedWeeklyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int ob
  */
 
 int
-NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    Tcl_Obj        *scriptObj;
-    Ns_Time        *intervalPtr;
-    int             remain = 0, once = 0, thread = 0, result = TCL_OK;
+    Tcl_Obj    *scriptObj;
+    Ns_Time    *intervalPtr;
+    TCL_SIZE_T  remain = 0;
+    int         once = 0, thread = 0, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-once",    Ns_ObjvBool,  &once,   INT2PTR(NS_TRUE)},
         {"-thread",  Ns_ObjvBool,  &thread, INT2PTR(NS_TRUE)},
@@ -364,7 +350,7 @@ NsTclSchedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tc
             int             id;
 
             cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclSchedProc,
-                                      scriptObj, remain, objv + (objc - remain));
+                                      scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
             id = Ns_ScheduleProcEx(NsTclSchedProc, cbPtr, flags, intervalPtr, FreeSchedCallback);
 
             result = ReturnValidId(interp, id, cbPtr);

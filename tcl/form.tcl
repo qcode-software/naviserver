@@ -1,30 +1,12 @@
 #
-# The contents of this file are subject to the Mozilla Public License
-# Version 1.1 (the "License"); you may not use this file except in
-# compliance with the License. You may obtain a copy of the License at
-# http://www.mozilla.org/.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# The Initial Developer of the Original Code and related documentation
+# is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+# America Online, Inc. All Rights Reserved.
 #
-# The Original Code is AOLserver Code and related documentation
-# distributed by AOL.
-#
-# The Initial Developer of the Original Code is America Online,
-# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
-# Inc. All Rights Reserved.
-#
-# Alternatively, the contents of this file may be used under the terms
-# of the GNU General Public License (the "GPL"), in which case the
-# provisions of GPL are applicable instead of those above.  If you wish
-# to allow use of your version of this file only under the terms of the
-# GPL and not to allow others to use your version of this file under the
-# License, indicate your decision by deleting the provisions above and
-# replace them with the notice and other provisions required by the GPL.
-# If you do not delete the provisions above, a recipient may use your
-# version of this file under either the License or the GPL.
 #
 
 #
@@ -212,6 +194,7 @@ proc ns_getform {args}  {
             # Get the content via memory (indirectly via [ns_conn
             # content], the command [ns_conn form] does this)
             #
+            ns_log debug "ns_getfrom: get content from memory (files [ns_conn files])"
             foreach {file} [ns_conn files] {
                 set offs [ns_conn fileoffset $file]
                 set lens [ns_conn filelength $file]
@@ -219,7 +202,13 @@ proc ns_getform {args}  {
                 foreach off $offs len $lens hdr $hdrs {
 
                     set fp [ns_opentmpfile tmpfile]
-                    catch {fconfigure $fp -encoding binary -translation binary}
+                    #set nocomplain [expr {$::tcl_version < 9.0 ? "" : "-profile tcl8"}]
+                    set nocomplain "" ;# Tcl9 is a moving target, not sure yet, how this will end up when released
+                    try {
+                        fconfigure $fp {*}$nocomplain -encoding binary -translation binary
+                    } on error {errorMsg} {
+                        ns_log warning "ns_getform: fconfigure of temporary file returned: $errorMsg"
+                    }
 
                     ns_atclose [list file delete -- $tmpfile]
                     ns_conn copy $off $len $fp
@@ -236,6 +225,7 @@ proc ns_getform {args}  {
             #
             # Get the content via external spool file
             #
+            ns_log debug "ns_getfrom: get content from file"
             try {
                 #
                 # We have to provide a fallback charset here,
@@ -713,7 +703,7 @@ proc ns_getcontent {args} {
             # There is no content file, we have to create it and write
             # the content from [ns_conn content] into it.
             #
-            set F [ns_opentmpfile contentfile [ns_config ns/parameters tmpdir]/nsd-XXXXXX]
+            set F [ns_opentmpfile contentfile]
             if {$binary} {
                 fconfigure $F -translation binary
                 puts -nonewline $F [ns_conn content -binary]
@@ -733,7 +723,7 @@ proc ns_getcontent {args} {
                 # parameterized in the future.
                 #
                 set F [open $contentfile r]
-                set N [ns_opentmpfile ncontentfile [ns_config ns/parameters tmpdir]/nsd-XXXXXX]
+                set N [ns_opentmpfile ncontentfile]
                 fconfigure $F -translation binary
                 fconfigure $N -encoding utf-8
                 while {1} {

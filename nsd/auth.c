@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -132,7 +114,7 @@ Ns_SetRequestAuthorizeProc(const char *server, Ns_RequestAuthorizeProc *procPtr)
  */
 
 int
-NsTclRequestAuthorizeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRequestAuthorizeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     int             result = TCL_OK;
@@ -164,11 +146,11 @@ NsTclRequestAuthorizeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc,
             break;
 
         case NS_FORBIDDEN:
-            Tcl_SetObjResult(interp, Tcl_NewStringObj("FORBIDDEN", -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj("FORBIDDEN", TCL_INDEX_NONE));
             break;
 
         case NS_UNAUTHORIZED:
-            Tcl_SetObjResult(interp, Tcl_NewStringObj("UNAUTHORIZED", -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj("UNAUTHORIZED", TCL_INDEX_NONE));
             break;
 
         case NS_FILTER_BREAK:  NS_FALL_THROUGH; /* fall through */
@@ -271,7 +253,7 @@ NsParseAuth(Conn *connPtr, const char *auth)
     }
 
     Tcl_DStringInit(&authDs);
-    Tcl_DStringAppend(&authDs, auth, -1);
+    Tcl_DStringAppend(&authDs, auth, TCL_INDEX_NONE);
 
     p = authDs.string;
     while (*p != '\0' && CHARTYPE(space, *p) == 0) {
@@ -285,8 +267,8 @@ NsParseAuth(Conn *connPtr, const char *auth)
         *p = '\0';
 
         if (STRIEQ(authDs.string, "Basic")) {
-            size_t  size;
-            ssize_t userLength;
+            size_t     size;
+            TCL_SIZE_T userLength;
 
             (void)Ns_SetPutSz(connPtr->auth, "AuthMethod", 10, "Basic", 5);
 
@@ -303,14 +285,14 @@ NsParseAuth(Conn *connPtr, const char *auth)
 
             q = strchr(v, INTCHAR(':'));
             if (q != NULL) {
-                ssize_t pwLength;
+                TCL_SIZE_T pwLength;
 
                 *q++ = '\0';
-                pwLength = ((v+size) - q);
+                pwLength = (TCL_SIZE_T)((v+size) - q);
                 (void)Ns_SetPutSz(connPtr->auth, "Password", 8, q, pwLength);
-                userLength = (ssize_t)size - (pwLength + 1);
+                userLength = (TCL_SIZE_T)size - (pwLength + 1);
             } else {
-                userLength = (ssize_t)size;
+                userLength = (TCL_SIZE_T)size;
             }
             (void)Ns_SetPutSz(connPtr->auth, "Username", 8, v, userLength);
             ns_free(v);
@@ -340,7 +322,7 @@ NsParseAuth(Conn *connPtr, const char *auth)
                 /* Remember position */
                 save2 = *(++v);
                 *v = '\0';
-                idx = Ns_SetPutSz(connPtr->auth, q, (ssize_t)(v-q), NULL, 0);
+                idx = Ns_SetPutSz(connPtr->auth, q, (TCL_SIZE_T)(v-q), NULL, 0);
                 /* Restore character */
                 *v = save2;
                 /* Skip = and optional spaces */
@@ -364,7 +346,7 @@ NsParseAuth(Conn *connPtr, const char *auth)
                 save2 = *q;
                 *q = '\0';
                 /* Update with current value */
-                Ns_SetPutValueSz(connPtr->auth, idx, p, -1);
+                Ns_SetPutValueSz(connPtr->auth, idx, p, TCL_INDEX_NONE);
                 *q = save2;
                 /* Advance to the end of the param value, can be end or next name*/
                 while (*q != '\0' && (*q == ',' || *q == '"' || CHARTYPE(space, *q) != 0)) {
@@ -380,7 +362,8 @@ NsParseAuth(Conn *connPtr, const char *auth)
             while (*q != '\0' && CHARTYPE(space, *q) != 0) {
                 q++;
             }
-            (void)Ns_SetPutSz(connPtr->auth, "Token", 5, q, authDs.length - (q - authDs.string));
+            (void)Ns_SetPutSz(connPtr->auth, "Token", 5, q,
+                              (authDs.length - (TCL_SIZE_T)(q - authDs.string)));
         }
         if (p != NULL) {
             *p = save;

@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -148,7 +130,7 @@ static const size_t nreasons = (sizeof(reasons) / sizeof(reasons[0]));
 void
 Ns_ConnSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
-    (void) Ns_SetPutSz(conn->outputheaders, field, -1, value, -1);
+    (void) Ns_SetPutSz(conn->outputheaders, field, TCL_INDEX_NONE, value, TCL_INDEX_NONE);
 }
 
 /*
@@ -199,7 +181,7 @@ Ns_ConnPrintfHeaders(const Ns_Conn *conn, const char *field, const char *fmt,...
     va_start(ap, fmt);
     Ns_DStringVPrintf(&ds, fmt, ap);
     va_end(ap);
-    (void) Ns_SetPutSz(conn->outputheaders, field, -1, ds.string, ds.length);
+    (void) Ns_SetPutSz(conn->outputheaders, field, TCL_INDEX_NONE, ds.string, ds.length);
     Ns_DStringFree(&ds);
 }
 
@@ -224,7 +206,9 @@ void
 Ns_ConnCondSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
     if (Ns_SetIGet(conn->outputheaders, field) == NULL) {
-        (void) Ns_SetPutSz(conn->outputheaders, field, -1, value, -1);
+        (void) Ns_SetPutSz(conn->outputheaders,
+                           field, TCL_INDEX_NONE,
+                           value, TCL_INDEX_NONE);
     }
 }
 
@@ -307,7 +291,7 @@ Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, const char *mimeType)
     charset = NsFindCharset(mimeType, &len);
 
     if (charset != NULL) {
-        encoding = Ns_GetCharsetEncodingEx(charset, (int)len);
+        encoding = Ns_GetCharsetEncodingEx(charset, (TCL_SIZE_T)len);
         Ns_ConnSetEncoding(conn, encoding);
     } else {
         encoding = Ns_ConnGetEncoding(conn);
@@ -546,7 +530,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
                             size_t offset = (size_t)(lineBreak - value);
 
                             if (offset > 0u) {
-                                Tcl_DStringAppend(sanitizePtr, value, (int)offset);
+                                Tcl_DStringAppend(sanitizePtr, value, (TCL_SIZE_T)offset);
                             }
                             Tcl_DStringAppend(sanitizePtr, "\n\t", 2);
 
@@ -556,7 +540,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
 
                         } while (lineBreak != NULL);
 
-                        Tcl_DStringAppend(sanitizePtr, value, -1);
+                        Tcl_DStringAppend(sanitizePtr, value, TCL_INDEX_NONE);
 
                         Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sanitizePtr), "\r\n", (char *)0L);
                         Ns_DStringFree(sanitizePtr);
@@ -698,16 +682,74 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
     const NsServer  *servPtr;
     Ns_DString       ds;
     Ns_ReturnCode    result;
+    struct stat      fileInfo;
+    const char      *fileName;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(title != NULL);
     NS_NONNULL_ASSERT(notice != NULL);
 
-    servPtr = ((Conn *) conn)->poolPtr->servPtr;
     Ns_DStringInit(&ds);
+    servPtr = ((Conn *) conn)->poolPtr->servPtr;
+    fileName = servPtr->opts.noticeADP;
+
+    /*
+     * Check, if there is a returnnotice.adp file. If it exists, and the ADP
+     * file evaluates without error, return it. Otherwise fall back to the
+     * old-style hardcoded fallback.
+     */
+    if (Ns_Stat(fileName, &fileInfo)) {
+        Tcl_Interp *interp = Ns_GetConnInterp(conn);
+        NsInterp   *itPtr = NsGetInterpData(interp);
+        Tcl_Obj    *fileObj;
+
+        /*
+         * Set Tcl variables "title", "notice", and "noticedetail".
+         */
+        Tcl_SetVar2Ex(interp, "title",  NULL,
+                      Tcl_NewStringObj(title, TCL_INDEX_NONE), 0);
+        Tcl_SetVar2Ex(interp, "notice",  NULL,
+                      Tcl_NewStringObj(notice, TCL_INDEX_NONE), 0);
+        Tcl_SetVar2Ex(interp, "noticedetail",  NULL,
+                      Tcl_NewBooleanObj(servPtr->opts.noticedetail), 0);
+        fileObj = Tcl_NewStringObj(fileName, TCL_INDEX_NONE);
+        result = NsAdpSource(itPtr, 1, &fileObj, NULL);
+        Tcl_DecrRefCount(fileObj);
+
+        if (result == TCL_OK) {
+            Tcl_Obj    *resultObj;
+            char       *resultString;
+            TCL_SIZE_T  resultLen;
+
+            resultObj = Tcl_GetObjResult(interp);
+            resultString = Tcl_GetStringFromObj(resultObj, &resultLen);
+            result = Ns_ConnReturnCharData(conn, status,
+                                           resultString, (ssize_t)resultLen,
+                                           "text/html");
+            Ns_DStringFree(&ds);
+            return result;
+
+        } else {
+            Ns_Log(Warning, "%s returned error: %s", fileName,
+                   Tcl_GetString(Tcl_GetObjResult(interp)));
+        }
+    } else {
+        /*
+         * There is no returnnotice ADP file
+         */
+    }
+
+    /*
+     * Old-style hard-coded template for ns_returnnotice.
+     */
+    Tcl_DStringSetLength(&ds, 0);
+
     Ns_DStringAppend(&ds,
-                     "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 4.01//EN\">\n"
-                     "<html>\n<head>\n"
+                     "<!DOCTYPE html>\n"
+                     "<html lang='en'>\n"
+                     "<head>\n"
+                     "<meta charset='UTF-8'>\n"
+                     "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n"
                      "<title>");
     Ns_QuoteHtml(&ds, title);
     Ns_DStringAppend(&ds,
@@ -722,12 +764,12 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
      */
 
     if (servPtr->opts.noticedetail) {
-        Ns_DStringVarAppend(&ds, "<p align='right'><small><i>",
+        Ns_DStringVarAppend(&ds, "<p style='text-align: right; font-size: small; font-style: italic;'>",
                             Ns_InfoServerName(), "/",
                             Ns_InfoServerVersion(), " on ",
                             (char *)0L);
         (void) Ns_ConnLocationAppend(conn, &ds);
-        Ns_DStringAppend(&ds, "</i></small></p>\n");
+        Ns_DStringAppend(&ds, "</p>\n");
     }
 
     /*
@@ -736,14 +778,14 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
      */
 
     if (status >= 400) {
-        while (ds.length < servPtr->opts.errorminsize) {
+        while (ds.length < (TCL_SIZE_T)servPtr->opts.errorminsize) {
             Ns_DStringAppend(&ds, "                    ");
         }
     }
 
     Ns_DStringVarAppend(&ds, "\n</body></html>\n", (char *)0L);
 
-    result = Ns_ConnReturnCharData(conn, status, ds.string, ds.length, "text/html");
+    result = Ns_ConnReturnCharData(conn, status, ds.string, (ssize_t)ds.length, "text/html");
     Ns_DStringFree(&ds);
 
     return result;

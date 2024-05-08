@@ -2,17 +2,54 @@
 # Check all the Meta-Variables as specified in
 # https://datatracker.ietf.org/doc/html/rfc3875#section-4.1
 #
-puts "Content-type: text/plain"
-puts ""
-if {[info exists ::env(QUERY_STRING)]
-    && [regexp {^var=(.*)$} $::env(QUERY_STRING) . var]
-} {
-    if {[info exists ::env($var)]} {
-        puts "$var: $::env($var)"
-    } else {
-        puts "$var does not exist"
+# Note, this is a plain Tcl scripts, no NaviServer commands are
+# allowed.
+#
+set done 0
+if {[info exists ::env(QUERY_STRING)]} {
+    set query ""
+    set content ""
+    set header ""
+    foreach spec [split $::env(QUERY_STRING) &] {
+        lassign [split $spec =] var value
+        dict set query $var $value
     }
-} else {
+    if {[dict exists $query var]} {
+        set var [dict get $query var]
+        puts "Content-type: text/plain"
+        puts ""
+        if {[info exists ::env($var)]} {
+            puts "$var: <$::env($var)>"
+        } else {
+            puts "$var does not exist"
+        }
+        set done 1
+    }
+
+    if {[dict exists $query status]} {
+        lappend header "Status: [dict get $query status]"
+    }
+    if {[dict exists $query location]} {
+        lappend header "Location: [dict get $query location]"
+    }
+    if {[dict exists $query content]} {
+        set content [dict get $query content]
+    }
+
+    if {$header ne ""} {
+        set reply [join $header \n]\n\n$content
+        puts $reply
+        set done 1
+    }
+    if {[dict exists $query rc]} {
+        exit [dict get $query rc]
+    }
+}
+
+if {!$done} {
+    puts "Content-type: text/plain"
+    puts ""
+
     set providedVarCount 0
     set varCount 0
     set missing 0

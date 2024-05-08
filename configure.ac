@@ -1,30 +1,12 @@
 #
-# The contents of this file are subject to the Mozilla Public License
-# Version 1.1 (the "License"); you may not use this file except in
-# compliance with the License. You may obtain a copy of the License at
-# http://www.mozilla.org/.
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #
-# Software distributed under the License is distributed on an "AS IS"
-# basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
-# the License for the specific language governing rights and limitations
-# under the License.
+# The Initial Developer of the Original Code and related documentation
+# is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+# America Online, Inc. All Rights Reserved.
 #
-# The Original Code is AOLserver Code and related documentation
-# distributed by AOL.
-#
-# The Initial Developer of the Original Code is America Online,
-# Inc. Portions created by AOL are Copyright (C) 1999 America Online,
-# Inc. All Rights Reserved.
-#
-# Alternatively, the contents of this file may be used under the terms
-# of the GNU General Public License (the "GPL"), in which case the
-# provisions of GPL are applicable instead of those above.  If you wish
-# to allow use of your version of this file only under the terms of the
-# GPL and not to allow others to use your version of this file under the
-# License, indicate your decision by deleting the provisions above and
-# replace them with the notice and other provisions required by the GPL.
-# If you do not delete the provisions above, a recipient may use your
-# version of this file under either the License or the GPL.
 #
 
 #
@@ -35,7 +17,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[4.99.30],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[5.0.0a],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -45,13 +27,13 @@ AC_CONFIG_HEADERS([include/nsconfig.h])
 #
 # Version info for include/nsversion.h
 #
-# Don't forget to update the naviserver.rdf files before making a release.
+# Don't forget to update the naviserver.rdf DOAP before making a release.
 #
 
-AC_SUBST([NS_MAJOR_VERSION],  [4])
-AC_SUBST([NS_MINOR_VERSION],  [99])
-AC_SUBST([NS_RELEASE_SERIAL], [30])
-AC_SUBST([NS_RELEASE_LEVEL],  [NS_FINAL_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
+AC_SUBST([NS_MAJOR_VERSION],  [5])
+AC_SUBST([NS_MINOR_VERSION],  [0])
+AC_SUBST([NS_RELEASE_SERIAL], [0])
+AC_SUBST([NS_RELEASE_LEVEL],  [NS_ALPHA_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
 
 AC_SUBST([NS_VERSION],     [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}\"])
 AC_SUBST([NS_PATCH_LEVEL], [\"$PACKAGE_VERSION\"])
@@ -198,6 +180,7 @@ AC_TYPE_INTPTR_T
 AC_TYPE_UINTPTR_T
 
 AX_HAVE_CMMSG
+AX_CHECK_SIZEOF_MSG_IOVLEN
 AX_HAVE_MTSAFE_DNS
 AX_HAVE_GETTID
 AX_HAVE_TCP_FASTOPEN
@@ -211,6 +194,7 @@ AX_HAVE_ARC4RANDOM
 AX_HAVE_CRYPT_R
 AX_HAVE_BSD_SENDFILE
 AX_HAVE_LINUX_SENDFILE
+AX_HAVE_MEMMEM
 
 AX_PTHREAD(
    [ AC_DEFINE([HAVE_PTHREAD], 1, [Define if you have POSIX threads libraries and header files]) ],

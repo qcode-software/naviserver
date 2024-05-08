@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -169,7 +151,7 @@ NsTclCreateBuckets(const NsServer *servPtr, int nbuckets)
 
 int
 NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                  int objc, Tcl_Obj *const* objv)
+                  TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -189,7 +171,7 @@ NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             const char          *keyString = Tcl_GetString(objv[2]);
 
             hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, keyString, NULL);
-            resultObj = likely(hPtr != NULL) ? Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1) : NULL;
+            resultObj = likely(hPtr != NULL) ? Tcl_NewStringObj(Tcl_GetHashValue(hPtr), TCL_INDEX_NONE) : NULL;
             UnlockArray(arrayPtr);
 
             if (objc == 3) {
@@ -232,7 +214,7 @@ NsTclNsvGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvExistsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *const* objv)
+                     TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result;
 
@@ -269,7 +251,7 @@ SetResultToOldValue(Tcl_Interp *interp, Array *arrayPtr, const char *key)
     hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, key, NULL);
     if (likely(hPtr != NULL)) {
         result = NS_TRUE;
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), TCL_INDEX_NONE));
     } else {
         result = NS_FALSE;
         Tcl_SetObjResult(interp, Tcl_NewStringObj("", 0));
@@ -297,7 +279,7 @@ SetResultToOldValue(Tcl_Interp *interp, Array *arrayPtr, const char *key)
 
 int
 NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                  int objc, Tcl_Obj *const* objv)
+                  TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int      result = TCL_OK, doReset = 0, doDefault = 0;
     Array   *arrayPtr;
@@ -325,7 +307,7 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         result = TCL_ERROR;
 
     } else if (valueObj != NULL) {
-        int         len;
+        TCL_SIZE_T  len;
         bool        setArrayValue = NS_TRUE, returnNewValue = NS_TRUE;
         const char *value = Tcl_GetStringFromObj(valueObj, &len);
 
@@ -407,7 +389,7 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
             hPtr = Tcl_FindHashEntry(&arrayPtr->vars, keyString);
             if (likely(hPtr != NULL)) {
-                Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(Tcl_GetHashValue(hPtr), TCL_INDEX_NONE));
             }
             UnlockArray(arrayPtr);
             if (hPtr == NULL) {
@@ -440,7 +422,7 @@ NsTclNsvSetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                   int objc, Tcl_Obj *const* objv)
+                   TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int  result, count = 1;
 
@@ -487,7 +469,7 @@ NsTclNsvIncrObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                      int objc, Tcl_Obj *const* objv)
+                      TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -497,7 +479,8 @@ NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     } else {
         Array         *arrayPtr;
         Tcl_HashEntry *hPtr;
-        int            isNew, i;
+        int            isNew;
+        TCL_OBJC_T     i;
         Tcl_DString    ds;
 
         arrayPtr = LockArrayObj(interp, objv[1], NS_TRUE, NS_WRITE);
@@ -507,7 +490,7 @@ NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
         hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, Tcl_GetString(objv[2]), &isNew);
         if (unlikely(isNew == 0)) {
-            Tcl_DStringAppend(&ds, Tcl_GetHashValue(hPtr), -1);
+            Tcl_DStringAppend(&ds, Tcl_GetHashValue(hPtr), TCL_INDEX_NONE);
         }
 
         for (i = 3; i < objc; ++i) {
@@ -541,7 +524,7 @@ NsTclNsvLappendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *const* objv)
+                     TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -551,7 +534,8 @@ NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
     } else {
         Array         *arrayPtr;
         Tcl_HashEntry *hPtr;
-        int            i, isNew;
+        TCL_OBJC_T     i;
+        int            isNew;
         Tcl_DString    ds;
 
         arrayPtr = LockArrayObj(interp, objv[1], NS_TRUE, NS_WRITE);
@@ -561,11 +545,11 @@ NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
         hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, Tcl_GetString(objv[2]), &isNew);
         if (unlikely(isNew == 0)) {
-            Tcl_DStringAppend(&ds, Tcl_GetHashValue(hPtr), -1);
+            Tcl_DStringAppend(&ds, Tcl_GetHashValue(hPtr), TCL_INDEX_NONE);
         }
 
         for (i = 3; i < objc; ++i) {
-            int          length;
+            TCL_SIZE_T  length;
             const char *value = Tcl_GetStringFromObj(objv[i], &length);
 
             Tcl_DStringAppend(&ds, value, length);
@@ -599,7 +583,7 @@ NsTclNsvAppendObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int objc, Tcl_Obj *const* objv)
+                    TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj    *arrayObj;
     char       *keyString = NULL;
@@ -685,7 +669,7 @@ NsTclNsvUnsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  */
 
 int
-NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -723,7 +707,7 @@ NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 
                 if ((pattern == NULL) || (Tcl_StringMatch(keyString, pattern) != 0)) {
                     result = Tcl_ListObjAppendElement(interp, resultObj,
-                                                      Tcl_NewStringObj(keyString, -1));
+                                                      Tcl_NewStringObj(keyString, TCL_INDEX_NONE));
                     if (unlikely(result != TCL_OK)) {
                         break;
                     }
@@ -763,7 +747,7 @@ NsTclNsvNamesObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 
 int
 NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int objc, Tcl_Obj *const* objv)
+                    TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int                      opt, result = TCL_OK;
     static const char *const opts[] = {
@@ -782,7 +766,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         result = TCL_ERROR;
 
     } else {
-        int        lobjc, size;
+        TCL_SIZE_T lobjc, size;
         Array     *arrayPtr;
         Tcl_Obj  **lobjv;
 
@@ -801,7 +785,7 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                 result = TCL_ERROR;
 
             } else {
-                int  i;
+                TCL_SIZE_T i;
 
                 arrayPtr = LockArrayObj(interp, objv[2], NS_TRUE, NS_WRITE);
                 assert(arrayPtr != NULL);
@@ -872,10 +856,10 @@ NsTclNsvArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                         const char *keyString = Tcl_GetHashKey(&arrayPtr->vars, hPtr);
 
                         if ((pattern == NULL) || (Tcl_StringMatch(keyString, pattern) != 0)) {
-                            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(keyString, -1));
+                            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(keyString, TCL_INDEX_NONE));
                             if (opt == (int)CGetIdx) {
                                 Tcl_ListObjAppendElement(interp, listObj,
-                                                         Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1));
+                                                         Tcl_NewStringObj(Tcl_GetHashValue(hPtr), TCL_INDEX_NONE));
                             }
                         }
                         hPtr = Tcl_NextHashEntry(&search);
@@ -930,7 +914,7 @@ GetArrayAndKey(Tcl_Interp *interp, Tcl_Obj *arrayObj, const char *keyString,
             Tcl_SetErrorCode(interp, "TCL", "LOOKUP", "NSV", "KEY", keyString, (char *)0L);
             result = TCL_ERROR;
         } else {
-            obj = Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1);
+            obj = Tcl_NewStringObj(Tcl_GetHashValue(hPtr), TCL_INDEX_NONE);
         }
     } else {
         result = TCL_ERROR;
@@ -960,7 +944,7 @@ GetArrayAndKey(Tcl_Interp *interp, Tcl_Obj *arrayObj, const char *keyString,
 
 int
 NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    int objc, Tcl_Obj *const* objv)
+                    TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int                      opt, result;
     static const char *const opts[] = {
@@ -1036,7 +1020,7 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                                         &arrayPtr, &dictObj);
                 if (result == TCL_OK) {
                     if (opt == CSizeIdx) {
-                        int size;
+                        TCL_SIZE_T size;
 
                         result = Tcl_DictObjSize(interp, dictObj, &size);
                         if (result == TCL_OK) {
@@ -1075,8 +1059,8 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             /*
              * Operations on a dict key
              */
-            int          nargs = 0;
-            Tcl_Obj     *varnameObj = NULL;
+            TCL_SIZE_T  nargs = 0;
+            Tcl_Obj    *varnameObj = NULL;
             Ns_ObjvSpec getArgs[] = {
                 {"array",     Ns_ObjvObj,  &arrayObj,     NULL},
                 {"key",       Ns_ObjvObj,  &keyObj,       NULL},
@@ -1126,18 +1110,19 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                             /*
                              * Nested dict
                              */
-                            result = Tcl_DictObjRemoveKeyList(interp, dictObj, nargs, &objv[objc-nargs]);
+                            result = Tcl_DictObjRemoveKeyList(interp, dictObj,
+                                                              nargs, &objv[(TCL_SIZE_T)objc-nargs]);
                         }
                         if (result == TCL_OK) {
-                            int dictStringLength;
+                            TCL_SIZE_T dictStringLength;
                             const char *dictString = Tcl_GetStringFromObj(dictObj, &dictStringLength);
 
                             SetVar(arrayPtr, Tcl_GetString(keyObj), dictString, (size_t)dictStringLength);
                             Tcl_SetObjResult(interp, dictObj);
                         }
                     } else {
-                        int lastObjc = (opt == CGetdefIdx ? objc -1 : objc);
-                        Tcl_Obj *dictValueObj = NULL;
+                        TCL_OBJC_T lastObjc = (opt == CGetdefIdx ? objc -1 : objc);
+                        Tcl_Obj   *dictValueObj = NULL;
 
                         if (nargs == 0) {
                             /*
@@ -1157,10 +1142,10 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                             /*
                              * nested keys
                              */
-                            int i;
+                            TCL_SIZE_T i;
 
                             dictKeyObj = NULL; /* make sure, dictKeyObj is always initialized */
-                            for (i = objc - nargs; i < lastObjc; i++) {
+                            for (i = (TCL_SIZE_T)objc - nargs; i < (TCL_SIZE_T)lastObjc; i++) {
                                 dictKeyObj = objv[i];
                                 result = Tcl_DictObjGet(interp, dictObj, dictKeyObj, &dictValueObj);
                                 if (dictValueObj != NULL) {
@@ -1276,7 +1261,8 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
             /*
              * Operations on a dict key with a value
              */
-            int         increment = 1, nargs = 0;
+            int         increment = 1;
+            TCL_SIZE_T  nargs = 0;
             Ns_ObjvSpec setArgs[] = {
                 {"array",     Ns_ObjvObj,  &arrayObj,     NULL},
                 {"key",       Ns_ObjvObj,  &keyObj,       NULL},
@@ -1323,7 +1309,7 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                 keyString = Tcl_GetString(keyObj);
                 hPtr = Tcl_CreateHashEntry(&arrayPtr->vars, keyString, NULL);
                 if (likely(hPtr != NULL)) {
-                    dictObj = Tcl_NewStringObj(Tcl_GetHashValue(hPtr), -1);
+                    dictObj = Tcl_NewStringObj(Tcl_GetHashValue(hPtr), TCL_INDEX_NONE);
                 } else {
                     dictObj = Tcl_NewDictObj();
                 }
@@ -1340,8 +1326,10 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                         /*
                          * Nested dict
                          */
-                        result = Tcl_DictObjPutKeyList(interp, dictObj, nargs,
-                                                       &objv[objc-(nargs+1)], dictValueObj);
+                        result = Tcl_DictObjPutKeyList(interp, dictObj,
+                                                       nargs,
+                                                       &objv[(TCL_SIZE_T)objc - (nargs+1)],
+                                                       dictValueObj);
                     }
                 } else {
                     Tcl_Obj *oldDictValueObj;
@@ -1361,7 +1349,7 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                         }
                     } else {
                         Tcl_DString ds;
-                        int         i, objLength;
+                        TCL_SIZE_T  objLength, i;
                         const char *objString;
 
                         /*
@@ -1375,7 +1363,7 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                             Tcl_DStringAppend(&ds, objString, objLength);
                         }
 
-                        for (i = objc - nargs; i < objc; i++) {
+                        for (i = (TCL_SIZE_T)objc - nargs; i < (TCL_SIZE_T)objc; i++) {
                             objString = Tcl_GetStringFromObj(objv[i], &objLength);
 
                             if (opt == CAppendIdx) {
@@ -1392,7 +1380,7 @@ NsTclNsvDictObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
                 }
                 if (result == TCL_OK) {
                     const char *dictString;
-                    int         dictStringLength;
+                    TCL_SIZE_T  dictStringLength;
 
                     dictString = Tcl_GetStringFromObj(dictObj, &dictStringLength);
                     SetVar(arrayPtr, keyString, dictString, (size_t)dictStringLength);
@@ -2098,7 +2086,7 @@ LockArrayObj(Tcl_Interp *interp, Tcl_Obj *arrayObj, bool create, NS_RW rw)
  */
 
 int
-NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp   *itPtr = clientData;
     const NsServer   *servPtr = itPtr->servPtr;
@@ -2143,7 +2131,7 @@ NsTclNsvBucketObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
                 const Array *arrayPtr  = Tcl_GetHashValue(hPtr);
                 Tcl_Obj     *elemObj   = Tcl_NewListObj(0, NULL);
 
-                result = Tcl_ListObjAppendElement(interp, elemObj, Tcl_NewStringObj(keyString, -1));
+                result = Tcl_ListObjAppendElement(interp, elemObj, Tcl_NewStringObj(keyString, TCL_INDEX_NONE));
                 if (likely(result == TCL_OK)) {
                     result = Tcl_ListObjAppendElement(interp, elemObj, Tcl_NewLongObj(arrayPtr->locks));
                 }

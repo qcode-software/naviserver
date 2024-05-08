@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -722,7 +704,8 @@ Ns_DbPoolStats(Tcl_Interp *interp)
         } else {
             Handle      *handlePtr;
             Tcl_Obj     *valuesObj;
-            int          unused = 0, connected = 0, len;
+            int          unused = 0, connected = 0;
+            TCL_SIZE_T   len;
             char         buf[100];
             Tcl_WideInt  statementCount, getHandleCount;
             Ns_Time      sqlTime, waitTime;
@@ -788,18 +771,18 @@ Ns_DbPoolStats(Tcl_Interp *interp)
              *  Tcl_ListObjAppendElement(interp, valuesObj, Ns_TclNewTimeObj(&poolPtr->waitTime));
              */
             if (likely(result == TCL_OK)) {
-                len = snprintf(buf, sizeof(buf), NS_TIME_FMT, (int64_t)waitTime.sec, waitTime.usec);
+                len = (TCL_SIZE_T)snprintf(buf, sizeof(buf), NS_TIME_FMT, (int64_t)waitTime.sec, waitTime.usec);
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj(buf, len));
             }
             if (likely(result == TCL_OK)) {
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj("sqltime", 7));
             }
             if (likely(result == TCL_OK)) {
-                len = snprintf(buf, sizeof(buf), NS_TIME_FMT, (int64_t)sqlTime.sec, sqlTime.usec);
+                len = (TCL_SIZE_T)snprintf(buf, sizeof(buf), NS_TIME_FMT, (int64_t)sqlTime.sec, sqlTime.usec);
                 result = Tcl_ListObjAppendElement(interp, valuesObj, Tcl_NewStringObj(buf, len));
             }
             if (likely(result == TCL_OK)) {
-                result = Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(pool, -1));
+                result = Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(pool, TCL_INDEX_NONE));
             }
             if (likely(result == TCL_OK)) {
                 result = Tcl_ListObjAppendElement(interp, resultObj, valuesObj);
@@ -865,7 +848,7 @@ NsDbInitServer(const char *server)
      */
 
     sdataPtr->allowed = NS_EMPTY_STRING;
-    pool = Ns_ConfigGetValue(path, "pools");
+    pool = ns_strdup(Ns_ConfigGetValue(path, "pools"));
     if (pool != NULL && poolsTable.numEntries > 0) {
         const Pool *poolPtr;
         char       *allowed;
@@ -1689,12 +1672,13 @@ Ns_DbListMinDurations(Tcl_Interp *interp, const char *server)
         for ( ; *pool != '\0'; pool += strlen(pool) + 1u) {
             char          buffer[100];
             const Pool   *poolPtr;
-            int           len;
+            TCL_SIZE_T    len;
 
             poolPtr = GetPool(pool);
-            (void) Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(pool, -1));
-            len = snprintf(buffer, sizeof(buffer), NS_TIME_FMT,
-                           (int64_t)poolPtr->minDuration.sec, poolPtr->minDuration.usec);
+            (void) Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(pool, TCL_INDEX_NONE));
+            len = (TCL_SIZE_T)snprintf(buffer, sizeof(buffer), NS_TIME_FMT,
+                                       (int64_t)poolPtr->minDuration.sec,
+                                       poolPtr->minDuration.usec);
             (void) Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(buffer, len));
         }
     }
