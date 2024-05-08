@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -43,6 +25,46 @@
 
 #ifdef HAVE_CONFIG_H
 # include "nsconfig.h"
+#else
+# if defined(_MSC_VER)
+/* Hard-coded configuration for windows */
+#  include "nsconfig-win32.h"
+# endif
+#endif
+
+/*
+ * NS_INIT_ONCE: handle one-time initialization in a thread-safe manner.  The
+ * macro addresses the concerns expressed in the "Double-checked Locking"
+ * pattern (https://en.wikipedia.org/wiki/Double-checked_locking)
+ *
+ * The provided function should return NS_TRUE for compatibility with
+ * windows. For Unix compilations, the return value is ignored.
+ *
+ * NS_INIT_ONCE is defined as a macro to provide different variables for the
+ * controlling variables.
+ */
+#ifdef _WIN32
+# define NS_INIT_ONCE(fn) \
+    { static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT; \
+        InitOnceExecuteOnce(&init_once, (PINIT_ONCE_FN)(fn), NULL, NULL); \
+    }
+#elif defined(HAVE_PTHREAD)
+# define NS_INIT_ONCE(fn) \
+    { static pthread_once_t init_once = PTHREAD_ONCE_INIT; \
+        pthread_once(&init_once, (ns_funcptr_t)(fn));      \
+    }
+#else
+# define NS_INIT_ONCE(fn) \
+    { static volatile bool initialized = NS_FALSE; \
+      if (!initialized) { \
+          Ns_MasterLock(); \
+          if (!initialized) { \
+              (fn)(); \
+              initialized = NS_TRUE; \
+          } \
+          Ns_MasterUnlock(); \
+        } \
+    }
 #endif
 
 #include <nscheck.h>
@@ -206,6 +228,7 @@ MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 
 #  define timezone                    _timezone
 #  define daylight                    _daylight
+#  define timegm                      _mkgmtime
 
 #  define getpid()                    (pid_t)GetCurrentProcessId()
 #  define ftruncate(f,s)              _chsize((f),(s))
@@ -463,7 +486,11 @@ typedef int ns_sockerrno_t;
 #   define S6_ADDR16(x) ((uint16_t*)(x).s6_addr16)
 #  endif
 #  define NS_INITGROUPS_GID_T gid_t
-#  define NS_MSG_IOVLEN_T size_t
+#  if NS_MSG_IOVLEN_IS_SIZE_T
+#   define NS_MSG_IOVLEN_T size_t
+#  else
+#   define NS_MSG_IOVLEN_T int
+#  endif
 # endif
 
 # ifdef __OpenBSD__
@@ -504,6 +531,11 @@ typedef int ns_sockerrno_t;
 # define ns_read                    read
 # define ns_write                   write
 # define ns_lseek                   lseek
+# define ns_getline                 getline
+
+#ifdef HAVE_MEMMEM
+# define ns_memmem                  memmem
+#endif
 
 # if __GNUC__
 #  if defined(__x86_64__) || defined(__ppc64__)
@@ -571,20 +603,51 @@ typedef int ns_sockerrno_t;
 # define NS_TCL_PRE87
 #endif
 
-/*
- * Minimal forward compatibility for compiling
- * modules with Tcl9 support (TIP 627, 64bit object counts)
- * with Tcl8 versions
- */
+#ifndef NS_TCL_PRE87
+# if TCL_MAJOR_VERSION<=8 && TCL_MINOR_VERSION>=7 && TCL_RELEASE_SERIAL>=6
+#  define NS_TCL_HAVE_TIP629
+# elif (TCL_MAJOR_VERSION>=9)
+#  define NS_TCL_HAVE_TIP629
+# endif
+#endif
 
 #if TCL_MAJOR_VERSION<9
 # define NS_TCL_PRE9
 #endif
 
-#define TCL_SIZE_T           int
-#define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc
-#define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand
-#define PRITcl_Size "d"
+#ifndef TCL_INDEX_NONE
+# define TCL_INDEX_NONE -1
+#endif
+
+#ifndef TCL_IO_FAILURE
+# define TCL_IO_FAILURE -1
+#endif
+
+#ifndef TCL_HASH_TYPE
+# define TCL_HASH_TYPE unsigned
+#endif
+
+
+#ifndef NS_TCL_HAVE_TIP629
+# define TCL_OBJC_T           int
+# define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc
+# define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand
+#else
+/*
+ * Support for TIP 627
+ * https://core.tcl-lang.org/tips/doc/trunk/tip/627.md
+*/
+# define TCL_OBJC_T           Tcl_Size
+# define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc2
+# define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand2
+#endif
+
+#ifdef NS_TCL_PRE9
+# define TCL_SIZE_T           int
+# define TCL_SIZE_MAX         INT_MAX
+#else
+# define TCL_SIZE_T           Tcl_Size
+#endif
 
 #if !defined(NS_POLL_NFDS_TYPE)
 # define NS_POLL_NFDS_TYPE unsigned int
@@ -762,6 +825,14 @@ typedef int bool;
 # define UIO_SMALLIOV 8
 #endif
 
+#ifdef TCL_WIDE_INT_IS_LONG
+# define WIDE_INT_MAX (LONG_MAX)
+# define WIDE_INT_MIN (LONG_MIN)
+#else
+# define WIDE_INT_MAX (LLONG_MAX)
+# define WIDE_INT_MIN (LLONG_MIN)
+#endif
+
 /*
  * Some systems (Solaris) lack useful MIN/MAX macros
  * normally defined in sys/param.h so define them here.
@@ -833,6 +904,12 @@ typedef int bool;
 #endif
 #if !defined(PRIuz)
 # define PRIuz "zu"
+#endif
+
+#ifdef NS_TCL_PRE9
+# define PRITcl_Size "d"
+#else
+# define PRITcl_Size PRIuz
 #endif
 
 /*
@@ -932,6 +1009,22 @@ typedef int bool;
 #else
 # define PTR2NSSOCK(p) PTR2INT(p)
 # define NSSOCK2PTR(p) INT2PTR(p)
+#endif
+
+#ifdef NS_TCL_PRE9
+# define PTR2TCL_SIZE(p) PTR2UINT(p)
+#else
+# define PTR2TCL_SIZE(p) ((uintptr_t)(p))
+#endif
+
+
+#ifndef	SSIZE_MAX
+/* We assume, HAVE_64BIT implies __WORDSIZE == 64 */
+# if defined(HAVE_64BIT)
+#  define SSIZE_MAX	LONG_MAX
+# else
+#  define SSIZE_MAX	INT_MAX
+# endif
 #endif
 
 
@@ -1036,6 +1129,11 @@ NS_EXTERN char *ns_strncopy(const char *string, ssize_t size) NS_GNUC_MALLOC;
 NS_EXTERN int   ns_uint32toa(char *buffer, uint32_t n) NS_GNUC_NONNULL(1);
 NS_EXTERN int   ns_uint64toa(char *buffer, uint64_t n) NS_GNUC_NONNULL(1);
 
+#ifndef HAVE_MEMMEM
+NS_EXTERN void *ns_memmem(const void *haystack, size_t haystackLength, const void *const needle, const size_t needleLength)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3);
+#endif
+
 /*
  * mutex.c:
  */
@@ -1105,10 +1203,10 @@ NS_EXTERN char *ns_inet_ntoa(const struct sockaddr *saPtr) NS_GNUC_NONNULL(1);
  * sema.c:
  */
 
-NS_EXTERN void Ns_SemaInit(Ns_Sema *semaPtr, int initCount) NS_GNUC_NONNULL(1);
-NS_EXTERN void Ns_SemaDestroy(Ns_Sema *semaPtr)             NS_GNUC_NONNULL(1);
-NS_EXTERN void Ns_SemaWait(Ns_Sema *semaPtr)                NS_GNUC_NONNULL(1);
-NS_EXTERN void Ns_SemaPost(Ns_Sema *semaPtr, int count)     NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaInit(Ns_Sema *semaPtr, TCL_SIZE_T initCount) NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaDestroy(Ns_Sema *semaPtr)                    NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaWait(Ns_Sema *semaPtr)                       NS_GNUC_NONNULL(1);
+NS_EXTERN void Ns_SemaPost(Ns_Sema *semaPtr, TCL_SIZE_T count)     NS_GNUC_NONNULL(1);
 
 /*
  * signal.c:
@@ -1205,7 +1303,6 @@ NS_EXTERN int     ns_snprintf(char *buf, size_t len, const char *fmt, ...);
 
 NS_EXTERN int NS_finalshutdown;
 NS_EXTERN bool NS_mutexlocktrace;
-
 #endif /* NSTHREAD_H */
 
 /*

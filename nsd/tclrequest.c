@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.com/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -96,11 +78,12 @@ Ns_TclRequest(Ns_Conn *conn, const char *name)
  */
 
 int
-NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj      *scriptObj;
     char         *method, *url;
-    int           remain = 0, noinherit = 0, result = TCL_OK;
+    TCL_SIZE_T    remain = 0;
+    int           noinherit = 0, result = TCL_OK;
     Ns_ObjvSpec   opts[] = {
         {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_TRUE)},
         {"--",         Ns_ObjvBreak, NULL,       NULL},
@@ -126,9 +109,9 @@ NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
             flags |= NS_OP_NOINHERIT;
         }
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclRequestProc, scriptObj,
-                                  remain, objv + (objc - remain));
+                                  remain, objv + ((TCL_SIZE_T)objc - remain));
         result = Ns_RegisterRequest2(interp, itPtr->servPtr->server, method, url,
-                           NsTclRequestProc, Ns_TclFreeCallback, cbPtr, flags);
+                                     NsTclRequestProc, Ns_TclFreeCallback, cbPtr, flags);
     }
     return result;
 }
@@ -151,12 +134,13 @@ NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
  */
 
 int
-NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     Tcl_Obj        *scriptObj;
     char           *method, *protocol;
-    int             remain = 0, result = TCL_OK;
+    TCL_SIZE_T      remain = 0;
+    int             result = TCL_OK;
 
     Ns_ObjvSpec opts[] = {
         {"--",         Ns_ObjvBreak, NULL,   NULL},
@@ -175,7 +159,7 @@ NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
         Ns_TclCallback *cbPtr;
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclRequestProc,
-                                  scriptObj, remain, objv + (objc - remain));
+                                  scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
         Ns_RegisterProxyRequest(itPtr->servPtr->server, method, protocol,
                                 NsTclRequestProc, Ns_TclFreeCallback, cbPtr);
     }
@@ -200,7 +184,7 @@ NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
  */
 
 int
-NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *method, *url;
     int         noinherit = 0, result = TCL_OK;
@@ -250,7 +234,7 @@ NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char           *method = NULL, *url = NULL;
     int             noinherit = 0, recurse = 0, result = TCL_OK;
@@ -296,11 +280,12 @@ NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
  */
 
 int
-NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char         *method, *urlPattern;
     Tcl_Obj      *scriptObj;
-    int           remain = 0, first = (int)NS_FALSE, result = TCL_OK;
+    TCL_SIZE_T    remain = 0;
+    int           first = (int)NS_FALSE, result = TCL_OK;
     unsigned int  when = 0u;
     Ns_ObjvSpec   opts[] = {
         {"-first", Ns_ObjvBool,  &first, INT2PTR(NS_TRUE)},
@@ -323,7 +308,7 @@ NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, T
         Ns_TclCallback  *cbPtr;
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclFilterProc,
-                                  scriptObj, remain, objv + (objc - remain));
+                                  scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
         (void)Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
                                 NsTclFilterProc, (Ns_FilterType)when, cbPtr, (bool)first);
     }
@@ -348,7 +333,7 @@ NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, T
  */
 
 int
-NsTclShortcutFilterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclShortcutFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char           *method, *urlPattern;
     unsigned int    when = 0u;
@@ -391,11 +376,12 @@ NsTclShortcutFilterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, T
  */
 
 int
-NsTclRegisterTraceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclRegisterTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char       *method, *urlPattern;
     Tcl_Obj    *scriptObj;
-    int         remain = 0, result = TCL_OK;
+    TCL_SIZE_T  remain = 0;
+    int         result = TCL_OK;
     Ns_ObjvSpec args[] = {
         {"method",     Ns_ObjvString, &method,     NULL},
         {"urlPattern", Ns_ObjvString, &urlPattern, NULL},
@@ -411,7 +397,7 @@ NsTclRegisterTraceObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tc
         Ns_TclCallback *cbPtr;
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclFilterProc,
-                                  scriptObj, remain, objv + (objc - remain));
+                                  scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
         (void)Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
                                 NsTclFilterProc, NS_FILTER_VOID_TRACE, cbPtr, NS_FALSE);
     }
@@ -490,7 +476,8 @@ NsTclFilterProc(const void *arg, Ns_Conn *conn, Ns_FilterType why)
     const Ns_TclCallback *cbPtr = arg;
     Tcl_DString           ds;
     Tcl_Interp           *interp;
-    int                   ii, rc;
+    int                   rc;
+    TCL_SIZE_T            ii;
     const char           *result;
     Ns_ReturnCode         status;
 
@@ -501,7 +488,7 @@ NsTclFilterProc(const void *arg, Ns_Conn *conn, Ns_FilterType why)
      * Append the command
      */
 
-    Tcl_DStringAppend(&ds, cbPtr->script, -1);
+    Tcl_DStringAppend(&ds, cbPtr->script, TCL_INDEX_NONE);
 
     /*
      * Append the 'why' argument

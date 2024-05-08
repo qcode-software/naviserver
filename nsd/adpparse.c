@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -47,7 +29,7 @@
 #define APPEND      "ns_adp_append "
 #define APPEND_LEN  (sizeof(APPEND) - 1u)
 
-#define LENGTH_SIZE       ((int)(sizeof(int)))
+#define LENGTH_SIZE       ((TCL_SIZE_T)(sizeof(int)))
 
 typedef enum {
     TagInlineCode,
@@ -90,7 +72,7 @@ static void AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsi
 static void AppendTag(Parse *parsePtr, const Tag *tagPtr, char *as, const char *ae, char *se, unsigned int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3)  NS_GNUC_NONNULL(4);
 
-static int RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int type)
+static int RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int type)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void AppendLengths(AdpCode *codePtr, const int *length, const int *line)
@@ -190,32 +172,32 @@ static bool TagValidChar (char c) {
  */
 
 int
-NsTclAdpRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_ADP);
 }
 
 int
-NsTclAdpRegisterTagObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterTagObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogDeprecated(objv, 1, "ns_adp_registeradp", NULL);
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_ADP);
 }
 
 int
-NsTclAdpRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_PROC);
 }
 
 int
-NsTclAdpRegisterScriptObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterScriptObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_SCRIPT);
 }
 
 int
-NsTclAdpRegisterAdptagObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterAdptagObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogDeprecated(objv, 1, "ns_adp_registerscript", NULL);
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_SCRIPT);
@@ -225,7 +207,7 @@ NsTclAdpRegisterAdptagObjCmd(ClientData clientData, Tcl_Interp *interp, int objc
  * The actual function doing the hard work.
  */
 static int
-RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, int type)
+RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int type)
 {
     int result = TCL_OK;
 
@@ -243,7 +225,7 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
         const char     *end, *tag, *content;
         Tcl_HashEntry  *hPtr;
         int             isNew;
-        int      slen, elen, tlen;
+        TCL_SIZE_T      slen, elen, tlen;
         Tcl_DString     tbuf;
         Tag            *tagPtr;
 
@@ -336,19 +318,19 @@ AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flags, const cha
     NS_NONNULL_ASSERT(adp != NULL);
 
     if ((flags & ADP_CACHE) == 0u) {
-        Tcl_DStringAppend(&codePtr->text, adp, -1);
+        Tcl_DStringAppend(&codePtr->text, adp, TCL_INDEX_NONE);
     } else {
         Ns_DStringPrintf(&codePtr->text,
                          "ns_adp_append {<%%"
                          "if {[info proc adp:%s] == {}} {"
                          "  proc adp:%s {} { uplevel [for {", file, file);
-        Tcl_DStringAppend(&codePtr->text, adp, -1);
+        Tcl_DStringAppend(&codePtr->text, adp, TCL_INDEX_NONE);
         Ns_DStringPrintf(&codePtr->text, "} {0} {} {}]}}\nadp:%s %%>}", file);
     }
     codePtr->nblocks = codePtr->nscripts = 1;
     /*
      * The cast of "text.length" to "int" is dangerous (for really big
-     * strings). "size" should be int, but we keep it so far due to the
+     * strings). "size" should be TCL_SIZE_T, but we keep it so far due to the
      * logic with the negative lengths.
      *
      * See also: keep "len" as int in AdpExec() in adpeval.c
@@ -946,20 +928,20 @@ AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsigned int fla
 
             switch (type) {
             case 'S':
-                Tcl_DStringAppend(&codePtr->text, APPEND, (int)APPEND_LEN);
-                Tcl_DStringAppend(&codePtr->text, s, (int)len);
+                Tcl_DStringAppend(&codePtr->text, APPEND, (TCL_SIZE_T)APPEND_LEN);
+                Tcl_DStringAppend(&codePtr->text, s, (TCL_SIZE_T)len);
                 break;
 
             case 't':
                 save = *e;
                 *e = '\0';
-                Tcl_DStringAppend(&codePtr->text, APPEND, (int)APPEND_LEN);
+                Tcl_DStringAppend(&codePtr->text, APPEND, (TCL_SIZE_T)APPEND_LEN);
                 Tcl_DStringAppendElement(&codePtr->text, s);
                 *e = save;
                 break;
 
             default:
-                Tcl_DStringAppend(&codePtr->text, s, (int)len);
+                Tcl_DStringAppend(&codePtr->text, s, (TCL_SIZE_T)len);
 
             }
             Tcl_DStringAppend(&codePtr->text, "\n", 1);
@@ -970,9 +952,9 @@ AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsigned int fla
             ++codePtr->nblocks;
             if (type == 'S') {
                 l += (ptrdiff_t)APPEND_LEN;
-                Tcl_DStringAppend(&codePtr->text, APPEND, (int)APPEND_LEN);
+                Tcl_DStringAppend(&codePtr->text, APPEND, (TCL_SIZE_T)APPEND_LEN);
             }
-            Tcl_DStringAppend(&codePtr->text, s, (int)len);
+            Tcl_DStringAppend(&codePtr->text, s, (TCL_SIZE_T)len);
             if (type != 't') {
                 ++codePtr->nscripts;
                 l = -l;
@@ -1030,7 +1012,7 @@ GetTag(Tcl_DString *dsPtr, char *s, const char *e, char **aPtr)
         ++s;
     }
     Tcl_DStringSetLength(dsPtr, 0);
-    Tcl_DStringAppend(dsPtr, t, (int)(s - t));
+    Tcl_DStringAppend(dsPtr, t, (TCL_SIZE_T)(s - t));
     if (aPtr != NULL) {
         while (s < e && CHARTYPE(space, *s) != 0) {
             ++s;
@@ -1242,12 +1224,12 @@ AppendTag(Parse *parsePtr, const Tag *tagPtr, char *as, const char *ae, char *se
     NS_NONNULL_ASSERT(ae != NULL);
 
     Tcl_DStringInit(&script);
-    Tcl_DStringAppend(&script, "ns_adp_append [", -1);
+    Tcl_DStringAppend(&script, "ns_adp_append [", TCL_INDEX_NONE);
     if (tagPtr->type == TAG_ADP) {
         /*
          * String will be an ADP fragment to evaluate.
          */
-        Tcl_DStringAppend(&script, "ns_adp_parse -- ", -1);
+        Tcl_DStringAppend(&script, "ns_adp_parse -- ", TCL_INDEX_NONE);
     }
     Tcl_DStringAppendElement(&script, tagPtr->content);
     if (tagPtr->type == TAG_PROC) {
@@ -1270,7 +1252,7 @@ AppendTag(Parse *parsePtr, const Tag *tagPtr, char *as, const char *ae, char *se
         /*
          * Append code to create set with tag attributes.
          */
-        Tcl_DStringAppend(&script, " [ns_set create", -1);
+        Tcl_DStringAppend(&script, " [ns_set create", TCL_INDEX_NONE);
         Tcl_DStringAppendElement(&script, tagPtr->tag);
         ParseAtts(as, ae, NULL, &script, 1);
         Tcl_DStringAppend(&script, "]", 1);
@@ -1305,7 +1287,7 @@ static void
 AppendLengths(AdpCode *codePtr, const int *length, const int *line)
 {
     Tcl_DString *textPtr;
-    int   start, ncopy;
+    TCL_SIZE_T   start, ncopy;
 
     NS_NONNULL_ASSERT(codePtr != NULL);
     NS_NONNULL_ASSERT(length != NULL);
@@ -1316,7 +1298,7 @@ AppendLengths(AdpCode *codePtr, const int *length, const int *line)
      * Need to round up start of lengths array to next word.
      */
     start = ((textPtr->length / LENGTH_SIZE) + 1) * LENGTH_SIZE;
-    ncopy = (int)codePtr->nblocks * LENGTH_SIZE;
+    ncopy = (TCL_SIZE_T)codePtr->nblocks * LENGTH_SIZE;
     Tcl_DStringSetLength(textPtr, start + (ncopy * 2));
     codePtr->len = (int *) (textPtr->string + start);
     codePtr->line = (int *) (textPtr->string + start + ncopy);

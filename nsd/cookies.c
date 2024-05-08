@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -395,7 +377,7 @@ GetAllNamedCookies(Ns_DString *dest, const Ns_Set *hdrs, const char *setName,
  *
  * DeleteNamedCookies --
  *
- *      Delete all cookies with the specified name form the given set.
+ *      Delete all cookies with the specified name from the given set.
  *
  * Results:
  *      Boolean value.
@@ -617,7 +599,7 @@ Ns_ConnGetCookie(Ns_DString *dest, const Ns_Conn *conn, const char *name)
 
 int
 NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *const* objv)
+                     TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn       *conn;
     char          *name, *data, *domain = NULL, *path = NULL;
@@ -726,7 +708,7 @@ NsTclSetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                     int objc, Tcl_Obj *const* objv)
+                     TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn       *conn;
     char          *nameString;
@@ -779,7 +761,7 @@ NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         } else if (defaultObj != NULL) {
             Tcl_SetObjResult(interp, defaultObj);
         } else {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj("no such cookie", -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj("no such cookie", TCL_INDEX_NONE));
             status = TCL_ERROR;
         }
         Ns_DStringFree(&ds);
@@ -807,7 +789,7 @@ NsTclGetCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclDeleteCookieObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                        int objc, Tcl_Obj *const* objv)
+                        TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Ns_Conn        *conn;
     char           *name, *domain = NULL, *path = NULL;

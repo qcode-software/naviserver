@@ -11,7 +11,7 @@ test ns_striphtml-1.0 {basic test} -body {
 
 test ns_striphtml-2.0.1 {nbsp entity} -body {
     ns_striphtml {hello&nbsp;world}
-} -result "hello world"
+} -result "hello world"
 test ns_striphtml-2.0.2 {bare less sign} -body {
     ns_striphtml {hello&lt;world}
 } -result "hello<world"
@@ -40,10 +40,30 @@ test ns_striphtml-2.0.9 {two entity next to each other} -body {
 test ns_striphtml-2.0.10 {entity immediately followed by opening tag} -body {
     ns_striphtml {a<a href='h'>b</a>c&amp;<a href='h'>d</a>e}
 } -result "abc&de"
-test ns_striphtml-2.0.11 {unknown entity} -body {
+test ns_striphtml-2.0.11 {legacy entity, terminating char ";" is not terminating it} -body {
     ns_striphtml {a&ltxxx;b}
-} -result "ab"
-
+} -result "a<xxx;b"
+test ns_striphtml-2.0.12 {legacy entity} -body {
+    ns_striphtml {a&ltb}
+} -result "a<b"
+test ns_striphtml-2.0.13 {legacy entity at the end of the line} -body {
+    ns_striphtml {a&lt}
+} -result "a<"
+test ns_striphtml-2.0.14 {unknown entity with semicolon is passed through} -body {
+    ns_striphtml {eee&xxxx;eee}
+} -result "eee&xxxx;eee"
+test ns_striphtml-2.0.15 {unknown entity with out semicolon is passed through} -body {
+    ns_striphtml {fff&xxxxfff}
+} -result "fff&xxxxfff"
+test ns_striphtml-2.0.16 {ampersand semicolon  at the end of the line} -body {
+    ns_striphtml {a&;}
+} -result "a&;"
+test ns_striphtml-2.0.17 {ampersand at the end of the line} -body {
+    ns_striphtml {a&}
+} -result "a&"
+test ns_striphtml-2.0.18 {only ampersand} -body {
+    ns_striphtml {&}
+} -result "&"
 
 test ns_striphtml-2.1 {euro entity} -body {
     ns_striphtml {hello&euro;world}
@@ -73,6 +93,8 @@ test ns_striphtml-2.4b {yen numeric entity} -body {
 
 test ns_striphtml-3.0 {table} -body {
     set t {
+        {"lates",   5, "⪭︀",   6, "/* U+02AAD U+0FE00 */"},
+        
                                 {"AElig",   5, "Æ", 2},
                                 {"Aacute",  6, "Á", 2},
                                 {"Acirc",   5, "Â", 2},
@@ -156,7 +178,7 @@ test ns_striphtml-3.0 {table} -body {
                                 {"copy",    4, "©", 2},
                                 {"crarr",   5, "↵", 2},
                                 {"cup",     3, "∪", 2},
-                                {"curren",  6, "¤", 2},
+                                {"curren",  6, "¤", 2, "/* U+000A4 */"},
                                 {"dArr",    4, "⇓", 2},
                                 {"darr",    4, "↓", 2},
                                 {"deg",     3, "°", 2},
@@ -201,7 +223,7 @@ test ns_striphtml-3.0 {table} -body {
                                 {"kappa",   5, "κ", 2},
                                 {"lArr",    4, "⇐", 2},
                                 {"lambda",  6, "λ", 2},
-                                {"lang",    4, "〈", 2},
+                                {"lang",    4, "⟨", 2},
                                 {"laquo",   5, "«", 2},
                                 {"larr",    4, "←", 2},
                                 {"lceil",   5, "⌈", 2},
@@ -216,11 +238,11 @@ test ns_striphtml-3.0 {table} -body {
                                 {"minus",   5, "−", 2},
                                 {"mu",      2, "μ", 2},
                                 {"nabla",   5, "∇", 2},
-                                {"nbsp",    4, " ", 1},
+                                {"nbsp",    4, " ", 2},
                                 {"ne",      2, "≠", 2},
                                 {"ni",      2, "∋", 2},
                                 {"not",     3, "¬", 2},
-                                {"notin",   5, "∉", 2},
+                                {"notin",   5, "∉", 2, "/* U+02209 */"},
                                 {"nsub",    4, "⊄", 2},
                                 {"ntilde",  6, "ñ", 2},
                                 {"nu",      2, "ν", 2},
@@ -253,7 +275,7 @@ test ns_striphtml-3.0 {table} -body {
                                 {"quot",    4, "\"", 1},
                                 {"rArr",    4, "⇒", 2},
                                 {"radic",   5, "√", 2},
-                                {"rang",    4, "〉", 2},
+                                {"rang",    4, "⟩", 2},
                                 {"raquo",   5, "»", 2},
                                 {"rarr",    4, "→", 2},
                                 {"rceil",   5, "⌉", 2},
@@ -298,9 +320,14 @@ test ns_striphtml-3.0 {table} -body {
                                 {"yacute",  6, "ý", 2},
                                 {"yen",     3, "¥", 2},
                                 {"yuml",    4, "ÿ", 2},
-                                {"zeta",    4, "ζ", 2},
-                                {NULL,      4, "", 0}
+                                {"zeta",    4, "ζ", 2}
     }
+    append t \
+        [subst {{"Tab",        3, "\t", 1}}], \n \
+        [subst {{"ThickSpace", 10, "\u205F\u200A", 6}}], \n \
+        [subst {{"nsce",        4, "\u2AB0\u0338", 6}}] \n \
+
+    
     regsub -all {{NULL,    0, "", 0}} $t "" t
     regsub -all {,} $t " " t
     set string ""
@@ -308,7 +335,7 @@ test ns_striphtml-3.0 {table} -body {
     foreach l $t {
         lassign $l name len value valueLen
         if {$len ne [string length $name]} {
-            ns_log notice "name length of <$name> incorrect, should be [string length $name]"
+            ns_log notice "name length $len of <$name> incorrect, should be [string length $name]"
         }
         append string   "&$name; "
         append expected "$value "
@@ -316,13 +343,23 @@ test ns_striphtml-3.0 {table} -body {
     set got [ns_striphtml $string]
     set result [expr {$expected eq $got}]
     if {$result eq 0} {
-        ns_log notice "\nexp: $expected\ngot: $got"
+        #ns_log notice "\nexp: $expected\ngot: $got"
+        set p 0
         foreach e [split $expected " "] g [split $got " "] {
-            ns_log notice "e $e g $g eq [expr {$e eq $g}]"
+            if {$e ne $g} {
+                ns_log notice "pos $p: e $e g $g eq [expr {$e eq $g}]"
+            }
+            incr p
         }
     }
     return $result
-} -result "1"
+} -returnCodes {error return ok} -result "1"
+
+test ns_striphtml-3.1.0 {growing byte representation} -body {
+    set s1 [string repeat "&nGt;" 1000]
+    set s2 [ns_striphtml $s1]
+    list [string length $s1] [string length $s2] [string length [encoding convertto utf-8 $s2]]
+} -result {5000 2000 6000}
 
 test ns_striphtml-4.0 {strip HTML comment} -body {
     ns_striphtml {hello<!-- SOME COMMENT -->World}
@@ -373,6 +410,204 @@ test ns_unquotehtml-2.2 {ns_unquotehtml with mermaids with different skin tones}
 } -result {🧜🏻 Light skin tone; 🧜🏾 Medium Dark skin tone.}
 
 
+test ns_unquotehtml-3.0.1 {legacy entity, terminating char ";" is not terminating it} -body {
+    ns_unquotehtml {a&ltxxx;b}
+} -result "a<xxx;b"
+test ns_unquotehtml-3.0.2 {legacy entity} -body {
+    ns_unquotehtml {a&ltb}
+} -result "a<b"
+test ns_unquotehtml-3.0.3 {legacy entity at the end of the line} -body {
+    ns_unquotehtml {a&lt}
+} -result "a<"
+test ns_unquotehtml-3.0.4 {unknown entity with semicolon is passed through} -body {
+    ns_unquotehtml {eee&xxxx;eee}
+} -result "eee&xxxx;eee"
+test ns_unquotehtml-3.0.5 {unknown entity with out semicolon is passed through} -body {
+    ns_unquotehtml {fff&xxxxfff}
+} -result "fff&xxxxfff"
+test ns_unquotehtml-3.0.6 {ampersand semicolon  at the end of the line} -body {
+    ns_unquotehtml {a&;}
+} -result "a&;"
+test ns_unquotehtml-3.0.7 {ampersand at the end of the line} -body {
+    ns_unquotehtml {a&}
+} -result "a&"
+test ns_unquotehtml-3.0.8 {only ampersand} -body {
+    ns_unquotehtml {&}
+} -result "&"
+
+test ns_unquotehtml-3.1.0 {growing byte representation} -body {
+    set s1 [string repeat "&nGt;" 1000]
+    set s2 [ns_unquotehtml $s1]
+    list [string length $s1] [string length $s2] [string length [encoding convertto utf-8 $s2]]
+} -result {5000 2000 6000}
+
+#######################################################################################
+#  test ns_parsehtml
+#######################################################################################
+
+test ns_parsehtml-1.0 {ns_parsehtml just with tags} -body {
+    set text {hello <b>foo</b> anchor <a href="/foo">world</a>.}
+    ns_parsehtml $text
+} -result {{text {hello }} {tag <b> {b {}}} {text foo} {tag </b> /b} {text { anchor }} {tag {<a href="/foo">} {a {href /foo}}} {text world} {tag </a> /a} {text .}}
+
+test ns_parsehtml-1.1.1 {ns_parsehtml with tags and comment} -body {
+    set text {hello <b>foo</b><!-- anchor <a href="/foo">world</a>-->.}
+    ns_parsehtml $text
+} -result {{text {hello }} {tag <b> {b {}}} {text foo} {tag </b> /b} {comment {<!-- anchor <a href="/foo">world</a>-->}} {text .}}
+
+test ns_parsehtml-1.1.2 {ns_parsehtml -with noangle flag} -body {
+    set text {hello <b>foo</b><!-- anchor <a href="/foo">world</a>-->.}
+    ns_parsehtml -noangle -- $text
+} -result {{text {hello }} {tag b {b {}}} {text foo} {tag /b /b} {comment {!-- anchor <a href="/foo">world</a>--}} {text .}}
+
+test ns_parsehtml-1.1.3 {ns_parsehtml with -onlytags flag} -body {
+    set text {hello <b>foo</b><!-- anchor <a href="/foo">world</a>-->.}
+    list [ns_parsehtml -onlytags -- $text]
+} -result {{{b {}} /b}}
+
+test ns_parsehtml-1.1.4 {ns_parsehtml with -noangle and -onlytags flags} -body {
+    set text {hello <b>foo</b><!-- anchor <a href="/foo">world</a>-->.}
+    list [ns_parsehtml -noangle -onlytags -- $text]
+} -returnCodes error -result {the options '-noangle' and '-onlytags' are mutually exclusive}
+
+
+test ns_parsehtml-1.2 {ns_parsehtml with tags and comment} -body {
+    set text {<input value=yes>}
+    ns_parsehtml $text
+} -result {{tag {<input value=yes>} {input {value yes}}}}
+
+test ns_parsehtml-1.3 {ns_parsehtml with single quote} -body {
+    set text {<input value='yes'>}
+    ns_parsehtml $text
+} -result {{tag {<input value='yes'>} {input {value yes}}}}
+
+test ns_parsehtml-1.4 {ns_parsehtml with double quote} -body {
+    set text {<input value="yes">}
+    ns_parsehtml $text
+} -result {{tag {<input value="yes">} {input {value yes}}}}
+
+test ns_parsehtml-1.5 {ns_parsehtml without explicit tag value} -body {
+    set text {<input disabled>}
+    ns_parsehtml $text
+} -result {{tag {<input disabled>} {input {disabled {}}}}}
+
+test ns_parsehtml-1.6 {ns_parsehtml with double quote and single quote} -body {
+    set text {<input aa="yes" cc='maybe'>}
+    ns_parsehtml $text
+} -result {{tag {<input aa="yes" cc='maybe'>} {input {aa yes cc maybe}}}}
+
+test ns_parsehtml-1.7 {ns_parsehtml tag with multiple notations} -body {
+    set text {<input aa="yes" bb=no cc='maybe'>}
+    ns_parsehtml $text
+} -result {{tag {<input aa="yes" bb=no cc='maybe'>} {input {aa yes bb no cc maybe}}}}
+
+test ns_parsehtml-1.8.0 {ns_parsehtml tag with multiple notations} -body {
+    set text {<input disabled a="yes" b=no c='maybe'>}
+    ns_parsehtml $text
+} -result {{tag {<input disabled a="yes" b=no c='maybe'>} {input {disabled {} a yes b no c maybe}}}}
+
+test ns_parsehtml-1.8.1 {ns_parsehtml tag with multiple notations with whitespace} -body {
+    set text {<input  disabled  a = "yes" b = no   c = 'maybe'  >}
+    ns_parsehtml $text
+} -result {{tag {<input  disabled  a = "yes" b = no   c = 'maybe'  >} {input {disabled {} a yes b no c maybe}}}}
+
+test ns_parsehtml-1.9 {ns_parsehtml with tabs with colons} -body {
+    set text {this is a file <adp:icon name="file"> icon}
+    ns_parsehtml $text
+} -result {{text {this is a file }} {tag {<adp:icon name="file">} {adp:icon {name file}}} {text { icon}}}
+
+test ns_parsehtml-1.10.1 {ns_parsehtml free standing less character with space} -body {
+    set text {a < b}
+    ns_parsehtml $text
+} -result {{text {a < b}}}
+test ns_parsehtml-1.10.2 {ns_parsehtml free standing less character without space} -body {
+    set text {a<b}
+    ns_parsehtml $text
+} -result {{text a<b}}
+
+test ns_parsehtml-2.0.0 {ns_parsehtml with tags ending with "="} -body {
+    set text {<input att=>}
+    ns_parsehtml $text
+} -result {{tag {<input att=>} {input {att {}}}}}
+
+test ns_parsehtml-2.0.1 {ns_parsehtml with tags ending with "=" plus spaces} -body {
+    set text {<input att = >}
+    ns_parsehtml $text
+} -result {{tag {<input att = >} {input {att {}}}}}
+
+test ns_parsehtml-2.1.0 {ns_parsehtml tag is not closed} -body {
+    set text {a <input att}
+    ns_parsehtml $text
+} -result {{text {a <input att}}}
+
+test ns_parsehtml-2.1.1 {ns_parsehtml tag is not closed} -body {
+    set text {<input att}
+    ns_parsehtml $text
+} -result {{text {<input att}}}
+
+test ns_parsehtml-2.2 {ns_parsehtml attribute quotes are not closed} -body {
+    set text {a <input att='123>}
+    ns_parsehtml $text
+} -result {{text {a }} {text {<input att='123>}}}
+
+test ns_parsehtml-2.3 {ns_parsehtml tag is closed inside the quotes} -body {
+    set text {a <input att='123>'}
+    ns_parsehtml $text
+} -result {{text {a }} {text {<input att='123>}} {text '}}
+
+test ns_parsehtml-2.4 {ns_parsehtml with non-closed comment - interpreted as text} -body {
+    set text {a <--input att='123>'}
+    ns_parsehtml $text
+} -result {{text {a }} {text {<--input att='123>'}}}
+
+test ns_parsehtml-2.5 {ns_parsehtml with pi} -body {
+    set text {a <?xml version="1.0" encoding="UTF-8" ?> b}
+    ns_parsehtml $text
+} -result {{text {a }} {pi {<?xml version="1.0" encoding="UTF-8" ?>}} {text { b}}}
+
+test ns_parsehtml-2.6 {ns_parsehtml with non-closed pi - interpreted as text} -body {
+    set text {a <?xml version="1.0" encoding="UTF-8" ? b}
+    ns_parsehtml $text
+} -result {{text {a <?xml version="1.0" encoding="UTF-8" ? b}}}
+
+
+test ns_parsehtml-3.1 {ns_parsehtml empty tag} -body {
+    set text {a <> b}
+    ns_parsehtml $text
+} -result {{text {a }} {text {<> b}}}
+
+test ns_parsehtml-3.2 {ns_parsehtml empty tag} -body {
+    set text {a < > b}
+    ns_parsehtml $text
+} -result {{text {a < > b}}}
+
+test ns_parsehtml-3.3 {ns_parsehtml empty tag} -body {
+    set text {a <}
+    ns_parsehtml $text
+} -result {{text {a <}}}
+
+test ns_parsehtml-3.4.1 {ns_parsehtml empty tag} -body {
+    set text {a <br /> b}
+    ns_parsehtml $text
+} -result {{text {a }} {tag {<br />} {br {}}} {text { b}}}
+test ns_parsehtml-3.4.2 {ns_parsehtml empty tag} -body {
+    set text {a <br/> b}
+    ns_parsehtml $text
+} -result {{text {a }} {tag <br/> {br {}}} {text { b}}}
+test ns_parsehtml-3.4.3 {ns_parsehtml empty tag} -body {
+    set text {a <br /> b}
+    ns_parsehtml $text
+} -result {{text {a }} {tag {<br />} {br {}}} {text { b}}}
+
+test ns_parsehtml-3.5 {ns_parsehtml funny tag name} -body {
+    set text {foo <t'x> bar}
+    ns_parsehtml $text
+} -result {{text {foo }} {text <t'x>} {text { bar}}}
+
+test ns_parsehtml-3.6 {ns_parsehtml containing text with multi-byte characters} -body {
+    set text {foo « <p> » bar}
+    ns_parsehtml $text
+} -result {{text {foo « }} {tag <p> {p {}}} {text { » bar}}}
 
 #
 # Local variables:

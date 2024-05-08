@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -107,6 +89,11 @@ static void ReleaseTask(Task *taskPtr)
 static void ReserveTask(Task *taskPtr)
     NS_GNUC_NONNULL(1);
 
+static void LogDebug(const char *before, Task *taskPtr, const char *after)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+static char *DStringAppendTaskFlags(Tcl_DString *dsPtr, unsigned int flags)
+    NS_GNUC_NONNULL(1);
+
 static Ns_ThreadProc TaskThread;
 
 #define Call(tp, w) ((*((tp)->proc))((Ns_Task *)(tp), (tp)->sock, (tp)->arg, (w)))
@@ -116,7 +103,7 @@ static Ns_ThreadProc TaskThread;
  */
 
 static TaskQueue *firstQueuePtr; /* List of all known task queues */
-static Ns_Mutex   lock;          /* Lock for the queue list */
+static Ns_Mutex   lock = NULL;   /* Lock for the queue list */
 
 /*
  * The following maps Ns_SockState bits to poll event bits.
@@ -132,6 +119,85 @@ static const struct {
     {NS_SOCK_WRITE,     POLLOUT},
     {NS_SOCK_READ,      POLLIN}
 };
+
+/*----------------------------------------------------------------------
+ *
+ * DStringAppendTaskFlags --
+ *
+ *      Append the provided task flags in human readable form.
+ *
+ * Results:
+ *      Tcl_DString value
+ *
+ * Side effects:
+ *      Appends to the Tcl_DString
+ *
+ *----------------------------------------------------------------------
+ */
+
+static char *
+DStringAppendTaskFlags(Tcl_DString *dsPtr, unsigned int flags)
+{
+    int    count = 0;
+    size_t i;
+    static const struct {
+        unsigned int state;
+        const char  *label;
+    } options[] = {
+        { TASK_INIT,     "INIT"},
+        { TASK_CANCEL,   "CANCEL"},
+        { TASK_WAIT,     "WAIT"},
+        { TASK_TIMEOUT,  "TIMEOUT"},
+        { TASK_DONE,     "DONE"},
+        { TASK_PENDING,  "PENDING"},
+        { TASK_EXPIRE,   "EXPIRE"},
+        { TASK_TIMEDOUT, "TIMEDOUT"},
+        { TASK_EXPIRED,  "EXPIRED"},
+    };
+
+    for (i=0; i<sizeof(options)/sizeof(options[0]); i++) {
+        if ((options[i].state & flags) != 0u) {
+            if (count > 0) {
+                Tcl_DStringAppend(dsPtr, "|", 1);
+            }
+            Tcl_DStringAppend(dsPtr, options[i].label, TCL_INDEX_NONE);
+            count ++;
+        }
+    }
+    return dsPtr->string;
+}
+
+/*----------------------------------------------------------------------
+ *
+ * LogDebug --
+ *
+ *      When task debugging is on, write a standardized debug message to the
+ *      log file, including the task flags in human readable
+ *      form.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Writes to the log file.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+LogDebug(const char *before, Task *taskPtr, const char *after)
+{
+    if (unlikely(Ns_LogSeverityEnabled(Ns_LogTaskDebug))) {
+        Tcl_DString dsFlags;
+
+        Tcl_DStringInit(&dsFlags);
+        Ns_Log(Ns_LogTaskDebug, "%s task:%p queue:%p flags:%s %s",
+               before,
+               (void*)taskPtr, (void*)taskPtr->queuePtr,
+               DStringAppendTaskFlags(&dsFlags, taskPtr->flags),
+               after);
+        Tcl_DStringFree(&dsFlags);
+    }
+}
 
 
 /*
@@ -195,6 +261,7 @@ Ns_CreateTaskQueue(const char *name)
     memcpy(queuePtr->name, name, nameLength + 1u);
     Ns_MutexInit(&queuePtr->lock);
     Ns_MutexSetName2(&queuePtr->lock, "ns:taskqueue", name);
+    Ns_CondInit(&queuePtr->cond);
 
     if (ns_sockpair(queuePtr->trigger) != 0) {
         Ns_Fatal("taskqueue: ns_sockpair() failed: %s",
@@ -441,7 +508,7 @@ Ns_TaskRun(Ns_Task *task)
 
     pfd.fd = taskPtr->sock;
 
-    Ns_Log(Ns_LogTaskDebug, "Ns_TaskRun: task:%p init", (void*)taskPtr);
+    LogDebug("Ns_TaskRun:", taskPtr, "init");
     Call(taskPtr, NS_SOCK_INIT);
 
     flags |= (TASK_TIMEDOUT|TASK_EXPIRED);
@@ -459,10 +526,10 @@ Ns_TaskRun(Ns_Task *task)
         }
         pfd.events = taskPtr->events;
         if (NsPoll(&pfd, (NS_POLL_NFDS_TYPE)1, timeoutPtr) != 1) {
-            Ns_Log(Ns_LogTaskDebug, "Ns_TaskRun: task:%p timeout",
-                   (void*)taskPtr);
+            LogDebug("Ns_TaskRun:", taskPtr, "timeout");
             Call(taskPtr, NS_SOCK_TIMEOUT);
-
+            //LogDebug("Ns_TaskRun:", taskPtr, "call DONE");
+            //Call(taskPtr, NS_SOCK_DONE);
             status = NS_TIMEOUT;
         } else {
             Ns_Time now;
@@ -472,8 +539,7 @@ Ns_TaskRun(Ns_Task *task)
     }
 
     if (status == NS_OK && (taskPtr->flags & flags) == 0u) {
-        Ns_Log(Ns_LogTaskDebug, "Ns_TaskRun: task:%p done",
-               (void*)taskPtr);
+        LogDebug("Ns_TaskRun:", taskPtr, "done");
         Call(taskPtr, NS_SOCK_DONE);
     }
 
@@ -694,10 +760,25 @@ Ns_TaskCallback(Ns_Task *task, Ns_SockState when, const Ns_Time *timeoutPtr)
 
     NS_NONNULL_ASSERT(task != NULL);
 
-    taskPtr = (Task *) task;
+    taskPtr = (Task *)task;
 
-    Ns_Log(Ns_LogTaskDebug, "Ns_TaskCallback: task:%p  when:%.2x, timeout:%p",
-           (void*)taskPtr, (int)when, (void*)timeoutPtr);
+    if (unlikely(Ns_LogSeverityEnabled(Ns_LogTaskDebug))) {
+        Tcl_DString dsTime, dsSockState;
+
+        Tcl_DStringInit(&dsTime);
+        Tcl_DStringInit(&dsSockState);
+        if (timeoutPtr != NULL) {
+            Ns_DStringAppendTime(&dsTime, timeoutPtr);
+            Tcl_DStringAppend(&dsTime, "s", 1);
+        } else {
+            Tcl_DStringAppend(&dsTime, "none", 4);
+        }
+        Ns_DStringAppendSockState(&dsSockState, when);
+        Ns_Log(Ns_LogTaskDebug, "Ns_TaskCallback: task:%p  when:%s, timeout:%s",
+               (void*)taskPtr, dsSockState.string, dsTime.string);
+        Tcl_DStringFree(&dsTime);
+        Tcl_DStringFree(&dsSockState);
+    }
 
     /*
      * Map Ns_SockState bits to poll bits.
@@ -877,17 +958,23 @@ NsWaitTaskQueueShutdown(const Ns_Time *toPtr)
 static void
 RunTask(Task *taskPtr, short revents, const Ns_Time *nowPtr)
 {
+    Tcl_DString dsFlags;
+
     NS_NONNULL_ASSERT(taskPtr != NULL);
 
-    Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p, flags:%.6x, revents:%.2x",
-           (void*)taskPtr, (int)taskPtr->flags, (int)revents);
+    if (unlikely(Ns_LogSeverityEnabled(Ns_LogTaskDebug))) {
+        Tcl_DStringInit(&dsFlags);
+        Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p, flags:%s, revents:%.2x",
+               (void*)taskPtr, DStringAppendTaskFlags(&dsFlags, taskPtr->flags),
+               (int)revents);
+        Tcl_DStringFree(&dsFlags);
+    }
 
     if ((taskPtr->flags & TASK_EXPIRE) != 0u
         && Ns_DiffTime(&taskPtr->expire, nowPtr, NULL) <= 0) {
-
         taskPtr->flags |= TASK_EXPIRED;
-        Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p expired, flags:%.6x",
-               (void*)taskPtr, taskPtr->flags);
+
+        LogDebug("RunTask: expired", taskPtr, "");
         Call(taskPtr, NS_SOCK_TIMEOUT);
 
     } else if (revents != 0) {
@@ -901,7 +988,7 @@ RunTask(Task *taskPtr, short revents, const Ns_Time *nowPtr)
         }
         for (index = 0u; index < Ns_NrElements(map); index++) {
             if ((revents & map[index].event) != 0) {
-                Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p events, event:%.2x",
+                Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p event:%.2x",
                        (void*)taskPtr, map[index].when);
                 Call(taskPtr, map[index].when);
             }
@@ -910,8 +997,8 @@ RunTask(Task *taskPtr, short revents, const Ns_Time *nowPtr)
                && Ns_DiffTime(&taskPtr->timeout, nowPtr, NULL) <= 0) {
 
         taskPtr->flags |= TASK_TIMEDOUT;
-        Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p timedout, flags:%.6x",
-               (void*)taskPtr, taskPtr->flags);
+        LogDebug("RunTask: saw timeout", taskPtr, "");
+
         Call(taskPtr, NS_SOCK_TIMEOUT);
     }
 
@@ -1148,7 +1235,6 @@ ReserveTask(Task *taskPtr)
  *
  *----------------------------------------------------------------------
  */
-
 static void
 TaskThread(void *arg)
 {
@@ -1179,12 +1265,22 @@ TaskThread(void *arg)
         /*
          * Handle all signaled tasks from the waiting list
          */
-
         while ((taskPtr = queuePtr->firstSignalPtr) != NULL) {
 
-            Ns_Log(Ns_LogTaskDebug, "signal-list handling for task:%p"
-                   " signalflags:%.6x flags:%.6x",
-                   (void*)taskPtr, taskPtr->signalFlags, taskPtr->flags);
+            if (unlikely(Ns_LogSeverityEnabled(Ns_LogTaskDebug))) {
+                Tcl_DString dsFlags;
+                Tcl_DString dsSignalFlags;
+
+                Tcl_DStringInit(&dsFlags);
+                Tcl_DStringInit(&dsSignalFlags);
+                Ns_Log(Ns_LogTaskDebug, "signal-list handling for task:%p"
+                       " signalflags:%s flags:%s",
+                       (void*)taskPtr,
+                       DStringAppendTaskFlags(&dsFlags, taskPtr->signalFlags),
+                       DStringAppendTaskFlags(&dsFlags, taskPtr->flags));
+                Tcl_DStringFree(&dsFlags);
+                Tcl_DStringFree(&dsSignalFlags);
+            }
 
             taskPtr->signalFlags &= ~TASK_PENDING;
 
@@ -1251,33 +1347,25 @@ TaskThread(void *arg)
             assert(taskPtr != taskPtr->nextWaitPtr);
             nextPtr = taskPtr->nextWaitPtr;
 
-            Ns_Log(Ns_LogTaskDebug, "wait-list handling for task:%p"
-                   " next:%p flags:%.6x",
-                   (void*)taskPtr, (void*)nextPtr, taskPtr->flags);
+            LogDebug("wait-list handling", taskPtr, "");
+            Ns_Log(Ns_LogTaskDebug, "... next:%p", (void*)nextPtr);
 
             if ((taskPtr->flags & TASK_INIT) != 0u) {
-
-                Ns_Log(Ns_LogTaskDebug, "TASK_INIT task:%p flags:%.6x",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_INIT", taskPtr, "");
 
                 taskPtr->flags &= ~(TASK_INIT);
                 Call(taskPtr, NS_SOCK_INIT);
 
-                Ns_Log(Ns_LogTaskDebug, "TASK_INIT task:%p flags:%.6x DONE",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_INIT", taskPtr, "DONE");
             }
             if ((taskPtr->flags & TASK_CANCEL) != 0u) {
-
-                Ns_Log(Ns_LogTaskDebug, "TASK_CANCEL task:%p flags:%.6x",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_CANCEL", taskPtr, "");
 
                 taskPtr->flags &= ~(TASK_CANCEL|TASK_WAIT);
                 taskPtr->flags |= TASK_DONE;
                 Call(taskPtr, NS_SOCK_CANCEL);
 
-                Ns_Log(Ns_LogTaskDebug, "TASK_CANCEL task:%p flags:%.6x DONE",
-                       (void*)taskPtr, taskPtr->flags);
-
+                LogDebug("TASK_CANCEL", taskPtr, "DONE");
             }
             if ((taskPtr->flags & TASK_EXPIRED) != 0u) {
 
@@ -1285,8 +1373,7 @@ TaskThread(void *arg)
                 signalFlags |= TASK_EXPIRED;
                 broadcast = NS_TRUE;
 
-                Ns_Log(Ns_LogTaskDebug, "TASK_EXPIRED task:%p flags:%.6x",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_EXPIRED", taskPtr, "");
             }
             if ((taskPtr->flags & TASK_TIMEDOUT) != 0u) {
 
@@ -1294,21 +1381,18 @@ TaskThread(void *arg)
                 signalFlags |= TASK_TIMEDOUT;
                 broadcast = NS_TRUE;
 
-                Ns_Log(Ns_LogTaskDebug, "TASK_TIMEDOUT task:%p flags:%.6x",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_TIMEDOUT", taskPtr, "");
             }
             if ((taskPtr->flags & TASK_DONE) != 0u) {
 
-                Ns_Log(Ns_LogTaskDebug, "TASK_DONE task:%p flags:%.6x",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_DONE", taskPtr, "");
 
                 taskPtr->flags &= ~(TASK_DONE|TASK_WAIT);
                 signalFlags |= TASK_DONE;
                 broadcast = NS_TRUE;
                 Call(taskPtr, NS_SOCK_DONE);
 
-                Ns_Log(Ns_LogTaskDebug, "TASK_DONE task:%p flags:%.6x DONE",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_DONE", taskPtr, "DONE");
             }
             if ((taskPtr->flags & TASK_WAIT) != 0u) {
 
@@ -1352,9 +1436,7 @@ TaskThread(void *arg)
                 taskPtr->nextWaitPtr = firstWaitPtr;
                 firstWaitPtr = taskPtr;
                 ReserveTask(taskPtr); /* Acquired for the waiting list */
-
-                Ns_Log(Ns_LogTaskDebug, "TASK_WAIT task:%p flags:%.6x",
-                       (void*)taskPtr, taskPtr->flags);
+                LogDebug("TASK_WAIT", taskPtr, "");
             }
 
             /*

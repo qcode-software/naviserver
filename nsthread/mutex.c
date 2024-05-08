@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -69,9 +51,10 @@ typedef struct Mutex {
     char             name[NS_THREAD_NAMESIZE+1];
 } Mutex;
 
-#define GETMUTEX(mutex) (*(mutex) != NULL ? ((Mutex *)*(mutex)) : GetMutex((mutex)))
+#define GETMUTEX(mutex, caller) (*(mutex) != NULL ? ((Mutex *)*(mutex)) : GetMutex((mutex), (caller)))
 
-static Mutex *GetMutex(Ns_Mutex *mutex) NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
+static Mutex *GetMutex(Ns_Mutex *mutex, const char *caller)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
 static Mutex *firstMutexPtr = NULL;
 
 
@@ -167,7 +150,10 @@ Ns_MutexSetName2(Ns_Mutex *mutex, const char *prefix, const char *name)
         nameLength = 0u;
     }
 
-    mutexPtr = GETMUTEX(mutex);
+    if (*mutex == NULL) {
+        Ns_MutexInit(mutex);
+    }
+    mutexPtr = (Mutex *)*mutex;
     assert(mutexPtr != NULL);
 
     Ns_MasterLock();
@@ -253,7 +239,7 @@ Ns_MutexLock(Ns_Mutex *mutex)
 
     NS_NONNULL_ASSERT(mutex != NULL);
 
-    mutexPtr = GETMUTEX(mutex);
+    mutexPtr = GETMUTEX(mutex, "Ns_MutexLock");
     assert(mutexPtr != NULL);
     if (unlikely(!NsLockTry(mutexPtr->lock))) {
         NsLockSet(mutexPtr->lock);
@@ -326,7 +312,7 @@ Ns_MutexTryLock(Ns_Mutex *mutex)
 
     NS_NONNULL_ASSERT(mutex != NULL);
 
-    mutexPtr = GETMUTEX(mutex);
+    mutexPtr = GETMUTEX(mutex, "Ns_MutexTryLock");
     if (!NsLockTry(mutexPtr->lock)) {
         return NS_TIMEOUT;
     }
@@ -426,7 +412,7 @@ Ns_MutexList(Tcl_DString *dsPtr)
                  (int64_t)mutexPtr->max_waiting_time.sec, mutexPtr->max_waiting_time.usec,
                  (int64_t)mutexPtr->total_lock_time.sec, mutexPtr->total_lock_time.usec
                  );
-        Tcl_DStringAppend(dsPtr, buf, -1);
+        Tcl_DStringAppend(dsPtr, buf, TCL_INDEX_NONE);
         Tcl_DStringEndSublist(dsPtr);
     }
     Ns_MasterUnlock();
@@ -492,7 +478,7 @@ NsGetLock(Ns_Mutex *mutex)
 
     NS_NONNULL_ASSERT(mutex != NULL);
 
-    mutexPtr = GETMUTEX(mutex);
+    mutexPtr = GETMUTEX(mutex, "NsGetLock");
     assert(mutexPtr != NULL);
 
     return mutexPtr->lock;
@@ -516,9 +502,17 @@ NsGetLock(Ns_Mutex *mutex)
  */
 
 static Mutex *
-GetMutex(Ns_Mutex *mutex)
+GetMutex(Ns_Mutex *mutex, const char *caller)
 {
     NS_NONNULL_ASSERT(mutex != NULL);
+
+    if (*mutex == NULL) {
+        fprintf(stderr, "%s: called with uninitialized lock pointer. "
+                "This should not happen, call Ns_MutexInit() before this call\n",
+                caller);
+        //{char *p = NULL; *p = 0;}
+        //Ns_MutexInit(mutex);
+    }
 
     Ns_MasterLock();
     if (*mutex == NULL) {
@@ -550,7 +544,7 @@ Ns_MutexGetName(Ns_Mutex *mutex)
 
     NS_NONNULL_ASSERT(mutex != NULL);
 
-    mutexPtr = GETMUTEX(mutex);
+    mutexPtr = GETMUTEX(mutex, "Ns_MutexGetName");
     return mutexPtr->name;
 }
 

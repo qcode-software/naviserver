@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -97,8 +79,8 @@ typedef struct RwLock {
     char             name[NS_THREAD_NAMESIZE+1];
 } RwLock;
 
-static RwLock *GetRwLock(Ns_RWLock *rwPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
+static RwLock *GetRwLock(Ns_RWLock *rwPtr, const char *caller)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
 
 
 static RwLock *firstRwlockPtr = NULL;
@@ -149,7 +131,7 @@ Ns_RWLockList(Tcl_DString *dsPtr)
                  (int64_t)0, (long)0,
                  rwlockPtr->nrlock, rwlockPtr->nwlock);
 #endif
-        Tcl_DStringAppend(dsPtr, buf, -1);
+        Tcl_DStringAppend(dsPtr, buf, TCL_INDEX_NONE);
         Tcl_DStringEndSublist(dsPtr);
     }
     Ns_MasterUnlock();
@@ -253,7 +235,10 @@ Ns_RWLockSetName2(Ns_RWLock *rwPtr, const char *prefix, const char *name)
         nameLength = 0u;
     }
 
-    lockPtr = GetRwLock(rwPtr);
+    if (*rwPtr == NULL) {
+        Ns_RWLockInit(rwPtr);
+    }
+    lockPtr = GetRwLock(rwPtr, "Ns_RWLockSetName2");
 
     Ns_MasterLock();
     p = lockPtr->name;
@@ -339,7 +324,7 @@ Ns_RWLockRdLock(Ns_RWLock *rwPtr)
 
     NS_NONNULL_ASSERT(rwPtr != NULL);
 
-    lockPtr = GetRwLock(rwPtr);
+    lockPtr = GetRwLock(rwPtr, "Ns_RWLockRdLock");
 
     err = pthread_rwlock_tryrdlock(&lockPtr->rwlock);
     if (unlikely(err == EBUSY)) {
@@ -392,7 +377,7 @@ Ns_RWLockWrLock(Ns_RWLock *rwPtr)
 
     NS_NONNULL_ASSERT(rwPtr != NULL);
 
-    lockPtr = GetRwLock(rwPtr);
+    lockPtr = GetRwLock(rwPtr, "Ns_RWLockWrLock");
 
 #ifndef NS_NO_MUTEX_TIMING
     Ns_GetTime(&startTime);
@@ -494,10 +479,18 @@ Ns_RWLockUnlock(Ns_RWLock *rwPtr)
  */
 
 static RwLock *
-GetRwLock(Ns_RWLock *rwPtr)
+GetRwLock(Ns_RWLock *rwPtr, const char *caller)
 {
     NS_NONNULL_ASSERT(rwPtr != NULL);
 
+    if (*rwPtr == NULL) {
+        fprintf(stderr, "%s: called with uninitialized lock pointer. "
+                "This should not happen, call Ns_RWLockInit() before this call\n",
+                caller);
+        Ns_RWLockInit(rwPtr);
+    }
+
+#ifdef KEEP_DOUBLE_LOCK
     if (*rwPtr == NULL) {
         Ns_MasterLock();
         if (*rwPtr == NULL) {
@@ -505,6 +498,9 @@ GetRwLock(Ns_RWLock *rwPtr)
         }
         Ns_MasterUnlock();
     }
+#else
+    assert(*rwPtr != NULL);
+#endif
     return (RwLock *) *rwPtr;
 }
 
@@ -526,7 +522,7 @@ typedef struct RwLock {
                          * readers, -1 indicates exclusive writer. */
 } RwLock;
 
-static RwLock *GetRwLock(Ns_RWLock *rwPtr)
+static RwLock *GetRwLock(Ns_RWLock *rwPtr, const char *caller)
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
 
@@ -672,7 +668,7 @@ Ns_RWLockRdLock(Ns_RWLock *rwPtr)
 
     NS_NONNULL_ASSERT(rwPtr != NULL);
 
-    lockPtr = GetRwLock(rwPtr);
+    lockPtr = GetRwLock(rwPtr, "Ns_RWLockRdLock");
     Ns_MutexLock(&lockPtr->mutex);
 
     /*
@@ -715,7 +711,7 @@ Ns_RWLockWrLock(Ns_RWLock *rwPtr)
 
     NS_NONNULL_ASSERT(rwPtr != NULL);
 
-    lockPtr = GetRwLock(rwPtr);
+    lockPtr = GetRwLock(rwPtr, "Ns_RWLockWrLock");
 
     Ns_MutexLock(&lockPtr->mutex);
     while (lockPtr->lockcnt != 0) {
@@ -782,10 +778,18 @@ Ns_RWLockUnlock(Ns_RWLock *rwPtr)
  */
 
 static RwLock *
-GetRwLock(Ns_RWLock *rwPtr)
+GetRwLock(Ns_RWLock *rwPtr, const char *caller)
 {
     NS_NONNULL_ASSERT(rwPtr != NULL);
 
+    if (*rwPtr == NULL) {
+        fprintf(stderr, "%s: called with uninitialized lock pointer. "
+                "This should not happen, call Ns_RWLockInit() before this call\n",
+                caller);
+        Ns_RWLockInit(rwPtr);
+    }
+
+#ifdef KEEP_DOUBLE_LOCK
     if (*rwPtr == NULL) {
         Ns_MasterLock();
         if (*rwPtr == NULL) {
@@ -793,6 +797,10 @@ GetRwLock(Ns_RWLock *rwPtr)
         }
         Ns_MasterUnlock();
     }
+#else
+    assert(*rwPtr != NULL);
+#endif
+
     return (RwLock *) *rwPtr;
 }
 

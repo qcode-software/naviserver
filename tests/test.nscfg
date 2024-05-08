@@ -6,7 +6,7 @@
 #
 # Make sure, the testfile runs with an expected locale
 #
-set env(LANG) en_US.UTF-8
+set ::env(LANG) en_US.UTF-8
 
 
 #
@@ -162,6 +162,7 @@ ns_section "ns/parameters" {
     ns_param   pidfile         [ns_config "test" home]/testserver/nsd.pid
     ns_param   logdebug        false
     ns_param   logdev          false
+    ns_param   lognotice       false
     ns_param   progressminsize 1
     ns_param   concurrentinterpcreate true   ;# default: false
     #ns_param  formfallbackcharset iso8859-1
@@ -293,6 +294,7 @@ ns_section "ns/server/test/module/nsproxy" {
 
 ns_section "ns/server/test/module/nscp" {
     ns_param   port            $nscp_port
+    ns_param   address         [ns_config "test" loopback]
 }
 
 ns_section "ns/server/test/module/nscp/users" {
@@ -300,13 +302,39 @@ ns_section "ns/server/test/module/nscp/users" {
     ns_param   user            "nsadmin:t2GqvvaiIUbF2:" ;# sample user="nsadmin", pw="x".
 }
 
+ns_section ns/server/test/module/nscgi {
+    ns_param    map                 "GET /cgi-wc/*"
+    ns_param    map                 "GET /cgi-dir/*.tclcgi [ns_config test home]/testserver/cgi"
+    ns_param    map                 "GET *.cgi"
+    ns_param    interps              CGIinterps
+    ns_param    allowstaticresources true    ;# default false; serve static resources from cgi directories
+    ns_param    systemenvironment    true    ;# default false, provide interpreter environment to script
+}
+
+ns_section ns/interps/CGIinterps {
+    set tclsh ""
+    foreach path {/usr/local/ns/bin /usr/local/bin /opt/local/bin /usr/bin} {
+        foreach version {tclsh8.6 tclsh8.7 tclsh9 tclsh} {
+            if {[file executable $path/$version]} {
+                set tclsh $path/$version
+                break
+            }
+        }
+        if {$tclsh ne ""} break
+    }
+    ns_log notice "Use tclsh for CGI tests <$tclsh>"
+    ns_param .cgi                $tclsh
+    ns_param .tclcgi             $tclsh
+    ns_param .sh                 "/bin/bash"
+}
 
 ns_section "ns/server/test/modules" {
     ns_param   nslog           [ns_config "test" home]/../nslog/nslog[sharedlibextension]
     ns_param   nsdb            [ns_config "test" home]/../nsdb/nsdb[sharedlibextension]
     ns_param   nsproxy         [ns_config "test" home]/../nsproxy/nsproxy[sharedlibextension]
+    ns_param   nscgi           [ns_config "test" home]/../nscgi/nscgi[sharedlibextension]
     if {$nscp_port ne ""} {
-        ns_param nscp          [ns_config "test" home]/../nscp/nscp
+        ns_param nscp          [ns_config "test" home]/../nscp/nscp[sharedlibextension]
     }
 }
 
@@ -408,3 +436,6 @@ ns_section "ns/db/pool/b" {
     ns_param   maxidle         1
     ns_param   maxopen         1
 }
+puts stderr "=================================="
+ns_logctl severity notice off
+ns_logctl severity warning off

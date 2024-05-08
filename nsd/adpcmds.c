@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -38,22 +20,22 @@
 /*
  * Static variables defined in this file.
  */
-static Ns_ObjvValueRange posintRange0 = {0, INT_MAX};
+static Ns_ObjvValueRange posintRange0 = {0, TCL_SIZE_MAX};
 
 /*
  * Local functions defined in this file.
  */
 
-static int ExceptionObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *const* objv,
+static int ExceptionObjCmd(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv,
                            AdpResult exception) NS_GNUC_NONNULL(1);
 static int GetFrame(const ClientData clientData, AdpFrame **framePtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static int GetOutput(ClientData clientData, Tcl_DString **dsPtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static int GetInterp(Tcl_Interp *interp, NsInterp **itPtrPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int AdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc,
+static int AdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc,
                           Tcl_Obj *const* objv, bool doStream);
 
-static Tcl_ObjCmdProc AdpCtlBufSizeObjCmd;
+static TCL_OBJCMDPROC_T AdpCtlBufSizeObjCmd;
 
 
 /*
@@ -75,7 +57,7 @@ static Tcl_ObjCmdProc AdpCtlBufSizeObjCmd;
  */
 
 int
-Ns_AdpAppend(Tcl_Interp *interp, const char *buf, int len)
+Ns_AdpAppend(Tcl_Interp *interp, const char *buf, TCL_SIZE_T len)
 {
     NsInterp *itPtr;
     int       status;
@@ -92,7 +74,7 @@ Ns_AdpAppend(Tcl_Interp *interp, const char *buf, int len)
 }
 
 int
-NsAdpAppend(NsInterp *itPtr, const char *buf, int len)
+NsAdpAppend(NsInterp *itPtr, const char *buf, TCL_SIZE_T len)
 {
     Tcl_DString *bufPtr;
     int          status = TCL_OK;
@@ -175,7 +157,7 @@ Ns_AdpGetOutput(Tcl_Interp *interp, Tcl_DString **dsPtrPtr,
  */
 
 int
-NsTclAdpIdentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpIdentObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     AdpFrame *framePtr = NULL;
     int       result = TCL_OK;
@@ -221,21 +203,22 @@ NsTclAdpIdentObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 static int
-AdpCtlBufSizeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+AdpCtlBufSizeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    int               intVal = -1, result = TCL_OK;
+    int               result = TCL_OK;
+    Tcl_WideInt       size = -1;
     NsInterp         *itPtr = clientData;
-    Ns_ObjvValueRange bufsizeRange = {1, INT_MAX};
+    Ns_ObjvValueRange bufsizeRange = {1, SSIZE_MAX};
     Ns_ObjvSpec args[] = {
-        {"?size", Ns_ObjvInt,  &intVal, &bufsizeRange},
+        {"?size", Ns_ObjvWideInt,  &size, &bufsizeRange},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
         result = TCL_ERROR;
     } else {
-        if (intVal > -1) {
-            itPtr->adp.bufsize = (size_t)intVal;
+        if (size > -1) {
+            itPtr->adp.bufsize = (size_t)size;
         }
         Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)itPtr->adp.bufsize));
     }
@@ -243,7 +226,7 @@ AdpCtlBufSizeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
 }
 
 int
-NsTclAdpCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp    *itPtr = clientData;
     Tcl_Channel  chan;
@@ -371,10 +354,11 @@ NsTclAdpCtlObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
  */
 
 int
-NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     char          *fileName = NULL;
-    int            result, tclScript = 0, nocache = 0, nargs = 0;
+    int            result, tclScript = 0, nocache = 0;
+    TCL_SIZE_T     nargs = 0;
     Ns_Time       *ttlPtr = NULL;
 
     Ns_ObjvSpec opts[] = {
@@ -396,8 +380,8 @@ NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
         unsigned int   flags;
         Tcl_DString   *dsPtr;
 
-        objv = objv + (objc - nargs);
-        objc = nargs;
+        objv = objv + (objc - (TCL_OBJC_T)nargs);
+        objc = (TCL_OBJC_T)nargs;
 
         flags = itPtr->adp.flags;
         if (nocache != 0) {
@@ -417,9 +401,9 @@ NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
                 result = TCL_ERROR;
 
             } else {
-                int i;
+                TCL_OBJC_T i;
 
-                Tcl_DStringAppend(dsPtr, "<% ns_adp_include", -1);
+                Tcl_DStringAppend(dsPtr, "<% ns_adp_include", TCL_INDEX_NONE);
                 if ((itPtr->adp.flags & ADP_TCLFILE) != 0u) {
                     Tcl_DStringAppendElement(dsPtr, "-tcl");
                 }
@@ -457,9 +441,10 @@ NsTclAdpIncludeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_O
  */
 
 int
-NsTclAdpParseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpParseObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
-    int         result, nargs = 0;
+    int         result;
+    TCL_SIZE_T  nargs = 0;
     int         asFile = (int)NS_FALSE, safe = (int)NS_FALSE, asString = (int)NS_FALSE, tclScript = (int)NS_FALSE;
     char       *cwd = NULL;
     Ns_ObjvSpec opts[] = {
@@ -479,8 +464,8 @@ NsTclAdpParseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
         result = TCL_ERROR;
 
     } else {
-        objv = objv + (objc - nargs);
-        objc = nargs;
+        objv = objv + (objc - (TCL_OBJC_T)nargs);
+        objc = (TCL_OBJC_T)nargs;
 
         if (asString && asFile) {
             Ns_TclPrintfResult(interp, "specify either '-string' or '-file', but not both.");
@@ -556,7 +541,7 @@ NsTclAdpParseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclAdpAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpAppendObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp *itPtr = clientData;
     int       result = TCL_OK;
@@ -565,10 +550,10 @@ NsTclAdpAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
         Tcl_WrongNumArgs(interp, 1, objv, "string ?string ...?");
         result = TCL_ERROR;
     } else {
-        int i;
+        TCL_OBJC_T i;
 
         for (i = 1; i < objc; ++i) {
-            int         len;
+            TCL_SIZE_T  len;
             const char *s = Tcl_GetStringFromObj(objv[i], &len);
 
             if (NsAdpAppend(itPtr, s, len) != TCL_OK) {
@@ -581,11 +566,12 @@ NsTclAdpAppendObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Ob
 }
 
 int
-NsTclAdpPutsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpPutsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp   *itPtr = clientData;
     char       *chars = NULL;
-    int         length = 0, nonewline = 0, result = TCL_OK;
+    int         nonewline = 0, result = TCL_OK;
+    TCL_SIZE_T  length = 0;
     Ns_ObjvSpec opts[] = {
         {"-nonewline", Ns_ObjvBool,  &nonewline, INT2PTR(NS_TRUE)},
         {"--",         Ns_ObjvBreak, NULL,       NULL},
@@ -627,7 +613,7 @@ NsTclAdpPutsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclAdpDirObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpDirObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     int             status = TCL_OK;
@@ -636,7 +622,7 @@ NsTclAdpDirObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
         Tcl_WrongNumArgs(interp, 1, objv, NULL);
         status = TCL_ERROR;
     } else {
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(itPtr->adp.cwd, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(itPtr->adp.cwd, TCL_INDEX_NONE));
     }
 
     return status;
@@ -663,25 +649,25 @@ NsTclAdpDirObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *
 
 
 int
-NsTclAdpReturnObjCmd(ClientData clientData, Tcl_Interp *UNUSED(interp), int objc, Tcl_Obj *const* objv)
+NsTclAdpReturnObjCmd(ClientData clientData, Tcl_Interp *UNUSED(interp), TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ExceptionObjCmd(clientData, objc, objv, ADP_RETURN);
 }
 
 int
-NsTclAdpBreakObjCmd(ClientData clientData, Tcl_Interp *UNUSED(interp), int objc, Tcl_Obj *const* objv)
+NsTclAdpBreakObjCmd(ClientData clientData, Tcl_Interp *UNUSED(interp), TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return ExceptionObjCmd(clientData, objc, objv, ADP_BREAK);
 }
 
 int
-NsTclAdpAbortObjCmd(ClientData clientData, Tcl_Interp *UNUSED(interp), int objc,  Tcl_Obj *const* objv)
+NsTclAdpAbortObjCmd(ClientData clientData, Tcl_Interp *UNUSED(interp), TCL_OBJC_T objc,  Tcl_Obj *const* objv)
 {
     return ExceptionObjCmd(clientData, objc, objv, ADP_ABORT);
 }
 
 static int
-ExceptionObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, AdpResult exception)
+ExceptionObjCmd(NsInterp *itPtr, TCL_OBJC_T objc, Tcl_Obj *const* objv, AdpResult exception)
 {
     Tcl_Obj     *retValObj = NULL;
     Ns_ObjvSpec  args[] = {
@@ -723,7 +709,7 @@ ExceptionObjCmd(NsInterp *itPtr, int objc, Tcl_Obj *const* objv, AdpResult excep
  */
 
 int
-NsTclAdpTellObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpTellObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_DString *dsPtr;
     int          result;
@@ -762,12 +748,13 @@ NsTclAdpTellObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclAdpTruncObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpTruncObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_DString      *dsPtr;
-    int               length = 0, result = TCL_OK;
+    int               result = TCL_OK;
+    Tcl_WideInt       length = 0;
     Ns_ObjvSpec  args[] = {
-        {"?length",  Ns_ObjvInt, &length, &posintRange0},
+        {"?length",  Ns_ObjvWideInt, &length, &posintRange0},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -778,7 +765,7 @@ NsTclAdpTruncObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
         if (GetOutput(clientData, &dsPtr) != TCL_OK) {
             result = TCL_ERROR;
         } else {
-            Ns_DStringSetLength(dsPtr, length);
+            Ns_DStringSetLength(dsPtr, (TCL_SIZE_T)length);
         }
     }
     return result;
@@ -803,7 +790,7 @@ NsTclAdpTruncObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclAdpDumpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpDumpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_DString *dsPtr;
     int          result;
@@ -842,7 +829,7 @@ NsTclAdpDumpObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclAdpInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     AdpFrame *framePtr = NULL;
     int       result;
@@ -857,7 +844,7 @@ NsTclAdpInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
     } else {
         Tcl_Obj  * resultObj = Tcl_NewListObj(0, NULL);
 
-        result = Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(framePtr->file, -1));
+        result = Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(framePtr->file, TCL_INDEX_NONE));
         if (likely(result == TCL_OK)) {
             result = Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewWideIntObj((Tcl_WideInt)framePtr->size));
         }
@@ -890,7 +877,7 @@ NsTclAdpInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclAdpArgcObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpArgcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     AdpFrame *framePtr = NULL;
     int       result;
@@ -929,13 +916,14 @@ NsTclAdpArgcObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclAdpArgvObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpArgvObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     AdpFrame         *framePtr = NULL;
     Tcl_Obj          *defaultObj = NULL;
-    int               idx = 0, result = TCL_OK;
+    int               result = TCL_OK;
+    Tcl_WideInt       idx = 0;
     Ns_ObjvSpec       args[] = {
-        {"?index",   Ns_ObjvInt, &idx,        &posintRange0},
+        {"?index",   Ns_ObjvWideInt, &idx,   &posintRange0},
         {"?default", Ns_ObjvObj, &defaultObj, NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -948,7 +936,7 @@ NsTclAdpArgvObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
 
     } else {
         if (objc == 1) {
-            Tcl_SetListObj(Tcl_GetObjResult(interp), (int)framePtr->objc, framePtr->objv);
+            Tcl_SetListObj(Tcl_GetObjResult(interp), (TCL_SIZE_T)framePtr->objc, framePtr->objv);
         } else {
             if ((idx + 1) <= (int)framePtr->objc) {
                 Tcl_SetObjResult(interp, framePtr->objv[idx]);
@@ -979,7 +967,7 @@ NsTclAdpArgvObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj 
  */
 
 int
-NsTclAdpBindArgsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpBindArgsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     AdpFrame *framePtr = NULL;
     int       result = TCL_OK;
@@ -991,12 +979,12 @@ NsTclAdpBindArgsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
     } else if (GetFrame(clientData, &framePtr) != TCL_OK) {
         result = TCL_ERROR;
 
-    } else if (objc != (int)framePtr->objc) {
+    } else if (objc != framePtr->objc) {
         Ns_TclPrintfResult(interp, "invalid #variables");
         result = TCL_ERROR;
 
     } else {
-        int i;
+        TCL_OBJC_T i;
 
         for (i = 1; i < objc; ++i) {
             if (Tcl_ObjSetVar2(interp, objv[i], NULL, framePtr->objv[i],
@@ -1028,7 +1016,7 @@ NsTclAdpBindArgsObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
  */
 
 int
-NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj        *varnameObj = NULL;
     int             result = TCL_OK;
@@ -1064,7 +1052,7 @@ NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
                 exception = "timeout";
                 break;
             }
-            if (Tcl_ObjSetVar2(interp, varnameObj, NULL, Tcl_NewStringObj(exception, -1),
+            if (Tcl_ObjSetVar2(interp, varnameObj, NULL, Tcl_NewStringObj(exception, TCL_INDEX_NONE),
                                TCL_LEAVE_ERR_MSG) == NULL) {
                 result = TCL_ERROR;
             }
@@ -1092,7 +1080,7 @@ NsTclAdpExceptionObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl
  */
 
 static int
-AdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, bool doStream)
+AdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, bool doStream)
 {
     int result;
 
@@ -1108,13 +1096,13 @@ AdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *con
 }
 
 int
-NsTclAdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpFlushObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return AdpFlushObjCmd(clientData, interp, objc, objv, NS_TRUE);
 }
 
 int
-NsTclAdpCloseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpCloseObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return AdpFlushObjCmd(clientData, interp, objc, objv, NS_FALSE);
 }
@@ -1138,7 +1126,7 @@ NsTclAdpCloseObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclAdpDebugObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpDebugObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     NsInterp   *itPtr = clientData;
     char       *host = NULL, *port = NULL, *procs = NULL;
@@ -1191,7 +1179,7 @@ NsTclAdpDebugObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj
  */
 
 int
-NsTclAdpMimeTypeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclAdpMimeTypeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     Ns_Conn        *conn  = itPtr->conn;
@@ -1212,7 +1200,7 @@ NsTclAdpMimeTypeObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_
             Ns_ConnSetEncodedTypeHeader(conn, mimetypeString);
         }
         type = Ns_SetIGet(conn->outputheaders, "Content-Type");
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(type, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(type, TCL_INDEX_NONE));
     }
     return result;
 }

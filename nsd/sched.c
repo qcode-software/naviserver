@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -100,9 +82,9 @@ static bool Larger(int j, int k);       /* Function defining the sorting
  */
 
 static Tcl_HashTable eventsTable;   /* Hash table of events. */
-static Ns_Mutex lock;               /* Lock around heap and hash table. */
-static Ns_Cond schedcond;           /* Condition to wakeup SchedThread. */
-static Ns_Cond eventcond;           /* Condition to wakeup EventThread(s). */
+static Ns_Mutex lock = NULL;        /* Lock around heap and hash table. */
+static Ns_Cond schedcond = NULL;    /* Condition to wakeup SchedThread. */
+static Ns_Cond eventcond = NULL;    /* Condition to wakeup EventThread(s). */
 static Event **queue = NULL;        /* Heap priority queue (dynamically re-sized). */
 static Event *firstEventPtr = NULL; /* Pointer to the first event */
 static int nqueue = 0;              /* Number of events in queue. */
@@ -164,6 +146,8 @@ NsInitSched(void)
 {
     Ns_MutexInit(&lock);
     Ns_MutexSetName(&lock, "ns:sched");
+    Ns_CondInit(&schedcond);
+    Ns_CondInit(&eventcond);
     Tcl_InitHashTable(&eventsTable, TCL_ONE_WORD_KEYS);
 }
 

@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -35,12 +17,25 @@
 
 #include "nsd.h"
 
+#ifndef _MSC_VER
+# include <dlfcn.h>
+#endif
+
 /*
  * Static variables defined in this file.
  */
 
 static Ns_ThreadArgProc ThreadArgProc;
+#ifndef _MSC_VER
+typedef void (*MallocExtension_GetStats_t)(char *, int);
+typedef void (*MallocExtension_ReleaseFreeMemory_t)(void);
+static MallocExtension_GetStats_t MallocExtensionGetStats = NULL;
+static MallocExtension_ReleaseFreeMemory_t MallocExtensionReleaseFreeMemory = NULL;
+static void* preload_library_handle = NULL;
+static const char *preload_library_name = NULL;
+static const char *mallocLibraryVersionString = "unknown";
 
+#endif
 
 /*
  *----------------------------------------------------------------------
@@ -513,6 +508,100 @@ Ns_InfoSSL(void)
 /*
  *----------------------------------------------------------------------
  *
+ * NsInitInfo --
+ *
+ *      Initialize the elements of the nsconf structure which may
+ *      require Ns_Log to be initialized first.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+void
+NsInitInfo(void)
+{
+    Ns_DString addr;
+
+    if (gethostname((char *)nsconf.hostname, sizeof(nsconf.hostname)) != 0) {
+        memcpy(nsconf.hostname, "localhost", 10u);
+    }
+    Ns_DStringInit(&addr);
+    if (Ns_GetAddrByHost(&addr, nsconf.hostname)) {
+        assert(addr.length < (int)sizeof(nsconf.address));
+        memcpy(nsconf.address, addr.string, (size_t)addr.length + 1u);
+    } else {
+        memcpy(nsconf.address, NS_IP_UNSPECIFIED, strlen(NS_IP_UNSPECIFIED));
+    }
+    Ns_DStringFree(&addr);
+
+
+#ifndef _MSC_VER
+    {
+
+        preload_library_name = getenv("LD_PRELOAD");
+
+        if (preload_library_name != NULL) {
+            typedef const char *(*MallocExtension_GetVersion_t)(int *, int *, const char**);
+            static MallocExtension_GetVersion_t MallocExtensionGetVersion = NULL;
+
+            /*
+             * Get a handle to the malloc library to be able to obtain
+             * symbols from there. The library is kept open, it could be
+             * closed during shutdown with "dlclose(preload_library_handle)".
+             */
+            preload_library_handle = dlopen(preload_library_name, RTLD_LAZY);
+            if (preload_library_handle == NULL) {
+                Ns_Log(Warning, "could not open preload library '%s'", preload_library_name);
+            } else {
+                void *symbol;
+
+                symbol = dlsym(preload_library_handle, "MallocExtension_GetStats");
+                memcpy(&MallocExtensionGetStats, &symbol, sizeof(ns_funcptr_t));
+
+                symbol = dlsym(preload_library_handle, "tc_version");
+                memcpy(&MallocExtensionGetVersion, &symbol, sizeof(ns_funcptr_t));
+
+                symbol = dlsym(preload_library_handle, "MallocExtension_ReleaseFreeMemory");
+                memcpy(&MallocExtensionReleaseFreeMemory, &symbol, sizeof(ns_funcptr_t));
+
+                if (MallocExtensionGetVersion != NULL) {
+                    mallocLibraryVersionString = MallocExtensionGetVersion(NULL, NULL, NULL);
+                }
+
+                Ns_Log(Notice, "preload library '%s' opened, version %s, found stats symbol: %d",
+                       preload_library_name, mallocLibraryVersionString, MallocExtensionGetStats != NULL);
+# if 0
+                {
+                    int i = 0;
+                    const char *symbolName, *tab[] =  {
+                        "malloc",
+                        "free",
+                        "MallocExtension_GetStats",
+                        "MallocExtension_ReleaseFreeMemory",
+                        "malloc_stats",
+                        "tc_version",
+                        NULL
+                    };
+                    for (symbolName = tab[0]; symbolName != NULL; symbolName=tab[++i]) {
+                        Ns_Log(Notice, "symbol lookup %s -> %p",
+                               symbolName, dlsym(preload_library_handle, symbolName));
+                    }
+                }
+# endif
+            }
+        }
+    }
+#endif
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * NsTclInfoObjCmd --
  *
  *      Implements "ns_info".
@@ -527,7 +616,7 @@ Ns_InfoSSL(void)
  */
 
 int
-NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int             opt, result = TCL_OK;
     bool            done = NS_TRUE;
@@ -535,9 +624,9 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
     Tcl_DString     ds;
 
     static const char *const opts[] = {
-        "address", "argv0", "boottime", "builddate", "callbacks",
+        "address", "argv0", "boottime", "builddate", "buildinfo", "callbacks",
         "config", "home", "hostname", "ipv6", "locks", "log",
-        "major", "minor", "mimetypes", "name", "nsd", "pagedir",
+        "major", "meminfo", "minor", "mimetypes", "name", "nsd", "pagedir",
         "pageroot", "patchlevel", "pid", "platform", "pools",
         "scheduled", "server", "servers",
         "sockcallbacks", "ssl", "tag", "tcllib", "threads", "uptime",
@@ -546,9 +635,9 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
     };
 
     enum {
-        IAddressIdx, IArgv0Idx, IBoottimeIdx, IBuilddateIdx, ICallbacksIdx,
+        IAddressIdx, IArgv0Idx, IBoottimeIdx, IBuilddateIdx, IBuildinfoIdx, ICallbacksIdx,
         IConfigIdx, IHomeIdx, IHostNameIdx, IIpv6Idx, ILocksIdx, ILogIdx,
-        IMajorIdx, IMinorIdx, IMimeIdx, INameIdx, INsdIdx,
+        IMajorIdx, IMeminfoIdx, IMinorIdx, IMimeIdx, INameIdx, INsdIdx,
         IPageDirIdx, IPageRootIdx, IPatchLevelIdx,
         IPidIdx, IPlatformIdx, IPoolsIdx,
         IScheduledIdx, IServerIdx, IServersIdx,
@@ -557,12 +646,16 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         IUrl2FileIdx, IShutdownPendingIdx, IStartedIdx
     };
 
-    if (unlikely(objc != 2)) {
+    if (unlikely(objc < 2)) {
         Tcl_WrongNumArgs(interp, 1, objv, "option");
         return TCL_ERROR;
-    }
-    if (unlikely(Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
+    } else if (unlikely(Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
                                      &opt) != TCL_OK)) {
+        return TCL_ERROR;
+    }
+    if ((opt != IMeminfoIdx && objc != 2)
+        || (opt == IMeminfoIdx && (objc < 2 || objc > 3))) {
+        Tcl_WrongNumArgs(interp, 1, objv, "option");
         return TCL_ERROR;
     }
 
@@ -570,7 +663,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
 
     switch (opt) {
     case IArgv0Idx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(nsconf.argv0, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(nsconf.argv0, TCL_INDEX_NONE));
         break;
 
     case IStartedIdx:
@@ -582,15 +675,15 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         break;
 
     case INsdIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(nsconf.nsd, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(nsconf.nsd, TCL_INDEX_NONE));
         break;
 
     case INameIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoServerName(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoServerName(), TCL_INDEX_NONE));
         break;
 
     case IConfigIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoConfigFile(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoConfigFile(), TCL_INDEX_NONE));
         break;
 
     case ICallbacksIdx:
@@ -629,17 +722,17 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
     case ILogIdx:
         {
             const char *elog = Ns_InfoErrorLog();
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(elog == NULL ? "STDOUT" : elog, -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(elog == NULL ? "STDOUT" : elog, TCL_INDEX_NONE));
         }
         break;
 
     case IPlatformIdx:
         Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoPlatform(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoPlatform(), TCL_INDEX_NONE));
         break;
 
     case IHostNameIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHostname(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHostname(), TCL_INDEX_NONE));
         break;
 
     case IIpv6Idx:
@@ -647,7 +740,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         break;
 
     case IAddressIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoAddress(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoAddress(), TCL_INDEX_NONE));
         break;
 
     case IUptimeIdx:
@@ -676,15 +769,15 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         break;
 
     case IVersionIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(NS_VERSION, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(NS_VERSION, TCL_INDEX_NONE));
         break;
 
     case IPatchLevelIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(NS_PATCH_LEVEL, -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(NS_PATCH_LEVEL, TCL_INDEX_NONE));
         break;
 
     case IHomeIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHomePath(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHomePath(), TCL_INDEX_NONE));
         break;
 
     case IWinntIdx:
@@ -697,11 +790,11 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         break;
 
     case IBuilddateIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoBuildDate(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoBuildDate(), TCL_INDEX_NONE));
         break;
 
     case ITagIdx:
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoTag(), -1));
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoTag(), TCL_INDEX_NONE));
         break;
 
     case IServersIdx:
@@ -715,6 +808,113 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj(Ns_InfoSSL()));
         break;
 
+    case IBuildinfoIdx:
+        {
+            Tcl_Obj *dictObj = Tcl_NewDictObj();
+            int defined_NDEBUG, defined_SYSTEM_MALLOC;
+
+            /*
+             * Detect the compiler.
+             */
+#if defined(__GNUC__)
+# if defined (__MINGW32__)
+            Ns_DStringPrintf(&ds, "MinGW gcc %d.%d.%d", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+# elif defined(__clang__)
+            Ns_DStringPrintf(&ds, "clang %s",__clang_version__);
+# else
+            Ns_DStringPrintf(&ds, "gcc %d.%d.%d", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+# endif
+#elif defined(_MSC_VER)
+            Ns_DStringPrintf(&ds, "MSC %d", _MSC_VER);
+#else
+            Tcl_DStringAppend(&ds, "unknown", 7);
+#endif
+            Tcl_DictObjPut(NULL, dictObj,
+                           Tcl_NewStringObj("compiler", 8),
+                           Tcl_NewStringObj(ds.string, ds.length));
+            /*
+             * Compiled with assertion support? Actually, without
+             * -DNDEBUG.
+             *
+             * Note: we use the variables defined_NDEBUG and
+             * defined_SYSTEM_MALLOC since Tcl_NewIntObj() is defined
+             * as a macro since using the ifdef check as arguments
+             * leads to an undefined behavior. Tcl 9 uses macros more
+             * extensively for the API.
+             */
+            defined_NDEBUG =
+#if defined(NDEBUG)
+                                         0
+#else
+                                         1
+#endif
+                ;
+            Tcl_DictObjPut(NULL, dictObj,
+                           Tcl_NewStringObj("assertions", 10),
+                           Tcl_NewIntObj(defined_NDEBUG));
+            /*
+             * Compiled with SYSTEM_MALLOC.
+             */
+            defined_SYSTEM_MALLOC =
+#if defined(SYSTEM_MALLOC)
+                                         1
+#else
+                                         0
+#endif
+                ;
+            Tcl_DictObjPut(NULL, dictObj,
+                           Tcl_NewStringObj("system_malloc", 13),
+                           Tcl_NewIntObj(defined_SYSTEM_MALLOC));
+            /*
+             * The nsd binary was built against this version of Tcl
+             */
+            Tcl_DictObjPut(NULL, dictObj,
+                           Tcl_NewStringObj("tcl", 3),
+                           Tcl_NewStringObj(TCL_PATCH_LEVEL, -1));
+
+            Tcl_SetObjResult(interp, dictObj);
+            Tcl_DStringFree(&ds);
+            break;
+        }
+
+    case IMeminfoIdx: {
+        Tcl_Obj    *resultObj = Tcl_NewDictObj();
+#ifndef _MSC_VER
+        char        memStatsBuffer[20000] = {0};
+        int         release = 0;
+        Ns_ObjvSpec flags[] = {
+            {"-release", Ns_ObjvBool, &release,  INT2PTR(NS_TRUE)},
+            {NULL,       NULL,        NULL,      NULL}
+        };
+
+        if (Ns_ParseObjv(flags, NULL, interp, 2, objc, objv) != NS_OK) {
+            Tcl_DecrRefCount(resultObj);
+            return TCL_ERROR;
+        }
+
+        if (preload_library_name != NULL && preload_library_handle != NULL) {
+            if (MallocExtensionReleaseFreeMemory != NULL && release != 0) {
+                Ns_Log(Notice, "MallocExtension_ReleaseFreeMemory");
+                MallocExtensionReleaseFreeMemory();
+            }
+            if (MallocExtensionGetStats != NULL) {
+                MallocExtensionGetStats(memStatsBuffer, sizeof(memStatsBuffer));
+            }
+        }
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("preload", 7),
+                       Tcl_NewStringObj(preload_library_name != NULL ? preload_library_name : "", TCL_INDEX_NONE));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("version", 7),
+                       Tcl_NewStringObj(mallocLibraryVersionString, TCL_INDEX_NONE));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("stats", 5),
+                       Tcl_NewStringObj(memStatsBuffer, TCL_INDEX_NONE));
+#endif
+        Tcl_SetObjResult(interp, resultObj);
+        break;
+    }
+
     default:
         /* cases handled below */
         done = NS_FALSE;
@@ -727,7 +927,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
          */
 
         if (unlikely(itPtr->servPtr == NULL)) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj("no server", -1));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj("no server", TCL_INDEX_NONE));
             result = TCL_ERROR;
 
         } else {
@@ -737,7 +937,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
 
             switch (opt) {
             case IServerIdx:
-                Tcl_SetObjResult(interp,  Tcl_NewStringObj(server, -1));
+                Tcl_SetObjResult(interp,  Tcl_NewStringObj(server, TCL_INDEX_NONE));
                 break;
 
                 /*
@@ -753,7 +953,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
 
             case ITclLibIdx:
                 Ns_LogDeprecated(objv, 2, "ns_server ?-server s? tcllib", NULL);
-                Tcl_SetObjResult(interp, Tcl_NewStringObj(itPtr->servPtr->tcl.library, -1));
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(itPtr->servPtr->tcl.library, TCL_INDEX_NONE));
                 break;
 
             case IFiltersIdx:
@@ -781,7 +981,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
                 break;
 
             default:
-                Tcl_SetObjResult(interp, Tcl_NewStringObj("unrecognized option", -1));
+                Tcl_SetObjResult(interp, Tcl_NewStringObj("unrecognized option", TCL_INDEX_NONE));
                 result = TCL_ERROR;
                 break;
             }
@@ -808,7 +1008,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *co
  */
 
 int
-NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *kindString = (char *)NS_EMPTY_STRING, *moduleString = NULL;

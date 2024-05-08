@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 
@@ -47,7 +29,7 @@
 
 static Ns_ServerInitProc ConfigServerVhost;
 
-static int PathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
+static int PathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, char cmd)
     NS_GNUC_NONNULL(2);
 
 static char *MakePath(Ns_DString *dest, va_list *pap)
@@ -258,7 +240,7 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
 
             slash = strrchr(dsPtr->string, INTCHAR('/'));
             if (slash != NULL) {
-              Ns_DStringSetLength(dsPtr, (int)(slash - dsPtr->string));
+                Ns_DStringSetLength(dsPtr, (TCL_SIZE_T)(slash - dsPtr->string));
             }
         } else if (part[0] != '\0' &&
                (part[0] != '.' || part[1] != '\0')) {
@@ -505,7 +487,7 @@ Ns_HomePathExists(const char *path, ...)
     MakePath(&ds, &ap);
     va_end(ap);
 
-    obj = Tcl_NewStringObj(ds.string, -1);
+    obj = Tcl_NewStringObj(ds.string, TCL_INDEX_NONE);
     Tcl_IncrRefCount(obj);
     stPtr = Tcl_AllocStatBuf();
     status = Tcl_FSStat(obj, stPtr);
@@ -703,9 +685,12 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
     assert(servPtr->fastpath.pagedir != NULL);
 
     if (Ns_PathIsAbsolute(servPtr->fastpath.pagedir) == NS_TRUE) {
+        Ns_Log(Debug, "NsPageRoot is absolute <%s>", servPtr->fastpath.pagedir);
         path = Ns_DStringAppend(dsPtr, servPtr->fastpath.pagedir);
     } else {
         (void) ServerRoot(dsPtr, servPtr, host);
+        Ns_Log(Debug, "NsPageRoot is not absolute <%s>, ServerRoot <%s>",
+               servPtr->fastpath.pagedir, dsPtr->string);
         path = Ns_MakePath(dsPtr, servPtr->fastpath.pagedir, (char *)0L);
     }
 
@@ -731,7 +716,7 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
 
 
 int
-NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int               levels = 1, result = TCL_OK;
     char             *inputString;
@@ -774,7 +759,7 @@ NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc,
  */
 
 int
-NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -784,7 +769,7 @@ NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
     } else {
         Ns_DString  ds;
-        int         i;
+        TCL_OBJC_T  i;
         const char *module = objc > 2 ? Tcl_GetString(objv[2]) : NULL;
 
         Ns_DStringInit(&ds);
@@ -822,22 +807,23 @@ NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int obj
 
 
 int
-NsTclServerPathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclServerPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return PathObjCmd(clientData, interp, objc, objv, 's');
 }
 
 int
-NsTclPagePathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclPagePathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     return PathObjCmd(clientData, interp, objc, objv, 'p');
 }
 
 static int
-PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* objv, char cmd)
+PathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, char cmd)
 {
     char       *host = NULL;
-    int         npaths = 0, result = TCL_OK;
+    TCL_SIZE_T  npaths = 0;
+    int         result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-host", Ns_ObjvString, &host, NULL},
         {"--",    Ns_ObjvBreak,  NULL,  NULL},
@@ -865,8 +851,8 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
             result = TCL_ERROR;
 
         } else {
-            Ns_DString      ds;
-            int             i;
+            Ns_DString  ds;
+            TCL_OBJC_T  i;
 
             Ns_DStringInit(&ds);
             if (cmd == 'p') {
@@ -874,7 +860,7 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
             } else {
                 (void) ServerRoot(&ds, servPtr, host);
             }
-            for (i = objc - npaths; i < objc; ++i) {
+            for (i = objc - (TCL_OBJC_T)npaths; i < objc; ++i) {
                 Ns_MakePath(&ds, Tcl_GetString(objv[i]), (char *)0L);
             }
             Tcl_DStringResult(interp, &ds);
@@ -902,7 +888,7 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *const* 
  */
 
 int
-NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int objc, Tcl_Obj *const* objv)
+NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
 {
     const NsServer *servPtr = NsGetInitServer();
     int             result = TCL_OK;
@@ -919,7 +905,7 @@ NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, int
         Ns_TclCallback *cbPtr;
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclServerRoot, objv[1],
-                                  objc - 2, objv + 2);
+                                  (TCL_SIZE_T)(objc - 2), objv + 2);
         if (unlikely(Ns_SetServerRootProc(NsTclServerRoot, cbPtr) != NS_OK)) {
             result = TCL_ERROR;
         }
@@ -977,8 +963,8 @@ NsTclServerRoot(Ns_DString *dest, const char *host, const void *arg)
 static char *
 MakePath(Ns_DString *dest, va_list *pap)
 {
-    char *s;
-    int len;
+    char      *s;
+    TCL_SIZE_T len;
 
     NS_NONNULL_ASSERT(dest != NULL);
 
@@ -1041,16 +1027,31 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
     NS_NONNULL_ASSERT(servPtr != NULL);
 
     if (servPtr->vhost.serverRootProc != NULL) {
-       /*
-        * Call the registered proc which is typically, a Tcl
-        * call. Therefore, make sure, the connection has already an
-        * interpreter associated.
-        */
+        /*
+         * Configured to run a user-registered Ns_ServerRootProc.
+         */
+
         conn = Ns_GetConn();
-        Ns_GetConnInterp(conn);
+        if (conn != NULL && conn->request.serverRoot != NULL) {
+            /*
+             * Use the cached value.
+             */
+            Tcl_DStringAppend(dest, conn->request.serverRoot, TCL_INDEX_NONE);
+            path = dest->string;
+        } else {
+            /*
+             * Call the registered proc which is typically, a Tcl
+             * call. Therefore, make sure, the connection has already an
+             * interpreter associated.
+             */
+            Ns_GetConnInterp(conn);
 
-        path = (servPtr->vhost.serverRootProc)(dest, rawHost, servPtr->vhost.serverRootArg);
-
+            path = (servPtr->vhost.serverRootProc)(dest, rawHost, servPtr->vhost.serverRootArg);
+            if (conn != NULL && path != NULL) {
+                Ns_Log(Debug, "cache value <%s>", path);
+                conn->request.serverRoot = ns_strdup(path);
+            }
+        }
     } else if (servPtr->vhost.enabled
                && (rawHost != NULL
                    || ((conn = Ns_GetConn()) != NULL
@@ -1085,7 +1086,6 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
             /*
              * Build the final path.
              */
-
             path = Ns_MakePath(dest, servPtr->fastpath.serverdir,
                                servPtr->vhost.hostprefix, (char *)0L);
             if (servPtr->vhost.hosthashlevel > 0) {
@@ -1103,6 +1103,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
         path = Ns_MakePath(dest, servPtr->fastpath.serverdir, (char *)0L);
     }
 
+    Ns_Log(Debug, "ServerRoot returns path <%s> // <%s>", path, dest->string);
     return path;
 }
 

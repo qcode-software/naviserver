@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -74,8 +56,8 @@ static Callback *firstShutdown = NULL;
 static Callback *firstExit = NULL;
 static Callback *firstReady = NULL;
 
-static Ns_Mutex  lock;
-static Ns_Cond   cond;
+static Ns_Mutex  lock = NULL;
+static Ns_Cond   cond = NULL;
 
 static bool      shutdownPending  = NS_FALSE;
 static bool      shutdownComplete = NS_FALSE;
@@ -466,7 +448,6 @@ static void *
 RegisterAt(Callback **firstPtrPtr, ns_funcptr_t proc, void *arg, bool fifo)
 {
     Callback   *cbPtr, *nextPtr;
-    static bool first = NS_TRUE;
 
     NS_NONNULL_ASSERT(firstPtrPtr != NULL);
     NS_NONNULL_ASSERT(proc != NULL);
@@ -476,10 +457,6 @@ RegisterAt(Callback **firstPtrPtr, ns_funcptr_t proc, void *arg, bool fifo)
     cbPtr->arg = arg;
 
     Ns_MutexLock(&lock);
-    if (first) {
-        first = NS_FALSE;
-        Ns_MutexSetName(&lock, "ns:callbacks");
-    }
     if (shutdownPending) {
         ns_free(cbPtr);
         cbPtr = NULL;
@@ -540,6 +517,28 @@ RunCallbacks(const char *list, const Callback *cbPtr)
         cbPtr = cbPtr->nextPtr;
     }
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsInitCallbacks --
+ *
+ *      Initialize once the callback mutex and provide a name for it.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      One-time initialization.
+ *
+ *----------------------------------------------------------------------
+ */
+void NsInitCallbacks(void) {
+    //fprintf(stderr, "==== NsInitCallbacks =====================================\n");
+    Ns_MutexSetName(&lock, "ns:callbacks");
+    Ns_CondInit(&cond);
+}
+
 
 /*
  * Local Variables:

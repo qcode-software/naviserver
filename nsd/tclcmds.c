@@ -1,30 +1,12 @@
 /*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://mozilla.org/.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
- * the License for the specific language governing rights and limitations
- * under the License.
+ * The Initial Developer of the Original Code and related documentation
+ * is America Online, Inc. Portions created by AOL are Copyright (C) 1999
+ * America Online, Inc. All Rights Reserved.
  *
- * The Original Code is AOLserver Code and related documentation
- * distributed by AOL.
- *
- * The Initial Developer of the Original Code is America Online,
- * Inc. Portions created by AOL are Copyright (C) 1999 America Online,
- * Inc. All Rights Reserved.
- *
- * Alternatively, the contents of this file may be used under the terms
- * of the GNU General Public License (the "GPL"), in which case the
- * provisions of GPL are applicable instead of those above.  If you wish
- * to allow use of your version of this file only under the terms of the
- * GPL and not to allow others to use your version of this file under the
- * License, indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by the GPL.
- * If you do not delete the provisions above, a recipient may use your
- * version of this file under either the License or the GPL.
  */
 
 /*
@@ -43,7 +25,7 @@
 typedef struct Cmd {
     const char *name;
     Tcl_CmdProc *proc;
-    Tcl_ObjCmdProc *objProc;
+    TCL_OBJCMDPROC_T *objProc;
 } Cmd;
 
 /*
@@ -71,6 +53,7 @@ static const Cmd basicCmds[] = {
     {"ns_base64urlencode",       NULL, NsTclBase64UrlEncodeObjCmd},
     {"ns_baseunit" ,             NULL, NsTclBaseUnitObjCmd},
     {"ns_cancel",                NULL, NsTclCancelObjCmd},
+    {"ns_certctl",               NULL, NsTclCertCtlObjCmd},
     {"ns_charsets",              NULL, NsTclCharsetsObjCmd},
     {"ns_config",                NULL, NsTclConfigObjCmd},
     {"ns_configsection",         NULL, NsTclConfigSectionObjCmd},
@@ -79,6 +62,7 @@ static const Cmd basicCmds[] = {
     {"ns_crypt",                 NULL, NsTclCryptObjCmd},
     {"ns_crypto::aead::decrypt", NULL, NsTclCryptoAeadDecryptObjCmd},
     {"ns_crypto::aead::encrypt", NULL, NsTclCryptoAeadEncryptObjCmd},
+    {"ns_crypto::argon2",        NULL, NsTclCryptoArgon2ObjCmd},
     {"ns_crypto::eckey",         NULL, NsTclCryptoEckeyObjCmd},
     {"ns_crypto::hmac",          NULL, NsTclCryptoHmacObjCmd},
     {"ns_crypto::md",            NULL, NsTclCryptoMdObjCmd},
@@ -154,6 +138,8 @@ static const Cmd basicCmds[] = {
     {"ns_sockselect",            NULL, NsTclSelectObjCmd},
     {"ns_strcoll",               NULL, NsTclStrcollObjCmd},
     {"ns_striphtml",             NULL, NsTclStripHtmlObjCmd},
+    {"ns_parsehtml",             NULL, NsTclParseHtmlObjCmd},
+    {"ns_shutdown",              NULL, NsTclShutdownObjCmd},
     {"ns_subnetmatch",           NULL, NsTclSubnetmatchObjCmd},
     {"ns_symlink",               NULL, NsTclSymlinkObjCmd},
     {"ns_thread",                NULL, NsTclThreadObjCmd},
@@ -275,7 +261,6 @@ static const Cmd servCmds[] = {
     {"ns_setcookie",             NULL, NsTclSetCookieObjCmd},
     {"ns_setgroup",              NULL, NsTclSetGroupObjCmd},
     {"ns_setuser",               NULL, NsTclSetUserObjCmd},
-    {"ns_shutdown",              NULL, NsTclShutdownObjCmd},
     {"ns_startcontent",          NULL, NsTclStartContentObjCmd},
     {"ns_trim",                  NULL, NsTclTrimObjCmd},
     {"ns_unregister_op",         NULL, NsTclUnRegisterOpObjCmd},
@@ -340,7 +325,7 @@ AddCmds(const Cmd *cmdPtr, NsInterp *itPtr)
          * One has to provide either an objProc or a proc.
          */
         if (cmdPtr->objProc != NULL) {
-            (void)Tcl_CreateObjCommand(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);
+            (void)TCL_CREATEOBJCOMMAND(itPtr->interp, cmdPtr->name, cmdPtr->objProc, itPtr, NULL);
         } else {
             assert(cmdPtr->proc != NULL);
             (void)Tcl_CreateCommand(itPtr->interp, cmdPtr->name, cmdPtr->proc, itPtr, NULL);
