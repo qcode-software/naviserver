@@ -41,7 +41,8 @@ override_dh_shlibdeps:
 override_dh_auto_clean:
 	rm -f $(CURDIR)/tests/testserver/*.log
 	rm -f $(CURDIR)/tests/testserver/*.pid
-	dh_auto_clean
+	# Avoiding error about Makefile.global missing
+	#dh_auto_clean
 
 override_dh_installsystemd:
 	dh_installsystemd --no-stop-on-upgrade
