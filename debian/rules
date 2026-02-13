@@ -15,7 +15,8 @@ COREPACKAGE=naviserver-core
 TARGETDIR=$(CURDIR)/debian/tmp
 
 override_dh_auto_configure:
-	./configure --with-tcl=/usr/lib/tcl8.6 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
+	dh_auto_configure --with-tcl=/usr/lib/tcl8.6 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
+	#./configure --with-tcl=/usr/lib/tcl8.6 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
 
 override_dh_auto_build:
 	$(MAKE)
