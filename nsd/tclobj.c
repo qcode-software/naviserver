@@ -29,7 +29,7 @@ static Tcl_SetFromAnyProc   SetAddrFromAny;
  * Local variables defined in this file.
  */
 
-static const Tcl_ObjType addrType = {
+static CONST86 Tcl_ObjType addrType = {
     "ns:addr",
     NULL,
     NULL,
@@ -40,8 +40,8 @@ static const Tcl_ObjType addrType = {
 #endif
 };
 
-static const Tcl_ObjType *byteArrayTypePtr; /* For NsTclObjIsByteArray(). */
-static const Tcl_ObjType *properByteArrayTypePtr;  /* For NsTclObjIsByteArray(). */
+static CONST86 Tcl_ObjType *byteArrayTypePtr; /* For NsTclObjIsByteArray(). */
+static CONST86 Tcl_ObjType *properByteArrayTypePtr;  /* For NsTclObjIsByteArray(). */
 
 /*
  *----------------------------------------------------------------------
@@ -110,7 +110,7 @@ NsTclInitAddrType(void)
  */
 
 void
-Ns_TclResetObjType(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr)
+Ns_TclResetObjType(Tcl_Obj *objPtr, CONST86 Tcl_ObjType *newTypePtr)
 {
     const Tcl_ObjType *typePtr;
 
@@ -142,7 +142,7 @@ Ns_TclResetObjType(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr)
  */
 
 void
-Ns_TclSetTwoPtrValue(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr,
+Ns_TclSetTwoPtrValue(Tcl_Obj *objPtr, CONST86 Tcl_ObjType *newTypePtr,
                      void *ptr1, void *ptr2)
 {
     NS_NONNULL_ASSERT(objPtr != NULL);
@@ -171,7 +171,7 @@ Ns_TclSetTwoPtrValue(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr,
  */
 
 void
-Ns_TclSetOtherValuePtr(Tcl_Obj *objPtr, const Tcl_ObjType *newTypePtr, void *value)
+Ns_TclSetOtherValuePtr(Tcl_Obj *objPtr, CONST86 Tcl_ObjType *newTypePtr, void *value)
 {
     NS_NONNULL_ASSERT(objPtr != NULL);
     NS_NONNULL_ASSERT(newTypePtr != NULL);

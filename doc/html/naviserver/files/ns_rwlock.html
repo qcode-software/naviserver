@@ -1,0 +1,173 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_rwlock - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_rwlock.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_rwlock.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_rwlock.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_rwlock.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_rwlock(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_rwlock - Create, destroy, and manipulate read/write locks</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#section4">NOTES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_rwlock create</b></a></li>
+<li><a href="#2"><b class="cmd">ns_rwlock destroy</b> <i class="arg">rwlockid</i></a></li>
+<li><a href="#3"><b class="cmd">ns_rwlock readeval</b> <i class="arg">rwlockid</i> <i class="arg">script</i></a></li>
+<li><a href="#4"><b class="cmd">ns_rwlock readlock</b> <i class="arg">rwlockid</i></a></li>
+<li><a href="#5"><b class="cmd">ns_rwlock readunlock</b> <i class="arg">rwlockid</i></a></li>
+<li><a href="#6"><b class="cmd">ns_rwlock unlock</b> <i class="arg">rwlockid</i></a></li>
+<li><a href="#7"><b class="cmd">ns_rwlock writeeval</b> <i class="arg">rwlockid</i> <i class="arg">script</i></a></li>
+<li><a href="#8"><b class="cmd">ns_rwlock writelock</b> <i class="arg">rwlockid</i></a></li>
+<li><a href="#9"><b class="cmd">ns_rwlock writeunlock</b> <i class="arg">rwlockid</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>Create, destroy, and manipulate read/write locks.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_rwlock create</b></a></dt>
+<dd><p>Initializes a read/write lock and returns an ID for it.</p></dd>
+<dt><a name="2"><b class="cmd">ns_rwlock destroy</b> <i class="arg">rwlockid</i></a></dt>
+<dd><p>Releases the resources associated with the specified read/write lock. The
+<i class="arg">rwlockid</i> argument is the read/write lock ID returned by
+<b class="cmd">ns_rwlock create</b> when the lock was created.</p>
+<p>In the current implementation, this operation is effectively a
+no-op, meaning the semaphore remains until the server shuts down.</p></dd>
+<dt><a name="3"><b class="cmd">ns_rwlock readeval</b> <i class="arg">rwlockid</i> <i class="arg">script</i></a></dt>
+<dd><p>A convenience function to lock the specified <i class="arg">rwlockid</i> for
+reading, runs the <i class="arg">script</i>, and releases the lock. The command
+returns the result and any error condition of the executed
+<i class="arg">script</i>.
+If <i class="arg">rwlockid</i> does not exist, it will be auto-created, although
+this is generally not recommended.</p></dd>
+<dt><a name="4"><b class="cmd">ns_rwlock readlock</b> <i class="arg">rwlockid</i></a></dt>
+<dd><p>Acquires a read lock. Multiple read locks can run concurrently without
+blocking each other. If a write lock is active, the acquisition of a
+read lock will block until the write lock is released.</p></dd>
+<dt><a name="5"><b class="cmd">ns_rwlock readunlock</b> <i class="arg">rwlockid</i></a></dt>
+<dd><p>Releases a read lock. Internally, this operation is equivalent to
+calling <b class="cmd">ns_rwlock unlock</b>.</p></dd>
+<dt><a name="6"><b class="cmd">ns_rwlock unlock</b> <i class="arg">rwlockid</i></a></dt>
+<dd><p>Unlocks the rwlock <i class="arg">rwlockid</i> regardless of whether it is a read
+or write lock.</p></dd>
+<dt><a name="7"><b class="cmd">ns_rwlock writeeval</b> <i class="arg">rwlockid</i> <i class="arg">script</i></a></dt>
+<dd><p>A convenience function to lock the specified <i class="arg">rwlockid</i> for
+writing, runs the <i class="arg">script</i> and then releases the lock. The command
+returns the result and any error condition of the executed <i class="arg">script</i>.
+If <i class="arg">rwlockid</i> does not exist, it will be auto-created, although
+this is generally not recommended.</p></dd>
+<dt><a name="8"><b class="cmd">ns_rwlock writelock</b> <i class="arg">rwlockid</i></a></dt>
+<dd><p>Acquires a write lock. Only one write lock can be active at any given
+time. If there are active or pending read locks, the write lock
+acquisition will block until all read locks are released. Write locks
+take priority over subsequent read lock acquisition attempts.</p></dd>
+<dt><a name="9"><b class="cmd">ns_rwlock writeunlock</b> <i class="arg">rwlockid</i></a></dt>
+<dd><p>Releases a write lock. Internally, this operation is equivalent to
+calling <b class="cmd">ns_rwlock unlock</b>.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>Basic Read Lock:</p>
+<pre class="doctools_example">
+ set rwlockid [ns_rwlock create]
+ ns_rwlock readlock $rwlockid
+ # Perform read-only operations here
+ ns_rwlock readunlock $rwlockid
+</pre>
+<p>Running a script under a Read Lock:</p>
+<pre class="doctools_example">
+ set result [ns_rwlock readeval $rwlockid {
+    # Read-only operations
+    return &quot;Read operation result&quot;
+ }]
+</pre>
+<p>Basic Write Lock:</p>
+<pre class="doctools_example">
+ set rwlockid [ns_rwlock create]
+ ns_rwlock writelock $rwlockid
+ # Perform write operations here
+ ns_rwlock writeunlock $rwlockid
+</pre>
+<p>Running a script under a Write Lock:</p>
+<pre class="doctools_example">
+ set result [ns_rwlock writeeval $rwlockid {
+    # Write operations
+    return &quot;Write operation result&quot;
+ }]
+</pre>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">NOTES</a></h2>
+<p>About Read/Write Locks</p>
+<p>Read/write locks are a synchronization mechanism designed for
+scenarios where multiple threads need to read shared data
+simultaneously, but only one thread should modify the data at a
+time. This allows efficient concurrent reads while ensuring data
+consistency during writes.</p>
+<p>Priority Rules:</p>
+<ol class="doctools_enumerated">
+<li><p>Read locks: Multiple read locks can be acquired simultaneously
+    without blocking. However, they will block if a write lock is
+    active.</p></li>
+<li><p>Write locks: Only one write lock can be active at a time. A write
+    lock will wait for any active read locks to be released and will
+    block any new read locks until it completes. Write locks take
+    precedence over pending read locks.</p></li>
+</ol>
+<p>Use Case Example: A heavily accessed hash table that is read
+frequently but updated infrequently can benefit from read/write
+locks. This allows multiple threads to read from the table
+concurrently, while updates are safely managed by blocking until the
+current read operations complete and preventing new reads during the
+update.</p>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_cond.html">ns_cond</a>, <a href="ns_critsec.html">ns_critsec</a>, <a href="ns_mutex.html">ns_mutex</a>, <a href="ns_sema.html">ns_sema</a>, <a href="ns_thread.html">ns_thread</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#concurrency">concurrency</a>, <a href="../../index.html#rwlock">rwlock</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#synchronization">synchronization</a>, <a href="../../index.html#threading">threading</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

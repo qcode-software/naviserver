@@ -38,6 +38,7 @@ static Ns_DriverSendProc SockSend;
 static Ns_DriverCloseProc SockClose;
 static Ns_DriverSendFileProc SendFile;
 static Ns_DriverKeepProc Keep;
+static Ns_DriverConnInfoProc ConnInfo;
 
 NS_EXPORT Ns_ModuleInitProc Ns_ModuleInit;
 
@@ -63,17 +64,17 @@ Ns_ModuleInit(const char *server, const char *module)
 {
     Ns_DriverInitData  init;
     Config            *drvCfgPtr;
-    const char        *path;
+    const char        *section;
 
     NS_NONNULL_ASSERT(module != NULL);
 
     memset(&init, 0, sizeof(init));
-    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
+    section = Ns_ConfigSectionPath(NULL, server, module, NS_SENTINEL);
     drvCfgPtr = ns_malloc(sizeof(Config));
-    drvCfgPtr->deferaccept = Ns_ConfigBool(path, "deferaccept", NS_FALSE);
-    drvCfgPtr->nodelay = Ns_ConfigBool(path, "nodelay", NS_TRUE);
+    drvCfgPtr->deferaccept = Ns_ConfigBool(section, "deferaccept", NS_FALSE);
+    drvCfgPtr->nodelay = Ns_ConfigBool(section, "nodelay", NS_TRUE);
 
-    init.version = NS_DRIVER_VERSION_4;
+    init.version = NS_DRIVER_VERSION_5;
     init.name         = "nssock";
     init.listenProc   = SockListen;
     init.acceptProc   = SockAccept;
@@ -81,11 +82,12 @@ Ns_ModuleInit(const char *server, const char *module)
     init.sendProc     = SockSend;
     init.sendFileProc = SendFile;
     init.keepProc     = Keep;
+    init.connInfoProc = ConnInfo;
     init.requestProc  = NULL;
     init.closeProc    = SockClose;
     init.opts         = NS_DRIVER_ASYNC;
     init.arg          = drvCfgPtr;
-    init.path         = (char*)path;
+    init.path         = (char*)section;
     init.protocol     = "http";
     init.defaultPort  = 80;
 
@@ -113,16 +115,30 @@ static NS_SOCKET
 SockListen(Ns_Driver *driver, const char *address, unsigned short port, int backlog, bool reuseport)
 {
     NS_SOCKET sock;
+    bool      unixDomainSocket;
 
-    sock = Ns_SockListenEx(address, port, backlog, reuseport);
+    unixDomainSocket = (*address == '/');
+    if (unixDomainSocket) {
+        sock = Ns_SockListenUnix(address, backlog, 0 /*mode*/);
+    } else {
+        sock = Ns_SockListenEx(address, port, backlog, reuseport);
+    }
+
     if (sock != NS_INVALID_SOCKET) {
         const Config *drvCfgPtr = driver->arg;
 
         (void) Ns_SockSetNonBlocking(sock);
-        if (drvCfgPtr->deferaccept != 0) {
+        if (drvCfgPtr->deferaccept != 0 && !unixDomainSocket) {
             Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
         }
+
+        if (unixDomainSocket) {
+            Ns_Log(Notice, "listening on unix:%s (sock %d)", address, (int)sock);
+        } else {
+            Ns_Log(Notice, "listening on [%s]:%d (sock %d)", address, port, (int)sock);
+        }
     }
+
     return sock;
 }
 
@@ -226,15 +242,16 @@ SockRecv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  */
 
 static ssize_t
-SockSend(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
-         const Ns_Time *UNUSED(timeoutPtr), unsigned int flags)
+SockSend(Ns_Sock *sock, const struct iovec *bufs, int nbufs, unsigned int flags)
 {
-    ssize_t   sent;
-    bool      decork;
+    ssize_t       sent;
+    bool          decork;
+    unsigned long errorCode;
 
     decork = Ns_SockCork(sock, NS_TRUE);
 
-    sent = Ns_SockSendBufs2(sock->sock, bufs, nbufs, flags);
+    sent = Ns_SockSendBufsEx(sock->sock, bufs, nbufs, flags, &errorCode);
+    Ns_SockSetSendErrno(sock, errorCode);
 
     if (decork) {
         Ns_SockCork(sock, NS_FALSE);
@@ -264,8 +281,7 @@ SockSend(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
  */
 
 static ssize_t
-SendFile(Ns_Sock *sock, Ns_FileVec *bufs, int nbufs,
-         Ns_Time *UNUSED(timeoutPtr), unsigned int flags)
+SendFile(Ns_Sock *sock, Ns_FileVec *bufs, int nbufs, unsigned int flags)
 {
     return Ns_SockSendFileBufs(sock, bufs, nbufs, NS_DRIVER_CAN_USE_SENDFILE|flags);
 }
@@ -320,6 +336,30 @@ SockClose(Ns_Sock *sock)
         sock->sock = NS_INVALID_SOCKET;
     }
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ConnInfo --
+ *
+ *      Return Tcl_Obj hinting driver specific connection details
+ *
+ * Results:
+ *      Tcl_Obj *
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Tcl_Obj*
+ConnInfo(Ns_Sock *UNUSED(sock))
+{
+    return Tcl_NewDictObj();
+}
+
 
 /*
  * Local Variables:

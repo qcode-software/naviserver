@@ -1,0 +1,151 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+testConstraint with_deprecated [dict get [ns_info buildinfo] with_deprecated]
+
+#######################################################################################
+#  Syntax tests
+#######################################################################################
+
+test ns_ictl-1.0  {syntax: ns_ictl} -body {
+    ns_ictl
+} -returnCodes error \
+    -result [expr {[testConstraint with_deprecated]
+                   ? {wrong # args: should be "ns_ictl addmodule|cleanup|epoch|get|getmodules|gettraces|markfordelete|maxconcurrentupdates|oncleanup|oncreate|ondelete|oninit|runtraces|save|trace|update ?/arg .../"}
+                   : {wrong # args: should be "ns_ictl addmodule|cleanup|epoch|get|getmodules|gettraces|markfordelete|maxconcurrentupdates|runtraces|save|trace|update ?/arg .../"}
+               }]
+
+test ns_ictl-1.1  {syntax: ns_ictl subcommands} -body {
+    ns_ictl ?
+} -returnCodes error \
+    -result [expr {[testConstraint with_deprecated]
+                   ? {ns_ictl: bad subcommand "?": must be addmodule, cleanup, epoch, get, getmodules, gettraces, markfordelete, maxconcurrentupdates, oncleanup, oncreate, ondelete, oninit, runtraces, save, trace, or update}
+                   : {ns_ictl: bad subcommand "?": must be addmodule, cleanup, epoch, get, getmodules, gettraces, markfordelete, maxconcurrentupdates, runtraces, save, trace, or update}
+               }]
+
+test ns_ictl-1.2 {syntax: ns_ictl addmodule} -body {
+    ns_ictl addmodule
+} -returnCodes error -result {wrong # args: should be "ns_ictl addmodule /module/"}
+
+test ns_ictl-1.3 {syntax: ns_ictl cleanup} -body {
+    ns_ictl cleanup x
+} -returnCodes error -result {wrong # args: should be "ns_ictl cleanup"}
+
+test ns_ictl-1.4 {syntax: ns_ictl epoch} -body {
+    ns_ictl epoch x
+} -returnCodes error -result {wrong # args: should be "ns_ictl epoch"}
+
+test ns_ictl-1.5 {syntax: ns_ictl get} -body {
+    ns_ictl get x
+} -returnCodes error -result {wrong # args: should be "ns_ictl get"}
+
+test ns_ictl-1.6 {syntax: ns_ictl getmodules} -body {
+    ns_ictl getmodules x
+} -returnCodes error -result {wrong # args: should be "ns_ictl getmodules ?-server /server/?"}
+
+test ns_ictl-1.7 {syntax: ns_ictl gettraces} -body {
+    ns_ictl gettraces
+} -returnCodes error -result {wrong # args: should be "ns_ictl gettraces allocate|create|deallocate|delete|freeconn|getconn|idle"}
+
+test ns_ictl-1.8 {syntax: ns_ictl markfordelete} -body {
+    ns_ictl markfordelete x
+} -returnCodes error -result {wrong # args: should be "ns_ictl markfordelete"}
+
+test ns_ictl-1.9 {syntax: ns_ictl maxconcurrentupdates} -body {
+    ns_ictl maxconcurrentupdates 1 x
+} -returnCodes error -result {wrong # args: should be "ns_ictl maxconcurrentupdates ?/max[1,MAX]/?"}
+
+test ns_ictl-1.10 {syntax: ns_ictl oncleanup} -constraints with_deprecated -body {
+    ns_ictl oncleanup
+} -returnCodes error -result {wrong # args: should be "ns_ictl oncleanup /script/ ?/arg .../?"}
+
+test ns_ictl-1.11 {syntax: ns_ictl oncreate} -constraints with_deprecated  -body {
+    ns_ictl oncreate
+} -returnCodes error -result {wrong # args: should be "ns_ictl oncreate /script/ ?/arg .../?"}
+
+test ns_ictl-1.12 {syntax: ns_ictl ondelete} -constraints with_deprecated -body {
+    ns_ictl ondelete
+} -returnCodes error -result {wrong # args: should be "ns_ictl ondelete /script/ ?/arg .../?"}
+
+test ns_ictl-1.13 {syntax: ns_ictl oninit} -constraints with_deprecated -body {
+    ns_ictl oninit
+} -returnCodes error -result {wrong # args: should be "ns_ictl oninit /script/ ?/arg .../?"}
+
+test ns_ictl-1.14 {syntax: ns_ictl runtraces} -body {
+    ns_ictl runtraces
+} -returnCodes error -result {wrong # args: should be "ns_ictl runtraces allocate|create|deallocate|delete|freeconn|getconn|idle"}
+
+test ns_ictl-1.15 {syntax: ns_ictl save} -body {
+    ns_ictl save
+} -returnCodes error -result {wrong # args: should be "ns_ictl save /script/"}
+
+test ns_ictl-1.16 {syntax: ns_ictl trace} -body {
+    ns_ictl trace
+} -returnCodes error -result {wrong # args: should be "ns_ictl trace allocate|create|deallocate|delete|freeconn|getconn|idle /script/ ?/arg .../?"}
+
+test ns_ictl-1.17 {syntax: ns_ictl update} -body {
+    ns_ictl update x
+} -returnCodes error -result {wrong # args: should be "ns_ictl update"}
+
+
+
+
+test ns_atclose-1.0 {syntax: ns_atclose} -body {
+    ns_atclose
+} -returnCodes error -result {wrong # args: should be "ns_atclose /script/ ?/arg .../?"}
+
+test ns_atexit-1.0 {syntax: ns_atexit} -body {
+    ns_atexit
+} -returnCodes error -result {wrong # args: should be "ns_atexit /script/ ?/arg .../?"}
+
+test ns_atprestartup-1.0 {syntax: ns_atprestartup} -body {
+    ns_atprestartup
+} -returnCodes error -result {wrong # args: should be "ns_atprestartup /script/ ?/arg .../?"}
+
+test ns_atshutdown-1.0 {syntax: ns_atshutdown} -body {
+    ns_atshutdown
+} -returnCodes error -result {wrong # args: should be "ns_atshutdown /script/ ?/arg .../?"}
+
+test ns_atsignal-1.0 {syntax: ns_atsignal} -body {
+    ns_atsignal
+} -returnCodes error -result {wrong # args: should be "ns_atsignal /script/ ?/arg .../?"}
+
+test ns_atstartup-1.0 {syntax: ns_atstartup} -body {
+    ns_atstartup
+} -returnCodes error -result {wrong # args: should be "ns_atstartup /script/ ?/arg .../?"}
+
+
+test ns_cleanup-1.0 {syntax: ns_cleanup} -body {
+    ns_cleanup ?
+} -returnCodes error -result {wrong # args: should be "ns_cleanup"}
+
+test ns_reinit-1.0 {syntax: ns_reinit} -body {
+    ns_reinit ?
+} -returnCodes error -result {wrong # args: should be "ns_reinit"}
+
+test ns_runonce-1.0 {syntax: ns_runonce} -body {
+    ns_runonce
+} -returnCodes error -result {wrong # args: should be "ns_runonce ?-global? ?--? /script/"}
+
+test ns_moduleload-1.0 {syntax: ns_moduleload} -body {
+    ns_moduleload
+} -returnCodes error -result {wrong # args: should be "ns_moduleload ?-global? ?-init /value/? ?--? /module/ /file/"}
+
+test ns_eval-1.0 {syntax: ns_eval} -body {
+    ns_eval
+} -returnCodes error -result {wrong # args: should be "ns_eval ?-sync? ?-pending? /script/ ?args?"}
+# should be {wrong # args: should be "ns_eval ?-sync? ?-pending? /script/ ?/arg .../?"}
+
+
+cleanupTests
+
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

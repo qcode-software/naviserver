@@ -12,6 +12,7 @@
 
 [call [cmd ns_parseurl] \
         [opt [option "-strict"]] \
+        [opt --] \
         [arg url]]
 
 [para] This function parses the provided URL into its parts and
@@ -38,13 +39,21 @@ following elements: [term proto], [term userinfo],
 [term host], [term port], [term path], [term tail],
 [term query], and [term fragment].
 
+
+[call [cmd ns_joinurl] \
+        [arg dict]]
+
+[para] This function is the inverse function of [cmd ns_parseurl]. It
+receives the dict as produced from [cmd ns_parseurl] and constructs a (partial)
+URL as implied by the dict members.
+
 [list_end]
 
 [section EXAMPLES]
 
 [example_begin]
- % ns_parseurl http://openacs.org//projects/openacs/download/
- proto http host openacs.org path /projects/openacs/download tail {}
+ % ns_parseurl https://openacs.org//projects/openacs/download/
+ proto https host openacs.org path /projects/openacs/download tail {}
  
  % ns_parseurl {http://[lb]::1[rb]:80/index.html}
  proto http host ::1 port 80 path {} tail index.html
@@ -54,10 +63,14 @@ following elements: [term proto], [term userinfo],
  
  % ns_parseurl /top/query?x=1&y=2#pos1
  path top tail query query x=1&y=2 fragment pos1
+
+ % ns_joinurl [lb]ns_parseurl https://openacs.org/projects/openacs/download/[rb]
+ https://openacs.org/projects/openacs/download/
+
 [example_end]
 
 [see_also ns_absoluteurl ns_parsequery ns_parsefieldvalue ns_parseheader ns_parsehostport]
-[keywords "global built-in" url parse encoding]
+[keywords "global built-in" URL parse encoding]
 [manpage_end]
 
 

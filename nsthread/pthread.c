@@ -801,7 +801,14 @@ Ns_CondTimedWait(Ns_Cond *cond, Ns_Mutex *mutex, const Ns_Time *timePtr)
     if (err == ETIMEDOUT) {
         status = NS_TIMEOUT;
     } else if (err != 0) {
+        fprintf(stderr, "Ns_CondTimedWait: timestamp " NS_TIME_FMT " secs %ld nanoseconds %ld\n",
+                (int64_t)timePtr->sec, timePtr->usec,
+                ts.tv_sec, ts.tv_nsec
+                );
         NsThreadFatal("Ns_CondTimedWait", "pthread_cond_timedwait", err);
+#ifdef NS_TCL_PRE86
+        status = NS_ERROR;
+#endif
     } else {
         status = NS_OK;
     }

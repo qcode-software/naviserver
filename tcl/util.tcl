@@ -62,16 +62,15 @@ proc ns_adp_include {args} {
 #
 
 proc ns_setexpires {args} {
-    set headers [ns_conn outputheaders]
     set secs [lindex $args end]
     if {[lindex $args 0] eq "-cache-control"} {
         set cache_control [lindex $args 1]
-        ns_set update $headers Cache-Control "max-age=$secs, [lindex $args 1]"
+        ns_set iupdate [ns_conn outputheaders] cache-control "max-age=$secs, [lindex $args 1]"
     } elseif {[llength $args] > 1} {
-        error "usage: ns_setexpires ?-cache-control public|private|no-cache|no-store|no-transform|must-revalidate|proxy-revalidate? secs"
+        error "usage: ns_setexpires ?-cache-control public|private|no-cache|no-store|no-transform|must-revalidate|proxy-revalidate? seconds"
     }
     set when [ns_httptime [expr {$secs + [clock seconds]}]]
-    ns_set update $headers Expires $when
+    ns_set iupdate [ns_conn outputheaders] expires $when
 }
 
 
@@ -140,6 +139,64 @@ proc ns_findset {sets name} {
     }
 }
 
+
+proc ns_joinurl {dict} {
+    #
+    # Inverse operation of ns_parseurl
+    #
+    set valid_keys {proto userinfo host port path tail query fragment}
+    if {!([string is list $dict] && ([llength $dict] & 1) == 0)} {
+        error "the provided argument is not a dict: $dict"
+    }
+    foreach key [dict keys $dict] {
+        if {$key ni $valid_keys} {
+            error "the provided dict contains invalid key: $key"
+        }
+    }
+    set URL ""
+    dict with dict {
+        if {[info exists host]} {
+            if {[info exists proto]} {
+                append URL [expr {$proto ne "" ? "$proto:" : ""}]
+            }
+            append URL //
+            if {[info exists userinfo] && $userinfo ne ""} {
+                append URL $userinfo @
+            }
+            append URL [expr {[string match *:* $host] ? "\[$host\]" : $host}]
+            if {[info exists port]} {
+                append URL : $port
+            }
+        } else {
+            if {[info exists proto]} {
+                error "key 'proto' (value $proto) was provided without a key 'host'"
+            } elseif {[info exists userinfo]} {
+                error "key 'userinfo' (value $userinfo) was provided without a key 'host'"
+            } elseif {[info exists port]} {
+                error "key 'port' (value $port) was provided without a key 'host'"
+            }
+        }
+        if {[info exists path]} {
+            if { $path ne ""} {
+                append URL /
+            }
+            append URL $path /
+        }
+
+        if {[info exists tail] && $tail ne ""} {
+            append URL $tail
+        }
+
+        if {[info exists query] && $query ne ""} {
+            append URL ? $query
+        }
+        if {[info exists fragment] && $fragment ne ""} {
+            append URL # $fragment
+        }
+    }
+    return $URL
+}
+
 #=============================================================================
 #
 #     **** Please reconsider removal of the code below this marker *****
@@ -147,260 +204,15 @@ proc ns_findset {sets name} {
 #=============================================================================
 
 #
-# ns_parsetime --
-#
-#   <TBD>
-#
-
-proc ns_parsetime {option time} {
-
-    set parts {sec min hour mday mon year wday yday isdst}
-    set pos [lsearch -exact $parts $option]
-
-    if {$pos == -1} {
-        error "Incorrect option to ns_parsetime: \"$option\" Should be\
-               one of \"$parts\""
-    }
-
-    return [lindex $time $pos]
-}
-
-
-#
-# getformdata --
-#
-#   Make sure an HTML FORM was sent with the request.
-#
-
-proc getformdata {formVar} {
-
-    upvar 1 $formVar form
-
-    set form [ns_conn form]
-    if {$form eq {}} {
-        ns_returnbadrequest "Missing HTML FORM data"
-        return 0
-    }
-
-    return 1
-}
-
-
-#
-# ns_paren --
-#
-#   <TBD>
-#
-
-proc ns_paren {val} {
-
-    if {$val ne {}} {
-        return "($val)"
-    }
-}
-
-
-#
-# Paren --
-#
-#   <TBD>
-#
-
-proc Paren {val} {
-    ns_deprecated "ns_paren"
-    return [ns_paren $val]
-}
-
-
-#
-# issmallint --
-#
-#   Returns true if passed value is a small integer (16 bits)
-#
-
-proc issmallint {val} {
-    ns_issmallint $val
-}
-
-
-#
 # ns_issmallint --
 #
-#   Returns true if passed value is a small integer (16 bits)
+#   Returns true if passed value fits into an unsigned 16-bit integer
 #
 
-proc ns_issmallint {val} {
-    expr {[string is integer -strict $val]
-          && $val <= 65535 && $val >= -65535}
+proc ns_issmallint {value} {
+    expr {[string is integer -strict $value]
+          && $value <= 65535 && $value >= -65535}
 }
-
-
-#
-#  ns_formvalueput --
-#
-#   <TBD>
-#
-#   Special thanks to Brian Tivol at Hearst New Media Center and MIT
-#   for providing the core of this code.
-#
-
-proc ns_formvalueput {htmlpiece dataname datavalue} {
-
-    set newhtml ""
-
-    while {$htmlpiece ne ""} {
-        if {[string index $htmlpiece 0] ne "<"} {
-            regexp {([^<]*)(.*)} $htmlpiece m brandnew htmlpiece
-            append newhtml $brandnew
-        } else {
-            regexp {<([^>]*)>(.*)} $htmlpiece m tag htmlpiece
-            set tag [string trim $tag]
-            set CAPTAG [string toupper $tag]
-            switch -regexp -- $CAPTAG {
-                {^INPUT} {
-                    if {[regexp {TYPE=("IMAGE"|"SUBMIT"|"RESET"|IMAGE|SUBMIT|RESET)} $CAPTAG]} {
-                        append newhtml <$tag>
-                    } elseif {[regexp {TYPE=("CHECKBOX"|CHECKBOX|"RADIO"|RADIO)} $CAPTAG]} {
-                        set name [ns_tagelement $tag NAME]
-                        if {$name eq $dataname} {
-                            set value [ns_tagelement $tag VALUE]
-                            regsub -all -nocase { *CHECKED} $tag {} tag
-                            if {$value eq $datavalue} {
-                                append tag " CHECKED"
-                            }
-                        }
-                        append newhtml <$tag>
-
-                    } else {
-
-                        ## If it is an INPUT TYPE that hasn't been covered
-                        #  (text, password, hidden, other (defaults to text))
-                        ## then we add/replace the VALUE tag
-
-                        set name [ns_tagelement $tag NAME]
-                        if {$name eq $dataname} {
-                            ns_tagelementset tag VALUE $datavalue
-                        }
-                        append newhtml <$tag>
-                    }
-                }
-                {^TEXTAREA} {
-
-                    ###
-                    #   Fill in the middle of this tag
-                    ###
-
-                    set name [ns_tagelement $tag NAME]
-                    if {$name eq $dataname} {
-                        while {![regexp -nocase {^<( *)/TEXTAREA} $htmlpiece]} {
-                            regexp {^.[^<]*(.*)} $htmlpiece m htmlpiece
-                        }
-                        append newhtml <$tag>$datavalue
-                    } else {
-                        append newhtml <$tag>
-                    }
-                }
-                {^SELECT} {
-
-                    ### Set flags "inkeyselect" and "addoption" so
-                    ### OPTION and /SELECT know what to look for.
-
-                    if {[ns_tagelement $tag NAME] eq $dataname} {
-                        set inkeyselect 1
-                        set addoption 1
-                    } else {
-                        set inkeyselect 0
-                        set addoption 0
-                    }
-                    append newhtml <$tag>
-                }
-                {^OPTION} {
-
-                    ###
-                    #   Find the value for this
-                    ###
-
-                    if {$inkeyselect} {
-                        regsub -all -nocase { *SELECTED} $tag {} tag
-                        set value [ns_tagelement $tag VALUE]
-                        regexp {^([^<]*)(.*)} $htmlpiece m txt htmlpiece
-                        if {$value eq ""} {
-                            set value [string trim $txt]
-                        }
-                        if {$value eq $datavalue} {
-                            append tag " SELECTED"
-                            set addoption 0
-                        }
-                        append newhtml <$tag>$txt
-                    } else {
-                        append newhtml <$tag>
-                    }
-                }
-                {^/SELECT} {
-
-                    ###
-                    #   Do we need to add to the end?
-                    ###
-
-                    if {$inkeyselect && $addoption} {
-                        append newhtml "<option selected>$datavalue<$tag>"
-                    } else {
-                        append newhtml <$tag>
-                    }
-                    set inkeyselect 0
-                    set addoption 0
-                }
-                default {
-                    append newhtml <$tag>
-                }
-            }
-        }
-    }
-
-    return $newhtml
-}
-
-
-#
-# ns_tagelement --
-#
-#   <TBD>
-#
-
-proc ns_tagelement {tag key} {
-
-    set qq {"([^\"]*)"}               ; # Matches what's in quotes
-    set pp {([^ >]*)}                 ; # Matches a word (mind yer pp and qq)
-
-    if {[regexp -nocase -- "$key *= *$qq" $tag m name]} {
-        # Do nothing
-    } elseif {[regexp -nocase -- "$key *= *$pp" $tag m name]} {
-        # Do nothing
-    } else {
-        set name ""
-    }
-
-    return $name
-}
-
-
-#
-# ns_tagelementset --
-#
-#   <TBD>
-#
-proc ns_tagelementset {tagvar key value} {
-
-    upvar $tagvar tag
-
-    set qq {"([^\"]*)"}                ; # Matches what's in quotes
-    set pp {([^ >]*)}                  ; # Matches a word (mind yer pp and qq)
-
-    regsub -all -nocase -- "$key=$qq" $tag {} tag
-    regsub -all -nocase -- "$key *= *$pp" $tag {} tag
-    append tag " value=\"$value\""
-}
-
 
 #
 # Helper procedure for ns_htmlselect.
@@ -422,7 +234,7 @@ proc _ns_paircmp {pair1 pair2} {
 #
 # ns_htmlselect --
 #
-#   ns_htmlselect ?-multi? ?-sort? ?-labels labels? key values ?selecteddata?
+#   ns_htmlselect ?-multi? ?-sort? ?-labels labels? /key/ /values/ ?selecteddata?
 #
 
 proc ns_htmlselect args {
@@ -494,42 +306,293 @@ proc ns_htmlselect args {
     return $select
 }
 
-
 #
-# ns_browsermatch --
+# Deprecated procs
 #
-#   <TBD>
-#
+if {[dict get [ns_info buildinfo] with_deprecated]} {
+    #
+    # ns_parsetime --
+    #
+    proc ns_parsetime {option time} {
+        ns_deprecated "clock format"
 
-proc ns_browsermatch {args} {
+        set parts {sec min hour mday mon year wday yday isdst}
+        set pos [lsearch -exact $parts $option]
 
-    set glob [lindex $args end]
-    set agnt [ns_set iget [ns_conn headers] user-agent]
-    string match $glob $agnt
-}
+        if {$pos == -1} {
+            error "Incorrect option to ns_parsetime: \"$option\" Should be\
+               one of \"$parts\""
+        }
 
-
-#
-# ns_set_precision --
-#
-#   <TBD>
-#
-
-proc ns_set_precision {precision} {
-    ns_deprecated {set ::tcl_precision $precision}
-    set ::tcl_precision $precision
-}
+        return [lindex $time $pos]
+    }
 
 
-#
-# ns_updateheader --
-#
-#   <TBD>
-#
+    #
+    # getformdata --
+    #
+    #   Make sure an HTML FORM was sent with the request.
+    #
 
-proc ns_updateheader {key value} {
-    ns_deprecated {ns_set update [ns_conn outputheaders]}
-    ns_set update [ns_conn outputheaders] $key $value
+    proc getformdata {formVar} {
+        ns_deprecated "ns_conn form"
+
+        upvar 1 $formVar form
+
+        set form [ns_conn form]
+        if {$form eq {}} {
+            ns_returnbadrequest "Missing HTML FORM data"
+            return 0
+        }
+
+        return 1
+    }
+
+
+    #
+    # ns_paren --
+    #
+    #   deprecated
+    #
+
+    proc ns_paren {val} {
+        ns_deprecated "use standard Tcl functions" {one-liner}
+        if {$val ne {}} {
+            return "($val)"
+        }
+    }
+
+
+    #
+    # Paren --
+    #
+
+    proc Paren {val} {
+        ns_deprecated "ns_paren"
+        return [ns_paren $val]
+    }
+
+
+    #
+    # issmallint --
+    #
+    #   Returns true if passed value is a small integer (16 bits)
+    #
+
+    proc issmallint {val} {
+        ns_deprecated "ns_issmallint"
+        ns_issmallint $val
+    }
+
+    #
+    #  ns_formvalueput --
+    #
+    #   deprecated.
+    #
+
+    proc ns_formvalueput {htmlpiece dataname datavalue} {
+        ns_deprecated "standard API" {not sufficient for today's needs}
+
+        set newhtml ""
+
+        while {$htmlpiece ne ""} {
+            if {[string index $htmlpiece 0] ne "<"} {
+                regexp {([^<]*)(.*)} $htmlpiece m brandnew htmlpiece
+                append newhtml $brandnew
+            } else {
+                regexp {<([^>]*)>(.*)} $htmlpiece m tag htmlpiece
+                set tag [string trim $tag]
+                set CAPTAG [string toupper $tag]
+                switch -regexp -- $CAPTAG {
+                    {^INPUT} {
+                        if {[regexp {TYPE=("IMAGE"|"SUBMIT"|"RESET"|IMAGE|SUBMIT|RESET)} $CAPTAG]} {
+                            append newhtml <$tag>
+                        } elseif {[regexp {TYPE=("CHECKBOX"|CHECKBOX|"RADIO"|RADIO)} $CAPTAG]} {
+                            set name [ns_tagelement $tag NAME]
+                            if {$name eq $dataname} {
+                                set value [ns_tagelement $tag VALUE]
+                                regsub -all -nocase { *CHECKED} $tag {} tag
+                                if {$value eq $datavalue} {
+                                    append tag " CHECKED"
+                                }
+                            }
+                            append newhtml <$tag>
+
+                        } else {
+
+                            ## If it is an INPUT TYPE that hasn't been covered
+                            #  (text, password, hidden, other (defaults to text))
+                            ## then we add/replace the VALUE tag
+
+                            set name [ns_tagelement $tag NAME]
+                            if {$name eq $dataname} {
+                                ns_tagelementset tag VALUE $datavalue
+                            }
+                            append newhtml <$tag>
+                        }
+                    }
+                    {^TEXTAREA} {
+
+                        ###
+                        #   Fill in the middle of this tag
+                        ###
+
+                        set name [ns_tagelement $tag NAME]
+                        if {$name eq $dataname} {
+                            while {![regexp -nocase {^<( *)/TEXTAREA} $htmlpiece]} {
+                                regexp {^.[^<]*(.*)} $htmlpiece m htmlpiece
+                            }
+                            append newhtml <$tag>$datavalue
+                        } else {
+                            append newhtml <$tag>
+                        }
+                    }
+                    {^SELECT} {
+
+                        ### Set flags "inkeyselect" and "addoption" so
+                        ### OPTION and /SELECT know what to look for.
+
+                        if {[ns_tagelement $tag NAME] eq $dataname} {
+                            set inkeyselect 1
+                            set addoption 1
+                        } else {
+                            set inkeyselect 0
+                            set addoption 0
+                        }
+                        append newhtml <$tag>
+                    }
+                    {^OPTION} {
+
+                        ###
+                        #   Find the value for this
+                        ###
+
+                        if {$inkeyselect} {
+                            regsub -all -nocase { *SELECTED} $tag {} tag
+                            set value [ns_tagelement $tag VALUE]
+                            regexp {^([^<]*)(.*)} $htmlpiece m txt htmlpiece
+                            if {$value eq ""} {
+                                set value [string trim $txt]
+                            }
+                            if {$value eq $datavalue} {
+                                append tag " SELECTED"
+                                set addoption 0
+                            }
+                            append newhtml <$tag>$txt
+                        } else {
+                            append newhtml <$tag>
+                        }
+                    }
+                    {^/SELECT} {
+
+                        ###
+                        #   Do we need to add to the end?
+                        ###
+
+                        if {$inkeyselect && $addoption} {
+                            append newhtml "<option selected>$datavalue<$tag>"
+                        } else {
+                            append newhtml <$tag>
+                        }
+                        set inkeyselect 0
+                        set addoption 0
+                    }
+                    default {
+                        append newhtml <$tag>
+                    }
+                }
+            }
+        }
+
+        return $newhtml
+    }
+
+
+    #
+    # ns_tagelement --
+    #
+    #   deprecated
+    #
+
+    proc ns_tagelement {tag key} {
+        ns_deprecated "tDOM or similar for updating HTML snippets"
+
+        set qq {"([^\"]*)"}               ; # Matches what's in quotes
+        set pp {([^ >]*)}                 ; # Matches a word (mind yer pp and qq)
+
+        if {[regexp -nocase -- "$key *= *$qq" $tag m name]} {
+            # Do nothing
+        } elseif {[regexp -nocase -- "$key *= *$pp" $tag m name]} {
+            # Do nothing
+        } else {
+            set name ""
+        }
+
+        return $name
+    }
+
+
+    #
+    # ns_tagelementset --
+    #
+    #   deprecated
+    #
+    proc ns_tagelementset {tagvar key value} {
+        ns_deprecated "tDOM or similar for updating HTML snippets"
+
+        upvar $tagvar tag
+
+        set qq {"([^\"]*)"}                ; # Matches what's in quotes
+        set pp {([^ >]*)}                  ; # Matches a word (mind yer pp and qq)
+
+        regsub -all -nocase -- "$key=$qq" $tag {} tag
+        regsub -all -nocase -- "$key *= *$pp" $tag {} tag
+        append tag " $key=\"$value\""
+    }
+
+    #
+    # ns_browsermatch --
+    #
+    #   <deprecated>
+    #
+
+    proc ns_browsermatch {pattern} {
+        ns_deprecated "standard API" {one-liner}
+        string match $pattern [ns_set iget [ns_conn headers] user-agent] $agnt
+    }
+
+    #
+    # ns_set_precision --
+    #
+
+    proc ns_set_precision {precision} {
+        ns_deprecated {set ::tcl_precision $precision}
+        set ::tcl_precision $precision
+    }
+
+
+    #
+    # ns_updateheader --
+    #
+
+    proc ns_updateheader {key value} {
+        ns_deprecated {ns_set update [ns_conn outputheaders]}
+        ns_set update [ns_conn outputheaders] $key $value
+    }
+
+
+    #
+    # ns_subnetmatch /cidr/ /ipaddr/ --
+    #
+    #   Returns true if ipaddr (IPv4 or IPv6) matches the CDIR (Classless
+    #   Inter-Domain Routing) range.
+    #   https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing
+    #
+
+    proc ns_subnetmatch {cidr ipaddr} {
+        ns_deprecated "ns_ip match"
+        ns_ip match $cidr $ipaddr
+    }
 }
 
 # Local variables:

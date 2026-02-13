@@ -1,0 +1,221 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_upload_stats - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_upload_stats.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_upload_stats.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_upload_stats.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_upload_stats.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_upload_stats(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_upload_stats - Return Real-Time Statistics for an Ongoing File Upload</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">CONFIGURATION</a></li>
+<li class="doctools_section"><a href="#section4">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_upload_stats</b> <i class="arg">key</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides real-time statistics for large file uploads,
+enabling user interfaces to display progress information about uploads
+in progress.</p>
+<p>Internally, an upload request is identified by a unique key, which is
+used to track statistics such as the current uploaded size and the
+total size. These statistics are dynamically updated throughout the
+upload process. Once the upload completes, the statistics are
+automatically discarded.</p>
+<p>The upload key can be provided in several ways:</p>
+<ul class="doctools_itemized">
+<li><p>Recommended: Via the HTTP request header field <i class="term">X-Progress-ID</i> (see example below).</p></li>
+<li><p>Via a query parameter.</p></li>
+<li><p>Derived from the URL.</p></li>
+</ul>
+<p>To enable upload progress statistics, the configuration parameter
+<i class="term">progressminsize</i> must be set. This ensures statistics are
+maintained only for files exceeding a specified minimum size, reducing
+unnecessary overhead for small files.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_upload_stats</b> <i class="arg">key</i></a></dt>
+<dd><p>The <i class="arg">key</i> parameter is typically the value provided via the
+<i class="term">X-Progress-ID</i> request header, although query parameters or URLs can
+also be used. The convention of using the <i class="term">X-Progress-ID</i> header
+is widely supported by other web servers, including Nginx, Lighttpd,
+and Apache (with mod_passenger).</p>
+<p>This command returns a list with two elements:</p>
+<ol class="doctools_enumerated">
+<li><p>The number of bytes uploaded so far.</p></li>
+<li><p>The total size of the file being uploaded.</p></li>
+</ol></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">CONFIGURATION</a></h2>
+<p>To minimize unnecessary overhead for small uploads, progress
+statistics are only maintained for files larger than a configurable
+size. Set the <i class="term">progressminsize</i> parameter to specify the minimum
+file size (e.g., 2kB).</p>
+<pre class="doctools_example">
+ ns_section ns/parameters {
+   ns_param progressminsize 2kB
+ }
+</pre>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">EXAMPLES</a></h2>
+<p>JavaScript file for uploading a file, supplying for the upload a unique
+<i class="term">X-Progress-ID</i>.</p>
+<pre class="doctools_example">
+ &lt;!DOCTYPE html&gt;
+ &lt;html lang=&quot;en&quot;&gt;
+ &lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+    &lt;title&gt;File Upload with Progress&lt;/title&gt;
+ &lt;/head&gt;
+ &lt;body&gt;
+    &lt;h1&gt;File Upload with X-Progress-ID&lt;/h1&gt;
+    &lt;form id=&quot;uploadForm&quot; enctype=&quot;multipart/form-data&quot;&gt;
+        &lt;input type=&quot;file&quot; name=&quot;file&quot; id=&quot;fileInput&quot; /&gt;
+        &lt;button type=&quot;button&quot; id=&quot;uploadButton&quot;&gt;Upload&lt;/button&gt;
+    &lt;/form&gt;
+    &lt;p id=&quot;progressText&quot;&gt;Progress: 0%&lt;/p&gt;
+    &lt;div id=&quot;progressBar&quot; style=&quot;width: 0%; height: 20px; background-color: green;&quot;&gt;&lt;/div&gt;
+    &lt;script&gt;
+        document.getElementById('uploadButton').addEventListener('click', function () {
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput.files.length === 0) {
+                alert('Please select a file to upload.');
+                return;
+            }
+            const progressId = generateUUID();
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            // Start the file upload with X-Progress-ID header
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+            xhr.setRequestHeader('X-Progress-ID', progressId);
+            xhr.upload.addEventListener('loadstart', () =&gt; {
+                document.getElementById('progressText').innerText = 'Upload started...';
+            });
+            xhr.upload.addEventListener('error', () =&gt; {
+                document.getElementById('progressText').innerText = 'Error during upload.';
+            });
+            xhr.addEventListener('load', () =&gt; {
+                document.getElementById('progressText').innerText = 'Upload completed.';
+            });
+            xhr.send(formData);
+            // Query upload progress
+            const progressInterval = setInterval(() =&gt; {
+                fetch(`/progress?X-Progress-ID=${progressId}`)
+                    .then(response =&gt; {
+                        if (response.ok) {
+                            return response.json();
+                        } else if (response.status === 429) {
+                            // request block told us to slow down, could be handled differently
+                            return {status: &quot;continue&quot;}
+                        } else {
+                            console.warn(`Non-200 status code: ${response.status}`);
+                            return null;
+                        }
+                    })
+                    .then(data =&gt; {
+                        //console.log(data);
+                        if (data &amp;&amp; data.total) {
+                           const percent = Math.round((data.current / data.total) * 100);
+                           document.getElementById('progressText').innerText = `Progress: ${percent}%`;
+                           document.getElementById('progressBar').style.width = `${percent}%`;
+                           if (percent === 100) {
+                               clearInterval(progressInterval);
+                            }
+                         }
+                    })
+                    .catch(err =&gt; {
+                        console.error('Error querying progress:', err);
+                        clearInterval(progressInterval);
+                    });
+            },250);
+        });
+        function generateUUID() {
+            // Simple UUID generator for X-Progress-ID
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r &amp; 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    &lt;/script&gt;
+ &lt;/body&gt;
+ &lt;/html&gt;
+</pre>
+<p>Server-side support:</p>
+<pre class="doctools_example">
+ # Upload handler
+ ns_register_proc POST /upload {
+   ns_return 200 text/plain &quot;Upload successful&quot;
+ }
+ 
+ # Progress handler
+ ns_register_proc GET /progress {
+   set progress_id [ns_queryget X-Progress-ID]
+   if {$progress_id ne &quot;&quot;} {
+     set stats [ns_upload_stats $progress_id]
+     if {[llength $stats] == 2} {
+       lassign $stats current total
+       ns_return 200 application/json [subst {{&quot;total&quot;:$total,&quot;current&quot;:$current}}]
+     } else {
+       ns_return 404 application/json {{&quot;error&quot;: &quot;No progress data available.&quot;}}
+     }
+   } else {
+     ns_return 400 application/json {{&quot;error&quot;: &quot;Missing X-Progress-ID.&quot;}}
+   }
+ }
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#naviserver">NaviServer</a>, <a href="../../index.html#configuration">configuration</a>, <a href="../../index.html#progress">progress</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#upload">upload</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

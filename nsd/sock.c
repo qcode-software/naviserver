@@ -33,6 +33,10 @@
 # include <AvailabilityMacros.h>
 #endif
 
+#ifndef _WIN32
+# include <sys/un.h>
+#endif
+
 
 /*
  * Local functions defined in this file
@@ -65,13 +69,11 @@ static NS_INLINE bool Retry(int errorCode) NS_GNUC_CONST;
 
 static Ns_SockProc CloseLater;
 
-static const char *ErrorCodeString(int errorCode) NS_GNUC_PURE;
-
 
 /*
  *----------------------------------------------------------------------
  *
- * Retry --
+ * Retry, NsSockRetryCode --
  *
  *      Boolean function to check whether the provided error code entails a
  *      retry. This is defined as an inline function rathen than a macro to
@@ -102,6 +104,11 @@ Retry(int errorCode)
             || errorCode == EPROTOTYPE
 #endif
             || errorCode == NS_EWOULDBLOCK);
+}
+
+bool NsSockRetryCode(int errorCode)
+{
+    return Retry(errorCode);
 }
 
 
@@ -155,14 +162,15 @@ Ns_ResetVec(struct iovec *bufs, int nbufs, size_t sent)
     int i;
 
     for (i = 0; (i < nbufs) && (sent > 0u); i++) {
-        const char *data = bufs[i].iov_base;
-        size_t      len  = bufs[i].iov_len;
+        size_t  len  = bufs[i].iov_len;
 
         if (len > 0u) {
             if (sent >= len) {
                 sent -= len;
                 (void) Ns_SetVec(bufs, i, NULL, 0u);
             } else {
+                const char *data = bufs[i].iov_base;
+
                 (void) Ns_SetVec(bufs, i, data + sent, len - sent);
                 break;
             }
@@ -227,6 +235,111 @@ Ns_SockSetReceiveState(Ns_Sock *sock, Ns_SockState sockState, unsigned long recv
 
     ((Sock *)sock)->recvSockState = sockState;
     ((Sock *)sock)->recvErrno = recvErrno;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockSetSendErrno --
+ *
+ *      Set the error code (POSIX or the masked OpenSSL error code) for the
+ *      send operation in the Sock structure.  This error code may represent a
+ *      standard POSIX error or a masked OpenSSL error (as returned by
+ *      ERR_get_error()), and is stored in the 'sendErrno' member of the Sock
+ *      structure.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_SockSetSendErrno(Ns_Sock *sock, unsigned long sendErrno)
+{
+    ((Sock *)sock)->sendErrno = sendErrno;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockGetSendErrno, Ns_SockGetSendRejected, Ns_SockGetSendCount --
+ *
+ *      Accessor functions for sendErrno, sendRejected and sendCount
+ *
+ * Results:
+ *      Values of these fields.
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+unsigned long
+Ns_SockGetSendErrno(Ns_Sock *sock)
+{
+    return ((Sock *)sock)->sendErrno;
+}
+
+
+ssize_t
+Ns_SockGetSendRejected(Ns_Sock *sock)
+{
+    return ((Sock *)sock)->sendRejected;
+}
+
+size_t
+Ns_SockGetSendCount(Ns_Sock *sock)
+{
+    return ((Sock *)sock)->sendCount;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockFlagAdd --
+ *
+ *      Adds one or more bit flags to the flags field of the specified socket.
+ *      This function performs a bitwise OR operation to set the provided
+ *      flag(s) on the socket's internal flags value.
+ *
+ * Results:
+ *      Returns the updated flags field containing the new flag(s) along with any
+ *      previously set flags.
+ *
+ * Side effects:
+ *      Modifies the flags field of the given socket.
+ *
+ *----------------------------------------------------------------------
+ */
+unsigned int
+Ns_SockFlagAdd(Ns_Sock *sock, unsigned int flag) {
+    return ((Sock *)sock)->flags |= flag;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockFlagClear --
+ *
+ *      Clears one or more bit flags from the flags field of the specified
+ *      socket.  This function performs a bitwise AND with the negated flag(s)
+ *      to clear the indicated flag(s) from the socket's internal flags value.
+ *
+ * Results:
+ *      Returns the updated flags field with the specified flag(s) cleared.
+ *
+ * Side effects:
+ *      Modifies the flags field of the given socket.
+ *
+ *----------------------------------------------------------------------
+ */
+unsigned int
+Ns_SockFlagClear(Ns_Sock *sock, unsigned int flag) {
+    return ((Sock *)sock)->flags &= ~flag;
 }
 
 /*
@@ -489,7 +602,7 @@ Ns_SockSendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
     int           sbufLen, sbufIdx = 0, nsbufs = 0, bufIdx = 0;
     size_t        toWrite = 0u;
     ssize_t       nWrote = 0;
-    struct iovec  sbufs[UIO_MAXIOV], *sbufPtr;
+    struct iovec  sbufs[UIO_MAXIOV] = {0}, *sbufPtr;
 
     NS_NONNULL_ASSERT(sock != NULL);
     NS_NONNULL_ASSERT(bufs != NULL);
@@ -595,20 +708,31 @@ Ns_SockSendBufs(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
  *
  *----------------------------------------------------------------------
  */
-
+//#ifdef NS_WITH_DEPRECATED
 ssize_t
 Ns_SockSendBufs2(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
                  unsigned int flags)
 {
-    ssize_t sent;
     unsigned long errorCode = 0;
 
     NS_NONNULL_ASSERT(bufs != NULL);
 
-    sent = SockSend(sock, bufs, nbufs, flags, &errorCode);
+    return Ns_SockSendBufsEx(sock, bufs, nbufs, flags, &errorCode);
+}
+//#endif
+
+ssize_t
+Ns_SockSendBufsEx(NS_SOCKET sock, const struct iovec *bufs, int nbufs,
+                   unsigned int flags, unsigned long *errorCodePtr)
+{
+    ssize_t sent;
+
+    NS_NONNULL_ASSERT(bufs != NULL);
+
+    sent = SockSend(sock, bufs, nbufs, flags, errorCodePtr);
 
     if (unlikely(sent == -1)) {
-        if (Retry((int)errorCode)) {
+        if (Retry((int)*errorCodePtr)) {
             /*
              * Resource is temporarily unavailable.
              */
@@ -861,7 +985,8 @@ Ns_SockWait(NS_SOCKET sock, unsigned int what, int timeout)
 NS_SOCKET
 Ns_SockListen(const char *address, unsigned short port)
 {
-    return Ns_SockListenEx(address, port, nsconf.listenbacklog, NS_FALSE);  // TODO: currently no parameter defined
+    // TODO: currently no parameter defined for "reuseport" similar to the global parameter nsconf.listenbacklog
+    return Ns_SockListenEx(address, port, nsconf.listenbacklog, NS_FALSE);
 }
 
 
@@ -901,6 +1026,7 @@ Ns_SockAccept(NS_SOCKET sock, struct sockaddr *saPtr, socklen_t *lenPtr)
     return sock;
 }
 
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  *
@@ -923,6 +1049,7 @@ Ns_BindSock(const struct sockaddr *saPtr)
 {
     return Ns_SockBind(saPtr, NS_FALSE);
 }
+#endif
 
 
 /*
@@ -970,29 +1097,48 @@ Ns_SockBind(const struct sockaddr *saPtr, bool reusePort)
 
             setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const void *) &n, (socklen_t)sizeof(n));
 #ifdef HAVE_IPV6
-            /*
-             * IPv4 connectivity through AF_INET6 can be disabled by
-             * default, for example by /proc/sys/net/ipv6/bindv6only to
-             * 1 on Linux. We explicitly enable IPv4 so we don't need to
-             * bind separate sockets for v4 and v6.
-             */
-            n = 0;
-            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const void *) &n, (socklen_t)sizeof(n));
+            if (((const struct sockaddr *)saPtr)->sa_family == AF_INET6) {
+                /*
+                 * IPv4 connectivity through AF_INET6 can be disabled by
+                 * default, for example by /proc/sys/net/ipv6/bindv6only to
+                 * 1 on Linux. We explicitly enable IPv4 so we don't need to
+                 * bind separate sockets for v4 and v6.
+                 */
+                int v6only = 0;
+                setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY,
+                           (const void *) &v6only, (socklen_t)sizeof(v6only));
+            }
 #endif
         }
         Ns_LogSockaddr(Debug, "trying to bind on", (const struct sockaddr *) saPtr);
 
         if (bind(sock, (const struct sockaddr *)saPtr,
                  Ns_SockaddrGetSockLen((const struct sockaddr *)saPtr)) != 0) {
+            int err = ns_sockerrno;
 
-            Ns_Log(Notice, "bind operation on sock %d lead to error: %s",
-                   sock, ns_sockstrerror(ns_sockerrno));
-            Ns_LogSockaddr(Warning, "bind on", (const struct sockaddr *) saPtr);
+            if (((const struct sockaddr *)saPtr)->sa_family == AF_INET
+                && err == EADDRINUSE
+                && Ns_SockaddrInAny(saPtr)
+                ) {
+                /*
+                 * We probably already bound a dual-stack AF_INET6 wildcard
+                 * ([::]:port with IPV6_V6ONLY=0), which also covers
+                 * IPv4. Binding 0.0.0.0:port fails with EADDRINUSE. Skip
+                 * silently (but inform admin).
+                 */
+                Ns_Log(Notice, "skipping bind on [0.0.0.0]:%hu: already covered by [::]:%hu",
+                       port, port);
+                Ns_SetSockErrno(EALREADY);
+            } else {
+                Ns_Log(Notice, "bind operation on sock %d lead to error: %s",
+                       sock, ns_sockstrerror(ns_sockerrno));
+                Ns_LogSockaddr(Warning, "bind on", (const struct sockaddr *) saPtr);
+            }
             ns_sockclose(sock);
             sock = NS_INVALID_SOCKET;
         }
 
-        if (port == 0u) {
+        if (port == 0u && sock != NS_INVALID_SOCKET) {
             /*
              * Refetch the socket structure containing the potentially fresh port
              */
@@ -1038,6 +1184,54 @@ Ns_SockConnect2(const char *host, unsigned short port, const char *lhost, unsign
 
     return SockConnect(host, port, lhost, lport, NS_FALSE, 20, 100, NULL);
 }
+
+NS_SOCKET
+Ns_SockConnectUnix(const char *path, int socktype, Ns_ReturnCode *statusPtr)
+{
+    NS_SOCKET sock;
+
+#ifdef _WIN32
+    sock = NS_INVALID_SOCKET;
+#else
+    struct sockaddr_un server_addr;
+    size_t             pathLength = strlen(path);
+    Ns_ReturnCode      status = NS_OK;
+
+    NS_NONNULL_ASSERT(path != NULL);
+
+    if (pathLength >= sizeof(server_addr.sun_path)) {
+        Ns_Log(Error, "Ns_SockUnixConnect: provided path exceeds maximum length: %s\n", path);
+        sock = NS_INVALID_SOCKET;
+
+    } else {
+        memset(&server_addr, 0, sizeof(server_addr));
+        server_addr.sun_family = AF_UNIX;
+        memcpy(server_addr.sun_path, path, pathLength + 1);
+
+        sock = socket(AF_UNIX, socktype > 0 ? socktype : SOCK_STREAM, 0);
+
+        if (sock != NS_INVALID_SOCKET) {
+            int connect_rc = connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+            if (connect_rc == -1) {
+                ns_close(sock);
+                status = NS_ERROR;
+                sock = NS_INVALID_SOCKET;
+            }
+        }
+    }
+
+    /*
+     * When a statusPtr is provided, return the status code. The client can
+     * determine, if e.g. a timeout occurred.
+     */
+    if (statusPtr != NULL) {
+        *statusPtr = status;
+    }
+
+#endif
+    return sock;
+}
+
 
 
 /*
@@ -1118,7 +1312,7 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost,
      * milliseconds. The number of attempts is determined by the timeoutPtr.
      */
     count = (int)Ns_TimeToMilliseconds(timeoutPtr)/ms;
-    Ns_Log(Debug, "Ns_SockTimedConnect2 for %s:%hu MS %ld count %d",
+    Ns_Log(Debug, "Ns_SockTimedConnect2 for [%s]:%hu MS %ld count %d",
            host, port, Ns_TimeToMilliseconds(timeoutPtr), count);
 
     sock = SockConnect(host, port, lhost, lport, NS_TRUE, count, ms, &status);
@@ -1200,32 +1394,52 @@ Ns_SockTimedConnect2(const char *host, unsigned short port, const char *lhost,
 
 void
 Ns_SockConnectError(Tcl_Interp *interp, const char *host, unsigned short portNr,
-                    Ns_ReturnCode status)
+                    Ns_ReturnCode status, const Ns_Time *timeoutPtr)
 {
+    bool haveResult = (*(Tcl_GetStringResult(interp)) != '\0');
+
     NS_NONNULL_ASSERT(host != NULL);
 
     if (status == NS_TIMEOUT) {
-
+        /*
+         * When we have an NS_TIMEOUT, there must have been a timeout value,
+         * and "timeoutPtr" must not be NULL.
+         */
+        assert(timeoutPtr);
         /*
          * Watch: Ns_TclPrintfResult() destroys errorCode variable
          */
-        Ns_TclPrintfResult(interp, "timeout while connecting to %s port %hu",
-                           host, portNr);
+        Ns_TclPrintfResult(interp, "timeout while connecting to %s port %hu"
+                           " after " NS_TIME_FMT "s",
+                           host, portNr,
+                           (int64_t)timeoutPtr->sec, timeoutPtr->usec);
         Ns_Log(Ns_LogTimeoutDebug, "connect to %s port %hu runs into timeout",
                host, portNr);
-        Tcl_SetErrorCode(interp, "NS_TIMEOUT", (char *)0L);
+
+        Tcl_SetErrorCode(interp, "NS_TIMEOUT", NS_SENTINEL);
+
+    } else if (haveResult && portNr == 0) {
+        /*
+         * This was most likely a protocol lookup failure, the error message
+         * is already supplied, no need to append more - potentially
+         * misleading - error details.
+         */
     } else {
         const char *err;
         char buf[TCL_INTEGER_SPACE];
 
         /*
+         * Add an additional error message.
+         *
          * Tcl_PosixError() maintains errorCode variable
          */
         err = (Tcl_GetErrno() != 0) ? Tcl_PosixError(interp) : "reason unknown";
         ns_uint32toa(buf, (uint32_t)portNr);
 
-        Tcl_AppendResult(interp, "can't connect to ", host, " port ", buf,
-                         ": ", err, (char *)0L);
+        Tcl_AppendResult(interp,
+                         (haveResult ? " - " : ""),
+                         "can't connect to ", host, " port ", buf,
+                         ": ", err, NS_SENTINEL);
     }
 }
 
@@ -1815,7 +2029,7 @@ WaitForConnect(NS_SOCKET sock, int count, int ms)
  * SockConnect --
  *
  *      Open a TCP connection to a host/port sync or async.  "host" and
- *      "port" refer to the remote, "lhost" and "lport" to the local
+ *      "port" refer to a remote, "lhost" and "lport" to a local
  *      communication endpoint. "count" specifies the number of
  *      connections attempts (important for async operations), and "ms"
  *      determines the interval between attempts.
@@ -2129,6 +2343,48 @@ SockSend(NS_SOCKET sock, const struct iovec *bufs, int nbufs, unsigned int flags
     return numBytes;
 }
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockGetClientSockAddr, Ns_SockGetConfiguredSockAddr --
+ *
+ *      Return the client sockaddr (private member) or the configured
+ *      (dependnet on reverse proxy mode) sock addr.
+ *
+ * Results:
+ *      Socket address.
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+struct sockaddr *
+Ns_SockGetClientSockAddr(Ns_Sock *sock)
+{
+    Sock *sockPtr;
+
+    NS_NONNULL_ASSERT(sock != NULL);
+
+    sockPtr = (Sock *)sock;
+    return (struct sockaddr *)&(sockPtr->clientsa);
+}
+
+struct sockaddr *
+Ns_SockGetConfiguredSockAddr(Ns_Sock *sock)
+{
+    Sock *sockPtr;
+
+    NS_NONNULL_ASSERT(sock != NULL);
+
+    sockPtr = (Sock *)sock;
+    return (nsconf.reverseproxymode.enabled
+            ? (struct sockaddr *)&(sockPtr->clientsa)
+            : (struct sockaddr *)&(sockPtr->sa));
+}
+
+
 /*
  *----------------------------------------------------------------------
  *
@@ -2181,9 +2437,9 @@ Ns_PosixSetErrorCode(Tcl_Interp *interp, int errorNum) {
 
     errorMsg = Tcl_ErrnoMsg(errorNum);
     Tcl_SetErrorCode(interp, "POSIX",
-                     ErrorCodeString(errorNum),
+                     NsErrorCodeString(errorNum),
                      Tcl_ErrnoMsg(errorNum),
-                     (char *)0L);
+                     NS_SENTINEL);
     return errorMsg;
 }
 
@@ -2211,7 +2467,6 @@ NsSockSetRecvErrorCode(const Sock *sockPtr, Tcl_Interp *interp) {
     NS_NONNULL_ASSERT(sockPtr != NULL);
 
 #ifdef HAVE_OPENSSL_EVP_H
-
     if (STREQ(sockPtr->drvPtr->protocol, "https")) {
         return Ns_SSLSetErrorCode(interp, sockPtr->recvErrno);
     }
@@ -2222,7 +2477,7 @@ NsSockSetRecvErrorCode(const Sock *sockPtr, Tcl_Interp *interp) {
 /*
  *----------------------------------------------------------------------
  *
- * ErrorCodeString --
+ * NsErrorCodeString --
  *
  *      Map errorCode integer to a language independent string.  This
  *      function is practically a copy of the Tcl implementation, except
@@ -2237,8 +2492,8 @@ NsSockSetRecvErrorCode(const Sock *sockPtr, Tcl_Interp *interp) {
  *
  *----------------------------------------------------------------------
  */
-static const char *
-ErrorCodeString(int errorCode)
+const char *
+NsErrorCodeString(int errorCode)
 {
     switch (errorCode) {
 #if defined(E2BIG) && (!defined(EOVERFLOW) || (E2BIG != EOVERFLOW))
@@ -2670,6 +2925,7 @@ ErrorCodeString(int errorCode)
 #ifdef EXFULL
     case EXFULL: return "EXFULL";
 #endif
+    case 0: return "";
     }
     return "unknown error";
 }

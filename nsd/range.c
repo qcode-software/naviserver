@@ -37,11 +37,11 @@ static void SetRangeHeader(const Ns_Conn *conn, off_t start, off_t end, size_t o
 static void SetMultipartRangeHeader(const Ns_Conn *conn)
     NS_GNUC_NONNULL(1);
 
-static TCL_SIZE_T AppendMultipartRangeHeader(Ns_DString *dsPtr, const char *type,
+static TCL_SIZE_T AppendMultipartRangeHeader(Tcl_DString *dsPtr, const char *type,
                                       off_t start, off_t end, size_t objLength)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(1);
 
-static TCL_SIZE_T AppendMultipartRangeTrailer(Ns_DString *dsPtr)
+static TCL_SIZE_T AppendMultipartRangeTrailer(Tcl_DString *dsPtr)
         NS_GNUC_NONNULL(1);
 
 static bool MatchRange(const Ns_Conn *conn, time_t mtime)
@@ -82,8 +82,8 @@ MatchRange(const Ns_Conn *conn, time_t mtime)
      * two characters.)
      */
 
-    if (Ns_SetIGet(conn->headers, "Range") != NULL) {
-        const char *hdr = Ns_SetIGet(conn->headers, "If-Range");
+    if (Ns_SetIGet(conn->headers, "range") != NULL) {
+        const char *hdr = Ns_SetIGet(conn->headers, "if-range");
 
         if (hdr != NULL && mtime > Ns_ParseHttpTime(hdr)) {
             result = NS_FALSE;
@@ -117,7 +117,7 @@ MatchRange(const Ns_Conn *conn, time_t mtime)
 int
 NsConnParseRange(Ns_Conn *conn, const char *type,
                  int fd, const void *data, size_t objLength,
-                 Ns_FileVec *bufs, int *nbufsPtr, Ns_DString *dsPtr)
+                 Ns_FileVec *bufs, int *nbufsPtr, Tcl_DString *dsPtr)
 {
     int         rangeCount = 0;
     off_t       start, end;
@@ -129,7 +129,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
     NS_NONNULL_ASSERT(nbufsPtr != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_ConnCondSetHeaders(conn, "Accept-Ranges", "bytes");
+    Ns_ConnCondSetHeadersSz(conn, "accept-ranges", 13, "bytes", 5);
 
     if (MatchRange(conn, ((Conn *) conn)->fileInfo.st_mtime)) {
         int maxranges = NS_MAX_RANGES;
@@ -186,7 +186,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
             /*
              * Combine the footer with the next header.
              */
-            Ns_DStringAppend(dsPtr, "\r\n");
+            Tcl_DStringAppend(dsPtr, "\r\n", 2);
             len = 2u;
         }
         len += (size_t)AppendMultipartRangeTrailer(dsPtr);
@@ -230,7 +230,7 @@ NsConnParseRange(Ns_Conn *conn, const char *type,
  *
  * ParseRangeOffsets --
  *
- *      Checks for presence of "Range:" header, parses it and fills-in
+ *      Checks for presence of "range:" header, parses it and fills-in
  *      the parsed range offsets. In case the syntax of the range
  *      string specification is invalid, the range specification is
  *      ignored.
@@ -267,10 +267,10 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
     NS_NONNULL_ASSERT(ranges != NULL);
 
     /*
-     * Check for valid "Range:" header
+     * Check for valid "range:" header
      */
 
-    rangeHeaderString = Ns_SetIGet(conn->headers, "Range");
+    rangeHeaderString = Ns_SetIGet(conn->headers, "range");
     if (rangeHeaderString == NULL) {
         return 0;
     }
@@ -415,7 +415,7 @@ ParseRangeOffsets(Ns_Conn *conn, size_t objLength,
          */
 
         if (start >= (off_t)objLength) {
-            Ns_ConnPrintfHeaders(conn, "Content-Range",
+            Ns_ConnPrintfHeaders(conn, "content-range",
                                  "bytes */%" PRIuMAX, (uintmax_t) objLength);
             (void)Ns_ConnReturnStatus(conn, 416);
             rangeCount = -1;
@@ -494,7 +494,7 @@ SetRangeHeader(const Ns_Conn *conn, off_t start, off_t end, size_t objLength)
 {
     NS_NONNULL_ASSERT(conn != NULL);
 
-    Ns_ConnPrintfHeaders(conn, "Content-range",
+    Ns_ConnPrintfHeaders(conn, "content-range",
         "bytes %" PRIuMAX "-%" PRIuMAX "/%" PRIuMAX,
         (uintmax_t) start, (uintmax_t) end, (uintmax_t) objLength);
 }
@@ -526,7 +526,7 @@ SetMultipartRangeHeader(const Ns_Conn *conn)
  */
 
 static TCL_SIZE_T
-AppendMultipartRangeHeader(Ns_DString *dsPtr, const char *type,
+AppendMultipartRangeHeader(Tcl_DString *dsPtr, const char *type,
                            off_t start, off_t end, size_t objLength)
 {
     TCL_SIZE_T origlen;
@@ -537,8 +537,8 @@ AppendMultipartRangeHeader(Ns_DString *dsPtr, const char *type,
     origlen = dsPtr->length;
 
     Ns_DStringPrintf(dsPtr, "--NaviServerNaviServerNaviServer\r\n"
-        "Content-type: %s\r\n"
-        "Content-range: bytes %" PRIuMAX "-%" PRIuMAX "/%" PRIuMAX "\r\n\r\n",
+        "content-type: %s\r\n"
+        "content-range: bytes %" PRIuMAX "-%" PRIuMAX "/%" PRIuMAX "\r\n\r\n",
         type,
         (uintmax_t) start, (uintmax_t) end, (uintmax_t) objLength);
 
@@ -546,14 +546,14 @@ AppendMultipartRangeHeader(Ns_DString *dsPtr, const char *type,
 }
 
 static TCL_SIZE_T
-AppendMultipartRangeTrailer(Ns_DString *dsPtr)
+AppendMultipartRangeTrailer(Tcl_DString *dsPtr)
 {
     TCL_SIZE_T origlen;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
     origlen = dsPtr->length;
-    Ns_DStringAppend(dsPtr, "--NaviServerNaviServerNaviServer--\r\n");
+    Tcl_DStringAppend(dsPtr, "--NaviServerNaviServerNaviServer--\r\n", 36);
 
     return dsPtr->length - origlen;
 }

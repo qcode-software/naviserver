@@ -25,7 +25,15 @@ proc __ns_get_free_port {addr startPort maxPort} {
     return ""
 }
 
-foreach loopback [expr {[ns_info ipv6] ? [list ::1 "127.0.0.1"] : "127.0.0.1"}] {
+#
+# At least with the debian image from debian-bookworm, we cannot
+# lookup "::1", but "127.0.0.1" works. Error for ::1:
+#
+#  dns: getaddrinfo failed for ::1: Address family for hostname not supported
+#
+foreach loopback [expr {[ns_info ipv6] && ![catch {ns_addrbyhost ::1}]
+                        ? {::1 127.0.0.1}
+                        : {127.0.0.1}}] {
     set port [__ns_get_free_port $loopback 8000 8100]
     if {$port ne ""} {
         break
@@ -46,7 +54,7 @@ ns_section "test" {
 
     set loopback_host [expr {[string match *:* $loopback] ? "\[$loopback\]" : $loopback}]
     ns_param listenurl http://$loopback_host:[ns_config test listenport]
-    ns_param tls_listenurl http://$loopback_host:[ns_config test tls_listenport]
+    ns_param tls_listenurl https://$loopback_host:[ns_config test tls_listenport]
 }
 
 ns_log notice "configure LOOPBACK $loopback LISTENURL [ns_config test listenurl]"
@@ -74,6 +82,9 @@ ns_section "ns/testconfig" {
     ns_param   CamelCase  ok
     ns_param   wideint    12345678900
     ns_param   isTestServer true
+    ns_param   single     "hello world"
+    ns_param   multiple   on
+    ns_param   multiple   off
 }
 
 #
@@ -117,7 +128,7 @@ ns_section "ns/module/nsssl" {
     ns_param   defaultserver   test
     ns_param   ciphers         "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305"
     ns_param   protocols       "!SSLv2:!SSLv3:!TLSv1.0:!TLSv1.1"
-    ns_param   certificate     [ns_config "test" home]/testserver/etc/server.pem
+    ns_param   certificate     [ns_config "test" home]/testserver/certificates/server.pem
     ns_param   verify          0
     ns_param   writerthreads   2
     ns_param   writersize      2048
@@ -163,6 +174,7 @@ ns_section "ns/parameters" {
     ns_param   logdebug        false
     ns_param   logdev          false
     ns_param   lognotice       false
+    ns_param   reversproxymode  true
     ns_param   progressminsize 1
     ns_param   concurrentinterpcreate true   ;# default: false
     #ns_param  formfallbackcharset iso8859-1
@@ -210,6 +222,7 @@ ns_section "ns/servers" {
     ns_param   test            "Main Test Server"
     ns_param   testvhost       "Virtual Host Test Server"
     ns_param   testvhost2      "Virtual Host Test Server with custom procs"
+    ns_param   testvhost3      "Virtual Host Test Server with special configuration options"
 }
 
 #
@@ -217,6 +230,8 @@ ns_section "ns/servers" {
 #
 
 ns_section "ns/server/test" {
+    ns_param   serverdir       testserver
+    ns_param   enablehttpproxy yes
     ns_param   URLCharset      utf-8
     ns_param   OutputCharset   utf-8
 
@@ -237,7 +252,6 @@ ns_section "ns/server/test/pool/emergency" {
 }
 
 ns_section "ns/server/test/fastpath" {
-    ns_param   serverdir       testserver
     ns_param   pagedir         pages
 }
 
@@ -249,6 +263,24 @@ ns_section "ns/server/test/tcl" {
     ns_param   initfile        ../nsd/init.tcl
     ns_param   library         [ns_config "test" home]/testserver/modules
     ns_param   cachetimeout    360
+
+    ns_param initcmds {
+        #
+        # The NaviServer internal modules are not "installed" for the
+        # testserver, so load it for being able to test the commands
+        # defined by these files.
+        #
+        foreach module {nsdb nsperm revproxy} {
+            foreach file [glob [ns_config "test" home]/../$module/*.tcl] {
+                source $file
+            }
+        }
+    }
+}
+ns_section "ns/server/test/httpclient" {
+    #ns_param validateCertificates false
+    ns_param CAfile [file normalize [ns_config "test" home]/../ca-bundle.crt]
+    ns_param CApath [file normalize [ns_config "test" home]/testserver/certificates]
 }
 
 ns_section "ns/server/test/adp" {
@@ -275,12 +307,11 @@ ns_section "ns/server/test/module/nslog" {
     ns_param   rolllog         false
     ns_param   rollonsignal    false
     ns_param   suppressquery   false
-    ns_param   checkforproxy   true
     ns_param   extendedheaders "X-Test"
 }
 ns_section "ns/server/test/module/nsssl" {
-    ns_param   certificate     [ns_config "test" home]/testserver/etc/server.pem
-    #ns_param   certificate     [ns_config "test" home]/testserver/etc/openacs.org.pem
+    ns_param   certificate     [ns_config "test" home]/testserver/certificates/server.pem
+    #ns_param   certificate     [ns_config "test" home]/testserver/certificates/openacs.org.pem
 }
 
 ns_section "ns/server/test/db" {
@@ -306,6 +337,7 @@ ns_section ns/server/test/module/nscgi {
     ns_param    map                 "GET /cgi-wc/*"
     ns_param    map                 "GET /cgi-dir/*.tclcgi [ns_config test home]/testserver/cgi"
     ns_param    map                 "GET *.cgi"
+    ns_param    map                 "POST *.cgi"
     ns_param    interps              CGIinterps
     ns_param    allowstaticresources true    ;# default false; serve static resources from cgi directories
     ns_param    systemenvironment    true    ;# default false, provide interpreter environment to script
@@ -313,8 +345,15 @@ ns_section ns/server/test/module/nscgi {
 
 ns_section ns/interps/CGIinterps {
     set tclsh ""
-    foreach path {/usr/local/ns/bin /usr/local/bin /opt/local/bin /usr/bin} {
-        foreach version {tclsh8.6 tclsh8.7 tclsh9 tclsh} {
+    if {$::tcl_platform(platform) eq "windows"} {
+        set pathlist {c:/progra~1/tcl86/bin c:/progra~1/tcl87/bin c:/progra~1/tcl90/bin c:/progra~1/tcl/bin c:/activetcl/bin}
+        set versionlist {tclsh86t.exe tclsh87.exe tclsh90.exe tclsh.exe}
+    } else {
+        set pathlist {/usr/local/ns/bin /usr/local/bin /opt/local/bin /usr/bin}
+        set versionlist {tclsh8.6 tclsh8.7 tclsh9 tclsh}
+    }
+    foreach path $pathlist {
+        foreach version $versionlist {
             if {[file executable $path/$version]} {
                 set tclsh $path/$version
                 break
@@ -333,9 +372,11 @@ ns_section "ns/server/test/modules" {
     ns_param   nsdb            [ns_config "test" home]/../nsdb/nsdb[sharedlibextension]
     ns_param   nsproxy         [ns_config "test" home]/../nsproxy/nsproxy[sharedlibextension]
     ns_param   nscgi           [ns_config "test" home]/../nscgi/nscgi[sharedlibextension]
+    ns_param   nsperm          [ns_config "test" home]/../nsperm/nsperm[sharedlibextension]
     if {$nscp_port ne ""} {
         ns_param nscp          [ns_config "test" home]/../nscp/nscp[sharedlibextension]
     }
+    ns_param   revproxy tcl
 }
 
 #
@@ -343,10 +384,18 @@ ns_section "ns/server/test/modules" {
 #
 
 ns_section "ns/server/testvhost" {
+    ns_param   serverdir       testserver
+    ns_param   enablehttpproxy yes
     ns_param   enabletclpages  true
     ns_param   minthreads 1
     ns_param   maxthreads 3
+    ns_param   logdir logs-testvhost
 }
+ns_section "ns/server/testvhost/fastpath" {
+    #ns_param   serverdir       testserver
+    ns_param   pagedir         pages
+}
+
 ns_section "ns/server/testvhost/redirects" {
     #
     # Provide custom error pages:
@@ -356,13 +405,10 @@ ns_section "ns/server/testvhost/redirects" {
 }
 ns_section "ns/server/testvhost/modules" {
     ns_param   nslog           [ns_config "test" home]/../nslog/nslog[sharedlibextension]
+    ns_param   revproxy        tcl
 }
 ns_section "ns/server/testvhost/module/nslog" {
     ns_param   file            [ns_config "test" home]/testserver/access.log
-}
-ns_section "ns/server/testvhost/fastpath" {
-    ns_param   serverdir       testserver
-    ns_param   pagedir         pages
 }
 
 ns_section "ns/server/testvhost/vhost" {
@@ -384,13 +430,14 @@ ns_section "ns/server/testvhost/tcl" {
 #
 
 ns_section "ns/server/testvhost2" {
+    ns_param   serverdir       testserver
     ns_param   enabletclpages  true
     ns_param   minthreads 1
     ns_param   maxthreads 4
 }
 
 ns_section "ns/server/testvhost2/fastpath" {
-    ns_param   serverdir       testserver
+    #ns_param   serverdir       testserver
     ns_param   pagedir         pages
 }
 
@@ -398,6 +445,18 @@ ns_section "ns/server/testvhost2/tcl" {
     ns_param   initfile        ../nsd/init.tcl
     ns_param   library         [ns_config "test" home]/testserver/modules
 }
+
+#
+# Virtual Host Test Server with special configuration options
+#
+
+ns_section "ns/server/testvhost3" {
+    ns_param logdir /var/logs
+}
+ns_section "ns/server/testvhost3/tcl" {
+    ns_param   initfile        ../nsd/init.tcl
+}
+
 
 
 #

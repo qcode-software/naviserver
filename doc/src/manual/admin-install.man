@@ -151,13 +151,9 @@ installation, please provide the location to make via parameter
 [example_end]
 
 
-At this moment the following modules are available:
-[para]
-
-[emph {nsaccess nsclamav nsdbi nsdbmysql nsdhcpd nsicmp nsmemcache nssip nsstats nsvfs nsaspell nsconf nsdbilite nsdbpg nsdns nsimap nsphp nssmtpd nssyslogd nszlib nsauthpam nsconfigrw nsdbimy nsdbsqlite nsexpat nsldapd nsradiusd nssnmp nstftpd nschartdir nsdbbdb nsdbipg nsdbtds nsgdchart nsloopctl nsrtsp nsssl nsoracle nsudp}]
-
-[para]
-To check what modules are available go to: https://github.com/orgs/naviserver-project/repositories
+At the time of this writing, 55 NaviServer modules are available on
+GitHub under "naviserver-project":
+[uri https://github.com/orgs/naviserver-project/repositories]
 
 [para]
 
@@ -177,9 +173,9 @@ int he examples below. For more details, see
 
 
 Note: Modules can be disabled in the sample nsd.tcl for various
-reasons. Some modules like [emph nscp] or [emph nsperm] are optional
+reasons. Some modules like [term nscp] or [term nsperm] are optional
 and can be disabled by e.g., commenting out the
-respective lines in the "ns/server/default/modules" section of the
+respective lines in the [const ns/server/default/modules] section of the
 configuration file.  Before using them in a production
 environment, change the passwords and default permissions by following
 the instructions in the NaviServer documentation.
@@ -291,7 +287,7 @@ NaviServer is started via launchd (controlled via launchctl).
 Linux, SGI), you'll notice multiple nsd processes.  This is normal and
 represents the individual threads.  The main process id can be
 determined by checking the log/nsd.pid file or looking at the last few
-entries of the server log (per default "logs/error.log", each of which
+entries of the system log (per default "logs/nsd.log", each of which
 will include the process id and thread id in the form [lb]pid.tid[rb].
 You can also telnet to the control port and type "ns_info pid".
 

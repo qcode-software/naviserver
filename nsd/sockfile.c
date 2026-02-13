@@ -252,7 +252,7 @@ Ns_SockCork(const Ns_Sock *sock, bool cork)
         /*
          * The cork state changes, try to alter the socket options, unless the
          * socket is already closed (don't complain in such cases to the
-         * error.log).
+         * system log file).
          */
 # if defined(TCP_CORK)
         if ((sockPtr->drvPtr->opts & NS_DRIVER_UDP) == 0) {
@@ -421,7 +421,7 @@ ns_sendfile(Ns_Sock *sock, int fd, off_t offset, size_t length)
         }
 
         (void) Ns_SetVec(&iov, 0, buf, (size_t)nread);
-        sent = (*sendProc)(sock, &iov, 1, NULL, 0);
+        sent = (*sendProc)(sock, &iov, 1, 0u);
 
         if (sent == -1) {
             nwrote = -1;

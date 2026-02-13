@@ -144,7 +144,7 @@ NsInitFd(void)
 #endif /* _WIN32 */
 
     /*
-     * Open a fd on /dev/null which can be later re-used.
+     * Open a fd on /dev/null which can be later reused.
      */
 
     devNull = ns_open(DEVNULL, O_RDWR | O_CLOEXEC, 0);
@@ -331,9 +331,9 @@ Ns_GetTemp(void)
         int         flags, tries;
         char        buf[64];
         const char *path;
-        Ns_DString  ds;
+        Tcl_DString ds;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
 
         flags = O_RDWR|O_CREAT|O_TRUNC|O_EXCL;
 #ifdef _WIN32
@@ -346,7 +346,7 @@ Ns_GetTemp(void)
 
             Ns_GetTime(&now);
             snprintf(buf, sizeof(buf), "nstmp." NS_TIME_FMT, (int64_t)now.sec, now.usec);
-            path = Ns_MakePath(&ds, P_tmpdir, buf, (char *)0L);
+            path = Ns_MakePath(&ds, P_tmpdir, buf, NS_SENTINEL);
 #ifdef _WIN32
             fd = _sopen(path, flags, _SH_DENYRW, _S_IREAD|_S_IWRITE);
 #else
@@ -366,7 +366,7 @@ Ns_GetTemp(void)
             }
 #endif
         }
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
     }
     Ns_Log(Debug, "Ns_GetTemp returns %d", fd);
 

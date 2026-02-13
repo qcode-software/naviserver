@@ -32,6 +32,28 @@
 # endif
 #endif
 
+#ifdef __MINGW32__
+# ifdef USE_TCL_STUBS
+#  error USE_TCL_STUBS should be undefined
+# endif
+#endif
+
+/*
+ * Do we allow relative URI is the "Location" header field?
+ *
+ * RFC 2616 required an absolute URI in the "Location" header field. However,
+ * in June 2014, RFC 2616 was replaced by RFC 7231, supporting relative
+ * location URLs (https://www.rfc-editor.org/rfc/rfc7231#section-7.1.2).
+ *
+ * Allowing relative location URLs eases the construction of the location,
+ * especially in situations, where it is hard (or often impossible) to provide
+ * a validated location prefix of a URL.
+ *
+ * To obtain the old-style (RFC 2616) semantics, set the following flag to 0.
+ */
+
+#define NS_ALLOW_RELATIVE_REDIRECTS 1
+
 /*
  * NS_INIT_ONCE: handle one-time initialization in a thread-safe manner.  The
  * macro addresses the concerns expressed in the "Double-checked Locking"
@@ -72,6 +94,11 @@
 
 #define UCHAR(c)                   ((unsigned char)(c))
 #define INTCHAR(c)                 ((int)UCHAR((c)))
+
+#ifndef NS_NO_DEPRECATED
+# define NS_WITH_DEPRECATED
+#endif
+#define NS_WITH_DEPRECATED_5_0
 
 /*
  * AFAICT, there is no reason to conditionalize NSTHREAD_EXPORTS
@@ -126,6 +153,9 @@
  */
 # ifndef _WIN32_WINNT
 #  define _WIN32_WINNT                0x0600
+# endif
+# if _WIN32_WINNT < 0x0600
+#  error _WIN32_WINNT should be >= 0x0600
 # endif
 
 # include <windows.h>
@@ -242,10 +272,15 @@ MSVC++ 14.2 _MSC_VER == 1920 (Visual Studio 2019 version 16.0)
 /*
  * MinGW
  */
+
 #  define NS_SOCKET             int
 #  define NS_INVALID_PID        (-1)
 #  define NS_INVALID_SOCKET     (-1)
 #  define NS_INVALID_FD         (-1)
+
+#  define strcoll_l             _strcoll_l
+#  define locale_t              _locale_t
+#  define gettimeofday          mingw_gettimeofday
 
 typedef int ns_sockerrno_t;
 typedef long uid_t;
@@ -515,6 +550,9 @@ typedef int ns_sockerrno_t;
 # define NS_MMAP_READ               (PROT_READ)
 # define NS_MMAP_WRITE              (PROT_WRITE)
 
+# ifdef HAVE_MKDTEMP
+#  define ns_mkdtemp                 mkdtemp
+# endif
 # define ns_mkstemp                 mkstemp
 
 # define ns_recv                    recv
@@ -627,26 +665,27 @@ typedef int ns_sockerrno_t;
 # define TCL_HASH_TYPE unsigned
 #endif
 
-
-#ifndef NS_TCL_HAVE_TIP629
-# define TCL_OBJC_T           int
-# define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc
-# define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand
-#else
 /*
- * Support for TIP 627
- * https://core.tcl-lang.org/tips/doc/trunk/tip/627.md
-*/
-# define TCL_OBJC_T           Tcl_Size
-# define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc2
-# define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand2
+ * The intended meaning of CONST86 is: some type is defined as "const" in Tcl
+ * 8.6, but was NOT defined as such in Tcl 8.5.
+ */
+#ifndef CONST86
+# ifdef NS_TCL_PRE86
+#  define CONST86
+# else
+#  define CONST86 const
+# endif
 #endif
 
 #ifdef NS_TCL_PRE9
 # define TCL_SIZE_T           int
 # define TCL_SIZE_MAX         INT_MAX
+# define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc
+# define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand
 #else
 # define TCL_SIZE_T           Tcl_Size
+# define TCL_OBJCMDPROC_T     Tcl_ObjCmdProc2
+# define TCL_CREATEOBJCOMMAND Tcl_CreateObjCommand2
 #endif
 
 #if !defined(NS_POLL_NFDS_TYPE)
@@ -679,6 +718,7 @@ typedef int ns_sockerrno_t;
 # endif
 #endif
 
+#define NS_SENTINEL (char *)0L
 
 #ifdef HAVE_IPV6
 # define NS_IP_LOOPBACK      "::1"
@@ -1049,8 +1089,8 @@ typedef enum {
     NS_OK =               ( 0), /* success */
     NS_ERROR =            (-1), /* error */
     NS_TIMEOUT =          (-2), /* timeout occurred */
-    NS_UNAUTHORIZED =     (-3), /* authorize result, returned by e.g. Ns_UserAuthorizeProc */
-    NS_FORBIDDEN =        (-4), /* authorize result, returned by e.g. Ns_UserAuthorizeProc */
+    NS_UNAUTHORIZED =     (-3), /* authorize result, not authorized, let user retry */
+    NS_FORBIDDEN =        (-4), /* authorize result, not authorized, don't allow retry */
     NS_FILTER_BREAK =     (-5), /* filter result, returned by e.g. Ns_FilterProc */
     NS_FILTER_RETURN =    (-6)  /* filter result, returned by e.g. Ns_FilterProc */
 } Ns_ReturnCode;
@@ -1197,7 +1237,7 @@ NS_EXTERN struct tm *ns_localtime(const time_t *timep)   NS_GNUC_NONNULL(1);
 NS_EXTERN struct tm *ns_localtime_r(const time_t *timer, struct tm *buf) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 NS_EXTERN struct tm *ns_gmtime(const time_t *timep)      NS_GNUC_NONNULL(1);
 NS_EXTERN char *ns_strtok(char *s1, const char *s2)      NS_GNUC_NONNULL(2);
-NS_EXTERN char *ns_inet_ntoa(const struct sockaddr *saPtr) NS_GNUC_NONNULL(1);
+NS_EXTERN char *ns_inet_ntoa(const struct sockaddr *saPtr) NS_GNUC_RETURNS_NONNULL NS_GNUC_NONNULL(1);
 
 /*
  * sema.c:
@@ -1225,7 +1265,7 @@ NS_EXTERN int ns_signal(int sig, void (*proc)(int));
 NS_EXTERN void Ns_ThreadCreate(Ns_ThreadProc *proc, void *arg, ssize_t stackSize,
                                Ns_Thread *resultPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadExit(void *arg)              NS_GNUC_NORETURN;
-NS_EXTERN void* Ns_ThreadResult(void *arg);
+NS_EXTERN void* Ns_ThreadResult(void *arg) NS_GNUC_CONST;
 NS_EXTERN void Ns_ThreadJoin(Ns_Thread *threadPtr, void **argPtr) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadYield(void);
 NS_EXTERN void Ns_ThreadSetName(const char *fmt, ...) NS_GNUC_NONNULL(1) NS_GNUC_PRINTF(1, 2);
@@ -1237,7 +1277,7 @@ NS_EXTERN ssize_t Ns_ThreadStackSize(ssize_t size);
 NS_EXTERN void Ns_ThreadList(Tcl_DString *dsPtr, Ns_ThreadArgProc *proc) NS_GNUC_NONNULL(1);
 NS_EXTERN void Ns_ThreadGetThreadInfo(size_t *maxStackSize, size_t *estimatedSize)
   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-extern void  *NsThreadResult(void *arg);
+extern void  *NsThreadResult(void *arg) NS_GNUC_CONST;
 
 /*
  * time.c:
@@ -1288,6 +1328,7 @@ NS_EXTERN ssize_t ns_read(int fildes, void *buf, size_t nbyte);
 NS_EXTERN off_t   ns_lseek(int fildes, off_t offset, int whence);
 NS_EXTERN ssize_t ns_recv(NS_SOCKET socket, void *buffer, size_t length, int flags);
 NS_EXTERN ssize_t ns_send(NS_SOCKET socket, const void *buffer, size_t length, int flags);
+NS_EXTERN ssize_t ns_getline(char **lineptr, size_t *n, FILE *stream);
 NS_EXTERN int     ns_snprintf(char *buf, size_t len, const char *fmt, ...);
 #endif
 
@@ -1299,7 +1340,6 @@ NS_EXTERN int     ns_snprintf(char *buf, size_t len, const char *fmt, ...);
 #if (TCL_MAJOR_VERSION < 8) || ((TCL_MAJOR_VERSION == 8) && (TCL_MINOR_VERSION < 6))
 #define Tcl_GetErrorLine(interp) ((interp)->errorLine)
 #endif
-
 
 NS_EXTERN int NS_finalshutdown;
 NS_EXTERN bool NS_mutexlocktrace;

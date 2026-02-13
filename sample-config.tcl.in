@@ -30,7 +30,7 @@
 # Absolute path to the installation directory
 set	homedir			@NAVISERVER@
 
-# Log directories (access log, error log, pidfile)
+# Log directories (access log, system log, pidfile)
 set	logdir			${homedir}/logs
 
 # You might prefer to keep the log-files in /var/log, so you could use
@@ -82,12 +82,18 @@ ns_section ns/server/${server}/modules {
 }
 
 ########################################################################
-# Global server parameters
+# Global NaviServer parameters
 ########################################################################
 
 ns_section ns/parameters {
     # Home directory for the server, it will be resolved automaticlaly if not specified
     ns_param	home			$homedir
+
+    # Directory holding various log files, it will be created if missing
+    ns_param	logdir			$logdir
+
+    # Directory holding binaries (.so file for modules, nsproxy worker)
+    #ns_param	bindir			bin
 
     # Output debug log messages in the log
     ns_param	logdebug		false
@@ -120,12 +126,13 @@ ns_section ns/parameters {
     ns_param	joblogminduration      1s      ;# default 1s
 
     # How many jobs to run in any schedule thread before thread exits.
+    # default: 0 (no auto restart)
     ns_param	schedsperthread		0
 
     # Log warnings when scheduled job takes longer than this time period
     ns_param	schedlogminduration     2s
 
-    # Write asynchronously to log files (access log and error log)
+    # Write asynchronously to log files (system log and server specific log files)
     ns_param	asynlogcwriter		true  ;# default: false
 
     # Print duractions of long mutex calls to stderr.
@@ -135,10 +142,13 @@ ns_section ns/parameters {
     # (e.g. subsequent ns_return statements)
     #ns_param    rejectalreadyclosedconn  false ;# default: true
 
-    # Is the server running behind a reverse proxy server?  When
-    # activated, determine the client IP address per default via the
-    # value provided by the reverse proxy server.
-    #ns_param   reverseproxymode    true     ;# default: false
+    # Configure the number of task threads for HTTP client requests
+    # via ns_http. Per task thread, a separate queue is defined. For
+    # common (Internet) usage, the default value of 1 is fully
+    # sufficient.  For high-speed file uploads/downloads (10/100G
+    # networks, fast I/O) the performance might be increased by
+    # defining multiple task threads.
+    #ns_param    nshttptaskthreads  2     ;# default: 1
 
     #
     # I18N Parameters
@@ -148,7 +158,7 @@ ns_section ns/parameters {
     # output is performed. (default: utf-8)
     #ns_param	outputcharset		utf-8
 
-    # Default Charset for Url Encode/Decode. When none specified, no character
+    # Default Charset for URL Encode/Decode. When none specified, no character
     # set encoding is performed. (default: utf-8)
     #ns_param	urlcharset		utf-8
 
@@ -162,20 +172,20 @@ ns_section ns/parameters {
     # Configuration of serverlog
     #
     # Rolling of logfile:
-    ns_param	logroll		on
+    # ns_param	logrollonsignal	on       ;# perform log rotation on SIGHUP (default on)
     # ns_param	logmaxbackup	100      ;# (default: 10)
     # ns_param	logrollfmt	%Y-%m-%d ;# timestamp format appended to serverlog filename when rolled
     #
     # Format of log entries in serverlog:
-    # ns_param   logsec            false    ;# add timestamps in second resolution (default: true)
-    # ns_param   logusec           true     ;# add timestamps in microsecond (usec) resolution (default: false)
-    # ns_param   logusecdiff       true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
-    # ns_param   logthread         false    ;# add thread-info the log file lines (default: true)
+    # ns_param  logsec             false    ;# add timestamps in second resolution (default: true)
+    # ns_param  logusec            true     ;# add timestamps in microsecond (usec) resolution (default: false)
+    # ns_param  logusecdiff        true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
+    # ns_param  logthread          false    ;# add thread-info the log file lines (default: true)
     #
     # ns_param	logcolorize        true     ;# colorize log file with ANSI colors (default: false)
     # ns_param	logprefixcolor     green    ;# black, red, green, yellow, blue, magenta, cyan, gray, default
     # ns_param  logprefixintensity normal;# bright or normal
-    # ns_param  sanitizelogfiles   1     ;# default: 2; 0: none, 1: full, 2: human-friendly
+    # ns_param  sanitizelogfiles   1     ;# default: 2; 0: none, 1: full, 2: human-friendly, 3: 2 with tab expansion
     #
     # Severities to be logged (can also be controlled at runtime via ns_logctl)
     # ns_param	logdebug	false    ;# debug messages
@@ -189,6 +199,33 @@ ns_section ns/parameters {
     ns_param dnswaittimeout 5s      ;# time for waiting for a DNS reply; default: 5s
     ns_param dnscachetimeout 1h     ;# time to keep entries in cache; default: 1h
     ns_param dnscachemaxsize 500kB  ;# max size of DNS cache in memory units; default: 500kB
+}
+
+
+#
+# When running behind a reverse proxy, use the following parameters
+#
+ns_section ns/parameters/reverseproxymode {
+    #
+    # Is the server running behind a reverse proxy server?
+    #
+    ns_param enabled true ;# default: false
+    #
+    # When defining "trustedservers", the X-Forwarded-For header field
+    # is only accepted in requests received from one of the specified
+    # servers. The list of servers can be provided by using IP
+    # addresses or CIDR masks. Additionally, the processing mode of
+    # the contents of the X-Forwarded-For contents switches to
+    # right-to-left, skipping trusted servers. So, the dangerof
+    # obtaining spoofed addresses can be reduced.
+    #
+    #ns_param trustedservers {192.168.0.0/16}
+    #
+    # Optionally, non-public entries in the content of X-Forwarded-For
+    # can be ignored. These are not useful for e.g. geo-location
+    # analysis.
+    #
+    #ns_param skipnonpublic  false
 }
 
 ########################################################################
@@ -319,17 +356,24 @@ ns_section ns/server/${server} {
     #ns_param	highwatermark	100     ;# 80; allow concurrent creates above this queue-is percentage
                                         ;# 100 means to disable concurrent creates
 
-    #
-    # Configuration of replies
-    #
-    # ns_param	noticedetail	false	;# true, return detail information in server reply
-    # ns_param	noticeadp	returnnotice.adp ;# ADP file for ns_returnnotice.
-    
+    # Defines absolute or relative path to server's home directory
+    # (relative to "home", default empty)
+    ns_param	serverdir               ${serverdir}
+
+    # Defines absolute or relative path to server's log directory
+    # (relative to serverdir, defaults to global logdir).
+    #ns_param	logdir                  log}
+
+    # Server and version information in HTTP responses
+    #ns_param     noticeADP    returnnotice.adp ;# ADP file for ns_returnnotice commands (errors, redirects, ...)
+    #ns_param     noticedetail false    ;# default: true; include server signature in ns_returnnotice commands (errors, redirects, ...)
+    #ns_param     stealthmode  true     ;# default: false; omit server header field in all responses
+
     # Compress response character data: ns_return, ADP etc.
-    ns_param	compressenable		off     ;# Default; use ns_conn compress to override
-    ns_param	compresslevel		4       ;# 1-9 where 9 is high compression, high overhead
-    ns_param	compressminsize		512     ;# Compress responses larger than this
-    # ns_param	compresspreinit		true	;# false; if true then initialize and allocate buffers at startup
+    ns_param	compressenable	off     ;# Default; use ns_conn compress to override
+    ns_param	compresslevel	4       ;# 1-9 where 9 is high compression, high overhead
+    ns_param	compressminsize	512     ;# Compress responses larger than this
+    # ns_param	compresspreinit	true	;# false; if true then initialize and allocate buffers at startup
 
     ns_param	errorminsize	0	;# 514, fill-up reply to at least specified bytes (for ?early? MSIE)
 
@@ -391,6 +435,78 @@ ns_section ns/server/${server}/tcl {
 }
 
 ########################################################################
+# HTTP client (ns_http, ns_connchan) configuration
+########################################################################
+ns_section ns/server/${server}/httpclient {
+    #
+    # Set default keep-alive timeout for outgoing ns_http requests.
+    # The specified value determines how long connections remain open for reuse.
+    #
+    #ns_param	keepalive       5s       ;# default: 0s
+
+    #
+    # Default timeout to be used, when ns_http is called without an
+    # explicit "-timeout" or "-expire" parameter.
+    #
+    #ns_param	defaultTimeout  5s       ;# default: 5s
+
+    #
+    # If you wish to disable certificate validation for "ns_http" or
+    # "ns_connchan" requests, set validateCertificates to false.
+    # However, this is NOT recommended, as it significantly increases
+    # vulnerability to man-in-the-middle attacks.
+    #
+    #ns_param validateCertificates false        ;# default: true
+
+    if {[ns_config ns/server/${server}/httpclient validateCertificates true]} {
+        #
+        # Specify trusted certificates using
+        #   - A single CA bundle file (CAfile) for top-level certificates, or
+        #   - A directory (CApath) containing multiple trusted certificates.
+        #
+        # These default locations can be overridden per request in
+        # "ns_http" and "ns_connchan" requests.
+        #
+        #ns_param CApath certificates   ;# default: [ns_info home]/certificates/
+        #ns_param CAfile ca-bundle.crt  ;# default: [ns_info home]/ca-bundle.crt
+
+        #
+        # "validationDepth" sets the maximum allowed length of a certificate chain:
+        #   0: Accept only self-signed certificates.
+        #   1: Accept certificates issued by a single CA or self-signed.
+        #   2 or higher: Accept chains up to the specified length.
+        #
+        #ns_param validationDepth 0   ;# default: 9
+
+        #
+        # When defining exceptions below, invalid certificates are stored
+        # in the specified directory. Administrators can move these
+        # certificates to the accepted certificates folder and run "openssl rehash"
+        # to reduce future security warnings.
+        #
+        #ns_param invalidCertificates $home/invalid-certificates/   ;# default: [ns_info home]/invalid-certificates
+
+        #
+        # Define white-listed validation exceptions:
+        #
+        # Accept all certificates from ::1 (IPv6 loopback):
+        #ns_param validationException {ip ::1}
+
+        # For IPv4 127.0.0.1, ignore two specific validation errors:
+        #ns_param validationException {ip 127.0.0.1 accept {certificate-expired self-signed-certificate}}
+
+        # Allow expired certificates from any IP in the 192.168.1.0/24 range:
+        #ns_param validationException {ip 192.168.1.0/24 accept certificate-expired}
+
+        # Accept self-signed certificates from any IP address:
+        #ns_param validationException {accept self-signed-certificate}
+
+        # Accept all validation errors from any IP address (like disabled validation, but collects certificates)
+        #ns_param validationException {accept *}
+    }
+}
+
+########################################################################
 # Fast Path --
 #
 #  Fast path configuration is used to configure options used for serving
@@ -399,10 +515,6 @@ ns_section ns/server/${server}/tcl {
 ########################################################################
 
 ns_section ns/server/${server}/fastpath {
-
-    # Defines absolute or relative path to server's home directory
-    # (relative to "home", default empty)
-    ns_param	serverdir               ${serverdir}
 
     # Defines absolute or relative to serverdir directory where all
     # html/adp pages are located (relative to "serverdir", default "pages").
@@ -469,7 +581,7 @@ ns_section ns/fastpath {
     #ns_param        minify_js_cmd       "/usr/bin/yui-compressor --type js"
 }
 
-########################################################################
+#######################################################################
 # Socket driver module nssock for HTTP connections
 ########################################################################
 
@@ -558,7 +670,7 @@ ns_section ns/server/${server}/module/nslog {
     # If true then do the log rolling (default: true)
     ns_param	rolllog			true
 
-    # If true then roll the log on SIGHUP (default: false)
+    # If true then rotate the log on SIGHUP (default: false)
     ns_param	rollonsignal		false
 
     # If true then don't show query string in the log (default: false)
@@ -642,11 +754,13 @@ ns_section ns/interps/CGIinterps {
 ########################################################################
 
 ns_section ns/server/${server}/module/nscp {
-    ns_param	address			127.0.0.1
     ns_param	port			9999
-    ns_param	echopassword		true
-    ns_param	cpcmdlogging		false
+    ns_param address       		127.0.0.1    ;# default: 127.0.0.1 or ::1 for IPv6
+    #ns_param echopasswd   		on           ;# default: off
+    #ns_param cpcmdlogging 		on           ;# default: off
+    #ns_param allowLoopbackEmptyUser 	on 	     ;# default: off
 }
+
 ns_section ns/server/${server}/module/nscp/users {
     ns_param	user			"nsadmin:t2GqvvaiIUbF2:"
 }

@@ -1,0 +1,752 @@
+'\"
+'\" Generated from file 'ns_conn\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_conn" n 5\&.0\&.4 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_conn \- Query or modify state information about the current HTTP connection
+.SH SYNOPSIS
+\fBns_conn acceptedcompression\fR
+.sp
+\fBns_conn auth\fR
+.sp
+\fBns_conn authpassword\fR
+.sp
+\fBns_conn authuser\fR
+.sp
+\fBns_conn channel\fR
+.sp
+\fBns_conn clientdata\fR ?\fIvalue\fR?
+.sp
+\fBns_conn close\fR
+.sp
+\fBns_conn compress\fR ?\fIlevel\fR?
+.sp
+\fBns_conn content\fR ?\fB-binary\fR? ?\fIoffset\fR? ?\fIlength\fR?
+.sp
+\fBns_conn contentfile\fR
+.sp
+\fBns_conn contentlength\fR
+.sp
+\fBns_conn contentsentlength\fR ?\fIbytes\fR?
+.sp
+\fBns_conn copy\fR \fIoffset\fR \fIlength\fR \fIchannelId\fR
+.sp
+\fBns_conn currentaddr\fR
+.sp
+\fBns_conn currentport\fR
+.sp
+\fBns_conn details\fR
+.sp
+\fBns_conn driver\fR
+.sp
+\fBns_conn encoding\fR ?\fIencoding\fR?
+.sp
+\fBns_conn fileheaders\fR \fIfile\fR
+.sp
+\fBns_conn filelength\fR \fIfile\fR
+.sp
+\fBns_conn fileoffset\fR \fIfile\fR
+.sp
+\fBns_conn files\fR
+.sp
+\fBns_conn flags\fR
+.sp
+\fBns_conn form\fR ?\fB-fallbackcharset \fIvalue\fR\fR?
+.sp
+\fBns_conn fragment\fR
+.sp
+\fBns_conn headerlength\fR
+.sp
+\fBns_conn headers\fR
+.sp
+\fBns_conn host\fR ?\fIdefault\fR?
+.sp
+\fBns_conn id\fR
+.sp
+\fBns_conn isconnected\fR
+.sp
+\fBns_conn keepalive\fR ?\fIvalue\fR?
+.sp
+\fBns_conn location\fR
+.sp
+\fBns_conn method\fR
+.sp
+\fBns_conn outputheaders\fR
+.sp
+\fBns_conn peeraddr\fR ?\fB-source configured|direct|forwarded\fR?
+.sp
+\fBns_conn peerport\fR
+.sp
+\fBns_conn pool\fR
+.sp
+\fBns_conn port\fR
+.sp
+\fBns_conn protocol\fR
+.sp
+\fBns_conn query\fR
+.sp
+\fBns_conn partialtimes\fR
+.sp
+\fBns_conn ratelimit\fR ?\fIlimit\fR?
+.sp
+\fBns_conn request\fR
+.sp
+\fBns_conn server\fR
+.sp
+\fBns_conn sock\fR
+.sp
+\fBns_conn start\fR
+.sp
+\fBns_conn status\fR ?\fIstatus-code\fR?
+.sp
+\fBns_conn target\fR
+.sp
+\fBns_conn timeout\fR
+.sp
+\fBns_conn url\fR
+.sp
+\fBns_conn urlc\fR
+.sp
+\fBns_conn urldict\fR
+.sp
+\fBns_conn urlencoding\fR ?\fIencoding\fR?
+.sp
+\fBns_conn urlv\fR ?\fIidx\fR?
+.sp
+\fBns_conn version\fR
+.sp
+\fBns_conn zipaccepted\fR
+.sp
+.BE
+.SH DESCRIPTION
+This command provides various subcommands that allow you to query and
+modify properties of the current HTTP connection\&.
+.SH COMMANDS
+The subcommands of ns_conn (listed here in alphabetical order)
+include:
+.TP
+\fBns_conn acceptedcompression\fR
+Returns a Tcl list of the compression algorithms the client accepts,
+as advertised by its Accept-Encoding header (for example,
+gzip, deflate, br)\&.
+.TP
+\fBns_conn auth\fR
+Returns the content of the Authorization header as an \fBns_set\fR\&.
+Every set containis the key \fBAuthMethod\fR with values such as
+\fBBasic\fR, \fBDigest\fR, or \fBBearer\fR\&. Depending on the
+authorization method, different fields are returned
+.RS
+.IP \(bu
+Basic Authentication
+The set also includes  \fBusername\fR and  \fBpassword\fR entries
+(equivalent to \fBns_conn authuser\fR and \fBns_conn authpassword\fR)\&.
+.IP \(bu
+Digest Authentication
+The set includes all standard digest fields as provided:
+\fBrealm\fR,
+\fBnonce\fR,
+\fBuri\fR,
+\fBqop\fR,
+\fBnc\fR,
+\fBcnonce\fR,
+\fBresponse\fR, and
+\fBopaque\fR\&.
+.IP \(bu
+Bearer Authentication
+The set contains the raw base64-encoded token\&.
+.RE
+.IP
+You may also modify this ns_set\&.
+.sp
+For other authorization schemes, the \fBAuthorization\fR header is
+treated like any other request header\&. For example:
+.CS
+
+
+ set auth_header [ns_set get [ns_conn header] Authorization ""]
+
+.CE
+.TP
+\fBns_conn authpassword\fR
+Returns the decoded user password extracted from the authorization data\&.
+.TP
+\fBns_conn authuser\fR
+Returns the decoded username extracted from the authorization data\&.
+.TP
+\fBns_conn channel\fR
+Returns the Tcl channel name for the current connection\&.
+.TP
+\fBns_conn clientdata\fR ?\fIvalue\fR?
+Queries or sets the client data associated with the current
+connection\&.  This application-defined data may be shared across
+threads to help maintain context of running requests (e\&.g\&. to
+determine which user initiated a request)\&.
+.TP
+\fBns_conn close\fR
+Closes the connection so that the script or ADP can perform
+time-consuming processing without delaying the client\&.  When using
+ns_conn close in an ADP, ensure that streaming is enabled (e\&.g\&., via
+\fB<SCRIPT RUNAT=SERVER STREAM=ON>\fR) so that output is sent
+before the connection is terminated in this case\&.
+.TP
+\fBns_conn compress\fR ?\fIlevel\fR?
+Queries or sets the compression level for the current connection\&.
+Specifying a level of 0 disables compression\&.
+.TP
+\fBns_conn content\fR ?\fB-binary\fR? ?\fIoffset\fR? ?\fIlength\fR?
+Returns the body of the HTTP request\&.  Optionally, you can specify an
+offset and length to extract a substring\&.  If the \fB-binary\fR option is
+used, raw binary content is returned; otherwise, the content is
+converted to the connection’s encoding\&.  Note that the response
+content may be delivered either as a string (via ns_conn content) or
+as a file (see \fBns_conn contentfile\fR), depending on
+configuration options\&.
+.TP
+\fBns_conn contentfile\fR
+Returns the name of the temporary file that holds the request
+content\&.  Whether the received contemt is spooled to a file depends
+on the configuration settings\&.
+.TP
+\fBns_conn contentlength\fR
+Returns the length (in bytes) of the HTTP request body\&.
+.TP
+\fBns_conn contentsentlength\fR ?\fIbytes\fR?
+Queries or sets the number of bytes of content that have been sent\&.
+.TP
+\fBns_conn copy\fR \fIoffset\fR \fIlength\fR \fIchannelId\fR
+Copies a specified number of bytes from the connection’s buffered
+data to a Tcl channel\&.  The \fIoffset\fR and \fIlength\fR parameters
+define the starting position and the number of bytes to copy\&.
+.sp
+This command is intended for specialized use cases where the
+raw, unsent content is needed (available only if the data is not
+spooled to a file)\&.  For most applications, consider using
+\fBns_getcontent\fR instead\&.
+.TP
+\fBns_conn currentaddr\fR
+Returns the local IP address (IPv4 or IPv6) of the current connection
+(i\&.e\&. the destination address of the socket)\&.
+.TP
+\fBns_conn currentport\fR
+Returns the local port (i\&.e\&. the destination port of the socket) for
+the current connection\&.
+.TP
+\fBns_conn details\fR
+Returns a dict containing driver-specific details for the current
+connection\&.  This dict typically includes the local IP address, its
+\fBtype\fR (IPv4/IPv6), whether it is \fBpublic\fR or
+\fBtrusted\fR, and whether the connection is proxied\&.  For HTTPS
+connections, additional fields such as \fBsslversion\fR,
+\fBcipher\fR, and \fBservername\fR (as provided via SNI) are included\&.
+.TP
+\fBns_conn driver\fR
+Returns the name of the module (e\&.g\&., \fInssock\fR or \fInsssl\fR)
+acting as the communications driver for this connection\&.
+.TP
+\fBns_conn encoding\fR ?\fIencoding\fR?
+Queries or sets the encoding for the current connection\&.   If an
+\fIencoding\fR is provided, it sets the encoding; otherwise, it returns
+the current encoding\&.
+.TP
+\fBns_conn fileheaders\fR \fIfile\fR
+Returns an ns_set containing header information for the uploaded file
+specified by \fIfile\fR (as returned by \fBns_conn files\fR)\&.  If
+the file was uploaded using the HTML5 \fImultiple\fR attribute, a list of
+ns_sets is returned\&.
+.TP
+\fBns_conn filelength\fR \fIfile\fR
+Returns the length (in bytes) of the uploaded file specified by
+\fIfile\fR\&.  For files uploaded using the HTML5 \fImultiple\fR attribute, a
+list of file lengths is returned\&.
+.TP
+\fBns_conn fileoffset\fR \fIfile\fR
+Returns the byte offset of the uploaded file specified by \fIfile\fR\&.
+For files uploaded using the HTML5 \fImultiple\fR attribute, a list of
+offsets is returned\&.
+.TP
+\fBns_conn files\fR
+Returns a list of files uploaded with the current form\&.
+.TP
+\fBns_conn flags\fR
+Returns the internal connection flags\&.  Use with caution as these
+flags may change in future releases\&.
+.TP
+\fBns_conn form\fR ?\fB-fallbackcharset \fIvalue\fR\fR?
+Returns any submitted form data as an ns_set\&.  The form data may be
+submitted via POST or included in the URL of a GET request\&.
+.sp
+The option `-fallbackcharset` specifies an alternative
+character set for decoding the form data if the default decoding
+results in invalid UTF-8\&.  (This fallback charset can also be set
+globally via the \fIformfallbackcharset\fR configuration parameter\&.)
+For multipart form data file uploads, use \fBns_getform\fR instead\&.
+.TP
+\fBns_conn fragment\fR
+Returns the fragment identifier of the request URL (the portion
+following the \fB#\fR character)\&.
+.TP
+\fBns_conn headerlength\fR
+Returns the length of the HTTP request header\&.  Combined with
+\fBns_conn contentlength\fR, this can be used to determine the total
+uncompressed size of the request (excluding any chunked encoding
+overhead)\&.
+.TP
+\fBns_conn headers\fR
+Returns all HTTP request header fields as an ns_set, where each key
+is a header field name\&.  The case of the header names depends on the
+\fIHeaderCase\fR configuration parameter (default is \fBPreserve\fR)\&.
+.TP
+\fBns_conn host\fR ?\fIdefault\fR?
+Returns the host part of the URL in the HTTP request line\&.  This
+field is set only when NaviServer is used as a (forward) proxy server\&.
+.TP
+\fBns_conn id\fR
+Returns a unique identifier for the current connection\&.
+.TP
+\fBns_conn isconnected\fR
+Returns 1 if the current code is executing in a connection thread and
+the connection is open (allowing ns_conn calls), or 0 otherwise
+(e\&.g\&., when running in a schedule procedure)\&.
+.TP
+\fBns_conn keepalive\fR ?\fIvalue\fR?
+Queries or sets the keepalive value for the current connection\&.
+.TP
+\fBns_conn location\fR
+Returns the location string for the virtual server handling the
+request in the format (":port" is optional):
+protocol://hostname:port
+.sp
+The location is determined by:
+.RS
+.IP [1]
+If ns_locationproc is configured, its result is returned\&.
+.IP [2]
+If virtual hosting is enabled and a valid "Host:" header is
+provided, its value is used\&.
+.IP [3]
+Otherwise, the virtual hosts mapping table (as defined in
+the ns/module/nssock/servers or ns/module/nsssl/servers section)
+is consulted\&.
+.IP [4]
+If no match is found and a connection is open, the current
+socket address is used\&.
+.IP [5]
+If all else fails, the location is derived from the driver's configuration\&.
+.RE
+.TP
+\fBns_conn method\fR
+Returns the HTTP method (e\&.g\&., GET, POST)\&.
+.TP
+\fBns_conn outputheaders\fR
+Returns an ns_set containing the HTTP response header fields that
+will be sent to the client\&.  This ns_set can be modified to extend,
+update, or clear the response headers\&. For example:
+.CS
+
+
+ ns_set put [ns_conn outputheaders ] "Content-Disposition" "attachment;filename=export\&.xotcl"
+
+.CE
+.TP
+\fBns_conn peeraddr\fR ?\fB-source configured|direct|forwarded\fR?
+Returns the client's IP address (the remote endpoint of the
+connection)\&.  For IPv4, the address is returned in dotted decimal
+notation; for IPv6, in colon-separated format\&.  In reverse proxy
+mode, the IP is derived from the \fBx-forwarded-for\fR header\&.  The
+optional \fB-source\fR parameter can force the return of the
+\fBconfigured\fR, \fBdirect\fR, or \fBforwarded\fR IP address\&.
+.TP
+\fBns_conn peerport\fR
+Returns the connection pool associated with the current server\&.
+.TP
+\fBns_conn pool\fR
+Returns the currently associated connection pool of this request\&.
+.TP
+\fBns_conn port\fR
+Returns the port specified in the host header or the protocol's
+default port\&.  In proxy mode, it returns the port specified in the
+HTTP request URL, or 0 for backwards compatibility\&.
+.TP
+\fBns_conn protocol\fR
+Returns the protocol used by the current connection\&.  In (forward)
+proxy mode, this reflects the URL present in the request line\&.
+.TP
+\fBns_conn query\fR
+Returns the query parameters of the HTTP request (the portion after
+the \fB?\fR and before the \fB#\fR in the URL)\&.
+.TP
+\fBns_conn partialtimes\fR
+Returns detailed timing information for the current request as a
+dict\&. Keys include:
+.RS
+.IP \(bu
+accepttime: Time between socket acceptance and queueing\&.
+.IP \(bu
+queuetime: Time spent in the queue\&.
+.IP \(bu
+filtertime: Time spent executing filters\&.
+.IP \(bu
+runtime: Total time elapsed during request processing\&.
+.RE
+.TP
+\fBns_conn ratelimit\fR ?\fIlimit\fR?
+Queries or sets the rate limit for the current connection in
+kilobytes per second (KB/s)\&.  A value of 0 indicates no limit\&.
+Default limits can be set at the connection pool level (parameter
+\fIratelimit\fR) or at the driver level (\fIwriterratelimit\fR)\&.
+Rate limiting is enforced only on connections using writer threads\&.
+.TP
+\fBns_conn request\fR
+Returns the HTTP request line as received from the client
+(e\&.g\&., "GET / HTTP/1\&.1")\&.
+.TP
+\fBns_conn server\fR
+Returns the name of the server handling the request\&.
+.TP
+\fBns_conn sock\fR
+Returns the socket identifier (integer file descriptor) for the current connection\&.
+.TP
+\fBns_conn start\fR
+Returns the time when the connection request started in "sec:usec"
+(\fBns_time\fR) format\&.
+.TP
+\fBns_conn status\fR ?\fIstatus-code\fR?
+Queries or sets the HTTP status code for the current connection\&.
+.TP
+\fBns_conn target\fR
+Returns the URI target from the start line of the HTTP request (this
+may include query variables)\&.
+.TP
+\fBns_conn timeout\fR
+Returns an absolute time value beyond which the connection will not
+wait for resources (e\&.g\&., condition variables)\&.
+.TP
+\fBns_conn url\fR
+Returns the URL of the HTTP request\&. This is the portion of the URL
+following the hostname (e\&.g\&., "/index\&.adp")\&.
+.CS
+
+
+ if { [string match /page/* [ns_conn url]] } {
+  ns_returnnotfound
+ }
+
+.CE
+.TP
+\fBns_conn urlc\fR
+Returns the number of elements in the URL, as determined by splitting
+on the \fB/\fR character\&.
+.TP
+\fBns_conn urldict\fR
+Returns the current request URL as a Tcl dictionary\&. The dictionary
+separates the URL into its constituent components (such as protocol,
+host, port, path, query, fragment, etc\&.)\&.
+.sp
+This structured representation allows you to modify specific
+parts of the URL programmatically (for example, removing the query or
+adding a fragment) and then rebuild the complete URL using
+\fBns_joinurl\fR\&. This is especially useful for dynamic web applications
+that require URL manipulation based on request context or custom
+routing logic\&.
+.CS
+
+
+ # Original URL: /foo/bar?x=1
+ set urldict [ns_conn urldict]
+ # Example result: {path foo tail bar query x=1}
+
+ dict unset urldict query
+ dict set urldict fragment sect2
+ set url [ns_joinurl $urldict]
+ # Resulting URL: /foo/bar#sect2
+
+.CE
+.TP
+\fBns_conn urlencoding\fR ?\fIencoding\fR?
+Queries or sets the URL encoding for the current connection\&. If an
+\fIencoding\fR value is provided, it sets the URL encoding;
+otherwise, it returns the current encoding\&.
+.TP
+\fBns_conn urlv\fR ?\fIidx\fR?
+Returns a list of the URL components (delimited by `/')\&.
+If \fIidx\fR is provided, returns the nth element of the URL vector\&.
+.TP
+\fBns_conn version\fR
+Returns the HTTP version of the current request (typically 1\&.0 or
+1\&.1)\&.
+.TP
+\fBns_conn zipaccepted\fR
+Returns 0 or 1 depending on whether the client accepts a zip-encoded response\&.
+.PP
+.SH "SEE ALSO"
+ns_adp, ns_getcontent, ns_getform, ns_locationproc, ns_queryget, ns_set, ns_time
+.SH KEYWORDS
+IPv4, IPv6, SNI, connection, gzip, reverse proxy, server built-in, virtual host

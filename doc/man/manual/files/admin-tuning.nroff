@@ -1,0 +1,580 @@
+'\"
+'\" Generated from file 'admin-tuning\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "admin-tuning" n 5\&.0\&.4 manual "NaviServer Manual"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+admin-tuning \- NaviServer Tuning and Scaling Guide
+.SH DESCRIPTION
+NaviServer is designed for high scalability\&. It originally served as
+the core of web infrastructures supporting some of the most heavily
+visited environments in the world, such as AOL\&. The sections below
+discuss various configuration parameters and techniques that can help
+you optimize and scale your NaviServer deployment\&.  For a complete
+reference, see the "\fIsample-config\&.tcl\fR" configuration file\&.
+.SS "CONFIGURE SPOOLING THREADS"
+This section is especially relevant for sites requiring high
+throughput\&. Throughput refers to the number of requests handled in a
+given time interval\&. NaviServer scales by using a combination of
+event-driven I/O handling (spooling techniques) and connection worker
+threads which are responsible for the heavy lifting\&. The spooling
+threads can efficiently manage large numbers of concurrent requests
+with a relatively small number of lightweight threads\&.
+.PP
+NaviServer treats sending and receiving data over network
+connections as an I/O-driven process\&. The server’s event-driven model
+triggers actions based on the arrival of incoming data or the
+readiness of the kernel’s send queues\&. This approach assumes that I/O
+operations require relatively little CPU time, allowing a single
+thread to handle many concurrent connections\&. However, if a thread
+performs CPU-intensive operations or waits on locks, all requests
+managed by that thread are blocked as well for this time\&. This might
+not be acceptable for serving latency sensitive data such as live
+video streams via NaviServer\&.
+.PP
+While static page serving is mostly I/O bound, real-world web
+applications often perform CPU-intensive operations, such as database
+queries, middleware interactions, and legacy backend
+integrations\&. For example, NaviServer is known to handle up to 16,000
+SQL queries per second on mid-range servers using OpenACS,
+illustrating the need to efficiently handle mixed I/O and CPU loads\&.
+.PP
+Processing an HTTP/HTTPS request happens in three phases:
+.IP \(bu
+Receive the request
+.IP \(bu
+Process the request (e\&.g\&., run scripts, queries, etc\&.)
+.IP \(bu
+Deliver the response
+.PP
+.PP
+IMAGE: request-phases Phases of Request Processing
+.PP
+Figure 1: Request Phases
+Without spooling threads, all three phases tie up a single connection
+thread\&. This can become a bottleneck if, for example, a client is
+slow to receive data or large uploads are involved\&. Slow-read or
+slow-write attacks exploit this behavior by forcing the server to
+keep a connection thread occupied a long time\&.
+.PP
+NaviServer uses spooling threads to mitigate such bottlenecks:
+.IP \(bu
+\fIdriver\fR threads accept requests
+.IP \(bu
+\fIspooler\fR threads handle large uploads during the receive phase, offloading this work from driver threads
+.IP \(bu
+\fIwriter\fR threads manage response delivery to clients
+.PP
+Multiple of these spooling threads can be configured for each network driver (e\&.g\&., HTTP, HTTPS)\&.
+.PP
+Figure 2 illustrates how three concurrent requests (r0, r1,
+r2) interact with spooling threads\&. By delegating I/O-intensive tasks
+to driver and writer threads, connection threads spend less time
+waiting and more time processing\&. This approach allows one connection
+thread to handle many more requests per second\&.  Remember, every
+spooling thread is capable to server a high number of concurrent
+requests without latency degradation for the client\&. Only the process
+phases (marked in orange) occupy time in the connection thread\&.
+.PP
+IMAGE: concurrent-requests1 Concurrent Requests with Spooling Threads
+.PP
+Figure 2: Concurrent Request with Spooling Threads
+.PP
+Only the processing phase requires always a connection
+thread\&. By reducing the time required in the connection thread, the
+scalability improves, the same number of connection threads is able to
+process more requests\&.
+Figure 3 shows how six requests are served by four connection threads\&.
+.PP
+IMAGE: concurrent-requests2 Concurrent Requests and Scalability
+.PP
+Figure 3: Concurrent Requests and Scalability
+.PP
+Actually, thanks to reduced processing time, these connection
+threads could serve much more requests\&.
+Without spooling threads, the server throughput is roughly:
+.CS
+
+
+(total requests/sec) ≈ (number of connection threads * (1 / avg total request time))
+
+.CE
+With spooling threads, the server throughput approximates:
+.CS
+
+
+(total requests/sec) ≈ (number of connection threads * (1 / avg process phase time))
+
+.CE
+Example:
+.IP \(bu
+Average total time per request: 25 ms
+.IP \(bu
+Average process-phase time per request: 4 ms
+.IP \(bu
+Without spooling:
+.RS
+.IP \(bu
+Per thread: 1000ms/25ms = 40 requests/sec
+.IP \(bu
+With 4 connection threads: 160 requests/sec
+.RE
+.IP \(bu
+With spooling:
+.RS
+.IP \(bu
+Per thread: 1000ms/4ms = 250 requests/sec
+.IP \(bu
+With 4 connection threads: 1000 requests/sec
+.RE
+.PP
+Actual figures depend on application complexity, database performance,
+network conditions, and more\&. Use the \fBnsstats\fR module to gather
+metrics and understand your environment better\&. For determining the
+right number of, e\&.g\&., the right number of connection threads, the
+\fBnsstats\fR module provides statistics for average queueing time,
+filter and run time, etc\&.
+.SS "TUNE THE CONNECTION THREADS"
+For smaller deployments (e\&.g\&., 100K requests/day), the default
+settings in "\fIsample-config\&.tcl\fR" or "\fIopenacs-config\&.tcl\fR" are
+often sufficient\&. For larger or more resource-constrained setups, you
+may need to adjust parameters in the \fIns/server/$server\fR
+section:
+.PP
+Key parameters include:
+\fIconnsperthread\fR,
+\fIhighwatermark\fR,
+\fIlowwatermark\fR,
+\fImaxconnections\fR,
+\fImaxthreads\fR,
+\fIminthreads\fR,
+\fIrejectoverrun\fR,
+\fIretryafter\fR,
+\fIpoolratelimit\fR,
+\fIconnectionratelimit\fR and
+\fIthreadtimeout\fR\&.
+See also the section \fIconnection thread pools\fR in the keywords section\&.
+.PP
+In most cases, the defaults work well, but \fIminthreads\fR
+and \fImaxthreads\fR need often tuning\&. Setting these parameters
+carefully based on load is essential\&.  Frequent starting and stopping
+of threads can be costly if your application initializes large Tcl
+environments\&. Sometimes it’s best to set
+\fIminthreads\fR = \fImaxthreads\fR to avoid thread startup overhead\&.
+.PP
+\fImaxconnections\fR defines the length of the connection
+queue for a pool\&. If no connection thread is available, requests
+queue up\&. If the queue overflows and \fIrejectoverrun\fR is true, a
+503 error is returned to the client\&. If \fIretryafter\fR is set, a
+"Retry-After" header field is also provided\&. When \fIrejectoverrun\fR is
+false, NaviServer retries requests more aggressively, which can
+consume memory if exploited by flooding attacks\&. For internal
+servers, this behavior may still be desirable\&.
+.PP
+On busy machines, define multiple connection thread pools and
+map certain HTTP methods, URLs, or context constraints to them\&. See the
+documentation of "connection thread pools" and the \fBns_server\fR
+command for details\&.  You can create additional pools via in the
+\fIpools\fR section in the configuration file and configure them
+separately\&.
+.CS
+
+
+ ns_section ns/server/$server/pools {
+   #
+   # To activate connection thread pools, uncomment one of the
+   # following lines and/or add other pools\&.
+
+   ns_param   monitor	"Monitoring actions"
+   ns_param   fast	"Fast requests (e\&.g\&., <10ms)"
+ }
+
+ ns_section ns/server/$server/pool/monitor {
+   ns_param   minthreads 2
+   ns_param   maxthreads 2
+
+   ns_param   map "GET /admin/nsstats"
+   ns_param   map "GET /SYSTEM"
+   ns_param   map "GET /ds"
+   ns_param   map "POST /ds"
+   ns_param   map "GET /request-monitor"
+ }
+
+ ns_section ns/server/$server/pool/fast {
+   ns_param   minthreads 2
+   ns_param   maxthreads 2
+
+   ns_param   map "GET /*\&.png"
+   ns_param   map "GET /*\&.PNG"
+   ns_param   map "GET /*\&.jpg"
+   ns_param   map "GET /*\&.pdf"
+   ns_param   map "GET /*\&.gif"
+   ns_param   map "GET /*\&.mp4"
+   ns_param   map "GET /*\&.ts"
+   ns_param   map "GET /*\&.m3u8"
+ }
+
+ ns_section ns/server/$server/pool/bots {
+   ns_param   map "GET  /* {user-agent *bot*}"
+   ns_param   map "GET  /* {user-agent *rawl*}"
+   ns_param   map "GET  /* {user-agent *pider*}"
+   ns_param   map "GET  /* {user-agent *baidu*}"
+   ns_param   map "GET  /* {user-agent *Knowledge*}"
+   ns_param   minthreads 2
+   ns_param   maxthreads 2
+   ns_param   poolratelimit 1000    ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
+   ns_param   rejectoverrun true
+ }
+
+.CE
+Different pools can have distinct parameters, including limiting
+outgoing traffic rates per connection or for the entire pool\&.
+.SS "ONLY LOAD MODULES YOU NEED"
+Loading unnecessary modules can introduce overhead\&. For instance:
+.IP \(bu
+\fInsperm\fR adds extra checks per request\&.
+.IP \(bu
+\fInscgi\fR and \fInscp\fR are not needed if you don’t run CGI or the control port\&.
+.PP
+The general rule is not to load modules not used by your application to reduce overhead\&.
+.SS "TURN OFF DNS LOOKUPS IF POSSIBLE"
+Although NaviServer performs DNS caching, DNS lookups can slow down
+request handling, especially for failed lookups\&. By default, \fInslog\fR
+performs no DNS lookups, but verify your configuration\&. If you’re not using
+host-based access controls with \fInsperm\fR, disable DNS lookups
+there as well\&. For \fInscgi\fR, DNS is off by default, but check for
+gethostbyaddr settings\&. If you must use DNS, tune \fIdnscache\fR,
+\fIdnswaittimeout\fR, and \fIdnscachetimeout\fR to improve
+performance\&.
+.SS "EXPERIMENT WITH THE ADP CACHE"
+In the \fIns/server/$server/adp\fR section, parameters like
+\fIcache\fR, \fIcachesize\fR, and \fIthreadcache\fR control the ADP
+cache\&. The default is a 10 MB cache, which stores parsed ADP pages in
+memory, reducing the need to re-parse on each request\&. Adjust these
+settings based on memory availability and application needs\&.
+.SS "EXPERIMENT WITH THE FASTPATH CACHE"
+The FastPath cache stores static HTML pages\&. In
+\fIns/server/$server/fastpath\fR, adjust \fIcache\fR,
+\fIcachemaxentry\fR, and \fIcachemaxsize\fR\&. Default is 10 MB\&.  On some
+systems, enabling \fImmap\fR can improve performance further\&.
+.SS "DISABLE CHECKMODIFIEDSINCE IF APPROPRIATE"
+If your site rarely updates its content, you can disable
+\fIcheckmodifiedsince\fR in section \fIns/server/$server\fR\&. This prevents NaviServer
+from checking file modification times on every cached entry, potentially boosting
+performance on slower systems\&.
+.SS "MONITOR MEMORY USAGE"
+Monitor memory usage with tools like "ps -leaf"\&. Ideally, the
+Resident Set Size (RSS) of the nsd process should be large compared
+to its allocated size to avoid thrashing\&.  Operating system policies
+or memory constraints can limit how much memory nsd can use
+efficiently\&.
+.PP
+The extra NaviServer module \fInsstats\fR offers detailed
+memory analysis, including memory used for caching, \fInsv\fR, or
+statistics from the system memory allocator, when, e\&.g\&., TCmalloc
+from Google's perftools is used\&.
+.SS "BEWARE THE DATABASE"
+Databases are often the main bottleneck of web
+applications\&. Streamline queries and use stored procedures to
+minimize round-trips and ensure only the required data is
+retrieved\&. Check the statistics such as sequential tuple scans and
+the like and optimize your database indices\&. This reduces the
+server’s overhead in assembling \fBns_getrow\fR structures\&.
+.SS "COLLECT METRICS AND USE THEM"
+NaviServer’s built-in statistics system (e\&.g\&., via module
+\fInsstats\fR) provides insight into caching behavior, Tcl interpreters,
+thread usage, and more\&. These metrics are invaluable for informed
+tuning and capacity planning\&.
+.SS "FURTHER PARAMETERS FOR TUNING"
+Additional parameters may improve performance in certain
+contexts\&. For example, concurrent interpreter creation can now be
+enabled with Tcl 8\&.6+:
+.CS
+
+
+ ns_section ns/parameters {
+   ns_param concurrentinterpcreate true  ;# default: false
+ }
+
+.CE
+When this is activated, multiple threads containing Tcl interpreters
+can be created concurrently\&. In previous version, the interpereter
+creation had to be serialized to avoid crashes\&.
+.PP
+Check the sample configuration files for more hints:
+.IP \(bu
+\fInsd-config\&.tcl\fR [https://raw\&.githubusercontent\&.com/naviserver-project/naviserver/main/nsd-config\&.tcl]
+.IP \(bu
+\fIsimple-config\&.tcl\fR [https://raw\&.githubusercontent\&.com/naviserver-project/naviserver/main/simple-config\&.tcl]
+.IP \(bu
+\fIopenacs-config\&.tcl\fR [https://raw\&.githubusercontent\&.com/naviserver-project/naviserver/main/openacs-config\&.tcl]
+.PP
+.SH KEYWORDS
+SO_REUSEPORT, TCP, TCP_FASTOPEN, blueprint, configuration, connection thread pools, driver, module, nssock, nsssl, pagedir, performance, spooling threads, tuning

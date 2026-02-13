@@ -1,0 +1,112 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_sema - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_sema.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_sema.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_sema.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_sema.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_sema(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_sema - Operate on semaphore-like objects</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_sema create</b> <span class="opt">?<i class="arg">count</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_sema destroy</b> <i class="arg">handle</i></a></li>
+<li><a href="#3"><b class="cmd">ns_sema release</b> <i class="arg">handle</i> <span class="opt">?<i class="arg">count</i>?</span></a></li>
+<li><a href="#4"><b class="cmd">ns_sema wait</b> <i class="arg">handle</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides a mechanism to manipulate semaphore-like objects
+but are not inter-process capable like true semaphores.  They are actually
+implemented with a mutex and a counter.  The allowed options (which may be abbreviated) are:</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_sema create</b> <span class="opt">?<i class="arg">count</i>?</span></a></dt>
+<dd><p>Initializes a new semaphore object. The <i class="arg">count</i> argument specifies
+the initial value of the semaphore's counter. If <i class="arg">count</i> is not
+provided, the counter is initialized to zero. The command returns a
+handle for the semaphore object to be use by the other commands.</p></dd>
+<dt><a name="2"><b class="cmd">ns_sema destroy</b> <i class="arg">handle</i></a></dt>
+<dd><p>Destroys the semaphore <i class="arg">handle</i> and frees any resources it was
+using. Note: In the current implementation, this command is
+effectively a no-op; the semaphore will continue to exist until the
+server shuts down.</p></dd>
+<dt><a name="3"><b class="cmd">ns_sema release</b> <i class="arg">handle</i> <span class="opt">?<i class="arg">count</i>?</span></a></dt>
+<dd><p>Releases the semaphore <i class="arg">handle</i> by incrementing the counter by one by default
+or by <i class="arg">count</i> otherwise.  The thread will wake any threads blocking on this
+semaphore when <i class="arg">count</i> is equal to one.</p>
+<p>This is what is commonly referred to as &quot;semaphore up&quot;.</p></dd>
+<dt><a name="4"><b class="cmd">ns_sema wait</b> <i class="arg">handle</i></a></dt>
+<dd><p>Waits for a semaphore <i class="arg">handle</i> to be greater than zero.  Will block the thread until
+this is true.  Decrements the counter by one when the counter is greater than zero.</p>
+<p>This is what is commonly referred to as &quot;semaphore down&quot;.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>Using a semaphore to synchronize threads</p>
+<pre class="doctools_example">
+ set sema [ns_sema create]
+ 
+ # Start a thread that waits for the semaphore
+ ns_thread create -detached [subst {
+    ns_log notice &quot;... thread waits for $sema&quot;
+    ns_sema wait $sema
+    ns_log notice &quot;... thread proceeds&quot;
+ }]
+ 
+ # Release the semaphore in two seconds to allow the waiting thread to proceed
+ ns_sleep 2s
+ ns_sema release $sema
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_cond.html">ns_cond</a>, <a href="ns_critsec.html">ns_critsec</a>, <a href="ns_mutex.html">ns_mutex</a>, <a href="ns_rwlock.html">ns_rwlock</a>, <a href="ns_thread.html">ns_thread</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#concurrency">concurrency</a>, <a href="../../index.html#mutex">mutex</a>, <a href="../../index.html#semaphore">semaphore</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#synchronization">synchronization</a>, <a href="../../index.html#threading">threading</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

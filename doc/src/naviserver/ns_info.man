@@ -13,28 +13,50 @@ This command provides information about the current state of the running NaviSer
 
 [list_begin definitions]
 
-
-[call [cmd ns_info] [arg option] [opt [arg {arg arg ...}]]]
-
-
-[list_end]
-
-
-[list_begin definitions]
-
 [call [cmd  "ns_info address"]]
 
 Returns the primary IP address of the hostname of this machine, or
 the unspecified IP address (for IPv4 "0.0.0.0", for IPv6 "::") if
 unable to determine.
 
+[call [cmd  "ns_info argv"]]
+
+Returns the argument vector from the invocation of nsd (excluding the
+first argument) in form of a list. This is similar to Tcl's $argv, but
+global variables in the top level namespace are cleaned up after every
+request.
+
 [call [cmd  "ns_info argv0"]]
 
 Returns file path to executable binary
 
+[call [cmd  "ns_info bindir"]]
+
+Returns the name of the [term bin] directory. The name is specified by the
+"bindir" parameter in the "ns/parameters" section, and defaults to
+"bin". The value is used for loading binary libraries for
+executables like the [term nsproxy] worker.
+
+
 [call [cmd "ns_info boottime"]]
 
 Returns the time in epoch seconds since the current server was started
+
+[call [cmd  "ns_info buildinfo"]]
+
+Returns returns information about compiler, assertions and Tcl
+version in form of a dict, containing the keys
+[term compiler],
+[term assertions],
+[term system_malloc],
+[term with_deprecated], and
+[term tcl].
+
+[example_begin]
+ % ns_info buildinfo
+ compiler {clang 16.0.0 (clang-1600.0.26.4)} assertions 0 system_malloc 1 with_deprecated 0 tcl 9.0.1
+[example_end]
+
 
 [call [cmd  "ns_info builddate"]]
 
@@ -72,12 +94,43 @@ Not all information is available for all types of locks.
 
 [call [cmd  "ns_info log"]]
 
-Returns the name of the error log file. The name is specified by the
-"serverlog" parameter in the "ns/parameters" section.
+Returns the name of the system log file. The name is specified by the
+[term "systemlog"] parameter in the [const "ns/parameters"] section.
+
+[call [cmd  "ns_info logdir"]]
+
+Returns the name of the log directory. The name is specified by the
+"logdir" parameter in the "ns/parameters" section, and defaults to "logs".
 
 [call [cmd  "ns_info major"]]
 
 Returns the major version number.
+
+[call [cmd  "ns_info meminfo"] [opt [option -release]]]
+
+Returns memory statistics from tcmalloc when available, i.e., when
+libtcmalloc (from Google perfools) is used and preloaded (we might add
+support for other alternative malloc libraries in the
+future). Otherwise the call is a no-op.
+
+[para] When the option [opt -release] is used, the releasable memory
+is released (also libtcmalloc only).
+
+[example_begin]
+ % ns_info meminfo
+ reload /usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4 version {gperftools 2.7} stats {------------------------------------------------
+ MALLOC:     1015860976 (  968.8 MiB) Bytes in use by application
+ MALLOC: +    113090560 (  107.9 MiB) Bytes in page heap freelist
+ MALLOC: +    123400496 (  117.7 MiB) Bytes in central cache freelist
+ MALLOC: +      4785408 (    4.6 MiB) Bytes in transfer cache freelist
+ MALLOC: +     29514464 (   28.1 MiB) Bytes in thread cache freelists
+ MALLOC: +      7602176 (    7.2 MiB) Bytes in malloc metadata
+ MALLOC:   ------------
+ MALLOC: =   1294254080 ( 1234.3 MiB) Actual memory used (physical + swap)
+ MALLOC: +      1335296 (    1.3 MiB) Bytes released to OS (aka unmapped)
+ MALLOC:   ------------
+ MALLOC: =   1295589376 ( 1235.6 MiB) Virtual address space used
+[example_end]
 
 [call [cmd  "ns_info minor"]]
 
@@ -85,7 +138,7 @@ Returns the minor version number.
 
 [call [cmd  "ns_info mimetypes"]]
 
-Returns the current mime-type mappings.
+Returns the current MIME type mappings.
 
 [call [cmd  "ns_info name"]]
 
@@ -173,6 +226,7 @@ listening callback for the nscp module. Each list element is itself a
 4-element list like this: 
 
 [example_begin]
+ % ns_info sockcallbacks
  {11 {read exit} nscp {127.0.0.1 9999} 0}
 [example_end]
 
@@ -223,7 +277,7 @@ number combined with a dot).
 
 
 [list_end]
-[keywords "global built-in" introspection]
+[keywords "global built-in" introspection nsproxy]
 
 [manpage_end]
 

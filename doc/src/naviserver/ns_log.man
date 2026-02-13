@@ -3,7 +3,7 @@
 
 [manpage_begin ns_log n [vset version]]
 [moddesc   {NaviServer Built-in Commands}]
-[titledesc {Global server error log}]
+[titledesc {Global server system log}]
 
 [description]
 
@@ -24,12 +24,11 @@ process log messages.
 
 
 [call [cmd ns_log] \
-      [arg severity-level] \
-      [arg message] \
-      [opt [arg "message ..."]] ]
+      [arg severity] \
+      [arg "message ..."] ]
 
-Write a message to the error log file if the given
-[arg severity-level] is enabled (see [cmd ns_logctl]).
+Writes a message to the system log file if the given
+[arg severity] is enabled (see [cmd ns_logctl]).
 The [arg message]
 arguments are concatenated with connecting spaces. Note that this only
 queues messages for the log and does not actually guarantee that the
@@ -37,7 +36,7 @@ message is immediately written to the log. The server can be
 instructed to queue messages in the cache via [cmd "ns_logctl hold"].
 
 [para]
-The following are the predefined values of [arg severity-level].
+The following are the predefined values of [arg severity].
 
 [list_begin definitions]
 
@@ -54,7 +53,7 @@ engineering guidelines are of such type.
 
 [def Error] Something bad occurred.  An [term error] is a malfunction, that
 must be investigated by a developer. An error is an unhandled
-exception.  The error.log file should be free of errors.
+exception.  The system log file should be free of errors.
  
 [def Fatal]
 Something extremely bad occurred. The server will shut down after
@@ -66,6 +65,12 @@ This condition could never happen when the code is behaving correctly.
 
 [def Debug]
 General debugging.
+
+[def Deprecated]
+A deprecated function was used.
+
+[def Security]
+Something security relevant has occurred.
 
 [def Debug(access)] Mirror access log entries in system log.
 [def Debug(cgi)] Debugging for the [cmd nscgi] module.
@@ -88,68 +93,72 @@ reached a stable point.
 
 
 
-[call [cmd ns_logctl] \
-	  [method count] ]
+[call [cmd "ns_logctl count" ]]
 
 Returns a count of buffered messages for the current thread. The
 message buffering can be turned on subcommand  [method hold].
 
-[call [cmd ns_logctl] \
-	  [method flush] ]
+[call [cmd "ns_logctl flush" ]]
 
 Write buffered log messages from the current thread to the log file. Do not
 disable buffering enabled by [arg hold].
 
-[call [cmd ns_logctl] [method get] ]
+[call [cmd "ns_logctl get" ]]
 
-Return all buffered log messages, removing them from the buffer
+Returns all buffered log messages, removing them from the buffer
 without writing them to the log file.
 
-[call [cmd ns_logctl] [method grep] \
-   [opt "[option -filename] [arg filename]"] \
+[call [cmd "ns_logctl grep"] \
+   [opt [option "-filename [arg value]"]] \
+   [opt --] \
    [arg string]]
 
-Read through the system log file, join continuation lines, strip color
-codes and grep in the result for the provided string. The function
+Reads through the system log file, joins continuation lines, strips color
+codes and greps in the result for the provided string. The function
 returns all lines containing the specified string.
 When [option -filename] is specified, the search is performed on
 the specified file.  The specified filename should be fully qualified.
 
-[call [cmd ns_logctl] \
-	  [method hold] ]
+[call [cmd "ns_logctl hold"] ]
 
 Buffer log messages originating in the current thread indefinitely. Log messages
 are no longer written directly to the server log. Use the subcommand
 [method release] to disable buffering.
 
-[call [cmd ns_logctl] \
-	  [method peek] ]
+[call [cmd "ns_logctl peek"] ]
 
 Return a copy of any buffered log messages for the current thread.
 
+[call [cmd "ns_logctl register"] \
+      [arg script] \
+      [opt [arg "arg ..."]] ]
 
-[call [cmd ns_logctl] \
-	  [method release] ]
+Registers a log filter [arg script] with the given [arg script-args] where
+[arg script] should have the signature:
+[emph script] [arg severity] [arg timestamp] [arg message] [opt [arg "script-args ..."]].
+A [arg handle] will be returned which can be used to unregister the filter script.
+
+
+[call [cmd "ns_logctl release"] ]
 
 Write buffered log messages from the current thread to the log file and disable
 buffering. Future log messages will not be buffered.
 
-[call [cmd ns_logctl] \
-	  [method severities] ]
+[call [cmd "ns_logctl severities"] ]
 
-Return a list of available severity-levels. The result includes the 7 predefined
+Returns a list of available severity levels. The result includes the 7 predefined
 levels and those created with [cmd ns_logctl] or via C code.
 
-[call [cmd ns_logctl] \
-      [method severity] \
-      [arg severity-level] \
-      [opt "[option -color] [arg color]"] \
-      [opt "[option -intensity] [arg intensity]"] \
-      [opt [arg bool]] ]
+[call [cmd "ns_logctl severity"] \
+      [arg severity] \
+      [opt [option "-color black|red|green|yellow|blue|magenta|cyan|gray|default"]] \
+      [opt [option "-intensity normal|bright"]] \
+      [opt true|false] ]
 
-Return true if the given [arg severity-level] is enabled, false if it is
-disabled. If [arg bool] is given it enables/disables the given
-[arg severity-level] for all future log messages, server-wide.
+Returns [term true] if the given [arg severity] is enabled,
+[term false] if it is
+disabled. If the last argument [opt true|false] is given it enables/disables the given
+[arg severity] for all future log messages, server-wide.
 The options [option -color] and [option -intensity] can be used
 to set the coloring when the logfile is colorized. The color can be
 [term black], [term red], [term green], [term yellow],
@@ -160,52 +169,40 @@ The logfile colorization can be controlled by setting
 configuration file.
 
 [para]
-If [arg severity-level] does not already exist and more arguments arg given, then the
-new severity is created. Future calls to [cmd ns_log] may use new [arg severity-level].
+If [arg severity] does not already exist and more arguments arg given, then the
+new severity is created. Future calls to [cmd ns_log] may use new [arg severity].
 
-[call [cmd ns_logctl] \
-	  [method stats] ]
+[call [cmd "ns_logctl stats"] ]
 
-Return statistics from calls to [cmd ns_log] by severity-level.
+Returns statistics from calls to [cmd ns_log] grouped by severity.
 
-[call [cmd ns_logctl] \
-	  [method truncate] \
-	  [arg count] ]
+[call [cmd "ns_logctl truncate"] \
+	  [opt [arg count]] \
+          ]
 
 Discard this thread's buffered messages, leaving [arg count] untouched.
 
-[call [cmd ns_logctl] \
-      [method register] \
-      [arg script] \
-      [opt [arg "script-args ..."]] ]
 
-Register a log filter [arg script] with the given [arg script-args] where
-[arg script] should have the signature:
-[emph script] [arg severity] [arg timestamp] [arg message] [opt [arg "script-args ..."]].
-A [arg handle] will be returned which can be used to unregister the filter script.
-
-
-[call [cmd ns_logctl] \
-      [method unregister] \
+[call [cmd "ns_logctl unregister"] \
       [arg handle] ]
 
-Unregister the previously registered log filter script identified by
+Unregisters the previously registered log filter script identified by
 [arg handle].
 
 
 
 [call [cmd ns_logroll] ]
 
-Roll the server error log. The behavior is independent of the
-configuration parameter [emph logroll]. See [cmd ns_rollfile] for
-details of log rolling.
+Rolls the system log. The behavior depends on the configuration
+parameter [emph logmaxbackup] and [emph logrollfmt].
+See [cmd ns_rollfile] for details of log rotation.
 
 [list_end]
 
 
 [section CONFIGURATION]
 
-The error log is configured globally for the whole server process.
+The system log is configured globally for the whole server process.
 
 [example_begin]
  [cmd ns_section] ns/parameters
@@ -222,11 +219,11 @@ If true, log entries will be colorized using ANSI color codes
 Default: false.
 
 [def logdebug]
-If true messages of severity-level [emph Debug] are enabled.
+If true messages of severity [emph Debug] are enabled.
 Default: false.
 
 [def logdev]
-If true, messages of severity-level [emph Dev] are enabled.
+If true, messages of severity [emph Dev] are enabled.
 Default: false.
 
 [def logexpanded]
@@ -234,11 +231,11 @@ If true, an extra newline is added to each log entry.
 Default: false.
 
 [def logmaxbackup]
-The number of old error log files to keep around if log rolling is enabled.
+The number of old system log files to keep around if log rolling is enabled.
 Default: 10.
 
 [def lognotice]
-If true, messages of severity-level [emph Notice] are enabled.
+If true, messages of severity [emph Notice] are enabled.
 Default: true.
 
 [def logprefixcolor]
@@ -262,8 +259,8 @@ specified time format (e.g. %Y-%m-%d). The timestamp is appended
 to the name. When within the granularity two log files are generated
 these are numbered.
 
-[def serverlog]
-Path to error log file. If the path is not fully qualified it is assumed to be
+[def systemlog]
+Path to system log file. If the path is not fully qualified it is assumed to be
 relative to the server home directory ([lb][cmd ns_info] home[rb]). All the components of
 the path must exist. The server will fail to start if the log file cannot be
 opened.
@@ -299,16 +296,16 @@ included in the NaviServer distribution.
    # ...
  
    # Provide name for main server log file:
-   ns_param	serverlog       ${homedir}/logs/error.log
+   ns_param	systemlog       nsd.log
  
    #
-   # Configuration of serverlog
+   # Configuration of systemlog
    #
    # Rolling of logfile:
  
-   ns_param	logroll		on
+   ns_param	logrollonsignal	on       ;# log rotation on SIGHUP (default: on)
    ns_param	logmaxbackup	100      ;# (default: 10)
-   ns_param	logrollfmt	%Y-%m-%d ;# timestamp format appended to serverlog filename when rolled
+   ns_param	logrollfmt	%Y-%m-%d ;# timestamp format appended to systemlog filename when rolled
  
    #
    # Format of log entries:
@@ -357,7 +354,7 @@ Enable debug logging while the server is running.
 
 
 
-Report log messages at the end of an ADP page, as well as log them to the error
+Report log messages at the end of an ADP page, as well as log them to the system
 log file.
 
 [example_begin]
@@ -381,7 +378,7 @@ log file.
 
 
 
-Create a new severity-level.
+Create a new severity.
 
 [example_begin]
  nscp:1> [cmd ns_logctl] severities
@@ -403,8 +400,9 @@ Create a new severity-level.
 [example_end]
 
 
-[see_also ns_accesslog ns_info ns_rollfile ns_asynclogfile ns_http ns_connchan]
-[keywords "global built-in" log path error configuration nscgi nsdb nsproxy]
+[see_also ns_accesslog ns_info ns_rollfile ns_purgefiles ns_asynclogfile ns_http ns_connchan]
+[keywords "global built-in" logging "system log" path error \
+   configuration nscgi nsdb nsproxy severity]
 
 
 [manpage_end]

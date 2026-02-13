@@ -25,9 +25,34 @@ CPPCHECK         = cppcheck
 NS_PATCH_LEVEL   = @NS_PATCH_LEVEL@
 
 @SET_MAKE@
+
+#
+# The following binaries are assumed to live in the /bin/ directory,
+# as specified by FHS 3.0 (Filesystem Hierarchy Standard).
+# https://refspecs.linuxfoundation.org/FHS_3.0/fhs/ch03s04.html
+#
+# These locations have severed us well over the last 20+ years on a
+# large variety of unix like systems. The paths are used for security
+# reasons:
+# - prevent command spoofing
+# - reduce ambiguity
+# - improves reliabilty (not depend on PATH settings)
+# The reason for using variables is to provide a single place of
+# definition, and the ability to override this also from the command
+# line.
+#
+# Maybe, we should consider in the future some autoconf magic, when
+# necessary.
+#
 RM               = /bin/rm -Rf
 MKDIR            = /bin/mkdir -p
 CP               = /bin/cp -pR
+LN               = /bin/ln
+MV               = /bin/mv
+CAT              = /bin/cat
+CHMOD            = /bin/chmod
+CHOWN            = /bin/chown
+OPENSSL          = openssl
 
 ifdef NSBUILD
     INSTALL_SH	 = $(srcdir)/install-sh -c
@@ -38,7 +63,9 @@ INSTALL_DATA	 = $(INSTALL_SH) -m 644
 
 RANLIB           = @RANLIB@
 LIBEXT           = @SHLIB_SUFFIX@
+EXEEXT           = @EXEEXT@
 TCL_EXEC_PREFIX  = @TCL_EXEC_PREFIX@
+TCLSH_PROG	 = @TCLSH_PROG@
 LIB_RUNTIME_DIR  =
 LDLIB            = @LDLIB@
 LDSO             = @LDSO@
@@ -48,30 +75,34 @@ CCRPATH         += @CCRPATH@
 LDRPATH         += @LDRPATH@
 CC               = $(PURIFY) @CC@
 CCLD             = @CCLD@
-CFLAGS_DEBUG     = @CFLAGS_DEBUG@
-CFLAGS_OPTIMIZE  = @CFLAGS_OPTIMIZE@
-CFLAGS_WARNING   = @CFLAGS_WARNING@
-CFLAGS_INCLUDE   = -I$(INCDIR) @TCL_INCLUDES@
-#CFLAGS_EXTRA     = @SHLIB_CFLAGS@ @TCL_EXTRA_CFLAGS@ -DNDEBUG -DSYSTEM_MALLOC -DTCL_NO_DEPRECATED -std=c99
-#CFLAGS_EXTRA     = @SHLIB_CFLAGS@ @TCL_EXTRA_CFLAGS@ -DSYSTEM_MALLOC -DNS_SET_DSTRING -std=c99
-CFLAGS_EXTRA     = @SHLIB_CFLAGS@ @TCL_EXTRA_CFLAGS@ -DNDEBUG -DSYSTEM_MALLOC -std=c99
-DEFS             = @DEFS@
+
 # When compiling with sanitize: export ASAN_OPTIONS=halt_on_error=false:exitcode=0:print_stats=1:atexit=1
 #SANITIZE          = -fsanitize=address -fsanitize-recover=address
 #SANITIZE          =
+#CFLAGS_TIDY_GCC   =  -fipa-pure-const -Wsuggest-attribute=const -Wsuggest-attribute=pure -Wstringop-truncation 
+#CFLAGS_TIDY_GCC   =  -fipa-pure-const -Wsuggest-attribute=pure -Wstringop-truncation -Wflex-array-member-not-at-end -Warray-compare
+
 CFLAGS_CONVERSION = -Wconversion -Wsign-conversion -Wsign-compare
 CFLAGS_DEFINITION = -Wwrite-strings -Wdeclaration-after-statement -Wendif-labels -Wshadow -Wmissing-prototypes -Wstrict-prototypes
-CFLAGS_TIDY       = -Wno-missing-braces -Wundef -Wunreachable-code -Wswitch-enum -Wpointer-arith -Wold-style-definition -Wmissing-format-attribute -Wformat-security
+CFLAGS_TIDY       = -Wno-missing-braces -Wundef -Wunreachable-code -Wswitch-enum -Wpointer-arith -Wold-style-definition -Wmissing-format-attribute -Wformat-security $(CFLAGS_TIDY_GCC)
 #CFLAGS_FORTIFY    = -D_FORTIFY_SOURCE=2 -fstack-protector $(SANITIZE)
-CFLAGS_FORTIFY    = -fstack-protector $(SANITIZE) -fwrapv -ftrapv
+#CFLAGS_FORTIFY    = -fstack-protector $(SANITIZE) -fwrapv -ftrapv
+CFLAGS_WARNING   = @CFLAGS_WARNING@
+CFLAGS_WARNING   = @CFLAGS_WARNING@ -pedantic -Wextra $(CFLAGS_CONVERSION) $(CFLAGS_DEFINITION) $(CFLAGS_TIDY) $(CFLAGS_FORTIFY)
+
+#CFLAGS_DEBUG     = @CFLAGS_DEBUG@ -DNDEBUG
+CFLAGS_DEBUG     = @CFLAGS_DEBUG@
+CFLAGS_OPTIMIZE  = @CFLAGS_OPTIMIZE@
+CFLAGS_INCLUDE   = -I$(INCDIR) @TCL_INCLUDES@
+#CFLAGS_EXTRA     = @SHLIB_CFLAGS@ @TCL_EXTRA_CFLAGS@ -DSYSTEM_MALLOC -std=c99 -DNS_NO_DEPRECATED -DTCL_NO_DEPRECATED
+CFLAGS_EXTRA     = @SHLIB_CFLAGS@ @TCL_EXTRA_CFLAGS@ -DSYSTEM_MALLOC -std=c99
+DEFS             = @DEFS@
 #CFLAGS_DEFAULT    = @CFLAGS_DEFAULT@
-#CFLAGS_DEFAULT   = -pedantic -g -Wextra
-#CFLAGS_DEFAULT   = -pedantic -g -Wextra $(CFLAGS_CONVERSION) $(CFLAGS_DEFINITION) $(CFLAGS_TIDY) $(CFLAGS_FORTIFY)
-#CFLAGS_DEFAULT   = -pedantic -g -O3 -Wextra -std=c99 -DTCL_NO_DEPRECATED $(CFLAGS_CONVERSION) $(CFLAGS_DEFINITION) $(CFLAGS_TIDY)  -fipa-pure-const -Wsuggest-attribute=pure  -Wsuggest-attribute=const -Wstringop-truncation  -Wattribute-alias
-CFLAGS          += $(CFLAGS_DEFAULT) $(CFLAGS_OPTIMIZE) $(CFLAGS_WARNING) $(CFLAGS_EXTRA) $(CFLAGS_INCLUDE) $(PTHREAD_CFLAGS) @CPPFLAGS@ $(DEFS)
+
+CFLAGS          += $(CFLAGS_DEFAULT) $(CFLAGS_DEBUG) $(CFLAGS_OPTIMIZE) $(CFLAGS_WARNING) $(CFLAGS_EXTRA) $(CFLAGS_INCLUDE) $(PTHREAD_CFLAGS) @CPPFLAGS@ $(DEFS)
 LDFLAGS         += $(CFLAGS_OPTIMIZE) $(SANITIZE)
 LIBS		 = @LIBS@
-DL_LIBS		 = 
+DL_LIBS		 =
 MATH_LIBS	 = @MATH_LIBS@
 OPENSSL_LIBS     = @OPENSSL_LIBS@
 
@@ -117,7 +148,7 @@ endif
 # Add the OpenSSL libraries to the end to minimize interference of
 # load paths for other libraries
 #
-NSLIBS      += @TCL_LIB_SPEC@ @TCL_LIBS@ @LDFLAGS@ ${OPENSSL_LIBS} ${PTHREAD_LIBS}
+NSLIBS      += @TCL_LIB_SPEC@ @LDFLAGS@ ${OPENSSL_LIBS} ${PTHREAD_LIBS}
 CCLIBS       = $(NSLIBS)
 
 # Install directories
@@ -167,15 +198,26 @@ ifneq (,$(findstring Darwin,$(uname)))
 endif
 
 #
-# FreeBSD (at least 12) needs the POSIX thread library
+# FreeBSD, OpenBSD and NetBSD need the POSIX thread library and the math
+# library to resolve functions such as lround()
+#
+# NetBSD needs -lpthread instead of -lthr, but also -lm.
 #
 ifneq (,$(findstring FreeBSD,$(uname)))
-    NSLIBS += -lthr
+    NSLIBS += -lthr -lm
+endif
+
+ifneq (,$(findstring OpenBSD,$(uname)))
+    NSLIBS += -lpthread -lm
+endif
+
+ifneq (,$(findstring NetBSD,$(uname)))
+    NSLIBS += -lpthread -lm
 endif
 
 #
-# OpenBSD needs the POSIX thread library
+# MINGW needs additional system libraries
 #
-ifneq (,$(findstring OpenBSD,$(uname)))
-    NSLIBS += -lpthread
+ifeq (.exe,$(EXEEXT))
+    NSLIBS += -static-libgcc -Wl,-Bstatic -lpthread -lws2_32 -lcrypt32
 endif

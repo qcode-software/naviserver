@@ -1,0 +1,150 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_serverrootproc - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_serverrootproc.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_serverrootproc.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_serverrootproc.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_serverrootproc.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_serverrootproc(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_serverrootproc - Callback for Determining Server Root</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_serverrootproc</b> <i class="arg">script</i> <span class="opt">?<i class="arg">arg ...</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command registers a Tcl callback that dynamically computes the
+ server root directory. It is commonly used to determine the
+ per-request &quot;serverdir&quot; based on attributes of the current connection
+ (for example, using the <b class="const">Host:</b> header field).</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_serverrootproc</b> <i class="arg">script</i> <span class="opt">?<i class="arg">arg ...</i>?</span></a></dt>
+<dd><p>Registers a <i class="arg">script</i> that returns the server root directory as an
+ absolute or relative path.  The result of this callback overrides the
+ default value of the <b class="const">serverdir</b> parameter. For more details,
+ see <a href="../../manual/files/admin-config.html#section4">Customizing File Locations</a>.</p>
+<p>If additional arguments are provided, they will be passed to the
+ callback. Thus, the callback can be specified as either a
+ (multi-line) script or as a command with arguments. (Note: When
+ the callback is registered via a configuration parameter, the
+ multi-argument invocation style is not available.)</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>The <b class="const">serverrootproc</b> callback can be defined directly in the
+ configuration file or registered via the <b class="cmd">ns_serverrootproc</b>
+ command. Defining it in the configuration file has the advantage that
+ it can be used (for example, for setting log file paths) before the
+ server (here named &quot;default&quot;) fully starts.</p>
+<pre class="doctools_example">
+ ns_section ns/server/default {
+   ns_param serverdir /var/www
+   ns_param serverrootproc {
+     #
+     # Compute the per-request &quot;serverdir&quot;:
+     #
+     set rootDir [ns_server serverdir]
+     set host [ns_conn host &quot;&quot;]
+     if {$host ne &quot;&quot; &amp;&amp; [file isdirectory $rootDir/$host ]} {
+       # Use the directory corresponding to the Host header.
+       set serverDir $rootDir/$host
+     } else {
+       # Fall back to the default server directory.
+       set serverDir $rootDir/[ns_info server]
+       ns_log notice &quot;... $rootDir/$host does not exist, use default '$serverDir'&quot;
+     }
+     return $serverDir
+   }
+ }
+</pre>
+<p>Alternatively, you can register the callback via
+ <b class="cmd">ns_serverrootproc</b> within the Tcl initialization script of a
+ server. This approach was standard in NaviServer 4.99 but is more
+ complex since the callback must be registered after the server is
+ initialized. One way to do this is by using the <i class="term">initcmd</i>
+ parameter in the <i class="term">tcl</i> section of a server configuration:</p>
+<pre class="doctools_example">
+ ns_section ns/server/default/tcl {
+   ns_param initcmds {
+     #
+     # Use the Tcl namespace &quot;::default&quot; for the &quot;default&quot; server.
+     #
+     namespace eval ::default {
+       #
+       # Define the callback procedure.
+       #
+       proc serverroot {args} {
+         #
+         # Compute the per-request &quot;serverdir&quot;:
+         #
+         set rootDir [ns_server serverdir]
+         set host [ns_conn host &quot;&quot;]
+         if {$host ne &quot;&quot; &amp;&amp; [file isdirectory $rootDir/$host ]} {
+           set serverDir $rootDir/$host
+         } else {
+           set serverDir $rootDir/[ns_info server]
+           ns_log notice &quot;... $rootDir/$host does not exist, use default '$serverDir'&quot;
+         }
+         return $serverDir
+       }
+       #
+       # Register the callback:
+       #
+       ns_serverrootproc [namespace current]::serverroot
+     }
+   }
+ }
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_conn.html">ns_conn</a>, <a href="ns_locationproc.html">ns_locationproc</a>, <a href="ns_server.html">ns_server</a>, <a href="ns_set.html">ns_set</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#callback">callback</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#serverdir">serverdir</a>, <a href="../../index.html#virtual_host">virtual host</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

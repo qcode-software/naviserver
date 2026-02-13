@@ -233,20 +233,20 @@ Ns_HtuuEncode(const unsigned char *input, size_t inputSize, char *buf)
  *
  * Side effects:
  *      Decoded characters are placed in output which must be
- *    large enough for the result, i.e., (3 + (len * 3) / 4)
- *    bytes.
+ *      large enough for the result, i.e., (3 + (len * 3) / 4)
+ *      bytes.
  *
  *----------------------------------------------------------------------
  */
 
-size_t
-Ns_HtuuDecode2(const char *input, unsigned char *buf, size_t bufSize, int encoding)
+int
+Ns_HtuuDecode2(Tcl_Interp *interp, const char *input, unsigned char *buf, size_t bufSize, int encoding, bool strict, size_t *decodedLength)
 {
-    register int                  n;
-    unsigned char                 chars[4] = {0u, 0u, 0u, 0u};
-    register const unsigned char *p;
-    register unsigned char       *q;
-    static const signed char     *decode_table;
+    int                        n, result = TCL_OK;
+    unsigned char              chars[4] = {0u, 0u, 0u, 0u};
+    const unsigned char       *p;
+    unsigned char             *q;
+    static const signed char  *decode_table;
 
 
     NS_NONNULL_ASSERT(input != NULL);
@@ -283,6 +283,24 @@ Ns_HtuuDecode2(const char *input, unsigned char *buf, size_t bufSize, int encodi
                 *q++ = UCHAR(Decode(decode_table, chars[2]) << 6) | Decode(decode_table, chars[3]);
                 n = 0;
             }
+        } else if (!CHARTYPE(space, *p) && *p != '=')  {
+            ptrdiff_t pos = 1 + p - (const unsigned char*)input;
+
+            if (strict) {
+                if (interp != NULL) {
+                    Ns_TclPrintfResult(interp, "invalid character '%c' at position %ld", *p, pos);
+                }
+                result = TCL_ERROR;
+            } else {
+                if (pos < 60) {
+                    /*
+                     * Print only shorter strings to the log file.
+                     */
+                    Ns_Log(Warning, "Decode invalid character '%c' at position %ld: '%s'", *p, pos, input);
+                } else {
+                    Ns_Log(Warning, "Decode invalid character '%c' at position %ld", *p, pos);
+                }
+            }
         }
         p++;
     }
@@ -290,8 +308,17 @@ Ns_HtuuDecode2(const char *input, unsigned char *buf, size_t bufSize, int encodi
     /*
      * Decode remaining 2 or 3 bytes.
      */
+    if (n == 1) {
+        if (strict) {
+            if (interp != NULL) {
+                Ns_TclPrintfResult(interp, "invalid trailing character '%c'", chars[0]);
+            }
+            result = TCL_ERROR;
+        } else {
+            Ns_Log(Warning, "Ignore trailing character '%c'", chars[0]);
+        }
 
-    if (n > 1) {
+    } else if (n > 1) {
         *q++ = UCHAR(Decode(decode_table, chars[0]) << 2) | Decode(decode_table, chars[1]) >> 4;
     }
     if (n > 2) {
@@ -300,13 +327,25 @@ Ns_HtuuDecode2(const char *input, unsigned char *buf, size_t bufSize, int encodi
     if ((size_t)(q - buf) < bufSize) {
         *q = UCHAR('\0');
     }
-    return (size_t)(q - buf);
+
+    if (decodedLength != NULL) {
+        *decodedLength = (size_t)(q - buf);
+    }
+
+    return result;
+
 }
 
 size_t
 Ns_HtuuDecode(const char *input, unsigned char *buf, size_t bufSize)
 {
-    return Ns_HtuuDecode2(input, buf, bufSize, 0);
+    size_t result;
+
+    if (Ns_HtuuDecode2(NULL, input, buf, bufSize, 0, NS_FALSE, &result) != TCL_OK) {
+        result = 0;
+    }
+
+    return result;
 }
 /*
  * Local Variables:

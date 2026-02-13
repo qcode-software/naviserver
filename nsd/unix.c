@@ -39,10 +39,10 @@ static void Abort(int signal)
 #endif
     ;
 
-static bool GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, char **freePtr)
+static bool GetPwNam(const char *user, PwElement elem, long *longResult, Tcl_DString *dsPtr, char **freePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(5);
 
-static bool GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr)
+static bool GetPwUID(uid_t uid, PwElement elem, int *intResult, Tcl_DString *dsPtr, char **freePtr)
     NS_GNUC_NONNULL(5);
 
 /*
@@ -474,7 +474,7 @@ ns_sock_set_blocking(NS_SOCKET sock, bool blocking)
  */
 
 static bool
-GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, char **freePtr) {
+GetPwNam(const char *user, PwElement elem, long *longResult, Tcl_DString *dsPtr, char **freePtr) {
     struct passwd *pwPtr;
     bool success;
 #if defined(HAVE_GETPWNAM_R)
@@ -516,12 +516,12 @@ GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, 
             break;
         case PwNAME:
             if (dsPtr != NULL) {
-                Ns_DStringAppend(dsPtr, pwPtr->pw_name);
+                Tcl_DStringAppend(dsPtr, pwPtr->pw_name, TCL_INDEX_NONE);
             }
             break;
         case PwDIR:
             if (dsPtr != NULL) {
-                Ns_DStringAppend(dsPtr, pwPtr->pw_dir);
+                Tcl_DStringAppend(dsPtr, pwPtr->pw_dir, TCL_INDEX_NONE);
             }
             break;
         }
@@ -553,7 +553,7 @@ GetPwNam(const char *user, PwElement elem, long *longResult, Ns_DString *dsPtr, 
  */
 
 static bool
-GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **freePtr) {
+GetPwUID(uid_t uid, PwElement elem, int *intResult, Tcl_DString *dsPtr, char **freePtr) {
     struct passwd *pwPtr;
     bool           success;
 #if defined(HAVE_GETPWUID_R)
@@ -592,12 +592,12 @@ GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **fr
             break;
         case PwNAME:
             if (dsPtr != NULL) {
-                Ns_DStringAppend(dsPtr, pwPtr->pw_name);
+                Tcl_DStringAppend(dsPtr, pwPtr->pw_name, TCL_INDEX_NONE);
             }
             break;
         case PwDIR:
             if (dsPtr != NULL) {
-                Ns_DStringAppend(dsPtr, pwPtr->pw_dir);
+                Tcl_DStringAppend(dsPtr, pwPtr->pw_dir, TCL_INDEX_NONE);
             }
             break;
         }
@@ -629,7 +629,7 @@ GetPwUID(uid_t uid, PwElement elem, int *intResult, Ns_DString *dsPtr, char **fr
  */
 
 bool
-Ns_GetNameForUid(Ns_DString *dsPtr, uid_t uid)
+Ns_GetNameForUid(Tcl_DString *dsPtr, uid_t uid)
 {
     char *ptr = NULL;
     bool success;
@@ -659,7 +659,7 @@ Ns_GetNameForUid(Ns_DString *dsPtr, uid_t uid)
  */
 
 bool
-Ns_GetNameForGid(Ns_DString *dsPtr, gid_t gid)
+Ns_GetNameForGid(Tcl_DString *dsPtr, gid_t gid)
 {
     struct group *grPtr;
 #if defined(HAVE_GETGRGID_R)
@@ -678,14 +678,14 @@ Ns_GetNameForGid(Ns_DString *dsPtr, gid_t gid)
         }
     } while (errorCode == ERANGE);
     if (grPtr != NULL && dsPtr != NULL) {
-        Ns_DStringAppend(dsPtr, grPtr->gr_name);
+        Tcl_DStringAppend(dsPtr, grPtr->gr_name, TCL_INDEX_NONE);
     }
     ns_free(buffer);
 #else
     Ns_MutexLock(&lock);
     grPtr = getgrgid((gid_t)gid);
     if (grPtr != NULL && dsPtr != NULL) {
-        Ns_DStringAppend(dsPtr, grPtr->gr_name);
+        Tcl_DStringAppend(dsPtr, grPtr->gr_name, TCL_INDEX_NONE);
     }
     Ns_MutexUnlock(&lock);
 #endif
@@ -711,7 +711,7 @@ Ns_GetNameForGid(Ns_DString *dsPtr, gid_t gid)
  */
 
 bool
-Ns_GetUserHome(Ns_DString *dsPtr, const char *user)
+Ns_GetUserHome(Tcl_DString *dsPtr, const char *user)
 {
     char *ptr = NULL;
     bool success;
@@ -914,9 +914,9 @@ Ns_SetUser(const char *user)
 
     if (user != NULL) {
         long       uid;
-        Ns_DString ds;
+        Tcl_DString ds;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         uid = Ns_GetUid(user);
         if (uid == -1) {
             char *endPtr = NULL;
@@ -930,7 +930,7 @@ Ns_SetUser(const char *user)
                 Ns_Log(Error, "Ns_SetUser: unknown user '%s'", user);
                 status = NS_ERROR;
             } else {
-                user = Ns_DStringValue(&ds);
+                user = ds.string;
             }
         }
 
@@ -940,7 +940,7 @@ Ns_SetUser(const char *user)
             if (initgroups(user, (NS_INITGROUPS_GID_T)gid) != 0) {
                 Ns_Log(Error, "Ns_SetUser: initgroups(%s, %ld) failed: %s", user,
                        gid, strerror(errno));
-                Ns_DStringFree(&ds);
+                Tcl_DStringFree(&ds);
                 status = NS_ERROR;
             } else if (gid > -1 && gid != (int)getgid() && setgid((gid_t)gid) != 0) {
                 Ns_Log(Error, "Ns_SetUser: setgid(%ld) failed: %s", gid, strerror(errno));
@@ -952,7 +952,7 @@ Ns_SetUser(const char *user)
                 Ns_Log(Debug, "Ns_SetUser: set user id to %ld", uid);
             }
         }
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
     }
     return status;
 }
@@ -1072,6 +1072,71 @@ inet_ntop(int af, const void *src, char *dst, socklen_t size)
 }
 #endif
 
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * inet_ntop --
+ *
+ *      In case, we have no inet_ntop(), define it in terms of ns_inet_ntoa
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      A core file will be left wherever the server was running.
+ *
+ *----------------------------------------------------------------------
+ */
+
+
+#if !defined(HAVE_MKDTEMP)
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_mkdtemp --
+ *
+ *      Create a temporary directory based on the provided character template and
+ *      return its name.  This is a poor man's replacement for mkdtemp() under
+ *      POSIX systems.
+ *
+ * Results:
+ *      fd if ok, NS_INVALID_FD on error.
+ *
+ * Side effects:
+ *      Opens a temporary file.
+ *
+ *----------------------------------------------------------------------
+ */
+
+/*
+ * HAVE_MKDTEMP not defined, and no _WIN32
+ *
+ * This callback function should not be used on unix-like system, where most
+ * systems have mkdtemp() natively supported. This implementation is based on
+ * mktemp().  In general, the function mktemp() is not recommended, since
+ * there is a time gap between the generation of a filename and the generation
+ * of the directory with the name. This can result in race conditions or
+ * attacks. However, using this function is still better than home-brewed
+ * solutions for the same task.
+ */
+
+char *
+ns_mkdtemp(char *charTemplate)
+{
+    Tcl_Obj *dirpathObj;
+    int      rc;
+
+    fprintf(stderr, "MANUAL FALLBACK");
+    dirpathObj = Tcl_NewStringObj(mktemp(charTemplate), TCL_INDEX_NONE);
+    Tcl_IncrRefCount(dirpathObj);
+    rc = Tcl_FSCreateDirectory(dirpathObj);
+    Tcl_DecrRefCount(dirpathObj);
+
+    return (rc == TCL_OK) ? charTemplate : NULL;
+}
+#endif
 
 
 /*
@@ -1095,6 +1160,31 @@ static void
 Abort(int signal)
 {
     Tcl_Panic("received fatal signal %d", signal);
+}
+
+#else
+
+#include "nsd.h"
+
+char *
+ns_mkdtemp(char *charTemplate)
+{
+    int   err;
+
+    err = _mktemp_s(charTemplate, strlen(charTemplate));
+
+    if (err == 0) {
+        /*
+         * We had for a while _O_TEMPORARY here as well, which deletes the
+         * file, when he file when the last file descriptor is
+         * closed. It is removed here for compatibility reasons.
+         *
+         * Note that O_TMPFILE (since Linux 3.11) has different semantics.
+         */
+        err = CreateDirectory(charTemplate, NULL);
+    }
+
+    return (err == 0) ? charTemplate : NULL;
 }
 
 #endif

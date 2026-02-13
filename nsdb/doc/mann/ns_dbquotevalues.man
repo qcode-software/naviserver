@@ -16,7 +16,10 @@ are properly quoted depending on position: names or values.
 
 [list_begin definitions]
 
-[call [cmd ns_dbquotevalue] [arg value] [opt [arg type]]]
+[call [cmd ns_dbquotevalue] \
+        [arg value] \
+        [opt decimal|double|integer|int|real|smallint|bigint|bit|float|numeric|tinyint|text] \
+        ]
 
 Prepare the string [arg value] for inclusion in an SQL statement. If [arg value]
 is "", ns_dbquotevalue will return the string "NULL". If [arg value] is not "",
@@ -30,25 +33,27 @@ by single quotes, and any single quotes that it contains will be escaped by
 translation into two single quotes.
 
 
-[call [cmd ns_dbquotelist] [arg list] [opt [arg type]]]
+[call [cmd ns_dbquotelist] \
+        [arg list] \
+        [opt decimal|double|integer|int|real|smallint|bigint|bit|float|numeric|tinyint|text] \
+        ]
 
 Prepare the provided [arg list] for inclusion in an SQL statement. The
 command calls essentially [cmd ns_dbquotevalue] for every element
 of the list and combined the result with a comma.
 
-[call [cmd ns_quotelisttolist] [arg string]]
+[call [cmd ns_quotelisttolist] [arg value]]
 
-Transform a string with single quoted elements into a proper Tcl
+Transform [arg value] with single quoted elements into a proper Tcl
 list. In this step, remove space, backslash and single quote
 characters in the given string.
 
 [call [cmd ns_dbquotename] [arg name]]
 
-Surround [arg name] with double quotes if it contains a space. The resulting
-name can then be used in SQL statements for names of database objects such as
-tables or columns.
-
-
+Surround [arg name] (SQL identifier such as, e.g., a table name) with
+double quotes if it contains a space. The resulting name can then be
+used in SQL statements for names of database objects such as tables or
+columns.
 
 [list_end]
 

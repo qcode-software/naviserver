@@ -28,77 +28,76 @@ the command [cmd "ns_accesslog"].
 [list_begin definitions]
 
 
-[call [cmd "ns_accesslog file"] \
-	[opt [arg new-path]] ]
+[call [cmd "ns_accesslog extendedheaders"] \
+	[opt [arg headers]]]
 
-Returns the path of the access log for the current virtual server.
+Return a list of the HTTP header fields which will be appended to each entry in the
+access log. If [arg headers] is given it replaces the existing
+setting.
+
+[para] By default, all specified header fields are request header
+fields (like e.g., {Referer x-forwarded-for}). Optionally one can
+specify the request header fields with a prefix "request:" or "response"
+to denote request or response header fields. The prefix can be
+abbreviated to 3 characters (example: {req:Host response:content-type}).
+Note that always the request header fields are reported before the
+response header fields. Caveat: certain response header fields (e.g., "Date"
+or "Server" are not accessible this way).
+
+
+[call [cmd "ns_accesslog file"] \
+	[opt [arg filepath]] ]
+
+Sets or gets the [arg filepath] of the access log. When [arg filepath]
+is not provided, the command teturns the path of the access log for
+the current virtual server.
 
 [para]
-If [opt [arg new-path]] is given then the old log is closed and the log
-re-opened at the new location. All the components of [opt [arg new-path]] must
+If [arg filepath] is given then the old log is closed and the log
+re-opened at the new location. All the components of [arg filepath] must
 exist. If an error occurs logging will be disabled.
-
-
-
-[call [cmd "ns_accesslog roll"] \
-	[opt [arg new-path]]]
-
-Roll the access log (see [cmd ns_rollfile] for details). Keep [term maxbackup]
-old log files around.  If [opt [arg new-path]] is given then it overrides the
-configuration parameter 'file' as the new log file.
-
-
-
-[call [cmd "ns_accesslog rollfmt"] \
-	[opt [arg time-format]] ]
-
-Get the [opt [arg time-format]] which is appended to the log filename when
-rolling. The format string is as understood by the Tcl [cmd clock] command.
-If [opt [arg time-format]] is given then it replaces any existing value.
-
-
-
-[call [cmd "ns_accesslog maxbackup"] \
-	[opt [arg keep]] ]
-
-Get the number of backup files which will be kept when log rolling is
-enabled. If [opt [arg keep]] is given it replaces any existing value.
-
 
 
 [call [cmd "ns_accesslog flags"] \
 	[opt [arg flags]]]
 
-Return a list of the enabled logging options, or reset the list if a
+Returns a list of the enabled logging options, or reset the list if a
 new set of flags is given. Valid flags are: logcombined,
 formattedtime, logpartialtimes, logreqtime, checkforproxy, and
 suppressquery. They have the same meaning as the similarly named
 configuration parameters.
 
 
+[call [cmd "ns_accesslog maxbackup"] \
+	[opt [arg nrfiles]] ]
 
-[call [cmd "ns_accesslog extendedheaders"] \
-	[opt [arg new-headers]]]
+Sets or gets the number of backup files which will be kept when log rolling is
+enabled. If [arg nrfiles] is given it replaces any existing value.
 
-Return a list of the HTTP header fields which will be appended to each entry in the
-access log. If [opt [arg new-headers]] is given it replaces the existing
-setting.
-
-[para] By default, all specified header fields are request header
-fields (like e.g. {Referer X-Forwarded-For}). Optionally one can
-specify the request header fields with a prefix "request:" or "response"
-to denote request or response header fields. The prefix can be
-abbreviated to 3 characters (example: {req:Host response:Content-Type}).
-Note that always the request header fields are reported before the
-response header fields. Caveat: certain response header fields (e.g. "Date"
-or "Server" are not accessible this way).
 
 
 [call [cmd "ns_accesslog maxbuffer"] \
-	[opt [arg lines]] ]
+	[opt [arg nrlines]] ]
 
-Set or get the maximum number of lines to buffer before being flushed to the
+Sets or gets the maximum number of lines to buffer before being flushed to the
 log file.
+
+
+[call [cmd "ns_accesslog roll"] \
+	[opt [arg filepath]]]
+
+Rolls the access log (see [cmd ns_rollfile] for details). Keep [term maxbackup]
+old log files around.  If [arg filepath] is given then it overrides the
+configuration parameter [term file] as the new log file.
+
+
+
+[call [cmd "ns_accesslog rollfmt"] \
+	[opt [arg timeformat]] ]
+
+Sets of gets the [arg timeformat] which is appended to the log filename when
+rolling. The format string is as understood by the Tcl [cmd clock] command.
+If [arg timeformat] is given then it replaces any existing value.
 
 
 [list_end]
@@ -124,7 +123,7 @@ The following are valid configuration parameters:
 [list_begin definitions]
 
 [def checkforproxy]
-If true then the value of the X-Forwarded-For HTTP header is logged as the IP
+If true then the value of the x-forwarded-for HTTP header is logged as the IP
 address of the client. Otherwise, the IP address of the directly
 connected host is logged. Default: false.
 
@@ -183,15 +182,22 @@ Default: ff:ff:ff:ff::
 [def maxbuffer]
 The number of log entries to buffer before flushing to the log file. Default: 0.
 
+[def maxbackup]
+Number of old log files to keep when log rolling is enabled. Default: 100.
+
 [def rolllog]
 If true then the log file will be rolled. Default: true.
+
+[def rollfmt]
+Specifies the a suffix for the file when it is rolled (timestamp
+based file naming). The format is
+provided via the Tcl format codes for timestamp, such, as e.g.,
+[const %Y-%m-%d]. Default: ""
+
 
 [def rollhour]
 The hour of the day (0-23) to roll the log file if log rolling is enabled.
 Default: 0 (midnight).
-
-[def maxbackup]
-Number of old log files to keep when log rolling is enabled. Default: 100.
 
 [def rollonsignal]
 If true then the log file will be rolled when the serve receives a SIGHUP
@@ -285,6 +291,7 @@ log file.
 
 
 [see_also ns_log ns_rollfile]
-[keywords module nslog "server built-in" log path ipaddress reverseproxy]
+[keywords module nslog "server built-in" logging path ipaddress \
+        "reverse proxy"]
 
 [manpage_end]

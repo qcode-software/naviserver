@@ -1,0 +1,555 @@
+'\"
+'\" Generated from file 'ns_urlspace\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_urlspace" n 5\&.0\&.4 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_urlspace \- Assign Application Data to URLs
+.SH SYNOPSIS
+\fBns_urlspace set\fR ?\fB-constraints \fIconstraints\fR\fR? ?\fB-id \fIinteger\fR\fR? ?\fB-key \fIvalue\fR\fR? ?\fB-noinherit\fR? \fIURL\fR \fIdata\fR
+.sp
+\fBns_urlspace get\fR ?\fB-context \fIsetId\fR\fR? ?\fB-exact\fR? ?\fB-id \fIinteger\fR\fR? ?\fB-key \fIvalue\fR\fR? ?\fB-noinherit\fR? \fIURL\fR
+.sp
+\fBns_urlspace list\fR ?\fB-id \fIinteger\fR\fR?
+.sp
+\fBns_urlspace unset\fR ?\fB-allconstraints\fR? ?\fB-id \fIinteger\fR\fR? ?\fB-key \fIvalue\fR\fR? ?\fB-noinherit\fR? ?\fB-recurse\fR? \fIURL\fR
+.sp
+\fBns_urlspace new\fR
+.sp
+.BE
+.SH DESCRIPTION
+The command \fBns_urlspace\fR allows you to assign, query, list, or
+delete data in the trie data structure representing the URL space\&. It
+supports filters and inheritance, enabling you to assign data to
+specific URL patterns (e\&.g\&., all "\&.adp" pages) or to assign data to a
+higher-level node, which can be inherited by all nodes below it\&.
+.PP
+The values assigned to the URL space are shared among all threads of
+a server\&. This using this command is somewhat similar to the use of
+\fBnsv\fR but differs in its inheritance and filtering capabilities\&.
+.PP
+This command allows you, for example, to implement access control
+(similar to the \fInsperm module\fR [\&.\&./\&.\&./nsperm/files/nsperm\&.html])
+at the Tcl level\&. Other applications include blacklisting certain
+parts of the URL tree from statistics, or assigning different master
+templates to different parts of the URL tree\&.
+.PP
+The \fBns_urlspace\fR command provides scripting access to
+functionality that has been part of NaviServer for a long time\&. For
+example, the mapping of requests to connection thread pools is
+performed using the same mechanism\&. In this case, the mapping of URLs
+to pools can be performed via the command \fBns_server\fR, or it can
+be provided via configuration variables in the pool section (see,
+e\&.g\&., \fITuning NaviServer\fR [\&.\&./\&.\&./manual/files/admin-tuning\&.html])\&.
+.SH COMMANDS
+.TP
+\fBns_urlspace set\fR ?\fB-constraints \fIconstraints\fR\fR? ?\fB-id \fIinteger\fR\fR? ?\fB-key \fIvalue\fR\fR? ?\fB-noinherit\fR? \fIURL\fR \fIdata\fR
+Assigns a \fIvalue\fR to a node in the URL space specified by
+\fIURL\fR\&. By default, the value is inherited by all sub-nodes, unless the
+option \fB-noinherit\fR is specified\&.
+.sp
+The \fIURL\fR can include glob-style patterns (e\&.g\&., "/*\&.adp") to match multiple URLs\&.
+.sp
+The option \fB-constraints\fR allows you to
+specify additional context constraints for the assignment (see
+\fBContext Constraints\fR)\&.
+.CS
+
+
+ # Assign values to URL patterns
+ ns_urlspace set /*\&.adp             A
+ ns_urlspace set /*\&.html            H
+ ns_urlspace set /internal/space/*  I
+
+ # Assign a value with a context constraints
+ ns_urlspace set -constraints {"user-agent" "*bot*"} /*\&.adp C
+
+.CE
+.TP
+\fBns_urlspace get\fR ?\fB-context \fIsetId\fR\fR? ?\fB-exact\fR? ?\fB-id \fIinteger\fR\fR? ?\fB-key \fIvalue\fR\fR? ?\fB-noinherit\fR? \fIURL\fR
+Retrieves a value from the URL space for a specified \fIURL\fR\&. By
+default, the returned value might be inherited from a parent node in
+the trie structure\&.
+.sp
+When the option \fB-exact\fR is used, inheritance is
+deactivated, and only values directly assigned to the \fIURL\fR are
+returned\&. When the option \fB-noinherit\fR is specified, only
+values set with the \fB-noinherit\fR flag are considered\&.
+.sp
+The option \fB-context\fR allows you to specify context
+constraints for the retrieval (see \fBContext Constraints\fR)\&.
+If this option is not specified, the server tries to
+use the current connection context, if available\&. This requires that
+a connection is open and the socket is connected\&. Otherwise, no
+context is provided\&.
+.CS
+
+
+ # Retrieve mappings without context
+ ns_urlspace get /test\&.adp
+ # Returns: A
+
+ ns_urlspace get /internal/space/documents/info\&.html
+ # Returns: I
+
+ # Retrieve mapping with context
+ set context [ns_set create "user-agent" "googlebot"]
+ ns_urlspace get -context $context /test\&.adp
+ # Returns: C
+
+.CE
+.TP
+\fBns_urlspace list\fR ?\fB-id \fIinteger\fR\fR?
+Lists the values assigned to the URL space, which is either the
+default URL space or the one specified by \fB-id\fR\&. The command returns a
+list of lists, where each item contains the following elements:
+.RS
+.IP \(bu
+\fBkey\fR - The key associated with the assignment\&.
+.IP \(bu
+\fBpath\fR - The URL pattern (e\&.g\&., "/internal/space")\&.
+.IP \(bu
+\fBfilter pattern\fR - Any constraints applied (e\&.g\&., "*\&.adp")\&.
+.IP \(bu
+\fBinherit\fR or \fBnoinherit\fR - Whether inheritance is enabled\&.
+.IP \(bu
+?contextfilter? - The optional contextfilter
+.IP \(bu
+\fBdata\fR - The assigned value\&.
+.RE
+.CS
+
+
+ ns_urlspace list
+ Returns: {\&. / *\&.html inherit H} {\&. / *\&.adp inherit A} {\&. / *\&.adp inherit {user-agent *bot*} C} {\&. /internal/space * inherit I}
+
+.CE
+.TP
+\fBns_urlspace unset\fR ?\fB-allconstraints\fR? ?\fB-id \fIinteger\fR\fR? ?\fB-key \fIvalue\fR\fR? ?\fB-noinherit\fR? ?\fB-recurse\fR? \fIURL\fR
+Unset a value for a \fIURL\fR for the given or default key\&. This
+command undoes the effects of \fBns_urlspace set\fR\&.
+.sp
+The option \fB-allconstraints\fR implies that all context
+filters are deleted\&. When the option \fB-noinherit\fR is used,
+only the values set with \fB-noinherit\fR are deleted, and vice
+versa\&.
+.sp
+The option \fB-recurse\fR performs the operation
+recursively on all sub-nodes under the specified \fIURL\fR\&. Unless
+\fB-recurse\fR is specified, the command returns 1 on success or
+0 on failure\&.
+.TP
+\fBns_urlspace new\fR
+Allocates a new URL space ID\&. When the number of compile-time
+configured URL spaces runs out, a Tcl exception is raised\&.
+.CS
+
+
+ # Allocate a new URL space
+ set newId [ns_urlspace new]
+
+ # Use the new URL space ID
+ ns_urlspace set -id $newId /*\&.php P
+
+.CE
+.PP
+.SH "COMMON OPTIONS"
+.TP
+\fB-id\fR \fIinteger\fR
+Specifies the ID of the URL space\&. Multiple different URL spaces can
+be used, which can be allocated with the command
+\fBns_urlspace new\fR\&. The maximum number of available URL spaces is a compile-time
+constant of NaviServer\&. When no ID is specified, NaviServer
+automatically allocates a default ID on first usage\&.
+.TP
+\fB-key\fR \fIvalue\fR
+Every URL assignment can have a key, which is logically part of the
+URL space\&. Using this key, you could, for example, assign different
+values to a URL for different HTTP methods like \fIGET\fR or
+\fIPOST\fR\&. The key can be used for other purposes as well\&. If no key is
+specified, it defaults to the constant "\fB\&.\fR" (dot character)\&.
+.PP
+.SH EXAMPLES
+.CS
+
+
+ # Define mappings in the default URL space
+
+ # Map all \&.adp files to "A"
+ ns_urlspace set /*\&.adp A
+
+ # Map all \&.html files to "H"
+ ns_urlspace set /*\&.html H
+
+ # Map a specific internal area to "I"
+ ns_urlspace set /internal/space/* I
+
+ # Query mappings
+ ns_urlspace get /test\&.adp
+ # Returns: A
+
+ ns_urlspace get /foo/bar/test\&.adp
+ # Returns: A
+
+ ns_urlspace get /foo/baz/info\&.html
+ # Returns: H
+
+ ns_urlspace get /foo/baz/info\&.text
+ # Returns: (no value assigned)
+
+ ns_urlspace get /internal/space/documents/info\&.html
+ # Returns: I
+
+.CE
+.SH "CONTEXT CONSTRAINTS"
+In addition to the glob-based URL space matching, NaviServer supports
+so-called \fIcontext constraints\fR\&. These constraints allow you to include additional
+(context) information such as the current IP addresses or current
+header fields in the URL space lookup\&. They’re applied after the
+constraint-less URL match and
+participate in the usual "most specific wins" resolution (i\&.e\&., if
+there are multiple definitions for the same method and URL pattern
+pair, having different context constraints, the most definition is taken)\&.
+.PP
+With context constraints, you can say "I want /foo\&.adp to map to
+X only when this request comes from a Googlebot, and to Y
+otherwise\&."  Or "serve internal pages only to clients in our
+corporate subnet\&."
+.PP
+When you attach a context constraints in a connection-pool mapping,
+or via \fBns_register_proc\fR, \fBns_register_filter\fR etc\&., the
+live socket’s headers and peer address are used automatically when
+deciding, which proc/filter/etc\&. is to be used\&. When you specify the
+context constraints in a \fBns_urlspace set\fR command, you can pass
+directly a context to a \fBns_urlspace set\fR command, by providing
+an "ns_set" whose keys are header names (e\&.g\&. "user-agent") or the
+special key "x-ns-ip" (pseudo header field) for IP/mask filters\&.
+.PP
+Context constraints may be \fIconjunctive\fR: if you supply
+multiple key/value pairs, all must match\&.  Conjunctions are
+specified as a flat list\&.
+.PP
+Example:
+.CS
+
+
+ # Base mapping when no context matches:
+ % ns_urlspace set /*\&.adp DefaultHandler
+
+ # When *either* user-agent contains "bot":
+ % ns_urlspace set -constraints {user-agent *bot*} /*\&.adp BotHandler
+
+ # When *both* UA="bot" *and* IP in 10\&.0\&.0\&.0/8:
+ % ns_urlspace set -constraints {user-agent *bot* x-ns-ip 10\&.0\&.0\&.0/8} \\
+                   /*\&.adp BotInternalHandler
+
+ # Try without context:
+ % ns_urlspace get /test\&.adp
+ DefaultHandler
+
+ # Try with only user-agent googlebot:
+ % set ctx1 [ns_set create user-agent googlebot]
+ % ns_urlspace get -context $ctx1 /test\&.adp
+ BotHandler
+
+ # Try with UA=googlebot *and* internal IP:
+ % set ctx2 [ns_set create user-agent googlebot x-ns-ip 10\&.0\&.12\&.5]
+ % ns_urlspace get -context $ctx2 /test\&.adp
+ BotInternalHandler
+
+.CE
+See also the \fBns_server\fR configuration examples for defining
+connection pools that use context constraints to route "*bot*" traffic
+into a dedicated pool\&.
+.PP
+Context constraints can be as well set for the following commands
+\fBns_register_adp\fR,
+\fBns_register_cgi\fR,
+\fBns_register_fastpath\fR,
+\fBns_register_filter\fR, and
+\fBns_register_proc\fR\&.
+.SH NOTES
+.PP
+The URL patterns used in \fBns_urlspace\fR commands support
+glob-style patterns, allowing for flexible matching\&. Be cautious when
+defining patterns to ensure they match the intended URLs\&.
+.PP
+The URL space is stored in a trie data structure for efficient
+matching\&.
+.PP
+When using context constraints, ensure that the context constraints of
+the \fBns_urlspace set\fR command and the \fBns_set\fR (or request
+headers) accurately represent the request conditions you want to
+match\&. For security reasons, you should not rely solely on untrusted
+request header fields\&.
+.SH "SEE ALSO"
+ns_server, ns_set, nsv
+.SH KEYWORDS
+context constraints, data structure, server built-in, shared, trie, urlspace, variables

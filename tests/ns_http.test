@@ -10,7 +10,6 @@
 # America Online, Inc. All Rights Reserved.
 #
 #
-
 package require tcltest 2.2
 namespace import -force ::tcltest::*
 
@@ -25,8 +24,10 @@ if {$::tcl_version >= 8.6} {
     testConstraint tcl86 true
 } else {
     package require try
+    package require throw
 }
 testConstraint http09 true
+testConstraint with_deprecated [dict get [ns_info buildinfo] with_deprecated]
 
 # testConstraint binaryMismatch true
 # testConstraint broken true
@@ -51,12 +52,69 @@ proc test_case_name {} {
     return $name
 }
 
+#
+# Syntax tests
+#
+test ns_http-1.0  {syntax: ns_http} -body {
+    ns_http
+} -returnCodes error -result {wrong # args: should be "ns_http cancel|cleanup|keepalives|list|queue|run|stats|taskthreads|wait ?/arg .../"}
+
+test ns_http-1.1  {syntax: ns_http subcommands} -body {
+    ns_http ?
+} -returnCodes error -result {ns_http: bad subcommand "?": must be cancel, cleanup, keepalives, list, queue, run, stats, taskthreads, or wait}
+
+test ns_http-1.2 {syntax: ns_http cancel} -body {
+    ns_http cancel
+} -returnCodes error -result {wrong # args: should be "ns_http cancel /id/"}
+
+test ns_http-1.3 {syntax: ns_http cleanup} -body {
+    ns_http cleanup ?
+} -returnCodes error -result {wrong # args: should be "ns_http cleanup"}
+
+test ns_http-1.4 {syntax: ns_http keepalives} -body {
+    ns_http keepalives "" ?
+} -returnCodes error -result {wrong # args: should be "ns_http keepalives"}
+
+test ns_http-1.5 {syntax: ns_http list} -body {
+    ns_http list "" ?
+} -returnCodes error -result {wrong # args: should be "ns_http list ?/id/?"}
+
+test ns_http-1.6 {syntax: ns_http queue} -body {
+    ns_http queue
+} -returnCodes error -result {wrong # args: should be "ns_http queue ?-binary? ?-body /value/? ?-body_chan /value/? ?-body_file /value/? ?-body_size /integer[0,MAX]/? ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-connecttimeout /time/? ?-decompress? ?-donecallback /value/? ?-done_callback /value/? ?-expire /time/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-keep_host_header? ?-keepalive /time/? ?-maxresponse /memory-size/? ?-method /value/? ?-outputchan /value/? ?-outputfile /value/? ?-partialresults? ?-proxy /value/? ?-raw? ?-response_data_callback /value/? ?-response_header_callback /value/? ?-spoolsize /memory-size/? ?-timeout /time/? ?-unix_socket /value/? ?-verify? /url/"}
+# should be  -returnCodes error -result {wrong # args: should be "ns_http queue ?-binary? ?-body /value/? ?-body_chan /value/? ?-body_file /value/? ?-body_size /integer[0,MAX]/? ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-connecttimeout /time/? ?-done_callback /value/? ?-expire /time/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-keep_host_header? ?-keepalive /time/? ?-maxresponse /memory-size/? ?-method /value/? ?-outputchan /value/? ?-outputfile /value/? ?-partialresults? ?-proxy /value/? ?-raw? ?-response_data_callback /value/? ?-response_header_callback /value/? ?-spoolsize /memory-size/? ?-timeout /time/? ?-unix_socket /value/? /url/"}
+
+test ns_http-1.7 {syntax: ns_http run} -body {
+    ns_http run
+} -returnCodes error -result {wrong # args: should be "ns_http run ?-binary? ?-body /value/? ?-body_chan /value/? ?-body_file /value/? ?-body_size /integer[0,MAX]/? ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-connecttimeout /time/? ?-decompress? ?-donecallback /value/? ?-done_callback /value/? ?-expire /time/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-keep_host_header? ?-keepalive /time/? ?-maxresponse /memory-size/? ?-method /value/? ?-outputchan /value/? ?-outputfile /value/? ?-partialresults? ?-proxy /value/? ?-raw? ?-response_data_callback /value/? ?-response_header_callback /value/? ?-spoolsize /memory-size/? ?-timeout /time/? ?-unix_socket /value/? ?-verify? /url/"}
+# should be {wrong # args: should be "ns_http run ?-binary? ?-body /value/? ?-body_chan /value/? ?-body_file /value/? ?-body_size /integer[0,MAX]/? ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-connecttimeout /time/? ?-done_callback /value/? ?-expire /time/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-keep_host_header? ?-keepalive /time/? ?-maxresponse /memory-size/? ?-method /value/? ?-outputchan /value/? ?-outputfile /value/? ?-partialresults? ?-proxy /value/? ?-raw? ?-response_data_callback /value/? ?-response_header_callback /value/? ?-spoolsize /memory-size/? ?-timeout /time/? ?-unix_socket /value/? /url/"}
+
+
+test ns_http-1.8 {syntax: ns_http stats} -body {
+    ns_http stats "" ?
+} -returnCodes error -result {wrong # args: should be "ns_http stats ?/id/?"}
+
+test ns_http-1.9 {syntax: ns_http taskthreads} -body {
+    ns_http taskthreads ?
+} -returnCodes error -result {wrong # args: should be "ns_http taskthreads"}
+
+test ns_http-1.10 {syntax: ns_http wait} -body {
+    ns_http wait
+} -returnCodes error \
+    -result [expr {[testConstraint with_deprecated]
+                   ? {wrong # args: should be "ns_http wait ?-binary? ?-decompress? ?-elapsed /value/? ?-file /value/? ?-headers /setId/? ?-outputfile /value/? ?-result /value/? ?-spoolsize /memory-size/? ?-status /value/? ?-timeout /time/? /id/"}
+                   : {wrong # args: should be "ns_http wait ?-timeout /time/? /id/"}
+               }]
+
+# should be  {wrong # args: should be "ns_http wait ?-timeout /time/? /id/"}
+
+#
+# Functional tests
+#
 
 test http-1.1 {bad request} -constraints serverListen -body {
     nstest::http bogus
-} -result {405}
-
-
+} -returnCodes {error ok} -result {405}
 
 test http-1.2 {HTTP/0.9 GET} -constraints {serverListen http09} -body {
     nstest::http-0.9 -http "" -getbody 1 GET /noexist
@@ -100,7 +158,7 @@ test http-1.5c {bad method 3 args} -constraints {serverListen http09} -body {
 # HEAD requests for existing + non-existing page
 #
 test http-1.6.0 {HTTP/1.0 HEAD existing} -constraints serverListen -body {
-    nstest::http -getbody 1 -getheaders {Content-Length} HEAD /10bytes
+    nstest::http -getbody 1 -getheaders {content-length} HEAD /10bytes
 } -match glob -result {200 10}
 
 test http-1.6.1 {HTTP/1.0 HEAD not-existing} -constraints serverListen -body {
@@ -112,15 +170,15 @@ test http-1.6.1 {HTTP/1.0 HEAD not-existing} -constraints serverListen -body {
 #
 test http-1.6.2 { HTTP/1.0 GET not-existing vhost + custom error page} -constraints serverListen -body {
     nstest::http -getbody 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         GET /noexist
 } -match glob -result {404 15 {CUSTOM 404 page}}
 
 test http-1.6.3 { HTTP/1.0 HEAD not-existing vhost + custom error page} -constraints serverListen -body {
     nstest::http -getbody 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         HEAD /noexist
 } -match glob -result {404 15}
 
@@ -130,22 +188,22 @@ test http-1.6.3 { HTTP/1.0 HEAD not-existing vhost + custom error page} -constra
 #
 test http-1.6.4 { HTTP/1.0 GET not-existing vhost + custom error page + query} -constraints serverListen -body {
     nstest::http -getbody 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         GET /noexist?x=1
 } -match glob -result {404 15 {CUSTOM 404 page}}
 
 test http-1.6.5 { HTTP/1.0 HEAD not-existing vhost + custom error page + query} -constraints serverListen -body {
     nstest::http -getbody 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         HEAD /noexist?x=1
 } -match glob -result {404 15}
 
 test http-1.6.6 { HTTP/1.0 POST not-existing vhost + custom error page + query} -constraints serverListen -body {
     nstest::http -getbody 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         POST /noexist x=1&y=2
 } -match glob -result {404 15 {CUSTOM 404 page}}
 
@@ -154,8 +212,8 @@ test http-1.6.7 { HTTP/1.0 POST not-existing vhost + custom error page + huge qu
         lappend query "x$i=$i"
     }
     nstest::http -getbody 1 -partialresults 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         POST /noexist [join $query]
 } -cleanup {
     unset i query
@@ -169,14 +227,14 @@ test http-1.6.7 { HTTP/1.0 POST not-existing vhost + custom error page + huge qu
 #
 test http-1.6.8 { HTTP/1.0 PUT not allowed} -constraints serverListen -body {
     nstest::http -getbody 0 \
-        -getheaders {Content-Length} \
+        -getheaders {content-length} \
         PUT /noexist
 } -match glob -result {405 5*}
 
 test http-1.6.9 { HTTP/1.0 PUT not allowed vhost + custom error page} -constraints serverListen -body {
     nstest::http -getbody 1 \
-        -setheaders [list Host testvhost:[ns_config test listenport]] \
-        -getheaders {Content-Length} \
+        -setheaders [list host testvhost:[ns_config test listenport]] \
+        -getheaders {content-length} \
         PUT /noexist
 } -match glob -result {405 15 {CUSTOM 405 page}}
 
@@ -193,7 +251,7 @@ test http-2.2 {HTTP/1.1 GET large file sent via writer threads} \
 } -result {200 01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567}
 
 test http-2.3 {HTTP/1.1 GET file larger than IOBUFSZ (connio.c)} -body {
-    nstest::http -http 1.1 -getbody 0 -getheaders {Content-Length} GET /16480bytes
+    nstest::http -http 1.1 -getbody 0 -getheaders {content-length} GET /16480bytes
 } -result {200 16480}
 
 test http-2.4 {HTTP/0.9 GET small} -constraints {serverListen http09} -body {
@@ -269,7 +327,8 @@ test http-3.3new {limits: too many headers} -constraints serverListen -setup {
         GET /limits
 } -cleanup {
     ns_unregister_op GET /limits
-} -returnCodes {error ok} -result 414
+} -match glob  -returnCodes {error ok
+} -result {status 414 time * headers d* body {} error {http read failed (initial receive from server)} state * flags *}
 
 
 
@@ -400,10 +459,7 @@ test http-5.0 {ns_conn content} -constraints {} -setup {
 } -cleanup {
     ns_unregister_op GET /get
     unset -nocomplain r
-} -result [expr {$::tcl_version < 9.0
-                 ? {200 {<wrong # args: should be "ns_conn content ?-binary? ?offset[0,2147483647]? ?length[1,2147483647]?">}}
-                 : {200 {<wrong # args: should be "ns_conn content ?-binary? ?offset[0,LLONG_MAX]? ?length[1,LLONG_MAX]?">}}
-             }]
+} -result {200 {<wrong # args: should be "ns_conn content ?-binary? ?/offset[0,MAX]/? ?/length[1,MAX]/?">}}
 
 #
 # Test earlier crash condition, where "ns_conn content" caused a crash
@@ -537,7 +593,7 @@ test http-5.2.0-b {
     set string "\u0000\u0001\u0002\u0003☀"
     set a [encoding convertto utf-8 $string]
     if {[info commands nsf::__db_get_obj] ne ""} {
-        set F [open testserver/pages/binary ]; fconfigure $F -encoding binary -translation binary; set b [read $F]; close $F
+        set F [open testserver/pages/binary ]; fconfigure $F -translation binary; set b [read $F]; close $F
         ns_log notice "l(a)=[llength [split $a {}]] ... Tcl_Obj from string notation"
         ns_log notice "l(b)=[llength [split $b {}]] ... Tcl_Obj from binary file"
         ns_log notice "obj(string) [nsf::__db_get_obj $string]"
@@ -688,7 +744,7 @@ test http-5.3c {
     }
 } -body {
     set string {{"name":"Colchões"}}
-    exec curl -g -s -H "Content-Type: application/json; charset=utf-8" --data @- [ns_config test listenurl]/json << $string 2> $devnull
+    exec curl -g -s -H "content-type: application/json; charset=utf-8" --data @- [ns_config test listenurl]/json << $string 2> $devnull
 } -cleanup {
     ns_unregister_op POST /json
     unset -nocomplain l
@@ -812,6 +868,115 @@ test http-5.6 {
     ns_unregister_op POST /post
     unset -nocomplain r
 } -returnCodes {error ok} -result {200 {utf-8 <text/html> AÄATest/üß☀ZÜZ}}
+
+
+test http-6.6.0 {ns_getform and ns_getformfile + 2x 16KB file multipart} -constraints {tcl86 curl serverListen} -setup {
+    ns_register_proc POST /post {
+        set contentType     [ns_set iget [ns_conn headers] content-type]
+        set contentLength   [ns_set iget [ns_conn headers] content-length]
+        set haveFile        [expr {[ns_getformfile file] ne ""}]
+        set haveContentFile [expr {[ns_conn contentfile] ne ""}]
+        set maxUpload       [ns_config [ns_driversection -driver nssock] maxupload]
+        set needSpool       [expr {$contentLength > $maxUpload}]
+        set ct              [lindex $contentType 0]
+        set formValues      [ns_set array [ns_conn form]]
+        set formFiles       <[ns_conn files]>
+        set formFileNames   [lmap {field fname} $formValues {if {![string match *.tmpfile $field]} continue; set fname} ]
+        set formFileSizes   [lmap fname $formFileNames {file size $fname}]
+        set formContentMD5s [lmap fname $formFileNames {
+            set F [open $fname]; set c [read $F]; close $F
+            #ns_log notice $fname: begin [string range $c 0 10] end [string range $c end-10 end]
+            ns_md5 $c
+        }]
+        set boundary        [lindex [split $contentType =] end]
+        set contentLengthWithoutBoundaries [expr {$contentLength - [string length $boundary]*3}]
+
+        #ns_log notice contentLength $contentLength boundary <$boundary> without boundaries $contentLengthWithoutBoundaries
+        #ns_log notice XXX [exec ls -l {*}$formFileNames]
+        #ns_log notice XXX[ns_conn content]XXX
+        #ns_log notice [ns_set format [ns_conn headers]]
+        #ns_log notice maxUpload $maxUpload
+
+        ns_return 200 text/plain "contentFile $haveContentFile contentLength $contentLengthWithoutBoundaries needSpool $needSpool formFileSizes $formFileSizes hashes $formContentMD5s"
+    }
+} -body {
+    set file1 [ns_server pagedir]/2048bytes
+    exec curl -g -s -F file1=@$file1 -F file2=@$file1 [ns_config test listenurl]/post 2> $devnull
+} -cleanup {
+    ns_unregister_op POST /post
+    unset -nocomplain r file1
+} -returnCodes {error ok return} -result {contentFile 0 contentLength 4334 needSpool 0 formFileSizes 2048 2048 hashes EDD3D7EB00FC3DCC8F6D41592B2AF34C EDD3D7EB00FC3DCC8F6D41592B2AF34C}
+
+test http-6.6.1 {ns_getform and ns_getformfile + 2x 16KB file multipart} -constraints {tcl86 curl serverListen} -setup {
+    ns_register_proc POST /post {
+        set contentType     [ns_set iget [ns_conn headers] content-type]
+        set contentLength   [ns_set iget [ns_conn headers] content-length]
+        set haveFile        [expr {[ns_getformfile file] ne ""}]
+        set haveContentFile [expr {[ns_conn contentfile] ne ""}]
+        set maxUpload       [ns_config [ns_driversection -driver nssock] maxupload]
+        set needSpool       [expr {$contentLength > $maxUpload}]
+        set ct              [lindex $contentType 0]
+        set formValues      [ns_set array [ns_conn form]]
+        set formFiles       <[ns_conn files]>
+        set formFileNames   [lmap {field fname} $formValues {if {![string match *.tmpfile $field]} continue; set fname} ]
+        set formFileSizes   [lmap fname $formFileNames {file size $fname}]
+        set formContentMD5s [lmap fname $formFileNames {
+            set F [open $fname]; set c [read $F]; close $F
+            #ns_log notice $fname: begin [string range $c 0 10] end [string range $c end-10 end]
+            ns_md5 $c
+        }]
+        set boundary        [lindex [split $contentType =] end]
+        set contentLengthWithoutBoundaries [expr {$contentLength - [string length $boundary]*3}]
+
+        #ns_log notice contentLength $contentLength boundary <$boundary> without boundaries $contentLengthWithoutBoundaries
+        #ns_log notice XXX [exec ls -l {*}$formFileNames]
+        #ns_log notice maxUpload $maxUpload
+        #ns_log notice [ns_set format [ns_conn headers]]
+
+        ns_return 200 text/plain "contentFile $haveContentFile contentLength $contentLengthWithoutBoundaries needSpool $needSpool formFileSizes $formFileSizes hashes $formContentMD5s"
+    }
+} -body {
+    set file1 [ns_server pagedir]/16480bytes
+    exec curl -g -s -F file1=@$file1 -F file2=@$file1 [ns_config test listenurl]/post 2> $devnull
+} -cleanup {
+    ns_unregister_op POST /post
+    unset -nocomplain r file1
+} -returnCodes {error ok return} -result {contentFile 1 contentLength 33200 needSpool 1 formFileSizes 16480 16480 hashes 47DED396B91E5D83C5515F7CD7C80140 47DED396B91E5D83C5515F7CD7C80140}
+
+test http-6.6.2 {ns_getform and ns_getformfile + 2x 16*3KB file multipart} -constraints {tcl86 curl serverListen} -setup {
+    # produce a file consisting of 3 16480bytes named 49440btyes
+    set F [open [ns_server pagedir]/16480bytes]; set C [read $F]; close $F
+    set F [open [ns_server pagedir]/49440btyes w]; puts -nonewline $F $C$C$C; close $F
+    unset F C
+
+    ns_register_proc POST /post {
+        set contentType     [ns_set iget [ns_conn headers] content-type]
+        set contentLength   [ns_set iget [ns_conn headers] content-length]
+        set haveFile        [expr {[ns_getformfile file] ne ""}]
+        set haveContentFile [expr {[ns_conn contentfile] ne ""}]
+        set maxUpload       [ns_config [ns_driversection -driver nssock] maxupload]
+        set needSpool       [expr {$contentLength > $maxUpload}]
+        set formValues      [ns_set array [ns_conn form]]
+        set formFileNames   [lmap {field fname} $formValues {if {![string match *.tmpfile $field]} continue; set fname} ]
+        set formFileSizes   [lmap fname $formFileNames {file size $fname}]
+        set formContentMD5s [lmap fname $formFileNames {
+            set F [open $fname]; set c [read $F]; close $F
+            #ns_log notice $fname: begin [string range $c 0 10] end [string range $c end-10 end]
+            ns_md5 $c
+        }]
+        set boundary        [lindex [split $contentType =] end]
+        set contentLengthWithoutBoundaries [expr {$contentLength - [string length $boundary]*3}]
+
+        ns_return 200 text/plain "contentFile $haveContentFile contentLength $contentLengthWithoutBoundaries needSpool $needSpool formFileSizes $formFileSizes hashes $formContentMD5s"
+    }
+} -body {
+    set file1 [ns_server pagedir]/49440btyes
+    exec curl -g -s -F file1=@$file1 -F file2=@$file1 [ns_config test listenurl]/post 2> $devnull
+} -cleanup {
+    ns_unregister_op POST /post
+    unset -nocomplain r file1
+    file delete [ns_server pagedir]/49440btyes
+} -returnCodes {error ok return} -result {contentFile 1 contentLength 99120 needSpool 1 formFileSizes 49440 49440 hashes 45D832ED491965C7E340515E77EB213A 45D832ED491965C7E340515E77EB213A}
 
 
 test http-5.7.0 {
@@ -942,7 +1107,7 @@ test http-5.7.2a {
 
     Invalid encoding (mixed utf-8 and iso8859-1) in multipart multipart via ns_http
 
-} -constraints {serverListen} -setup {
+} -constraints {tcl86 serverListen} -setup {
     ns_register_proc POST /POST {
         set contentType [ns_set iget [ns_conn headers] content-type]
         try {
@@ -983,7 +1148,7 @@ test http-5.7.2b {
 
     Mixed encoding (utf-8 and iso8859-1) with default charset in multipart multipart via ns_http
 
-} -constraints {serverListen} -setup {
+} -constraints {tcl86 serverListen} -setup {
     ns_register_proc POST /POST {
         set contentType [ns_set iget [ns_conn headers] content-type]
         try {
@@ -1039,7 +1204,7 @@ test http-6.0 {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              POST /form {--AA
 content-disposition: form-data; name="field1"
@@ -1047,7 +1212,7 @@ content-disposition: form-data; name="field1"
 f1
 --AA
 content-disposition: form-data; name="file"; filename=error.log
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1071,11 +1236,11 @@ test http-6.1a {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              POST /form {--AA
 content-disposition: form-data; name="file"; filename="error.log"
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1099,11 +1264,11 @@ test http-6.1b {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              PUT /form {--AA
 content-disposition: form-data; name="file"; filename="error.log"
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1127,11 +1292,11 @@ test http-6.2a {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              POST /form {--AA
 content-disposition: form-data; name="file"; filename="error \"test\".log"
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1152,11 +1317,11 @@ test http-6.2b {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              POST /form {--AA
 content-disposition: form-data; name="file"; filename='error \'test\'.log'
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1177,11 +1342,11 @@ test http-6.2c {
       ns_return 200 text/plain $result
     }
 } -body {
-  nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
       -getbody t \
       POST /form {--AA
 content-disposition: form-data; name="file"; filename='error "test.log'
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}
@@ -1201,11 +1366,11 @@ test http-6.2d {
       ns_return 200 text/plain $result
     }
 } -body {
-  nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
       -getbody t \
       POST /form {--AA
 content-disposition: form-data; name="file"; filename="error 'test.log"
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}
@@ -1229,11 +1394,11 @@ test http-6.3 {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              POST /form {--AA
 content-disposition: form-data; name="file"; filename="error test.log"
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1257,11 +1422,11 @@ test http-6.4 {
       ns_return 200 text/plain $result
     }
 } -body {
-  set r [nstest::http -http 1.0 -setheaders {Content-Type multipart/form-data;boundary=AA} \
+  set r [nstest::http -http 1.0 -setheaders {content-type multipart/form-data;boundary=AA} \
              -getbody t \
              POST /form {--AA
 content-disposition: form-data; name="file"; filename=error test.log
-Content-Type: text/plain
+content-type: text/plain
 
 content of file
 --AA--}]
@@ -1298,9 +1463,12 @@ content of file
 
 test http-6.5.1a {ns_getform and ns_getformfile + 2KB file} -constraints {curl serverListen} -setup {
     ns_register_proc POST /post {
+        ns_log warning 0
+
         #ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
         set contentType     [ns_set iget [ns_conn headers] content-type]
         set contentLength   [ns_set iget [ns_conn headers] content-length]
+        ns_log warning 0.1 [lmap s [ns_logctl severities] {list $s [ns_logctl severity $s]}]
         set haveFile        [expr {[ns_getformfile file] ne ""}]
         set haveContentFile [expr {[ns_conn contentfile] ne ""}]
         set maxUpload       [ns_config [ns_driversection -driver nssock] maxupload]
@@ -1308,7 +1476,9 @@ test http-6.5.1a {ns_getform and ns_getformfile + 2KB file} -constraints {curl s
         set ct              [lindex $contentType 0]
         set formValues      [ns_set array [ns_conn form]]
         set f2              [ns_set get [ns_conn form] f2 ""]
+        ns_log warning 1
         ns_return 200 text/plain "$ct contentFile $haveContentFile needSpool $needSpool file $haveFile f2 '$f2'"
+        ns_log warning 2
     }
 } -body {
     #
@@ -1323,7 +1493,7 @@ test http-6.5.1a {ns_getform and ns_getformfile + 2KB file} -constraints {curl s
     set body [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 2048]
         |--$boundary
@@ -1332,7 +1502,13 @@ test http-6.5.1a {ns_getform and ns_getformfile + 2KB file} -constraints {curl s
         |\xFC
         |--$boundary--
     }]]
-    nstest::http -setheaders [list content-type $ct] POST /post $body
+    try {
+        dict set oldSeverity error [ns_logctl severity error 0]
+        #dict set oldSeverity warning [ns_logctl severity warning 0]
+        nstest::http -setheaders [list content-type $ct] POST /post $body
+    } finally {
+        foreach {severity level} $oldSeverity { ns_logctl severity $severity $level }
+    }
 
 } -cleanup {
     ns_unregister_op POST /post
@@ -1367,7 +1543,7 @@ test http-6.5.1b {ns_getform and ns_getformfile + 2KB file} -constraints {curl s
     set body [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 2048]
         |--$boundary
@@ -1387,7 +1563,7 @@ test http-6.5.1b {ns_getform and ns_getformfile + 2KB file} -constraints {curl s
     unset -nocomplain r boundary body
 } -result {200 {multipart/form-data; contentFile 0 needSpool 0 file 1 f2 'ü'}}
 
-test http-6.5.1c {ns_getform and ns_getformfile + 2KB file with binary NUL} -constraints {curl serverListen} -setup {
+test http-6.5.1c {ns_getform and ns_getformfile + 2KB file with binary NUL} -constraints {tcl86 curl serverListen} -setup {
     ns_register_proc POST /post {
         #ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
         set contentType     [ns_set iget [ns_conn headers] content-type]
@@ -1414,7 +1590,7 @@ test http-6.5.1c {ns_getform and ns_getformfile + 2KB file with binary NUL} -con
     set body [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 2048]
         |--$boundary
@@ -1508,7 +1684,7 @@ test http-6.5.2c {ns_getform and ns_getformfile + 16KB file multipart} -constrai
     set body [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 16480]
         |--$boundary
@@ -1547,7 +1723,7 @@ test http-6.5.2d {ns_getform and ns_getformfile + 16KB file multipart, explicit 
     set body [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 16480]
         |--$boundary
@@ -1566,7 +1742,7 @@ test http-6.5.2d {ns_getform and ns_getformfile + 16KB file multipart, explicit 
     unset -nocomplain body ct boundary
 } -returnCodes {ok  error} -result [subst {200 {multipart/form-data; contentFile $contentfile needSpool 1 file 1 f2 'ü'}}]
 
-test http-6.5.2e {ns_getform and ns_getformfile + 16KB file multipart, explicit charset iso8859-1} -constraints {serverListen} -setup {
+test http-6.5.2e1 {ns_getform and ns_getformfile + 16KB file multipart, explicit charset iso8859-1} -constraints {serverListen} -setup {
     ns_register_proc POST /post {
         ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
         set contentType     [ns_set iget [ns_conn headers] content-type]
@@ -1586,7 +1762,7 @@ test http-6.5.2e {ns_getform and ns_getformfile + 16KB file multipart, explicit 
     set body [binary format a* [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 16480]
         |--$boundary
@@ -1606,7 +1782,7 @@ test http-6.5.2e {ns_getform and ns_getformfile + 16KB file multipart, explicit 
     unset -nocomplain body boundary ct
 } -returnCodes {ok error} -result [subst {200 {multipart/form-data; contentFile $contentfile needSpool 1 file 1 f2 'ü'}}]
 
-test http-6.5.2e {ns_getform and ns_getformfile + 16KB file multipart, explicit charset iso8859-1} -constraints {serverListen} -setup {
+test http-6.5.2e2 {ns_getform and ns_getformfile + 16KB file multipart, explicit charset iso8859-1} -constraints {tcl86 serverListen} -setup {
     ns_register_proc POST /post.tcl {
         #ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
         set contentType     [ns_set iget [ns_conn headers] content-type]
@@ -1631,10 +1807,10 @@ test http-6.5.2e {ns_getform and ns_getformfile + 16KB file multipart, explicit 
     #
     set F [open [ns_server pagedir]/ns_http-6.5.2-multipart-mixed.request rb]; set C [read $F]; close $F
     #
-    #
-    #
-    set d [ns_parseurl  [ns_config test listenurl]]
+    set d [ns_parseurl [ns_config test listenurl]]
+    #ns_log warning "opening socket:" socket [dict get $d host] [dict get $d port]
     set S [socket [dict get $d host] [dict get $d port]]
+    #ns_log warning "opening socket: DONE"
     fconfigure $S -translation binary
     puts -nonewline $S $C
     flush $S
@@ -1648,7 +1824,7 @@ test http-6.5.2e {ns_getform and ns_getformfile + 16KB file multipart, explicit 
     unset -nocomplain d S C response
 } -returnCodes {ok return error} -result {f2 ü charset iso8859-1}
 
-test http-6.5.2f {ns_getform and ns_getformfile + 16KB file with binary NUL} -constraints {curl serverListen} -setup {
+test http-6.5.2f {ns_getform and ns_getformfile + 16KB file with binary NUL} -constraints {tcl86 curl serverListen} -setup {
     ns_register_proc POST /post {
         #ns_log notice "conn encoding [ns_conn encoding] headers <[ns_set array [ns_conn headers]] c='[ns_conn content]'"
         set contentType     [ns_set iget [ns_conn headers] content-type]
@@ -1675,7 +1851,7 @@ test http-6.5.2f {ns_getform and ns_getformfile + 16KB file with binary NUL} -co
     set body [subst [ns_trim -delimiter | {
         |--$boundary
         |Content-Disposition: form-data; name="file"; filename="file.txt"
-        |Content-Type: text/plain
+        |content-type: text/plain
         |
         |[string repeat x 16480]
         |--$boundary
@@ -1718,7 +1894,7 @@ test http-6.5.3a {
     }
 } -body {
     set string "ü"
-    exec curl -g -s -H "Content-Type: application/x-www-form-urlencoded; charset=utf-8" \
+    exec curl -g -s -H "content-type: application/x-www-form-urlencoded; charset=utf-8" \
         --data-urlencode "f1=[string repeat hello 4000]" \
         --data-urlencode _charset_=utf-8 --data-urlencode f2@- \
         << $string [ns_config test listenurl]/post 2> $devnull
@@ -1748,7 +1924,7 @@ test http-6.5.3b {
             "$ct contentFile $haveContentFile needSpool $needSpool file $haveFile fields $fields f2 '$f2'"
     }
 } -body {
-    exec curl -g -s -H "Content-Type: application/x-www-form-urlencoded; charset=utf-8" \
+    exec curl -g -s -H "content-type: application/x-www-form-urlencoded; charset=utf-8" \
         --data-urlencode "f1=[string repeat hello 4000]" \
         --data _charset_=iso8859-1 --data f2=%fc \
         [ns_config test listenurl]/post 2> $devnull
@@ -1775,7 +1951,7 @@ test http-6.5.4a {ns_getform and ns_getformfile + 16KB file urlencoded iso8859-1
             "$ct contentFile $haveContentFile needSpool $needSpool file $haveFile fields $fields f2 '$f2'"
     }
 } -body {
-    exec curl -g -s -H "Content-Type: application/x-www-form-urlencoded; charset=iso8859-1" \
+    exec curl -g -s -H "content-type: application/x-www-form-urlencoded; charset=iso8859-1" \
         --data-urlencode "f1=[string repeat hello 4000]" --data f2=%fc \
         [ns_config test listenurl]/post 2> $devnull
 } -cleanup {
@@ -1800,7 +1976,7 @@ test http-6.5.4b {ns_getform and ns_getformfile + 16KB file urlencoded iso8859-1
             "$ct contentFile $haveContentFile needSpool $needSpool file $haveFile fields $fields f2 '$f2'"
     }
 } -body {
-    exec curl -g -s -H "Content-Type: application/x-www-form-urlencoded" \
+    exec curl -g -s -H "content-type: application/x-www-form-urlencoded" \
         --data-urlencode "f1=[string repeat hello 4000]" --data _charset_=iso8859-1 --data f2=%fc \
         [ns_config test listenurl]/post 2> $devnull
 } -cleanup {
@@ -1818,7 +1994,7 @@ test http-7.0 {ns_http with body and text datatype} -constraints {serverListen} 
 } -body {
     set string "Testing 'äöüß☀'"
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     return [list [dict get $result status] [dict get $result body]]
@@ -1845,7 +2021,7 @@ test http-7.1a {
     set string [encoding convertto {*}$profile $encoding "Testing 'äöüß☀'"]
     #set string [encoding convertto $encoding [binary format a* "Testing 'äöüß☀'"]]
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type "text/plain; $encoding"
+    ns_set update $queryHeaders content-type "text/plain; $encoding"
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     return [list [dict get $result status] [dict get $result body]]
@@ -1878,7 +2054,7 @@ test http-7.1b {
     set string [encoding convertto {*}$profile $encoding "Testing 'äöüß☀'"]
     #set string [encoding convertto $encoding [binary format a* "Testing 'äöüß☀'"]]
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type "text/plain; $encoding"
+    ns_set update $queryHeaders content-type "text/plain; $encoding"
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     return [list [dict get $result status] [dict get $result body]]
@@ -1896,7 +2072,7 @@ test http-7.2a {ns_http with body and binary datataype} -constraints {serverList
 } -body {
     set string "\x00\x01\x02\r"
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type application/octet-stream
+    ns_set update $queryHeaders content-type application/octet-stream
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     set R [dict get $result body]
@@ -1919,7 +2095,7 @@ test http-7.2b {ns_http with body and binary datataype, no bytearray} -constrain
 } -body {
     set string "\x00\x01\x02\r"
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type application/octet-stream
+    ns_set update $queryHeaders content-type application/octet-stream
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     set R [dict get $result body]
@@ -1942,7 +2118,7 @@ test http-8.0.1q {ns_http no body_file queue} -constraints {serverListen} -setup
     }
 } -body {
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     set h [ns_http queue -headers $queryHeaders -method GET [ns_config test listenurl]/get]
     set result [ns_http wait $h]
     return [list [dict get $result status] [dict get $result body]]
@@ -1956,7 +2132,7 @@ test http-8.0.1r {ns_http no body_file run} -constraints {serverListen} -setup {
     }
 } -body {
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     set d [ns_http run -headers $queryHeaders -method GET \
                [ns_config test listenurl]/get]
     return [list [dict get $d status] [dict get $d body]]
@@ -1974,7 +2150,7 @@ test http-8.0.2q {ns_http with body_file queue} -constraints {serverListen} -set
     }
 } -body {
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     if {[catch {set h [ns_http queue -headers $queryHeaders -body_file testserver/pages/123 -method PUT \
                            [ns_config test listenurl]/put]} errorMsg]} {
         puts stderr ERROR-$errorMsg
@@ -1993,7 +2169,7 @@ test http-8.0.2r {ns_http with body_file run} -constraints {serverListen} -setup
     }
 } -body {
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     set d [ns_http run -headers $queryHeaders -body_file testserver/pages/123 -method PUT \
                [ns_config test listenurl]/put]
     return [list [dict get $d status] [dict get $d body]]
@@ -2013,7 +2189,7 @@ test http-8.0.2s {ns_http with body_chan queue} -constraints {serverListen} -set
 } -body {
     set ch [open $fn r]
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     if {[catch {set h [ns_http queue -headers $queryHeaders -body_size 3 -body_chan $ch -method PUT \
                            [ns_config test listenurl]/put]} errorMsg]} {
         puts stderr ERROR-$errorMsg
@@ -2039,7 +2215,7 @@ test http-8.0.2t {ns_http with body_chan run} -constraints {serverListen} -setup
 } -body {
     set ch [open $fn r]
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     set d [ns_http run -headers $queryHeaders -body_size 3 -body_chan $ch -method PUT \
                [ns_config test listenurl]/put]
     close [dict get $d body_chan]
@@ -2074,7 +2250,7 @@ test http-8.0.2u {
     set ch [open $fnInput r]
     set co [open $fnOutput w]
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     #ns_logctl severity Debug(task) on
     #ns_logctl severity Debug(request) on
     #ns_logctl severity Debug(ns:driver) on
@@ -2107,7 +2283,7 @@ test http-8.1 {ns_return with UTF-8 3 byte char} -constraints {serverListen} -se
         ns_return 200 "text/plain" $v
     }
 } -body {
-    nstest::http -getbody 1 -getheaders {Content-Length} GET /get
+    nstest::http -getbody 1 -getheaders {content-length} GET /get
 } -cleanup {
     ns_unregister_op GET /get
     unset -nocomplain r
@@ -2120,7 +2296,7 @@ test http-8.2 {ns_return with UTF-8 3 byte char with fresh bytearray} -constrain
         ns_return 200 "text/plain" $v
     }
 } -body {
-    nstest::http -getbody 1 -getheaders {Content-Length} GET /get
+    nstest::http -getbody 1 -getheaders {content-length} GET /get
 } -cleanup {
     ns_unregister_op GET /get
     unset -nocomplain r
@@ -2141,7 +2317,7 @@ test http-8.3 {ns_return with UTF-8 3 byte char with impure bytearray} -constrai
         ns_return 200 "text/plain" $v
     }
 } -body {
-    nstest::http -getbody 1 -getheaders {Content-Length} GET /get
+    nstest::http -getbody 1 -getheaders {content-length} GET /get
 } -cleanup {
     ns_unregister_op GET /get
     unset -nocomplain r
@@ -2375,12 +2551,12 @@ test http-8.4.7 {ns_http run + timeout, no timeout} -constraints {serverListen} 
 } -result {no timeout 200}
 
 
-test http-8.5.0 {ns_http queue + donecallback} -constraints {serverListen} -setup {
+test http-8.5.0 {ns_http queue + done_callback} -constraints {serverListen} -setup {
     ns_register_proc GET /get { ns_return 200 text/plain OK }
 } -body {
     nsv_set result . ""
     try {
-        ns_http queue -donecallback "nsv_lappend result . " [ns_config test listenurl]/get
+        ns_http queue -done_callback "nsv_lappend result . " [ns_config test listenurl]/get
     } on error {errorMsg} {
         set r $::errorCode
     } on ok {result} {
@@ -2398,11 +2574,11 @@ test http-8.5.0 {ns_http queue + donecallback} -constraints {serverListen} -setu
     nsv_unset result
 } -result {no timeout 200}
 
-test http-8.5.1 {ns_http queue + donecallback + timeout} -constraints {serverListen} -setup {
+test http-8.5.1 {ns_http queue + done_callback + timeout} -constraints {serverListen} -setup {
     ns_register_proc GET /slow { ns_sleep 2s; ns_return 200 text/plain OK }
 } -body {
     nsv_set result . ""
-    ns_http queue -timeout 1 -donecallback "nsv_lappend result . " [ns_config test listenurl]/slow
+    ns_http queue -timeout 1 -done_callback "nsv_lappend result . " [ns_config test listenurl]/slow
     #
     # Sleep a little to let done-callback finish (max after 1 sec).
     #
@@ -2411,13 +2587,13 @@ test http-8.5.1 {ns_http queue + donecallback + timeout} -constraints {serverLis
 } -cleanup {
     ns_unregister_op GET /slow
     nsv_unset result
-} -result {1 {http request timeout}}
+} -match glob -result {1 {http request timeout after *}}
 
 test http-9.0 {GET for static compressed file via fastpath} -constraints {serverListen} -body {
     nstest::http \
         -getbody 0 \
         -setheaders {accept-encoding gzip} \
-        -getheaders {Content-Length Content-Type Content-Encoding} \
+        -getheaders {content-length content-type content-encoding} \
         GET /test.html
 } -cleanup {
 } -result {200 89 text/html gzip}
@@ -2516,7 +2692,7 @@ test http-10.1.3b {GET with 204 answer raw + keepalive} -constraints serverListe
 
 test http-10.2.0 {POST with 100-continue raw + keepalive} -constraints serverListen -setup {
     ns_register_proc POST /post {
-        ns_write "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+        ns_write "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK"
     }
 } -body {
     set r0 [ns_http run -keepalive 0s -method GET [ns_config test listenurl]/10bytes]
@@ -2540,7 +2716,7 @@ test http-10.2.0 {POST with 100-continue raw + keepalive} -constraints serverLis
 
 test http-10.2.1 {POST with 100-continue raw + keepalive} -constraints serverListen -setup {
     ns_register_proc POST /post {
-        ns_write "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+        ns_write "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK"
     }
 } -body {
     set r0 [ns_http run -keepalive 10s -method GET [ns_config test listenurl]/10bytes]
@@ -2661,6 +2837,54 @@ test http-11.2.2 {
     ns_unregister_op GET /many-reply-header-fields
     unset -nocomplain i r0 r1 r2
 } -returnCodes {error ok} -result {200 200 2000 10}
+
+#
+# Testing forward proxy.
+# In these tests, we forward the request to ourselves.
+#
+
+test proxy-1.0 {Test forward proxy with via HTTP with HTTP request} -constraints {
+    curl serverListen
+} -body {
+    #ns_log notice "PROXY [ns_config test listenurl] request [ns_config test listenurl]/10bytes"
+    exec curl -g -v -x [ns_config test listenurl] -H "Host: test" [ns_config test listenurl]/10bytes  2> $devnull
+} -result {0123456789}
+
+test proxy-1.1 {Test forward proxy with via HTTPS with HTTP request} -constraints {
+    curl serverListen
+} -body {
+    #ns_log notice "PROXY [ns_config test tls_listenurl] request [ns_config test listenurl]/10bytes"
+    exec curl -g --proxy-insecure -v -x [ns_config test tls_listenurl] -H "Host: test" [ns_config test listenurl]/10bytes  2> $devnull
+} -result {0123456789}
+
+test proxy-1.2 {Test forward proxy with via HTTP with HTTPS request} -constraints {
+    curl serverListen
+} -body {
+    #
+    # When the request is for an HTTPS URL, curl uses the CONNECT method
+    #
+    set target [ns_config test tls_listenurl]/10bytes
+    set proxy [ns_config test listenurl]
+    ns_log notice "PROXY $proxy request $target"
+    set cmd "curl -k -s -g --proxy-insecure -x $proxy $target"
+    #catch {exec {*}$cmd 2> $devnull} errorMsg; set errorMsg
+    exec {*}$cmd 2> $devnull
+} -returnCodes {error ok} -match glob -result {0123456789}
+
+test proxy-1.3 {Test forward proxy with via HTTPS with HTTPS request} -constraints {
+    curl serverListen
+} -body {
+    #
+    # When the request is for an HTTPS URL, curl uses the CONNECT method
+    #
+    set target [ns_config test tls_listenurl]/10bytes
+    set proxy [ns_config test tls_listenurl]
+    ns_log notice "PROXY $proxy request $target"
+    set cmd "curl -k -s -g --proxy-insecure -x $proxy $target"
+    #catch {exec {*}$cmd $devnull} errorMsg; set errorMsg
+    exec {*}$cmd 2> $devnull
+} -returnCodes {error ok} -match glob -result {0123456789}
+
 
 cleanupTests
 

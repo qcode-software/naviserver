@@ -1,0 +1,164 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_ip - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_ip.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_ip.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_ip.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_ip.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_ip(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_ip - Determine properties of IP addresses in the current configuration</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#section4">CONFIGURATION</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_ip inany</b> <i class="arg">ipaddr</i></a></li>
+<li><a href="#2"><b class="cmd">ns_ip match</b> <i class="arg">cidr</i> <i class="arg">ipaddr</i></a></li>
+<li><a href="#3"><b class="cmd">ns_ip properties</b> <i class="arg">ipaddr</i></a></li>
+<li><a href="#4"><b class="cmd">ns_ip public</b> <i class="arg">ipaddr</i></a></li>
+<li><a href="#5"><b class="cmd">ns_ip trusted</b> <i class="arg">ipaddr</i></a></li>
+<li><a href="#6"><b class="cmd">ns_ip valid</b> <span class="opt">?<b class="option">-type ipv4|ipv6</b>?</span> <span class="opt">?--?</span> <i class="arg">ipaddr</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The command <b class="cmd">ns_ip</b> is used to determine certain properties of IP
+ addresses. It accepts as input IPv4 or IPv6 addresses and checks, for
+ example, whether the address is valid, whether the IP is a public or
+ trusted IP address, or whether it is in the range of a subnet
+ specification in CIDR notation.
+ <a href="https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing">https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing</a></p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_ip inany</b> <i class="arg">ipaddr</i></a></dt>
+<dd><p>***to be completed***
+ 
+ Determines whether the provided IP address is an &quot;any&quot; (unspecified)
+ address. For IPv4, this is equivalent to INADDR_ANY (typically
+ <b class="const">0.0.0.0</b>; for IPv6, it corresponds to in6addr_any (an all-zero
+ address, <b class="const">::</b>). The command returns a boolean value.</p>
+<pre class="doctools_example">
+ ns_ip inany 0.0.0.0
+ # Expected result: 1 (true)
+ 
+ ns_ip inany 192.168.1.100
+ # Expected result: 0 (false)
+ 
+ ns_ip inany ::
+ # Expected result: 1 (true) for an unspecified IPv6 address
+</pre>
+</dd>
+<dt><a name="2"><b class="cmd">ns_ip match</b> <i class="arg">cidr</i> <i class="arg">ipaddr</i></a></dt>
+<dd><p>Validates the provided <i class="arg">cidr</i> (subnet) specification (IPv4
+ or IPv6 address followed by slash and number of significant bits) and
+ the provided <i class="arg">ipaddr</i> and tests whether the IP address is in the
+ implied range. The command returns a boolean value as the result. When
+ comparing an IPv4 and IPv6 address/CIDR specification or vice versa,
+ the result is always false.</p></dd>
+<dt><a name="3"><b class="cmd">ns_ip properties</b> <i class="arg">ipaddr</i></a></dt>
+<dd><p>Returns a dict with the members &quot;trusted&quot;, &quot;public&quot;, and
+ &quot;type&quot; for the provided <i class="arg">ipaddr</i>.</p></dd>
+<dt><a name="4"><b class="cmd">ns_ip public</b> <i class="arg">ipaddr</i></a></dt>
+<dd><p>Tests if the provided <i class="arg">ipaddr</i> is a public IP
+ address, i.e., reachable from the public Internet. This excludes
+ e.g. loopback, private, link-local addresses and networks.</p></dd>
+<dt><a name="5"><b class="cmd">ns_ip trusted</b> <i class="arg">ipaddr</i></a></dt>
+<dd><p>Tests if the provided <i class="arg">ipaddr</i> was defined as a trusted IP
+ address for an upstream reverse proxy server in the used
+ configuration file. This is important for running behind a reverse
+ proxy server.</p></dd>
+<dt><a name="6"><b class="cmd">ns_ip valid</b> <span class="opt">?<b class="option">-type ipv4|ipv6</b>?</span> <span class="opt">?--?</span> <i class="arg">ipaddr</i></a></dt>
+<dd><p>Tests if the provided <i class="arg">ipaddr</i> is a valid IP
+ address. With the optional <span class="opt">?<b class="option">-type</b>?</span> argument the result
+ can be constraint further to check, if the address is an IPv4 or an
+ IPv6 address.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ % ns_ip match 137.208.0.0/16 137.208.116.31
+ 1
+ 
+ % ns_ip match 137.208.0.0/16 112.207.16.33
+ 0
+ % ns_ip match 2001:628:404:74::31/64 [ns_conn peeraddr]
+ ...
+ 
+ # Is IP address a valid IPv6 address?
+ % set ip [ns_conn peeraddr]
+ % ns_ip valid -type ipv6 $ip
+ % ns_ip match ::/0 $ip
+ % string equal IPv6 [dict get [ns_ip properties $ip] type]
+ 
+ # Is IP address a valid IPv4 address?
+ % ns_ip valid -type ipv4 $ip
+ % ns_ip match 0.0.0.0/0 $ip
+ % string equal IPv4 [dict get [ns_ip properties $ip] type]
+</pre>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">CONFIGURATION</a></h2>
+<pre class="doctools_example">
+ ns_section ns/parameters/reverseproxymode {
+    ns_param enabled 1
+    #
+    # Define some address ranges of cloudflare as trusted sources
+    # for the &quot;x-forwarded-for&quot; header field.
+    #
+    ns_param trustedservers {
+       103.21.244.0/22
+       104.24.0.0/14
+       2400:cb00::/32
+       2606:4700::/32
+    }
+    # ....
+ }
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_conn.html">ns_conn</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#cidr">CIDR</a>, <a href="../../index.html#ipv4">IPv4</a>, <a href="../../index.html#ipv6">IPv6</a>, <a href="../../index.html#behind_reverse_proxy">behind reverse proxy</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#reverse_proxy">reverse proxy</a>, <a href="../../index.html#reverseproxymode">reverseproxymode</a>, <a href="../../index.html#subnet">subnet</a>, <a href="../../index.html#trustedservers">trustedservers</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

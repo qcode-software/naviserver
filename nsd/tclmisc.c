@@ -22,6 +22,12 @@
  * Local functions defined in this file
  */
 
+static TCL_OBJCMDPROC_T   IpMatchObjCmd;
+static TCL_OBJCMDPROC_T   IpPropertiesObjCmd;
+static TCL_OBJCMDPROC_T   IpPublicObjCmd;
+static TCL_OBJCMDPROC_T   IpTrustedObjCmd;
+static TCL_OBJCMDPROC_T   IpValidObjCmd;
+
 static void SHAByteSwap(uint32_t *dest, const uint8_t *src, unsigned int words)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static void SHATransform(Ns_CtxSHA1 *sha)
@@ -29,8 +35,12 @@ static void SHATransform(Ns_CtxSHA1 *sha)
 static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int encoding);
-static int Base64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int encoding);
+static int Base64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, int encoding);
+static int Base64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, int encoding);
+
+static void FinishElement(Tcl_DString *elemPtr, Tcl_DString *colsPtr, bool quoted)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
 
 
 /*
@@ -83,7 +93,7 @@ Ns_TclPrintfResult(Tcl_Interp *interp, const char *fmt, ...)
  */
 
 int
-NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRunOnceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *script = NULL;
     int         global = (int)NS_FALSE, result = TCL_OK;
@@ -158,14 +168,14 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
     if (itPtr != NULL && itPtr->conn != NULL) {
         const Ns_Conn *conn = itPtr->conn;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         if (conn->request.method != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request.method, " ", (char *)0L);
+            Ns_DStringVarAppend(&ds, conn->request.method, " ", NS_SENTINEL);
         }
         if (conn->request.url != NULL) {
-            Ns_DStringVarAppend(&ds, conn->request.url, ", ", (char *)0L);
+            Ns_DStringVarAppend(&ds, conn->request.url, ", ", NS_SENTINEL);
         }
-        Ns_DStringVarAppend(&ds, "PeerAddress: ", Ns_ConnPeerAddr(conn), (char *)0L);
+        Ns_DStringVarAppend(&ds, "PeerAddress: ", Ns_ConnPeerAddr(conn), NS_SENTINEL);
 
         logHeaders = itPtr->servPtr->tcl.errorLogHeaders;
         if (logHeaders != NULL) {
@@ -175,12 +185,12 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
                 const char *value = Ns_SetIGet(conn->headers, *hdr);
 
                 if (value != NULL) {
-                    Ns_DStringVarAppend(&ds, ", ", *hdr, ": ", value, (char *)0L);
+                    Ns_DStringVarAppend(&ds, ", ", *hdr, ": ", value, NS_SENTINEL);
                 }
             }
         }
-        Ns_Log(Error, "%s\n%s", Ns_DStringValue(&ds), errorInfo);
-        Ns_DStringFree(&ds);
+        Ns_Log(Error, "%s\n%s", ds.string, errorInfo);
+        Tcl_DStringFree(&ds);
     } else {
         Ns_Log(Error, "%s\n%s line %d", Tcl_GetStringResult(interp), errorInfo,
                Tcl_GetErrorLine(interp));
@@ -189,6 +199,7 @@ Ns_TclLogErrorInfo(Tcl_Interp *interp, const char *extraInfo)
    return errorInfo;
 }
 
+#ifdef NS_WITH_DEPRECATED
 
 /*
  *----------------------------------------------------------------------
@@ -234,6 +245,7 @@ Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *UNUSED(conn))
 {
     return Ns_TclLogErrorInfo(interp, NULL);
 }
+#endif
 
 
 /*
@@ -253,10 +265,10 @@ Ns_TclLogErrorRequest(Tcl_Interp *interp, Ns_Conn *UNUSED(conn))
  */
 
 void
-Ns_LogDeprecated(Tcl_Obj *const* objv, TCL_OBJC_T objc, const char *alternative, const char *explanation)
+Ns_LogDeprecated(Tcl_Obj *const* objv, TCL_SIZE_T objc, const char *alternative, const char *explanation)
 {
     Tcl_DString ds;
-    TCL_OBJC_T         i;
+    TCL_SIZE_T         i;
 
     Tcl_DStringInit(&ds);
     Tcl_DStringAppend(&ds, "'", 1);
@@ -277,7 +289,44 @@ Ns_LogDeprecated(Tcl_Obj *const* objv, TCL_OBJC_T objc, const char *alternative,
     if (explanation != NULL) {
         Tcl_DStringAppend(&ds, explanation, TCL_INDEX_NONE);
     }
-    Ns_Log(Notice, "%s", Tcl_DStringValue(&ds));
+    Ns_Log(Deprecated, "%s", Tcl_DStringValue(&ds));
+    Tcl_DStringFree(&ds);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_LogDeprecatedParameter --
+ *
+ *      Logs a deprecation warning for a configuration parameter.
+ *      This function constructs a warning message that indicates
+ *      that a parameter (identified by oldSection and oldParameter)
+ *      is deprecated and advises using a new parameter (newSection
+ *      and newParameter) instead. An optional explanation string
+ *      can be appended to provide additional context.
+ *
+ * Results:
+ *      None.
+ *
+ * Side Effects:
+ *      Logs a notice-level message to the server log.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_LogDeprecatedParameter(const char *oldSection, const char *oldParameter,
+                          const char *newSection, const char *newParameter, const char *explanation)
+{
+    Tcl_DString ds;
+
+    Tcl_DStringInit(&ds);
+    Ns_DStringPrintf(&ds, "parameter '%s: %s' is deprecated, use '%s: %s' instead. ",
+                     oldSection, oldParameter,
+                     newSection, newParameter);
+    if (explanation != NULL) {
+        Tcl_DStringAppend(&ds, explanation, TCL_INDEX_NONE);
+    }
+    Ns_Log(Deprecated, "%s", Tcl_DStringValue(&ds));
     Tcl_DStringFree(&ds);
 }
 
@@ -346,22 +395,22 @@ InsertFreshNewline(Tcl_DString *dsPtr, const char *prefixString, size_t prefixLe
 
 
 int
-NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK, lineWidth = 80, offset = 0;
-    char             *textString = (char *)NS_EMPTY_STRING, *prefixString = NULL;
+    Tcl_Obj          *textObj, *prefixObj = NULL;
     Ns_ObjvValueRange widthRange = {5, INT_MAX};
     Ns_ObjvValueRange offsetRange = {0, INT_MAX};
     Ns_ObjvSpec       opts[] = {
-        {"-width",  Ns_ObjvInt,     &lineWidth,    &widthRange},
-        {"-offset", Ns_ObjvInt,     &offset,       &offsetRange},
-        {"-prefix", Ns_ObjvString,  &prefixString, NULL},
-        {"--",      Ns_ObjvBreak,    NULL,         NULL},
+        {"-width",  Ns_ObjvInt,     &lineWidth,  &widthRange},
+        {"-offset", Ns_ObjvInt,     &offset,     &offsetRange},
+        {"-prefix", Ns_ObjvObj,     &prefixObj,  NULL},
+        {"--",      Ns_ObjvBreak,    NULL,       NULL},
         {NULL, NULL, NULL, NULL}
     };
 
     Ns_ObjvSpec  args[] = {
-        {"text", Ns_ObjvString,  &textString, NULL},
+        {"text", Ns_ObjvObj, &textObj, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -370,12 +419,13 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
 
     } else {
         Tcl_DString ds, *dsPtr = &ds;
-        size_t      k, inputPos, outputPos, textLength, prefixLength, currentWidth, nrPrefixes, nrNewLines = 1u;
+        size_t      k, inputPos, outputPos, currentWidth, nrPrefixes, nrNewLines = 1u;
         bool        done = NS_FALSE;
         const char *p;
+        TCL_SIZE_T  textLength, prefixLength = 0;
+        const char *textString = Tcl_GetStringFromObj(textObj, &textLength);
+        const char *prefixString = (prefixObj == NULL ? NULL : Tcl_GetStringFromObj(prefixObj, &prefixLength));
 
-        textLength   = strlen(textString);
-        prefixLength = (prefixString == NULL ? 0u : strlen(prefixString));
         Tcl_DStringInit(dsPtr);
 
         p = textString;
@@ -385,14 +435,14 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
         }
 
         inputPos = 0u;
-        if (offset == 0 && prefixLength > 0u) {
+        if (offset == 0 && prefixLength > 0) {
             /*
              * When we have an offset (in an incremental operation) adding a
              * prefix automatically makes little sense. When needed, the
              * prefix could be easily done on the client side.
              */
-            memcpy(dsPtr->string, prefixString, prefixLength);
-            outputPos = prefixLength;
+            memcpy(dsPtr->string, prefixString, (size_t)prefixLength);
+            outputPos = (size_t)prefixLength;
             nrPrefixes = nrNewLines;
         } else {
             outputPos = 0u;
@@ -403,9 +453,9 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
          * Set the length of the Tcl_DString to the same size as the input
          * string plus for every linebreak+1 the prefixString.
          */
-        Tcl_DStringSetLength(dsPtr, (TCL_SIZE_T)(textLength + nrPrefixes * prefixLength));
+        Tcl_DStringSetLength(dsPtr, textLength + (TCL_SIZE_T)nrPrefixes * prefixLength);
 
-        while (inputPos < textLength && !done) {
+        while (inputPos < (size_t)textLength && !done) {
             size_t processedPos;
 
             /*
@@ -414,7 +464,7 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
             processedPos = inputPos;
             for (currentWidth = (size_t)offset; (int)currentWidth < lineWidth; currentWidth++)  {
 
-                if ( inputPos < textLength) {
+                if ( inputPos < (size_t)textLength) {
                     dsPtr->string[outputPos] = textString[inputPos];
 
                     /*
@@ -425,9 +475,9 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
                      */
                     outputPos++;
                     if ( textString[inputPos] == '\n') {
-                        if (prefixLength > 0u) {
-                            memcpy(&dsPtr->string[outputPos], prefixString, prefixLength);
-                            outputPos += prefixLength;
+                        if (prefixLength > 0) {
+                            memcpy(&dsPtr->string[outputPos], prefixString, (size_t)prefixLength);
+                            outputPos += (size_t)prefixLength;
                         }
                         currentWidth = 0u;
                         processedPos = inputPos;
@@ -457,7 +507,7 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
                          * prefix string; we have to make sure that the dsPtr
                          * can held the additional prefix as well.
                          */
-                        InsertFreshNewline(dsPtr, prefixString, prefixLength, &outputPos);
+                        InsertFreshNewline(dsPtr, prefixString, (size_t)prefixLength, &outputPos);
                         /*
                          * Reset the inputPositon
                          */
@@ -473,9 +523,9 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
                      * find a space, and continue as usual.
                      */
                     outputPos = origOutputPos;
-                    for (k = inputPos; k < textLength; k++) {
+                    for (k = inputPos; k < (size_t)textLength; k++) {
                         if ( CHARTYPE(space, textString[k]) != 0) {
-                            InsertFreshNewline(dsPtr, prefixString, prefixLength, &outputPos);
+                            InsertFreshNewline(dsPtr, prefixString, (size_t)prefixLength, &outputPos);
                             inputPos++;
                             break;
                         } else {
@@ -514,16 +564,16 @@ NsTclReflowTextObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
  */
 
 int
-NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK, substInt = 0;
-    Tcl_Obj          *textObj;
-    char             *delimiterString = NULL, *prefixString = NULL;
+    Tcl_Obj          *textObj, *prefixObj = NULL;
+    char             *delimiterString = NULL;
     Ns_ObjvSpec       opts[] = {
-        {"-subst",     Ns_ObjvBool,   &substInt,     INT2PTR(NS_TRUE)},
+        {"-subst",     Ns_ObjvBool,   &substInt,        INT2PTR(NS_TRUE)},
         {"-delimiter", Ns_ObjvString, &delimiterString, NULL},
-        {"-prefix",    Ns_ObjvString, &prefixString, NULL},
-        {"--",         Ns_ObjvBreak,  NULL,         NULL},
+        {"-prefix",    Ns_ObjvObj,    &prefixObj,       NULL},
+        {"--",         Ns_ObjvBreak,  NULL,             NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -535,7 +585,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
-    } else if (delimiterString != NULL && prefixString != NULL) {
+    } else if (delimiterString != NULL && prefixObj != NULL) {
         Ns_TclPrintfResult(interp, "invalid arguments: either -prefix or -delimiter can be specified");
         result = TCL_ERROR;
 
@@ -557,15 +607,16 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
         p = Tcl_GetStringFromObj(textObj, &textLength);
         endOfString = p + textLength;
 
-        if (prefixString != NULL) {
-            size_t prefixLength = strlen(prefixString);
+        if (prefixObj != NULL) {
+            TCL_SIZE_T  prefixLength;
+            const char *prefixString = Tcl_GetStringFromObj(prefixObj, &prefixLength);
 
             while(likely(p < endOfString)) {
                 const char *eolString;
                 char       *j;
                 ptrdiff_t   length;
 
-                if (strncmp(p, prefixString, prefixLength) == 0) {
+                if (strncmp(p, prefixString, (size_t)prefixLength) == 0) {
                     j = p + prefixLength;
                 } else {
                     j = p;
@@ -582,15 +633,45 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
             }
         } else {
             /*
-             * No "-prefix"
+             * No "-prefix" was provided.
+             *
+             * First, trim any leading and trailing whitespace from the input
+             * string.  We do this by advancing the start pointer (p) past any
+             * whitespace and then decrementing the pointer to the
+             * end-of-string pointer until non-whitespace characters are
+             * encountered. Note that the original string is not mpdified.
              */
+            endOfString--;
+            //NsHexPrint("start string", (const unsigned char *)p, (size_t)(endOfString-p), 32, NS_TRUE);
+            while (CHARTYPE(space, *p) != 0 && p < endOfString) {
+                p++;
+            }
+            while (CHARTYPE(space, *endOfString) != 0 && endOfString > p) {
+                //Ns_Log(Notice, "... trim right %d [%ld]", *endOfString, (long) (endOfString-p));
+                endOfString--;
+            }
+            endOfString++;
+            //NsHexPrint("trimmed start string", (const unsigned char *)p, (size_t)(endOfString-p), 32, NS_TRUE);
+
+            /*
+             * Process the trimmed string in segments until the entire string has been appended
+             * to the output Tcl_DString (dsPtr).
+             */
+
             while(likely(p < endOfString)) {
                 const char *eolString;
                 char       *j;
                 ptrdiff_t   length;
 
+                /*
+                 *  Start at the current pointer (p) and advance a temporary
+                 *  pointer (j) until either a non-space character that is not
+                 *  the delimiter is found, or the delimiter is
+                 *  encountered. If a delimiter is found, increment the
+                 *  pointer j and break out of the loop.
+                 */
                 for (j = p; likely(j < endOfString); j++) {
-                    if (CHARTYPE(space, *j) != 0) {
+                    if (*j == ' ') {
                         continue;
                     }
                     if (delimiterString != NULL && *j == *delimiterString) {
@@ -599,12 +680,33 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
                     }
                     break;
                 }
+                /*
+                 *  Search for the next newline character in the segment
+                 *  starting at j.  If a newline is found before the end of
+                 *  the string, set the segment length to include the newline
+                 *  (length = (newline position - j) + 1); otherwise, set the
+                 *  segment length to the remainder of the string.
+                 */
                 eolString = strchr(j, INTCHAR('\n'));
-                if (likely(eolString != NULL)) {
-                    length = (eolString - j) + 1;
-                } else {
-                    length = (endOfString - j);
+                if (eolString != NULL) {
+                    //Ns_Log(Notice, "... trim eol %ld eof %ld", eolString-j, endOfString-j);
                 }
+                if (likely(eolString != NULL && eolString < endOfString)) {
+                    /*
+                     * A newline was found before the end of the string.
+                     * Include the newline in the output by setting the
+                     * segment length to (newline position - j) + 1.
+                     */
+                    length = (eolString - j) + 1;
+                    //Ns_Log(Notice, "... found newline, length = eol + 1 => %ld", length);
+                } else {
+                    /*
+                     * No newline found: include all characters from j to the end.
+                     */
+                    length = (endOfString - j);
+                    //Ns_Log(Notice, "... no newline = include everything until end of string => %ld", length);
+                }
+                //NsHexPrint("appending", (const unsigned char *)j, (size_t)length, 32, NS_TRUE);
                 Tcl_DStringAppend(dsPtr, j, (TCL_SIZE_T)length);
 
                 p = j + length;
@@ -635,7 +737,7 @@ NsTclTrimObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
  */
 
 int
-NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclHrefsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *htmlString = (char *)NS_EMPTY_STRING;
@@ -752,7 +854,7 @@ static void hexPrint(const char *msg, const unsigned char *octets, size_t octetL
 #endif
 
 static int
-Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,
+Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv,
                    int encoding)
 {
     int         result = TCL_OK, isBinary = 0;
@@ -792,12 +894,12 @@ Base64EncodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
 }
 
 int
-NsTclBase64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclBase64EncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return Base64EncodeObjCmd(clientData, interp, objc, objv, 0);
 }
 int
-NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return Base64EncodeObjCmd(clientData, interp, objc, objv, 1);
 }
@@ -820,13 +922,14 @@ NsTclBase64UrlEncodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T
  */
 
 static int
-Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,
+Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv,
                    int encoding)
 {
-    int      result = TCL_OK, isBinary = 0;
+    int      result = TCL_OK, isBinary = 0, isStrict = 0;
     Tcl_Obj *charsObj;
     Ns_ObjvSpec opts[] = {
         {"-binary", Ns_ObjvBool, &isBinary, INT2PTR(NS_TRUE)},
+        {"-strict", Ns_ObjvBool, &isStrict, INT2PTR(NS_TRUE)},
         {"--",      Ns_ObjvBreak, NULL,    NULL},
         {NULL, NULL, NULL, NULL}
     };
@@ -846,32 +949,33 @@ Base64DecodeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
 
         size = (size_t)len + 3u;
         decoded = (unsigned char *)ns_malloc(size);
-        size = Ns_HtuuDecode2(chars, decoded, size, encoding);
+        result = Ns_HtuuDecode2(interp, chars, decoded, size, encoding, isStrict != 0, &size);
         //NsHexPrint("base64 decoded", decoded, size, 30, NS_FALSE);
 
-        if (isBinary) {
-            Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (TCL_SIZE_T)size));
+        if (result == TCL_OK) {
+            if (isBinary) {
+                Tcl_SetObjResult(interp, Tcl_NewByteArrayObj(decoded, (TCL_SIZE_T)size));
 
-        } else {
-            Tcl_DString ds, *dsPtr = &ds;
+            } else {
+                Tcl_DString ds, *dsPtr = &ds;
 
-            Tcl_DStringInit(dsPtr);
-            (void)Tcl_ExternalToUtfDString(NULL, (char *)decoded, (TCL_SIZE_T)size, dsPtr);
-            Tcl_DStringResult(interp, dsPtr);
+                Tcl_DStringInit(dsPtr);
+                (void)Tcl_ExternalToUtfDString(NULL, (char *)decoded, (TCL_SIZE_T)size, dsPtr);
+                Tcl_DStringResult(interp, dsPtr);
+            }
         }
-
         ns_free(decoded);
     }
 
     return result;
 }
 int
-NsTclBase64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclBase64DecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return Base64DecodeObjCmd(clientData, interp, objc, objv, 0);
 }
 int
-NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return Base64DecodeObjCmd(clientData, interp, objc, objv, 1);
 }
@@ -895,15 +999,21 @@ NsTclBase64UrlDecodeObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T
  */
 
 int
-NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
-                 TCL_OBJC_T UNUSED(objc), Tcl_Obj *const* UNUSED(objv))
+NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
+                 TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    char *death;
+    int result;
 
-    death = NULL;
-    *death = 'x';
+    if (Ns_ParseObjv(NULL, NULL, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        char *death;
 
-    return TCL_ERROR;
+        death = NULL;
+        *death = 'x';
+        result = TCL_OK;
+    }
+    return result;
 }
 
 
@@ -924,13 +1034,14 @@ NsTclCrashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *UNUSED(interp),
  */
 
 int
-NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int  result = TCL_OK;
-    char       *keyString, *saltString;
+    char       *keyString;
+    Tcl_Obj    *saltObj;
     Ns_ObjvSpec args[] = {
         {"key",  Ns_ObjvString, &keyString, NULL},
-        {"salt", Ns_ObjvString, &saltString, NULL},
+        {"salt", Ns_ObjvObj,    &saltObj,   NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -938,7 +1049,10 @@ NsTclCryptObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
         result = TCL_ERROR;
 
     } else {
-        if (strlen(saltString) != 2 ) {
+        TCL_SIZE_T  saltLength;
+        const char *saltString = Tcl_GetStringFromObj(saltObj, &saltLength);
+
+        if (saltLength != 2 ) {
            Ns_TclPrintfResult(interp, "salt string must be 2 characters long");
            result = TCL_ERROR;
 
@@ -1417,7 +1531,7 @@ Ns_HexString(const unsigned char *octets, char *outputBuffer, TCL_SIZE_T size, b
  */
 
 int
-NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isBinary = 0;
     Tcl_Obj    *charsObj;
@@ -1479,32 +1593,36 @@ NsTclSHA1ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
  */
 
 int
-NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclFileStatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
+    char       *filenameString, *varnameString = NULL;
     struct stat st;
+    Ns_ObjvSpec args[] = {
+        {"filename", Ns_ObjvString, &filenameString, NULL},
+        {"?varname", Ns_ObjvString, &varnameString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "file ?varname?");
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
-    }
-    if (stat(Tcl_GetString(objv[1]), &st) != 0) {
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
-    } else {
-        if (objc > 2) {
-            const char *name = Tcl_GetString(objv[2]);
 
-            (void)Tcl_SetVar2Ex(interp, name, "dev",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_dev), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "ino",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_ino), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "nlink", Tcl_NewWideIntObj((Tcl_WideInt)st.st_nlink), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "uid",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_uid), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "gid",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_gid), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "size",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_size), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "atime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_atime), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "ctime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_ctime), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "mtime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_mtime), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "mode",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_mode), 0);
-            (void)Tcl_SetVar2Ex(interp, name, "type",  Tcl_NewStringObj(
+    } else if (stat(filenameString, &st) != 0) {
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
+
+    } else {
+        if (varnameString != NULL) {
+            (void)Tcl_SetVar2Ex(interp, varnameString, "dev",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_dev), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "ino",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_ino), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "nlink", Tcl_NewWideIntObj((Tcl_WideInt)st.st_nlink), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "uid",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_uid), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "gid",   Tcl_NewWideIntObj((Tcl_WideInt)st.st_gid), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "size",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_size), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "atime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_atime), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "ctime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_ctime), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "mtime", Tcl_NewWideIntObj((Tcl_WideInt)st.st_mtime), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "mode",  Tcl_NewWideIntObj((Tcl_WideInt)st.st_mode), 0);
+            (void)Tcl_SetVar2Ex(interp, varnameString, "type",  Tcl_NewStringObj(
                   (S_ISREG(st.st_mode) ? "file" :
                         S_ISDIR(st.st_mode) ? "directory" :
 #ifdef S_ISCHR
@@ -1859,7 +1977,7 @@ static void MD5Transform(uint32_t buf[4], const uint32_t block[16])
  */
 
 int
-NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isBinary = 0;
     Tcl_Obj    *charsObj;
@@ -1918,12 +2036,12 @@ NsTclMD5ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
 
 int
 NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                   TCL_OBJC_T objc, Tcl_Obj *const* objv)
+                   TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "user");
+        Tcl_WrongNumArgs(interp, 1, objv, "/user/");
         result = TCL_ERROR;
 
     } else {
@@ -1935,12 +2053,12 @@ NsTclSetUserObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
 
 int
 NsTclSetGroupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    TCL_OBJC_T objc, Tcl_Obj *const* objv)
+                    TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "group");
+        Tcl_WrongNumArgs(interp, 1, objv, "/group/");
         result = TCL_ERROR;
 
     } else {
@@ -1998,7 +2116,7 @@ GetLimitObj(rlim_t value)
  *----------------------------------------------------------------------
  */
 int
-NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
 #ifndef _WIN32
 # ifndef RLIMIT_AS
@@ -2032,27 +2150,37 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
 
     };
 
+    Tcl_Obj    *valueObj = NULL;
+    Ns_ObjvSpec largs[] = {
+        {"?value", Ns_ObjvObj, &valueObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "command ?args?");
-        return TCL_ERROR;
-    }
-    if (Tcl_GetIndexFromObj(interp, objv[1], opts,
-                            "option", 0, &opt) != TCL_OK) {
+        Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/ ?/arg .../?");
         return TCL_ERROR;
     }
 
-    if (objc == 2) {
+    if (Tcl_GetIndexFromObj(interp, objv[1], opts,
+                            "subcommand", 0, &opt) != TCL_OK) {
+        return TCL_ERROR;
+    }
+
+    if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (valueObj == NULL) {
         rc = getrlimit(resource[opt], &rlimit);
         if (rc == -1) {
             Ns_TclPrintfResult(interp, "getrlimit returned error");
             result = TCL_ERROR;
         }
-    } else if (objc == 3) {
+    } else {
         Tcl_WideInt value;
 
-        result = Tcl_GetWideIntFromObj(interp, objv[2], &value);
+        result = Tcl_GetWideIntFromObj(interp, valueObj, &value);
         if (result != TCL_OK) {
-            char *valueString = Tcl_GetString(objv[2]);
+            char *valueString = Tcl_GetString(valueObj);
 
             if (strcmp(valueString, "unlimited") == 0) {
                 value = (Tcl_WideInt)RLIM_INFINITY;
@@ -2070,9 +2198,6 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
                 result = TCL_ERROR;
             }
         }
-    } else {
-        Ns_TclPrintfResult(interp, "wrong # of arguments");
-        result = TCL_ERROR;
     }
 
     if (result == TCL_OK) {
@@ -2094,7 +2219,7 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
 /*
  *----------------------------------------------------------------------
  *
- * NsTclHashObjCmd --
+ * NsTclHash --
  *
  *      Produce a numeric hash value from a given string.  This function uses
  *      the Tcl built-in hash function which is commented in Tcl as follows:
@@ -2120,8 +2245,6 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
  *          this function *is* very cheap, even by comparison with
  *          industry-standard hashes like FNV.
  *
- *       Implements "ns_hash".
- *
  * Results:
  *      Numeric hash value.
  *
@@ -2130,29 +2253,53 @@ NsTclRlimitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
  *
  *----------------------------------------------------------------------
  */
+size_t
+NsTclHash(const char *inputString)
+{
+    size_t hashValue;
+
+    if ((hashValue = UCHAR(*inputString)) != 0) {
+        char c;
+
+        while ((c = *++inputString) != 0) {
+            hashValue += (hashValue << 3) + UCHAR(c);
+        }
+    }
+    return hashValue;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclHashObjCmd --
+ *
+ *      Implements "ns_hash". Tcl function to produce numeric hash value from
+ *      a given string based on the algorithm that is used in Tcl internally
+ *      for hashing. This is not a secure hash, but fast.
+ *
+ * Results:
+ *      Hash value
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
 int
-NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *inputString = (char*)"";
     Ns_ObjvSpec  args[] = {
-        {"string", Ns_ObjvString,  &inputString, NULL},
+        {"value", Ns_ObjvString,  &inputString, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
     } else {
-        unsigned int hashValue;
-
-        if ((hashValue = UCHAR(*inputString)) != 0) {
-            char c;
-
-            while ((c = *++inputString) != 0) {
-                hashValue += (hashValue << 3) + UCHAR(c);
-            }
-        }
-        Tcl_SetObjResult(interp, Tcl_NewLongObj(hashValue));
+        Tcl_SetObjResult(interp, Tcl_NewLongObj((long)NsTclHash(inputString)));
     }
     return result;
 
@@ -2176,13 +2323,13 @@ NsTclHashObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
  *----------------------------------------------------------------------
  */
 int
-NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result;
     Tcl_Obj    *stringObj = NULL, *errorVarnameObj = NULL;
     Ns_ObjvSpec args[] = {
-        {"string",    Ns_ObjvObj, &stringObj, NULL},
-        {"?error",    Ns_ObjvObj, &errorVarnameObj, NULL},
+        {"string",   Ns_ObjvObj, &stringObj, NULL},
+        {"?varname", Ns_ObjvObj, &errorVarnameObj, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -2203,7 +2350,7 @@ NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
                 Tcl_DString outputDS;
 
                 Tcl_DStringInit(&outputDS);
-                Ns_DStringAppendPrintable(&outputDS, NS_FALSE,
+                Ns_DStringAppendPrintable(&outputDS, NS_FALSE, NS_FALSE,
                                           errorDS.string, (size_t)errorDS.length);
 
                 Tcl_ObjSetVar2(interp, errorVarnameObj, NULL,
@@ -2221,18 +2368,6 @@ NsTclValidUtf8ObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
     return result;
 }
 
-#if 0
-set s "hello world"
-time {time {ns_valid_utf8 $s} 1000} 1000  ;# 251mms ;# 229
-set s [string repeat x 1000]
-time {time {ns_valid_utf8 $s} 1000} 1000  ;# 4328.282139999999 ; 1535.6498230000002
-
-ns_valid_utf8 [encoding convertto utf-8 motörhead]
-ns_valid_utf8 "foo\x85"
-ns_valid_utf8 [encoding convertto utf-8 "foo\x85"]
-ns_valid_utf8 "foo\xc3\x85"
-
-#endif
 
 /*
  *----------------------------------------------------------------------
@@ -2252,7 +2387,7 @@ ns_valid_utf8 "foo\xc3\x85"
  *----------------------------------------------------------------------
  */
 int
-NsTclBaseUnitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclBaseUnitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result;
     Tcl_WideInt  memUnitValue = -1;
@@ -2314,7 +2449,7 @@ ns_baseunit -size 1KB
  *----------------------------------------------------------------------
  */
 int
-NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     Tcl_Obj     *arg1Obj, *arg2Obj;
@@ -2394,18 +2529,17 @@ NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
 /*
  *----------------------------------------------------------------------
  *
- * NsTclSubnetmatchObjCmd --
+ * IpMatchObjCmd --
  *
- *      Checks whether an IP address (IPv4 or IPV6) is in a given CIDR
- *      (Classless Inter-Domain Routing) range. CIDR supports variable-length
+ *      This command implements "ns_ip_match". It compares a given IP address
+ *      against a CIDR and determines whether the IP address matches.  The IP
+ *      address can be IPv4 or IPV6. The CIDR value supports variable-length
  *      subnet masking and specifies an IPv6 or IPv6 address, a slash ('/')
  *      character, and a decimal number representing the significant bits of
  *      the IP address.
  *
- *      Implements "ns_subnetmatch".
- *
  *      Example:
- *          ns_subnetmatch 137.208.0.0/16 137.208.116.31
+ *          ns_ip match 137.208.0.0/16 137.208.116.31
  *
  * Results:
  *      Tcl result code
@@ -2415,8 +2549,8 @@ NsTclStrcollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  *
  *----------------------------------------------------------------------
  */
-int
-NsTclSubnetmatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+static int
+IpMatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *cidrString, *ipString;
@@ -2433,7 +2567,7 @@ NsTclSubnetmatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OB
         {NULL, NULL, NULL, NULL}
     };
 
-    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else if (ns_inet_pton(ipPtr, ipString) != 1) {
@@ -2448,6 +2582,434 @@ NsTclSubnetmatchObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OB
         bool success = (nrBits == 0 || Ns_SockaddrMaskedMatch(ipPtr, maskPtr, ipPtr2));
 
         Tcl_SetObjResult(interp, Tcl_NewBooleanObj(success));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * IpPropertiesObjCmd --
+ *
+ *      This command implements "ns_ip_properties". It retrieves various
+ *      properties of a specified IP address, such as network class and subnet
+ *      information, and returns these properties as a Tcl dictionary,
+ *      containing members "trusted", "public" and "type".
+ *
+ * Results:
+ *      Returns a Tcl dictionary containing the IP address properties.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+IpPropertiesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    struct NS_SOCKADDR_STORAGE ip;
+    struct sockaddr *ipPtr = (struct sockaddr *)&ip;
+    int         result = TCL_OK;
+    char       *ipString;
+    Ns_ObjvSpec args[] = {
+        {"ipaddr", Ns_ObjvString, &ipString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (ns_inet_pton(ipPtr, ipString) != 1) {
+        Ns_TclPrintfResult(interp, "'%s' is not a valid IPv4 or IPv6 address", ipString);
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_Obj *dictObj = Tcl_NewDictObj();
+
+        (void)Ns_SockaddrAddToDictIpProperties(ipPtr, dictObj);
+        Tcl_SetObjResult(interp, dictObj);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * IpPublicObjCmd --
+ *
+ *      Implements "ns_ip public", returning a boolean value in case the
+ *      provided IP address is public.
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+IpPublicObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    struct NS_SOCKADDR_STORAGE ip;
+    struct sockaddr *ipPtr = (struct sockaddr *)&ip;
+    char       *ipString;
+    Ns_ObjvSpec args[] = {
+        {"ipaddr", Ns_ObjvString, &ipString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (ns_inet_pton(ipPtr, ipString) != 1) {
+        Ns_TclPrintfResult(interp, "'%s' is not a valid IPv4 or IPv6 address", ipString);
+        result = TCL_ERROR;
+
+    } else {
+        bool isPublic = Ns_SockaddrPublicIpAddress(ipPtr);
+
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(isPublic));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * IpTrustedObjCmd --
+ *
+ *      Implements "ns_ip trusted", returning a boolean value in case the
+ *      provided IP address is trusted based on the server's configuration or
+ *      predefined criteria.
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+IpTrustedObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    struct NS_SOCKADDR_STORAGE ip;
+    struct sockaddr *ipPtr = (struct sockaddr *)&ip;
+    char       *ipString;
+    Ns_ObjvSpec args[] = {
+        {"ipaddr", Ns_ObjvString, &ipString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (ns_inet_pton(ipPtr, ipString) != 1) {
+        Ns_TclPrintfResult(interp, "'%s' is not a valid IPv4 or IPv6 address", ipString);
+        result = TCL_ERROR;
+
+    } else {
+        bool isTrusted = Ns_SockaddrTrustedReverseProxy(ipPtr);
+
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(isTrusted));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * IpInAnyObjCmd --
+ *
+ *      Implements the "ns_ip inany" command. This command checks whether the
+ *      provided IP address is an "any" (unspecified) address. In other words,
+ *      it determines if the socket address corresponds to the generic IP
+ *      address used to bind a server socket to all available network interfaces
+ *      (e.g., INADDR_ANY for IPv4 or in6addr_any for IPv6).
+ *
+ * Returns:
+ *      A standard Tcl result. On success, the command returns a boolean value
+ *      indicating whether the IP address is an "any" address.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+IpInAnyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    struct NS_SOCKADDR_STORAGE ip;
+    struct sockaddr *ipPtr = (struct sockaddr *)&ip;
+    char       *ipString;
+    Ns_ObjvSpec args[] = {
+        {"ipaddr", Ns_ObjvString, &ipString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (ns_inet_pton(ipPtr, ipString) != 1) {
+        Ns_TclPrintfResult(interp, "'%s' is not a valid IPv4 or IPv6 address", ipString);
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(Ns_SockaddrInAny(ipPtr)));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * IpValidObjCmd --
+ *
+ *      This command implements "ns_ip_valid". It validates the format and
+ *      overall correctness of a specified IP address. One can provide "-type
+ *      ipv4" or "-type ipv6" to constrain the result to these address
+ *      families.
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Ns_ObjvTable addressTypeSet[] = {
+    // {"IPv4",    4u},  /* we have in other enumeration no case-insensitivity */
+    // {"IPv6",    6u},
+    {"ipv4",    4u},
+    {"ipv6",    6u},
+    {NULL,      0u}
+};
+
+static int
+IpValidObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    struct NS_SOCKADDR_STORAGE ip;
+    struct sockaddr *ipPtr = (struct sockaddr *)&ip;
+    int         result = TCL_OK, addressType = 0;
+    char       *ipString;
+    Ns_ObjvSpec lopts[] = {
+        {"-type", Ns_ObjvIndex, &addressType, addressTypeSet},
+        {"--",    Ns_ObjvBreak, NULL,         NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"ipaddr", Ns_ObjvString, &ipString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(lopts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        bool valid = (ns_inet_pton(ipPtr, ipString) == 1);
+        if (valid && addressType != 0) {
+            valid = (   ((addressType == 4) && (ipPtr->sa_family == AF_INET))
+                     || ((addressType == 5) && (ipPtr->sa_family == AF_INET6))
+                     );
+        }
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(valid));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * NsTclIpObjCmd --
+ *
+ *      This command implements "ns_ip". It acts as the main dispatcher for
+ *      IP-related subcommands (e.g., "ns_ip inany", "ns_ip match",
+ *      "ns_ip properties", "ns_ip public", "ns_ip trusted", and
+ *      "ns_ip valid") and returns the corresponding result based on the
+ *      specified subcommand.
+ *
+ * Results:
+ *      Returns the result of the invoked IP subcommand as a Tcl object.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclIpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    const Ns_SubCmdSpec subcmds[] = {
+        {"inany",      IpInAnyObjCmd},
+        {"match",      IpMatchObjCmd},
+        {"properties", IpPropertiesObjCmd},
+        {"public",     IpPublicObjCmd},
+        {"trusted",    IpTrustedObjCmd},
+        {"valid",      IpValidObjCmd},
+        /*ns_ip lookup ?-all? /ipaddr/        {NULL, NULL}*/
+        {NULL, NULL}
+    };
+    return Ns_SubcmdObjv(subcmds, clientData, interp, objc, objv);
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * GetCsvObjCmd --
+ *
+ *      Implements "ns_getcsv". The command reads a single line from a
+ *      CSV file and parses the results into a Tcl list variable.
+ *
+ * Results:
+ *      A standard Tcl result.
+ *
+ * Side effects:
+ *      One line is read for given open channel.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+FinishElement(Tcl_DString *elemPtr, Tcl_DString *colsPtr, bool quoted)
+{
+    if (!quoted) {
+        Tcl_DStringAppendElement(colsPtr, Ns_StrTrim(elemPtr->string));
+    } else {
+        Tcl_DStringAppendElement(colsPtr, elemPtr->string);
+    }
+    Tcl_DStringSetLength(elemPtr, 0);
+}
+
+
+int
+NsTclGetCsvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int           trimUnquoted = 0, result = TCL_OK;
+    char         *delimiter = (char *)",", *quoteString = (char *)"\"", *fileId, *varName;
+    Tcl_Channel   chan;
+    Ns_ObjvSpec   opts[] = {
+        {"-delimiter", Ns_ObjvString,   &delimiter,    NULL},
+        {"-quotechar", Ns_ObjvString,   &quoteString,  NULL},
+        {"-trim",      Ns_ObjvBool,     &trimUnquoted, INT2PTR(NS_TRUE)},
+        {"--",         Ns_ObjvBreak,    NULL,          NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec   args[] = {
+        {"channelId",     Ns_ObjvString, &fileId,   NULL},
+        {"varname",    Ns_ObjvString, &varName,  NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (Ns_TclGetOpenChannel(interp, fileId, 0, NS_FALSE, &chan) == TCL_ERROR) {
+        result = TCL_ERROR;
+
+    } else {
+        int             ncols;
+        bool            inquote, quoted, emptyElement;
+        const char     *p, *value;
+        Tcl_DString     line, cols, elem;
+        char            c, quote = *quoteString;
+
+        Tcl_DStringInit(&line);
+        Tcl_DStringInit(&cols);
+        Tcl_DStringInit(&elem);
+
+        ncols = 0;
+        inquote = NS_FALSE;
+        quoted = NS_FALSE;
+        emptyElement = NS_TRUE;
+
+        for (;;) {
+            if (Tcl_Gets(chan, &line) == TCL_IO_FAILURE) {
+                Tcl_DStringFree(&line);
+                Tcl_DStringFree(&cols);
+                Tcl_DStringFree(&elem);
+
+                if (Tcl_Eof(chan) == 0) {
+                    Ns_TclPrintfResult(interp, "could not read from %s: %s",
+                                       fileId, Tcl_PosixError(interp));
+                    return TCL_ERROR;
+                }
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(-1));
+                return TCL_OK;
+            }
+
+            p = line.string;
+            while (*p != '\0') {
+                c = *p++;
+            loopstart:
+                if (inquote) {
+                    if (c == quote) {
+                        c = *p++;
+                        if (c == '\0') {
+                            /*
+                             * Line ends after quote
+                             */
+                            inquote = NS_FALSE;
+                            break;
+                        }
+                        if (c == quote) {
+                            /*
+                             * We have a quote in the quote.
+                             */
+                            Tcl_DStringAppend(&elem, &c, 1);
+                        } else {
+                            inquote = NS_FALSE;
+                            goto loopstart;
+                        }
+                    } else {
+                        Tcl_DStringAppend(&elem, &c, 1);
+                    }
+                } else {
+                    if (c == quote && emptyElement) {
+                        inquote = NS_TRUE;
+                        quoted = NS_TRUE;
+                        emptyElement = NS_FALSE;
+                    } else if (strchr(delimiter, INTCHAR(c)) != NULL) {
+                        FinishElement(&elem, &cols, (trimUnquoted ? quoted : 1));
+                        ncols++;
+                        quoted = NS_FALSE;
+                        emptyElement = NS_TRUE;
+                    } else {
+                        emptyElement = NS_FALSE;
+                        if (!quoted) {
+                            Tcl_DStringAppend(&elem, &c, 1);
+                        }
+                    }
+                }
+            }
+            if (inquote) {
+                Tcl_DStringAppend(&elem, "\n", 1);
+                Tcl_DStringSetLength(&line, 0);
+                continue;
+            }
+            break;
+        }
+
+        if (!(ncols == 0 && emptyElement)) {
+            FinishElement(&elem, &cols, (trimUnquoted ? quoted : 1));
+            ncols++;
+        }
+        value = Tcl_SetVar(interp, varName, cols.string, TCL_LEAVE_ERR_MSG);
+        Tcl_DStringFree(&line);
+        Tcl_DStringFree(&cols);
+        Tcl_DStringFree(&elem);
+
+        if (value == NULL) {
+            result = TCL_ERROR;
+        } else {
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(ncols));
+        }
     }
     return result;
 }

@@ -27,7 +27,7 @@ typedef void *(AtProc)(Ns_Callback *proc, void *data);
  */
 
 static Ns_ShutdownProc ShutdownProc;
-static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+static int AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
@@ -69,6 +69,7 @@ Ns_TclNewCallback(Tcl_Interp *interp, ns_funcptr_t cbProc, Tcl_Obj *scriptObjPtr
 
         cbPtr->cbProc = cbProc;
         cbPtr->server = Ns_TclInterpServer(interp);
+        cbPtr->servPtr = Ns_TclInterpServPtr(interp);
         cbPtr->script = ns_strdup(Tcl_GetString(scriptObjPtr));
         cbPtr->argc   = objc;
         cbPtr->argv   = (char **)&cbPtr->args;
@@ -138,14 +139,14 @@ int
 Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
                    Tcl_DString *resultDString, ...)
 {
-    Ns_DString   ds;
+    Tcl_DString  ds;
     bool         deallocInterp = NS_FALSE;
     int          status = TCL_ERROR;
 
     NS_NONNULL_ASSERT(cbPtr != NULL);
 
     if (interp == NULL) {
-        interp = Ns_TclAllocateInterp(cbPtr->server);
+        interp = NsTclAllocateInterp((NsServer*)(cbPtr->servPtr));
         deallocInterp = NS_TRUE;
     }
     if (interp != NULL) {
@@ -153,31 +154,41 @@ Ns_TclEvalCallback(Tcl_Interp *interp, const Ns_TclCallback *cbPtr,
         TCL_SIZE_T  ii;
         va_list     ap;
 
-        Ns_DStringInit(&ds);
-        Ns_DStringAppend(&ds, cbPtr->script);
+        Tcl_DStringInit(&ds);
+        Tcl_DStringAppend(&ds, cbPtr->script, TCL_INDEX_NONE);
         va_start(ap, resultDString);
 
         for (arg = va_arg(ap, char *); arg != NULL; arg = va_arg(ap, char *)) {
-            Ns_DStringAppendElement(&ds, arg);
+            Tcl_DStringAppendElement(&ds, arg);
         }
         va_end(ap);
 
         for (ii = 0; ii < cbPtr->argc; ii++) {
-            Ns_DStringAppendElement(&ds, cbPtr->argv[ii]);
+            Tcl_DStringAppendElement(&ds, cbPtr->argv[ii]);
         }
+
         status = Tcl_EvalEx(interp, ds.string, ds.length, 0);
-        if (status != TCL_OK) {
-            Ns_DStringSetLength(&ds, 0);
-            Ns_DStringAppend(&ds, "\n    while executing callback\n");
+        /* Ns_Log(Notice, "??? Ns_TclEvalCallback -> %s", Ns_TclReturnCodeString(status));*/
+
+        if (status == TCL_ERROR) {
+            Tcl_DStringSetLength(&ds, 0);
+            Tcl_DStringAppend(&ds, "\n    while executing callback\n", 30);
             Ns_GetProcInfo(&ds, (ns_funcptr_t)cbPtr->cbProc, cbPtr);
             Tcl_AddObjErrorInfo(interp, ds.string, ds.length);
             if (deallocInterp) {
                 (void) Ns_TclLogErrorInfo(interp, NULL);
             }
         } else if (resultDString != NULL) {
-            Ns_DStringAppend(resultDString, Tcl_GetStringResult(interp));
+            /*
+             * We can return the string result in the provided Tcl_DString.
+             */
+            Tcl_Obj    *resultObj = Tcl_GetObjResult(interp);
+            TCL_SIZE_T  length;
+            const char *resultString = Tcl_GetStringFromObj(resultObj, &length);
+
+            Tcl_DStringAppend(resultDString, resultString, length);
         }
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
         if (deallocInterp) {
             Ns_TclDeAllocateInterp(interp);
         }
@@ -208,7 +219,7 @@ Ns_TclCallbackProc(void *arg)
 {
     const Ns_TclCallback *cbPtr = arg;
 
-    (void) Ns_TclEvalCallback(NULL, cbPtr, (Ns_DString *)NULL, (char *)0L);
+    (void) Ns_TclEvalCallback(NULL, cbPtr, (Tcl_DString *)NULL, NS_SENTINEL);
 }
 
 
@@ -259,14 +270,14 @@ Ns_TclCallbackArgProc(Tcl_DString *dsPtr, const void *arg)
  */
 
 static int
-AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     NS_NONNULL_ASSERT(interp != NULL);
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/script/ ?/arg .../?");
         result = TCL_ERROR;
 
     } else {
@@ -280,25 +291,25 @@ AtObjCmd(AtProc *atProc, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* ob
 }
 
 int
-NsTclAtPreStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAtPreStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtPreStartup, interp, objc, objv);
 }
 
 int
-NsTclAtStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAtStartupObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtStartup, interp, objc, objv);
 }
 
 int
-NsTclAtSignalObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAtSignalObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtSignal, interp, objc, objv);
 }
 
 int
-NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return AtObjCmd(Ns_RegisterAtExit, interp, objc, objv);
 }
@@ -322,7 +333,7 @@ NsTclAtExitObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
  */
 
 int
-NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     static bool initialized = NS_FALSE;
@@ -333,7 +344,7 @@ NsTclAtShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
         initialized = NS_TRUE;
     }
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/script/ ?/arg .../?");
         result = TCL_ERROR;
 
     } else {

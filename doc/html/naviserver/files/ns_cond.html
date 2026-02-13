@@ -1,0 +1,141 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_cond - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_cond.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_cond.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_cond.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_cond.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_cond(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_cond - Operate on condition variables</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_cond broadcast</b> <i class="arg">condId</i></a></li>
+<li><a href="#2"><b class="cmd">ns_cond create</b></a></li>
+<li><a href="#3"><b class="cmd">ns_cond destroy</b> <i class="arg">condId</i></a></li>
+<li><a href="#4"><b class="cmd">ns_cond set</b> <i class="arg">condId</i></a></li>
+<li><a href="#5"><b class="cmd">ns_cond signal</b> <i class="arg">condId</i></a></li>
+<li><a href="#6"><b class="cmd">ns_cond abswait</b> <i class="arg">condId</i> <i class="arg">mutexId</i> <span class="opt">?<i class="arg">epoch</i>?</span></a></li>
+<li><a href="#7"><b class="cmd">ns_cond wait</b> <i class="arg">condId</i> <i class="arg">mutexId</i> <span class="opt">?<i class="arg">timeout</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The <b class="cmd">ns_cond</b> command provides mechanisms for manipulating
+condition variables, which are essential for thread
+synchronization. Condition variables allow threads to wait for
+specific conditions to be met while holding a mutex for coordination
+with other threads.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_cond broadcast</b> <i class="arg">condId</i></a></dt>
+<dd><p>Wakes up all threads currently waiting on the specified condition
+variable identified by <i class="arg">condId</i>. This is used when multiple threads need
+to be notified simultaneously that a condition has changed.</p></dd>
+<dt><a name="2"><b class="cmd">ns_cond create</b></a></dt>
+<dd><p>Initializes a new condition variable and returns a handle
+(<i class="arg">condId</i>) that can be used in subsequent <b class="cmd">ns_cond</b> commands.</p></dd>
+<dt><a name="3"><b class="cmd">ns_cond destroy</b> <i class="arg">condId</i></a></dt>
+<dd><p>Destroys the condition variable identified by <i class="arg">condId</i> and
+releases any associated resources.
+Note: Ensure that no threads are waiting on the condition variable
+when calling this command, as undefined behavior (such as server
+crashes) can occur. Currently, this operation is a no-op, meaning the
+condition variable will persist until the server shuts down.</p></dd>
+<dt><a name="4"><b class="cmd">ns_cond set</b> <i class="arg">condId</i></a></dt>
+<dd><p>Synonym for <b class="cmd">ns_cond signal</b>.</p></dd>
+<dt><a name="5"><b class="cmd">ns_cond signal</b> <i class="arg">condId</i></a></dt>
+<dd><p>Wakes up one thread waiting on the specified <i class="arg">condId</i>.  If more
+than one thread is waiting, only one will be notified.  If no threads
+are waiting, the operation has no effect.</p></dd>
+<dt><a name="6"><b class="cmd">ns_cond abswait</b> <i class="arg">condId</i> <i class="arg">mutexId</i> <span class="opt">?<i class="arg">epoch</i>?</span></a></dt>
+<dd><p>Waits on the condition variable <i class="arg">condId</i> while holding the mutex
+identified by <i class="arg">mutexId</i>. The <i class="arg">epoch</i> specifies an absolute time
+in Unix epoch seconds to wait until.</p>
+<p>Returns 1 on success (condition met) or 0 on timeout.</p></dd>
+<dt><a name="7"><b class="cmd">ns_cond wait</b> <i class="arg">condId</i> <i class="arg">mutexId</i> <span class="opt">?<i class="arg">timeout</i>?</span></a></dt>
+<dd><p>Waits on the condition variable <i class="arg">condId</i> while holding the mutex
+<i class="arg">mutexId</i>. If <i class="arg">timeout</i> is specified and
+greater than zero, the thread waits for up to that many seconds for the
+condition to be signaled. If no <i class="arg">timeout</i> is given, or it is zero,
+the thread waits indefinitely until another thread signals or broadcasts
+the condition.</p>
+<p>Returns 1 if the condition was signaled before the timeout expired, or
+0 if the wait timed out.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ # Create a condition variable and a mutex
+ set condId [ns_cond create]
+ set mutexId [ns_mutex create condition-example]
+ 
+ #
+ # Thread 1: Wait for the condition
+ #
+ ns_thread create -detached [subst {
+    ns_mutex lock $mutexId
+    if {[ns_cond wait $condId $mutexId 10] == 1} {
+        ns_log notice &quot;==============  thread 1: Condition met, resuming work&quot;
+    } else {
+        ns_log notice &quot;==============  thread 1: Timed out waiting for condition&quot;
+    }
+    ns_mutex unlock $mutexId
+ }]
+ 
+ #
+ # Thread 2: Signal the condition, after a little sleep
+ #
+ ns_sleep 2s
+ ns_cond signal $condId
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_critsec.html">ns_critsec</a>, <a href="ns_mutex.html">ns_mutex</a>, <a href="ns_rwlock.html">ns_rwlock</a>, <a href="ns_sema.html">ns_sema</a>, <a href="ns_thread.html">ns_thread</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#concurrency">concurrency</a>, <a href="../../index.html#mutex">mutex</a>, <a href="../../index.html#semaphore">semaphore</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#synchronization">synchronization</a>, <a href="../../index.html#threading">threading</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

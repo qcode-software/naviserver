@@ -1,33 +1,46 @@
 [include version_include.man]
 [manpage_begin {nsperm} n [vset version]]
+[moddesc {NaviServer Module}]
 
 [titledesc {NaviServer Permissions and Access Control Guide}]
 
 [description]
 
+ This document details the configuration of the NaviServer module
+ [const nsperm]. This optional module provides simple authentication
+ and access control capabilities by loading permission data from
+ Unix‐like plain text files into memory, which can then be queried and
+ updated via the [cmd ns_perm] API.
+
+[para]
+
+ Note that NaviServer does not include a fixed, hard-wired permission
+ system; instead, it employs a modular design. For example,
+ NaviServer-based instances of OpenACS utilize a more advanced and
+ scalable permission system based on relational databases, capable of
+ handling millions of users.
 
 [section {Access Control}]
 
-[para]
-NaviServer allows you to define users and groups of users, and assign
-permission records to individual pages or entire page hierarchies.
-NaviServer users are distinct from operating system users. A permission
-record lets you allow or disallow lists of users, lists of groups, and
-lists of hosts for a method and URL combination.
+ NaviServer allows you to define users and groups, and to assign
+ permission records to individual pages or entire page
+ hierarchies. NaviServer users are distinct from operating system
+ users. A permission record specifies whether to allow or deny access
+ for a list of users, groups, or hosts for a given HTTP method and URL
+ combination.
 
 [para]
-NaviServer requires one special user, nsadmin. This user is always
-allowed access to any URL on a NaviServer. The nsadmin user is similar
-to the Unix root user.
+
+ A special user, "nsadmin", is required by NaviServer. This user is
+ always granted access to all URLs on the instance, functioning
+ similarly to the Unix root user.
 
 [para]
-NaviServer is configured by default with the nsadmin user, a system
-group, a public group, and a users group.
 
-[para]
-You can change the permissions given to the system, public, and users
-groups and assign users to them by following the procedures described
-in this chapter.
+ By default, NaviServer is preconfigured with the "nsadmin" user along
+ with default groups (system, public, and users). You can modify the
+ permissions assigned to these groups and assign users to them by
+ following the procedures described in this chapter.
 
 
 [section {Users and Groups}]
@@ -42,33 +55,44 @@ NaviServer pages directory where they can store content.
 [section {Defining Users}]
 
 [para]
-To define NaviServer users, you need to create entries for them in the
-passwd file, which resides in the /modules/nsperm directory. The
-default passwd file contains:
+
+ NaviServer users are defined by entries in the [const passwd] file,
+ which is located in the [const /modules/nsperm] directory. The
+ default [const passwd] file includes entries similar to the
+ following:
 
 [para]
 [example_begin]
  ""::::::
- nsadmin:CUdnvgBYocLSI:::::
+ nsadmin:ubphBI5lDzSYc:::::
  nobody::::::
 [example_end]
 
 [para]
-The format is the same as the format for the /etc/passwd file.
-NaviServer ignores all but the first two fields, which are the username and the encrypted password. The password itself is encrypted the
-same way as Unix passwords.
+
+ The format follows that of the standard Unix [const /etc/passwd]
+ file; however, NaviServer only utilizes the first two fields - the
+ username and the encrypted password. The password is encrypted in the
+ same manner as Unix passwords.
 
 [para]
-The "" user is the unauthenticated user and is treated the same as any
-other user.
 
+ The entry for the empty username ("") represents the
+ unauthenticated user, which is treated like any other user.
+
+[para]
+
+ If you need to reset the password for the "nsadmin" user (for
+ example, if you have changed it and later forgotten the new
+ password), you can revert the "nsadmin" entry in the [const passwd]
+ file to the default line shown above.
 
 [section {Defining Groups}]
 
 [para]
 To define NaviServer groups, you need to create entries for them in the
-group file, which resides in the /modules/nsperm directory. The
-default group file contains:
+[const group] file, which resides in the /modules/nsperm directory. The
+default [const group] file contains:
 
 [example_begin]
  system:::nsadmin
@@ -78,13 +102,13 @@ default group file contains:
 [example_end]
 
 
-The format is the same as the format for the /etc/group file.
+The format is the same as the format for the common Unix [const /etc/group] file.
 NaviServer ignores all but the first and last fields, which are the
 name of the group and a comma-separated list of users in the group.
 
 
 [para]
-The default group file, shown above, creates groups called system,
+The default [const group] file, shown above, creates groups called system,
 users, all, and public, with the listed users in each.
 
 
@@ -100,7 +124,7 @@ the user to write to the page or delete the page.
 
 [para]
 Once you have defined authorized NaviServer users and groups, you can
-maintain NaviServer permission records. Normally, only nsadmin and
+maintain NaviServer permission records. Normally, only "nsadmin" and
 users in the system group can set permission records directly.
 
 
@@ -178,7 +202,7 @@ The format for entries in the file is:
  username: host, host, host ...
 [example_end]
 
-where username is a user defined in the passwd file and host can be
+where username is a user defined in the [const passwd] file and host can be
 specified in either of these forms:
 
 
@@ -239,7 +263,7 @@ The format for entries in the file is:
 [example_end]
 
 [para]
-where username is a user defined in the passwd file and host can be
+where username is a user defined in the [const passwd] file and host can be
 specified in either of these forms:
 
 
@@ -278,7 +302,7 @@ To enable this
  }
 [example_end]
 
-passwdfile can point to any file, by default it set to default nsperm module password file.
+[const passwdfile] can point to any file, by default it set to default nsperm module password file.
 
 Now, in the directory where access is wanted, create .htaccess file and add lines like these:
 
@@ -288,6 +312,6 @@ Now, in the directory where access is wanted, create .htaccess file and add line
 [example_end]
 
 [see_also ns_perm ns_permreload ns_permpasswd]
-[keywords module nsperm]
+[keywords module nsperm password "request authentication" "user authentication"]
 
 [manpage_end]

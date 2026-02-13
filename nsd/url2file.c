@@ -194,7 +194,7 @@ Ns_UnRegisterUrl2FileProc(const char *server, const char *url, unsigned int flag
  */
 
 Ns_ReturnCode
-Ns_FastUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
+Ns_FastUrl2FileProc(Tcl_DString *dsPtr, const char *url, const void *arg)
 {
     Ns_ReturnCode   status = NS_OK;
     const NsServer *servPtr = arg;
@@ -202,7 +202,7 @@ Ns_FastUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
     if (NsPageRoot(dsPtr, servPtr, NULL) == NULL) {
         status = NS_ERROR;
     } else {
-        (void) Ns_MakePath(dsPtr, url, (char *)0L);
+        (void) Ns_MakePath(dsPtr, url, NS_SENTINEL);
     }
 
     return status;
@@ -226,11 +226,12 @@ Ns_FastUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
  */
 
 Ns_ReturnCode
-Ns_UrlToFile(Ns_DString *dsPtr, const char *server, const char *url)
+Ns_UrlToFile(Tcl_DString *dsPtr, const char *server, const char *url)
 {
     NsServer      *servPtr;
     Ns_ReturnCode  status;
 
+    NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(url != NULL);
@@ -246,7 +247,7 @@ Ns_UrlToFile(Ns_DString *dsPtr, const char *server, const char *url)
 }
 
 Ns_ReturnCode
-NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
+NsUrlToFile(Tcl_DString *dsPtr, NsServer *servPtr, const char *url)
 {
     Ns_ReturnCode status;
 
@@ -260,10 +261,11 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
     } else {
         Url2File *u2fPtr;
 
-        Ns_Log(Debug, "url2file: url '%s' use NsUrlSpecificGet to determine filename", url);
+        Ns_Log(Debug, "url2file: url '%s' use Ns_UrlSpecificGet to determine filename", url);
 
         Ns_MutexLock(&ulock);
-        u2fPtr = NsUrlSpecificGet(servPtr, "x", url, uid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL, NULL);
+        u2fPtr = Ns_UrlSpecificGet((Ns_Server*)servPtr, "x", url, uid, 0u,
+                                   NS_URLSPACE_DEFAULT, NULL, NULL, NULL);
         if (u2fPtr == NULL) {
             Ns_Log(Error, "url2file: no proc found for url: %s", url);
             status = NS_ERROR;
@@ -278,7 +280,7 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
     }
     if (status == NS_OK) {
         while (dsPtr->length > 0 && dsPtr->string[dsPtr->length -1] == '/') {
-            Ns_DStringSetLength(dsPtr, dsPtr->length -1);
+            Tcl_DStringSetLength(dsPtr, dsPtr->length -1);
         }
     }
 
@@ -286,7 +288,7 @@ NsUrlToFile(Ns_DString *dsPtr, NsServer *servPtr, const char *url)
     return status;
 }
 
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  * Ns_SetUrlToFileProc --
@@ -315,7 +317,6 @@ Ns_SetUrlToFileProc(const char *server, Ns_UrlToFileProc *procPtr)
     }
 }
 
-
 /*
  *----------------------------------------------------------------------
  *
@@ -333,7 +334,7 @@ Ns_SetUrlToFileProc(const char *server, Ns_UrlToFileProc *procPtr)
  */
 
 Ns_ReturnCode
-NsUrlToFileProc(Ns_DString *dsPtr, const char *server, const char *url)
+NsUrlToFileProc(Tcl_DString *dsPtr, const char *server, const char *url)
 {
     const NsServer *servPtr = NsGetServer(server);
     Ns_ReturnCode   result;
@@ -345,6 +346,7 @@ NsUrlToFileProc(Ns_DString *dsPtr, const char *server, const char *url)
     }
     return result;
 }
+#endif
 
 
 /*
@@ -364,21 +366,21 @@ NsUrlToFileProc(Ns_DString *dsPtr, const char *server, const char *url)
  */
 
 int
-NsTclUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "url");
+        Tcl_WrongNumArgs(interp, 1, objv, "/url/");
         result = TCL_ERROR;
     } else {
-        Ns_DString      ds;
+        Tcl_DString     ds;
         const NsInterp *itPtr = clientData;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         if (NsUrlToFile(&ds, itPtr->servPtr, Tcl_GetString(objv[1])) != NS_OK) {
             Ns_TclPrintfResult(interp, "url2file lookup failed for %s", Tcl_GetString(objv[1]));
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
             result = TCL_ERROR;
         } else {
             Tcl_DStringResult(interp, &ds);
@@ -405,7 +407,7 @@ NsTclUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
  */
 
 int
-NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *url;
     Tcl_Obj    *scriptObj;
@@ -419,7 +421,7 @@ NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_
     Ns_ObjvSpec args[] = {
         {"url",        Ns_ObjvString, &url,       NULL},
         {"script",     Ns_ObjvObj,    &scriptObj, NULL},
-        {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+        {"?arg",       Ns_ObjvArgs,   &remain,    NULL},
         {NULL, NULL, NULL, NULL}
     };
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
@@ -456,7 +458,7 @@ NsTclRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_
  */
 
 int
-NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclUnRegisterUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -552,7 +554,7 @@ Ns_RegisterFastUrl2File(const char *server, const char *url, const char *basePat
  *----------------------------------------------------------------------
  */
 int
-NsTclRegisterFastUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterFastUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *url = NULL, *basepath = NULL;
     int         noinherit = 0, result = TCL_OK;
@@ -598,12 +600,12 @@ NsTclRegisterFastUrl2FileObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_O
  */
 
 Ns_ReturnCode
-NsTclUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
+NsTclUrl2FileProc(Tcl_DString *dsPtr, const char *url, const void *arg)
 {
     Ns_ReturnCode         status = NS_OK;
     const Ns_TclCallback *cbPtr = arg;
 
-    if (unlikely(Ns_TclEvalCallback(NULL, cbPtr, dsPtr, url, (char *)0L) != TCL_OK)) {
+    if (unlikely(Ns_TclEvalCallback(NULL, cbPtr, dsPtr, url, NS_SENTINEL) != TCL_OK)) {
         status = NS_ERROR;
     }
     return status;
@@ -627,7 +629,7 @@ NsTclUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
  */
 
 Ns_ReturnCode
-NsMountUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
+NsMountUrl2FileProc(Tcl_DString *dsPtr, const char *url, const void *arg)
 {
     Ns_ReturnCode status = NS_OK;
     const Mount  *mPtr = arg;
@@ -639,8 +641,8 @@ NsMountUrl2FileProc(Ns_DString *dsPtr, const char *url, const void *arg)
         ++url;
     }
     if (Ns_PathIsAbsolute(mPtr->basepath)) {
-        Ns_MakePath(dsPtr, mPtr->basepath, url, (char *)0L);
-    } else if (Ns_PagePath(dsPtr, mPtr->server, mPtr->basepath, url, (char *)0L) == NULL) {
+        Ns_MakePath(dsPtr, mPtr->basepath, url, NS_SENTINEL);
+    } else if (Ns_PagePath(dsPtr, mPtr->server, mPtr->basepath, url, NS_SENTINEL) == NULL) {
         status = NS_ERROR;
     }
 
@@ -691,7 +693,7 @@ NsMountUrl2FileArgProc(Tcl_DString *dsPtr, const void *arg)
  */
 
 void
-NsGetUrl2FileProcs(Ns_DString *dsPtr, const char *server)
+NsGetUrl2FileProcs(Tcl_DString *dsPtr, const char *server)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(server != NULL);
@@ -702,7 +704,7 @@ NsGetUrl2FileProcs(Ns_DString *dsPtr, const char *server)
 }
 
 static void
-WalkCallback(Ns_DString *dsPtr, const void *arg)
+WalkCallback(Tcl_DString *dsPtr, const void *arg)
 {
     const Url2File *u2fPtr = arg;
 
