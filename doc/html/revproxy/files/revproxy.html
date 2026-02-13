@@ -1,0 +1,709 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>revproxy - NaviServer Module</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'revproxy.man' by tcllib/doctools with format 'html'
+   -->
+<!-- revproxy.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/revproxy/files/revproxy.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/revproxy/files/revproxy.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">revproxy(n)</h1>
+    <p class="man-details">NaviServer Module &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>revproxy - Reverse Proxy Module for NaviServer (Version 0.23)</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">CONFIGURATION</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection1">Loading the Module</a></li>
+<li class="doctools_subsection"><a href="#subsection2">Global Reverse Proxy Settings</a></li>
+<li class="doctools_subsection"><a href="#subsection3">Defining Backends</a></li>
+<li class="doctools_subsection"><a href="#subsection4">Conditional Requests</a></li>
+<li class="doctools_subsection"><a href="#subsection5">Example: Using the API directly to a Register the Reverse
+Proxy via a Request Handler</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#section3">Backend Connection Methods</a></li>
+<li class="doctools_section"><a href="#section4">Advanced Customization via API</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection6">General Options</a></li>
+<li class="doctools_subsection"><a href="#subsection7">Timeout Options</a></li>
+<li class="doctools_subsection"><a href="#subsection8">Host Header Options</a></li>
+<li class="doctools_subsection"><a href="#subsection9">URL rewriting and Callbacks</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#section5">Ensuring Network Drivers are Loaded</a></li>
+<li class="doctools_section"><a href="#section6">Full Configuration Example</a></li>
+<li class="doctools_section"><a href="#section7">REQUIREMENTS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">revproxy::upstream</b> <i class="arg">when</i> <b class="option">-target <i class="arg">value</i></b> <span class="opt">?<b class="option">-backendconnection <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-insecure</b>?</span> <span class="opt">?<b class="option">-connecttimeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-receivetimeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-sendtimeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-timeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-use_target_host_header true|false</b>?</span> <span class="opt">?<b class="option">-targethost <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-regsubs <i class="arg">value ...</i></b>?</span> <span class="opt">?<b class="option">-url_rewrite_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-response_header_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-backend_response_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-exception_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-validation_callback <i class="arg">value</i></b>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The <em>revproxy</em> module implements a reverse proxy for NaviServer.
+ It accepts external HTTP(S) requests and forwards them to one or more
+ internal backend servers, shielding those servers from direct external access.
+ The module also supports proxying of (secure) WebSocket connections.</p>
+<p>Use the <em>revproxy</em> module to route requests by HTTP method and
+ URL pattern to create hybrid deployments: serve some paths directly
+ from NaviServer and delegate others to external services.  For
+ fine-grained control - such as allowing only authenticated users to
+ reach certain backends you can invoke <b class="cmd">revproxy::upstream</b>
+ directly in server-side code (for example, in OpenACS .vuh pages).</p>
+<p>NaviServer lets you specify <em>when</em> in the request lifecycle the proxy runs,
+ and <em>how</em> it connects to each backend.</p>
+<ul class="doctools_itemized">
+<li><p><em>When:</em>
+ Determine at which point in the pipeline requests are proxied:</p>
+<ul class="doctools_itemized">
+ 
+ 
+<li><p>Filter (<a href="../../naviserver/files/ns_register.html#3">ns_register_filter</a>):
+ 
+ Executes early, before most other processing. Ideal if you need to
+ forward unauthenticated or pre-authentication traffic to a backend
+ that performs its own access control.</p></li>
+<li><p>Request handler (<a href="../../naviserver/files/ns_register.html#4">ns_register_proc</a>):
+ 
+ Runs after filters (e.g., post-authentication). Behaves like any other
+ static or dynamic handler, matching method, path, and resource name.
+ For example, you might forward all &quot;.php&quot; requests to a dedicated PHP backend.</p></li>
+<li><p>Direct invocation:
+ 
+ Call <b class="cmd">revproxy::upstream</b> programmatically in your Tcl code for
+ conditional or on-demand proxying.</p></li>
+</ul>
+</li>
+<li><p><em>How:</em>
+ Choose one of three backend connection methods to balance streaming
+ capability, performance, and observability. The default is
+ recommended for most use cases.  See
+ <span class="sectref"><a href="#section3">Backend Connection Methods</a></span> for details.</p></li>
+</ul>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">CONFIGURATION</a></h2>
+<p>The reverse proxy module is configured by extending your standard
+NaviServer configuration file. In the &quot;per-backend&quot; style, each backend
+is defined in its own <i class="term">ns_section</i>. It is also possible to
+register the calls via <b class="cmd">ns_registerproc</b> and <b class="cmd">ns_registerfilter</b>
+by calling directly in the &quot;ns_param register&quot; section the API
+<b class="cmd">revproxy::upstream</b>.</p>
+<p>To define sections per backend:</p>
+<ul class="doctools_itemized">
+<li><p>Load the revproxy module</p></li>
+<li><p>Define backend sections (e.g., &quot;backend1&quot;, &quot;backend2&quot;)</p></li>
+<li><p>Optionally override timeouts, callbacks, and connection methods per backend</p></li>
+</ul>
+<div id="subsection1" class="doctools_subsection"><h3><a name="subsection1">Loading the Module</a></h3>
+<p>First, load the revproxy module in your server’s &quot;modules&quot; section:</p>
+<pre class="doctools_example">
+ ns_section &quot;ns/server/$server/modules&quot; {
+   ns_param revproxy tcl
+ }
+</pre>
+</div>
+<div id="subsection2" class="doctools_subsection"><h3><a name="subsection2">Global Reverse Proxy Settings</a></h3>
+<p>Next, set any global defaults for all backends. Here we define the
+ verbosity and the &quot;backendconnection&quot; type. The latter can be defined
+ for individual backends.</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/module/revproxy {
+   #ns_param verbose 1
+   #
+   # Register extra handlers or filters. The following command
+   # registgered a handler for /nsstats.tcl to obtain stats from the
+   # reverse proxy itself, when this URL is used.  This assumes,
+   # that nsstats.{tcl,adp} has been installed into the pages
+   # directory of the proxy.
+ 
+   ns_param register {
+     ns_register_tcl GET /nsstats.tcl
+   }
+ }
+</pre>
+</div>
+<div id="subsection3" class="doctools_subsection"><h3><a name="subsection3">Defining Backends</a></h3>
+<p>Each backend requires its own <i class="term">ns_section</i> under the server’s
+revproxy module. The parameters, which can be set per backend are the
+same as those, which can be set via the
+<span class="sectref"><a href="#subsection6">API Options</a></span>.</p>
+<p>In the first example, &quot;backend1&quot; forwards &quot;/api/*&quot; over HTTPS
+with custom timeouts, and uses the target’s Host header on POST:</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/module/revproxy/backend1 {
+   # Required: the upstream URL (or list of URLs)
+   ns_param target               https://server1.local:8080/
+ 
+   # Optional: override defaults for various timeouts
+   ns_param connecttimeout         2s                     ;# default: 1s
+   ns_param receivetimeout         15s                    ;# default: 10s
+   ns_param sendtimeout            15s                    ;# default: 10s
+ 
+   # Define which paths map to this backend
+   ns_param map &quot;GET  /api/*&quot;
+   ns_param map &quot;POST /api/* {-use_target_host_header true}&quot;
+ }
+</pre>
+<p>In this next snippet, &quot;backend2&quot; serves static files over plain HTTP
+ and uses shorter timeouts; it only accepts GET or HEAD:</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/module/revproxy/backend2 {
+   ns_param target               http://server2.local/
+   ns_param connecttimeout       1s
+   ns_param receivetimeout       1s
+ 
+   # Define which paths map to this backend
+   ns_param map &quot;GET  /static/*&quot;
+   ns_param map &quot;HEAD /static/*&quot;
+ }
+</pre>
+<p>The third backend forwards requests via HTTPS via a &quot;preauth&quot; filter
+after removing the prefix &quot;/shiny&quot; from the URL.</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/module/revproxy/backend3 {
+   ns_param target               https://server3.local/
+   ns_param backendconnection    preauth
+   ns_param regsubs              {{/shiny &quot;&quot;}}
+   ns_param map &quot;GET  /shiny/*&quot;
+   ns_param map &quot;POST /shiny/*&quot;
+ }
+</pre>
+</div>
+<div id="subsection4" class="doctools_subsection"><h3><a name="subsection4">Conditional Requests</a></h3>
+<p>You can make forwarding conditional on headers or client IP using
+<a href="../../naviserver/files/ns_urlspace.html#section5">Context Constraints</a>.
+The example below only forwards &quot;*.php&quot; URLs when the incoming
+request has an &quot;X-User&quot; header matching &quot;*admin*&quot;:</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/module/revproxy/backend4 {
+   ns_param target               https://server4.local/
+   ns_param constraints          {X-User *admin*}
+   ns_param map &quot;GET  /*.php&quot;
+   ns_param map &quot;POST /*.php&quot;
+ }
+</pre>
+<p>Conjunctive (AND combined) context constraints can be defined by
+specifying multiple key/value pairs as a parameter value.
+When multiple separate <i class="arg">constraints</i>
+parameters are set in a section, these are taken as a disjunction
+(combined with OR). Technically this means, that the pattern is
+registered multiple times, each time with a different constraints value.</p>
+<p>Example with conjunctive context constraints:</p>
+<pre class="doctools_example">
+ ...
+ # AND: both constraints must match for all mapped patterns
+ ns_param constraints {X-Foo A X-Bar B}
+ ns_param map &quot;GET /foo/*&quot;
+ ns_param map &quot;POST /foo/*&quot;
+ ...
+</pre>
+<p>Example with disjunctive context constraints:</p>
+<pre class="doctools_example">
+  ...
+ # OR: either header matches
+ ns_param constraints {X-Foo A}
+ ns_param constraints {X-Bar B}
+ ns_param map &quot;GET /foo/*&quot;
+ ns_param map &quot;POST /foo/*&quot;
+ ...
+</pre>
+<p>You can also attach constraints directly to individual map entries,
+keeping other maps unconstrained:</p>
+<pre class="doctools_example">
+ ...
+ # GET is not constraint
+ ns_param map &quot;GET /qux/*&quot;
+ 
+ # DELETE is (has to come form the given IP range)
+ ns_param map &quot;DELETE /qux/* {-constraints {x-ns-ip 10.0.0.0/8}}&quot;
+ ...
+</pre>
+</div>
+<div id="subsection5" class="doctools_subsection"><h3><a name="subsection5">Example: Using the API directly to a Register the Reverse
+Proxy via a Request Handler</a></h3>
+<p>You can also register revproxy backends directly from Tcl rather than
+in separate sections. For example, this snippet distributes GET &quot;/doc/*&quot;
+requests round-robin between two backends, with a 20 s connect timeout:</p>
+<pre class="doctools_example">
+ ns_section ns/server/default/module/revproxy {
+   set target {http://srv1.local:8080/ http://srv2.local:8080/}
+   ns_param register [subst {
+       ns_register_proc GET /doc {
+           ::revproxy::upstream proc -connecttimeout 20s -target [list ${target}]
+       }
+   }]
+ }
+</pre>
+<p>This setup uses simple load distribution across multiple
+backends (round-robin). Failover checks (health checks) for the
+backends are currently not performed.</p>
+</div>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Backend Connection Methods</a></h2>
+<p>The <em>revproxy</em> module supports three backend connection methods:</p>
+<ol class="doctools_enumerated">
+<li><p><em>ns_connchan</em> (Tcl-based)</p>
+<ul class="doctools_itemized">
+<li><p>Fully event-driven, suitable for streaming HTML and WebSockets</p></li>
+<li><p>Supports background operation (does not block connection threads)</p></li>
+<li><p>Proven stability and robustness</p></li>
+<li><p>May be required for requests that cannot currently be handled by
+  ns_http (e.g., certain WebSocket upgrade requests)</p></li>
+<li><p>No persistent connections supported</p></li>
+<li><p>Partial reads/writes and error handling in Tcl (more complex)</p></li>
+</ul>
+</li>
+<li><p><em>ns_http</em> (C-based)</p>
+<ul class="doctools_itemized">
+<li><p>Efficient partial reads/writes in C</p></li>
+<li><p>Supports persistent connections (NaviServer 5.0+) for repeated requests</p></li>
+<li><p>Integrates with (multiple) task threads, scaling well under heavy load</p></li>
+<li><p>Provides separate logging and statistics for backend connections</p></li>
+<li><p>For certain types of requests (e.g., the websocket upgrade request), automatic fall back to <i class="term"><a href="../../naviserver/files/ns_connchan.html">ns_connchan</a></i> possible.</p></li>
+<li><p>Not optimal for streaming, since data arrives after full
+request has finished.</p></li>
+</ul>
+</li>
+<li><p><em>ns_http+ns_connchan</em> (Combined Implementation, default)</p>
+<ul class="doctools_itemized">
+<li><p>Uses <i class="term"><a href="../../naviserver/files/ns_http.html">ns_http</a></i> to send request data and <i class="term"><a href="../../naviserver/files/ns_connchan.html">ns_connchan</a></i> to spool responses</p></li>
+<li><p>Supports persistent connections and streaming</p></li>
+<li><p>Supports background operation (non‐blocking)</p></li>
+</ul>
+</li>
+</ol>
+<p>You can set the default connection method globally via the configuration file,
+and override it per backend via the <b class="option">backendconnection</b> parameter</p>
+<p>Figure 1 shows the interaction between a client, the reverse proxy
+server and the backend server, when the
+<b class="option">backendconnection</b> is set to <i class="term">ns_http+ns_connchan</i>. The incoming
+request is always processed by the network driver of NaviServer
+(<i class="term"><a href="../../index.html#nssock">nssock</a></i> or <i class="term"><a href="../../index.html#nsssl">nsssl</a></i>). After the request is processed, we have the
+request header in the form of an ns_set and the request body either as
+spool file or as string. At this time, the URL rewrite callbacj and
+later the validation callback is fired
+(see <span class="sectref"><a href="#section4">Advanced Customization via API</a></span>) for more details).
+The chosen <i class="term">backendconnection</i> defines then, how the request is
+sent to the backend, and how the results are received and delivered to
+the client. In the case of <em>ns_http+ns_connchan</em>, the response
+headers from the backend server are sent the client before the
+response body is received.  Also, the response body is forwarded to
+the client incrementally.</p>
+<p><img alt="Reverse Proxy Server with backendconnection ns_http+ns_connchan" src="../../image/revproxy1.png"></p>
+<p>Figure 1: Reverse Proxy Server with configuration ns_http+ns_connchan</p>
+<p>When the <b class="option">backendconnection</b> is
+ <em>ns_http</em>, forwarding to the client happens after the full request has
+ been received by the reverse proxy. When <em>ns_connchan</em> is used,
+ the transfer is also incrementally, but with the drawbacks mentioned
+ above.</p>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">Advanced Customization via API</a></h2>
+<p>The core command for proxying is <b class="cmd">revproxy::upstream</b>, which
+accepts:</p>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">revproxy::upstream</b> <i class="arg">when</i> <b class="option">-target <i class="arg">value</i></b> <span class="opt">?<b class="option">-backendconnection <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-insecure</b>?</span> <span class="opt">?<b class="option">-connecttimeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-receivetimeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-sendtimeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-timeout <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-use_target_host_header true|false</b>?</span> <span class="opt">?<b class="option">-targethost <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-regsubs <i class="arg">value ...</i></b>?</span> <span class="opt">?<b class="option">-url_rewrite_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-response_header_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-backend_response_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-exception_callback <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-validation_callback <i class="arg">value</i></b>?</span></a></dt>
+<dd><p>This command defines the proxying semantics. It can be registered as a
+request handler, as a filter, or it can be called programmatically
+whenever needed. When registered as a filter, the parameter <i class="arg">when</i>
+is automatically added upon invocation. When registered as a request
+handler proc, provide constant &quot;proc&quot; as first argument.</p></dd>
+</dl>
+<div id="subsection6" class="doctools_subsection"><h3><a name="subsection6">General Options</a></h3>
+<dl class="doctools_options">
+<dt><b class="option">-target</b> <i class="arg">value</i></dt>
+<dd><p>Required. The <i class="arg">value</i> is a list of one or more backend URLs.  By
+ default, the incoming path is appended before forwarding; use
+ <b class="option">-regsubs</b> or <b class="option">-url_rewrite_callback</b> to alter it.</p></dd>
+<dt><b class="option">-backendconnection</b> <i class="arg">value</i></dt>
+<dd><p>Overrides the global connection method for this invocation.</p></dd>
+<dt><b class="option">-insecure</b></dt>
+<dd><p>Allow insecure TLS connections; do not verify the server
+ certificate (For details, see
+ <a href="../../naviserver/files/ns_http.html">ns_http documentation</a>).</p></dd>
+</dl>
+</div>
+<div id="subsection7" class="doctools_subsection"><h3><a name="subsection7">Timeout Options</a></h3>
+<dl class="doctools_options">
+<dt><b class="option">-connecttimeout</b> <i class="arg">value</i></dt>
+<dd><p>Time allowed to establish a connection (default: 1s).</p></dd>
+<dt><b class="option">-receivetimeout</b> <i class="arg">value</i></dt>
+<dd><p>Time allowed to receive a response (default: 10s).</p></dd>
+<dt><b class="option">-sendtimeout</b> <i class="arg">value</i></dt>
+<dd><p>Time allowed to send the request (default: 10s).</p></dd>
+<dt><b class="option">-timeout</b> <i class="arg">value</i></dt>
+<dd><p>Overall read/write timeout (default: 10s).</p></dd>
+</dl>
+</div>
+<div id="subsection8" class="doctools_subsection"><h3><a name="subsection8">Host Header Options</a></h3>
+<dl class="doctools_options">
+<dt><b class="option">-use_target_host_header</b> true|false</dt>
+<dd><p>If true, sets the Host header to the backend’s host.
+ By default, the incoming Host header from the client is preserved.
+ The option is a shortcut for <b class="option">-targethost</b>.</p></dd>
+<dt><b class="option">-targethost</b> <i class="arg">value</i></dt>
+<dd><p>Explicit Host header value for backend requests.
+ By default, the incoming Host header from the client is preserved.</p></dd>
+</dl>
+</div>
+<div id="subsection9" class="doctools_subsection"><h3><a name="subsection9">URL rewriting and Callbacks</a></h3>
+<dl class="doctools_options">
+<dt><b class="option">-regsubs</b> <i class="arg">value</i></dt>
+<dd><p>A list of regsub patterns for simple URL rewriting.</p></dd>
+<dt><b class="option">-url_rewrite_callback</b> <i class="arg">value</i></dt>
+<dd><p>A callback to compute the final backend URL.  This callback can be
+ used to dynamically compute the final upstream URL. This can be used
+ in cases, where the option <b class="option">-regsubs</b> is not sufficient.
+ The default implementation is:</p>
+<pre class="doctools_example">
+ nsf::proc ::revproxy::rewrite_url { -target -url {-query &quot;&quot;} {-fragment &quot;&quot;}} {
+   #
+   # Transforms an incoming URL and query into a URL used for the
+   # backend system.
+   #
+   # Parameters:
+   #   target: backend system (prefix), value provided in the ::revproxy::upstream invocation
+   #   url: URL path of the incoming request, as provided via [ns_conn url]
+   #   query: query of the incoming request as provided via [ns_conn query]
+   #   fragment: fragment of the incoming request as provided via [ns_conn fragment]
+   #
+   # Join the URL by avoiding double slashes
+   #
+   set newUrl [string trimright $target /]/[string trimleft $url /.]
+   if {$query ne &quot;&quot;} {append newUrl ?$query}
+   if {$fragment ne &quot;&quot;} {append newUrl #$fragment}
+   return $newUrl
+ }
+</pre>
+</dd>
+<dt><b class="option">-response_header_callback</b> <i class="arg">value</i></dt>
+<dd><p>This callback is called, when the header fields of the backend have
+ been received. The callback can be used to modify backend response
+ headers, such as e.g. the &quot;location&quot; header field handling redirects.
+ This callback has no default value.  Template for defining the
+ callback:</p>
+<pre class="doctools_example">
+ nsf::proc ::my_backend_response_callback {-responseHeaders -status -requester -url} {
+   #
+   # Modify or remove header fields in &quot;responseHeaders&quot; as needed.
+   #
+   # Parameters:
+   #   responseHeaders: ns_set containing the responseHeaders (which
+   #              might be altered
+   #   status: HTTP status code of the response
+   #   requester: contains the location (scheme + authority of RFC 3986),
+   #              might be required for redirects to the proxy server.
+   #   url: requesting URL
+ }
+</pre>
+</dd>
+<dt><b class="option">-backend_response_callback</b> <i class="arg">value</i></dt>
+<dd><p>This callback is called, when the full response of the request was
+ received.  In streaming mode, the response might have been also
+ already been transmitted to the client. This callback has no default
+ value.  Template for defining the callback:</p>
+<pre class="doctools_example">
+ nsf::proc ::my_backend_response_callback {-responseHeaders -status -url {response &quot;&quot;}} {
+   #
+   # Perform actions, when the request was received.
+   #
+   # response: response dict, will be empty when streaming via ns_connchan.
+ }
+</pre>
+</dd>
+<dt><b class="option">-exception_callback</b> <i class="arg">value</i></dt>
+<dd><p>A callback to handle proxy errors, can be used to
+generate custom error pages on failures.
+Default: <b class="cmd">::revproxy::exception</b></p>
+<pre class="doctools_example">
+ nsf::proc ::revproxy::exception {
+     {-status 503}
+     {-msg &quot;&quot;}
+     -error
+     -url
+     {-frontendChan &quot;&quot;}
+ } {
+   if {$msg eq &quot;&quot;} {
+     ns_log warning &quot;revproxy exception backend with URL '$url' failed with status $status&quot;
+     set msg &quot;Backend error: [ns_quotehtml $error]&quot;
+   }
+   if {$frontendChan ne &quot;&quot;} {
+     switch $status {
+       502 {set phrase &quot;Bad Gateway&quot;}
+       503 {set phrase &quot;Service Unavailable&quot;}
+       504 {set phrase &quot;Gateway Timeout&quot;}
+       default {set phrase Error}
+     }
+     ns_connchan write $frontendChan &quot;HTTP/1.0 $status $phrase\r\n\r\n$status $phrase: $url&quot;
+   } else {
+     ns_returnerror $status $msg
+   }
+ }
+</pre>
+</dd>
+<dt><b class="option">-validation_callback</b> <i class="arg">value</i></dt>
+<dd><p>A callback to validate or modify the complete request before proxying.
+ This callback receives the <b class="option">-url</b> and <b class="option">-request</b>, and has
+ the complete control over the proxying request. It can still modify
+ the headers, the HTTP method and the request data. The <i class="arg">request</i>
+ dict contains keys like <b class="const">headers</b>, <b class="const">binary</b>, and either
+ <b class="const">content</b> or <b class="const">contentfile</b> for uploaded request data.
+ The callback has no default. Example signature:</p>
+<pre class="doctools_example">
+ nsf::proc ::my_validation_callback {
+   -url
+   -request
+ } {
+   # Check final URL and request data provided by the &quot;request&quot; dict.
+   # Return unmodified or updated dict, or &quot;&quot; to abort.
+   # ....
+   return $request
+ }
+</pre>
+</dd>
+</dl>
+</div>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Ensuring Network Drivers are Loaded</a></h2>
+<p>To use HTTP or HTTPS in backend connections, ensure the appropriate
+drivers (<i class="term"><a href="../../index.html#nssock">nssock</a></i> for HTTP, <i class="term"><a href="../../index.html#nsssl">nsssl</a></i> for HTTPS) are
+loaded. Loading the network drivers entails listening on a port. If
+you wish to disable a particular listening port (e.g., HTTPS) while
+still using HTTPS for backend requests, configure the network driverf
+to listen on port 0:</p>
+<pre class="doctools_example">
+ ns_section ns/modules {
+   ns_param http  nssock
+   ns_param https nsssl
+ }
+ 
+ ns_section ns/module/https {
+   ns_param port 0       ;# disable direct HTTPS listening if desired
+ }
+</pre>
+</div>
+<div id="section6" class="doctools_section"><h2><a name="section6">Full Configuration Example</a></h2>
+<p>Below is a sample configuration file illustrating a possible reverse
+proxy setup. Save this file (e.g.,
+&quot;<b class="file">/usr/local/ns/conf/nsd-config-revproxy.tcl</b>&quot;) and start NaviServer
+with the appropriate shell/environment variables:</p>
+<pre class="doctools_example">
+ ########################################################################
+ # Sample configuration file for NaviServer with reverse proxy setup.
+ ########################################################################
+ 
+ set home [file dirname [file dirname [info nameofexecutable]]]
+ 
+ ########################################################################
+ # Per default, the reverse proxy server uses the following
+ # configuration variables. Their values can be overloaded on startup
+ # via environment variables with the &quot;nsd_&quot; prefix, when starting the
+ # server, e.g., setting a different &quot;revproxy_target&quot; via:
+ #
+ #    nsd_revproxy_target=https://localhost:8445 /usr/local/ns/bin/nsd -f ...
+ #
+ ########################################################################
+ 
+ dict set defaultConfig httpport                   48000
+ dict set defaultConfig httpsport                  48443
+ dict set defaultConfig revproxy_target            http://127.0.0.1:8080
+ dict set defaultConfig revproxy_backendconnection ns_http+ns_connchan
+ dict set defaultConfig address                    0.0.0.0
+ 
+ ns_configure_variables &quot;nsd_&quot; $defaultConfig
+ 
+ ns_section ns/parameters {
+   ns_param home       $home
+   ns_param tcllibrary tcl
+   #ns_param systemlog nsd.log
+ }
+ 
+ ns_section ns/servers {
+   ns_param default &quot;Reverse proxy&quot;
+ }
+ 
+ ns_section ns/modules {
+   if {$httpsport ne &quot;&quot;} { ns_param https nsssl }
+   if {$httpport ne &quot;&quot;}  { ns_param http nssock }
+ }
+ 
+ ns_section ns/module/http {
+   ns_param port      $httpport
+   ns_param address   $address
+   ns_param maxupload 1MB
+   ns_param writerthreads 1
+ }
+ 
+ ns_section ns/module/https {
+   ns_param port         $httpsport
+   ns_param address      $address
+   ns_param maxupload    1MB
+   ns_param writerthreads 1
+   ns_param ciphers     &quot;ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4&quot;
+   ns_param protocols    &quot;!SSLv2:!SSLv3&quot;
+   ns_param certificate  /usr/local/ns/etc/server.pem
+ }
+ 
+ ns_section ns/module/http/servers {
+   ns_param defaultserver default
+   ns_param default       localhost
+   ns_param default       [ns_info hostname]
+ }
+ ns_section ns/module/https/servers {
+   ns_param defaultserver default
+   ns_param default       [ns_info hostname]
+   ns_param default       localhost
+ }
+ 
+ ########################################################################
+ #  Settings for the &quot;default&quot; server
+ ########################################################################
+ 
+ ns_section ns/server/default {
+   ns_param connsperthread 1000
+   ns_param minthreads      5
+   ns_param maxthreads      100
+   ns_param maxconnections  100
+   ns_param rejectoverrun   true
+ }
+ 
+ ns_section ns/server/default/fastpath {
+   #
+   # From where to serve pages that are not proxied to a backend.
+   #
+   ns_param pagedir pages-revproxy
+ }
+ 
+ ns_section ns/server/default/modules {
+   ns_param nslog   nslog
+   ns_param revproxy tcl
+ }
+ 
+ ns_section ns/server/default/module/revproxy {
+   ns_param backendconnection $revproxy_backendconnection
+   ns_param verbose 1
+   ns_param register {
+     ns_register_tcl GET /nsstats.tcl
+   }
+ }
+ 
+ ns_section ns/server/default/module/revproxy/backend1 {
+    ns_param target           $revproxy_target
+    ns_param map &quot;GET  /*&quot;
+    ns_param map &quot;POST /*&quot;
+ }
+ ns_section ns/server/default/httpclient {
+   #
+   # Activate persistent connections for ns_http and request logging (with connection reuse statistics)
+   #
+   ns_param keepalive 5s
+   ns_param logging   on
+   ns_param logfile   httpclient-revproxy.log
+ }
+ 
+ set ::env(RANDFILE) $home/.rnd
+ set ::env(HOME)     $home
+ set ::env(LANG)     en_US.UTF-8
+</pre>
+<p>Invoke NaviServer with this configuration file, for example:</p>
+<pre class="doctools_example">
+nsd_revproxy_target=https://localhost:8445 \
+    nsd_httpport=48000 \
+    /usr/local/ns/bin/nsd -f -u nsadmin -g nsadmin -t /usr/local/ns/conf/nsd-config-revproxy.tcl 2&gt;&amp;1
+</pre>
+<p>In general, there are many way how to use the revproxy framework.
+ The following examples shows, how to define a virtual server
+ accepting requests with the host header field <i class="term">cvs.local</i> (e.g.,
+ add this domain name as alias to your host and use the name in the URL).
+ By defining the reverse proxy as a virtual server, one can
+ specify different resource limits (number of connection threads, upload limits),
+ different log files, different backend connection methods, etc.</p>
+<p>Add this snippet to your NaviServer configuration and
+ adjust the URLs/ports/names according to your needs. As it is, it will
+ use the reverse proxy for HTTP/HTTPS requests addressed to <i class="term">cvs.local</i>
+ to the backend server <i class="term">127.0.0.1:8060</i>.</p>
+<pre class="doctools_example">
+ ########################################################################
+ # Virtual Server definition for e.g. handling CVS browser
+ ########################################################################
+ 
+ ns_section ns/servers {
+   ns_param cvs &quot;Reverse proxy to CVS repository&quot;
+ }
+ ns_section ns/module/http/servers {
+   ns_param cvs       cvs.local
+ }
+ ns_section ns/module/https/servers {
+   ns_param cvs       cvs.local
+ }
+ ns_section ns/server/cvs/httpclient {
+   ns_param keepalive 5s       ;# default: 0s
+ }
+ ns_section ns/server/cvs/modules {
+   ns_param revproxy  tcl
+ }
+ ns_section &quot;ns/server/cvs/module/revproxy&quot; {
+    ns_param backendconnection $revproxy_backendconnection
+    ns_param verbose  0
+ }
+ ns_section ns/server/cvs/module/revproxy/backend1 {
+    ns_param target   http://127.0.0.1:8060/
+    ns_param map &quot;GET  /*&quot;
+    ns_param map &quot;POST /*&quot;
+ }
+}
+</pre>
+<p>There are many configuration options possible combining the
+functionality of a reverse proxy with an application server and a
+traditional WEB server. One could make the default server the reverse proxy,
+and use other servers for other purposes. One could also combine
+<a href="../../manual/files/admin-config.html">mass virtual hosting</a> with the reverse proxy
+by defining appropriate mapping rules.</p>
+</div>
+<div id="section7" class="doctools_section"><h2><a name="section7">REQUIREMENTS</a></h2>
+<ul class="doctools_itemized">
+<li><p><b class="cmd"><a href="../../index.html#nsf">nsf</a></b> (Next Scripting Framework, <a href="http://next-scripting.org/">http://next-scripting.org/</a>)</p></li>
+</ul>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../naviserver/files/ns_connchan.html">ns_connchan</a>, <a href="../../naviserver/files/ns_http.html">ns_http</a>, <a href="../../naviserver/files/ns_register.html">ns_register</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#http">HTTP</a>, <a href="../../index.html#http_client">HTTP-client</a>, <a href="../../index.html#https">HTTPS</a>, <a href="../../index.html#configuration">configuration</a>, <a href="../../index.html#context_constraints">context constraints</a>, <a href="../../index.html#filter">filter</a>, <a href="../../index.html#handler">handler</a>, <a href="../../index.html#logging">logging</a>, <a href="../../index.html#module">module</a>, <a href="../../index.html#nsf">nsf</a>, <a href="../../index.html#proxy">proxy</a>, <a href="../../index.html#request">request</a>, <a href="../../index.html#reverse_proxy">reverse proxy</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

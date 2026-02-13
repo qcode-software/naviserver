@@ -1,0 +1,104 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_auth - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_auth.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_auth.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_auth.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_auth.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_auth(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_auth - Authorization check</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_auth request</b> <span class="opt">?<b class="option">-dict</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">username</i> <i class="arg">password</i> <span class="opt">?<i class="arg">ipaddr</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_auth user</b> <span class="opt">?<b class="option">-dict</b>?</span> <span class="opt">?--?</span> <i class="arg">username</i> <i class="arg">password</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The <b class="cmd">ns_auth</b> command provides access to NaviServer’s pluggable
+ authorization framework.  It dispatches calls through the chain of
+ registered authorization handlers, allowing user-provided C or Tcl
+ callbacks to grant, deny, or challenge requests at both the URL and
+ user/password level.</p>
+<p>Before using <b class="cmd">ns_auth</b>, one or more authorization callbacks must be registered
+ (e.g. via the <a href="./ns_register.html#2">ns_register_auth</a> Tcl API
+ or the <i class="term"><a href="../../index.html#nsperm">nsperm</a></i> module).
+ See the <a href="../../nsperm/files/nsperm.html">nsperm - NaviServer Permissions and Access Control Guide</a>
+ for an example of how to configure and register nsperm handlers.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_auth request</b> <span class="opt">?<b class="option">-dict</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">username</i> <i class="arg">password</i> <span class="opt">?<i class="arg">ipaddr</i>?</span></a></dt>
+<dd><p>Performs a full request-level permission check exactly as done by
+ NaviServer before serving a URL.  The callbacks registered for
+ &quot;request&quot; authorization are invoked in order, each receiving
+ <i class="arg">method</i>,  <i class="arg">url</i>,  <i class="arg">authuser</i>,  <i class="arg">authpasswd</i>
+ and optional  <i class="arg">ipaddr</i>.  By default, the command returns one of
+ the following status codes:</p>
+<ul class="doctools_itemized">
+<li><p>OK            - access granted</p></li>
+<li><p>ERROR         - internal error during authorization</p></li>
+<li><p>FORBIDDEN     - access denied, no possible retry</p></li>
+<li><p>UNAUTHORIZED  - authentication required or failed, retry possible</p></li>
+<li><p>FILTER_RETURN - authorization chain intentionally stopped</p></li>
+</ul>
+<p>If the <b class="option">-dict</b> flag is given, the result is returned as a dictionary:</p>
+<pre class="doctools_example">
+  { authority &lt;authority&gt; code &lt;code&gt; }
+</pre>
+<p>where <b class="const">&lt;authority&gt;</b> is the label of the handler that last ran, and
+<b class="const">&lt;status&gt;</b> is the same status code as shown above.</p></dd>
+<dt><a name="2"><b class="cmd">ns_auth user</b> <span class="opt">?<b class="option">-dict</b>?</span> <span class="opt">?--?</span> <i class="arg">username</i> <i class="arg">password</i></a></dt>
+<dd><p>Runs the user-level authorization handlers in order to verify only
+a <i class="arg">username</i> and <i class="arg">password</i> pair (with no URL context).
+Results and options are the same as for <b class="cmd">ns_auth request</b>.</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_register.html">ns_register</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#nsperm">nsperm</a>, <a href="../../index.html#request_authentication">request authentication</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#user_authentication">user authentication</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

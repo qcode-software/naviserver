@@ -1,0 +1,212 @@
+# -*- Tcl -*-
+
+package require tcltest 2.2
+namespace import -force ::tcltest::*
+
+::tcltest::configure {*}$argv
+
+
+
+test ns_register_proc-1.0 {syntax: ns_register_proc} -body {
+    ns_register_proc
+} -returnCodes error -result {wrong # args: should be "ns_register_proc ?-constraints /constraints/? ?-noinherit? ?--? /method/ /url/ /script/ ?/arg .../?"}
+
+test ns_unregister_op-1.0 {syntax: ns_unregister_op} -body {
+    ns_unregister_op
+} -returnCodes error -result {wrong # args: should be "ns_unregister_op ?-allconstraints? ?-noinherit? ?-recurse? ?-server /server/? ?--? /method/ /url/"}
+
+test ns_register_fastpath-1.0 {syntax: ns_register_fastpath} -body {
+    ns_register_fastpath
+} -returnCodes error -result {wrong # args: should be "ns_register_fastpath ?-constraints /constraints/? ?-noinherit? ?--? /method/ /url/"}
+
+test ns_register_proxy-1.0 {syntax: ns_register_proxy} -body {
+    ns_register_proxy
+} -returnCodes error -result {wrong # args: should be "ns_register_proxy /method/ /protocol/ /script/ ?/arg .../?"}
+
+test ns_register_tcl-1.0 {syntax: ns_register_tcl} -body {
+    ns_register_tcl
+} -returnCodes error -result {wrong # args: should be "ns_register_tcl ?-constraints /constraints/? ?-noinherit? ?--? /method/ /url/ ?/file/?"}
+
+
+test proc-2.1 {register/unregister} -body {
+    ns_register_proc GET /proc-2.1 {ns_return 200 text/plain proc-2.1}
+    ns_unregister_op GET /proc-2.1
+    nstest::http GET /proc-2.1
+} -result 404
+
+test proc-2.2 {register/unregister noinherit} -body {
+    ns_register_proc -noinherit GET /proc-2.2 {ns_return 200 text/plain proc-2.2}
+    ns_unregister_op -noinherit GET /proc-2.2
+    nstest::http GET /proc-2.2
+} -result 404
+
+test proc-2.3 {register/unregister recurse} -body {
+    ns_register_proc GET /proc-2.1     {ns_return 200 text/plain proc-2.1     }
+    ns_register_proc GET /proc-2.1/x   {ns_return 200 text/plain proc-2.1/x   }
+    ns_register_proc GET /proc-2.1/x/y {ns_return 200 text/plain proc-2.1/x/y }
+    ns_unregister_op -recurse GET /proc-2.1
+    nstest::http GET /proc-2.1/x/y
+} -result 404
+
+
+
+test proc-3.1 {inherit} -setup {
+    ns_register_proc GET /proc-3.1 {ns_return 200 text/plain proc-3.1}
+} -body {
+    list [nstest::http -getbody 1 GET /proc-3.1] \
+        [nstest::http -getbody 1 GET /proc-3.1/inherit]
+} -cleanup {
+    ns_unregister_op GET /proc-3.1
+} -result {{200 proc-3.1} {200 proc-3.1}}
+
+test proc-3.2 {noinherit} -setup {
+    ns_register_proc -noinherit GET /proc-3.2 {ns_return 200 text/plain proc-3.2}
+} -body {
+    list [nstest::http -getbody 1 GET /proc-3.2] \
+        [nstest::http GET /proc-3.2/inherit]
+} -cleanup {
+    ns_unregister_op -noinherit GET /proc-3.2
+} -result {{200 proc-3.2} 404}
+
+test proc-3.3 {inherit + noinherit} -setup {
+    ns_register_proc GET /proc-3.3 {ns_return 200 text/plain inherit}
+    ns_register_proc -noinherit GET /proc-3.3 {ns_return 200 text/plain noinherit}
+} -body {
+    list [nstest::http -getbody 1 GET /proc-3.3/inherit] \
+        [nstest::http -getbody 1 GET /proc-3.3]
+} -cleanup {
+    ns_unregister_op GET /proc-3.3
+    ns_unregister_op -noinherit GET /proc-3.3
+} -result {{200 inherit} {200 noinherit}}
+
+test proc-3.4 {override} -setup {
+    ns_register_proc GET /proc-3.4 {ns_return 200 text/plain x}
+    ns_register_proc GET /proc-3.4 {ns_return 200 text/plain y}
+} -body {
+    nstest::http -getbody 1 GET /proc-3.4/inherit
+} -cleanup {
+    ns_unregister_op GET /proc-3.4
+} -result {200 y}
+
+test proc-3.5 {override noinherit} -setup {
+    ns_register_proc -noinherit GET /proc-3.5 {ns_return 200 text/plain x}
+    ns_register_proc -noinherit GET /proc-3.5 {ns_return 200 text/plain y}
+} -body {
+    nstest::http -getbody 1 GET /proc-3.5
+} -cleanup {
+    ns_unregister_op -noinherit GET /proc-3.5
+} -result {200 y}
+
+
+test proc-4.1 {register with query variable} -setup {
+    ns_register_proc GET /proc-4.1 {ns_return 200 text/plain proc-4.1-NO_X}
+    dict set oldSeverity error [ns_logctl severity error 0]
+    ns_register_proc GET /proc-4.1?x=1 {ns_return 200 text/plain proc-4.1-x=1}
+    ns_register_proc GET /proc-4.1?x=2 {ns_return 200 text/plain proc-4.1-x=2}
+    ns_register_proc GET /foo/proc-4.1?x=3 {ns_return 200 text/plain proc-4.1-x=3}
+    foreach {severity level} $oldSeverity { ns_logctl severity $severity $level }
+} -body {
+    list \
+        [nstest::http -getbody 1 GET /proc-4.1?x=1] \
+        [nstest::http -getbody 1 GET /proc-4.1?x=2]
+} -cleanup {
+    ns_unregister_op GET /proc-4.1
+    ns_unregister_op GET /proc-4.1?x=1
+    ns_unregister_op GET /proc-4.1?x=2
+} -result {{200 proc-4.1-NO_X} {200 proc-4.1-NO_X}}
+
+test proc-4.2 {register with glob} -setup {
+    ns_register_proc GET /proc-4.2* {ns_return 200 text/plain proc-4.2}
+} -body {
+    nstest::http -getbody 1 GET /proc-4.2TEST
+} -cleanup {
+    ns_unregister_op GET /proc-4.2*
+} -result {200 proc-4.2}
+
+#
+# Test cases having the registered proc in the middle of the request
+# path
+#
+test proc-4.3 {register without wild card, call with longer path} -setup {
+    ns_register_proc GET /foo/proc.pl {ns_return 200 text/plain proc-4.3-[ns_conn url]}
+} -body {
+    nstest::http -getbody 1 GET /foo/proc.pl/bar
+} -cleanup {
+    ns_unregister_op GET /foo/proc.pl
+} -result {200 proc-4.3-/foo/proc.pl/bar}
+
+test proc-4.4 {register with wild card, call with longer path} -setup {
+    ns_register_proc GET /foo/*.pl {ns_return 200 text/plain proc-4.4-[ns_conn url]}
+} -body {
+    nstest::http GET /foo/proc.pl/bar
+} -cleanup {
+    ns_unregister_op GET /foo/*.pl
+} -result {404}
+
+test proc-4.5 {register with wild card, call with longer path} -setup {
+    ns_register_proc GET /foo/*.pl* {ns_return 200 text/plain proc-4.5-[ns_conn url]}
+} -body {
+    nstest::http GET /foo/proc.pl/bar
+} -cleanup {
+    ns_unregister_op GET /foo/*.pl*
+} -result {404}
+
+
+test proc-4.4.1 {register with context constraint} -setup {
+    ns_register_proc GET /proc-4.4.1 {
+        #ns_log notice in request: [ns_set format [ns_conn headers]]
+        ns_return 200 text/plain no-cf
+    }
+    ns_register_proc -constraints {user-agent *NaviServer*} GET /proc-4.4.1 {ns_return 200 text/plain with-cf}
+    ns_register_proc -constraints {x-test 1} GET /proc-4.4.1 {ns_return 200 text/plain with-x-test}
+    #foreach {severity level} $oldSeverity { ns_logctl severity $severity $level }
+} -body {
+    list \
+        [nstest::http -getbody 1 GET /proc-4.4.1] \
+        [nstest::http -getbody 1 -setheaders {x-test 1} GET /proc-4.4.1]
+} -cleanup {
+    #ns_log notice cleanup 4.4.1 [join [ns_server requestprocs] \n]
+    #ns_log notice cleanup 4.4.1 before [lsearch -all -inline -glob [ns_server requestprocs] *4.4.1* ]
+    ns_unregister_op -allconstraints GET /proc-4.4.1
+    #ns_log notice cleanup 4.4.1 after \n[join [lsearch -all -inline -glob [ns_server requestprocs] *4.4.1* ] \n]
+} -result {{200 with-cf} {200 with-x-test}}
+
+
+test proc-5.1 {fastpath} -setup {
+    ns_register_proc GET /10bytes {ns_return 200 text/plain error}
+    ns_register_fastpath GET /10bytes
+} -body {
+    nstest::http -getbody 1 GET /10bytes
+} -cleanup {
+    ns_unregister_op GET /10bytes
+} -result {200 0123456789}
+
+##################################################################################
+# ns_register_auth
+##################################################################################
+
+test ns_register_auth-1.0 {syntax: ns_register_auth} -body {
+    ns_register_auth
+} -returnCodes error -result {wrong # args: should be "ns_register_auth ?-authority /value/? ?-first? ?--? request|user /script/ ?/arg .../?"}
+
+#
+# Currently, there is no command to unregister an auth proc or filter proc.
+# As a result, tests that perform registration introduce persistent state
+# changes that can/will interfere with subsequent tests.
+#
+# test ns_register_auth-1.1 {syntax: ns_register_auth} -body {
+#     ns_register_auth -authority user_authority  user ::authuser
+#     ns_register_auth -authority request_authority request ::authrequest
+#     set r [ns_server authprocs]
+#     list \
+#         [string match "*type user authority user_authority*" $r ] \
+#         [string match "*type request authority request_authority*" $r ]
+# } -returnCodes {ok error} -result {1 1}
+
+cleanupTests
+
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:

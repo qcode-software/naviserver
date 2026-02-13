@@ -39,7 +39,7 @@ static void SpliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
 static void UnspliceChannel(Tcl_Interp *interp, Tcl_Channel chan)
         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int  FileObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *cmd)
+static int  FileObjCmd(Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, const char *cmd)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(4);
 
 static TCL_OBJCMDPROC_T ChanCleanupObjCmd;
@@ -145,7 +145,7 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, const char *chanId, int write, int *fdPtr)
  *
  * NsTclRollFileObjCmd --
  *
- *      Implements "ns_rollfile".
+ *      Implements "ns_rollfile" and "ns_purgefiles".
  *
  * Results:
  *      Tcl result.
@@ -157,7 +157,7 @@ Ns_TclGetOpenFd(Tcl_Interp *interp, const char *chanId, int write, int *fdPtr)
  */
 
 static int
-FileObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char *cmd)
+FileObjCmd(Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, const char *cmd)
 {
     int               maxFiles = 0, result;
     Tcl_Obj          *fileObj = NULL;
@@ -200,13 +200,13 @@ FileObjCmd(Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, const char
 }
 
 int
-NsTclRollFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRollFileObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return FileObjCmd(interp, objc, objv, "roll");
 }
 
 int
-NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return FileObjCmd(interp, objc, objv, "purge");
 }
@@ -236,7 +236,81 @@ NsTclPurgeFilesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
  *----------------------------------------------------------------------
  */
 int
-NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int          result = TCL_OK, nocomplain = (int)NS_FALSE;
+    char        *templateString = (char *)NS_EMPTY_STRING;
+    Ns_ObjvSpec opts[] = {
+        {"-nocomplain", Ns_ObjvBool,  &nocomplain, INT2PTR(NS_TRUE)},
+        {"--",          Ns_ObjvBreak, NULL, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  args[] = {
+        {"?template", Ns_ObjvString, &templateString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        char buffer[PATH_MAX] = "";
+        int  fd;
+
+        if (*templateString == '\0') {
+            snprintf(buffer, sizeof(buffer), "%s/ns-XXXXXX", nsconf.tmpDir);
+        } else {
+            strncpy(buffer, templateString, PATH_MAX-1);
+        }
+        fd = ns_mkstemp(buffer);
+        if (fd > -1) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(buffer, TCL_INDEX_NONE));
+            /*
+             * Delete and close the file, that we do not need.
+             */
+            (void) unlink(buffer);
+            (void) close(fd);
+            if (nocomplain == (int)NS_FALSE) {
+                Tcl_DString ds;
+
+                Tcl_DStringInit(&ds);
+                if (*templateString != '\0') {
+                    Tcl_DStringAppend(&ds, " ", 1);
+                    Tcl_DStringAppend(&ds, templateString, TCL_INDEX_NONE);
+                }
+                Ns_Log(Deprecated, "'ns_mktemp%s' is deprecated since it poses a potential race condition and security risk;"
+                       " consider using 'ns_uuid' or 'file tempfile' instead", ds.string);
+                Tcl_DStringFree(&ds);
+            }
+
+        } else {
+            Ns_TclPrintfResult(interp, "could create file '%s': %s", buffer, ns_sockstrerror(errno));
+            result = TCL_ERROR;
+        }
+    }
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclMkdTempObjCmd --
+ *
+ *      Implements "ns_mkdtemp". The function generates a unique
+ *      temporary directory using optionally a template as argument.
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      Allocates potentially memory for the filename.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclMkdTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *templateString = (char *)NS_EMPTY_STRING;
@@ -251,15 +325,15 @@ NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
     } else if (objc == 1) {
         char buffer[PATH_MAX] = "";
 
-        snprintf(buffer, sizeof(buffer), "%s/ns-XXXXXX", nsconf.tmpDir);
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(mktemp(buffer), TCL_INDEX_NONE));
+        snprintf(buffer, sizeof(buffer), "%s/nsd-XXXXXX", nsconf.tmpDir);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(ns_mkdtemp(buffer), TCL_INDEX_NONE));
 
     } else /*if (objc == 2)*/ {
         char *buffer;
 
         assert(templateString != NULL);
         buffer = ns_strdup(templateString);
-        Tcl_SetResult(interp, mktemp(buffer), (Tcl_FreeProc *)ns_free);
+        Tcl_SetResult(interp, ns_mkdtemp(buffer), (Tcl_FreeProc *)ns_free);
     }
 
     return result;
@@ -282,7 +356,7 @@ NsTclMkTempObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T 
  *----------------------------------------------------------------------
  */
 int
-NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         pid = 0, sig = 0, nocomplain = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
@@ -290,8 +364,8 @@ NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
         {NULL, NULL,  NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"pid",  Ns_ObjvInt, &pid, NULL},
-        {"sig",  Ns_ObjvInt, &sig, &posintRange0},
+        {"pid",    Ns_ObjvInt, &pid, NULL},
+        {"signal", Ns_ObjvInt, &sig, &posintRange0},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -326,7 +400,7 @@ NsTclKillObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T ob
  *----------------------------------------------------------------------
  */
 int
-NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *file1, *file2;
     int         nocomplain = (int)NS_FALSE, result;
@@ -336,8 +410,8 @@ NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
         {NULL, NULL,  NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"file1",  Ns_ObjvString, &file1,  NULL},
-        {"file2",  Ns_ObjvString, &file2,  NULL},
+        {"filename1",  Ns_ObjvString, &file1,  NULL},
+        {"filename2",  Ns_ObjvString, &file2,  NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -373,14 +447,14 @@ NsTclSymlinkObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  *----------------------------------------------------------------------
  */
 int
-NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Channel chan = NULL;
     Tcl_WideInt nbytes = -1;
     int         result = TCL_OK;
 
     if (unlikely(objc < 2 || objc > 3)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "fileid ?nbytes?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/channelId/ ?/nbytes/?");
         result = TCL_ERROR;
 
     } else if (/*objc >= 2*/
@@ -432,13 +506,13 @@ NsTclWriteFpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, T
  *----------------------------------------------------------------------
  */
 int
-NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char             *fileString;
     int               result = TCL_OK;
     Tcl_WideInt       length = 0;
     Ns_ObjvSpec       args[] = {
-        {"file",      Ns_ObjvString,  &fileString, NULL},
+        {"filename",  Ns_ObjvString,  &fileString, NULL},
         {"?length",   Ns_ObjvWideInt, &length, &posSizeRange0},
         {NULL, NULL, NULL, NULL}
     };
@@ -474,13 +548,13 @@ NsTclTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
  *----------------------------------------------------------------------
  */
 int
-NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int               fd, result = TCL_OK;
     Tcl_WideInt       length = 0;
     char             *fileIdString;
     Ns_ObjvSpec args[] = {
-        {"fileId",    Ns_ObjvString,  &fileIdString, NULL},
+        {"channelId", Ns_ObjvString,  &fileIdString, NULL},
         {"?length",   Ns_ObjvWideInt, &length,       &posSizeRange0},
         {NULL, NULL, NULL, NULL}
     };
@@ -501,6 +575,124 @@ NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
 
     return result;
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclFSeekCharsObjCmd --
+ *
+ *      Search in the open file from the current position for the
+ *      provided string. When the string is found, set the result to
+ *      the position of the first character. Otherwise set to result
+ *      to -1.
+ *
+ *      Implements "ns_fseekchars".
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      See docs.
+ *
+ *----------------------------------------------------------------------
+ */
+
+#define FSEEKCHARS_BUFFER_SIZE 32768
+
+int
+NsTclFSeekCharsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    static const unsigned int bufferSize = FSEEKCHARS_BUFFER_SIZE;
+    int               result = TCL_OK;
+    Tcl_Channel       channel;
+    char             *channelString, *charString;
+    Ns_ObjvSpec args[] = {
+        {"channelId",    Ns_ObjvString,  &channelString, NULL},
+        {"searchstring", Ns_ObjvString,  &charString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (strlen(charString) > bufferSize-1 || *charString == '\0') {
+        Ns_TclPrintfResult(interp, "searchstring <%s> must be at least one and at most %d characters", charString, bufferSize-1);
+        result = TCL_ERROR;
+
+    } else if (Ns_TclGetOpenChannel(interp, channelString, 0, NS_FALSE, &channel) != TCL_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_WideInt startPos = Tcl_Tell(channel);
+        ClientData  channelData;
+
+        if (Tcl_GetChannelHandle(channel, TCL_READABLE, &channelData) != TCL_OK) {
+            Ns_TclPrintfResult(interp, "could not get handle for channel: %s", channelString);
+            result = TCL_ERROR;
+
+        } else {
+            int     fd = PTR2INT(channelData);
+            char    buffer[FSEEKCHARS_BUFFER_SIZE];
+            ssize_t bytesRead;
+            off_t   offset = 0;
+            bool    done = NS_FALSE;
+            size_t  searchLength = strlen(charString), moveLength = searchLength - 1, movedSize = 0u;
+
+            /*
+             * Initial read
+             */
+            bytesRead = ns_read(fd, buffer, bufferSize);
+
+            while (bytesRead > 0) {
+                char *p;
+
+                /*
+                 * Search within the current buffer
+                 */
+                p = ns_memmem(buffer, (size_t)bytesRead + movedSize, charString, searchLength);
+                if (p != NULL) {
+                    offset += (off_t)((p - buffer) - (ptrdiff_t)movedSize);
+                    done = NS_TRUE;
+                    break;
+                }
+                offset += bytesRead;
+
+                /*
+                 * Move the potential overlap part of the buffer to
+                 * the beginning.  When bytesRead was already shorter
+                 * than the searchLength, then we are at the end of
+                 * the file already. The move is not needed.
+                 */
+                if ((size_t)bytesRead >= searchLength) {
+                    /*
+                     * The move length is the length of the search
+                     * string minus 1. Without the -1, we would have
+                     * found the search string already.
+                     */
+                    memmove(buffer, &buffer[(size_t)bytesRead - moveLength], moveLength);
+                    movedSize = moveLength;
+                    bytesRead = ns_read(fd, buffer + moveLength, bufferSize - moveLength);
+                } else {
+                    movedSize = 0;
+                    bytesRead = ns_read(fd, buffer, bufferSize);
+                }
+            }
+            if (done) {
+                Tcl_WideInt foundPos = startPos + offset;
+
+                Tcl_SetObjResult(interp, Tcl_NewWideIntObj(foundPos));
+                Tcl_Seek(channel, foundPos, SEEK_SET) ;
+                //Ns_Log(Notice, "......... returning file pos %ld", (long)foundPos);
+            } else {
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(-1));
+            }
+        }
+    }
+
+    return result;
+}
+
+
 
 /*
  *----------------------------------------------------------------------
@@ -518,17 +710,17 @@ NsTclFTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
  *----------------------------------------------------------------------
  */
 int
-NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    Ns_DString ds;
+    Tcl_DString ds;
     int        result = TCL_OK;
 
     if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "path");
+        Tcl_WrongNumArgs(interp, 1, objv, "/path/");
         result = TCL_ERROR;
 
     } else {
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         Ns_NormalizePath(&ds, Tcl_GetString(objv[1]));
         Tcl_DStringResult(interp, &ds);
     }
@@ -553,7 +745,7 @@ NsTclNormalizePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_
  *----------------------------------------------------------------------
  */
 static int
-ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char           *name, *chanName;
     int             result = TCL_OK;
@@ -628,7 +820,7 @@ ChanCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl
  *----------------------------------------------------------------------
  */
 static int
-ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char        *name;
     int          result = TCL_OK;
@@ -690,7 +882,7 @@ ChanGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 static int
-ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char         *name;
     int           result = TCL_OK;
@@ -757,7 +949,7 @@ ChanPutObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 static int
-ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isShared = (int)NS_FALSE;
     Ns_ObjvSpec lopts[] = {
@@ -817,7 +1009,7 @@ ChanListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
  *----------------------------------------------------------------------
  */
 static int
-ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, isShared = (int)NS_FALSE;
     Ns_ObjvSpec lopts[] = {
@@ -884,7 +1076,7 @@ ChanCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
  */
 
 int
-NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclChanObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"cleanup", ChanCleanupObjCmd},

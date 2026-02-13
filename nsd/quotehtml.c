@@ -23,7 +23,7 @@ static const char *htmlQuoteChars = "<>&'\"";
 /*
  * Static functions defined in this file.
  */
-static void QuoteHtml(Ns_DString *dsPtr, const char *breakChar, const char *htmlString)
+static void QuoteHtml(Tcl_DString *dsPtr, const char *breakChar, const char *htmlString)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static bool WordEndsInSemi(const char *word, size_t *lengthPtr)
@@ -61,7 +61,7 @@ static bool InitOnce(void);
  *----------------------------------------------------------------------
  */
 static void
-QuoteHtml(Ns_DString *dsPtr, const char *breakChar, const char *htmlString)
+QuoteHtml(Tcl_DString *dsPtr, const char *breakChar, const char *htmlString)
 {
     const char *toProcess = htmlString;
 
@@ -74,26 +74,26 @@ QuoteHtml(Ns_DString *dsPtr, const char *breakChar, const char *htmlString)
          * Append the first part, escape the protected char, and
          * continue.
          */
-        Ns_DStringNAppend(dsPtr, toProcess, (TCL_SIZE_T)(breakChar - toProcess));
+        Tcl_DStringAppend(dsPtr, toProcess, (TCL_SIZE_T)(breakChar - toProcess));
         switch (*breakChar) {
         case '<':
-            Ns_DStringNAppend(dsPtr, "&lt;", 4);
+            Tcl_DStringAppend(dsPtr, "&lt;", 4);
             break;
 
         case '>':
-            Ns_DStringNAppend(dsPtr, "&gt;", 4);
+            Tcl_DStringAppend(dsPtr, "&gt;", 4);
             break;
 
         case '&':
-            Ns_DStringNAppend(dsPtr, "&amp;", 5);
+            Tcl_DStringAppend(dsPtr, "&amp;", 5);
             break;
 
         case '\'':
-            Ns_DStringNAppend(dsPtr, "&#39;", 5);
+            Tcl_DStringAppend(dsPtr, "&#39;", 5);
             break;
 
         case '"':
-            Ns_DStringNAppend(dsPtr, "&#34;", 5);
+            Tcl_DStringAppend(dsPtr, "&#34;", 5);
             break;
 
         default:
@@ -112,13 +112,13 @@ QuoteHtml(Ns_DString *dsPtr, const char *breakChar, const char *htmlString)
      * Append the last part if nonempty.
      */
     if (toProcess != NULL) {
-        Ns_DStringAppend(dsPtr, toProcess);
+        Tcl_DStringAppend(dsPtr, toProcess, TCL_INDEX_NONE);
     }
 }
 
 
 void
-Ns_QuoteHtml(Ns_DString *dsPtr, const char *htmlString)
+Ns_QuoteHtml(Tcl_DString *dsPtr, const char *htmlString)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(htmlString != NULL);
@@ -132,7 +132,7 @@ Ns_QuoteHtml(Ns_DString *dsPtr, const char *htmlString)
         if (breakChar != NULL) {
             QuoteHtml(dsPtr, strpbrk(htmlString, htmlQuoteChars), htmlString);
         } else {
-            Ns_DStringAppend(dsPtr, htmlString);
+            Tcl_DStringAppend(dsPtr, htmlString, TCL_INDEX_NONE);
         }
     }
 }
@@ -156,7 +156,7 @@ Ns_QuoteHtml(Ns_DString *dsPtr, const char *htmlString)
  */
 
 int
-NsTclQuoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclQuoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     Tcl_Obj     *htmlObj;
@@ -180,9 +180,9 @@ NsTclQuoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
                  */
                 Tcl_SetObjResult(interp, htmlObj);
             } else {
-                Ns_DString ds;
+                Tcl_DString ds;
 
-                Ns_DStringInit(&ds);
+                Tcl_DStringInit(&ds);
                 QuoteHtml(&ds, breakChar, htmlString);
                 Tcl_DStringResult(interp, &ds);
 
@@ -214,7 +214,7 @@ NsTclQuoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
  */
 
 int
-NsTclUnquoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclUnquoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     Tcl_Obj     *htmlObj;
@@ -227,13 +227,13 @@ NsTclUnquoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OB
         result = TCL_ERROR;
 
     } else {
-        Ns_DString  ds, *dsPtr = &ds;
+        Tcl_DString ds, *dsPtr = &ds;
         TCL_SIZE_T  htmlLength;
         const char *htmlString = Tcl_GetStringFromObj(htmlObj, &htmlLength);
         const char *endOfString = htmlString + htmlLength;
         bool        needEncode = NS_FALSE;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
 
         if (*htmlString != '\0') {
 
@@ -256,7 +256,7 @@ NsTclUnquoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OB
                      * and proceed in the string by this amount of bytes.
                      */
                     if (possibleEntity != htmlString) {
-                        Ns_DStringNAppend(dsPtr, htmlString, prefixLength);
+                        Tcl_DStringAppend(dsPtr, htmlString, prefixLength);
                         htmlString += prefixLength;
                     }
                     oldLength = dsPtr->length;
@@ -280,7 +280,7 @@ NsTclUnquoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OB
                     if (likely(decoded > 0)) {
                         htmlString++;
                     } else {
-                        Ns_DStringNAppend(dsPtr, "&", 1);
+                        Tcl_DStringAppend(dsPtr, "&", 1);
                         htmlString ++;
                     }
                 }
@@ -289,7 +289,7 @@ NsTclUnquoteHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OB
             /*
              * Append the last chunk
              */
-            Ns_DStringNAppend(dsPtr, htmlString, TCL_INDEX_NONE);
+            Tcl_DStringAppend(dsPtr, htmlString, TCL_INDEX_NONE);
 
         }
 
@@ -2667,7 +2667,8 @@ EntityDecode(const char *entity, ssize_t length, bool *needEncodePtr, char *outP
 
     NS_INIT_ONCE(InitOnce);
 
-    assert( *entity != '\0');
+    assert(length == 0 || *entity != '\0');
+
     /*
      * Handle numeric entities.
      */
@@ -2846,7 +2847,7 @@ WordEndsInSemi(const char *word, size_t *lengthPtr)
  */
 
 int
-NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     Tcl_Obj     *htmlObj;
@@ -2864,7 +2865,6 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
         const char *endOfString;
         bool        intag;     /* flag to see if are we inside a tag */
         bool        incomment; /* flag to see if we are inside a comment */
-        char       *outPtr;    /* moving pointer to output string */
         const char *inPtr;     /* moving pointer to input string */
         bool        needEncode;
         Tcl_DString outputDs, *outputDsPtr = &outputDs;
@@ -2879,7 +2879,6 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
         Tcl_DStringSetLength(outputDsPtr, 0);
 
         inPtr      = htmlString;
-        outPtr     = outputDsPtr->string;
         intag      = NS_FALSE;
         incomment  = NS_FALSE;
         needEncode = NS_FALSE;
@@ -2917,7 +2916,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
                     /*
                      * Starting an entity.
                      */
-
+                    char      *outPtr;    /* moving pointer to output string */
                     size_t     entityLength = 0u, decoded = 0u;
                     TCL_SIZE_T oldLength;
 
@@ -2942,7 +2941,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
                         /*
                          * Copy ampersand literally;
                          */
-                        Ns_DStringNAppend(outputDsPtr, "&", 1);
+                        Tcl_DStringAppend(outputDsPtr, "&", 1);
 
                     } else {
                         Tcl_DStringSetLength(outputDsPtr, oldLength + (TCL_SIZE_T)decoded);
@@ -2953,7 +2952,7 @@ NsTclStripHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
                     /*
                      * Plain Text output
                      */
-                    Ns_DStringNAppend(outputDsPtr, inPtr, 1);
+                    Tcl_DStringAppend(outputDsPtr, inPtr, 1);
                 }
 
             } else {
@@ -3252,7 +3251,7 @@ HtmlFinishElement(Tcl_Obj *listObj, const char *what, const char *lastStart,
  *----------------------------------------------------------------------
  */
 int
-NsTclParseHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclParseHtmlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK, withNoAngleOption = (int)NS_FALSE, onlyTagsOption = (int)NS_FALSE;
     char        *htmlString = (char *)NS_EMPTY_STRING;

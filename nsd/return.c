@@ -103,18 +103,13 @@ static const struct {
     {511, "Network Authentication Required"}
 };
 
-/*
- * Static variables defined in this file.
- */
-
-static const size_t nreasons = (sizeof(reasons) / sizeof(reasons[0]));
 
 
 
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConnSetHeaders --
+ * Ns_ConnSetHeaders, Ns_ConnSetHeadersSz --
  *
  *      Add an output header.
  *
@@ -130,7 +125,15 @@ static const size_t nreasons = (sizeof(reasons) / sizeof(reasons[0]));
 void
 Ns_ConnSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
-    (void) Ns_SetPutSz(conn->outputheaders, field, TCL_INDEX_NONE, value, TCL_INDEX_NONE);
+    (void) Ns_SetPutSz(conn->outputheaders, field, (TCL_SIZE_T)strlen(field), value, TCL_INDEX_NONE);
+}
+
+void
+Ns_ConnSetHeadersSz(const Ns_Conn *conn,
+                    const char *field, TCL_SIZE_T fieldLength,
+                    const char *value, TCL_SIZE_T valueLength)
+{
+    (void) Ns_SetPutSz(conn->outputheaders, field, fieldLength, value, valueLength);
 }
 
 /*
@@ -152,7 +155,15 @@ Ns_ConnSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 void
 Ns_ConnUpdateHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
-    Ns_SetIUpdate(conn->outputheaders, field, value);
+    Ns_SetIUpdateSz(conn->outputheaders, field, (TCL_SIZE_T)strlen(field), value, TCL_INDEX_NONE);
+
+}
+void
+Ns_ConnUpdateHeadersSz(const Ns_Conn *conn,
+                       const char *field, TCL_SIZE_T fieldLength,
+                       const char *value, TCL_SIZE_T valueLength)
+{
+    Ns_SetIUpdateSz(conn->outputheaders, field, fieldLength, value, valueLength);
 }
 
 /*
@@ -174,22 +185,22 @@ Ns_ConnUpdateHeaders(const Ns_Conn *conn, const char *field, const char *value)
 void
 Ns_ConnPrintfHeaders(const Ns_Conn *conn, const char *field, const char *fmt,...)
 {
-    Ns_DString ds;
+    Tcl_DString ds;
     va_list ap;
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     va_start(ap, fmt);
     Ns_DStringVPrintf(&ds, fmt, ap);
     va_end(ap);
-    (void) Ns_SetPutSz(conn->outputheaders, field, TCL_INDEX_NONE, ds.string, ds.length);
-    Ns_DStringFree(&ds);
+    (void) Ns_SetPutSz(conn->outputheaders, field, (TCL_SIZE_T)strlen(field), ds.string, ds.length);
+    Tcl_DStringFree(&ds);
 }
 
 
 /*
  *----------------------------------------------------------------------
  *
- * Ns_ConnCondSetHeaders --
+ * Ns_ConnCondSetHeaders, Ns_ConnCondSetHeadersSz --
  *
  *      Add an output header, only if it doesn't already exist.
  *
@@ -207,8 +218,19 @@ Ns_ConnCondSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 {
     if (Ns_SetIGet(conn->outputheaders, field) == NULL) {
         (void) Ns_SetPutSz(conn->outputheaders,
-                           field, TCL_INDEX_NONE,
+                           field, (TCL_SIZE_T)strlen(field),
                            value, TCL_INDEX_NONE);
+    }
+}
+void
+Ns_ConnCondSetHeadersSz(const Ns_Conn *conn,
+                        const char *field, TCL_SIZE_T fieldLength,
+                        const char *value, TCL_SIZE_T valueLength)
+{
+    if (Ns_SetIGet(conn->outputheaders, field) == NULL) {
+        (void) Ns_SetPutSz(conn->outputheaders,
+                           field, fieldLength,
+                           value, valueLength);
     }
 }
 
@@ -218,8 +240,8 @@ Ns_ConnCondSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
  *
  * Ns_ConnReplaceHeaders --
  *
- *      Free the existing outpheaders and set them to a copy of
- *      newheaders.
+ *      Free the existing outputheaders and set them to a copy of
+ *      "newheaders", when it is different to the outputheaders.
  *
  * Results:
  *      None.
@@ -233,8 +255,12 @@ Ns_ConnCondSetHeaders(const Ns_Conn *conn, const char *field, const char *value)
 void
 Ns_ConnReplaceHeaders(Ns_Conn *conn, const Ns_Set *newheaders)
 {
-    Ns_SetFree(conn->outputheaders);
-    conn->outputheaders = Ns_SetCopy(newheaders);
+    if (newheaders != conn->outputheaders ) {
+        Ns_SetFree(conn->outputheaders);
+        conn->outputheaders = Ns_SetCopy(newheaders);
+    } else {
+        Ns_Log(Warning, "null operation: trying to replace outputheaders with itself");
+    }
 }
 
 
@@ -243,7 +269,7 @@ Ns_ConnReplaceHeaders(Ns_Conn *conn, const Ns_Set *newheaders)
  *
  * Ns_ConnSetTypeHeader --
  *
- *      Sets the Content-Type HTTP output header
+ *      Sets the content-type HTTP output header
  *
  * Results:
  *      None.
@@ -257,7 +283,7 @@ Ns_ConnReplaceHeaders(Ns_Conn *conn, const Ns_Set *newheaders)
 void
 Ns_ConnSetTypeHeader(const Ns_Conn *conn, const char *mimeType)
 {
-    Ns_ConnUpdateHeaders(conn, "Content-Type", mimeType);
+    Ns_ConnUpdateHeadersSz(conn, "content-type", 12, mimeType, (TCL_SIZE_T)strlen(mimeType));
 }
 
 
@@ -266,7 +292,7 @@ Ns_ConnSetTypeHeader(const Ns_Conn *conn, const char *mimeType)
  *
  * Ns_ConnSetEncodedTypeHeader --
  *
- *      Sets the Content-Type HTTP output header and charset for
+ *      Sets the content-type HTTP output header and charset for
  *      text and other types which may need to be transcoded.
  *
  * Results:
@@ -284,10 +310,10 @@ Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, const char *mimeType)
 {
     Tcl_Encoding  encoding;
     const char   *charset;
-    Ns_DString    ds;
+    Tcl_DString   ds;
     size_t        len;
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     charset = NsFindCharset(mimeType, &len);
 
     if (charset != NULL) {
@@ -296,14 +322,14 @@ Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, const char *mimeType)
     } else {
         encoding = Ns_ConnGetEncoding(conn);
         charset = Ns_GetEncodingCharset(encoding);
-        Ns_DStringVarAppend(&ds, mimeType, "; charset=", charset, (char *)0L);
+        Ns_DStringVarAppend(&ds, mimeType, "; charset=", charset, NS_SENTINEL);
         mimeType = ds.string;
     }
 
     Ns_ConnSetTypeHeader(conn, mimeType);
     conn->flags |= NS_CONN_WRITE_ENCODED;
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 }
 
 
@@ -312,7 +338,7 @@ Ns_ConnSetEncodedTypeHeader(Ns_Conn *conn, const char *mimeType)
  *
  * Ns_ConnSetLengthHeader --
  *
- *      Set the Content-Length output header.
+ *      Set the content-length output header.
  *
  * Results:
  *      None.
@@ -332,13 +358,13 @@ Ns_ConnSetLengthHeader(Ns_Conn *conn, size_t length, bool doStream)
         char buffer[TCL_INTEGER_SPACE];
 
         snprintf(buffer, sizeof(buffer), "%" PRIuz, length);
-        Ns_ConnUpdateHeaders(conn, "Content-Length", buffer);
+        Ns_ConnUpdateHeadersSz(conn, "content-length", 14, buffer, (TCL_SIZE_T)strlen(buffer));
         connPtr->responseLength = (ssize_t)length;
     } else {
         /*
-         * In the streaming case, make sure no Content-Length is set.
+         * In the streaming case, make sure no content-length is set.
          */
-        Ns_SetIDeleteKey(conn->outputheaders, "Content-Length");
+        Ns_SetIDeleteKey(conn->outputheaders, "content-length");
         connPtr->responseLength = -1;
     }
 }
@@ -363,14 +389,15 @@ Ns_ConnSetLengthHeader(Ns_Conn *conn, size_t length, bool doStream)
 void
 Ns_ConnSetLastModifiedHeader(const Ns_Conn *conn, const time_t *mtime)
 {
-    Ns_DString ds;
+    Tcl_DString ds;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(mtime != NULL);
 
-    Ns_DStringInit(&ds);
-    Ns_ConnCondSetHeaders(conn, "Last-Modified", Ns_HttpTime(&ds, mtime));
-    Ns_DStringFree(&ds);
+    Tcl_DStringInit(&ds);
+    Ns_HttpTime(&ds, mtime);
+    Ns_ConnCondSetHeadersSz(conn, "last-modified", 14, ds.string, ds.length);
+    Tcl_DStringFree(&ds);
 }
 
 
@@ -393,7 +420,7 @@ Ns_ConnSetLastModifiedHeader(const Ns_Conn *conn, const time_t *mtime)
 void
 Ns_ConnSetExpiresHeader(const Ns_Conn *conn, const char *expires)
 {
-    Ns_ConnSetHeaders(conn, "Expires", expires);
+    Ns_ConnSetHeadersSz(conn, "expires", (TCL_SIZE_T)7, expires, (TCL_SIZE_T)strlen(expires));
 }
 
 
@@ -414,29 +441,35 @@ Ns_ConnSetExpiresHeader(const Ns_Conn *conn, const char *expires)
  *----------------------------------------------------------------------
  */
 
-void
-Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
+const char * NsHttpStatusPhrase(int statusCode)
 {
-    const Conn    *connPtr = (const Conn *) conn;
-    size_t         i;
-    const char    *reason;
+    size_t              i;
+    static const size_t nreasons = (sizeof(reasons) / sizeof(reasons[0]));
+    const char         *reason = "Unknown Reason";
+
+    for (i = 0u; i < nreasons; i++) {
+        if (reasons[i].status == statusCode) {
+            reason = reasons[i].reason;
+            break;
+        }
+    }
+    return reason;
+}
+
+void
+Ns_ConnConstructHeaders(const Ns_Conn *conn, Tcl_DString *dsPtr)
+{
+    const Conn     *connPtr = (const Conn *) conn;
+    const NsServer *servPtr = connPtr->poolPtr->servPtr;
 
     /*
      * Construct the HTTP response status line.
      */
 
-    reason = "Unknown Reason";
-    for (i = 0u; i < nreasons; i++) {
-        if (reasons[i].status == connPtr->responseStatus) {
-            reason = reasons[i].reason;
-            break;
-        }
-    }
-
     Ns_DStringPrintf(dsPtr, "HTTP/%.1f %d %s\r\n",
                      MIN(connPtr->request.version, 1.1),
                      connPtr->responseStatus,
-                     reason);
+                     NsHttpStatusPhrase(connPtr->responseStatus));
 
     /*
      * Add the basic required headers if they.
@@ -455,12 +488,13 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
      * via configuration parameter "extraheaders" (from network driver or
      * server config).
      */
-
-    Ns_DStringVarAppend(dsPtr,
-                        "Server: ", Ns_InfoServerName(), "/", Ns_InfoServerVersion(), "\r\n",
-                        "Date: ", (char *)0L);
+    if (!servPtr->opts.stealthmode) {
+        Ns_DStringVarAppend(dsPtr, "Server: ", Ns_InfoServerName(), "/", Ns_InfoServerVersion(), "\r\n",
+                            NS_SENTINEL);
+    }
+    Tcl_DStringAppend(dsPtr, "Date: ", 6);
     (void)Ns_HttpTime(dsPtr, NULL);
-    Ns_DStringNAppend(dsPtr, "\r\n", 2);
+    Tcl_DStringAppend(dsPtr, "\r\n", 2);
 
     /*
      * Header processing. Merge possibly the output headers as provided by the
@@ -479,8 +513,6 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
 
         sockPtr = Ns_ConnSockPtr(conn);
         if (sockPtr != NULL) {
-            NsServer *servPtr = ((Sock *)sockPtr)->servPtr;
-
             if (servPtr->opts.extraHeaders != NULL) {
                 /*
                  * We have server-specific extra headers. Merge these into the
@@ -505,6 +537,8 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
          * the resulting DString (dsPtr).
          */
         if (outputHeaders != NULL) {
+            size_t  i;
+
             for (i = 0u; i < Ns_SetSize(outputHeaders); i++) {
                 const char *key, *value;
 
@@ -514,9 +548,9 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
                     const char *lineBreak = strchr(value, INTCHAR('\n'));
 
                     if (lineBreak == NULL) {
-                        Ns_DStringVarAppend(dsPtr, key, ": ", value, "\r\n", (char *)0L);
+                        Ns_DStringVarAppend(dsPtr, key, ": ", value, "\r\n", NS_SENTINEL);
                     } else {
-                        Ns_DString sanitize, *sanitizePtr = &sanitize;
+                        Tcl_DString sanitize, *sanitizePtr = &sanitize;
                         /*
                          * We have to sanititize the header field to avoid
                          * an HTTP response splitting attack. After each
@@ -524,7 +558,7 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
                          * (see Section 4.2 in RFC 2616)
                          */
 
-                        Ns_DStringInit(&sanitize);
+                        Tcl_DStringInit(&sanitize);
 
                         do {
                             size_t offset = (size_t)(lineBreak - value);
@@ -542,8 +576,8 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
 
                         Tcl_DStringAppend(sanitizePtr, value, TCL_INDEX_NONE);
 
-                        Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sanitizePtr), "\r\n", (char *)0L);
-                        Ns_DStringFree(sanitizePtr);
+                        Ns_DStringVarAppend(dsPtr, key, ": ", Tcl_DStringValue(sanitizePtr), "\r\n", NS_SENTINEL);
+                        Tcl_DStringFree(sanitizePtr);
                     }
                 }
             }
@@ -553,12 +587,12 @@ Ns_ConnConstructHeaders(const Ns_Conn *conn, Ns_DString *dsPtr)
     /*
      * End of headers.
      */
-    Ns_Log(Ns_LogRequestDebug, "headers:\n%s", dsPtr->string);
+    Ns_Log(Ns_LogRequestDebug, "response headers:\n%s", dsPtr->string);
 
-    Ns_DStringNAppend(dsPtr, "\r\n", 2);
+    Tcl_DStringAppend(dsPtr, "\r\n", 2);
 }
 
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  *
@@ -607,7 +641,6 @@ Ns_ConnSetRequiredHeaders(Ns_Conn *conn, const char *mimeType, size_t length)
     Ns_ConnSetLengthHeader(conn, length, NS_FALSE);
 }
 
-
 /*
  *----------------------------------------------------------------------
  *
@@ -629,6 +662,7 @@ Ns_ConnResetReturn(Ns_Conn *UNUSED(conn))
 {
     return NS_OK;
 }
+#endif
 
 
 /*
@@ -680,7 +714,7 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
                     const char *title, const char *notice)
 {
     const NsServer  *servPtr;
-    Ns_DString       ds;
+    Tcl_DString      ds;
     Ns_ReturnCode    result;
     struct stat      fileInfo;
     const char      *fileName;
@@ -689,7 +723,13 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
     NS_NONNULL_ASSERT(title != NULL);
     NS_NONNULL_ASSERT(notice != NULL);
 
-    Ns_DStringInit(&ds);
+    if (Ns_ConnSockPtr(conn) == NULL) {
+        Ns_Log(Warning, "Ns_ConnReturnNotice: connection is already closed. Title '%s', notice '%s'",
+               title, notice);
+        return NS_ERROR;
+    }
+
+    Tcl_DStringInit(&ds);
     servPtr = ((Conn *) conn)->poolPtr->servPtr;
     fileName = servPtr->opts.noticeADP;
 
@@ -699,9 +739,10 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
      * old-style hardcoded fallback.
      */
     if (Ns_Stat(fileName, &fileInfo)) {
-        Tcl_Interp *interp = Ns_GetConnInterp(conn);
-        NsInterp   *itPtr = NsGetInterpData(interp);
-        Tcl_Obj    *fileObj;
+        Tcl_Interp  *interp = Ns_GetConnInterp(conn);
+        NsInterp    *itPtr = NsGetInterpData(interp);
+        Tcl_Obj     *fileObj;
+        unsigned int oldAdpFlags;
 
         /*
          * Set Tcl variables "title", "notice", and "noticedetail".
@@ -713,12 +754,28 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
         Tcl_SetVar2Ex(interp, "noticedetail",  NULL,
                       Tcl_NewBooleanObj(servPtr->opts.noticedetail), 0);
         fileObj = Tcl_NewStringObj(fileName, TCL_INDEX_NONE);
+
+        Ns_Log(Debug, "Ns_ConnReturnNotice, call template '%s' with"
+               " title '%s' notice '%s' noticedetail %d",
+               fileName, title, notice, servPtr->opts.noticedetail );
+        /*
+         * If the original file that led to the ReturnNotice was a Tcl file,
+         * we need to ensure that NsAdpSource() treats the template as an ADP
+         * file instead. To do this, we temporarily clear the ADP_TCLFILE
+         * flag. We first save the original ADP flags, then clear the
+         * ADP_TCLFILE flag, invoke NsAdpSource(), and finally restore the
+         * original flags.
+         */
+        oldAdpFlags = itPtr->adp.flags;
+        itPtr->adp.flags &= ~ADP_TCLFILE;
         result = NsAdpSource(itPtr, 1, &fileObj, NULL);
+        itPtr->adp.flags = oldAdpFlags;
+
         Tcl_DecrRefCount(fileObj);
 
         if (result == TCL_OK) {
             Tcl_Obj    *resultObj;
-            char       *resultString;
+            const char *resultString;
             TCL_SIZE_T  resultLen;
 
             resultObj = Tcl_GetObjResult(interp);
@@ -726,7 +783,7 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
             result = Ns_ConnReturnCharData(conn, status,
                                            resultString, (ssize_t)resultLen,
                                            "text/html");
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
             return result;
 
         } else {
@@ -744,20 +801,20 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
      */
     Tcl_DStringSetLength(&ds, 0);
 
-    Ns_DStringAppend(&ds,
+    Tcl_DStringAppend(&ds,
                      "<!DOCTYPE html>\n"
                      "<html lang='en'>\n"
                      "<head>\n"
                      "<meta charset='UTF-8'>\n"
                      "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n"
-                     "<title>");
+                      "<title>", TCL_INDEX_NONE);
     Ns_QuoteHtml(&ds, title);
-    Ns_DStringAppend(&ds,
+    Tcl_DStringAppend(&ds,
                      "</title>\n"
                      "</head>\n<body>\n"
-                     "<h2>");
+                      "<h2>", TCL_INDEX_NONE);
     Ns_QuoteHtml(&ds, title);
-    Ns_DStringVarAppend(&ds, "</h2>\n", notice, "\n", (char *)0L);
+    Ns_DStringVarAppend(&ds, "</h2>\n", notice, "\n", NS_SENTINEL);
 
     /*
      * Detailed server information at the bottom of the page.
@@ -767,9 +824,9 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
         Ns_DStringVarAppend(&ds, "<p style='text-align: right; font-size: small; font-style: italic;'>",
                             Ns_InfoServerName(), "/",
                             Ns_InfoServerVersion(), " on ",
-                            (char *)0L);
+                            NS_SENTINEL);
         (void) Ns_ConnLocationAppend(conn, &ds);
-        Ns_DStringAppend(&ds, "</p>\n");
+        Tcl_DStringAppend(&ds, "</p>\n", 5);
     }
 
     /*
@@ -779,14 +836,14 @@ Ns_ConnReturnNotice(Ns_Conn *conn, int status,
 
     if (status >= 400) {
         while (ds.length < (TCL_SIZE_T)servPtr->opts.errorminsize) {
-            Ns_DStringAppend(&ds, "                    ");
+            Tcl_DStringAppend(&ds, "                    ", 20);
         }
     }
 
-    Ns_DStringVarAppend(&ds, "\n</body></html>\n", (char *)0L);
+    Ns_DStringVarAppend(&ds, "\n</body></html>\n", NS_SENTINEL);
 
     result = Ns_ConnReturnCharData(conn, status, ds.string, (ssize_t)ds.length, "text/html");
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return result;
 }
@@ -1004,7 +1061,7 @@ static Ns_ReturnCode
 ReturnRange(Ns_Conn *conn, const char *mimeType,
             int fd, const void *data, size_t dataLength)
 {
-    Ns_DString    ds;
+    Tcl_DString   ds;
     Ns_FileVec    bufs[NS_MAX_RANGES * 2 + 1];
     int           nbufs = NS_MAX_RANGES * 2, rangeCount;
     Ns_ReturnCode result;
@@ -1012,7 +1069,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(mimeType != NULL);
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
 
     /*
      * NsConnParseRange() returns in the provided bufs the content plus the
@@ -1023,7 +1080,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
                                   bufs, &nbufs, &ds);
 
     if (rangeCount == -1) {
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
         return NS_ERROR;
     }
 
@@ -1063,7 +1120,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
             }
             if (NsWriterQueue(conn, dataLength, NULL, NULL, NS_INVALID_FD,
                               vbuf, nbufs,  NULL, 0, NS_FALSE) == NS_OK) {
-                Ns_DStringFree(&ds);
+                Tcl_DStringFree(&ds);
                 return NS_OK;
 
             }
@@ -1078,14 +1135,14 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
 
                     Ns_Log(Warning, "seek operation with offset %" PROTd
                            " failed: %s", bufs[0].offset, strerror(errno));
-                    Ns_DStringFree(&ds);
+                    Tcl_DStringFree(&ds);
                     return NS_ERROR;
                 }
                 dataLength = bufs[0].length;
             }
             if (NsWriterQueue(conn, dataLength, NULL, NULL, fd, NULL, 0, NULL, 0,
                               NS_FALSE) == NS_OK) {
-                Ns_DStringFree(&ds);
+                Tcl_DStringFree(&ds);
                 return NS_OK;
             }
         }
@@ -1112,7 +1169,7 @@ ReturnRange(Ns_Conn *conn, const char *mimeType,
 
     NsPoolAddBytesSent(((Conn *)conn)->poolPtr,  (Tcl_WideInt)Ns_ConnContentSent(conn));
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return result;
 }

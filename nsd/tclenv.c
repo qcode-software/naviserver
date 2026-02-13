@@ -113,7 +113,7 @@ Ns_GetEnviron(void)
  */
 
 char **
-Ns_CopyEnviron(Ns_DString *dsPtr)
+Ns_CopyEnviron(Tcl_DString *dsPtr)
 {
     char *const *envp;
     int          i;
@@ -151,7 +151,7 @@ Ns_CopyEnviron(Ns_DString *dsPtr)
  */
 
 int
-NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int                      result, opt;
     static const char *const opts[] = {
@@ -162,10 +162,10 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
     };
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "command ?args ...?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/ ?/arg .../?");
         result = TCL_ERROR;
 
-    } else if (Tcl_GetIndexFromObj(interp, objv[1], opts, "command", 0,
+    } else if (Tcl_GetIndexFromObj(interp, objv[1], opts, "subcommand", 0,
                             &opt) != TCL_OK) {
         result = TCL_ERROR;
 
@@ -173,7 +173,6 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
         const char  *name, *value;
         char        *const *envp;
         Tcl_Obj     *resultObj;
-        int          i;
 
         result = TCL_OK;
         Ns_MutexLock(&lock);
@@ -181,7 +180,7 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
         switch (opt) {
         case IExistsIdx:
             if (objc != 3) {
-                Tcl_WrongNumArgs(interp, 2, objv, "name");
+                Tcl_WrongNumArgs(interp, 2, objv, "/name/");
                 result = TCL_ERROR;
             } else {
                 Tcl_SetObjResult(interp, Tcl_NewBooleanObj((getenv(Tcl_GetString(objv[2])) != NULL) ? 1 : 0));
@@ -189,25 +188,31 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
             break;
 
         case INamesIdx:
-            envp = Ns_GetEnviron();
-            resultObj = Tcl_GetObjResult(interp);
-            for (i = 0; envp[i] != NULL; ++i) {
-                Tcl_Obj *obj;
+            if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+                result = TCL_ERROR;
+            } else {
+                int i;
 
-                name = envp[i];
-                value = strchr(name, INTCHAR('='));
-                obj = Tcl_NewStringObj(name,
-                                       (value != NULL) ? (TCL_SIZE_T)(value - name) : TCL_INDEX_NONE);
-                if (Tcl_ListObjAppendElement(interp, resultObj, obj) != TCL_OK) {
-                    result = TCL_ERROR;
-                    break;
+                envp = Ns_GetEnviron();
+                resultObj = Tcl_GetObjResult(interp);
+                for (i = 0; envp[i] != NULL; ++i) {
+                    Tcl_Obj *obj;
+
+                    name = envp[i];
+                    value = strchr(name, INTCHAR('='));
+                    obj = Tcl_NewStringObj(name,
+                                           (value != NULL) ? (TCL_SIZE_T)(value - name) : TCL_INDEX_NONE);
+                    if (Tcl_ListObjAppendElement(interp, resultObj, obj) != TCL_OK) {
+                        result = TCL_ERROR;
+                        break;
+                    }
                 }
             }
             break;
 
         case ISetIdx:
             if (objc != 4) {
-                Tcl_WrongNumArgs(interp, 2, objv, "name value");
+                Tcl_WrongNumArgs(interp, 2, objv, "/name/ /value/");
                 result = TCL_ERROR;
 
             } else if (PutEnv(interp, Tcl_GetString(objv[2]), Tcl_GetString(objv[3])) != TCL_OK) {
@@ -218,14 +223,14 @@ NsTclEnvObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
         case IGetIdx:
         case IUnsetIdx:
             if (objc != 3 && objc != 4) {
-                Tcl_WrongNumArgs(interp, 2, objv, "?-nocomplain? name");
+                Tcl_WrongNumArgs(interp, 2, objv, "?-nocomplain? /name/");
                 result = TCL_ERROR;
 
             } else if (objc == 4) {
                 const char *arg = Tcl_GetString(objv[2]);
 
                 if (!STREQ(arg, "-nocomplain")) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "?-nocomplain? name");
+                    Tcl_WrongNumArgs(interp, 2, objv, "?-nocomplain? /name/");
                     result = TCL_ERROR;
                 }
             }

@@ -800,33 +800,6 @@ AC_DEFUN([TEA_ENABLE_THREADS], [
     else
 	TCL_THREADS=0
     fi
-    # Do checking message here to not mess up interleaved configure output
-    AC_MSG_CHECKING([for building with threads])
-    if test "${TCL_THREADS}" = 1; then
-	AC_DEFINE(TCL_THREADS, 1, [Are we building with threads enabled?])
-	AC_MSG_RESULT([yes (default)])
-    else
-	AC_MSG_RESULT([no])
-    fi
-    # TCL_THREADS sanity checking.  See if our request for building with
-    # threads is the same as the way Tcl was built.  If not, warn the user.
-    case ${TCL_DEFS} in
-	*THREADS=1*)
-	    if test "${TCL_THREADS}" = "0"; then
-		AC_MSG_WARN([
-    Building ${PACKAGE_NAME} without threads enabled, but building against Tcl
-    that IS thread-enabled.  It is recommended to use --enable-threads.])
-	    fi
-	    ;;
-	*)
-	    if test "${TCL_THREADS}" = "1"; then
-		AC_MSG_WARN([
-    --enable-threads requested, but building against a Tcl that is NOT
-    thread-enabled.  This is an OK configuration that will also run in
-    a thread-enabled core.])
-	    fi
-	    ;;
-    esac
     AC_SUBST(TCL_THREADS)
 ])
 
@@ -2862,6 +2835,9 @@ TEA version not specified.])
     AC_SUBST(PKG_INCLUDES)
     AC_SUBST(PKG_LIBS)
     AC_SUBST(PKG_CFLAGS)
+
+    # Configure the installer.
+    TEA_INSTALLER
 ])
 
 #------------------------------------------------------------------------
@@ -3153,15 +3129,6 @@ AC_DEFUN([TEA_SETUP_COMPILER_CC], [
     AC_PROG_CC
     AC_PROG_CPP
 
-    INSTALL="\$(SHELL) \$(srcdir)/tclconfig/install-sh -c"
-    AC_SUBST(INSTALL)
-    INSTALL_DATA="\${INSTALL} -m 644"
-    AC_SUBST(INSTALL_DATA)
-    INSTALL_PROGRAM="\${INSTALL}"
-    AC_SUBST(INSTALL_PROGRAM)
-    INSTALL_SCRIPT="\${INSTALL}"
-    AC_SUBST(INSTALL_SCRIPT)
-
     #--------------------------------------------------------------------
     # Checks to see if the make program sets the $MAKE variable.
     #--------------------------------------------------------------------
@@ -3219,15 +3186,7 @@ AC_DEFUN([TEA_SETUP_COMPILER], [
     # Common compiler flag setup
     #--------------------------------------------------------------------
 
-    AC_C_BIGENDIAN
-    if test "${TEA_PLATFORM}" = "unix" ; then
-	TEA_TCL_LINK_LIBS
-	TEA_MISSING_POSIX_HEADERS
-	# Let the user call this, because if it triggers, they will
-	# need a compat/strtod.c that is correct.  Users can also
-	# use Tcl_GetDouble(FromObj) instead.
-	#TEA_BUGGY_STRTOD
-    fi
+    AC_C_BIGENDIAN(,,,[#])
 ])
 
 #------------------------------------------------------------------------
@@ -4039,6 +3998,44 @@ AC_DEFUN([TEA_EXPORT_CONFIG], [
     AC_SUBST(PATCHLEVEL)
 ])
 
+#------------------------------------------------------------------------
+# TEA_INSTALLER --
+#
+#	Configure the installer.
+#
+# Arguments:
+#	none
+#
+# Results:
+#	Substitutes the following vars:
+#		INSTALL
+#		INSTALL_DATA_DIR
+#		INSTALL_DATA
+#		INSTALL_PROGRAM
+#		INSTALL_SCRIPT
+#		INSTALL_LIBRARY
+#------------------------------------------------------------------------
+
+AC_DEFUN([TEA_INSTALLER], [
+    INSTALL='$(SHELL) $(srcdir)/tclconfig/install-sh -c'
+    INSTALL_DATA_DIR='${INSTALL} -d -m 755'
+    INSTALL_DATA='${INSTALL} -m 644'
+    INSTALL_PROGRAM='${INSTALL} -m 755'
+    INSTALL_SCRIPT='${INSTALL} -m 755'
+
+    TEA_CONFIG_SYSTEM
+    case $system in
+	HP-UX-*) INSTALL_LIBRARY='${INSTALL} -m 755' ;;
+	      *) INSTALL_LIBRARY='${INSTALL} -m 644' ;;
+    esac
+
+    AC_SUBST(INSTALL)
+    AC_SUBST(INSTALL_DATA_DIR)
+    AC_SUBST(INSTALL_DATA)
+    AC_SUBST(INSTALL_PROGRAM)
+    AC_SUBST(INSTALL_SCRIPT)
+    AC_SUBST(INSTALL_LIBRARY)
+])
 
 #------------------------------------------------------------------------
 # TEA_PATH_CELIB --

@@ -338,12 +338,23 @@ SockCallbackThread(void *UNUSED(arg))
     (void)Ns_WaitForStartup();
     Ns_Log(Notice, "socks: starting");
 
+    /*
+     * The array events[] is used
+     *   1) for the requested poll mask, and
+     *   2) for associating the revents received by the poll call to the
+     *      NS_SOCK* states reported back
+     *
+     * The NS_SOCK* states are kept in the corresponding when[]
+     * elements.  The positions in this array are for 'r', 'w' and 'e'
+     * callback types in this order.
+     */
     events[0] = (short)POLLIN;
     events[1] = (short)POLLOUT;
-    events[2] = (short)POLLPRI;
+    events[2] = (short)POLLERR;
     when[0] = (unsigned int)NS_SOCK_READ;
     when[1] = (unsigned int)NS_SOCK_WRITE;
     when[2] = (unsigned int)NS_SOCK_EXCEPTION | (unsigned int)NS_SOCK_DONE;
+
     pfds = (struct pollfd *)ns_malloc(sizeof(struct pollfd) * maxPollfds);
     pfds[0].fd = trigPipe[0];
     pfds[0].events = (short)POLLIN;
@@ -431,6 +442,10 @@ SockCallbackThread(void *UNUSED(arg))
                      * Call Ns_SockProc to notify about timeout. For the
                      * time being, ignore boolean result.
                      */
+                    Ns_Log(Notice, "sockcallback: fd %d timeout " NS_TIME_FMT " exceeded by " NS_TIME_FMT,
+                           cbPtr->sock, (int64_t) cbPtr->timeout.sec, cbPtr->timeout.usec,
+                           (int64_t) diff.sec, diff.usec
+                           );
                     (void) (*cbPtr->proc)(cbPtr->sock, cbPtr->arg, (unsigned int)NS_SOCK_TIMEOUT);
                     cbPtr->when = 0u;
                 }
@@ -611,7 +626,7 @@ NsGetSockCallbacks(Tcl_DString *dsPtr)
             }
             Tcl_DStringEndSublist(dsPtr);
             Ns_GetProcInfo(dsPtr, (ns_funcptr_t)cbPtr->proc, cbPtr->arg);
-            Ns_DStringNAppend(dsPtr, " ", 1);
+            Tcl_DStringAppend(dsPtr, " ", 1);
             Ns_DStringAppendTime(dsPtr, &cbPtr->timeout);
             Tcl_DStringEndSublist(dsPtr);
         }

@@ -1,0 +1,1179 @@
+'\"
+'\" Generated from file 'commandlist\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "commandlist" n 5\&.0\&.4 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+commandlist \- Full List of NaviServer Commands
+.SH DESCRIPTION
+List of all documented and deprecated NaviServer commands\&.
+.SH "ALPHABETICAL LIST OF DOCUMENTED NAVISERVER COMMANDS"
+.CS
+
+
+\fIns_absoluteurl\fR [\&.\&./\&.\&./naviserver/files/ns_absoluteurl\&.html] /partialurl/ /baseurl/
+\fIns_accesslog extendedheaders\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/headers/?
+\fIns_accesslog file\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/filepath/?
+\fIns_accesslog flags\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/flags/?
+\fIns_accesslog maxbackup\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/nrfiles/?
+\fIns_accesslog maxbuffer\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/nrlines/?
+\fIns_accesslog roll\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/filepath/?
+\fIns_accesslog rollfmt\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html] ?/timeformat/?
+\fIns_addrbyhost\fR [\&.\&./\&.\&./naviserver/files/ns_addrbyhost\&.html] ?-all? ?--? /hostname/
+\fIns_adp_abort\fR [\&.\&./\&.\&./naviserver/files/ns_adp_abort\&.html] ?/retval/?
+\fIns_adp_append\fR [\&.\&./\&.\&./naviserver/files/ns_adp_append\&.html] /string \&.\&.\&./
+\fIns_adp_argc\fR [\&.\&./\&.\&./naviserver/files/ns_adp_argc\&.html]
+\fIns_adp_argv\fR [\&.\&./\&.\&./naviserver/files/ns_adp_argv\&.html] ?/index/? ?/default/?
+\fIns_adp_bind_args\fR [\&.\&./\&.\&./naviserver/files/ns_adp_bind_args\&.html] /varname \&.\&.\&./
+\fIns_adp_break\fR [\&.\&./\&.\&./naviserver/files/ns_adp_break\&.html] ?/retval/?
+\fIns_adp_close\fR [\&.\&./\&.\&./naviserver/files/ns_adp_close\&.html]
+\fIns_adp_ctl autoabort\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl bufsize\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?/size/?
+\fIns_adp_ctl cache\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl channel\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] /channel/
+\fIns_adp_ctl detailerror\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl displayerror\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl expire\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl safe\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl singlescript\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl stream\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl stricterror\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl trace\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_ctl trimspace\fR [\&.\&./\&.\&./naviserver/files/ns_adp_ctl\&.html] ?true|false?
+\fIns_adp_debug\fR [\&.\&./\&.\&./naviserver/files/ns_adp_debug\&.html] ?-host /value/? ?-port /value/? ?-procs /value/?
+\fIns_adp_dir\fR [\&.\&./\&.\&./naviserver/files/ns_adp_dir\&.html]
+\fIns_adp_dump\fR [\&.\&./\&.\&./naviserver/files/ns_adp_dump\&.html]
+\fIns_adp_exception\fR [\&.\&./\&.\&./naviserver/files/ns_adp_exception\&.html] ?/varname/?
+\fIns_adp_flush\fR [\&.\&./\&.\&./naviserver/files/ns_adp_flush\&.html]
+\fIns_adp_include\fR [\&.\&./\&.\&./naviserver/files/ns_adp_include\&.html] ?-cache /time/? ?-nocache? ?-tcl? ?--? /filename/ ?/arg \&.\&.\&./?
+\fIns_adp_info\fR [\&.\&./\&.\&./naviserver/files/ns_adp_info\&.html]
+\fIns_adp_mimetype\fR [\&.\&./\&.\&./naviserver/files/ns_adp_mimetype\&.html] ?/mimetype/?
+\fIns_adp_parse\fR [\&.\&./\&.\&./naviserver/files/ns_adp_parse\&.html] ?-cwd /value/? ?-file? ?-safe? ?-string? ?-tcl? ?--? /arg \&.\&.\&./
+\fIns_adp_puts\fR [\&.\&./\&.\&./naviserver/files/ns_adp_puts\&.html] ?-nonewline? ?--? /string/
+\fIns_adp_registeradp\fR [\&.\&./\&.\&./naviserver/files/ns_adp_register\&.html] /tag/ ?/endtag/? /adpstring/
+\fIns_adp_registerproc\fR [\&.\&./\&.\&./naviserver/files/ns_adp_register\&.html] /tag/ ?/endtag/? /proc/
+\fIns_adp_registerscript\fR [\&.\&./\&.\&./naviserver/files/ns_adp_register\&.html] /tag/ ?/endtag/? /proc/
+\fIns_adp_return\fR [\&.\&./\&.\&./naviserver/files/ns_adp_return\&.html] ?/retval/?
+\fIns_adp_stats\fR [\&.\&./\&.\&./naviserver/files/ns_adp_stats\&.html]
+\fIns_adp_tell\fR [\&.\&./\&.\&./naviserver/files/ns_adp_tell\&.html]
+\fIns_adp_trunc\fR [\&.\&./\&.\&./naviserver/files/ns_adp_trunc\&.html] ?/length/?
+\fIns_after\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] /interval/ /script/ ?/arg \&.\&.\&./?
+\fIns_asynclogfile close\fR [\&.\&./\&.\&./naviserver/files/ns_asynclogfile\&.html] /fd/
+\fIns_asynclogfile open\fR [\&.\&./\&.\&./naviserver/files/ns_asynclogfile\&.html] /filename/ ?/mode/?
+\fIns_asynclogfile write\fR [\&.\&./\&.\&./naviserver/files/ns_asynclogfile\&.html] ?-binary? ?-sanitize 0|1|2|3? /fd/ /line/
+\fIns_atclose\fR [\&.\&./\&.\&./naviserver/files/ns_atclose\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_atexit\fR [\&.\&./\&.\&./naviserver/files/ns_atsignal\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_atprestartup\fR [\&.\&./\&.\&./naviserver/files/ns_atsignal\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_atshutdown\fR [\&.\&./\&.\&./naviserver/files/ns_atsignal\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_atsignal\fR [\&.\&./\&.\&./naviserver/files/ns_atsignal\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_atstartup\fR [\&.\&./\&.\&./naviserver/files/ns_atsignal\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_auth request\fR [\&.\&./\&.\&./naviserver/files/ns_auth\&.html] ?-dict? ?--? /method/ /url/ /username/ /password/ ?/ipaddr/?
+\fIns_auth user\fR [\&.\&./\&.\&./naviserver/files/ns_auth\&.html] ?-dict? ?--? /username/ /password/
+\fIns_base64decode\fR [\&.\&./\&.\&./naviserver/files/ns_base64\&.html] ?-binary? ?-strict? ?--? /string/
+\fIns_base64encode\fR [\&.\&./\&.\&./naviserver/files/ns_base64\&.html] ?-binary? ?--? /string/
+\fIns_base64urldecode\fR [\&.\&./\&.\&./naviserver/files/ns_base64\&.html] ?-binary? ?-strict? ?--? /string/
+\fIns_base64urlencode\fR [\&.\&./\&.\&./naviserver/files/ns_base64\&.html] ?-binary? ?--? /string/
+\fIns_baseunit\fR [\&.\&./\&.\&./naviserver/files/ns_baseunit\&.html] ?-size /memory-size/? ?-time /time/?
+\fIns_buildsqldate\fR [\&.\&./\&.\&./nsdb/files/ns_buildsqldate\&.html] /month/ /day/ /year/
+\fIns_cache_append\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-timeout /time/? ?-expires /time/? ?--? /cache/ /key/ /arg \&.\&.\&./
+\fIns_cache_configure\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] /cache/ ?-timeout /time/? ?-expires /time/? ?-maxentry /memory-size/? ?-maxsize /memory-size/?
+\fIns_cache_create\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-timeout /time/? ?-expires /time/? ?-maxentry /memory-size/? ?--? /cache/ /size/
+\fIns_cache_eval\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-timeout /time/? ?-expires /time/? ?-force? ?--? /cache/ /key/ /arg \&.\&.\&./
+\fIns_cache_exists\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] /cache/
+\fIns_cache_flush\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-glob? ?--? /cache/ ?/arg \&.\&.\&./?
+\fIns_cache_get\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] /cache/ /key/ ?/varname/?
+\fIns_cache_incr\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-timeout /time/? ?-expires /time/? ?--? /cache/ /key/ ?/incr/?
+\fIns_cache_keys\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-exact? ?--? /cache/ ?/pattern/?
+\fIns_cache_lappend\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-timeout /time/? ?-expires /time/? ?--? /cache/ /key/ /arg \&.\&.\&./
+\fIns_cache_names\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html]
+\fIns_cache_stats\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-contents? ?-reset? ?--? /cache/
+\fIns_cache_transaction_begin\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html]
+\fIns_cache_transaction_commit\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-all?
+\fIns_cache_transaction_rollback\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-all?
+\fIns_cbor decode\fR [\&.\&./\&.\&./naviserver/files/ns_cbor\&.html] ?-binary? ?-encoding hex|base64url|base64|binary? ?--? /value/
+\fIns_cbor scan\fR [\&.\&./\&.\&./naviserver/files/ns_cbor\&.html] ?-binary? ?-encoding hex|base64url|base64|binary? ?--? /value/
+\fIns_certctl list\fR [\&.\&./\&.\&./naviserver/files/ns_certctl\&.html]
+\fIns_certctl reload\fR [\&.\&./\&.\&./naviserver/files/ns_certctl\&.html]
+\fIns_chan cleanup\fR [\&.\&./\&.\&./naviserver/files/ns_chan\&.html] ?-shared?
+\fIns_chan create\fR [\&.\&./\&.\&./naviserver/files/ns_chan\&.html] /channel/ /name/
+\fIns_chan get\fR [\&.\&./\&.\&./naviserver/files/ns_chan\&.html] /name/
+\fIns_chan list\fR [\&.\&./\&.\&./naviserver/files/ns_chan\&.html] ?-shared?
+\fIns_chan put\fR [\&.\&./\&.\&./naviserver/files/ns_chan\&.html] /name/
+\fIns_charsets\fR [\&.\&./\&.\&./naviserver/files/ns_charsets\&.html]
+\fIns_cleanup\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_cond abswait\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html] /condId/ /mutexId/ ?/epoch/?
+\fIns_cond broadcast\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html] /condId/
+\fIns_cond create\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html]
+\fIns_cond destroy\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html] /condId/
+\fIns_cond set\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html] /condId/
+\fIns_cond signal\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html] /condId/
+\fIns_cond wait\fR [\&.\&./\&.\&./naviserver/files/ns_cond\&.html] /condId/ /mutexId/ ?/timeout/?
+\fIns_config\fR [\&.\&./\&.\&./naviserver/files/ns_config\&.html] ?-all? ?-bool? ?-int? ?-min /integer/? ?-max /integer/? ?-exact? ?-set? ?--? /section/ /key/ ?/default/?
+\fIns_configsection\fR [\&.\&./\&.\&./naviserver/files/ns_config\&.html] ?-filter unread|defaulted|defaults? ?--? /section/
+\fIns_configsections\fR [\&.\&./\&.\&./naviserver/files/ns_config\&.html]
+\fIns_conn acceptedcompression\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn auth\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn authpassword\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn authuser\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn channel\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn clientdata\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/value/?
+\fIns_conn close\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn compress\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/level/?
+\fIns_conn content\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?-binary? ?/offset/? ?/length/?
+\fIns_conn contentfile\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn contentlength\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn contentsentlength\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/bytes/?
+\fIns_conn copy\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] /offset/ /length/ /channelId/
+\fIns_conn currentaddr\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn currentport\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn details\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn driver\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn encoding\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/encoding/?
+\fIns_conn fileheaders\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] /file/
+\fIns_conn filelength\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] /file/
+\fIns_conn fileoffset\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] /file/
+\fIns_conn files\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn flags\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn form\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?-fallbackcharset /value/?
+\fIns_conn fragment\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn headerlength\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn headers\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn host\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/default/?
+\fIns_conn id\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn isconnected\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn keepalive\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/value/?
+\fIns_conn location\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn method\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn outputheaders\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn partialtimes\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn peeraddr\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?-source configured|direct|forwarded?
+\fIns_conn peerport\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn pool\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn port\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn protocol\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn query\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn ratelimit\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/limit/?
+\fIns_conn request\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn server\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn sock\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn start\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn status\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/status-code/?
+\fIns_conn target\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn timeout\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn url\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn urlc\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn urldict\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn urlencoding\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/encoding/?
+\fIns_conn urlv\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html] ?/idx/?
+\fIns_conn version\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_conn zipaccepted\fR [\&.\&./\&.\&./naviserver/files/ns_conn\&.html]
+\fIns_connchan callback\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-timeout /time/? ?-receivetimeout /time/? ?-sendtimeout /time/? /channel/ /command/ /when/
+\fIns_connchan close\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-server /server/? /channel/
+\fIns_connchan connect\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-hostname /value/? ?-insecure? ?-timeout /time/? ?-tls? ?--? /host/ /port/
+\fIns_connchan debug\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] /channel/ ?/level/?
+\fIns_connchan detach\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html]
+\fIns_connchan exists\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] /channel/
+\fIns_connchan list\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-server /server/?
+\fIns_connchan listen\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-driver /value/? ?-server /server/? ?-bind? ?--? /address/ /port/ /script/
+\fIns_connchan open\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-driver /value/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-method /value/? ?-timeout /time/? ?-unix_socket /value/? ?-version /value/? ?--? /url/
+\fIns_connchan read\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-websocket? /channel/
+\fIns_connchan status\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-server /server/? /channel/
+\fIns_connchan write\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] /channel/ /message/
+\fIns_connchan wsencode\fR [\&.\&./\&.\&./naviserver/files/ns_connchan\&.html] ?-binary? ?-fin 0|1? ?-mask? ?-opcode continue|text|binary|close|ping|pong? ?--? /message/
+\fIns_crash\fR [\&.\&./\&.\&./naviserver/files/ns_crash\&.html]
+\fIns_critsec create\fR [\&.\&./\&.\&./naviserver/files/ns_critsec\&.html]
+\fIns_critsec destroy\fR [\&.\&./\&.\&./naviserver/files/ns_critsec\&.html] /csid/
+\fIns_critsec enter\fR [\&.\&./\&.\&./naviserver/files/ns_critsec\&.html] /csid/
+\fIns_critsec eval\fR [\&.\&./\&.\&./naviserver/files/ns_critsec\&.html] /csid/ /script/
+\fIns_critsec leave\fR [\&.\&./\&.\&./naviserver/files/ns_critsec\&.html] /csid/
+\fIns_crypt\fR [\&.\&./\&.\&./naviserver/files/ns_crypt\&.html] /key/ /salt/
+\fIns_crypto::aead::decrypt string\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-aad /value/? ?-cipher /value/? ?-encoding hex|base64url|base64|binary? ?-iv /value/? ?-key /value/? ?-tag /value/? ?--? /input/
+\fIns_crypto::aead::encrypt string\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-aad /value/? ?-cipher /value/? ?-encoding hex|base64url|base64|binary? ?-iv /value/? ?-key /value/? ?--? /input/
+\fIns_crypto::argon2\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-ad /value/? ?-binary? ?-encoding hex|base64url|base64|binary? ?-iter /integer/? ?-lanes /integer/? ?-memcost /integer/? ?-outlen /integer/? ?-password /value/? ?-salt /value/? ?-secret /value/? ?-threads /integer/? ?-variant /value/?
+\fIns_crypto::eckey fromcoords\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? -curve /value/ -x /value/ -y /value/ ?-encoding hex|base64url|base64|binary? ?-format pem|der?
+\fIns_crypto::eckey generate\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-name /value/? ?-pem /value/?
+\fIns_crypto::eckey import\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-string /value/? ?-encoding hex|base64url|base64|binary?
+\fIns_crypto::eckey priv\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-encoding hex|base64url|base64|binary? ?-passphrase /value/? ?-pem /value/?
+\fIns_crypto::eckey pub\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-encoding hex|base64url|base64|binary? ?-passphrase /value/? ?-pem /value/?
+\fIns_crypto::eckey sharedsecret\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-encoding hex|base64url|base64|binary? ?-passphrase /value/? ?-pem /value/? ?--? /pubkey/
+\fIns_crypto::hmac add\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-binary? ?--? /ctx/ /message/
+\fIns_crypto::hmac free\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] /ctx/
+\fIns_crypto::hmac get\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-encoding hex|base64url|base64|binary? /ctx/
+\fIns_crypto::hmac new\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-binary? ?--? /digest/ /key/
+\fIns_crypto::hmac string\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-binary? ?-digest /value/? ?-encoding hex|base64url|base64|binary? ?--? /key/ /message/
+\fIns_crypto::md add\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] ?-binary? ?--? /ctx/ /message/
+\fIns_crypto::md free\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] /ctx/
+\fIns_crypto::md get\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] ?-encoding hex|base64url|base64|binary? /ctx/
+\fIns_crypto::md hkdf\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-digest /value/? ?-salt /value/? ?-secret /value/? ?-info /value/? ?-encoding hex|base64url|base64|binary? ?--? /length/
+\fIns_crypto::md new\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] /digest/
+\fIns_crypto::md string\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] ?-binary? ?-digest /value/? ?-encoding hex|base64url|base64|binary? ?-passphrase /value/? ?-sign /value/? ?-signature /value/? ?-verify /value/? ?--? /message/
+\fIns_crypto::md vapidsign\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-digest /value/? ?-encoding hex|base64url|base64|binary? ?-passphrase /value/? ?-pem /value/? ?--? /message/
+\fIns_crypto::pbkdf2_hmac\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-digest /value/? ?-dklen /integer/? ?-iterations /integer/? ?-salt /value/? ?-secret /value/? ?-encoding hex|base64url|base64|binary?
+\fIns_crypto::randombytes\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-encoding hex|base64url|base64|binary? /nrbytes/
+\fIns_crypto::scrypt\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-binary? ?-salt /value/? ?-secret /value/? ?-n /integer/? ?-p /integer/? ?-r /integer/? ?-encoding hex|base64url|base64|binary?
+\fIns_crypto::uuid\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html] ?-version v4|v7?
+\fIns_db 0or1row\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /sql/
+\fIns_db 1row\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /sql/
+\fIns_db bindrow\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db bouncepool\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /poolname/
+\fIns_db cancel\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db connected\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db currenthandles\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html]
+\fIns_db datasource\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db dbtype\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db dml\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /sql/
+\fIns_db driver\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db exception\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db exec\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /sql/
+\fIns_db flush\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db gethandle\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] ?-timeout /time/? ?--? ?/poolname/? ?/nhandles/?
+\fIns_db getrow\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /setId/
+\fIns_db info\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db logminduration\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] ?/poolname/? ?/minduration/?
+\fIns_db password\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db poolname\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db pools\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html]
+\fIns_db releasehandle\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db rowcount\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db select\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /sql/
+\fIns_db setexception\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /code/ /message/
+\fIns_db sp_exec\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db sp_getparams\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db sp_returncode\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_db sp_setparam\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /paramname/ /type/ in|out /value/
+\fIns_db sp_start\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/ /procname/
+\fIns_db stats\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html]
+\fIns_db user\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_dbconfigpath\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html]
+\fIns_dberrorcode\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_dberrormsg\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /handle/
+\fIns_dbpooldescription\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html] /poolname/
+\fIns_dbquotelist\fR [\&.\&./\&.\&./nsdb/files/ns_dbquotevalues\&.html] /list/ ?decimal|double|integer|int|real|smallint|bigint|bit|float|numeric|tinyint|text?
+\fIns_dbquotename\fR [\&.\&./\&.\&./nsdb/files/ns_dbquotevalues\&.html] /name/
+\fIns_dbquotevalue\fR [\&.\&./\&.\&./nsdb/files/ns_dbquotevalues\&.html] /value/ ?decimal|double|integer|int|real|smallint|bigint|bit|float|numeric|tinyint|text?
+\fIns_deletecookie\fR [\&.\&./\&.\&./naviserver/files/ns_cookie\&.html] ?-domain /value/? ?-path /value/? ?-replace true|false? ?-samesite strict|lax|none? ?-secure true|false? ?--? /name/
+\fIns_driver info\fR [\&.\&./\&.\&./naviserver/files/ns_driver\&.html] ?-server /server/?
+\fIns_driver names\fR [\&.\&./\&.\&./naviserver/files/ns_driver\&.html] ?-server /server/?
+\fIns_driver stats\fR [\&.\&./\&.\&./naviserver/files/ns_driver\&.html] ?-server /server/?
+\fIns_driver threads\fR [\&.\&./\&.\&./naviserver/files/ns_driver\&.html] ?-server /server/?
+\fIns_encodingforcharset\fR [\&.\&./\&.\&./naviserver/files/ns_encodingforcharset\&.html] /charset/
+\fIns_encodingfortype\fR [\&.\&./\&.\&./naviserver/files/ns_encodingfortype\&.html] /mimetype/
+\fIns_env exists\fR [\&.\&./\&.\&./naviserver/files/ns_env\&.html] /name/
+\fIns_env get\fR [\&.\&./\&.\&./naviserver/files/ns_env\&.html] ?-nocomplain? /name/
+\fIns_env names\fR [\&.\&./\&.\&./naviserver/files/ns_env\&.html]
+\fIns_env set\fR [\&.\&./\&.\&./naviserver/files/ns_env\&.html] /name/ /value/
+\fIns_env unset\fR [\&.\&./\&.\&./naviserver/files/ns_env\&.html] ?-nocomplain? /name/
+\fIns_eval\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] ?-sync? ?-pending? /script/ ?/arg \&.\&.\&./?
+\fIns_fastpath_cache_stats\fR [\&.\&./\&.\&./naviserver/files/ns_cache\&.html] ?-contents? ?-reset?
+\fIns_filestat\fR [\&.\&./\&.\&./naviserver/files/ns_filestat\&.html] /filename/ ?/varname/?
+\fIns_findset\fR [\&.\&./\&.\&./naviserver/files/ns_findset\&.html] /sets/ /name/
+\fIns_fmttime\fR [\&.\&./\&.\&./naviserver/files/ns_fmttime\&.html] /time/ ?/fmt/?
+\fIns_fseekchars\fR [\&.\&./\&.\&./naviserver/files/ns_fseekchars\&.html] /channelId/ /searchstring/
+\fIns_ftruncate\fR [\&.\&./\&.\&./naviserver/files/ns_ftruncate\&.html] /channelId/ ?/length/?
+\fIns_getcontent\fR [\&.\&./\&.\&./naviserver/files/ns_getcontent\&.html] ?-as_file true|false? ?-binary true|false?
+\fIns_getcookie\fR [\&.\&./\&.\&./naviserver/files/ns_cookie\&.html] ?-all true|false? ?-include_set_cookies true|false? ?--? /name/ ?/default/?
+\fIns_getcsv\fR [\&.\&./\&.\&./naviserver/files/ns_getcsv\&.html] ?-delimiter /value/? ?-quotechar /value/? ?-trim? ?--? /channelId/ /varname/
+\fIns_getform\fR [\&.\&./\&.\&./naviserver/files/ns_getform\&.html] ?-fallbackcharset /charset/? ?/charset/?
+\fIns_getformfile\fR [\&.\&./\&.\&./naviserver/files/ns_getformfile\&.html] /name/
+\fIns_gifsize\fR [\&.\&./\&.\&./naviserver/files/ns_gifsize\&.html] /filename/
+\fIns_gmtime\fR [\&.\&./\&.\&./naviserver/files/ns_gmtime\&.html]
+\fIns_guesstype\fR [\&.\&./\&.\&./naviserver/files/ns_guesstype\&.html] /filename/
+\fIns_hash\fR [\&.\&./\&.\&./naviserver/files/ns_hash\&.html] /value/
+\fIns_hashpath\fR [\&.\&./\&.\&./naviserver/files/ns_hashpath\&.html] /string/ /levels/
+\fIns_headers\fR [\&.\&./\&.\&./naviserver/files/ns_write\&.html] ?-binary? ?--? /status/ ?/mimetype/? ?/length/?
+\fIns_hmac file\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-digest /value/? ?-encoding /value/? /key/ /filename \&.\&.\&./
+\fIns_hmac new\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-digest /value/? -key /value/
+\fIns_hmac string\fR [\&.\&./\&.\&./naviserver/files/ns_hmac\&.html] ?-digest /value/? ?-encoding /value/? /key/ /message/
+\fIns_hostbyaddr\fR [\&.\&./\&.\&./naviserver/files/ns_hostbyaddr\&.html] /address/
+\fIns_hotp\fR [\&.\&./\&.\&./naviserver/files/ns_hotp\&.html] ?-digest /value/? ?-digits /integer/? ?-key /value/? /counter/
+\fIns_hrefs\fR [\&.\&./\&.\&./naviserver/files/ns_hrefs\&.html] /html/
+\fIns_htmlselect\fR [\&.\&./\&.\&./naviserver/files/ns_htmlselect\&.html] ?-multi? ?-sort? ?-labels /labels/? /name/ /values/ ?/selectedData/?
+\fIns_http cancel\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html] /id/
+\fIns_http cleanup\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html]
+\fIns_http keepalives\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html]
+\fIns_http list\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html] ?/id/?
+\fIns_http queue\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html] ?-binary? ?-body /value/? ?-body_chan /value/? ?-body_file /value/? ?-body_size /integer/? ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-connecttimeout /time/? ?-done_callback /value/? ?-expire /time/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-keep_host_header? ?-keepalive /time/? ?-maxresponse /memory-size/? ?-method /value/? ?-outputchan /value/? ?-outputfile /value/? ?-partialresults? ?-proxy /value/? ?-raw? ?-response_data_callback /value/? ?-response_header_callback /value/? ?-spoolsize /memory-size/? ?-timeout /time/? ?-unix_socket /value/? /url/
+\fIns_http run\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html] ?-binary? ?-body /value/? ?-body_chan /value/? ?-body_file /value/? ?-body_size /integer/? ?-cafile /value/? ?-capath /value/? ?-cert /value/? ?-connecttimeout /time/? ?-done_callback /value/? ?-expire /time/? ?-headers /setId/? ?-hostname /value/? ?-insecure? ?-keep_host_header? ?-keepalive /time/? ?-maxresponse /memory-size/? ?-method /value/? ?-outputchan /value/? ?-outputfile /value/? ?-partialresults? ?-proxy /value/? ?-raw? ?-response_data_callback /value/? ?-response_header_callback /value/? ?-spoolsize /memory-size/? ?-timeout /time/? ?-unix_socket /value/? /url/
+\fIns_http stats\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html] ?/id/?
+\fIns_http taskthreads\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html]
+\fIns_http wait\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html] ?-timeout /time/? /id/
+\fIns_httptime\fR [\&.\&./\&.\&./naviserver/files/ns_httptime\&.html] /time/
+\fIns_ictl addmodule\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] /module/
+\fIns_ictl cleanup\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_ictl epoch\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_ictl get\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_ictl getmodules\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] ?-server /server/?
+\fIns_ictl gettraces\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] allocate|create|deallocate|delete|freeconn|getconn|idle
+\fIns_ictl markfordelete\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_ictl maxconcurrentupdates\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] ?/max/?
+\fIns_ictl runtraces\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] allocate|create|deallocate|delete|freeconn|getconn|idle
+\fIns_ictl save\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] /script/
+\fIns_ictl trace\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html] allocate|create|deallocate|delete|freeconn|getconn|idle /script/ ?/arg \&.\&.\&./?
+\fIns_ictl update\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_imgmime\fR [\&.\&./\&.\&./naviserver/files/ns_imgmime\&.html] /filename/
+\fIns_imgsize\fR [\&.\&./\&.\&./naviserver/files/ns_imgsize\&.html] /filename/
+\fIns_imgtype\fR [\&.\&./\&.\&./naviserver/files/ns_imgtype\&.html] /filename/
+\fIns_info address\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info argv\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info argv0\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info bindir\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info boottime\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info builddate\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info buildinfo\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info callbacks\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info config\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info home\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info hostname\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info ipv6\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info locks\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info log\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info logdir\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info major\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info meminfo\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html] ?-release?
+\fIns_info mimetypes\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info minor\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info name\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info nsd\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info patchlevel\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info pid\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info pools\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info scheduled\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info server\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info servers\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info shutdownpending\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info sockcallbacks\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info ssl\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info started\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info tag\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info threads\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info uptime\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_info version\fR [\&.\&./\&.\&./naviserver/files/ns_info\&.html]
+\fIns_internalredirect\fR [\&.\&./\&.\&./naviserver/files/ns_internalredirect\&.html] /location/
+\fIns_ip inany\fR [\&.\&./\&.\&./naviserver/files/ns_ip\&.html] /ipaddr/
+\fIns_ip match\fR [\&.\&./\&.\&./naviserver/files/ns_ip\&.html] /cidr/ /ipaddr/
+\fIns_ip properties\fR [\&.\&./\&.\&./naviserver/files/ns_ip\&.html] /ipaddr/
+\fIns_ip public\fR [\&.\&./\&.\&./naviserver/files/ns_ip\&.html] /ipaddr/
+\fIns_ip trusted\fR [\&.\&./\&.\&./naviserver/files/ns_ip\&.html] /ipaddr/
+\fIns_ip valid\fR [\&.\&./\&.\&./naviserver/files/ns_ip\&.html] ?-type ipv4|ipv6? ?--? /ipaddr/
+\fIns_issmallint\fR [\&.\&./\&.\&./naviserver/files/ns_issmallint\&.html] /value/
+\fIns_job cancel\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] /queueId/ /jobId/
+\fIns_job configure\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] ?-jobsperthread /integer/? ?-logminduration /time/? ?-timeout /time/?
+\fIns_job create\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] ?-desc /value/? /queueId/ ?/maxthreads/?
+\fIns_job delete\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] /queueId/
+\fIns_job exists\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] /queueId/ /jobId/
+\fIns_job genid\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html]
+\fIns_job joblist\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] /queueId/
+\fIns_job jobs\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] /queueId/
+\fIns_job queue\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] ?-detached? ?-head? ?-jobid /value/? /queueId/ /script/
+\fIns_job queuelist\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html]
+\fIns_job queues\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html]
+\fIns_job threadlist\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html]
+\fIns_job wait\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] ?-timeout /time/? /queueId/ /jobId/
+\fIns_job waitany\fR [\&.\&./\&.\&./naviserver/files/ns_job\&.html] ?-timeout /time/? /queueId/
+\fIns_joinurl\fR [\&.\&./\&.\&./naviserver/files/ns_parseurl\&.html] /dict/
+\fIns_jpegsize\fR [\&.\&./\&.\&./naviserver/files/ns_jpegsize\&.html] /filename/
+\fIns_kill\fR [\&.\&./\&.\&./naviserver/files/ns_kill\&.html] ?-nocomplain? /pid/ /signal/
+\fIns_library\fR [\&.\&./\&.\&./naviserver/files/ns_library\&.html] private|shared ?/module/?
+\fIns_localsqltimestamp\fR [\&.\&./\&.\&./nsdb/files/ns_buildsqldate\&.html]
+\fIns_localtime\fR [\&.\&./\&.\&./naviserver/files/ns_localtime\&.html]
+\fIns_locationproc\fR [\&.\&./\&.\&./naviserver/files/ns_locationproc\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_log\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html] /severity/ /message \&.\&.\&./
+\fIns_logctl count\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl flush\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl get\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl grep\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html] ?-filename /value/? ?--? /string/
+\fIns_logctl hold\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl peek\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl register\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_logctl release\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl severities\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl severity\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html] /severity/ ?-color black|red|green|yellow|blue|magenta|cyan|gray|default? ?-intensity normal|bright? ?true|false?
+\fIns_logctl stats\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_logctl truncate\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html] ?/count/?
+\fIns_logctl unregister\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html] /handle/
+\fIns_logroll\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html]
+\fIns_md file\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] ?-digest /value/? ?-encoding /value/? /filename/ ?/filename \&.\&.\&./?
+\fIns_md new\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] ?-digest /value/?
+\fIns_md string\fR [\&.\&./\&.\&./naviserver/files/ns_md\&.html] ?-digest /value/? ?-encoding /value/? /message/
+\fIns_md5\fR [\&.\&./\&.\&./naviserver/files/ns_md5\&.html] ?-binary? ?--? /string/
+\fIns_memoize\fR [\&.\&./\&.\&./naviserver/files/ns_memoize\&.html] ?-timeout /time/? ?-expires /time/? ?--? /script/ ?/arg \&.\&.\&./?
+\fIns_memoize_flush\fR [\&.\&./\&.\&./naviserver/files/ns_memoize\&.html] ?/pattern/?
+\fIns_memoize_stats\fR [\&.\&./\&.\&./naviserver/files/ns_memoize\&.html]
+\fIns_mkdtemp\fR [\&.\&./\&.\&./naviserver/files/ns_mkdtemp\&.html] ?/template/?
+\fIns_mktemp\fR [\&.\&./\&.\&./naviserver/files/ns_mktemp\&.html] ?-nocomplain? ?--? ?/template/?
+\fIns_moduleload\fR [\&.\&./\&.\&./naviserver/files/ns_moduleload\&.html] ?-global? ?-init /value/? ?--? /module/ /file/
+\fIns_modulepath\fR [\&.\&./\&.\&./naviserver/files/ns_modulepath\&.html] /server/ ?/module \&.\&.\&./?
+\fIns_mutex create\fR [\&.\&./\&.\&./naviserver/files/ns_mutex\&.html] ?/name/?
+\fIns_mutex destroy\fR [\&.\&./\&.\&./naviserver/files/ns_mutex\&.html] /mutexId/
+\fIns_mutex eval\fR [\&.\&./\&.\&./naviserver/files/ns_mutex\&.html] /mutexId/ /script/
+\fIns_mutex lock\fR [\&.\&./\&.\&./naviserver/files/ns_mutex\&.html] /mutexId/
+\fIns_mutex trylock\fR [\&.\&./\&.\&./naviserver/files/ns_mutex\&.html] /mutexId/
+\fIns_mutex unlock\fR [\&.\&./\&.\&./naviserver/files/ns_mutex\&.html] /mutexId/
+\fIns_normalizepath\fR [\&.\&./\&.\&./naviserver/files/ns_normalizepath\&.html] /path/
+\fIns_pagepath\fR [\&.\&./\&.\&./naviserver/files/ns_pagepath\&.html] ?-host /value/? ?--? ?/path-segment \&.\&.\&./?
+\fIns_param\fR [\&.\&./\&.\&./naviserver/files/ns_config\&.html] /key/ /value/
+\fIns_parseargs\fR [\&.\&./\&.\&./naviserver/files/ns_parseargs\&.html] /argspec/ /arg \&.\&.\&./
+\fIns_parsefieldvalue\fR [\&.\&./\&.\&./naviserver/files/ns_parsefieldvalue\&.html] ?-lower? ?-single? ?-strict? ?--? /fieldvalue/
+\fIns_parseheader\fR [\&.\&./\&.\&./naviserver/files/ns_parseheader\&.html] ?-prefix /value/? /set/ /headerline/ ?/disposition/?
+\fIns_parsehostport\fR [\&.\&./\&.\&./naviserver/files/ns_parsehostport\&.html] ?-strict? ?--? /hostport/
+\fIns_parsehtml\fR [\&.\&./\&.\&./naviserver/files/textutil-cmds\&.html] ?-noangle? ?-onlytags? ?--? /html/
+\fIns_parsehttptime\fR [\&.\&./\&.\&./naviserver/files/ns_parsehttptime\&.html] /httptime/
+\fIns_parsemessage\fR [\&.\&./\&.\&./naviserver/files/ns_parsemessage\&.html] /message/
+\fIns_parsequery\fR [\&.\&./\&.\&./naviserver/files/ns_parsequery\&.html] ?-charset /value/? ?-fallbackcharset /value/? ?--? /querystring/
+\fIns_parseurl\fR [\&.\&./\&.\&./naviserver/files/ns_parseurl\&.html] ?-strict? ?--? /url/
+\fIns_pause\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] /id/
+\fIns_percentdecode\fR [\&.\&./\&.\&./naviserver/files/ns_percentencode\&.html] ?-charset /value/? ?-fallbackcharset /value/? ?-scheme query|path|cookie|oauth1? ?--? /string/
+\fIns_percentencode\fR [\&.\&./\&.\&./naviserver/files/ns_percentencode\&.html] ?-charset /value/? ?-scheme query|path|cookie|oauth1? ?-uppercase? ?--? /string/
+\fIns_perm addgroup\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] /group/ /user/ ?/user \&.\&.\&./?
+\fIns_perm adduser\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] ?-allow? ?-deny? ?-clear? ?-salt /value/? ?--? /name/ /encpass/ /userfield/ ?/host \&.\&.\&./?
+\fIns_perm allowgroup\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] ?-noinherit? ?--? /method/ /url/ /group \&.\&.\&./
+\fIns_perm allowuser\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] ?-noinherit? ?--? /method/ /url/ /user \&.\&.\&./
+\fIns_perm checkpass\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] /user/ /passwd/
+\fIns_perm delgroup\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] /name/
+\fIns_perm deluser\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] /name/
+\fIns_perm denygroup\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] ?-noinherit? ?--? /method/ /url/ /group \&.\&.\&./
+\fIns_perm denyuser\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] ?-noinherit? ?--? /method/ /url/ /user \&.\&.\&./
+\fIns_perm listgroups\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html]
+\fIns_perm listperms\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html]
+\fIns_perm listusers\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html]
+\fIns_perm setpass\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] /user/ /encpass/ ?/salt/?
+\fIns_permpasswd\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] /user/ /oldpasswd/ /newpasswd/
+\fIns_permreload\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html]
+\fIns_pngsize\fR [\&.\&./\&.\&./naviserver/files/ns_pngsize\&.html] /filename/
+\fIns_proxy active\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/ ?/proxyId/?
+\fIns_proxy cleanup\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html]
+\fIns_proxy clear\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/ ?/proxyId/?
+\fIns_proxy configure\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/ ?-env /setId/? ?-evaltimeout /time/? ?-exec /value/? ?-gettimeout /time/? ?-idletimeout /time/? ?-init /value/? ?-logminduration /time/? ?-maxruns /integer/? ?-maxslaves /integer/? ?-maxworkers /integer/? ?-recvtimeout /time/? ?-reinit /value/? ?-sendtimeout /time/? ?-waittimeout /time/?
+\fIns_proxy eval\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/ /script/ ?/timeout/?
+\fIns_proxy free\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/
+\fIns_proxy get\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/ ?-handles /integer/? ?-timeout /time/?
+\fIns_proxy handles\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] ?/pool/?
+\fIns_proxy ping\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/
+\fIns_proxy pools\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html]
+\fIns_proxy put\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/
+\fIns_proxy recv\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/
+\fIns_proxy release\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/
+\fIns_proxy send\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/ /script/
+\fIns_proxy stats\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/
+\fIns_proxy stop\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/ ?/proxyId/?
+\fIns_proxy wait\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /proxyId/ ?/timeout/?
+\fIns_proxy workers\fR [\&.\&./\&.\&./nsproxy/files/ns_proxy\&.html] /pool/
+\fIns_purgefiles\fR [\&.\&./\&.\&./naviserver/files/ns_purgefiles\&.html] /path/ /maxbackups/
+\fIns_queryexists\fR [\&.\&./\&.\&./naviserver/files/ns_queryexists\&.html] /key/
+\fIns_queryget\fR [\&.\&./\&.\&./naviserver/files/ns_queryget\&.html] /key/ ?/value/?
+\fIns_querygetall\fR [\&.\&./\&.\&./naviserver/files/ns_querygetall\&.html] /key/ ?/default/?
+\fIns_quotehtml\fR [\&.\&./\&.\&./naviserver/files/textutil-cmds\&.html] /html/
+\fIns_quotelisttolist\fR [\&.\&./\&.\&./nsdb/files/ns_dbquotevalues\&.html] /value/
+\fIns_rand\fR [\&.\&./\&.\&./naviserver/files/ns_rand\&.html] ?/maximum/?
+\fIns_reflow_text\fR [\&.\&./\&.\&./naviserver/files/textutil-cmds\&.html] ?-width /integer/? ?-offset /integer/? ?-prefix /value/? ?--? /text/
+\fIns_register_adp\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? ?-noinherit? ?-expires /time/? ?-options autoabort|detailerror|displayerror|expire|cache|safe|singlescript|stricterror|trace|trimspace|stream? ?--? /method/ /url/ ?/file/?
+\fIns_register_auth\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-authority /value/? ?-first? ?--? request|user /script/ ?/arg \&.\&.\&./?
+\fIns_register_cgi\fR [\&.\&./\&.\&./nscgi/files/ns_register_cgi\&.html] ?-constraints /constraints/? ?-noinherit? ?-matchsegments? ?-path /value/? ?--? /method/ /url/
+\fIns_register_fastpath\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? ?-noinherit? ?--? /method/ /url/
+\fIns_register_fasturl2file\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-noinherit? ?--? /url/ ?/basepath/?
+\fIns_register_filter\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? ?-first? ?--? preauth|postauth|trace /method/ /urlpattern/ /script/ ?/arg \&.\&.\&./?
+\fIns_register_proc\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? ?-noinherit? ?--? /method/ /url/ /script/ ?/arg \&.\&.\&./?
+\fIns_register_proxy\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] /method/ /protocol/ /script/ ?/arg \&.\&.\&./?
+\fIns_register_tcl\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? ?-noinherit? ?--? /method/ /url/ ?/file/?
+\fIns_register_trace\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? /method/ /urlpattern/ /script/ ?/arg \&.\&.\&./?
+\fIns_register_url2file\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-noinherit? ?--? /url/ /script/ ?/arg \&.\&.\&./?
+\fIns_reinit\fR [\&.\&./\&.\&./naviserver/files/ns_ictl\&.html]
+\fIns_respond\fR [\&.\&./\&.\&./naviserver/files/ns_return\&.html] ?-status /integer/? ?-type /value/? ?-length /integer/? ?-headers /setId/? ?-string /value/? ?-file /value/? ?-fileid /value/? ?-data /data/?
+\fIns_resume\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] /id/
+\fIns_return\fR [\&.\&./\&.\&./naviserver/files/ns_return\&.html] ?-binary? /status/ /mimetype/ /data/
+\fIns_returnbadrequest\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html] /reason/
+\fIns_returnerror\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html] /status/ /message/
+\fIns_returnfile\fR [\&.\&./\&.\&./naviserver/files/ns_return\&.html] /status/ /mimetype/ /filename/
+\fIns_returnforbidden\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html]
+\fIns_returnfp\fR [\&.\&./\&.\&./naviserver/files/ns_return\&.html] /status/ /mimetype/ /channel/ /length/
+\fIns_returnmoved\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html] /location/
+\fIns_returnnotfound\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html]
+\fIns_returnnotice\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html] /status/ /title/ /message/
+\fIns_returnok\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html]
+\fIns_returnredirect\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html] /location/
+\fIns_returnunauthorized\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html]
+\fIns_returnunavailable\fR [\&.\&./\&.\&./naviserver/files/returnstatus-cmds\&.html]
+\fIns_rlimit coresize\fR [\&.\&./\&.\&./naviserver/files/ns_rlimit\&.html] ?/value/?
+\fIns_rlimit datasize\fR [\&.\&./\&.\&./naviserver/files/ns_rlimit\&.html] ?/value/?
+\fIns_rlimit files\fR [\&.\&./\&.\&./naviserver/files/ns_rlimit\&.html] ?/value/?
+\fIns_rlimit filesize\fR [\&.\&./\&.\&./naviserver/files/ns_rlimit\&.html] ?/value/?
+\fIns_rlimit vmsize\fR [\&.\&./\&.\&./naviserver/files/ns_rlimit\&.html] ?/value/?
+\fIns_rollfile\fR [\&.\&./\&.\&./naviserver/files/ns_rollfile\&.html] /path/ /maxbackups/
+\fIns_runonce\fR [\&.\&./\&.\&./naviserver/files/ns_runonce\&.html] ?-global? ?--? /script/
+\fIns_rwlock create\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html]
+\fIns_rwlock destroy\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/
+\fIns_rwlock readeval\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/ /script/
+\fIns_rwlock readlock\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/
+\fIns_rwlock readunlock\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/
+\fIns_rwlock unlock\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/
+\fIns_rwlock writeeval\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/ /script/
+\fIns_rwlock writelock\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/
+\fIns_rwlock writeunlock\fR [\&.\&./\&.\&./naviserver/files/ns_rwlock\&.html] /rwlockid/
+\fIns_schedule_daily\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] ?-once? ?-thread? ?--? /hour/ /minute/ /script/ ?/arg \&.\&.\&./?
+\fIns_schedule_proc\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] ?-once? ?-thread? ?--? /interval/ /script/ ?/arg \&.\&.\&./?
+\fIns_schedule_weekly\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] ?-once? ?-thread? ?--? /day/ /hour/ /minute/ /script/ ?/arg \&.\&.\&./?
+\fIns_section\fR [\&.\&./\&.\&./naviserver/files/ns_config\&.html] ?-update? ?--? /name/
+\fIns_sema create\fR [\&.\&./\&.\&./naviserver/files/ns_sema\&.html] ?/count/?
+\fIns_sema destroy\fR [\&.\&./\&.\&./naviserver/files/ns_sema\&.html] /handle/
+\fIns_sema release\fR [\&.\&./\&.\&./naviserver/files/ns_sema\&.html] /handle/ ?/count/?
+\fIns_sema wait\fR [\&.\&./\&.\&./naviserver/files/ns_sema\&.html] /handle/
+\fIns_sendmail\fR [\&.\&./\&.\&./naviserver/files/ns_sendmail\&.html] -to /value/ -from /value/ ?-subject /value/? ?-body /value/? ?-headers /value/? ?-bcc /value/? ?-cc /value/?
+\fIns_sendmail_config\fR [\&.\&./\&.\&./naviserver/files/ns_sendmail\&.html] ?log?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? active ?-checkforproxy?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? all ?-checkforproxy?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? authprocs
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? connectionratelimit ?/value/?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? connections
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? filters
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? hosts
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? map ?-noinherit? ?/mapspec/?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? mapped ?-all? ?-exact? ?-noinherit? /mapspec/
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? maxthreads ?/value/?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? minthreads ?/value/?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? pagedir
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? poolratelimit ?/value/?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? pools
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? queued
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? realm ?/newrealm/?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? requestprocs
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? serverdir ?-effective?
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? stats
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? tcllib
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? threads
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? traces
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? unmap ?-noinherit? /mapspec/
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? url2file
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? vhostenabled
+\fIns_server\fR [\&.\&./\&.\&./naviserver/files/ns_server\&.html] ?-server /server/? ?-pool /value/? waiting
+\fIns_serverpath\fR [\&.\&./\&.\&./naviserver/files/ns_serverpath\&.html] ?-host /value/? ?--? ?/path-segment \&.\&.\&./?
+\fIns_serverrootproc\fR [\&.\&./\&.\&./naviserver/files/ns_serverrootproc\&.html] /script/ ?/arg \&.\&.\&./?
+\fIns_set array\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/
+\fIns_set cleanup\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html]
+\fIns_set copy\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/
+\fIns_set cput\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-nocase? ?--? /setId/ /key/ /value/
+\fIns_set delete\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ /fieldNumber/
+\fIns_set delkey\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-nocase? ?--? /setId/ /key/
+\fIns_set find\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-nocase? ?--? /setId/ /key/
+\fIns_set format\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-noname? ?-lead /value/? ?-separator /value/? ?--? /setId/
+\fIns_set free\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/
+\fIns_set get\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-all? ?-nocase? ?--? /setId/ /key/ ?/default/?
+\fIns_set isnull\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ /fieldNumber/
+\fIns_set key\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ /fieldNumber/
+\fIns_set keys\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ ?/pattern/?
+\fIns_set list\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html]
+\fIns_set merge\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-nocase? ?--? /setId1/ /setId2/
+\fIns_set move\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId1/ /setId2/
+\fIns_set name\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/
+\fIns_set put\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ /key/ /value/
+\fIns_set size\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ ?/nrElements/? ?/bufferSize/?
+\fIns_set split\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ ?/splitChar/?
+\fIns_set truncate\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ /fieldNumber/
+\fIns_set unique\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-nocase? ?--? /setId/ /key/
+\fIns_set update\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] ?-nocase? ?--? /setId/ /key/ /value/
+\fIns_set value\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ /fieldNumber/
+\fIns_set values\fR [\&.\&./\&.\&./naviserver/files/ns_set\&.html] /setId/ ?/pattern/?
+\fIns_setcookie\fR [\&.\&./\&.\&./naviserver/files/ns_cookie\&.html] ?-discard true|false? ?-domain /value/? ?-expires /time/? ?-path /value/? ?-replace true|false? ?-samesite strict|lax|none? ?-scriptable true|false? ?-secure true|false? ?--? /name/ /data/
+\fIns_setexpires\fR [\&.\&./\&.\&./naviserver/files/ns_setexpires\&.html] ?-cache-control public|private|no-cache|no-store|no-transform|must-revalidate|proxy-revalidate? /seconds/
+\fIns_setformencoding\fR [\&.\&./\&.\&./naviserver/files/ns_setformencoding\&.html] /charset/
+\fIns_setgroup\fR [\&.\&./\&.\&./naviserver/files/ns_setprivileges\&.html] /group/
+\fIns_setuser\fR [\&.\&./\&.\&./naviserver/files/ns_setprivileges\&.html] /user/
+\fIns_sha1\fR [\&.\&./\&.\&./naviserver/files/ns_sha1\&.html] ?-binary? ?--? /string/
+\fIns_shortcut_filter\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-constraints /constraints/? preauth|postauth|trace /method/ /urlpattern/
+\fIns_shutdown\fR [\&.\&./\&.\&./naviserver/files/ns_shutdown\&.html] ?-restart? ?--? ?/timeout/?
+\fIns_sleep\fR [\&.\&./\&.\&./naviserver/files/ns_sleep\&.html] /duration/
+\fIns_sls array\fR [\&.\&./\&.\&./naviserver/files/ns_sls\&.html]
+\fIns_sls get\fR [\&.\&./\&.\&./naviserver/files/ns_sls\&.html] /key/ ?/default/?
+\fIns_sls set\fR [\&.\&./\&.\&./naviserver/files/ns_sls\&.html] /key/ /value/
+\fIns_sls unset\fR [\&.\&./\&.\&./naviserver/files/ns_sls\&.html] /key/
+\fIns_sockaccept\fR [\&.\&./\&.\&./naviserver/files/ns_sockaccept\&.html] /sockId/
+\fIns_sockblocking\fR [\&.\&./\&.\&./naviserver/files/ns_sockblocking\&.html] /sockId/
+\fIns_sockcallback\fR [\&.\&./\&.\&./naviserver/files/ns_sockcallback\&.html] /sockId/ /command/ /when/ ?/timeout/?
+\fIns_sockcheck\fR [\&.\&./\&.\&./naviserver/files/ns_sockcheck\&.html] /sockId/
+\fIns_socketpair\fR [\&.\&./\&.\&./naviserver/files/ns_socketpair\&.html]
+\fIns_socklisten\fR [\&.\&./\&.\&./naviserver/files/ns_socklisten\&.html] /address/ /port/
+\fIns_socklistencallback\fR [\&.\&./\&.\&./naviserver/files/ns_socklistencallback\&.html] /address/ /port/ /script/
+\fIns_socknonblocking\fR [\&.\&./\&.\&./naviserver/files/ns_socknonblocking\&.html] /sockId/
+\fIns_socknread\fR [\&.\&./\&.\&./naviserver/files/ns_socknread\&.html] /sockId/
+\fIns_sockopen\fR [\&.\&./\&.\&./naviserver/files/ns_sockopen\&.html] ?-async? ?-localhost /value/? ?-localport /port/? ?-nonblock? ?-timeout /time/? ?--? /host/ /port/
+\fIns_sockselect\fR [\&.\&./\&.\&./naviserver/files/ns_sockselect\&.html] ?-timeout /time/? /rfds/ /wfds/ /efds/
+\fIns_strcoll\fR [\&.\&./\&.\&./naviserver/files/ns_strcoll\&.html] ?-locale /value/? ?--? /string1/ /string2/
+\fIns_striphtml\fR [\&.\&./\&.\&./naviserver/files/textutil-cmds\&.html] /html/
+\fIns_symlink\fR [\&.\&./\&.\&./naviserver/files/ns_symlink\&.html] ?-nocomplain? ?--? /filename1/ /filename2/
+\fIns_thread create\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html] ?-detached? ?-name /value/? ?--? /script/
+\fIns_thread handle\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html]
+\fIns_thread id\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html]
+\fIns_thread name\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html] ?/name/?
+\fIns_thread stackinfo\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html]
+\fIns_thread wait\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html] /threadid/
+\fIns_thread yield\fR [\&.\&./\&.\&./naviserver/files/ns_thread\&.html]
+\fIns_time\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html]
+\fIns_time adjust\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /time/
+\fIns_time diff\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /time1/ /time2/
+\fIns_time format\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /time/
+\fIns_time get\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html]
+\fIns_time incr\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /time/ /sec/ ?/usec/?
+\fIns_time make\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /sec/ ?/usec/?
+\fIns_time microseconds\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /time/
+\fIns_time seconds\fR [\&.\&./\&.\&./naviserver/files/ns_time\&.html] /time/
+\fIns_totp\fR [\&.\&./\&.\&./naviserver/files/ns_totp\&.html] ?-digest /value/? ?-digits /integer/? ?-interval /integer/? ?-user_id /integer/? ?-key /value/? ?-time /time/?
+\fIns_trim\fR [\&.\&./\&.\&./naviserver/files/textutil-cmds\&.html] ?-subst? ?-delimiter /value/? ?-prefix /value/? ?--? /text/
+\fIns_truncate\fR [\&.\&./\&.\&./naviserver/files/ns_truncate\&.html] /filename/ ?/length/?
+\fIns_unquotehtml\fR [\&.\&./\&.\&./naviserver/files/textutil-cmds\&.html] /html/
+\fIns_unregister_op\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-allconstraints? ?-noinherit? ?-recurse? ?-server /server/? ?--? /method/ /url/
+\fIns_unregister_url2file\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html] ?-noinherit? ?-recurse? ?-server /server/? ?--? /url/
+\fIns_unschedule_proc\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] /id/
+\fIns_upload_stats\fR [\&.\&./\&.\&./naviserver/files/ns_upload_stats\&.html] /key/
+\fIns_url2file\fR [\&.\&./\&.\&./naviserver/files/ns_url2file\&.html] /url/
+\fIns_urlcharset\fR [\&.\&./\&.\&./naviserver/files/ns_urlcharset\&.html] /charset/
+\fIns_urldecode\fR [\&.\&./\&.\&./naviserver/files/ns_percentencode\&.html] ?-charset /value/? ?-fallbackcharset /value/? ?-part query|path|cookie|oauth1? ?--? /string/
+\fIns_urlencode\fR [\&.\&./\&.\&./naviserver/files/ns_percentencode\&.html] ?-charset /value/? ?-part query|path|cookie|oauth1? ?-uppercase? ?--? /component \&.\&.\&./
+\fIns_urlspace get\fR [\&.\&./\&.\&./naviserver/files/ns_urlspace\&.html] ?-context /setId/? ?-exact? ?-id /integer/? ?-key /value/? ?-noinherit? /URL/
+\fIns_urlspace list\fR [\&.\&./\&.\&./naviserver/files/ns_urlspace\&.html] ?-id /integer/?
+\fIns_urlspace new\fR [\&.\&./\&.\&./naviserver/files/ns_urlspace\&.html]
+\fIns_urlspace set\fR [\&.\&./\&.\&./naviserver/files/ns_urlspace\&.html] ?-constraints /constraints/? ?-id /integer/? ?-key /value/? ?-noinherit? /URL/ /data/
+\fIns_urlspace unset\fR [\&.\&./\&.\&./naviserver/files/ns_urlspace\&.html] ?-allconstraints? ?-id /integer/? ?-key /value/? ?-noinherit? ?-recurse? /URL/
+\fIns_uudecode\fR [\&.\&./\&.\&./naviserver/files/ns_uudecode\&.html] ?-binary? ?-strict? ?--? /string/
+\fIns_uuencode\fR [\&.\&./\&.\&./naviserver/files/ns_uuencode\&.html] ?-binary? ?--? /string/
+\fIns_valid_utf8\fR [\&.\&./\&.\&./naviserver/files/ns_valid_utf8\&.html] /string/ ?/varname/?
+\fIns_write\fR [\&.\&./\&.\&./naviserver/files/ns_write\&.html] /data \&.\&.\&./
+\fIns_writefp\fR [\&.\&./\&.\&./naviserver/files/ns_write\&.html] /channelId/ ?/nbytes/?
+\fIns_writer list\fR [\&.\&./\&.\&./naviserver/files/ns_writer\&.html] ?-server /server/?
+\fIns_writer size\fR [\&.\&./\&.\&./naviserver/files/ns_writer\&.html] ?-driver /value/? ?/size/?
+\fIns_writer streaming\fR [\&.\&./\&.\&./naviserver/files/ns_writer\&.html] ?-driver /value/? ?true|false?
+\fIns_writer submit\fR [\&.\&./\&.\&./naviserver/files/ns_writer\&.html] /data/
+\fIns_writer submitfile\fR [\&.\&./\&.\&./naviserver/files/ns_writer\&.html] ?-headers? ?-offset /memory-size/? ?-size /memory-size/? /filename/
+\fIns_writer submitfiles\fR [\&.\&./\&.\&./naviserver/files/ns_writer\&.html] ?-headers? /filespecs/
+\fInscp users\fR [\&.\&./\&.\&./nscp/files/nscp\&.html]
+\fInsv_append\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /value \&.\&.\&./
+\fInsv_array exists\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/
+\fInsv_array get\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ ?/pattern/?
+\fInsv_array names\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ ?/pattern/?
+\fInsv_array reset\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /list/
+\fInsv_array set\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /list/
+\fInsv_array size\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/
+\fInsv_bucket\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] ?/bucket-number/?
+\fInsv_dict append\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /dictkey/ ?/value \&.\&.\&./?
+\fInsv_dict exists\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /dictkey \&.\&.\&./
+\fInsv_dict get\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] ?-varname /value/? ?--? /array/ /key/ ?/dictkey \&.\&.\&./?
+\fInsv_dict getdef\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] ?-varname /value/? ?--? /array/ /key/ /dictkey \&.\&.\&./ /default/
+\fInsv_dict incr\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /dictkey/ ?/increment/?
+\fInsv_dict keys\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ ?/pattern/?
+\fInsv_dict lappend\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /dictkey/ ?/value \&.\&.\&./?
+\fInsv_dict set\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /dictkey \&.\&.\&./ /value/
+\fInsv_dict size\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/
+\fInsv_dict unset\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /dictkey \&.\&.\&./
+\fInsv_exists\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/
+\fInsv_get\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ ?/varName/?
+\fInsv_incr\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ ?/increment/?
+\fInsv_lappend\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] /array/ /key/ /value \&.\&.\&./
+\fInsv_names\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] ?/pattern/?
+\fInsv_set\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] ?-default? ?-reset? ?--? /array/ /key/ ?/value/?
+\fInsv_unset\fR [\&.\&./\&.\&./naviserver/files/nsv\&.html] ?-nocomplain? ?--? /array/ ?/key/?
+\fIrevproxy::upstream\fR [\&.\&./\&.\&./revproxy/files/revproxy\&.html] /when/ -target /value/ ?-backendconnection /value/? ?-insecure? ?-connecttimeout /value/? ?-receivetimeout /value/? ?-sendtimeout /value/? ?-timeout /value/? ?-use_target_host_header true|false? ?-targethost /value/? ?-regsubs /value \&.\&.\&./? ?-url_rewrite_callback /value/? ?-response_header_callback /value/? ?-backend_response_callback /value/? ?-exception_callback /value/? ?-validation_callback /value/?
+
+
+.CE
+.SH "DEPRECATED COMMANDS"
+.TP
+\fBenv\fR
+Use \fBns_env\fR instead\&.
+.TP
+\fBns_adp_compress\fR
+Use \fB\fBns_conn\fR compress\fR instead\&.
+.TP
+\fBns_adp_eval\fR
+Use \fBns_adp_parse\fR instead\&.
+.TP
+\fBns_adp_mime\fR
+Use \fBns_adp_mimetype\fR instead\&.
+.TP
+\fBns_adp_registertag\fR
+Use \fB\fIns_adp_registeradp\fR [\&./ns_register\&.html]\fR instead\&.
+.TP
+\fBns_adp_safeeval\fR
+Use \fB\fBns_adp_parse\fR -safe\fR instead\&.
+.TP
+\fBns_adp_stream\fR
+Use \fB\fBns_adp_ctl\fR stream\fR instead\&.
+.TP
+\fBns_browsermatch\fR
+Use standard API instead\&.
+.TP
+\fBns_cancel\fR
+Use \fB\fIns_unschedule_proc\fR [\&./ns_schedule\&.html]\fR instead\&.
+.TP
+\fBns_checkurl\fR
+Use \fBns_auth request\fR instead\&.
+.TP
+\fBns_chmod\fR
+Use \fBfile attributes\fR instead\&.
+.TP
+\fBns_choosecharset\fR
+Use standard internationalization commands instead\&.
+.TP
+\fBns_conncptofp\fR
+Use \fB\fBns_conn\fR copy\fR instead\&.
+.TP
+\fBns_connsendfp\fR
+Use \fB\fIns_writefp\fR [\&./ns_write\&.html]\fR instead\&.
+.TP
+\fBns_cookiecharset\fR
+Use standard internationalization commands instead\&.
+.TP
+\fBns_cp\fR
+Use \fBfile copy\fR instead\&.
+.TP
+\fBns_cpfp\fR
+Use \fBfcopy\fR instead\&.
+.TP
+\fBns_db verbose\fR
+Use \fB\fIns_logctl\fR [\&./ns_log\&.html] debug(sql) \&.\&.\&.\fR instead\&.
+.TP
+\fBns_event\fR
+Use \fBns_cond\fR instead\&.
+.TP
+\fBns_formfieldcharset\fR
+Use standard internationalization commands instead\&.
+.TP
+\fBns_formvalueput\fR
+Not sufficient for today's needs; use standard API instead\&.
+.TP
+\fBns_getchannels\fR
+Use \fBfile channels\fR instead\&.
+.TP
+\fBns_geturl\fR
+Use \fBns_http\fR instead\&.
+.TP
+\fBns_hmac_sha2\fR
+Use \fB\fBns_hmac\fR string\fR instead\&.
+.TP
+\fBns_httpget\fR
+Use \fBns_http\fR instead\&.
+.TP
+\fBns_httpopen\fR
+Use \fBns_http\fR instead\&.
+.TP
+\fBns_httppost\fR
+Use \fBns_http\fR instead\&.
+.TP
+\fBns_ictl oncleanup\fR
+Use \fB\fBns_ictl\fR trace deallocate \&.\&.\&.\fR instead\&.
+.TP
+\fBns_ictl oncreate\fR
+Use \fB\fBns_ictl\fR trace create \&.\&.\&.\fR instead\&.
+.TP
+\fBns_ictl ondelete\fR
+Use \fB\fBns_ictl\fR trace delete \&.\&.\&.\fR instead\&.
+.TP
+\fBns_ictl oninit\fR
+Use \fB\fBns_ictl\fR trace create \&.\&.\&.\fR instead\&.
+.TP
+\fBns_info filters\fR
+Use \fB\fBns_server\fR filters\fR instead\&.
+.TP
+\fBns_info pagedir\fR
+Use \fB\fBns_server\fR pagedir\fR instead\&.
+.TP
+\fBns_info pageroot\fR
+Use \fB\fBns_server\fR pagedir\fR instead\&.
+.TP
+\fBns_info platform\fR
+Use \fB$::tcl_platform(platform)\fR instead\&.
+.TP
+\fBns_info requestprocs\fR
+Use \fB\fBns_server\fR requestprocs\fR instead\&.
+.TP
+\fBns_info tcllib\fR
+Use \fB\fBns_server\fR tcllib\fR instead\&.
+.TP
+\fBns_info traces\fR
+Use \fB\fBns_server\fR traces\fR instead\&.
+.TP
+\fBns_info url2file\fR
+Use \fB\fBns_server\fR url2file\fR instead\&.
+.TP
+\fBns_info winnt\fR
+Use \fB$::tcl_platform(platform)\fR instead\&.
+.TP
+\fBns_isformcached\fR
+Obsolete\&.
+.TP
+\fBns_link\fR
+Use \fBfile link -hard \&.\&.\&.\fR instead\&.
+.TP
+\fBns_mkdir\fR
+Use \fBfile mkdir\fR instead\&.
+.TP
+\fBns_paren\fR
+One-liner\&. Use standard API instead\&.
+.TP
+\fBns_parsetime\fR
+Use \fBclock format \&.\&.\&.\fR instead\&.
+.TP
+\fBns_passwordcheck\fR
+Use \fB\fIns_perm\fR [\&.\&./\&.\&./nsperm/files/ns_perm\&.html] checkpass\fR instead\&.
+.TP
+\fBns_pooldescription\fR
+Use \fB\fIns_dbpooldescription\fR [\&.\&./\&.\&./nsdb/files/ns_db\&.html]\fR instead\&.
+.TP
+\fBns_puts\fR
+Use \fBns_adp_puts\fR instead\&.
+.TP
+\fBns_register_adptag\fR
+Use \fB\fIns_adp_registerscript\fR [\&./ns_adp_register\&.html]\fR instead\&.
+.TP
+\fBns_rename\fR
+Use \fBfile rename\fR instead\&.
+.TP
+\fBns_requestauthorize\fR
+Use \fBns_auth request\fR instead\&.
+.TP
+\fBns_resetcachedform\fR
+Obsolete\&.
+.TP
+\fBns_returnadminnotice\fR
+Use \fB\fIns_returnnotice\fR [\&./returnstatus-cmds\&.html]\fR instead\&.
+.TP
+\fBns_rmdir\fR
+Use \fBfile delete\fR instead\&.
+.TP
+\fBns_server keepalive\fR
+Use \fB\fBns_conn\fR keepalive\fR instead\&.
+.TP
+\fBns_set new\fR
+Use \fB\fBns_set\fR create\fR instead\&.
+.TP
+\fBns_set print\fR
+Use \fB\fBns_conn\fR format\fR instead\&.
+.TP
+\fBns_set_precision\fR
+Use \fBset ::tcl_precision \&.\&.\&.\fR instead\&.
+.TP
+\fBns_sha2\fR
+Use \fB\fIns_crypto::md\fR [\&./ns_md\&.html] string\fR instead\&.
+.TP
+\fBns_startcontent\fR
+Use \fB\fIns_headers\fR [\&./ns_write\&.html]\fR instead\&.
+.TP
+\fBns_tagelement\fR
+Use tDOM or similar for accessing HTML content\&.
+.TP
+\fBns_tagelementset\fR
+Use tDOM or similar for updating HTML snippets\&.
+.TP
+\fBns_thread begin\fR
+Use \fB\fBns_thread\fR create \&.\&.\&.\fR instead\&.
+.TP
+\fBns_thread begindetached\fR
+Use \fB\fBns_thread\fR create -detached \&.\&.\&.\fR instead\&.
+.TP
+\fBns_thread get\fR
+Use \fB\fBns_thread\fR handle\fR instead\&.
+.TP
+\fBns_thread getid\fR
+Use \fB\fBns_thread\fR id\fR instead\&.
+.TP
+\fBns_thread join\fR
+Use \fB\fBns_thread\fR wait\fR instead\&.
+.TP
+\fBns_tmpnam\fR
+Use \fBns_mktemp\fR instead\&.
+.TP
+\fBns_unlink\fR
+Use \fBfile delete\fR instead\&.
+.TP
+\fBns_unregister_proc\fR
+Use \fB\fIns_unregister_op\fR [\&./ns_register\&.html]\fR instead\&.
+.TP
+\fBns_updateheader\fR
+Use \fB\fBns_set\fR update\fR [\fB\fBns_conn\fR outputheaders\fR] instead\&.
+.TP
+\fBns_var\fR
+Use \fBnsv_*\fR instead\&.
+.TP
+\fBns_writecontent\fR
+Use \fB\fBns_conn\fR copy\fR instead\&.
+.TP
+\fBkeyldel\fR
+Use Tcl \fBdict\fR instead\&.
+.TP
+\fBkeylget\fR
+Use Tcl \fBdict\fR instead\&.
+.TP
+\fBkeylkeys\fR
+Use Tcl \fBdict\fR instead\&.
+.TP
+\fBkeylset\fR
+Use Tcl \fBdict\fR instead\&.
+.PP
+.SH "SEE ALSO"
+nsd
+.SH KEYWORDS
+NaviServer, command list, deprecated

@@ -2,24 +2,26 @@
 [manpage_begin ns_sockselect n [vset version]]
 [moddesc {NaviServer Built-in Commands}]
 
-[titledesc {Determine readable file id's}]
+[titledesc {Determine processable channels}]
 
 [description]
-[cmd ns_sockselect] uses a select() call to determine which file id's re readable, writable,
-or have exceptional conditions. [cmd ns_sockselect] returns a list of three lists of:
-readable file id's, writable file id's, and file id's with exceptions.
+[cmd ns_sockselect] uses a select() call to determine which channels are readable, writable,
+or have exceptional conditions. [cmd ns_sockselect] returns a list of
+three lists channels, readable, writable, exception channels.
 
 The [option -timeout] option specifies the length of time to wait in seconds for ns_sockselect
 to return before timing out.
 
-The rfds, wfds, and efds arguments are lists of readable file id's, writable
-file id's, and file id's with exceptions, respectively.
+The arguments [arg rfds], [arg wfds], [arg efds] are lists of channels
+for readable, writable, and exception channels.
 
 [section {COMMANDS}]
 
 [list_begin definitions]
 
-[call [cmd ns_sockselect] [opt [arg timeout]] [arg rfds] [arg wfds] [arg efds]]
+[call [cmd ns_sockselect] \
+        [opt [option "-timeout [arg time]"]] \
+        [arg rfds] [arg wfds] [arg efds]]
 
 [list_end]
 
@@ -27,8 +29,8 @@ file id's, and file id's with exceptions, respectively.
 
 [example_begin]
  # Start nonblocking connect()'s to www01 through
- # www09.foo.com and remember the read fileid which
- # corresponds to each write fileid.
+ # www09.foo.com and remember the read channelId which
+ # corresponds to each write channelId.
  
  for {set n 1} {$n < 10} {incr n} {
    set host [lb]format "www%2d.foo.com" $n[rb]

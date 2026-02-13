@@ -68,18 +68,18 @@ proc ns_queryget {key {value ""}}  {
 #   Get all values of the same key name from the http form.
 #
 # Results:
-#   Values of the key or def_result if no value found.
+#   Values of the key or default if no value found.
 #
 # Side effects:
 #   May cache current form.
 #
 
-proc ns_querygetall {key {def_result ""}} {
+proc ns_querygetall {key {default ""}} {
 
     set form [ns_getform]
 
     if {$form eq {}} {
-        set result $def_result
+        set result $default
     } else {
         set result {}
         set size [ns_set size $form]
@@ -99,8 +99,8 @@ proc ns_querygetall {key {def_result ""}} {
                 }
             }
         }
-        if {$result eq {}} {
-            set result $def_result
+        if {$result eq ""} {
+            set result $default
         }
     }
 
@@ -205,7 +205,7 @@ proc ns_getform {args}  {
                     #set nocomplain [expr {$::tcl_version < 9.0 ? "" : "-profile tcl8"}]
                     set nocomplain "" ;# Tcl9 is a moving target, not sure yet, how this will end up when released
                     try {
-                        fconfigure $fp {*}$nocomplain -encoding binary -translation binary
+                        fconfigure $fp {*}$nocomplain -translation binary
                     } on error {errorMsg} {
                         ns_log warning "ns_getform: fconfigure of temporary file returned: $errorMsg"
                     }
@@ -286,33 +286,35 @@ proc ns_getform {args}  {
 #   None.
 #
 
-if {[info command lmap] eq {}} {
-    proc lmap {vars list body} {
-        set _r {}
-        set _l {}
-        foreach _v $vars {
-            set _n v[incr _x]
-            lappend _l $_n
-            upvar 1 $_v $_n
+if {$::tcl_version < 8.6} {
+    #
+    # A version before lmap
+    #
+    proc ns_getformfile {name} {
+        set result {}
+        set form [ns_getform]
+        if {[ns_set find $form $name.tmpfile] > -1} {
+            foreach {k v} [ns_set array $form] {
+                if {$k ne "$name.tmpfile"} continue
+                lappend result $v
+            }
         }
-        foreach $_l $list {
-            lappend _r [uplevel 1 $body]
+        return $result
+    }
+} else {
+    #
+    # More modern version
+    #
+    proc ns_getformfile {name} {
+        set form [ns_getform]
+        if {[ns_set find $form $name.tmpfile] > -1} {
+            return [lmap {k v} [ns_set array $form] {
+                if {$k ne "$name.tmpfile"} continue
+                set v
+            }]
         }
-        return $_r
     }
 }
-
-proc ns_getformfile {name} {
-
-    set form [ns_getform]
-    if {[ns_set find $form $name.tmpfile] > -1} {
-        return [lmap {k v} [ns_set array $form] {
-            if {$k ne "$name.tmpfile"} continue
-            set v
-        }]
-    }
-}
-
 
 #
 # ns_openexcl --
@@ -340,70 +342,35 @@ proc ns_openexcl {file} {
     return $fp
 }
 
-#
-# For users of Tcl 8.5, the following should be sufficiently
-# equivalent. Not sure, we have to support still Tcl 8.5.
-#
-#proc ns_opentmpfile {varFilename {template ""} {
-#    upvar $varFilename tmpFileName
-#    set tmpFileName [ns_mktemp {*}$template]
-#    set fp [ns_openexcl $tmpFileName]
-#}
-
-proc ns_opentmpfile {varFilename {template ""}} {
-    upvar $varFilename tmpFileName
-    if {$template eq ""} {
-        set template [ns_config ns/parameters tmpdir]/nsd-XXXXXX
+if {$::tcl_version < 8.6} {
+    #
+    # For users of Tcl 8.5, the following should be sufficiently
+    # equivalent.
+    #
+    proc ns_opentmpfile {varFilename {template ""}} {
+        upvar $varFilename tmpFileName
+        set tmpFileName [ns_mktemp -nocomplain {*}$template]
+        set fp [ns_openexcl $tmpFileName]
     }
-    return [::file tempfile tmpFileName {*}$template]
-}
-
-#
-# ns_resetcachedform --
-#
-#   Reset the http form set currently cached (if any),
-#   optionally to be replaced by the given form set.
-#
-# Results:
-#   None.
-#
-# Side effects:
-#   This procedure is deprecated as connection forms
-#   are already cached on the C-level
-#
-
-proc ns_resetcachedform {{newform ""}} {
-    ns_deprecated "" "Forms are cached on the C level."
-
-    if {[info exists ::_ns_form]} {
-        unset ::_ns_form
-    }
-    if {$newform ne {}} {
-        set ::_ns_form $newform
+} else {
+    proc ns_opentmpfile {varFilename {template ""}} {
+        upvar $varFilename tmpFileName
+        if {$template eq ""} {
+            set template [ns_config ns/parameters tmpdir]/nsd-XXXXXX
+        }
+        #
+        # Apparently, "file tempfile" on windows does not support the
+        # path from the template and uses its own understanding, where
+        # tempfiles should be placed.
+        #
+        if {$::tcl_platform(platform) eq "windows"} {
+            set tmpFileName [ns_mktemp -nocomplain $template]
+            return [open $tmpFileName {RDWR CREAT EXCL}]
+        } else {
+            return [::file tempfile tmpFileName {*}$template]
+        }
     }
 }
-
-
-#
-# ns_isformcached --
-#
-#   Predicate function to answer whether there is
-#   a http form set currently cached.
-#
-# Result:
-#   True of form is already cached, false otherwise.
-#
-# Side effects:
-#   This procedure is deprecated as connection forms
-#   are already cached on the C-level
-#
-
-proc ns_isformcached {} {
-    ns_deprecated "" "Forms are cached on the C level."
-
-    return [info exists ::_ns_form]
-}
-
 
 #
 # ns_parseformfile --
@@ -430,6 +397,8 @@ proc ns_parseformfile {args} {
     if { [catch { set fp [open $file r] } errmsg] } {
         ns_log warning "ns_parseformfile could not open $file for reading"
     }
+    #file copy -force $file /tmp/upload.raw
+
     #
     # Separate content-type and options
     #
@@ -491,7 +460,14 @@ proc ns_parseformfile {args} {
     #
     # Everything below is just for content-type "multipart/form-data"
     #
-    fconfigure $fp -encoding binary -translation binary
+    ### BEGIN DB
+    #set content [read $fp]
+    #seek $fp 0
+    #ns_log notice "END_OF_CONTENT\n[string range $content end-200 end]"
+    #ns_log notice "CONTENT\n$content"
+    ### END DB
+
+    fconfigure $fp -translation binary
     set boundary "--$b"
 
     #ns_log notice "PARSE multipart inputfile $fp [fconfigure $fp -encoding]"
@@ -585,28 +561,57 @@ proc ns_parseformfile {args} {
             #
             # Read lines of data until another boundary is found.
             #
-            while { ![eof $fp] } {
-                if { [string match $boundary* [string trim [gets $fp]]] } {
-                    break
-                }
-                set end [tell $fp]
+            if {1} {
+                seek $fp $start
+                set t1 [time {
+                    set seekChar [ns_fseekchars $fp \n$boundary]
+                    #ns_log notice "===== start $start fseekchars $seekChar diff [expr {$seekChar-$start}] blen [string length $boundary]"
+                    if {$seekChar == -1} {
+                        error "boundary not found"
+                    }
+                    # move beyond the leading newline
+                    incr seekChar
+                    set end    $seekChar
+                    set length [expr {$end - $start - 2}]
+                }]
+                #ns_log notice "================== ns_fseekchars start $start end $end length $length // $t1"
             }
-            set length [expr {$end - $start - 2}]
+
+            if {0} {
+                seek $fp $start
+                set end $start
+                set t0 [time {
+                    while { ![eof $fp] } {
+                        #ns_log notice "..... gets from [tell $fp]"
+                        set l [gets $fp]
+                        #ns_log notice ".... returns <[string range $l 0 10]>"
+                        if { [string match $boundary* [string trim $l]] } {
+                            #ns_log notice "=================================== GOT boundary <$boundary>"
+                            break
+                        }
+                        set end [tell $fp]
+                        #ns_log notice "===== start $start fseekchar [ns_fseekchar $fp \n] end $end"
+                    }
+                    set length [expr {$end - $start - 2}]
+                }]
+                #ns_log notice "================== old           start $start end $end length $length // $t0"
+            }
 
             # Create a temp file for the content, which will be
-            # deleted when the connection close.
+            # deleted when the connection closes.
             #
             # Note that so far the output is written always in
             # binary, no matter what the embedded file-type is.
 
             set tmp [ns_opentmpfile tmpfile]
-            catch {fconfigure $tmp -encoding binary -translation binary}
+            catch {fconfigure $tmp -translation binary}
 
             if { $length > 0 } {
                 seek $fp $start
                 #ns_log notice "PARSE multipart fcopy $fp [fconfigure $fp -encoding]" \
                     "-> $tmp [fconfigure $tmp -encoding]"
 
+                #ns_log notice fcopy $fp $tmp -size $length
                 fcopy $fp $tmp -size $length
             }
 
@@ -764,6 +769,53 @@ proc ns_getcontent {args} {
         }
     }
     return $result
+}
+
+if {[dict get [ns_info buildinfo] with_deprecated]} {
+    #
+    # ns_resetcachedform --
+    #
+    #   Reset the http form set currently cached (if any),
+    #   optionally to be replaced by the given form set.
+    #
+    # Results:
+    #   None.
+    #
+    # Side effects:
+    #   This procedure is deprecated as connection forms
+    #   are already cached on the C-level
+    #
+
+    proc ns_resetcachedform {{newform ""}} {
+        ns_deprecated "" "Forms are cached on the C level."
+
+        if {[info exists ::_ns_form]} {
+            unset ::_ns_form
+        }
+        if {$newform ne {}} {
+            set ::_ns_form $newform
+        }
+    }
+
+    #
+    # ns_isformcached --
+    #
+    #   Predicate function to answer whether there is
+    #   a http form set currently cached.
+    #
+    # Result:
+    #   True of form is already cached, false otherwise.
+    #
+    # Side effects:
+    #   This procedure is deprecated as connection forms
+    #   are already cached on the C-level
+    #
+
+    proc ns_isformcached {} {
+        ns_deprecated "" "Forms are cached on the C level."
+
+        return [info exists ::_ns_form]
+    }
 }
 
 # Local variables:

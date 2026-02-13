@@ -7,7 +7,7 @@
 #catch {package require nx}
 
 if {[info commands ::nx::Class] eq ""} {
-    ns_log warning "ns_md, ns_hmac, ns_hotp and ns_totp are not available"
+    ns_log warning "NSF is not installed. The commands ns_md, ns_hmac, ns_hotp and ns_totp are not available"
     return
 }
 
@@ -26,7 +26,7 @@ nx::Class create ::ns_crypto::HashFunctions {
         # function on every block.
         #
         set F [open $filename]
-        fconfigure $F -encoding binary -translation binary
+        fconfigure $F -translation binary
         while (1) {
             set block [read $F 32768]
             :add $block
@@ -72,7 +72,9 @@ nx::Class create ns_md -superclass ::ns_crypto::HashFunctions {
         set :ctx [::ns_crypto::md new ${:digest}]
     }
     :public method destroy {} {
-        ::ns_crypto::md free ${:ctx}
+        if {[info exists :ctx]} {
+            ::ns_crypto::md free ${:ctx}
+        }
         next
     }
 
@@ -118,7 +120,9 @@ nx::Class create ns_hmac -superclass ::ns_crypto::HashFunctions {
         set :ctx [::ns_crypto::hmac new ${:digest} ${:key}]
     }
     :public method destroy {} {
-        ::ns_crypto::hmac free ${:ctx}
+        if {[info exists :ctx]} {
+            ::ns_crypto::hmac free ${:ctx}
+        }
         next
     }
 
@@ -147,9 +151,9 @@ nsf::proc ns_hotp {
     {-digest sha256}
     {-digits:integer 6}
     {-key ""}
-    data
+    counter
 } {
-    set hmac [::ns_crypto::hmac string -digest $digest $key $data]
+    set hmac [::ns_crypto::hmac string -digest $digest $key $counter]
     return [::ns_crypto::hotp_truncate -digits $digits $hmac]
 }
 

@@ -27,6 +27,7 @@ typedef struct Filter {
     Ns_FilterProc *proc;
     const char    *method;
     const char    *url;
+    NsUrlSpaceContextSpec *ctxFilterSpec;
     Ns_FilterType  when;
     void          *arg;
 } Filter;
@@ -54,6 +55,9 @@ static void FilterLock(NsServer *servPtr, NS_RW rw)
 
 static void FilterUnlock(NsServer *servPtr)
     NS_GNUC_NONNULL(1);
+
+static void FilterContextInit(NsUrlSpaceContext *ctxPtr, const Conn *connPtr, struct sockaddr *ipPtr)
+    NS_GNUC_NONNULL(1)  NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 /*
  *----------------------------------------------------------------------
@@ -110,9 +114,11 @@ FilterUnlock(NsServer *servPtr) {
 
 /*
  *----------------------------------------------------------------------
- * Ns_RegisterFilter --
+ * Ns_RegisterFilter, Ns_RegisterFilter2 --
  *
  *      Register a filter function to handle a method/URL combination.
+ *      Ns_RegisterFilter2() does the hard work, Ns_RegisterFilter() is
+ *      legacy, mostly to provide compatibility for modules.
  *
  * Results:
  *      Returns a pointer to an opaque object that contains the filter
@@ -124,8 +130,9 @@ FilterUnlock(NsServer *servPtr) {
  *----------------------------------------------------------------------
  */
 void *
-Ns_RegisterFilter(const char *server, const char *method, const char *url,
-                  Ns_FilterProc *proc, Ns_FilterType when, void *arg, bool first)
+Ns_RegisterFilter2(const char *server, const char *method, const char *url,
+                   Ns_FilterProc *proc, Ns_FilterType when, void *arg, bool first,
+                   void *ctxFilterSpec)
 {
     NsServer *servPtr;
     Filter   *fPtr;
@@ -141,6 +148,8 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
     fPtr = ns_malloc(sizeof(Filter));
     fPtr->proc = proc;
     fPtr->method = ns_strdup(method);
+    /* filters are never deleted; ctxFilterSpec as its own freeProc member */
+    fPtr->ctxFilterSpec = ctxFilterSpec;
     fPtr->url = ns_strdup(url);
     fPtr->when = when;
     fPtr->arg = arg;
@@ -170,7 +179,59 @@ Ns_RegisterFilter(const char *server, const char *method, const char *url,
     return (void *) fPtr;
 }
 
-
+void *
+Ns_RegisterFilter(const char *server, const char *method, const char *url,
+                  Ns_FilterProc *proc, Ns_FilterType when, void *arg, bool first)
+{
+    return Ns_RegisterFilter2(server, method, url, proc, when, arg, first, NULL);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * FilterContextInit --
+ *
+ *      Prepare an NsUrlSpaceContext for use in filter evaluations,
+ *      handling both ordinary socket-based contexts and the special
+ *      case where no Sock is available (e.g. tace filters).  If
+ *      connPtr->sockPtr is NULL, the function will fetch the saved peer
+ *      address via Ns_ConnConfiguredPeerAddr, inject it into connPtr->headers
+ *      under "x-ns-ip", and then use NsUrlSpaceContextFromSet to build ctxPtr.
+ *      Otherwise, it calls NsUrlSpaceContextInit with the live Sock and headers.
+ *
+ * Parameters:
+ *      ctxPtr   - Pointer to the NsUrlSpaceContext structure to initialize.
+ *      connPtr  - The Conn from which to derive socket and header information.
+ *      ipPtr    - Storage for a sockaddr to hold the parsed peer IP address
+ *                 in the fallback (NULL-sockPtr) path.
+ *
+ * Results:
+ *      None.
+ *
+ * Side Effects:
+ *      May update connPtr->headers by setting or overwriting the "x-ns-ip" key;
+ *      builds ctxPtr accordingly (including logging at debug level if enabled).
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+FilterContextInit(NsUrlSpaceContext *ctxPtr, const Conn *connPtr, struct sockaddr *ipPtr)
+{
+    NS_NONNULL_ASSERT(ctxPtr != NULL);
+    NS_NONNULL_ASSERT(connPtr != NULL);
+    NS_NONNULL_ASSERT(ipPtr != NULL);
+
+    if (connPtr->sockPtr == NULL) {
+        (void)Ns_SetIUpdate(connPtr->headers,
+                            "x-ns-ip",
+                            Ns_ConnConfiguredPeerAddr((Ns_Conn*)connPtr));
+        NsUrlSpaceContextFromSet(NULL, ctxPtr, ipPtr, connPtr->headers);
+    } else {
+        NsUrlSpaceContextInit(ctxPtr, connPtr->sockPtr, connPtr->headers);
+    }
+}
+
+
 /*
  *----------------------------------------------------------------------
  * NsRunFilters --
@@ -191,12 +252,18 @@ NsRunFilters(Ns_Conn *conn, Ns_FilterType why)
 {
     NsServer      *servPtr;
     const Filter  *fPtr;
+    const Conn    *connPtr;
     Ns_ReturnCode  status;
+    NsUrlSpaceContext ctx;
+    struct NS_SOCKADDR_STORAGE ip;
 
     NS_NONNULL_ASSERT(conn != NULL);
-    servPtr = ((const Conn *)conn)->poolPtr->servPtr;
+    connPtr = (const Conn *)conn;
+    servPtr = connPtr->poolPtr->servPtr;
 
+    FilterContextInit(&ctx, connPtr, (struct sockaddr *)&ip);
     status = NS_OK;
+
     if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
         Ns_ReturnCode filter_status = NS_OK;
 
@@ -205,7 +272,11 @@ NsRunFilters(Ns_Conn *conn, Ns_FilterType why)
         while (fPtr != NULL && filter_status == NS_OK) {
             if (unlikely(fPtr->when == why)
                 && (Tcl_StringMatch(conn->request.method, fPtr->method) != 0)
-                && (Tcl_StringMatch(conn->request.url, fPtr->url) != 0)) {
+                && (Tcl_StringMatch(conn->request.url, fPtr->url) != 0)
+                && (fPtr->ctxFilterSpec == NULL
+                    || NsUrlSpaceContextFilterEval(fPtr->ctxFilterSpec, &ctx)
+                    )
+                ) {
                 filter_status = (*fPtr->proc)(fPtr->arg, conn, why);
             }
             fPtr = fPtr->nextPtr;
@@ -470,70 +541,59 @@ NewTrace(Ns_TraceProc *proc, void *arg)
  */
 
 void
-NsGetFilters(Tcl_DString *dsPtr, const char *server)
+NsGetFilters(Tcl_DString *dsPtr, const NsServer *servPtr)
 {
-    const NsServer *servPtr;
+    const Filter *fPtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
-    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
 
-    servPtr = NsGetServer(server);
+    for (fPtr = servPtr->filter.firstFilterPtr; fPtr != NULL; fPtr = fPtr->nextPtr) {
+        Tcl_DStringStartSublist(dsPtr);
+        Tcl_DStringAppendElement(dsPtr, fPtr->method);
+        Tcl_DStringAppendElement(dsPtr, fPtr->url);
 
-    if (servPtr != NULL) {
-        const Filter *fPtr;
-
-        for (fPtr = servPtr->filter.firstFilterPtr; fPtr != NULL; fPtr = fPtr->nextPtr) {
-            Tcl_DStringStartSublist(dsPtr);
-            Tcl_DStringAppendElement(dsPtr, fPtr->method);
-            Tcl_DStringAppendElement(dsPtr, fPtr->url);
-
-            switch (fPtr->when) {
-            case NS_FILTER_PRE_AUTH:
-                Tcl_DStringAppendElement(dsPtr, "preauth");
-                break;
-            case NS_FILTER_POST_AUTH:
-                Tcl_DStringAppendElement(dsPtr, "postauth");
-                break;
-            case NS_FILTER_VOID_TRACE:
-            case NS_FILTER_TRACE:
-                Tcl_DStringAppendElement(dsPtr, "trace");
-                break;
-            }
-            Ns_GetProcInfo(dsPtr, (ns_funcptr_t)fPtr->proc, fPtr->arg);
-            Tcl_DStringEndSublist(dsPtr);
+        switch (fPtr->when) {
+        case NS_FILTER_PRE_AUTH:
+            Tcl_DStringAppendElement(dsPtr, "preauth");
+            break;
+        case NS_FILTER_POST_AUTH:
+            Tcl_DStringAppendElement(dsPtr, "postauth");
+            break;
+        case NS_FILTER_VOID_TRACE:
+        case NS_FILTER_TRACE:
+            Tcl_DStringAppendElement(dsPtr, "trace");
+            break;
         }
+        Ns_GetProcInfo(dsPtr, (ns_funcptr_t)fPtr->proc, fPtr->arg);
+        Tcl_DStringEndSublist(dsPtr);
     }
 }
 
 void
-NsGetTraces(Tcl_DString *dsPtr, const char *server)
+NsGetTraces(Tcl_DString *dsPtr, const NsServer *servPtr)
 {
-    const NsServer *servPtr;
+    const Trace *tracePtr;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
-    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(servPtr != NULL);
 
-    servPtr = NsGetServer(server);
-    if (likely(servPtr != NULL)) {
-        const Trace *tracePtr;
+    tracePtr = servPtr->filter.firstTracePtr;
+    while (tracePtr != NULL) {
+        Tcl_DStringStartSublist(dsPtr);
+        Tcl_DStringAppendElement(dsPtr, "trace");
+        Ns_GetProcInfo(dsPtr, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
+        Tcl_DStringEndSublist(dsPtr);
+        tracePtr = tracePtr->nextPtr;
+    }
 
-        tracePtr = servPtr->filter.firstTracePtr;
-        while (tracePtr != NULL) {
-            Tcl_DStringStartSublist(dsPtr);
-            Tcl_DStringAppendElement(dsPtr, "trace");
-            Ns_GetProcInfo(dsPtr, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
-            Tcl_DStringEndSublist(dsPtr);
-            tracePtr = tracePtr->nextPtr;
-        }
-
-        tracePtr = servPtr->filter.firstCleanupPtr;
-        while (tracePtr != NULL) {
-            Tcl_DStringStartSublist(dsPtr);
-            Tcl_DStringAppendElement(dsPtr, "cleanup");
-            Ns_GetProcInfo(dsPtr, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
-            Tcl_DStringEndSublist(dsPtr);
-            tracePtr = tracePtr->nextPtr;
-        }
+    tracePtr = servPtr->filter.firstCleanupPtr;
+    while (tracePtr != NULL) {
+        Tcl_DStringStartSublist(dsPtr);
+        Tcl_DStringAppendElement(dsPtr, "cleanup");
+        Ns_GetProcInfo(dsPtr, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
+        Tcl_DStringEndSublist(dsPtr);
+        tracePtr = tracePtr->nextPtr;
     }
 }
 

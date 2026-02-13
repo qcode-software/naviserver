@@ -1,0 +1,480 @@
+'\"
+'\" Generated from file 'ns_adp_debug\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_adp_debug" n 5\&.0\&.4 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_adp_debug \- Connect to the TclPro Debugger if not already connected
+.SH SYNOPSIS
+\fBns_adp_debug\fR ?\fB-host \fIvalue\fR\fR? ?\fB-port \fIvalue\fR\fR? ?\fB-procs \fIvalue\fR\fR?
+.sp
+.BE
+.SH DESCRIPTION
+The \fBns_adp_debug\fR command integrates NaviServer with the
+\fITclPro Debugger\fR [https://www\&.tcl\&.tk/software/tclpro/debugger\&.html],
+a graphical debugging tool for Tcl code\&. It allows you to connect to
+a running debugger process and step through code, inspect variables,
+and examine the call stack\&. By default, it uses information from the
+current request to determine the debugger host if not explicitly
+provided, and defaults to port \fI2576\fR unless otherwise specified\&.
+.PP
+You can use \fBns_adp_debug\fR to:
+.IP \(bu
+Connect to a remote TclPro Debugger instance running on a
+specified host and port
+.IP \(bu
+Inspect the call stack and local variables at breakpoints
+.IP \(bu
+Step through Tcl procedures\&. This process requires
+instrumentation, which can be enabled via command-line
+parameters or through the TclPro Debugger GUI
+("View->Procedures\&.\&.\&.")\&.
+.PP
+.TP
+\fBns_adp_debug\fR ?\fB-host \fIvalue\fR\fR? ?\fB-port \fIvalue\fR\fR? ?\fB-procs \fIvalue\fR\fR?
+Connects to a running TclPro Debugger process\&. By default, if
+\fIhost\fR is not provided, \fBns_adp_debug\fR uses the \fIHost\fR
+header field from the incoming request\&. If the debugger is running on
+a port different to the default 2576, you must specify
+the \fI-port\fR option\&. If \fI-procs\fR is provided, it should
+be a glob-style pattern indicating which Tcl procedures
+to automatically instrument for debugging\&.
+.PP
+.SS "EXAMPLE USAGE OF THE TCLPRO DEBUGGER"
+Below is an example of using the TclPro Debugger to debug the start
+page of the \fBnsstats\fR module\&.
+.PP
+IMAGE: tclpro-nsstats nsstats startpage from TclPro Debugger
+.SS "BACKGROUND AND AVAILABILITY OF THE TCLPRO DEBUGGER"
+.PP
+The TclPro Debugger was originally developed as a commercial product
+by Scriptics\&. After Scriptics was renamed to Ajuba and was later
+acquired by Interwoven, the development moved to ActiveState as part
+of the TclDevKit tool suite\&. When ActiveState discontinued TclDevKit,
+the TclPro Debugger sources were released as open source\&. Currently,
+multiple open-source variants exist:
+.IP \(bu
+Open-sourced TDK from ActiveState:
+\fIhttps://github\&.com/activestate/tdk\fR
+.IP \(bu
+FlightAware fork, upgraded from TclPro Debugger 1\&.5 to version 2\&.0:
+\fIhttps://github\&.com/flightaware/TclProDebug\fR
+.IP \(bu
+A fork of the FlightAware version, updated to version 3\&.0, supporting
+the Microsoft Debug Adapter Protocol (usable with Vimspector,
+Visual Studio, etc\&.):
+\fIhttps://github\&.com/puremourning/TclProDebug\fR
+.IP \(bu
+A fork of the FlightAware version (2\&.0) adapted for Tcl 9:
+\fIhttps://github\&.com/apnadkarni/TclProDebug\fR
+.PP
+.SS "INSTALLATION OF THE TCLPRO DEBUGGER"
+.PP
+The TclPro Debugger is a Tk-based GUI application that
+communicates with NaviServer over a network socket\&. You can run the
+debugger on a separate machine from the server, provided you have
+appropriate network access and a means to display the GUI (e\&.g\&., X
+forwarding or remote desktop)\&.
+.PP
+The steps below demonstrate how to install Tcl, Tk, and
+TclProDebug from source into a dedicated directory, avoiding
+interference with system-wide installations\&. The example uses Tcl 9
+on a Unix-like system, based on the last of the mentioned
+variants\&. You may adapt these instructions for Tcl 8\&.6 or different
+paths as needed\&.
+.PP
+First, define the paths for the source and installation
+directories, assuming Tcl, Tk, and TclProDebug are downloaded to the
+specified locations\&.
+.CS
+
+
+ INSTALL_DIR=/usr/local/ns9
+ # Uncomment TKFLAG if compiling under macOS with Aqua support
+ #TKFLAG=--enable-aqua
+ TCL_SRC=/usr/local/src/tcl9\&.0\&.0
+ TK_SRC=/usr/local/src/tk9\&.0\&.0
+ TCLDB_SRC=/usr/local/src/TclProDebug
+
+.CE
+Install Tcl9:
+.CS
+
+
+ (cd ${TCL_SRC}/unix && \&./configure --prefix=${INSTALL_DIR} --with-tcl=${INSTALL_DIR}/lib/ && sudo make install)
+
+.CE
+Install Tk9:
+.CS
+
+
+ (cd ${TK_SRC}/unix && \&./configure --prefix=${INSTALL_DIR} --with-tcl=${INSTALL_DIR}/lib/ ${TKFLAG} && sudo make install)
+
+.CE
+Install the Tcl parser from TclPro Debugger:
+.CS
+
+
+ cd ${TCLDB_SRC}
+ (cd lib/tclparser/ && autoreconf && \&./configure --prefix=${INSTALL_DIR} --with-tcl=${INSTALL_DIR}/lib && sudo make install)
+
+.CE
+Make the remote debugging adapter available to NaviServer by linking
+it into NaviServer’s \fBtcl\fR directory (assuming NaviServer and the
+debugger run on the same machine):
+.CS
+
+
+ ln -s ${TCLDB_SRC}/lib/remotedebug/initdebug\&.tcl ${INSTALL_DIR}/tcl/
+
+.CE
+Start the TclPro Debugger GUI (here using wish from the Tk 9 installation):
+.CS
+
+
+ ${INSTALL_DIR}/bin/wish9\&.0 bin/prodebug
+
+.CE
+In the TclPro Debugger GUI:
+.CS
+
+
+  File -> New Project
+    Select "Remote Debugging"
+    Leave Port 2576 (default)
+  File -> Save Project As\&.\&.\&.
+
+.CE
+.SS "BASIC OPERATION OF THE TCLPRO DEBUGGER WITH NAVISERVER"
+NaviServer supports two primary modes for debugging ADP pages:
+.IP \(bu
+\fIFull-page Debugging:\fR
+In this mode, a full page can be debugged\&.
+.RS
+.IP [1]
+Enable ADP debugging in the NaviServer configuration file
+for the server configuration\&.
+.CS
+
+
+ ns_section ns/server/$server/adp {
+   \&.\&.\&.
+   ns_param   enabledebug         true     ;# default: false
+   \&.\&.\&.
+ }
+
+.CE
+.IP [2]
+To debug a page, append a \fIdebug\fR query variable to the page’s URL\&.
+For example:
+.CS
+
+
+ http://\&.\&.\&.\&.\&./foo\&.adp?debug=*
+
+.CE
+.IP
+The wildcard pattern matches the file to be debugged (useful for
+complex ADP includes)\&.  Additional query parameters like
+\fIdprocs\fR, \fIdhost\fR, and \fIdport\fR can override
+defaults for procedure patterns, debugger host, and port, respectively\&.
+.sp
+Note: Full-page debugging is recommended only for
+development environments not accessible from the public Internet,
+as it can expose source code and internal variable states to any
+client requesting the \fIdebug\fR parameter\&.
+.RE
+.IP \(bu
+\fIDebugging via Breakpoints:\fR
+If you prefer not to enable full-page debugging, insert
+\fBns_adp_debug\fR calls in your code at specific points to initiate a
+debugger connection\&.  This method does not require changes to the
+NaviServer configuration\&.  If needed, you can specify \fIhost\fR,
+\fIport\fR, and \fIprocs\fR arguments just as in full-page debugging
+mode\&. All parameters are optional\&.
+.PP
+By default, the \fIhost\fR is derived from the request’s Host header
+field\&.  If you need a different host or a nondefault port, specify
+them in the \fBns_adp_debug\fR call or via query parameters\&.
+.SS LIMITATIONS
+The TclPro Debugger was designed primarily for debugging plain Tcl
+scripts\&.  While it works reasonably well for basic debugging needs
+for NaviServer and ADP pages, there are certain limitations when
+dealing with large frameworks or complex code bases\&.  For instance,
+stepping through code relies on instrumentation that serializes and
+re-sources the procedures\&. This approach may be adequate for small
+applications but can become cumbersome for larger frameworks (e\&.g\&.,
+OpenACS) that define procedures via \fBad_proc\fR, employ
+object-oriented extensions, or similar\&. Instrumentalization is
+currently limited to Tcl procedures\&.
+.SH "SEE ALSO"
+nsd
+.SH KEYWORDS
+NaviServer, TclPro Debugger, server built-in

@@ -27,18 +27,52 @@
 
 #define IS_DYNAMIC(id) (*(id) == SET_DYNAMIC)
 
+static Ns_ObjvValueRange maxIdxRange = {0, LLONG_MAX};
+
+static TCL_OBJCMDPROC_T SetArrayObjCmd;
+static TCL_OBJCMDPROC_T SetCleanupObjCmd;
+static TCL_OBJCMDPROC_T SetCopyObjCmd;
+static TCL_OBJCMDPROC_T SetCreateObjCmd;
+static TCL_OBJCMDPROC_T SetDeleteObjCmd;
+static TCL_OBJCMDPROC_T SetDelkeyObjCmd;
+static TCL_OBJCMDPROC_T SetFindObjCmd;
+static TCL_OBJCMDPROC_T SetFreeObjCmd;
+static TCL_OBJCMDPROC_T SetFormatObjCmd;
+static TCL_OBJCMDPROC_T SetGetObjCmd;
+static TCL_OBJCMDPROC_T SetIsnullObjCmd;
+static TCL_OBJCMDPROC_T SetKeyObjCmd;
+static TCL_OBJCMDPROC_T SetKeysObjCmd;
+static TCL_OBJCMDPROC_T SetListObjCmd;
+static TCL_OBJCMDPROC_T SetMergeObjCmd;
+static TCL_OBJCMDPROC_T SetMoveObjCmd;
+static TCL_OBJCMDPROC_T SetNameObjCmd;
+#ifdef NS_WITH_DEPRECATED
+static TCL_OBJCMDPROC_T SetPrintObjCmd;
+#endif
+static TCL_OBJCMDPROC_T SetPutObjCmd;
+static TCL_OBJCMDPROC_T SetSizeObjCmd;
+static TCL_OBJCMDPROC_T SetSplitObjCmd;
+static TCL_OBJCMDPROC_T SetStatsObjCmd;
+static TCL_OBJCMDPROC_T SetTruncateObjCmd;
+static TCL_OBJCMDPROC_T SetUniqueObjCmd;
+static TCL_OBJCMDPROC_T SetValueObjCmd;
+static TCL_OBJCMDPROC_T SetValuesObjCmd;
+static TCL_OBJCMDPROC_T Set_TYPE_SetidKeyValueObjCmd;
+
 /*
  * Local functions defined in this file
  */
 
 static int LookupSet(NsInterp *itPtr, const char *id, bool deleteEntry, Ns_Set **setPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
-static int LookupObjSet(NsInterp *itPtr, Tcl_Obj *idPtr, bool deleteEntry, Ns_Set **setPtr)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 static int LookupInterpSet(Tcl_Interp *interp, const char *id, bool deleteEntry, Ns_Set **setPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 static Tcl_Obj *EnterSet(NsInterp *itPtr, Ns_Set *set, Ns_TclSetType type)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static int StartsWithI(const char *nameString)
+    NS_GNUC_NONNULL(1) NS_GNUC_PURE;
+
 
 
 /*
@@ -199,7 +233,7 @@ Ns_TclFreeSet(Tcl_Interp *interp, const char *setId)
  *----------------------------------------------------------------------
  */
 Ns_Set *
-Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
+Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj, unsigned int flags)
 {
     int        result;
     TCL_SIZE_T objc;
@@ -230,6 +264,8 @@ Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
         TCL_SIZE_T i;
 
         setPtr = Ns_SetCreate(name);
+        setPtr->flags = flags;
+
         for (i = 0; i < objc; i += 2) {
             const char *keyString, *valueString;
             TCL_SIZE_T  keyLength, valueLength;
@@ -243,13 +279,14 @@ Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
     return setPtr;
 }
 
-
 /*
  *----------------------------------------------------------------------
  *
- * NsTclSetObjCmd --
+ * StartsWithI --
  *
- *      Implements "ns_set".
+ *      Helper function to determine whether the provided string (intended to
+ *      be the name of the subcommand) starts with an i. If so, the function
+ *      returns 1.
  *
  * Results:
  *      Tcl result.
@@ -259,51 +296,77 @@ Ns_SetCreateFromDict(Tcl_Interp *interp, const char *name, Tcl_Obj *listObj)
  *
  *----------------------------------------------------------------------
  */
+static int StartsWithI(const char *nameString) {
+    return (*nameString == 'i');
+}
 
-int
-NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+
+/*
+ *----------------------------------------------------------------------
+ * SetArrayObjCmd --
+ *
+ *      This command implements "ns_set array". It converts the given Ns_Set
+ *      object into a Tcl key-value list by extracting its content and
+ *      returns this list as the command result.
+ *
+ * Results:
+ *      The Tcl list representing the set's contents.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetArrayObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    NsInterp            *itPtr = clientData;
-    Ns_Set              *set = NULL;
-    Tcl_DString          ds;
-    Tcl_HashTable       *tablePtr;
-    const Tcl_HashEntry *hPtr;
-    Tcl_HashSearch       search;
-    int                  opt, result = TCL_OK;
-
-    static const char *const opts[] = {
-        "array", "cleanup", "copy", "cput", "create",
-        "delete", "delkey", "find", "free", "get",
-        "icput", "idelkey", "ifind", "iget", "imerge",
-        "isnull", "iunique", "iupdate", "key", "keys", "list",
-        "merge", "move", "name", "new", "print", "put",
-        "size", "split", "stats", "truncate", "unique", "update",
-        "value", "values", NULL,
-    };
-    enum {
-        SArrayIdx, SCleanupIdx, SCopyIdx, SCPutIdx, SCreateidx,
-        SDeleteIdx, SDelkeyIdx, SFindIdx, SFreeIdx, SGetIdx,
-        SICPutIdx, SIDelkeyIdx, SIFindIdx, SIGetIdx, SIMergeIdx,
-        SIsNullIdx, SIUniqueIdx, SIUpdateIdx, SKeyIdx, SKeysIdx, SListIdx,
-        SMergeIdx, SMoveIdx, sINameIdx, SNewIdx, SPrintIdx, SPutIdx,
-        SSizeIdx, SSplitIdx, SStatsIdx, STruncateIdx, SUniqueIdx, SUpdateIdx,
-        SValueIdx, SValuesIdx
+    int         result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {NULL, NULL, NULL, NULL}
     };
 
-    if (unlikely(objc < 2)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option ?arg ...?");
-        return TCL_ERROR;
-    }
-    if (unlikely(Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
-                                     &opt) != TCL_OK)) {
-        return TCL_ERROR;
-    }
-    if (unlikely(opt == SCreateidx)) {
-        opt = SNewIdx;
-    }
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_DString ds;
 
-    switch (opt) {
-    case SCleanupIdx:
+        Tcl_DStringInit(&ds);
+        Ns_DStringAppendSet(&ds, set);
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetCleanupObjCmd --
+ *
+ *      This command implements "ns_set cleanup". It scans through all the
+ *      dynamically allocated ns_set objects managed by the interpreter,
+ *      frees those marked as dynamic, and reinitializes the interpreter's
+ *      set hash table.
+ *
+ * Results:
+ *      TCL_OK if the cleanup succeeds, TCL_ERROR otherwise.
+ *
+ * Side effects:
+ *      Frees memory for dynamic sets and resets the set hash table.
+ *
+ *----------------------------------------------------------------------
+ */
+int SetCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int       result = TCL_OK;
+    NsInterp *itPtr = clientData;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_HashTable       *tablePtr;
+        const Tcl_HashEntry *hPtr;
+        Tcl_HashSearch       search;
+
         tablePtr = &itPtr->sets;
         hPtr = Tcl_FirstHashEntry(tablePtr, &search);
         while (hPtr != NULL) {
@@ -313,615 +376,1255 @@ NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
                    key, IS_DYNAMIC(key));
 
             if (IS_DYNAMIC(key)) {
-                set = Tcl_GetHashValue(hPtr);
+                Ns_Set *set = Tcl_GetHashValue(hPtr);
                 Ns_SetFree(set);
             }
             hPtr = Tcl_NextHashEntry(&search);
         }
         Tcl_DeleteHashTable(tablePtr);
         Tcl_InitHashTable(tablePtr, TCL_STRING_KEYS);
-        break;
-
-    case SListIdx:
-        {
-            Tcl_Obj *listObj = Tcl_NewListObj(0, NULL);
-
-            tablePtr = &itPtr->sets;
-            for (hPtr = Tcl_FirstHashEntry(tablePtr, &search);
-                 hPtr != NULL;
-                 hPtr = Tcl_NextHashEntry(&search)
-                 ) {
-                const char *listKey = Tcl_GetHashKey(tablePtr, hPtr);
-                Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(listKey, TCL_INDEX_NONE));
-            }
-            Tcl_SetObjResult(interp, listObj);
-        }
-        break;
-
-    case SStatsIdx:
-        {
-            Tcl_Obj *resultObj = Tcl_NewListObj(0, NULL);
-            size_t nr_dynamic = 0, size_dynamic = 0, allocated_dynamic = 0;
-            size_t nr_static = 0,  size_static = 0,  allocated_static = 0;
-
-            tablePtr = &itPtr->sets;
-            for (hPtr = Tcl_FirstHashEntry(tablePtr, &search);
-                 hPtr != NULL;
-                 hPtr = Tcl_NextHashEntry(&search)
-                 ) {
-                const char *key = Tcl_GetHashKey(tablePtr, hPtr);
-                set = (Ns_Set *) Tcl_GetHashValue(hPtr);
-                if (IS_DYNAMIC(key)) {
-                    nr_dynamic ++;
-#ifdef NS_SET_DSTRING
-                    allocated_dynamic += (size_t)set->data.spaceAvl;
-                    size_dynamic += (size_t)set->data.length;
-#endif
-                } else {
-                    nr_static++;
-#ifdef NS_SET_DSTRING
-                    allocated_static += (size_t)set->data.spaceAvl;
-                    size_static += (size_t)set->data.length;
-#endif
-                }
-            }
-
-            Tcl_DictObjPut(NULL, resultObj,
-                        Tcl_NewStringObj("nr_dynamic", 10),
-                        Tcl_NewWideIntObj((Tcl_WideInt)nr_dynamic));
-            Tcl_DictObjPut(NULL, resultObj,
-                        Tcl_NewStringObj("size_dynamic", 12),
-                        Tcl_NewWideIntObj((Tcl_WideInt)size_dynamic));
-            Tcl_DictObjPut(NULL, resultObj,
-                        Tcl_NewStringObj("allocated_dynamic", 17),
-                        Tcl_NewWideIntObj((Tcl_WideInt)allocated_dynamic));
-
-            Tcl_DictObjPut(NULL, resultObj,
-                        Tcl_NewStringObj("nr_static", 9),
-                        Tcl_NewWideIntObj((Tcl_WideInt)nr_static));
-            Tcl_DictObjPut(NULL, resultObj,
-                        Tcl_NewStringObj("size_static", 11),
-                        Tcl_NewWideIntObj((Tcl_WideInt)size_static));
-            Tcl_DictObjPut(NULL, resultObj,
-                        Tcl_NewStringObj("allocated_static", 16),
-                        Tcl_NewWideIntObj((Tcl_WideInt)allocated_static));
-
-            Tcl_SetObjResult(interp, resultObj);
-        }
-        break;
-
-
-
-
-    case SNewIdx:   NS_FALL_THROUGH; /* fall through */
-    case SCopyIdx:  NS_FALL_THROUGH; /* fall through */
-    case SSplitIdx: {
-        TCL_OBJC_T    offset = 2;
-        const char   *name;
-
-        /*
-         * The following commands create new sets.
-         */
-
-        switch (opt) {
-        case SNewIdx:
-            if (objc % 2 == 0) {
-                /*
-                 * No name provided.
-                 */
-                name = NULL;
-            } else {
-                name = Tcl_GetString(objv[offset++]);
-            }
-            set = Ns_SetCreate(name);
-            while (offset < objc) {
-                const char *keyString, *valueString;
-                TCL_SIZE_T  keyLength, valueLength;
-
-                keyString = Tcl_GetStringFromObj(objv[offset++], &keyLength);
-                valueString = Tcl_GetStringFromObj(objv[offset++], &valueLength);
-                (void)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
-            }
-            Tcl_SetObjResult(interp, EnterSet(itPtr, set, NS_TCL_SET_DYNAMIC));
-            break;
-
-        case SCopyIdx:
-            if (unlikely(offset >= objc)) {
-                Tcl_WrongNumArgs(interp, 2, objv, "setId");
-                result = TCL_ERROR;
-            } else if (LookupObjSet(itPtr, objv[offset], NS_FALSE, &set) != TCL_OK) {
-                result = TCL_ERROR;
-            } else {
-                Tcl_SetObjResult(interp, EnterSet(itPtr, Ns_SetCopy(set), NS_TCL_SET_DYNAMIC));
-            }
-            break;
-
-        case SSplitIdx: {
-            if (unlikely((objc - offset) < 1)) {
-                Tcl_WrongNumArgs(interp, 2, objv, "setId ?splitChar");
-                result = TCL_ERROR;
-
-            } else if (LookupObjSet(itPtr, objv[offset++], NS_FALSE, &set) != TCL_OK) {
-                result = TCL_ERROR;
-
-            } else {
-                Tcl_Obj     *listObj = Tcl_NewListObj(0, NULL);
-                Ns_Set     **sets;
-                const char  *split;
-                TCL_OBJC_T   i;
-
-                split = (offset < objc) ? Tcl_GetString(objv[offset]) : ".";
-                sets = Ns_SetSplit(set, *split);
-                for (i = 0; sets[i] != NULL; i++) {
-                    Tcl_ListObjAppendElement(interp, listObj,
-                                             EnterSet(itPtr, sets[i], NS_TCL_SET_DYNAMIC));
-                }
-                Tcl_SetObjResult(interp, listObj);
-                ns_free(sets);
-            }
-            break;
-        }
-
-        default:
-            /* unexpected value */
-            assert(opt && 0);
-            break;
-        }
-        break;
     }
+    return result;
+}
 
-    default:
-        /*
-         * All further commands require a valid set.
-         */
+/*
+ *----------------------------------------------------------------------
+ * SetCopyObjCmd --
+ *
+ *      This command implements "ns_set copy". It creates an independent copy
+ *      of the specified ns_set, including all its key-value pairs, and
+ *      registers the new set as dynamic with the Tcl interpreter.
+ *
+ * Results:
+ *      The handle of the newly created dynamic set.
+ *
+ * Side effects:
+ *      Allocates memory for the new set and registers it with the interpreter.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetCopyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    NsInterp   *itPtr = clientData;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-        if (unlikely(objc < 3)) {
-            Tcl_WrongNumArgs(interp, 2, objv, "setId ?args?");
-            result = TCL_ERROR;
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_SetObjResult(interp, EnterSet(itPtr, Ns_SetCopy(set), NS_TCL_SET_DYNAMIC));
+    }
+    return result;
+}
 
-        } else if (unlikely(LookupObjSet(itPtr, objv[2], NS_FALSE, &set) != TCL_OK)) {
-            result = TCL_ERROR;
+/*
+ *----------------------------------------------------------------------
+ * SetCreateObjCmd --
+ *
+ *      This command implements "ns_set create". It creates a new ns_set from
+ *      the provided key-value pairs. An optional set name may be specified;
+ *      if omitted, a unique name is generated. The new set is registered as
+ *      dynamic with the interpreter.
+ *
+ * Results:
+ *      The handle of the newly created set.
+ *
+ * Side effects:
+ *      Allocates and initializes a new Ns_Set structure.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int       result = TCL_OK, nocase = 0;
+    TCL_SIZE_T nargs = 0;
+    NsInterp *itPtr = clientData;
+    Ns_ObjvSpec opts[] = {
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  args[] = {
+        {"?arg",     Ns_ObjvArgs, &nargs, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
+#ifdef NS_WITH_DEPRECATED
+    const char  *subcmdName = Tcl_GetString(objv[1]);
+
+    if (*subcmdName == 'n' && strcmp(subcmdName, "new") == 0) {
+        Ns_LogDeprecated(objv, 2, "ns_set create ...", NULL);
+    }
+#endif
+
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        const char *name;
+        TCL_SIZE_T offset = objc-nargs;
+        Ns_Set    *set;
+
+        if (nargs % 2 == 0 || nargs < 1) {
+            /*
+             * No name provided.
+             */
+            name = NULL;
         } else {
-            Tcl_Obj *objPtr;
-
-            switch (opt) {
-            case SArrayIdx:  NS_FALL_THROUGH; /* fall through */
-            case sINameIdx:  NS_FALL_THROUGH; /* fall through */
-            case SPrintIdx:  NS_FALL_THROUGH; /* fall through */
-            case SFreeIdx:
-                /*
-                 * These commands require only the set.
-                 */
-
-                if (unlikely(objc != 3)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId");
-                    result = TCL_ERROR;
-
-                } else {
-
-                    switch (opt) {
-                    case SArrayIdx:
-                        {
-                            Tcl_DStringInit(&ds);
-                            Ns_DStringAppendSet(&ds, set);
-                            Tcl_DStringResult(interp, &ds);
-                            break;
-                        }
-
-                    case sINameIdx:
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(set->name, TCL_INDEX_NONE));
-                        break;
-
-                    case SKeysIdx: {
-                        if (unlikely(objc > 5)) {
-                            Tcl_WrongNumArgs(interp, 2, objv, "setId ?pattern?");
-                            result = TCL_ERROR;
-                        } else {
-                            size_t i;
-                            const char *pattern = (objc == 4 ? Tcl_GetString(objv[3]) : NULL);
-
-                            Tcl_DStringInit(&ds);
-                            for (i = 0u; i < set->size; ++i) {
-                                const char *value = (set->fields[i].name != NULL ? set->fields[i].name : "");
-                                if (pattern == NULL || (Tcl_StringMatch(value, pattern) != 0)) {
-                                    Tcl_DStringAppendElement(&ds, value);
-                                }
-                            }
-                            Tcl_DStringResult(interp, &ds);
-                        }
-                        break;
-                    }
-
-                    case SPrintIdx:
-                        Ns_SetPrint(set);
-                        break;
-
-                    case SFreeIdx:
-                        (void) Ns_TclFreeSet(interp, Tcl_GetString(objv[2]));
-                        break;
-
-                    default:
-                        /* unexpected value */
-                        assert(opt && 0);
-                        break;
-                    }
-                }
-                break;
-
-            case SKeysIdx:   NS_FALL_THROUGH; /* fall through */
-            case SValuesIdx: {
-                if (unlikely(objc > 5)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId ?pattern?");
-                    result = TCL_ERROR;
-                } else {
-                    size_t i;
-                    const char *pattern = (objc == 4 ? Tcl_GetString(objv[3]) : NULL);
-
-                    Tcl_DStringInit(&ds);
-                    for (i = 0u; i < set->size; ++i) {
-                        const char *value = (opt == SKeysIdx ? set->fields[i].name : set->fields[i].value);
-                        if (value == NULL) {
-                            value = "";
-                        }
-                        if (pattern == NULL || (Tcl_StringMatch(value, pattern) != 0)) {
-                            Tcl_DStringAppendElement(&ds, value);
-                        }
-                    }
-                    Tcl_DStringResult(interp, &ds);
-                }
-                break;
-            }
-
-            case SSizeIdx: {
-                long elements = 0, bufferSize = 0;
-
-                if (unlikely(objc < 3 || objc > 5)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId ?elements? ?bufferSize?");
-                    result = TCL_ERROR;
-
-                } else if (objc == 3) {
-                    objPtr = Tcl_NewLongObj((long)Ns_SetSize(set));
-                    Tcl_SetObjResult(interp, objPtr);
-
-                } else {
-                    if (Tcl_GetLongFromObj(interp, objv[3], &elements) != TCL_OK
-                        || elements < 1) {
-                        Ns_TclPrintfResult(interp, "invalid integer value for number of elements '%s'",
-                                           Tcl_GetString(objv[3]));
-                        result = TCL_ERROR;
-
-                    } else if (objc == 5
-                               && (Tcl_GetLongFromObj(interp, objv[4], &bufferSize) != TCL_OK
-                                   || bufferSize < 1)) {
-                        Ns_TclPrintfResult(interp, "invalid integer value for buffer size '%s'",
-                                           Tcl_GetString(objv[4]));
-                        result = TCL_ERROR;
-
-                    } else {
-                        NsSetResize(set, (size_t)elements, (int)bufferSize);
-                        objPtr = Tcl_NewLongObj((long)Ns_SetSize(set));
-                        Tcl_SetObjResult(interp, objPtr);
-                    }
-                }
-                break;
-            }
-
-            case SGetIdx:  NS_FALL_THROUGH; /* fall through */
-            case SIGetIdx:
-                if (unlikely(objc < 4)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId get ?default?");
-                    result = TCL_ERROR;
-                } else {
-                    const char *def = (objc > 4 ? Tcl_GetString(objv[4]) : NULL);
-                    const char *key = Tcl_GetString(objv[3]);
-
-                    switch (opt) {
-                    case SGetIdx:
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetGetValue(set, key, def), TCL_INDEX_NONE));
-                        break;
-
-                    case SIGetIdx:
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetIGetValue(set, key, def), TCL_INDEX_NONE));
-                        break;
-
-                    default:
-                        /* unexpected value */
-                        assert(opt && 0);
-                        break;
-                    }
-                }
-                break;
-
-            case SFindIdx:    NS_FALL_THROUGH; /* fall through */
-            case SIFindIdx:   NS_FALL_THROUGH; /* fall through */
-            case SDelkeyIdx:  NS_FALL_THROUGH; /* fall through */
-            case SIDelkeyIdx: NS_FALL_THROUGH; /* fall through */
-            case SUniqueIdx:  NS_FALL_THROUGH; /* fall through */
-            case SIUniqueIdx:
-                /*
-                 * These commands require a set and string key.
-                 */
-
-                if (unlikely(objc != 4)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId key");
-                    result = TCL_ERROR;
-
-                } else {
-                    const char *key = Tcl_GetString(objv[3]);
-
-                    switch (opt) {
-                    case SIFindIdx:
-                        objPtr = Tcl_NewIntObj(Ns_SetIFind(set, key));
-                        Tcl_SetObjResult(interp, objPtr);
-                        break;
-
-                    case SFindIdx:
-                        objPtr = Tcl_NewIntObj(Ns_SetFind(set, key));
-                        Tcl_SetObjResult(interp, objPtr);
-                        break;
-
-                    case SIDelkeyIdx:
-                        Ns_SetIDeleteKey(set, key);
-                        break;
-
-                    case SDelkeyIdx:
-                        Ns_SetDeleteKey(set, key);
-                        break;
-
-                    case SUniqueIdx:
-                        objPtr = Tcl_NewBooleanObj(Ns_SetUnique(set, key));
-                        Tcl_SetObjResult(interp, objPtr);
-                        break;
-
-                    case SIUniqueIdx:
-                        objPtr = Tcl_NewBooleanObj(Ns_SetIUnique(set, key));
-                        Tcl_SetObjResult(interp, objPtr);
-                        break;
-
-                    default:
-                        /* unexpected value */
-                        assert(opt && 0);
-                        break;
-                    }
-                }
-                break;
-
-            case SValueIdx:   NS_FALL_THROUGH; /* fall through */
-            case SIsNullIdx:  NS_FALL_THROUGH; /* fall through */
-            case SKeyIdx:     NS_FALL_THROUGH; /* fall through */
-            case SDeleteIdx:  NS_FALL_THROUGH; /* fall through */
-            case STruncateIdx: {
-                /*
-                 * These commands require a set and key/value index.
-                 */
-                Ns_ObjvValueRange idxRange = {0, (Tcl_WideInt)Ns_SetSize(set)};
-                int               i;
-                TCL_SIZE_T        oc = 1;
-                Ns_ObjvSpec       spec = {"?idx", Ns_ObjvInt, &i, &idxRange};
-
-                if (unlikely(objc != 4)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId index");
-                    result = TCL_ERROR;
-
-                } else if (Ns_ObjvInt(&spec, interp, &oc, &objv[3]) != TCL_OK) {
-                    result = TCL_ERROR;
-
-                } else {
-                    const char *val;
-
-                    switch (opt) {
-                    case SValueIdx:
-                        val = Ns_SetValue(set, i);
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(val, TCL_INDEX_NONE));
-                        break;
-
-                    case SIsNullIdx:
-                        val = Ns_SetValue(set, i);
-                        objPtr = Tcl_NewBooleanObj((val != NULL) ? 0 : 1);
-                        Tcl_SetObjResult(interp, objPtr);
-                        break;
-
-                    case SKeyIdx:
-                        val = Ns_SetKey(set, i);
-                        Tcl_SetObjResult(interp, Tcl_NewStringObj(val, TCL_INDEX_NONE));
-                        break;
-
-                    case SDeleteIdx:
-                        Ns_SetDelete(set, i);
-                        break;
-
-                    case STruncateIdx:
-                        Ns_SetTrunc(set, (size_t)i);
-                        break;
-
-                    default:
-                        /* unexpected value */
-                        assert(opt && 0);
-                        break;
-                    }
-                }
-                break;
-            }
-
-            case SPutIdx:     NS_FALL_THROUGH; /* fall through */
-            case SUpdateIdx:  NS_FALL_THROUGH; /* fall through */
-            case SIUpdateIdx: NS_FALL_THROUGH; /* fall through */
-            case SCPutIdx:    NS_FALL_THROUGH; /* fall through */
-            case SICPutIdx:
-                /*
-                 * These commands require a set, key, and value.
-                 */
-
-                if (unlikely(objc != 5)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setId key value");
-                    result = TCL_ERROR;
-                } else {
-                    int         i;
-                    const char *keyString, *valueString;
-                    TCL_SIZE_T  keyLength, valueLength;
-
-                    keyString = Tcl_GetStringFromObj(objv[3], &keyLength);
-                    valueString = Tcl_GetStringFromObj(objv[4], &valueLength);
-
-                    switch (opt) {
-                    case SUpdateIdx:
-                        i = (int)Ns_SetUpdateSz(set, keyString, keyLength, valueString, valueLength);
-                        break;
-
-                    case SIUpdateIdx:
-                        i = (int)Ns_SetIUpdateSz(set, keyString, keyLength, valueString, valueLength);
-                        break;
-
-                    case SICPutIdx:
-                        i = Ns_SetIFind(set, keyString);
-                        if (i < 0) {
-                            i = (int)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
-                        }
-                        break;
-
-                    case SCPutIdx:
-                        i = Ns_SetFind(set, keyString);
-                        if (i < 0) {
-                            i = (int)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
-                        }
-                        break;
-
-                    case SPutIdx:
-                        i = (int)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
-                        break;
-
-                    default:
-                        /* should not happen */
-                        assert(opt && 0);
-                        i = 0;
-                        break;
-                    }
-                    objPtr = Tcl_NewIntObj(i);
-                    Tcl_SetObjResult(interp, objPtr);
-                }
-                break;
-
-            case SIMergeIdx: NS_FALL_THROUGH; /* fall through */
-            case SMergeIdx:  NS_FALL_THROUGH; /* fall through */
-            case SMoveIdx:
-                /*
-                 * These commands require two sets.
-                 */
-
-                if (unlikely(objc != 4)) {
-                    Tcl_WrongNumArgs(interp, 2, objv, "setTo setFrom");
-                    result = TCL_ERROR;
-                } else {
-                    Ns_Set *set2Ptr = NULL;
-
-                    if (unlikely(LookupObjSet(itPtr, objv[3], NS_FALSE, &set2Ptr) != TCL_OK)) {
-                        result = TCL_ERROR;
-                    } else {
-                        assert (set2Ptr != NULL);
-                        if (opt == SIMergeIdx) {
-                            Ns_SetIMerge(set, set2Ptr);
-                        } else if (opt == SMergeIdx) {
-                            Ns_SetMerge(set, set2Ptr);
-                        } else {
-                            Ns_SetMove(set, set2Ptr);
-                        }
-                        Tcl_SetObjResult(interp, objv[2]);
-                    }
-                }
-                break;
-
-            default:
-                /* unexpected value */
-                assert(opt && 0);
-                break;
-            }
+            name = Tcl_GetString(objv[offset++]);
         }
+        set = Ns_SetCreate(name);
+        if (nocase != 0) {
+            set->flags |= NS_SET_OPTION_NOCASE;
+        }
+        while (offset < objc) {
+            const char *keyString, *valueString;
+            TCL_SIZE_T  keyLength, valueLength;
+
+            keyString = Tcl_GetStringFromObj(objv[offset++], &keyLength);
+            valueString = Tcl_GetStringFromObj(objv[offset++], &valueLength);
+            (void)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
+        }
+        Tcl_SetObjResult(interp, EnterSet(itPtr, set, NS_TCL_SET_DYNAMIC));
     }
 
     return result;
 }
 
-
 /*
  *----------------------------------------------------------------------
+ * SetDeleteObjCmd --
  *
- * NsTclParseHeaderObjCmd --
- *
- *      Implements "ns_parseheader". Consume a header line, handling header
- *      continuation, placing results in given set.
+ *      This command implements "ns_set delete". It deletes the element at the
+ *      specified index in the given ns_set, freeing associated data if
+ *      necessary.
  *
  * Results:
- *      Tcl result.
+ *      TCL_OK on success or TCL_ERROR on failure.
  *
  * Side effects:
- *      Parse an HTTP header and add it to an existing set; see
- *      Ns_ParseHeader.
+ *      The specified element is removed from the set.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetDeleteObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    long        idx;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",       Ns_ObjvSet,  &set, NULL},
+        {"fieldNumber", Ns_ObjvLong, &idx, &maxIdxRange},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (idx > (long)Ns_SetSize(set)) {
+        Ns_TclPrintfResult(interp, "ns_set %s: index must be maximal the number of elements",
+                           Tcl_GetString(objv[1]));
+        result = TCL_ERROR;
+
+    } else {
+        Ns_SetDelete(set, idx);
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * SetDelkeyObjCmd --
+ *
+ *      This command implements "ns_set delkey". It removes a key from the
+ *      specified ns_set. The function determines whether to perform a case‐
+ *      sensitive or case‐insensitive deletion based on the key prefix.
+ *
+ * Results:
+ *      Returns a standard Tcl result indicating success (TCL_OK) or failure
+ *      (TCL_ERROR).
+ *
+ * Side effects:
+ *      The key (and its associated value) is removed from the ns_set.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetDelkeyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    char       *keyString = NULL;
+    int         nocase = 0, result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec opts[] = {
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  args[] = {
+        {"setId",       Ns_ObjvSet,    &set, NULL},
+        {"key",         Ns_ObjvString, &keyString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    nocase = StartsWithI(Tcl_GetString(objv[1]));
+
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(nocase == 0
+                                                   ? Ns_SetDeleteKey(set, keyString)
+                                                   : Ns_SetIDeleteKey(set, keyString)));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetFormatObjCmd --
+ *
+ *      This command implements "ns_set format". It generates a formatted
+ *      string representation of the given ns_set, using optional lead and
+ *      separator strings to format each key-value pair.
+ *
+ * Results:
+ *      Returns the formatted string as the Tcl command result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetFormatObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK, noname = 0;
+    char       *leadString = (char*)"  ", *separatorString = (char*)": ";
+    Ns_Set     *set;
+    Ns_ObjvSpec opts[] = {
+        {"-noname",    Ns_ObjvBool,   &noname,          INT2PTR(NS_TRUE)},
+        {"-lead",      Ns_ObjvString, &leadString,      NULL},
+        {"-separator", Ns_ObjvString, &separatorString, NULL},
+        {"--",         Ns_ObjvBreak,  NULL,             NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_DString ds;
+
+        Tcl_DStringInit(&ds);
+        Ns_SetFormat(&ds, set, noname == 0, leadString, separatorString);
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetFreeObjCmd --
+ *
+ *      This command implements "ns_set free". It frees the ns_set identified
+ *      by the provided set handle. If the ns_set is dynamic, it is deleted
+ *      and its resources are reclaimed.
+ *
+ * Results:
+ *      Returns a standard Tcl result indicating success (TCL_OK) or failure
+ *      (TCL_ERROR).
+ *
+ * Side effects:
+ *      The ns_set and all its associated data are freed if they are dynamic.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetFreeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        (void) Ns_TclFreeSet(interp, Tcl_GetString(objv[2]));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetFindObjCmd --
+ *
+ *      This command implements "ns_set find". It searches for a key within
+ *      the specified ns_set and returns the index of the key if found.
+ *
+ * Results:
+ *      Returns the index of the found key, or TCL_ERROR if the key is not
+ *      present.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetFindObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    char       *keyString = NULL;
+    int         nocase = 0, result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec opts[] = {
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  args[] = {
+        {"setId",       Ns_ObjvSet,    &set, NULL},
+        {"key",         Ns_ObjvString, &keyString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    nocase = StartsWithI(Tcl_GetString(objv[1]));
+
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_SetObjResult(interp,
+                         Tcl_NewIntObj(Ns_SetFindCmp(set, keyString, nocase == 0 ? strcmp : strcasecmp)));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetIsnullObjCmd --
+ *
+ *      This command implements "ns_set isnull". It checks whether the value
+ *      at a given index in the specified ns_set is NULL.
+ *
+ * Results:
+ *      Returns a boolean value (1 for true, 0 for false) as the Tcl command
+ *      result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetIsnullObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    long        idx;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",       Ns_ObjvSet,  &set, NULL},
+        {"fieldNumber", Ns_ObjvLong, &idx, &maxIdxRange},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (idx > (long)Ns_SetSize(set)) {
+        Ns_TclPrintfResult(interp, "ns_set %s: index must be maximal the number of elements",
+                           Tcl_GetString(objv[1]));
+        result = TCL_ERROR;
+
+    } else {
+        const char *val = Ns_SetValue(set, idx);
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj((val != NULL) ? 0 : 1));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * SetGetObjCmd --
+ *
+ *      This command implements "ns_set get". It retrieves the value associated
+ *      with a given key index from the specified ns_set. If the key is not found,
+ *      an optional default value may be returned.
+ *
+ * Results:
+ *      Returns the value of the key or the default value as the Tcl command result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetGetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    char       *keyString = NULL, *defaultString = NULL;
+    int         all = 0, nocase = 0, result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec opts[] = {
+        {"-all",    Ns_ObjvBool,  &all,    INT2PTR(NS_TRUE)},
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  args[] = {
+        {"setId",       Ns_ObjvSet,    &set, NULL},
+        {"key",         Ns_ObjvString, &keyString, NULL},
+        {"?default",    Ns_ObjvString, &defaultString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    nocase = StartsWithI(Tcl_GetString(objv[1]));
+
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Ns_DList    dl, *dlPtr = &dl;
+        size_t      count;
+
+        Ns_DListInit(dlPtr);
+        count = NsSetGetCmpDListAppend(set, keyString, all, nocase == 0 ? strcmp : strcasecmp, dlPtr, NS_FALSE);
+        if (count == 0) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(defaultString, TCL_INDEX_NONE));
+        } else if (all == NS_FALSE) {
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(dlPtr->data[0], TCL_INDEX_NONE));
+        } else {
+            Tcl_Obj *resultObj = Tcl_NewListObj((TCL_SIZE_T)count, NULL);
+            size_t   i;
+
+            for (i = 0u; i<count; i++) {
+                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(dlPtr->data[i], TCL_INDEX_NONE));
+            }
+            Tcl_SetObjResult(interp, resultObj);
+        }
+        Ns_DListFree(dlPtr);
+    }
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ * SetKeyObjCmd --
+ *
+ *      This command implements "ns_set key". It returns the key (field name)
+ *      at the specified index in the given ns_set.
+ *
+ * Results:
+ *      Returns the key as a string in the Tcl command result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetKeyObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    long        idx;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",       Ns_ObjvSet,  &set, NULL},
+        {"fieldNumber", Ns_ObjvLong, &idx, &maxIdxRange},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (idx > (long)Ns_SetSize(set)) {
+        Ns_TclPrintfResult(interp, "ns_set %s: index must be maximal the number of elements",
+                           Tcl_GetString(objv[1]));
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj( Ns_SetKey(set, idx), TCL_INDEX_NONE));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetKeysObjCmd --
+ *
+ *      This command implements "ns_set keys". It returns a Tcl list of all
+ *      keys (field names) present in the specified ns_set. An optional pattern
+ *      can be provided to filter the keys.
+ *
+ * Results:
+ *      Returns a Tcl list of matching keys.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetKeysObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    char       *patternString = NULL;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",    Ns_ObjvSet, &set, NULL},
+        {"?pattern", Ns_ObjvString, &patternString, NULL},
+
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_DString ds;
+        size_t      i;
+
+        Tcl_DStringInit(&ds);
+        for (i = 0u; i < set->size; ++i) {
+            const char *value = (set->fields[i].name != NULL ? set->fields[i].name : "");
+            if (patternString == NULL || (Tcl_StringMatch(value, patternString) != 0)) {
+                Tcl_DStringAppendElement(&ds, value);
+            }
+        }
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetListObjCmd --
+ *
+ *      This command implements "ns_set list". It returns a Tcl list
+ *      of all keys (i.e. field names) present in the specified ns_set.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the list of keys set in the
+ *      interpreter's result, or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int       result = TCL_OK;
+    NsInterp *itPtr = clientData;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_Obj             *listObj = Tcl_NewListObj(0, NULL);
+        Tcl_HashTable       *tablePtr = &itPtr->sets;
+        const Tcl_HashEntry *hPtr;
+        Tcl_HashSearch       search;
+
+        for (hPtr = Tcl_FirstHashEntry(tablePtr, &search);
+             hPtr != NULL;
+             hPtr = Tcl_NextHashEntry(&search)
+             ) {
+            const char *listKey = Tcl_GetHashKey(tablePtr, hPtr);
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(listKey, TCL_INDEX_NONE));
+        }
+        Tcl_SetObjResult(interp, listObj);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetMergeObjCmd --
+ *
+ *      This command implements "ns_set merge". It merges two ns_set objects.
+ *      The function takes two ns_set handles and combines the key-value pairs
+ *      from the second set into the first.
+ *
+ * Results:
+ *      Returns TCL_OK on success (with the merged set handle as result) or
+ *      TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      The first ns_set is modified to include entries from the second ns_set.
  *
  *----------------------------------------------------------------------
  */
 
-int
-NsTclParseHeaderObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+static int SetMergeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    NsInterp    *itPtr = clientData;
-    int          result = TCL_OK;
-    Ns_Set      *set = NULL;
-    Ns_HeaderCaseDisposition disp = Preserve;
-    char        *setString = (char *)NS_EMPTY_STRING,
-                *headerString = (char *)NS_EMPTY_STRING,
-                *dispositionString = NULL,
-                *prefix = NULL;
+    int         result = TCL_OK, nocase = 0;
+    Ns_Set     *set1, *set2;
     Ns_ObjvSpec opts[] = {
-        {"-prefix",  Ns_ObjvString,  &prefix,  NULL},
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"setId1",  Ns_ObjvSet, &set1, NULL},
+        {"setId2",  Ns_ObjvSet, &set2, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
-    Ns_ObjvSpec  args[] = {
-        {"set",          Ns_ObjvString, &setString, NULL},
-        {"headerline",   Ns_ObjvString, &headerString, NULL},
-        {"?disposition", Ns_ObjvString, &dispositionString, NULL},
-        {NULL, NULL, NULL, NULL}
-    };
-
-    assert(clientData != NULL);
-
-    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+    nocase = StartsWithI(Tcl_GetString(objv[1]));
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
-    } else if (LookupSet(itPtr, setString, NS_FALSE, &set) != TCL_OK) {
-        result = TCL_ERROR;
-
-    } else if (objc < 4) {
-        disp = ToLower;
-    } else if (dispositionString != NULL) {
-        if (STREQ(dispositionString, "toupper")) {
-            disp = ToUpper;
-        } else if (STREQ(dispositionString, "tolower")) {
-            disp = ToLower;
-        } else if (STREQ(dispositionString, "preserve")) {
-            disp = Preserve;
-        } else {
-            Ns_TclPrintfResult(interp, "invalid disposition \"%s\": should be toupper, tolower, or preserve",
-                               dispositionString);
-            result = TCL_ERROR;
-        }
+    } else if (nocase == 1) {
+        Ns_SetIMerge(set1, set2);
     } else {
-        Ns_Fatal("error in argument parser: dispositionString should never be NULL");
+        Ns_SetMerge(set1, set2);
+        Tcl_SetObjResult(interp, objv[2]);
     }
+    return result;
+}
 
-    if (result == TCL_OK) {
-        size_t fieldNumber;
 
-        assert(set != NULL);
-        if (Ns_ParseHeader(set, headerString, prefix, disp, &fieldNumber) != NS_OK) {
-            Ns_TclPrintfResult(interp, "invalid header: %s", headerString);
-            result = TCL_ERROR;
+/*
+ *----------------------------------------------------------------------
+ * SetMoveObjCmd --
+ *
+ *      This command implements "ns_set move". It moves all key-value pairs
+ *      from the first ns_set to the second ns_set.
+ *
+ * Results:
+ *      Returns TCL_OK on success (with the destination set handle as result)
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      The source ns_set is emptied and its data transferred to the destination ns_set.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int SetMoveObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    Ns_Set     *set1, *set2;
+    Ns_ObjvSpec args[] = {
+        {"setId1",  Ns_ObjvSet, &set1, NULL},
+        {"setId2",  Ns_ObjvSet, &set2, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        Ns_SetMove(set1, set2);
+        Tcl_SetObjResult(interp, objv[2]);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetNameObjCmd --
+ *
+ *      This command implements "ns_set name". It retrieves and returns the name
+ *      of the specified ns_set.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the ns_set's name as the interpreter result,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetNameObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(set->name, TCL_INDEX_NONE));
+    }
+    return result;
+}
+
+#ifdef NS_WITH_DEPRECATED
+
+/*
+ *----------------------------------------------------------------------
+ * SetPrintObjCmd --
+ *
+ *      This command implements "ns_set print" (deprecated). It prints the
+ *      content of the specified ns_set to the log for debugging purposes.
+ *
+ * Results:
+ *      Returns TCL_OK on success or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      Outputs information to the system log.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetPrintObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Ns_LogDeprecated(objv, 2, "ns_set format ...", NULL);
+        Ns_SetPrint(NULL, set);
+    }
+    return result;
+}
+#endif
+
+/*
+ *----------------------------------------------------------------------
+ * SetPutObjCmd --
+ *
+ *      This command implements "ns_set put". It inserts or updates a
+ *      key-value pair in the specified ns_set. If the key already exists, its
+ *      value is updated; otherwise, a new key-value pair is added.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the index of the inserted/updated element,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      The ns_set is modified with the new key-value pair.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetPutObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    Tcl_Obj    *keyObj, *valueObj;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {"key",    Ns_ObjvObj, &keyObj,   NULL},
+        {"value",  Ns_ObjvObj, &valueObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        const char *keyString, *valueString;
+        TCL_SIZE_T  keyLength, valueLength;
+        ssize_t     idx;
+
+        keyString = Tcl_GetStringFromObj(keyObj, &keyLength);
+        valueString = Tcl_GetStringFromObj(valueObj, &valueLength);
+
+        idx = (int)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
+
+        Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)idx));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetSizeObjCmd --
+ *
+ *      This command implements "ns_set size". It returns the number of
+ *      elements in the specified ns_set. Optionally, it can also resize the
+ *      set based on provided parameters.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the size as the interpreter's result,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      May modify the ns_set's allocation if resizing is requested.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    long        bufferSize = -1, nrElements = -1;
+    Ns_Set     *set;
+    Ns_ObjvValueRange posintRange = {0, LLONG_MAX};
+    Ns_ObjvValueRange posintRange200 = {TCL_DSTRING_STATIC_SIZE, LLONG_MAX};
+    Ns_ObjvSpec args[] = {
+        {"setId",       Ns_ObjvSet,  &set, NULL},
+        {"?nrElements", Ns_ObjvLong, &nrElements, &posintRange},
+        {"?bufferSize", Ns_ObjvLong, &bufferSize, &posintRange200},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        if (bufferSize == -1 && nrElements == -1) {
+            Tcl_SetObjResult(interp, Tcl_NewLongObj((long)Ns_SetSize(set)));
+
         } else {
-            Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)fieldNumber));
+            NsSetResize(set, (size_t)nrElements, (int)bufferSize);
+            Tcl_SetObjResult(interp, Tcl_NewLongObj((long)Ns_SetSize(set)));
         }
     }
     return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetSplitObjCmd --
+ *
+ *      This command implements "ns_set split". It splits the specified ns_set
+ *      into multiple ns_set objects based on a provided split character.
+ *
+ * Results:
+ *      Returns TCL_OK on success with a Tcl list of new ns_set handles,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      The original ns_set is split into several new ns_set objects.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetSplitObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    NsInterp   *itPtr = clientData;
+    char       *splitString = (char *)".";
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",      Ns_ObjvSet,    &set,         NULL},
+        {"?splitChar", Ns_ObjvString, &splitString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else if (strlen(splitString) != 1) {
+        Ns_TclPrintfResult(interp, "ns_set split: the split character must be one"
+                           " character long, provided '%s'", splitString);
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_Obj     *listObj = Tcl_NewListObj(0, NULL);
+        Ns_Set     **sets;
+        TCL_SIZE_T   i;
+
+        sets = Ns_SetSplit(set, *splitString);
+        for (i = 0; sets[i] != NULL; i++) {
+            Tcl_ListObjAppendElement(interp, listObj,
+                                     EnterSet(itPtr, sets[i], NS_TCL_SET_DYNAMIC));
+        }
+        Tcl_SetObjResult(interp, listObj);
+        ns_free(sets);
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * SetStatsObjCmd --
+ *
+ *      This command implements "ns_set stats". It returns statistics about
+ *      the specified ns_set, such as the number and size of dynamic and
+ *      static entries.
+ *
+ * Results:
+ *      Returns TCL_OK on success with a Tcl dictionary of statistics,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetStatsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int       result = TCL_OK;
+    NsInterp *itPtr = clientData;
+
+    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        const Tcl_HashEntry *hPtr;
+        Tcl_HashTable       *tablePtr = &itPtr->sets;
+        Tcl_HashSearch       search;
+        Tcl_Obj *resultObj = Tcl_NewListObj(0, NULL);
+        size_t nr_dynamic = 0, size_dynamic = 0, allocated_dynamic = 0;
+        size_t nr_static = 0,  size_static = 0,  allocated_static = 0;
+
+        for (hPtr = Tcl_FirstHashEntry(tablePtr, &search);
+             hPtr != NULL;
+             hPtr = Tcl_NextHashEntry(&search)
+             ) {
+            const char *key = Tcl_GetHashKey(tablePtr, hPtr);
+            Ns_Set *set     = (Ns_Set *) Tcl_GetHashValue(hPtr);
+
+            if (IS_DYNAMIC(key)) {
+                nr_dynamic ++;
+#ifdef NS_SET_DSTRING
+                allocated_dynamic += (size_t)set->data.spaceAvl;
+                size_dynamic += (size_t)set->data.length;
+#endif
+            } else {
+                nr_static++;
+#ifdef NS_SET_DSTRING
+                allocated_static += (size_t)set->data.spaceAvl;
+                size_static += (size_t)set->data.length;
+#endif
+            }
+        }
+
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("nr_dynamic", 10),
+                       Tcl_NewWideIntObj((Tcl_WideInt)nr_dynamic));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("size_dynamic", 12),
+                       Tcl_NewWideIntObj((Tcl_WideInt)size_dynamic));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("allocated_dynamic", 17),
+                       Tcl_NewWideIntObj((Tcl_WideInt)allocated_dynamic));
+
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("nr_static", 9),
+                       Tcl_NewWideIntObj((Tcl_WideInt)nr_static));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("size_static", 11),
+                       Tcl_NewWideIntObj((Tcl_WideInt)size_static));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("allocated_static", 16),
+                       Tcl_NewWideIntObj((Tcl_WideInt)allocated_static));
+
+        Tcl_SetObjResult(interp, resultObj);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetTruncateObjCmd --
+ *
+ *      This command implements "ns_set truncate". It truncates the specified
+ *      ns_set to a given number of elements.
+ *
+ * Results:
+ *      Returns TCL_OK on success or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      The ns_set is modified (reduced in size).
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetTruncateObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    long        idx;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",       Ns_ObjvSet,  &set, NULL},
+        {"fieldNumber", Ns_ObjvLong, &idx, &maxIdxRange},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (idx > (long)Ns_SetSize(set)) {
+        Ns_TclPrintfResult(interp, "ns_set %s: index must be maximal the number of elements",
+                           Tcl_GetString(objv[1]));
+        result = TCL_ERROR;
+
+    } else {
+         Ns_SetTrunc(set, (size_t)idx);
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ * SetUniqueObjCmd --
+ *
+ *      This command implements "ns_set unique". It ensures that a given key
+ *      appears uniquely within the specified ns_set. Depending on the
+ *      case-sensitivity option, it may use case-insensitive matching.
+ *
+ * Results:
+ *      Returns TCL_OK on success with a boolean result indicating whether the
+ *      key was unique, or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetUniqueObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    char       *keyString = NULL;
+    int         nocase = 0, result = TCL_OK;
+    Ns_Set     *set;
+    Ns_ObjvSpec opts[] = {
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec  args[] = {
+        {"setId",       Ns_ObjvSet,    &set, NULL},
+        {"key",         Ns_ObjvString, &keyString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    nocase = StartsWithI(Tcl_GetString(objv[1]));
+
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewBooleanObj(nocase == 0
+                                               ? Ns_SetUnique(set, keyString)
+                                               : Ns_SetIUnique(set, keyString)));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * SetValueObjCmd --
+ *
+ *      This command implements "ns_set value". It retrieves the value associated
+ *      with a specified key index from the ns_set.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the value as a string result, or
+ *      TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static int SetValueObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    long        idx;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",       Ns_ObjvSet,  &set, NULL},
+        {"fieldNumber", Ns_ObjvLong, &idx, &maxIdxRange},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else if (idx > (long)Ns_SetSize(set)) {
+        Ns_TclPrintfResult(interp, "ns_set %s: index must be maximal the number of elements",
+                           Tcl_GetString(objv[1]));
+        result = TCL_ERROR;
+
+    } else {
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_SetValue(set, idx), TCL_INDEX_NONE));
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * SetValuesObjCmd --
+ *
+ *      This command implements "ns_set values". It returns a Tcl list of all
+ *      values in the specified ns_set that match an optional pattern.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the list of values as the interpreter's result,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SetValuesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK;
+    char       *patternString = NULL;
+    Ns_Set     *set;
+    Ns_ObjvSpec args[] = {
+        {"setId",    Ns_ObjvSet,    &set, NULL},
+        {"?pattern", Ns_ObjvString, &patternString, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(NULL, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+    } else {
+        Tcl_DString ds;
+        size_t      i;
+
+        Tcl_DStringInit(&ds);
+        for (i = 0u; i < set->size; ++i) {
+            const char *value = set->fields[i].value;
+            if (value == NULL) {
+                value = "";
+            }
+            if (patternString == NULL || (Tcl_StringMatch(value, patternString) != 0)) {
+                Tcl_DStringAppendElement(&ds, value);
+            }
+        }
+        Tcl_DStringResult(interp, &ds);
+    }
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ * Set_TYPE_SetidKeyValueObjCmd --
+ *
+ *      This command implements "ns_set update" and "ns_set cput". It updates
+ *      an existing key-value pair in the specified ns_set, or inserts it if
+ *      the key does not exist.  The behavior is determined by the command
+ *      prefix (e.g., "update" vs. "cput") and the case-sensitivity inferred
+ *      from the key.
+ *
+ * Results:
+ *      Returns TCL_OK on success with the index of the updated/inserted element,
+ *      or TCL_ERROR on failure.
+ *
+ * Side effects:
+ *      The ns_set is modified with the new or updated key-value pair.
+ *
+ *----------------------------------------------------------------------
+ */
+static int Set_TYPE_SetidKeyValueObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    int         result = TCL_OK, nocase = 0;
+    const char *subcmdString;
+    Tcl_Obj    *keyObj, *valueObj;
+    Ns_Set     *set;
+    Ns_ObjvSpec opts[] = {
+        {"-nocase", Ns_ObjvBool,  &nocase, INT2PTR(NS_TRUE)},
+        {"--",      Ns_ObjvBreak, NULL,    NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec args[] = {
+        {"setId",  Ns_ObjvSet, &set, NULL},
+        {"key",    Ns_ObjvObj, &keyObj,   NULL},
+        {"value",  Ns_ObjvObj, &valueObj, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    subcmdString = Tcl_GetString(objv[1]);
+    nocase = StartsWithI(subcmdString);
+    if (Ns_ParseObjv(opts, args, interp, 2, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        const char *keyString, *valueString;
+        char        firstChar;
+        TCL_SIZE_T  keyLength, valueLength;
+        ssize_t     idx = -1;
+
+        keyString = Tcl_GetStringFromObj(keyObj, &keyLength);
+        valueString = Tcl_GetStringFromObj(valueObj, &valueLength);
+
+        firstChar = nocase ? subcmdString[1] : subcmdString[0];
+        /*
+         * Possible methods:
+         *    (i)update
+         *    (i)cput
+         */
+        if (firstChar == 'u') {
+            idx = nocase == 0
+                ? (ssize_t)Ns_SetUpdateSz(set, keyString, keyLength, valueString, valueLength)
+                : (ssize_t)Ns_SetIUpdateSz(set, keyString, keyLength, valueString, valueLength);
+
+        } else if (firstChar == 'c') {
+            idx = Ns_SetFindCmp(set, keyString, nocase == 0 ? strcmp : strcasecmp);
+            if (idx < 0) {
+                idx = (int)Ns_SetPutSz(set, keyString, keyLength, valueString, valueLength);
+            }
+
+        }
+        Tcl_SetObjResult(interp, Tcl_NewWideIntObj((Tcl_WideInt)idx));
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclSetObjCmd --
+ *
+ *      This command implements "ns_set". It provides a Tcl interface for
+ *      performing various operations on ns_set objects, such as creation,
+ *      deletion, update, merge, and lookup of key/value pairs.
+ *
+ * Results:
+ *      Returns a standard Tcl result (TCL_OK on success, TCL_ERROR on failure).
+ *
+ * Side effects:
+ *      Depends on the subcommand invoked; may modify ns_set objects, allocate
+ *      memory, and update the interpreter's result.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    const Ns_SubCmdSpec subcmds[] = {
+        {"array",    SetArrayObjCmd},
+        {"cleanup",  SetCleanupObjCmd},
+        {"copy",     SetCopyObjCmd},
+        {"cput",     Set_TYPE_SetidKeyValueObjCmd},
+        {"create",   SetCreateObjCmd},
+        {"delete",   SetDeleteObjCmd},
+        {"delkey",   SetDelkeyObjCmd},
+        {"find",     SetFindObjCmd},
+        {"format",   SetFormatObjCmd},
+        {"free",     SetFreeObjCmd},
+        {"get",      SetGetObjCmd},
+        {"icput",    Set_TYPE_SetidKeyValueObjCmd},
+        {"idelkey",  SetDelkeyObjCmd},
+        {"ifind",    SetFindObjCmd},
+        {"iget",     SetGetObjCmd},
+        {"imerge",   SetMergeObjCmd},
+        {"isnull",   SetIsnullObjCmd},
+        {"iunique",  SetUniqueObjCmd},
+        {"iupdate",  Set_TYPE_SetidKeyValueObjCmd},
+        {"key",      SetKeyObjCmd},
+        {"keys",     SetKeysObjCmd},
+        {"list",     SetListObjCmd},
+        {"merge",    SetMergeObjCmd},
+        {"move",     SetMoveObjCmd},
+        {"name",     SetNameObjCmd},
+#ifdef NS_WITH_DEPRECATED
+        {"new",      SetCreateObjCmd},
+        {"print",    SetPrintObjCmd},
+#endif
+        {"put",      SetPutObjCmd},
+        {"size",     SetSizeObjCmd},
+        {"split",    SetSplitObjCmd},
+        {"stats",    SetStatsObjCmd},
+        {"truncate", SetTruncateObjCmd},
+        {"unique",   SetUniqueObjCmd},
+        {"update",   Set_TYPE_SetidKeyValueObjCmd},
+        {"value",    SetValueObjCmd},
+        {"values",   SetValuesObjCmd},
+        {NULL, NULL}
+    };
+
+    return Ns_SubcmdObjv(subcmds, clientData, interp, objc, objv);
 }
 
 
@@ -980,29 +1683,23 @@ EnterSet(NsInterp *itPtr, Ns_Set *set, Ns_TclSetType type)
 /*
  *----------------------------------------------------------------------
  *
- * LookupSet --
+ * LookupInterpSet --
  *
- *      Take a Tcl set handle and return a matching Set.
+ *      Take an ns_set name, look it up in the interpreter, and return it in
+ *      the last argument. The function is similar to LookupSet(), but handles
+ *      the case, where the Tcl Interp is not a NaviServer interpreter
+ *      (NsInterp).
  *
  * Results:
  *      TCL_OK or TCL_ERROR.
  *
  * Side effects:
- *      If deleteEntry is set, then the hash entry will be removed.
- *      Set will be returned in given setPtr.
+ *      If deleteEntry is set, then the hash entry will be removed.  Set will
+ *      be returned in given setPtr. In case of error, the error message is
+ *      left in the interpreter result.
  *
  *----------------------------------------------------------------------
  */
-
-static int
-LookupObjSet(NsInterp *itPtr, Tcl_Obj *idPtr, bool deleteEntry, Ns_Set **setPtr)
-{
-    NS_NONNULL_ASSERT(itPtr != NULL);
-    NS_NONNULL_ASSERT(idPtr != NULL);
-    NS_NONNULL_ASSERT(setPtr != NULL);
-
-    return LookupSet(itPtr, Tcl_GetString(idPtr), deleteEntry, setPtr);
-}
 
 static int
 LookupInterpSet(Tcl_Interp *interp, const char *id, bool deleteEntry, Ns_Set **setPtr)
@@ -1025,6 +1722,25 @@ LookupInterpSet(Tcl_Interp *interp, const char *id, bool deleteEntry, Ns_Set **s
     return result;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * LookupSet --
+ *
+ *      Take an ns_set name, look it up in the interpreter, and return it in
+ *      the last argument.
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR.
+ *
+ * Side effects:
+ *      If deleteEntry is set, then the hash entry will be removed.  Set will
+ *      be returned in given setPtr. In case of error, the error message is
+ *      left in the interpreter result.
+ *
+ *----------------------------------------------------------------------
+ */
+
 static int
 LookupSet(NsInterp *itPtr, const char *id, bool deleteEntry, Ns_Set **setPtr)
 {
@@ -1044,7 +1760,7 @@ LookupSet(NsInterp *itPtr, const char *id, bool deleteEntry, Ns_Set **setPtr)
         }
     }
     if (unlikely(set == NULL)) {
-        Ns_TclPrintfResult(itPtr->interp, "no such set: %s", id);
+        Ns_TclPrintfResult(itPtr->interp, "no such set: '%s'", id);
         result = TCL_ERROR;
     } else {
         *setPtr = set;

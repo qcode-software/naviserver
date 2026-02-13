@@ -14,6 +14,7 @@
 #     Routines for opening HTTP connections through
 #     the Tcl socket interface.
 #
+if {$::tcl_version < 8.6} {package require try}
 
 namespace eval ::nstest {
 
@@ -79,24 +80,24 @@ namespace eval ::nstest {
         # Default Headers.
         #
 
-        ns_set icput $hdrs Accept */*
-        ns_set icput $hdrs User-Agent "[ns_info name]-Tcl/[ns_info version]"
+        ns_set icput $hdrs accept */*
+        ns_set icput $hdrs user-agent "[ns_info name]-Tcl/[ns_info version]"
 
         if {$http eq "1.0"} {
-            ns_set icput $hdrs Connection close
+            ns_set icput $hdrs connection close
         }
 
         #
-        # Add "Host:" header filed only, when not provided
+        # Add "host:" header filed only, when not provided
         #
         if {[ns_set iget $hdrs host ""] eq ""} {
             if {$port eq $defaultPort} {
-                ns_set icput $hdrs Host $host
+                ns_set icput $hdrs host $host
             } else {
                 if {[string match *:* $host]} {
-                    ns_set icput $hdrs Host \[$host\]:$port
+                    ns_set icput $hdrs host \[$host\]:$port
                 } else {
-                    ns_set icput $hdrs Host $host:$port
+                    ns_set icput $hdrs host $host:$port
                 }
             }
         } else {
@@ -162,7 +163,7 @@ namespace eval ::nstest {
             binary scan $body "H*" binary
             lappend response [regexp -all -inline {..} $binary]
         }
-
+        ns_set cleanup
         return $response
     }
 

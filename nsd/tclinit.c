@@ -99,8 +99,10 @@ static void LogTrace(const NsInterp *itPtr, const TclTrace *tracePtr, Ns_TclTrac
 static void LogErrorInTrace(const NsInterp *itPtr, const char *context, Ns_TclTraceType why)
     NS_GNUC_NONNULL(1);
 
+#ifdef NS_WITH_DEPRECATED
 static Ns_ReturnCode RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
     NS_GNUC_NONNULL(1);
+#endif
 
 static const char *GetTraceLabel(unsigned int traceWhy);
 
@@ -108,7 +110,7 @@ static Tcl_InterpDeleteProc FreeInterpData;
 static Ns_TlsCleanup DeleteInterps;
 static Ns_ServerInitProc ConfigServerTcl;
 
-static int ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,  Ns_TclTraceType when);
+static int ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv,  Ns_TclTraceType when);
 
 static TCL_OBJCMDPROC_T ICtlAddModuleObjCmd;
 static TCL_OBJCMDPROC_T ICtlCleanupObjCmd;
@@ -117,9 +119,11 @@ static TCL_OBJCMDPROC_T ICtlGetModulesObjCmd;
 static TCL_OBJCMDPROC_T ICtlGetObjCmd;
 static TCL_OBJCMDPROC_T ICtlGetTracesObjCmd;
 static TCL_OBJCMDPROC_T ICtlMarkForDeleteObjCmd;
+#ifdef NS_WITH_DEPRECATED
 static TCL_OBJCMDPROC_T ICtlOnCleanupObjCmd;
 static TCL_OBJCMDPROC_T ICtlOnCreateObjCmd;
 static TCL_OBJCMDPROC_T ICtlOnDeleteObjCmd;
+#endif
 static TCL_OBJCMDPROC_T ICtlRunTracesObjCmd;
 static TCL_OBJCMDPROC_T ICtlSaveObjCmd;
 static TCL_OBJCMDPROC_T ICtlTraceObjCmd;
@@ -265,41 +269,22 @@ ConfigServerTcl(const char *server)
         result = NS_ERROR;
 
     } else {
-        Ns_DString  ds;
-        const char *path, *p, *initFileString;
+        const char *section, *p, *initFileString;
         TCL_SIZE_T  n;
         Ns_Set     *set = NULL;
-        bool        initFileStringCopied = NS_FALSE;
 
         Ns_ThreadSetName("-main:%s-", server);
 
-        path = Ns_ConfigSectionPath(&set, server, NULL, "tcl", (char *)0L);
+        section = Ns_ConfigSectionPath(&set, server, NULL, "tcl", NS_SENTINEL);
 
-        Ns_DStringInit(&ds);
+        servPtr->tcl.library = Ns_ConfigFilename(section, "library", 7, nsconf.home, "modules/tcl",
+                                                 NS_TRUE, NS_TRUE);
 
-        servPtr->tcl.library = ns_strcopy(Ns_ConfigString(path, "library", "modules/tcl"));
-        if (Ns_PathIsAbsolute(servPtr->tcl.library) == NS_FALSE) {
-            Ns_HomePath(&ds, servPtr->tcl.library, (char *)0L);
-            n = ds.length;
-            ns_free((void*)servPtr->tcl.library);
-            servPtr->tcl.library = Ns_DStringExport(&ds);
-            Ns_SetUpdateSz(set, "library", 7, servPtr->tcl.library, n);
-        }
-
-        initFileString = ns_strcopy(Ns_ConfigString(path, "initfile", "bin/init.tcl"));
-        if (Ns_PathIsAbsolute(initFileString) == NS_FALSE) {
-            Ns_HomePath(&ds, initFileString, (char *)0L);
-            ns_free((void*)initFileString);
-            initFileString = Ns_DStringExport(&ds);
-            n = ds.length;
-            Ns_SetUpdateSz(set, "initfile", 8, initFileString, n);
-            initFileStringCopied = NS_TRUE;
-        }
+        initFileString = Ns_ConfigFilename(section, "initfile", 8, nsconf.home, "bin/init.tcl",
+                                           NS_TRUE, NS_FALSE);
         servPtr->tcl.initfile = Tcl_NewStringObj(initFileString, TCL_INDEX_NONE);
-        if (initFileStringCopied) {
-            ns_free((char *)initFileString);
-        }
         Tcl_IncrRefCount(servPtr->tcl.initfile);
+        ns_free((char *)initFileString);
 
         servPtr->tcl.modules = Tcl_NewObj();
         Tcl_IncrRefCount(servPtr->tcl.modules);
@@ -318,15 +303,19 @@ ConfigServerTcl(const char *server)
         Tcl_InitHashTable(&servPtr->tcl.synch.condTable, TCL_STRING_KEYS);
         Tcl_InitHashTable(&servPtr->tcl.synch.rwTable, TCL_STRING_KEYS);
 
-        servPtr->nsv.rwlocks = Ns_ConfigBool(path, "nsvrwlocks", NS_TRUE);
-        servPtr->nsv.nbuckets = Ns_ConfigIntRange(path, "nsvbuckets", 8, 1, INT_MAX);
+        Tcl_InitHashTable(&servPtr->vhost.logfileTable, TCL_STRING_KEYS);
+        Ns_MutexInit(&servPtr->vhost.logMutex);
+        Ns_MutexSetName2(&servPtr->vhost.logMutex, "log", servPtr->server);
+
+        servPtr->nsv.rwlocks = Ns_ConfigBool(section, "nsvrwlocks", NS_TRUE);
+        servPtr->nsv.nbuckets = Ns_ConfigIntRange(section, "nsvbuckets", 8, 1, INT_MAX);
         servPtr->nsv.buckets = NsTclCreateBuckets(servPtr, servPtr->nsv.nbuckets);
 
         /*
          * Initialize the list of connection headers to log for Tcl errors.
          */
 
-        p = Ns_ConfigGetValue(path, "errorlogheaders");
+        p = Ns_ConfigGetValue(section, "errorlogheaders");
         if (p != NULL
             && Tcl_SplitList(NULL, p, &n, &servPtr->tcl.errorLogHeaders) != TCL_OK) {
             Ns_Log(Error, "config: errorlogheaders is not a list: %s", p);
@@ -345,6 +334,11 @@ ConfigServerTcl(const char *server)
         Tcl_InitHashTable(&servPtr->connchans.table, TCL_STRING_KEYS);
         Ns_RWLockInit(&servPtr->connchans.lock);
         Ns_RWLockSetName2(&servPtr->connchans.lock, "nstcl:connchans", server);
+        //Ns_MutexInit(&servPtr->connchans.wlock);
+        //Ns_MutexSetName2(&servPtr->connchans.wlock, "nstcl:connchans-w", server);
+
+        Tcl_InitHashTable(&servPtr->hosts, TCL_STRING_KEYS);
+
         result = NS_OK;
     }
     return result;
@@ -393,14 +387,12 @@ Ns_TclCreateInterp(void)
 int
 Ns_TclInit(Tcl_Interp *interp)
 {
-    NsServer *servPtr = NsGetServer(NULL);
-
     NS_NONNULL_ASSERT(interp != NULL);
 
     /*
      * Associate the interp data with the current interpreter.
      */
-    (void)NewInterpData(interp, servPtr);
+    (void)NewInterpData(interp, NULL);
 
     return TCL_OK;
 }
@@ -425,7 +417,7 @@ Ns_TclInit(Tcl_Interp *interp)
  */
 
 Ns_ReturnCode
-Ns_TclEval(Ns_DString *dsPtr, const char *server, const char *script)
+Ns_TclEval(Tcl_DString *dsPtr, const char *server, const char *script)
 {
     Tcl_Interp   *interp;
     Ns_ReturnCode status = NS_ERROR;
@@ -443,7 +435,7 @@ Ns_TclEval(Ns_DString *dsPtr, const char *server, const char *script)
             status = NS_OK;
         }
         if (dsPtr != NULL) {
-            Ns_DStringAppend(dsPtr, result);
+            Tcl_DStringAppend(dsPtr, result, TCL_INDEX_NONE);
         }
         Ns_TclDeAllocateInterp(interp);
     }
@@ -605,7 +597,7 @@ Ns_GetConnInterp(Ns_Conn *conn)
     return connPtr->itPtr->interp;
 }
 
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  *
@@ -627,6 +619,7 @@ Ns_FreeConnInterp(Ns_Conn *UNUSED(conn))
 {
     return;
 }
+#endif
 
 
 /*
@@ -829,7 +822,7 @@ Ns_TclRegisterTrace(const char *server, Ns_TclTraceProc *proc,
     return status;
 }
 
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  *
@@ -888,7 +881,6 @@ RegisterAt(Ns_TclTraceProc *proc, const void *arg, Ns_TclTraceType when)
     return status;
 }
 
-
 /*
  *----------------------------------------------------------------------
  *
@@ -928,6 +920,7 @@ Ns_TclRegisterDeferred(Tcl_Interp *interp, Ns_TclDeferProc *proc, void *arg)
         *nextPtrPtr = deferPtr;
     }
 }
+#endif
 
 
 /*
@@ -983,6 +976,21 @@ Ns_TclInterpServer(Tcl_Interp *interp)
     itPtr = NsGetInterpData(interp);
     if (itPtr != NULL && itPtr->servPtr != NULL) {
         result = itPtr->servPtr->server;
+    }
+    return result;
+}
+
+const Ns_Server *
+Ns_TclInterpServPtr(Tcl_Interp *interp)
+{
+    const NsInterp  *itPtr;
+    const Ns_Server *result = NULL;
+
+    NS_NONNULL_ASSERT(interp != NULL);
+
+    itPtr = NsGetInterpData(interp);
+    if (itPtr != NULL) {
+        result = (const Ns_Server *)itPtr->servPtr;
     }
     return result;
 }
@@ -1043,7 +1051,7 @@ Ns_TclInitModule(const char *server, const char *module)
  */
 
 static int
-ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv,  Ns_TclTraceType when)
+ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv,  Ns_TclTraceType when)
 {
     unsigned int    flags = 0u;
     Tcl_Obj        *scriptObj = NULL;
@@ -1053,16 +1061,17 @@ ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj
 
     if (when == NS_TCL_TRACE_NONE) {
         Ns_ObjvSpec     addTraceArgs[] = {
-            {"when",       Ns_ObjvFlags,  &flags,     traceWhen},
+            {"when",       Ns_ObjvIndex,  &flags,     traceWhen},
             {"script",     Ns_ObjvObj,    &scriptObj, NULL},
-            {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+            {"?arg",       Ns_ObjvArgs,   &remain,    NULL},
             {NULL, NULL, NULL, NULL}
         };
         status = Ns_ParseObjv(NULL, addTraceArgs, interp, 2, objc, objv);
     } else {
         Ns_ObjvSpec     legacyAddTraceArgs[] = {
             {"script",     Ns_ObjvObj,    &scriptObj, NULL},
-            {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+            {"?arg",       Ns_ObjvArgs,   &remain,    NULL},
+            {NULL, NULL, NULL, NULL}
         };
         status = Ns_ParseObjv(NULL, legacyAddTraceArgs, interp, 2, objc, objv);
     }
@@ -1073,7 +1082,8 @@ ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj
         const NsServer  *servPtr = itPtr->servPtr;
 
         if (servPtr != NsGetInitServer()) {
-            Ns_TclPrintfResult(interp, "cannot add module after server startup");
+            Ns_TclPrintfResult(interp, "cannot add trace %s '%s' after server startup",
+                               Tcl_GetString(objv[1]),  Tcl_GetString(scriptObj));
             result = TCL_ERROR;
 
         } else {
@@ -1087,7 +1097,7 @@ ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj
                 when  = (Ns_TclTraceType)flags;
             }
             cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclTraceProc,
-                                      scriptObj, remain, objv + (objc - (TCL_OBJC_T)remain));
+                                      scriptObj, remain, objv + (objc - (TCL_SIZE_T)remain));
             if (Ns_TclRegisterTrace(servPtr->server, NsTclTraceProc, cbPtr, when) != NS_OK) {
                 result = TCL_ERROR;
             }
@@ -1115,7 +1125,7 @@ ICtlAddTrace(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj
  *----------------------------------------------------------------------
  */
 static int
-ICtlAddModuleObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlAddModuleObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = (const NsInterp *)clientData;
     const NsServer *servPtr = itPtr->servPtr;
@@ -1130,7 +1140,7 @@ ICtlAddModuleObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
         result = TCL_ERROR;
 
     } else if (servPtr != NsGetInitServer()) {
-        Ns_TclPrintfResult(interp, "cannot add module after server startup");
+        Ns_TclPrintfResult(interp, "cannot add module '%s' after server startup", Tcl_GetString(moduleObj));
         result = TCL_ERROR;
 
     } else {
@@ -1161,7 +1171,7 @@ ICtlAddModuleObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
  */
 
 static int
-ICtlGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = (const NsInterp *)clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -1197,13 +1207,17 @@ ICtlGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Ob
  */
 
 static int
-ICtlGetModulesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlGetModulesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = (const NsInterp *)clientData;
     const NsServer *servPtr = itPtr->servPtr;
     int             result = TCL_OK;
+    Ns_ObjvSpec opts[] = {
+        {"-server", Ns_ObjvServer,  &servPtr, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
 
-    if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+    if (Ns_ParseObjv(opts, NULL, interp, 2, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
     } else {
@@ -1231,7 +1245,7 @@ ICtlGetModulesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc,
  *----------------------------------------------------------------------
  */
 static int
-ICtlEpochObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlEpochObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = (const NsInterp *)clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -1267,7 +1281,7 @@ ICtlEpochObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
  *----------------------------------------------------------------------
  */
 static int
-ICtlMaxconcurrentupdatesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlMaxconcurrentupdatesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int               result = TCL_OK, maxValue = -1;
     Ns_ObjvValueRange posIntRange1 = {1, INT_MAX};
@@ -1313,7 +1327,7 @@ ICtlMaxconcurrentupdatesObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp
  */
 
 static int
-ICtlMarkForDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlMarkForDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     NsInterp  *itPtr = (NsInterp *)clientData;
     int        result = TCL_OK;
@@ -1344,7 +1358,7 @@ ICtlMarkForDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T ob
  *----------------------------------------------------------------------
  */
 static int
-ICtlSaveObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlSaveObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     Tcl_Obj     *scriptObj;
@@ -1395,7 +1409,7 @@ ICtlSaveObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
  */
 
 static int
-ICtlUpdateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlUpdateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     NsInterp    *itPtr = (NsInterp *)clientData;
     int          result;
@@ -1428,7 +1442,7 @@ ICtlUpdateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl
  */
 
 static int
-ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     NsInterp    *itPtr = (NsInterp *)clientData;
     int          result = TCL_OK;
@@ -1437,10 +1451,11 @@ ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
         result = TCL_ERROR;
 
     } else if (itPtr->firstDeferPtr != NULL) {
-        Defer  *deferPtr;
+        Defer  *deferPtr, *nextPtr;
 
-        for (deferPtr = itPtr->firstDeferPtr; deferPtr != NULL; deferPtr = deferPtr->nextPtr) {
+        for (deferPtr = itPtr->firstDeferPtr; deferPtr != NULL; deferPtr = nextPtr) {
             (*deferPtr->proc)(interp, deferPtr->arg);
+            nextPtr = deferPtr->nextPtr;
             ns_free(deferPtr);
         }
         itPtr->firstDeferPtr = NULL;
@@ -1453,7 +1468,6 @@ ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
 /*
  *----------------------------------------------------------------------
  *
- * ICtlOnInitObjCmd
  * ICtlOnCreateObjCmd
  * ICtlOnCleanupObjCmd
  * ICtlOnDeleteObjCmd
@@ -1479,27 +1493,30 @@ ICtlCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
  *
  *----------------------------------------------------------------------
  */
+#ifdef NS_WITH_DEPRECATED
+static int
+ICtlOnCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    Ns_LogDeprecated(objv, 2, "ns_ictl trace deallocate ...", NULL);
+    return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_DEALLOCATE);
+}
 
 static int
-ICtlOnCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlOnCreateObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogDeprecated(objv, 2, "ns_ictl trace create ...", NULL);
     return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_CREATE);
 }
 static int
-ICtlOnCleanupObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
-{
-    Ns_LogDeprecated(objv, 2, "ns_ictl trace deallocate ...", NULL);
-    return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_DEALLOCATE);
-}
-static int
-ICtlOnDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlOnDeleteObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogDeprecated(objv, 2, "ns_ictl trace delete ...", NULL);
     return ICtlAddTrace(clientData, interp, objc, objv, NS_TCL_TRACE_DELETE);
 }
+#endif
+
 static int
-ICtlTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     /*
      * Passing NS_TCL_TRACE_NONE as last argument means to get the trace type
@@ -1526,12 +1543,12 @@ ICtlTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
  *----------------------------------------------------------------------
  */
 static int
-ICtlGetTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlGetTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int             result = TCL_OK;
     unsigned int    flags = 0u;
     Ns_ObjvSpec     args[] = {
-        {"when", Ns_ObjvFlags,  &flags, traceWhen},
+        {"when", Ns_ObjvIndex,  &flags, traceWhen},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -1541,11 +1558,11 @@ ICtlGetTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
     } else {
         const NsInterp  *itPtr = (const NsInterp *)clientData;
         const NsServer  *servPtr = itPtr->servPtr;
-        Ns_DString       ds;
+        Tcl_DString      ds;
         const TclTrace  *tracePtr;
         Ns_TclTraceType  when = (Ns_TclTraceType)flags;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         for (tracePtr = servPtr->tcl.firstTracePtr;
              (tracePtr != NULL);
              tracePtr = tracePtr->nextPtr) {
@@ -1575,12 +1592,12 @@ ICtlGetTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
  *----------------------------------------------------------------------
  */
 static int
-ICtlRunTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ICtlRunTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int             result = TCL_OK;
     unsigned int    flags = 0u;
     Ns_ObjvSpec     args[] = {
-        {"when", Ns_ObjvFlags,  &flags, traceWhen},
+        {"when", Ns_ObjvIndex,  &flags, traceWhen},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -1622,7 +1639,7 @@ ICtlRunTracesObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
  */
 
 int
-NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"addmodule",            ICtlAddModuleObjCmd},
@@ -1633,10 +1650,12 @@ NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
         {"gettraces",            ICtlGetTracesObjCmd},
         {"markfordelete",        ICtlMarkForDeleteObjCmd},
         {"maxconcurrentupdates", ICtlMaxconcurrentupdatesObjCmd},
+#ifdef NS_WITH_DEPRECATED
         {"oncleanup",            ICtlOnCleanupObjCmd},
         {"oncreate",             ICtlOnCreateObjCmd},
         {"ondelete",             ICtlOnDeleteObjCmd},
         {"oninit",               ICtlOnCreateObjCmd},
+#endif
         {"runtraces",            ICtlRunTracesObjCmd},
         {"save",                 ICtlSaveObjCmd},
         {"trace",                ICtlTraceObjCmd},
@@ -1667,14 +1686,14 @@ NsTclICtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
  */
 
 int
-NsTclAtCloseObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAtCloseObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     NsInterp  *itPtr = (NsInterp *)clientData;
     AtClose   *atPtr;
     int        result = TCL_OK;
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/script/ ?/arg .../?");
         result = TCL_ERROR;
 
     } else if (NsConnRequire(interp, NS_CONN_REQUIRE_ALL, NULL, &result) != NS_OK) {
@@ -1761,7 +1780,13 @@ NsTclInitServer(const char *server)
         Tcl_Interp *interp = NsTclAllocateInterp(servPtr);
 
         if ( Tcl_FSEvalFile(interp, servPtr->tcl.initfile) != TCL_OK) {
-            (void) Ns_TclLogErrorInfo(interp, "\n(context: init server)");
+            Tcl_DString ds;
+
+            Tcl_DStringInit(&ds);
+            (void) Ns_TclLogErrorInfo(interp,
+                                      Ns_DStringPrintf(&ds, "\n(context: init server %s)", server));
+            Tcl_DStringFree(&ds);
+            Ns_Fatal("tclinit: invalid init file: %s", Tcl_GetString(servPtr->tcl.initfile));
         }
         Ns_TclDeAllocateInterp(interp);
     }
@@ -1891,7 +1916,7 @@ NsTclTraceProc(Tcl_Interp *interp, const void *arg)
     const Ns_TclCallback *cbPtr = arg;
     int                   result;
 
-    result = Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0L);
+    result = Ns_TclEvalCallback(interp, cbPtr, NULL, NS_SENTINEL);
     if (unlikely(result != TCL_OK)) {
         (void) Ns_TclLogErrorInfo(interp, "\n(context: trace proc)");
     }
@@ -2162,8 +2187,8 @@ CreateInterp(NsInterp **itPtrPtr, NsServer *servPtr)
 static bool InitializeInterpData(void) {
     Tcl_Obj *tmpObj = Tcl_NewIntObj(0);
 
-    //fprintf(stderr, "==== InitializeInterpData\n");
     NS_intTypePtr = tmpObj->typePtr;
+    /*fprintf(stderr, "==== InitializeInterpData %p\n", (void*)NS_intTypePtr);*/
     Tcl_DecrRefCount(tmpObj);
 
 #if defined(_WIN32) || defined(HAVE_PTHREAD)
@@ -2174,7 +2199,9 @@ static bool InitializeInterpData(void) {
     NsTclInitAddrType();
     NsTclInitTimeType();
     NsTclInitMemUnitType();
+#ifdef NS_WITH_DEPRECATED
     NsTclInitKeylistType();
+#endif
 
 #if defined(_WIN32) || defined(HAVE_PTHREAD)
      Ns_MasterUnlock();
@@ -2419,15 +2446,14 @@ LogTrace(const NsInterp *itPtr, const TclTrace *tracePtr, Ns_TclTraceType why)
     NS_NONNULL_ASSERT(tracePtr != NULL);
 
     if (Ns_LogSeverityEnabled(Debug)) {
-        Ns_DString  ds;
+        Tcl_DString ds;
 
-        Ns_DStringInit(&ds);
-        Ns_DStringNAppend(&ds, GetTraceLabel(why), TCL_INDEX_NONE);
-        Ns_DStringNAppend(&ds, " ", 1);
+        Tcl_DStringInit(&ds);
+        Tcl_DStringAppend(&ds, GetTraceLabel(why), TCL_INDEX_NONE);
+        Tcl_DStringAppend(&ds, " ", 1);
         Ns_GetProcInfo(&ds, (ns_funcptr_t)tracePtr->proc, tracePtr->arg);
-        Ns_Log(Debug, "ns:interptrace[%s]: %s",
-               itPtr->servPtr->server, Ns_DStringValue(&ds));
-        Ns_DStringFree(&ds);
+        Ns_Log(Debug, "ns:interptrace[%s]: %s", itPtr->servPtr->server, ds.string);
+        Tcl_DStringFree(&ds);
     }
 }
 
@@ -2511,6 +2537,88 @@ DeleteInterps(void *arg)
     }
     Tcl_DeleteHashTable(tablePtr);
     ns_free(tablePtr);
+}
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsForeachHashValue --
+ *
+ *      Iterate over every entry in a Tcl_HashTable and invoke a user-supplied
+ *      function on each entry’s value.
+ *
+ * Parameters:
+ *      tablePtr   – pointer to the Tcl_HashTable to traverse.
+ *      fn         – callback of type NsHashValueProc, called as fn(value, ctx).
+ *      ctx        – user-provided context passed through to fn.
+ *
+ * Results:
+ *      Returns NS_OK if all invocations of fn returned NS_OK. If fn returns
+ *      any other Ns_ReturnCode, iteration stops immediately and that code
+ *      is returned.
+ *
+ * Side Effects:
+ *      Arbitrary, depending on what fn does.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode NsForeachHashValue(Tcl_HashTable *tablePtr, NsHashValueProc fn, void *ctx)
+{
+    Ns_ReturnCode result = NS_OK;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
+
+    hPtr = Tcl_FirstHashEntry(tablePtr, &search);
+    while (hPtr != NULL) {
+        result = fn(Tcl_GetHashValue(hPtr), ctx);
+        if (result != NS_OK) {
+            break;
+        }
+        hPtr = Tcl_NextHashEntry(&search);
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsForeachHashKeyValue --
+ *
+ *      Iterate over every entry in a Tcl_HashTable and invoke a user-supplied
+ *      function on each entry’s key and value.
+ *
+ * Parameters:
+ *      tablePtr   – pointer to the Tcl_HashTable to traverse.
+ *      fn         – callback of type NsHashKeyValueProc, called as
+ *                   fn(key, value, ctx).
+ *      ctx        – user-provided context passed through to fn.
+ *
+ * Results:
+ *      Returns NS_OK if all invocations of fn returned NS_OK. If fn returns
+ *      any other Ns_ReturnCode, iteration stops immediately and that code
+ *      is returned.
+ *
+ * Side Effects:
+ *      Arbitrary, depending on what fn does.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode NsForeachHashKeyValue(Tcl_HashTable *tablePtr, NsHashKeyValueProc fn, void *ctx)
+{
+    Ns_ReturnCode result = NS_OK;
+    const Tcl_HashEntry *hPtr;
+    Tcl_HashSearch       search;
+
+    hPtr = Tcl_FirstHashEntry(tablePtr, &search);
+    while (hPtr != NULL) {
+        result = fn(Tcl_GetHashKey(tablePtr, hPtr), Tcl_GetHashValue(hPtr), ctx);
+        if (result != NS_OK) {
+            break;
+        }
+        hPtr = Tcl_NextHashEntry(&search);
+    }
+
+    return result;
 }
 
 /*

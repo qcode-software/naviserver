@@ -91,7 +91,7 @@ Ns_ReturnCode
 Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const char *file,
               const char *init)
 {
-    Ns_DString            ds;
+    Tcl_DString           ds;
     Ns_ReturnCode         status = NS_OK;
     Tcl_Obj              *pathObj;
     bool                  hasExtension;
@@ -102,9 +102,9 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
 
     Ns_Log(Notice, "modload: loading module %s from file %s", module, file);
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     if (Ns_PathIsAbsolute(file) == NS_FALSE) {
-        file = Ns_HomePath(&ds, "bin", file, (char *)0L);
+        file = Ns_BinPath(&ds, file, NS_SENTINEL);
     }
     /*
      * In the case of the nsproxy module, we have an "nsproxy" binary and an
@@ -222,12 +222,12 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
                 }
 #endif
                 if (status != NS_OK) {
-                    Ns_Log(Error, "modload: %s: %s returned: %d", file, init, status);
+                    Ns_Log(Error, "modload: %s: %s returned: %s", file, init, Ns_ReturnCodeString(status));
                 }
             }
         }
     }
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return status;
 }
@@ -251,7 +251,7 @@ Ns_ModuleLoad(Tcl_Interp *interp, const char *server, const char *module, const 
  */
 
 int
-NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclModuleLoadObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char         *module, *file, *init = (char *)"Ns_ModuleInit";
     int           global = (int)NS_FALSE, result = TCL_OK;

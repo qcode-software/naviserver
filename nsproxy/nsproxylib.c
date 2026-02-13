@@ -306,10 +306,10 @@ static Err    PopProxy(Pool *poolPtr, Proxy **proxyPtrPtr, int nwant, const Ns_T
 static void   PushProxy(Proxy *proxyPtr) NS_GNUC_NONNULL(1);
 static Proxy* GetProxy(const char *proxyId, InterpData *idataPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static int    Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, const Ns_Time *timeoutPtr)
+static int    Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *scriptString, TCL_SIZE_T scriptLength, const Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static Err    Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
+static Err    Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *scriptString, TCL_SIZE_T scriptLength)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static Err    Wait(Tcl_Interp *interp, Proxy *proxyPtr, const Ns_Time *timeoutPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
@@ -410,7 +410,7 @@ Nsproxy_LibInit(void)
         Nsd_LibInit();
 
         Tcl_DStringInit(&defexec);
-        Ns_BinPath(&defexec, NSPROXY_HELPER, (char *)0L);
+        Ns_BinPath(&defexec, NSPROXY_HELPER, NS_SENTINEL);
 
         Tcl_InitHashTable(&pools, TCL_STRING_KEYS);
         Ns_RegisterAtShutdown(Shutdown, NULL);
@@ -615,7 +615,7 @@ Ns_ProxyMain(int argc, char *const*argv, Tcl_AppInitProc *init)
         len = ntohl(reqPtr->len);
         if (len == 0) {
             Export(NULL, TCL_OK, &out);
-        } else if (len > 0) {
+        } else {
             script = Tcl_DStringValue(&in) + sizeof(Req);
             if (active != NULL) {
                 int n = (int)len;
@@ -634,8 +634,6 @@ Ns_ProxyMain(int argc, char *const*argv, Tcl_AppInitProc *init)
                 assert(max > 0);
                 memset(active, ' ', (size_t)max);
             }
-        } else {
-            Ns_Fatal("nsproxy: invalid length");
         }
         if (SendBuf(&proc, NULL, &out) == NS_FALSE) {
             break;
@@ -880,7 +878,7 @@ Ns_ProxyPut(PROXY handle)
 
 int Ns_ProxyEval(Tcl_Interp *interp, PROXY handle, const char *script, const Ns_Time *timeoutPtr)
 {
-    return Eval(interp, (Proxy *)handle, script, timeoutPtr);
+    return Eval(interp, (Proxy *)handle, script, TCL_INDEX_NONE, timeoutPtr);
 }
 
 /*
@@ -1020,7 +1018,7 @@ SetExpire(Worker *workerPtr, const Ns_Time *timePtr)
  */
 
 static int
-Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, const Ns_Time *timeoutPtr)
+Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *scriptString, TCL_SIZE_T scriptLength, const Ns_Time *timeoutPtr)
 {
     Err     err;
     int     status = TCL_ERROR;
@@ -1031,7 +1029,7 @@ Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, const Ns_Time *tim
 
     Ns_GetTime(&startTime);
 
-    err = Send(interp, proxyPtr, script);
+    err = Send(interp, proxyPtr, scriptString, scriptLength);
     if (err == ENone) {
         err = Wait(interp, proxyPtr, timeoutPtr);
         if (err == ENone) {
@@ -1040,17 +1038,18 @@ Eval(Tcl_Interp *interp, Proxy *proxyPtr, const char *script, const Ns_Time *tim
         /*
          * Don't count check-proxy calls (script == NULL)
          */
-        if (script != NULL) {
+        if (scriptString != NULL) {
             Ns_Time endTime, diffTime;
 
             Ns_GetTime(&endTime);
             (void)Ns_DiffTime(&endTime, &startTime, &diffTime);
             if (Ns_DiffTime(&proxyPtr->conf.logminduration, &diffTime, NULL) < 1) {
                 Ns_Log(Notice, "nsproxy %s duration " NS_TIME_FMT " secs: '%s'",
-                       proxyPtr->poolPtr->name, (int64_t)diffTime.sec, diffTime.usec, script);
+                       proxyPtr->poolPtr->name, (int64_t)diffTime.sec, diffTime.usec,
+                       scriptString);
             }
 
-            Ns_Log(Debug, "Eval calls GetStats <%s>", script);
+            Ns_Log(Debug, "Eval calls GetStats <%s>", scriptString);
             GetStats(proxyPtr);
         }
     }
@@ -1104,7 +1103,7 @@ GetStats(const Proxy *proxyPtr)
  */
 
 static Err
-Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
+Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *scriptString, TCL_SIZE_T scriptLength)
 {
     Err err = ENone;
     Req req;
@@ -1117,7 +1116,7 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
     } else if (proxyPtr->state != Idle) {
         err = EBusy;
     } else {
-        if (script != NULL) {
+        if (scriptString != NULL) {
             proxyPtr->numruns++;
         }
         if (proxyPtr->conf.maxruns > 0
@@ -1128,14 +1127,13 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
             err = CreateWorker(interp, proxyPtr);
         }
         if (err == ENone) {
-            TCL_SIZE_T len = script == NULL ? 0 : (TCL_SIZE_T)strlen(script);
 
-            req.len   = htonl((uint32_t)len);
+            req.len   = htonl((uint32_t)scriptLength);
             req.major = htons(MAJOR_VERSION);
             req.minor = htons(MINOR_VERSION);
             Tcl_DStringSetLength(&proxyPtr->in, 0);
             Tcl_DStringAppend(&proxyPtr->in, (char *) &req, sizeof(req));
-            Tcl_DStringAppend(&proxyPtr->in, script, len);
+            Tcl_DStringAppend(&proxyPtr->in, scriptString, scriptLength);
             proxyPtr->state = Busy;
 
             /*
@@ -1150,10 +1148,10 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
             proxyPtr->poolPtr->runPtr = proxyPtr;
             Ns_MutexUnlock(&proxyPtr->poolPtr->lock);
 
-            if (script != NULL) {
+            if (scriptString != NULL) {
                 Ns_Log(Ns_LogNsProxyDebug, "proxy pool %s id worker %s %ld send: %s",
                        proxyPtr->poolPtr->name, proxyPtr->id,
-                       (long)proxyPtr->workerPtr->pid, script);
+                       (long)proxyPtr->workerPtr->pid, scriptString);
             }
 
             if (SendBuf(proxyPtr->workerPtr, &proxyPtr->conf.tsend,
@@ -1165,7 +1163,7 @@ Send(Tcl_Interp *interp, Proxy *proxyPtr, const char *script)
 
     if (err != ENone) {
         Ns_TclPrintfResult(interp, "could not send script \"%s\" to proxy \"%s\": %s",
-                           script == NULL ? NS_EMPTY_STRING : script,
+                           scriptString == NULL ? NS_EMPTY_STRING : scriptString,
                            proxyPtr->id, errMsg[err]);
         ProxyError(interp, err);
     }
@@ -1426,7 +1424,7 @@ RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
                 success = NS_FALSE;
                 break;
             }
-        } else if (n > 0) {
+        } else /* if (n > 0) */ {
             UpdateIov(iov, (size_t)n);
         }
     }
@@ -1470,7 +1468,7 @@ RecvBuf(const Worker *workerPtr, const Ns_Time *timePtr, Tcl_DString *dsPtr)
                     success = NS_FALSE;
                     break;
                 }
-            } else if (n > 0) {
+            } else /*if (n > 0)*/ {
                 len -= n;
                 ptr += n;
             }
@@ -1683,7 +1681,7 @@ Import(Tcl_Interp *interp, const Tcl_DString *dsPtr, int *resultPtr)
  *----------------------------------------------------------------------
  */
 static int
-StatsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+StatsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *pool;
@@ -1746,7 +1744,7 @@ StatsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj 
  *----------------------------------------------------------------------
  */
 static int
-PidsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+PidsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, details = 0;
     char       *pool;
@@ -1792,8 +1790,8 @@ PidsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *
                     Tcl_DStringAppendElement(dsPtr, Tcl_GetString(elementObj));
                     Tcl_DecrRefCount(elementObj);
                 } else {
-                    Ns_DStringNAppend(dsPtr, buffer, bytes);
-                    Ns_DStringNAppend(dsPtr, " ", 1);
+                    Tcl_DStringAppend(dsPtr, buffer, bytes);
+                    Tcl_DStringAppend(dsPtr, " ", 1);
                 }
             }
         }
@@ -1808,7 +1806,7 @@ PidsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *
 }
 
 static int
-WorkersObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+WorkersObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *pool;
@@ -1849,7 +1847,7 @@ WorkersObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Ob
                            Tcl_NewStringObj(proxyPtr->state == Idle ? "idle"
                                             : proxyPtr->state == Busy ? "busy"
                                             : proxyPtr->state == Done ? "done"
-                                            : "unknown", -1));
+                                            : "unknown", TCL_INDEX_NONE));
 
             Tcl_DStringAppendElement(dsPtr, Tcl_GetString(elementObj));
             Tcl_DecrRefCount(elementObj);
@@ -1880,13 +1878,13 @@ WorkersObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Ob
  *----------------------------------------------------------------------
  */
 static int
-StopObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+StopObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *pool, *handle = NULL;
     Ns_ObjvSpec args[] = {
         {"pool",    Ns_ObjvString, &pool, NULL},
-        {"?handle", Ns_ObjvString, &handle, NULL},
+        {"?proxyId", Ns_ObjvString, &handle, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -1939,13 +1937,13 @@ StopObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *
  */
 
 static int
-ClearObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ClearObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *pool, *handle = NULL;
     Ns_ObjvSpec args[] = {
         {"pool",    Ns_ObjvString, &pool, NULL},
-        {"?handle", Ns_ObjvString, &handle, NULL},
+        {"?proxyId", Ns_ObjvString, &handle, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -2000,7 +1998,7 @@ ClearObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj 
  */
 
 static int
-ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     InterpData    *idataPtr = data;
     Pool          *poolPtr;
@@ -2025,10 +2023,10 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
     };
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option ?args?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/ ?/arg .../?");
         return TCL_ERROR;
     }
-    if (Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
+    if (Tcl_GetIndexFromObj(interp, objv[1], opts, "subcommand", 0,
                             &opt) != TCL_OK) {
         return TCL_ERROR;
     }
@@ -2038,18 +2036,18 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
     case PPutIdx:       NS_FALL_THROUGH; /* fall through */
     case PPingIdx:
         if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "handle");
+            Tcl_WrongNumArgs(interp, 2, objv, "/proxyId/");
             result = TCL_ERROR;
         } else {
             proxyId  = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
-                Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
+                Ns_TclPrintfResult(interp, "no such proxyId: %s", proxyId);
                 result = TCL_ERROR;
             } else if (opt == PPutIdx || opt == PReleaseIdx) {
                 result = ReleaseProxy(interp, proxyPtr);
             } else /* opt == PPingIdx */ {
-                result = Eval(interp, proxyPtr, NULL, NULL);
+                result = Eval(interp, proxyPtr, NULL, 0, NULL);
             }
         }
         break;
@@ -2073,16 +2071,19 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
 
     case PSendIdx:
         if (objc != 4) {
-            Tcl_WrongNumArgs(interp, 2, objv, "handle script");
+            Tcl_WrongNumArgs(interp, 2, objv, "/proxyId/ /script/");
             result = TCL_ERROR;
         } else {
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
-                Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
+                Ns_TclPrintfResult(interp, "no such proxyId: %s", proxyId);
                 result = TCL_ERROR;
             } else {
-                err = Send(interp, proxyPtr, Tcl_GetString(objv[3]));
+                TCL_SIZE_T  scriptLength;
+                const char *scriptString= Tcl_GetStringFromObj(objv[3], &scriptLength);
+
+                err = Send(interp, proxyPtr, scriptString, scriptLength);
                 result = (err == ENone) ? TCL_OK : TCL_ERROR;
             }
         }
@@ -2090,7 +2091,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
 
     case PWaitIdx:
         if (objc != 3 && objc != 4) {
-            Tcl_WrongNumArgs(interp, 2, objv, "handle ?timeout?");
+            Tcl_WrongNumArgs(interp, 2, objv, "/proxyId/ ?/timeout/?");
             result = TCL_ERROR;
         } else {
             Ns_Time *timeoutPtr = NULL;
@@ -2098,7 +2099,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
-                Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
+                Ns_TclPrintfResult(interp, "no such proxyId: %s", proxyId);
                 result = TCL_ERROR;
             } else if (objc > 3 && Ns_TclGetTimePtrFromObj(interp, objv[3], &timeoutPtr) != TCL_OK) {
                 result = TCL_ERROR;
@@ -2112,13 +2113,13 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
 
     case PRecvIdx:
         if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "handle");
+            Tcl_WrongNumArgs(interp, 2, objv, "/proxyId/");
             result = TCL_ERROR;
         } else {
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
-                Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
+                Ns_TclPrintfResult(interp, "no such proxyId: %s", proxyId);
                 result = TCL_ERROR;
             } else {
                 err = Recv(interp, proxyPtr, &result);
@@ -2132,7 +2133,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
 
     case PEvalIdx:
         if (objc != 4 && objc != 5) {
-            Tcl_WrongNumArgs(interp, 2, objv, "handle script");
+            Tcl_WrongNumArgs(interp, 2, objv, "/proxyId/ /script/ ?/timeout/?");
             result = TCL_ERROR;
         } else {
             Ns_Time *timeoutPtr = NULL;
@@ -2140,20 +2141,23 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
             proxyId = Tcl_GetString(objv[2]);
             proxyPtr = GetProxy(proxyId, idataPtr);
             if (proxyPtr == NULL) {
-                Ns_TclPrintfResult(interp, "no such handle: %s", proxyId);
+                Ns_TclPrintfResult(interp, "no such proxyId: %s", proxyId);
                 result = TCL_ERROR;
             } else if (objc > 4 && Ns_TclGetTimePtrFromObj(interp, objv[4], &timeoutPtr) != TCL_OK) {
                     result = TCL_ERROR;
             }
             if (result == TCL_OK) {
-                result = Eval(interp, proxyPtr, Tcl_GetString(objv[3]), timeoutPtr);
+                TCL_SIZE_T  scriptLength;
+                const char *scriptString = Tcl_GetStringFromObj(objv[3], &scriptLength);
+
+                result = Eval(interp, proxyPtr, scriptString, scriptLength, timeoutPtr);
             }
         }
         break;
 
     case PFreeIdx:
         if (objc != 3) {
-            Tcl_WrongNumArgs(interp, 2, objv, "pool");
+            Tcl_WrongNumArgs(interp, 2, objv, "/pool/");
             result = TCL_ERROR;
         } else {
             listObj = Tcl_NewListObj(0, NULL);
@@ -2170,26 +2174,31 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
         break;
 
     case PHandlesIdx:
-        if (objc == 3) {
-            poolPtr = GetPool(Tcl_GetString(objv[2]), idataPtr);
+        if (objc > 3) {
+            Tcl_WrongNumArgs(interp, 2, objv, "?/pool/?");
+            result = TCL_ERROR;
         } else {
-            poolPtr = NULL;
-        }
-        listObj = Tcl_NewListObj(0, NULL);
-        hPtr = Tcl_FirstHashEntry(&idataPtr->ids, &search);
-        while (hPtr != NULL) {
-            proxyPtr = (Proxy *)Tcl_GetHashValue(hPtr);
-            if (poolPtr == NULL || poolPtr == proxyPtr->poolPtr) {
-                Tcl_ListObjAppendElement(interp, listObj, StringObj(proxyPtr->id));
+            if (objc == 3) {
+                poolPtr = GetPool(Tcl_GetString(objv[2]), idataPtr);
+            } else {
+                poolPtr = NULL;
             }
-            hPtr = Tcl_NextHashEntry(&search);
+            listObj = Tcl_NewListObj(0, NULL);
+            hPtr = Tcl_FirstHashEntry(&idataPtr->ids, &search);
+            while (hPtr != NULL) {
+                proxyPtr = (Proxy *)Tcl_GetHashValue(hPtr);
+                if (poolPtr == NULL || poolPtr == proxyPtr->poolPtr) {
+                    Tcl_ListObjAppendElement(interp, listObj, StringObj(proxyPtr->id));
+                }
+                hPtr = Tcl_NextHashEntry(&search);
+            }
+            Tcl_SetObjResult(interp, listObj);
         }
-        Tcl_SetObjResult(interp, listObj);
         break;
 
     case PActiveIdx:
         if (objc < 3 || objc > 4) {
-            Tcl_WrongNumArgs(interp, 2, objv, "pool ?handle?");
+            Tcl_WrongNumArgs(interp, 2, objv, "/pool/ ?/proxyId/?");
             result = TCL_ERROR;
         } else {
             poolPtr = GetPool(Tcl_GetString(objv[2]), idataPtr);
@@ -2213,7 +2222,12 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
         break;
 
     case PClearIdx:
-        result = ClearObjCmd(data, interp, objc, objv);
+        if (objc < 3 || objc > 4) {
+            Tcl_WrongNumArgs(interp, 2, objv, "/pool/ ?/proxyId/?");
+            result = TCL_ERROR;
+        } else {
+            result = ClearObjCmd(data, interp, objc, objv);
+        }
         break;
 
     case PPidsIdx:
@@ -2221,16 +2235,21 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
         break;
 
     case PPoolsIdx:
-        listObj = Tcl_NewListObj(0, NULL);
-        Ns_MutexLock(&plock);
-        hPtr = Tcl_FirstHashEntry(&pools, &search);
-        while (hPtr != NULL) {
-            poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
-            Tcl_ListObjAppendElement(interp, listObj,  StringObj(poolPtr->name));
-            hPtr = Tcl_NextHashEntry(&search);
+        if (objc > 2) {
+            Tcl_WrongNumArgs(interp, 2, objv, NULL);
+            result = TCL_ERROR;
+        } else {
+            listObj = Tcl_NewListObj(0, NULL);
+            Ns_MutexLock(&plock);
+            hPtr = Tcl_FirstHashEntry(&pools, &search);
+            while (hPtr != NULL) {
+                poolPtr = (Pool *)Tcl_GetHashValue(hPtr);
+                Tcl_ListObjAppendElement(interp, listObj,  StringObj(poolPtr->name));
+                hPtr = Tcl_NextHashEntry(&search);
+            }
+            Ns_MutexUnlock(&plock);
+            Tcl_SetObjResult(interp, listObj);
         }
-        Ns_MutexUnlock(&plock);
-        Tcl_SetObjResult(interp, listObj);
         break;
 
     case PStatsIdx:
@@ -2263,7 +2282,7 @@ ProxyObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const
  */
 
 static int
-ConfigureObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ConfigureObjCmd(ClientData data, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     InterpData *idataPtr = data;
     Pool       *poolPtr;
@@ -2284,7 +2303,22 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
     };
 
     if (objc < 3) {
-        Tcl_WrongNumArgs(interp, 2, objv, "pool ?opt? ?val? ?opt val?...");
+        Tcl_WrongNumArgs(interp, 2, objv, "/pool/"
+                         " ?-env /setId/?"
+                         " ?-evaltimeout /time/?"
+                         " ?-exec /value/?"
+                         " ?-gettimeout /time/?"
+                         " ?-idletimeout /time/?"
+                         " ?-init /value/?"
+                         " ?-logminduration /time/?"
+                         " ?-maxruns /integer/?"
+                         " ?-maxslaves /integer/?"
+                         " ?-maxworkers /integer/?"
+                         " ?-recvtimeout /time/?"
+                         " ?-reinit /value/?"
+                         " ?-sendtimeout /time/?"
+                         " ?-waittimeout /time/?"
+                         );
         return TCL_ERROR;
     }
 
@@ -2297,7 +2331,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
             goto err;
         }
     } else if (objc > 4) {
-        TCL_OBJC_T  i;
+        TCL_SIZE_T  i;
         const char *str;
 
         for (i = 3; i < (objc - 1); ++i) {
@@ -2399,6 +2433,7 @@ ConfigureObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
             case CEnvIdx:
                 if (poolPtr->env) {
                     Ns_SetFree(poolPtr->env);
+                    poolPtr->env = NULL;
                 }
                 poolPtr->env = Ns_SetCopy(Ns_TclGetSet(interp, str));
                 break;
@@ -2571,7 +2606,7 @@ AppendObj(Tcl_Obj *listObj, const char *flag, Tcl_Obj *obj)
  */
 
 static int
-GetObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+GetObjCmd(ClientData data, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     InterpData    *idataPtr = data;
     Proxy         *proxyPtr, *firstPtr;
@@ -2581,13 +2616,13 @@ GetObjCmd(ClientData data, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* 
     Err            err;
     Pool          *poolPtr;
     Ns_ObjvSpec    lopts[] = {
-        {"-timeout", Ns_ObjvTime, &timeoutPtr, NULL},
         {"-handles", Ns_ObjvInt,  &nwant,      NULL},
+        {"-timeout", Ns_ObjvTime, &timeoutPtr, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
     if (objc < 3 || (objc % 2) != 1) {
-        Tcl_WrongNumArgs(interp, 2, objv, "pool ?-opt val -opt val ...?");
+        Tcl_WrongNumArgs(interp, 2, objv, "/pool/ ?-handles /integer/? ?-timeout /time/?");
         return TCL_ERROR;
     }
 
@@ -2869,43 +2904,43 @@ GetPool(const char *poolName, const InterpData *idataPtr)
             poolPtr->conf.logminduration.sec = 1;
 
         } else {
-            const char *exec, *path;
+            const char *exec, *section;
 
-            path = Ns_ConfigSectionPath(NULL, idataPtr->server, idataPtr->module, (char *)0L);
-            exec = Ns_ConfigGetValue(path, "exec");
+            section = Ns_ConfigSectionPath(NULL, idataPtr->server, idataPtr->module, NS_SENTINEL);
+            exec = Ns_ConfigGetValue(section, "exec");
             if (exec != NULL) {
                 SetOpt(exec, &poolPtr->exec);
             } else {
                 SetOpt(Tcl_DStringValue(&defexec), &poolPtr->exec);
             }
-            Ns_ConfigTimeUnitRange(path, "gettimeout",
+            Ns_ConfigTimeUnitRange(section, "gettimeout",
                                    "0ms", 0, 0, INT_MAX, 0,
                                    &poolPtr->conf.tget);
 
-            Ns_ConfigTimeUnitRange(path, "evaltimeout",
+            Ns_ConfigTimeUnitRange(section, "evaltimeout",
                                    "0ms", 0, 0, INT_MAX, 0,
                                    &poolPtr->conf.teval);
 
-            Ns_ConfigTimeUnitRange(path, "sendtimeout",
+            Ns_ConfigTimeUnitRange(section, "sendtimeout",
                                    "5s", 0, 0, INT_MAX, 0,
                                    &poolPtr->conf.tsend);
 
-            Ns_ConfigTimeUnitRange(path, "recvtimeout",
+            Ns_ConfigTimeUnitRange(section, "recvtimeout",
                                    "5s", 0, 0, INT_MAX, 0,
                                    &poolPtr->conf.trecv);
 
-            Ns_ConfigTimeUnitRange(path, "waittimeout",
+            Ns_ConfigTimeUnitRange(section, "waittimeout",
                                    "1s", 0, 0, INT_MAX, 0,
                                    &poolPtr->conf.twait);
 
-            Ns_ConfigTimeUnitRange(path, "idletimeout",
+            Ns_ConfigTimeUnitRange(section, "idletimeout",
                                    "5m", MIN_IDLE_TIMEOUT_SEC, 0, INT_MAX, 0,
                                    &poolPtr->conf.tidle);
 
             {
-                int max = Ns_ConfigInt(path, "maxworker", -1);
+                int max = Ns_ConfigInt(section, "maxworker", -1);
                 if (max == -1) {
-                    max = Ns_ConfigInt(path, "maxslaves", -1);
+                    max = Ns_ConfigInt(section, "maxslaves", -1);
                 }
                 if (max == -1) {
                     max = 8;
@@ -2913,7 +2948,7 @@ GetPool(const char *poolName, const InterpData *idataPtr)
                 poolPtr->maxworker  = max;
             }
 
-            Ns_ConfigTimeUnitRange(path, "logminduration",
+            Ns_ConfigTimeUnitRange(section, "logminduration",
                                    "1s", 0, 0, INT_MAX, 0,
                                    &poolPtr->conf.logminduration);
         }
@@ -3038,7 +3073,7 @@ CheckProxy(Tcl_Interp *interp, Proxy *proxyPtr)
     NS_NONNULL_ASSERT(proxyPtr != NULL);
 
     if ((proxyPtr->workerPtr != NULL)
-        && (Eval(interp, proxyPtr, NULL, NULL) != TCL_OK)
+        && (Eval(interp, proxyPtr, NULL, 0, NULL) != TCL_OK)
         ) {
         CloseProxy(proxyPtr);
         Tcl_ResetResult(interp);
@@ -3092,11 +3127,11 @@ CreateWorker(Tcl_Interp *interp, Proxy *proxyPtr)
     if (proxyPtr->workerPtr == NULL) {
         err = EExec;
     } else if (init != 0
-               && (Eval(interp, proxyPtr, Tcl_DStringValue(&ds), NULL) != TCL_OK)
+               && (Eval(interp, proxyPtr, ds.string, ds.length, NULL) != TCL_OK)
                ) {
         CloseProxy(proxyPtr);
         err = EInit;
-    } else if (Eval(interp, proxyPtr, NULL, NULL) != TCL_OK) {
+    } else if (Eval(interp, proxyPtr, NULL, 0, NULL) != TCL_OK) {
         CloseProxy(proxyPtr);
         err = EInit;
     } else {
@@ -3475,7 +3510,7 @@ ReaperThread(void *UNUSED(arg))
                     /*
                      * Pass waitStatus ptr to Ns_WaitForProcessStatus() to
                      * indicate that we want to handle the signal here and to
-                     * suppress warning entries in the error.log.
+                     * suppress warning entries in the system log file.
                      *
                      * The following wait operation should not really wait
                      * but it is better to play safe.
@@ -3746,7 +3781,7 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
         }
         Ns_MutexUnlock(&proxyPtr->poolPtr->lock);
         if (reinit != 0) {
-            result = Eval(interp, proxyPtr, Tcl_DStringValue(&ds), NULL);
+            result = Eval(interp, proxyPtr, ds.string, ds.length, NULL);
         }
         Tcl_DStringFree(&ds);
 
@@ -3798,14 +3833,14 @@ ReleaseProxy(Tcl_Interp *interp, Proxy *proxyPtr)
  */
 
 static int
-RunProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+RunProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    char       *scriptString;
-    int         result;
-    Ns_Time          *timeoutPtr = NULL;
+    int        result;
+    Tcl_Obj   *scriptObj;
+    Ns_Time    *timeoutPtr = NULL;
     Ns_ObjvSpec args[] = {
-        {"script",    Ns_ObjvString, &scriptString, NULL},
-        {"?timeout",  Ns_ObjvTime,   &timeoutPtr,   NULL},
+        {"script",    Ns_ObjvObj,  &scriptObj, NULL},
+        {"?timeout",  Ns_ObjvTime, &timeoutPtr,   NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -3814,8 +3849,10 @@ RunProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
 
     } else {
         Proxy *proxyPtr = (Proxy *)clientData;
+        TCL_SIZE_T  scriptLength;
+        const char *scriptString = Tcl_GetStringFromObj(scriptObj, &scriptLength);
 
-        result = Eval(interp, proxyPtr, scriptString, timeoutPtr);
+        result = Eval(interp, proxyPtr, scriptString, scriptLength, timeoutPtr);
     }
     return result;
 }
@@ -4003,7 +4040,7 @@ ProxyError(Tcl_Interp *interp, Err err)
 
     NS_NONNULL_ASSERT(interp != NULL);
 
-    Tcl_SetErrorCode(interp, "NSPROXY", errCode[err], errMsg[err], sysmsg, (char *)0L);
+    Tcl_SetErrorCode(interp, "NSPROXY", errCode[err], errMsg[err], sysmsg, NS_SENTINEL);
 }
 
 /*

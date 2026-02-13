@@ -34,8 +34,9 @@ typedef struct AdpRequest {
  */
 
 static int RegisterPage(const ClientData clientData, const char *method,
-                        const char *url, const char *file, const Ns_Time *expiresPtr,
-                        unsigned int rflags, unsigned int aflags)
+                        const char *url, Tcl_Obj *fileObj, const Ns_Time *expiresPtr,
+                        unsigned int rflags, unsigned int aflags,
+                        void *contextSpec)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static Ns_ReturnCode PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr,
@@ -241,23 +242,26 @@ PageRequest(Ns_Conn *conn, const char *fileName, const Ns_Time *expiresPtr, unsi
  */
 
 int
-NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    char          *method, *url, *file = NULL;
+    char          *method, *url;
     int            noinherit = 0, result;
     unsigned int   aflags = 0u;
     Ns_Time       *expiresPtr = NULL;
+    Tcl_Obj       *fileObj = NULL;
+    NsUrlSpaceContextSpec *specPtr = NULL;
     Ns_ObjvSpec    opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &noinherit,  INT2PTR(NS_TRUE)},
-        {"-expires",   Ns_ObjvTime,  &expiresPtr, NULL},
-        {"-options",   Ns_ObjvFlags, &aflags,     adpOpts},
-        {"--",         Ns_ObjvBreak, NULL,        NULL},
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {"-noinherit",     Ns_ObjvBool,        &noinherit,    INT2PTR(NS_TRUE)},
+        {"-expires",       Ns_ObjvTime,        &expiresPtr,   NULL},
+        {"-options",       Ns_ObjvIndex,       &aflags,       adpOpts},
+        {"--",             Ns_ObjvBreak,        NULL,         NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
         {"method",   Ns_ObjvString, &method,   NULL},
         {"url",      Ns_ObjvString, &url,      NULL},
-        {"?file",    Ns_ObjvString, &file,     NULL},
+        {"?file",    Ns_ObjvObj,    &fileObj,  NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -270,25 +274,28 @@ NsTclRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T obj
         if (noinherit != 0) {
             rflags |= NS_OP_NOINHERIT;
         }
-        result = RegisterPage(clientData, method, url, file, expiresPtr, rflags, aflags);
+        result = RegisterPage(clientData, method, url, fileObj, expiresPtr, rflags, aflags, specPtr);
     }
     return result;
 }
 
 int
-NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         noinherit = 0, result;
-    char       *method, *url, *file = NULL;
+    char       *method, *url;
+    Tcl_Obj    *fileObj = NULL;
+    NsUrlSpaceContextSpec *specPtr = NULL;
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_TRUE)},
-        {"--",         Ns_ObjvBreak, NULL,    NULL},
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {"-noinherit",     Ns_ObjvBool,        &noinherit,    INT2PTR(NS_TRUE)},
+        {"--",             Ns_ObjvBreak,       NULL,          NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
         {"method",   Ns_ObjvString, &method,   NULL},
         {"url",      Ns_ObjvString, &url,      NULL},
-        {"?file",    Ns_ObjvString, &file,     NULL},
+        {"?file",    Ns_ObjvObj,    &fileObj,  NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -300,7 +307,7 @@ NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T obj
         if (noinherit != 0) {
             rflags |= NS_OP_NOINHERIT;
         }
-        result = RegisterPage(clientData, method, url, file, NULL, rflags, ADP_TCLFILE);
+        result = RegisterPage(clientData, method, url, fileObj, NULL, rflags, ADP_TCLFILE, specPtr);
     }
     return result;
 }
@@ -324,21 +331,22 @@ NsTclRegisterTclObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T obj
  */
 static int
 RegisterPage(const ClientData clientData,
-             const char *method, const char *url, const char *file,
-             const Ns_Time *expiresPtr, unsigned int rflags, unsigned int aflags)
+             const char *method, const char *url, Tcl_Obj *fileObj,
+             const Ns_Time *expiresPtr, unsigned int rflags, unsigned int aflags,
+             void *contextSpec)
 {
     const NsInterp *itPtr = clientData;
     AdpRequest     *adp;
-    size_t          fileLength;
+    TCL_SIZE_T      fileLength = 0;
+    const char     *fileString = (fileObj == NULL ? NULL : Tcl_GetStringFromObj(fileObj, &fileLength));
 
     NS_NONNULL_ASSERT(itPtr != NULL);
     NS_NONNULL_ASSERT(method != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
-    fileLength = (file == NULL) ? 0u : strlen(file);
-    adp = ns_calloc(1u, sizeof(AdpRequest) + fileLength + 1u);
-    if (file != NULL) {
-        memcpy(adp->file, file, fileLength + 1u);
+    adp = ns_calloc(1u, sizeof(AdpRequest) + (size_t)fileLength + 1u);
+    if (fileString != NULL) {
+        memcpy(adp->file, fileString, (size_t)fileLength + 1u);
     }
     if (expiresPtr != NULL) {
         adp->expires = *expiresPtr;
@@ -346,7 +354,7 @@ RegisterPage(const ClientData clientData,
     adp->flags = aflags;
 
     return Ns_RegisterRequest2(itPtr->interp, itPtr->servPtr->server, method, url,
-                               NsAdpPageProc, ns_free, adp, rflags);
+                               NsAdpPageProc, ns_free, adp, rflags, contextSpec);
 }
 
 
@@ -372,14 +380,14 @@ NsAdpPageProc(const void *arg, Ns_Conn *conn)
 {
     const AdpRequest *adp = arg;
     const Ns_Time    *expiresPtr;
-    Ns_DString        ds;
+    Tcl_DString       ds;
     const char       *fileName, *server;
     Ns_ReturnCode     status;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
     server = Ns_ConnServer(conn);
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
 
     if (adp->file[0] == '\0') {
         if (Ns_UrlToFile(&ds, server, conn->request.url) != NS_OK) {
@@ -388,7 +396,7 @@ NsAdpPageProc(const void *arg, Ns_Conn *conn)
             fileName = ds.string;
         }
     } else if (Ns_PathIsAbsolute(adp->file) == NS_FALSE) {
-        fileName = Ns_PagePath(&ds, server, adp->file, (char *)0L);
+        fileName = Ns_PagePath(&ds, server, adp->file, NS_SENTINEL);
     } else {
         fileName = adp->file;
     }
@@ -401,7 +409,7 @@ NsAdpPageProc(const void *arg, Ns_Conn *conn)
 
     status = PageRequest(conn, fileName, expiresPtr, adp->flags);
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return status;
 }
@@ -574,7 +582,7 @@ NsAdpFlush(NsInterp *itPtr, bool doStream)
                 struct iovec sbuf;
 
                 if ((flags & ADP_FLUSHED) == 0u && (flags & ADP_EXPIRE) != 0u) {
-                    Ns_ConnCondSetHeaders(conn, "Expires", "now");
+                    Ns_ConnCondSetHeadersSz(conn, "expires", 7, "now", 3);
                 }
 
                 if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {

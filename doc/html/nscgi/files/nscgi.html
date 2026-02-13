@@ -1,0 +1,697 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nscgi - NaviServer Modules</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'nscgi.man' by tcllib/doctools with format 'html'
+   -->
+<!-- nscgi.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/nscgi/files/nscgi.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/nscgi/files/nscgi.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">nscgi(n)</h1>
+    <p class="man-details">NaviServer Modules &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>nscgi - NaviServer CGI Interface Guide</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">What is CGI and How Does it Work?</a></li>
+<li class="doctools_section"><a href="#section3">Configuring CGI for NaviServer</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection1">Loading the CGI module</a></li>
+<li class="doctools_subsection"><a href="#subsection2">Identify CGI Programs</a></li>
+<li class="doctools_subsection"><a href="#subsection3">Identify CGI Programs in the Middle of the Path</a></li>
+<li class="doctools_subsection"><a href="#subsection4">Specify CGI Script Interpreters</a></li>
+<li class="doctools_subsection"><a href="#subsection5">Specify Source Locations</a></li>
+<li class="doctools_subsection"><a href="#subsection6">Register CGI Handlers from a Script</a></li>
+<li class="doctools_subsection"><a href="#subsection7">Further configuration parameters</a></li>
+<li class="doctools_subsection"><a href="#subsection8">Sample Configuration for WordPress</a></li>
+<li class="doctools_subsection"><a href="#subsection9">Sample Configuration for Joomla</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#section4">Environment Variables passed to CGI programs</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection10">Accessing Environment Variables</a></li>
+<li class="doctools_subsection"><a href="#subsection11">Standard Environment Variables</a></li>
+<li class="doctools_subsection"><a href="#subsection12">Extra Environment Variables</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#section5">Output from CGI Programs</a></li>
+<li class="doctools_section"><a href="#section6">Advice for CGI Programming</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This page describes the configuration of the module <b class="const">nscgi</b>,
+which can be optionally loaded into NaviServer to run CGI programs.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">What is CGI and How Does it Work?</a></h2>
+<p>CGI (Common Gateway Interface) is a standard way of running programs
+from a Web server. Often, CGI programs are used to generate pages
+dynamically or to perform some other action when someone fills out an
+HTML form and clicks the submit button. NaviServer provides full
+support for CGI v1.1
+(<a href="https://datatracker.ietf.org/doc/html/rfc3875">RFC 3875</a>).</p>
+<p>Basically, CGI works like this: A web client sends a URL that causes
+the NaviServer to use CGI to run a program generating the
+content. NaviServer passes the input from the client to the program,
+runs it, and returns the output from the program back to the
+client. CGI acts as a &quot;gateway&quot; between the web server and the program
+executed at request time.</p>
+<p>The program run by CGI can be any type of executable file on
+the server platform. For example, you can use C, C++, Perl, PHP,
+Python, Unix shell scripts, Fortran, or any other compiled or
+interpreted language.</p>
+<p>One can also use plain Tcl scripts with CGI, but be aware that
+the NaviServer Tcl API will not be available to these scripts.  To
+implement dynamic content with NaviServer, one has the option of using
+the embedded Tcl and C interfaces instead of CGI. Typically, the Tcl
+and C interfaces provide better performance than CGI (see the
+NaviServer Tcl Developer's Guide for information on the Tcl interface
+and the NaviServer C Developer's Guide for information on the C
+interface).</p>
+<p>You may want to use CGI for existing, shareware, or freeware
+programs that use the standard CGI input, output, and environment
+variables.  Since CGI is a standard interface used by many Web
+servers, there are lots of programs and libraries available. This
+chapter describes the interface and points you to locations where you
+can find more information.</p>
+<p>A basic use-case for CGI is an HTML form that receives the form
+field values, computes some output, and returns the results as HTML
+output.  For example, the form lets people to comment on your Web
+pages, and you want the comments emailed to you, and finally, you want
+to automatically generate a page and send it back to the web client.</p>
+<p>The following steps describe the basic principles:</p>
+<ol class="doctools_enumerated">
+<li><p>The reader fills out your form and clicks the &quot;Submit&quot; button.
+     The HTML <b class="const">FORM</b> tag in your page might look like this:</p>
+<pre class="doctools_example">
+ &lt;FORM METHOD=&quot;POST&quot; ACTION=&quot;/cgi-bin/myprog&quot;&gt;
+</pre>
+<p>The <b class="const">METHOD</b> controls how the information typed into
+    the form is passed to your program. It can be <b class="const">GET</b> or
+    <b class="const">POST</b>.  The <b class="const">ACTION</b> determines which program should
+    be run.</p>
+<p>Other ways for a reader to run a CGI script are by
+    providing a direct link to the program without allowing the reader
+    to supply any variables through a form by using e.g.
+    <b class="const">&lt;A href=&quot;/cgi-bin/myprog&quot;&gt;...</b>, or by other means.</p></li>
+<li><p>When the server gets a request for a URL that maps to a CGI
+     directory or a CGI file extension (as defined in the configuration
+     file), it starts a separate process and runs the
+     program within that process. The server also sets up a number of
+     environment variable within that process. These environment variables
+     include some standard CGI variables, and optionally
+     any variables you define in the configuration file for this type of
+     program.</p></li>
+<li><p>The program runs.</p>
+<p>In this example, the CGI program <b class="const">myprog</b> takes the comments
+     from the form as input and sends them to you as email. If the
+     form method is <b class="const">GET</b>, it gets the input from an environment
+     variable. If the form method is <b class="const">POST</b>, it gets the input
+     from standard input. It also assembles an HTML page and sends it
+     to standard output.</p></li>
+<li><p>Any information the program passes to standard output is
+     automatically sent to the NaviServer when the program finishes running.</p></li>
+<li><p>The server adds any header information needed to identify the
+     output and sends it back to the reader's browser, which displays the
+     output.</p></li>
+</ol>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Configuring CGI for NaviServer</a></h2>
+<div id="subsection1" class="doctools_subsection"><h3><a name="subsection1">Loading the CGI module</a></h3>
+<p>In order to use CGI within NaviServer, one has to load the
+<b class="const">nscgi</b> module, which is part of every NaviServer installation.  As for
+all modules, one has to provide the information for which server
+configuration in the configuration file the module should be enabled.
+In the following example, we will use the server named <b class="const">s1</b>).
+module to that server such it will be loaded at start time.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/modules {
+   ns_param nscgi nscgi.so
+ }
+</pre>
+<p>When the configuration file contains multiple server definitions, you
+will need to configure the CGI interface for each of these, since
+these might have different requirements (see
+<a href="../../manual/files/admin-config.html">NaviServer Configuration Reference</a>
+for the configuration of virtual servers and multiple
+server definitions).</p>
+<p>For the configuration of the server, one has to provide information
+for the following tasks:</p>
+</div>
+<div id="subsection2" class="doctools_subsection"><h3><a name="subsection2">Identify CGI Programs</a></h3>
+<p>The configuration file has to specify, which request should be treated
+as a CGI request. Without this information, the CGI program file would
+be treated by the server as a static resource by <b class="const">fastpath</b> and
+its content would be sent back to the web client.</p>
+<p>Therefore, a section to the configuration file for the <b class="const">nscgi</b>
+module is needed to specify which HTTP methods and paths should be
+treated as a CGI requests.
+The following example specifies, that every
+<b class="const">GET</b> request for a resource named <b class="const">*.cgi*</b> everywhere in
+the URL space should be treated as a CGI request.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   ns_param map  &quot;GET /*.cgi&quot;
+ }
+</pre>
+<p>One could also restrict the path to a certain subdirectory in the URL
+space, and/or define multiple HTTP methods and paths.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   ns_param map  &quot;GET /cgi-bin/*.cgi&quot;
+   ns_param map  &quot;POST /cgi-bin/*.cgi&quot;
+   # ...
+ }
+</pre>
+</div>
+<div id="subsection3" class="doctools_subsection"><h3><a name="subsection3">Identify CGI Programs in the Middle of the Path</a></h3>
+<p>The CGI specification supports script names not only at the end of the
+request URL, but as well CGI script names in the middle of the path.
+This is not very common, but allowed by RFC 3875.  When such as
+request is issued, the remainder of the path after the script name is
+passed to the script via the environment variable
+<b class="const">PATH_INFO</b>. This trailing path information is an alternative
+to using query variables to pass context information to the CGI script.</p>
+<p>Below is an example of a CGI script name (here
+<b class="const">info.cgi</b>) in the middle of a request path:</p>
+<pre class="doctools_example">
+/cgi-dir/info.cgi/foo/bar?var=value&amp;...
+</pre>
+<p>Since the URL space handling of NaviServer supports only
+wild cards in the last segment of a URL path, we have to specify
+in suchcases the script name without wildcards.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   # ...
+   ns_param map  &quot;GET /cgi-dir/info.cgi&quot;
+   # ...
+ }
+</pre>
+<p>With this definition, in the path above, <b class="const">info.cgi</b>
+is identified as a CGI script. for the mentioned request path,
+the script gets <b class="const">/foo/bar</b> passed via the
+environment variable <b class="const">PATH_INFO</b>.</p>
+</div>
+<div id="subsection4" class="doctools_subsection"><h3><a name="subsection4">Specify CGI Script Interpreters</a></h3>
+<p>Typically, the CGI programs are not named with the extension
+<b class="const">.cgi</b>, but in the case of CGI scripts,
+these are Perl, PHP, Python, ... scripts, using the
+language specific file extensions. In this step, we specify, which
+interpreter the CGI script should be executed.</p>
+<p>For compiled CGI programs, this identification is not much of an
+issue (and not necessary). Also, scripted CGI programs might be executed via the
+<a href="https://en.wikipedia.org/wiki/Shebang_(Unix)">shebang</a>
+conventions.
+For security and maintenance reasons, web server administrators might want
+more control over, which script interpreters in which versions execute
+the CGI script.</p>
+<p>The specification of the script interprets is performed via
+the script extension in a separate section in the configuration file
+under <b class="const">ns/interps</b>. This section name is also specified in the
+module definition. In the following example, the section is named
+<b class="const">CGIinterps</b>, containing definitions for Perl and PHP.  When a
+CGI script with a specified extension is to be executed (below
+<b class="const">.pl</b> and <b class="const">.sh</b>), NaviServer will call the script
+via the named executables.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   ns_param map    &quot;GET /cgi/*.php&quot;
+   ns_param map    &quot;POST /cgi/*.php&quot;
+   ns_param map    &quot;GET /cgi/*.pl&quot;
+   # ...
+   ns_param Interps CGIinterps
+ }
+ 
+ ns_section ns/interps/CGIinterps {
+   ns_param .pl    &quot;/opt/local/bin/perl&quot;
+   ns_param .php   &quot;/opt/local/bin/php-cgi83&quot;
+ }
+</pre>
+<p>If no interpreter mapping is provided, the
+called script must have executable permissions.</p>
+</div>
+<div id="subsection5" class="doctools_subsection"><h3><a name="subsection5">Specify Source Locations</a></h3>
+<p>In some more complex setups, it is desirable to have a separate source
+locations for certain CGI applications. The source location is
+typically a directory not under the page directory of NaviServer,
+and maybe managed via a package manager or a source code repository.</p>
+<p>The source-code mapping can be achieved by specifying
+additionally the path in the <b class="const">map</b> value.
+The following example specifies that requests for Perl scripts stating
+with <b class="const">/cgi</b> should be resolved by the specified source location.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   # ...
+   ns_param map  &quot;GET /cgi/*.pl /server/perl-scripts&quot;
+   # ...
+ }
+</pre>
+<p>The provided source location is registered via
+<b class="cmd">ns_register_fasturl2file</b> such that <b class="const">fastpath</b>
+can resource the request path against this source location.</p>
+</div>
+<div id="subsection6" class="doctools_subsection"><h3><a name="subsection6">Register CGI Handlers from a Script</a></h3>
+<p>Alternatively to the registration via the configuration file, CGI
+handlers can be as well be registered by the command <b class="cmd"><a href="ns_register_cgi.html">ns_register_cgi</a></b>.
+Loading the CGI module and specifying the CGI script interpreters have
+to be done via the configuration file.</p>
+</div>
+<div id="subsection7" class="doctools_subsection"><h3><a name="subsection7">Further configuration parameters</a></h3>
+<dl class="doctools_definitions">
+<dt>gethostbyaddr</dt>
+<dd><p>is a boolean parameter to indicate whether to
+resolve the peer IP address to its hostname when setting the
+<b class="const">REMOTE_HOST</b> environment variable.  If <b class="const">false</b>, the peer IP
+address will be used instead.  Caution: turning this option on can
+negatively impact performance due to the overhead of having to perform
+a DNS look-up on every CGI request. Default: <b class="const">off</b></p></dd>
+<dt>limit</dt>
+<dd><p>is an integer parameter to indicate the maximum
+number of concurrent CGI requests to execute. <b class="const">0</b> means
+unlimited. Default: <b class="const">0</b></p></dd>
+<dt>maxinput</dt>
+<dd><p>is an integer parameter to indicate the
+maximum in bytes to accept in the HTTP request. <b class="const">0</b> means unlimited.
+Mostly useful to limit the size of <b class="const">POST</b>'ed data.
+Default: <b class="const">1024000</b></p></dd>
+<dt>maxwait</dt>
+<dd><p>is an integer parameter to indicate the amount of time
+ to wait in seconds in the queue when the concurrency limit has been
+ reached.  Server will respond with a &quot;503 Service Unavailable&quot; error
+ on timeout.  If <b class="const">limit</b> is set to <b class="const">0</b>, this setting will
+ have no effect. Default: <b class="const">30</b></p></dd>
+<dt>systemenvironment</dt>
+<dd><p>is a boolean parameter to specify, if all
+ environment variables of the server process should be passed to the
+ CGI program. See below for more information about environment
+ variables. Default: <b class="const">false</b></p></dd>
+<dt>allowstaticresources</dt>
+<dd><p>is a boolean parameter to controls
+  whether static resources (e.g. images) can be served directly
+  by the <b class="const">nscgi</b> module.</p>
+<p>In general, this option is not needed, since static content
+  should be served via <b class="const">fastpath</b>, providing all its features
+  (caching, compressed output, etc.). The WordPress example on this
+  page shows a complex setup, where the static resources are delivered
+  from a non-standard location. Notice, that setting this resource
+  might be security relevant, since it can lead to deliver unexpectedly
+  configuration files etc. Default: <b class="const">false</b></p></dd>
+</dl>
+</div>
+<div id="subsection8" class="doctools_subsection"><h3><a name="subsection8">Sample Configuration for WordPress</a></h3>
+<p>In the following example, we provide the definitions for
+running the popular <a href="https://wordpress.com/">WordPress</a> package
+under NaviServer via CGI. We assume, the WordPress sources have been
+downloaded in the directory <b class="const">/var/www/wordpress/</b>. The
+following definition specifies, that for <b class="const">GET</b> and <b class="const">POST</b>
+requests in the directory <b class="const">/wordpress</b> with the extension
+<b class="const">.php</b>, the source files should be taken from the downloaded
+folder. We use <b class="const">/opt/local/bin/php-cgi83</b> for executing
+the PHP files.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   foreach httpMethod {GET POST} {
+     ns_param map  &quot;$httpMethod /wordpress/*.php /var/www/wordpress/&quot;
+   }
+   ns_param interps php8
+ }
+ 
+ ns_section ns/interps/php8 {
+   ns_param .php    &quot;/opt/local/bin/php-cgi83&quot;
+ }
+</pre>
+<p>This definition is not yet complete. WordPress expects for URLs
+pointing to a directory that <b class="const">index.php</b> is executed. Make sure
+to include this value in the <b class="const">fastpath</b> setup.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/fastpath {
+    # ...
+    ns_param directoryfile  &quot;index.adp index.tcl index.html index.htm index.php&quot;
+    # ...
+ }
+</pre>
+</div>
+<div id="subsection9" class="doctools_subsection"><h3><a name="subsection9">Sample Configuration for Joomla</a></h3>
+<p>The setup for <a href="https://www.joomla.org/">Joomla</a>
+is very similar to the setup for WordPress. Using this setup,
+the Joomla system will be available
+on the web server under the URL  <b class="const">/joomla</b>.
+in the setup, we reuse the CGI interpreter section <b class="const">php8</b> and the
+<b class="const">directoryfile</b> from the WordPress setup. The definition assumes
+that the Joomla source code is installed on the server
+in the directory <b class="const">/var/www/joomla</b>.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   foreach httpMethod {GET POST} {
+     ns_param map  &quot;$httpMethod /joomla/*.php /var/www/joomla/&quot;
+   }
+   ns_param interps php8
+ }
+</pre>
+</div>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">Environment Variables passed to CGI programs</a></h2>
+<p>CGI programs receive input via environment variables (and standard
+input for methods like <b class="const">POST</b> or <b class="const">PUT</b>) and provide output
+via standard console output channels. We describe here in detail the
+environment variables, which are passed to the CGI programs.</p>
+<div id="subsection10" class="doctools_subsection"><h3><a name="subsection10">Accessing Environment Variables</a></h3>
+<p>Different languages allow you to access environment variables in
+different ways. Here are some examples:</p>
+<p><em>C or C++</em></p>
+<pre class="doctools_example">
+ #include &lt;stdlib.h&gt;;
+  
+ char *browser = getenv(&quot;HTTP_USER_AGENT&quot;);
+</pre>
+<p><em>Perl</em></p>
+<pre class="doctools_example">
+ $browser = $ENV{'HTTP_USER_AGENT'};
+</pre>
+<p><em>Bourne shell</em></p>
+<pre class="doctools_example">
+ BROWSER=$HTTP_USER_AGENT
+</pre>
+<p><em>C shell</em></p>
+<pre class="doctools_example">
+ set BROWSER = $HTTP_USER_AGENT
+</pre>
+<p><em>Tcl</em></p>
+<pre class="doctools_example">
+ set browser $::env(HTTP_USER_AGENT)
+</pre>
+</div>
+<div id="subsection11" class="doctools_subsection"><h3><a name="subsection11">Standard Environment Variables</a></h3>
+<p>These standard environment variables are provided for all CGI programs
+by NaviServer. These variables are described in detail in the RFC 3875 in
+<a href="https://datatracker.ietf.org/doc/html/rfc3875#section-4.1">Section 4.1</a>.</p>
+<dl class="doctools_definitions">
+<dt>AUTH_TYPE:</dt>
+<dd><p>If the server supports user authentication, and the
+script is protected, this is the protocol-specific authentication
+method used to validate the user.
+A typical value is <b class="const">Basic</b> for Basic authentication.</p></dd>
+<dt>CONTENT_LENGTH:</dt>
+<dd><p>If the CGI program is run by a form with the
+<b class="const">POST</b> method, this variable contains the length of the contents
+of standard input in bytes. There is no null or EOF character at the
+end of standard input, so in some languages (such as C and Perl) you
+should check this variable to find out how many bytes to read from
+standard input.</p>
+<p>Example: 442</p></dd>
+<dt>CONTENT_TYPE:</dt>
+<dd><p>If the CGI program is run by a form with the
+<b class="const">POST</b> method, this variable contains the MIME type of the
+information sent by the browser. Currently, all browsers should send
+the information as <b class="const">application/x-www-form-urlencoded</b>.</p></dd>
+<dt>GATEWAY_INTERFACE:</dt>
+<dd><p>The version number of the CGI specification
+this server supports.</p>
+<p>Example: CGI/1.1</p></dd>
+<dt>HTTP_ACCEPT:</dt>
+<dd><p>A comma-separated list of the MIME types the browser will accept, as
+specified in the HTTP header the browser sends. Many browsers do not
+send complete lists, and the list does not include external viewers
+the user has installed. If you want to send browser-specific output,
+you may also want to check the browser name, which is specified by the
+HTTP_USER_AGENT variable.</p>
+<p>Examples:</p>
+<pre class="doctools_example">
+ */*, application/x-navidoc
+ */*, image/gif, image/x-xbitmap, image/jpeg
+</pre>
+</dd>
+<dt>HTTP_IF_MODIFIED_SINCE:</dt>
+<dd><p>This variable contains a date and time if the browser wants a response
+only if the data has been modified since the specified date and time.
+The date is in GMT standard time. Many browsers do not send this
+information.</p>
+<p>Example: <b class="const">Thursday, 23-Nov-95 17:00:00 GMT</b></p></dd>
+<dt>HTTP_REFERER:</dt>
+<dd><p>This variable contains the URL of the page or other location from
+which the reader sent the request to run the CGI program. For example,
+if the reader runs the program from a form, this variable contains the
+URL of that form.</p>
+<p>Example: <b class="const">http://www.mydomain.com/mydir/feedback.htm</b></p></dd>
+<dt>HTTP_USER_AGENT:</dt>
+<dd><p>This variable tells which browser the reader is using to send the
+request. Normally, the format is &quot;browser name/version&quot;.</p>
+<p>Example: <b class="const">Mozilla/1.2N (Windows; I; 16-bit)</b></p></dd>
+<dt>PATH_INFO:</dt>
+<dd><p>This variable contains the path information from the URL after the
+name of the CGI program. Commonly, this type of URL is used to pass a
+relative directory location to your program. For example, the
+following URL runs the listdir program and passes it /misc/mydir as
+extra path information:</p>
+<p><b class="const">http://www.mysite.com/cgi-bin/listdir/misc/mydir</b></p></dd>
+<dt>PATH_TRANSLATED:</dt>
+<dd><p>This variable translates the CGI program to the spource location in
+the filesystem.</p>
+<p>Example: <b class="const">/var/www/myserver/pages/misc/mydir</b></p></dd>
+<dt>QUERY_STRING:</dt>
+<dd><p>This variable contains the query information passed by a form or link to the
+CGI program.</p></dd>
+<dt>REMOTE_ADDR:</dt>
+<dd><p>The IP address of the machine from which or through which the browser
+is making the request. This information is always available.</p>
+<p>Example: <b class="const">199.221.53.76</b></p></dd>
+<dt>REMOTE_HOST:</dt>
+<dd><p>The full domain name of the machine from which or through which the
+browser is making the request. If this variable is blank because the
+browser did not send the information, use the REMOTE_ADDR variable
+instead.</p>
+<p>Example: <b class="const">mybox.company.com</b></p></dd>
+<dt>REMOTE_USER:</dt>
+<dd><p>If the server prompted the reader for a username and password because
+the script is protected by the NaviServer's access control, this
+variable contains the username the reader provided.</p>
+<p>Example: <b class="const">nsadmin</b></p></dd>
+<dt>REQUEST_METHOD:</dt>
+<dd><p>The method used to send the request to the server. For direct links,
+the method is <b class="const">GET</b>. For requests from forms, the method may be
+<b class="const">GET</b> or <b class="const">POST</b>. Another method is <b class="const">HEAD</b>,
+which CGI programs can treat like <b class="const">GET</b> or can provide
+header information without page contents.</p></dd>
+<dt>SCRIPT_FILENAME:</dt>
+<dd><p>This variable contains the absolute pathname of
+the currently executing script in the filesystem.</p></dd>
+<dt>SCRIPT_NAME:</dt>
+<dd><p>This variable might be empty or the part of the
+request leading to the CGI program.</p>
+<p>Example: <b class="const">/cgi-bin/search</b></p></dd>
+<dt>SERVER_NAME:</dt>
+<dd><p>The full hostname, domain name alias, or IP address of the server that
+ran the CGI program.</p>
+<p>Example: <b class="const">www.mysite.com</b></p></dd>
+<dt>SERVER_PORT:</dt>
+<dd><p>The server port number to which the request was sent. This may be any
+number between 1 and 65,535 (that is not already a well-known port).
+The default is 80.</p>
+<p>Example: <b class="const">80</b></p></dd>
+<dt>SERVER_PROTOCOL:</dt>
+<dd><p>The name and version number of the information protocol used to pass
+this request from the client to the server.</p>
+<p>Example: <b class="const">HTTP/1.0</b></p></dd>
+<dt>SERVER_SOFTWARE:</dt>
+<dd><p>The name and version number of the server software running the CGI
+program.</p>
+<p>Example: <b class="const">NaviServer/5.0.4</b></p></dd>
+<dt>HTTP_*:</dt>
+<dd><p>In addition to the preceding environment variables, the HTTP header
+lines received from the client, if any, are placed into the
+environment with the prefix <b class="const">HTTP_</b> followed by the header name. Any
+spaces in the header name are changed to underscores (_). The server
+may exclude any headers it has already processed, such as
+content-type, and content-length.</p></dd>
+</dl>
+</div>
+<div id="subsection12" class="doctools_subsection"><h3><a name="subsection12">Extra Environment Variables</a></h3>
+<p>One can configure NaviServer to
+pass further environment variables some CGI program.</p>
+<ol class="doctools_enumerated">
+<li><p>In case the CGI program or the CGI script interpreter requires additional
+environment variables, one can define this via the module parameter
+<b class="const">Environment</b> and a matching section for the detail definitions.</p>
+<ul class="doctools_itemized">
+    
+<li><p>Add a definition for the <b class="const">Environment</b> parameter to your CGI
+        configuration section.</p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   ns_param map         &quot;GET /cgi /usr/local/cgi&quot;
+   ns_param map         &quot;POST /*.cgi&quot;
+   ns_param interps     cgi
+   ns_param environment cgi
+ }
+</pre>
+</li>
+<li><p>Then add a section under <b class="const">ns/environment</b> for the chosen
+       name (here <b class="const">cgi</b>)
+       containing the required environment variable definitions.</p>
+<pre class="doctools_example">
+ ns_section ns/environment/cgi {
+   ns_param FOO BAR     ;# defines environment variable &quot;FOO=BAR&quot;
+   ns_param TMP /tmp    ;# defines environment variable &quot;TMP=/tmp&quot;
+ }
+</pre>
+</li>
+</ul>
+</li>
+<li><p><b class="const">systemenvironment</b> is a boolean parameter in the
+ <b class="const">module/nscgi</b> section in the configuration file to controls
+ whether the CGI will inherit the server process's environment
+ variables or not.  Enabling this could potentially leak sensitive
+ information from the parent's environment if the CGI displays its
+ environment variables which is the behavior of some common
+ error-handling code. Default: <b class="const">false</b></p>
+<pre class="doctools_example">
+ ns_section ns/server/s1/module/nscgi {
+   # ...
+   ns_param systemenvironment true
+   # ...
+ }
+</pre>
+</li>
+</ol>
+</div>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Output from CGI Programs</a></h2>
+<p>To create an HTTP response, the CGI program outputs the header
+and content to the standard output. Different languages allow you to
+send text to standard output in different ways. Here are some
+examples:</p>
+<p><em>C or C++</em></p>
+<pre class="doctools_example">
+ #include &lt;stdio.h&gt;
+ #include &lt;stdlib.h&gt;
+ 
+ printf(&quot;content-type: text/html\r\n\r\n&quot;);
+ printf(&quot;&lt;HEAD&gt;&lt;TITLE&gt;Hello&lt;/TITLE&gt;&lt;/HEAD&gt;&quot;);
+ printf(&quot;&lt;BODY&gt;You are using %s.&lt;/BODY&gt;&quot;,
+ getenv(&quot;HTTP_USER_AGENT&quot;) );
+</pre>
+<p><em>Perl</em></p>
+<pre class="doctools_example">
+ #!/opt/local/bin/perl
+ print &quot;content-type: text/plain\r\n\r\n&quot;;
+ for my $var ( sort keys %ENV ) {
+    printf &quot;%s = \&quot;%s\&quot;\r\n&quot;, $var, $ENV{$var};
+ }
+</pre>
+<p><em>Bourne shell</em></p>
+<pre class="doctools_example">
+ echo content-type: text/html
+ echo 
+ echo \&lt;HEAD\&gt;\&lt;TITLE\&gt;Hello\&lt;/TITLE\&gt;\&lt;/HEAD\&gt;
+ echo \&lt;BODY\&gt;
+ echo You are using $HTTP_USER_AGENT.\&lt;/BODY\&gt;
+</pre>
+<p><em>Tcl</em></p>
+<pre class="doctools_example">
+ puts &quot;content-type: text/html&quot;
+ puts &quot;&quot;
+ puts &quot;&lt;head&gt;&lt;title&gt;Hello&lt;/title&gt;&lt;/head&gt;&quot;
+ puts &quot;&lt;body&gt;&quot;
+ puts &quot;You are using $::env(HTTP_USER_AGENT).&quot;
+ puts &quot;&lt;/body&gt;&quot;
+</pre>
+<p>These are just very small examples. For all popular programming
+languages, powerful libraries exist to ease the generation of the HTML
+output.</p>
+</div>
+<div id="section6" class="doctools_section"><h2><a name="section6">Advice for CGI Programming</a></h2>
+<ul class="doctools_itemized">
+<li><p>Which language should I use? You can use any language you feel
+ comfortable programming in. Of course, programs usually run faster
+ in compiled language, so if your program is computationally
+ intensive, you might want to use C or another compiled language.
+ Most of the available  CGI programs on the Web
+ are written in scripting languages such as Perl or PHP.</p></li>
+<li><p>How can I prevent CGI programs from causing security problems? A
+ CGI program is basically a program that you let anyone else in the
+ world run on your system. Someone with bad intentions could cause
+ you some problems if you don't follow these rules:</p>
+<ul class="doctools_itemized">
+ 
+<li><p>Keep your CGI programs in a separate CGI directory or give
+      them the file extension you specify in the configuration
+      file. Don't give outsiders write access to these files and
+      directories This should prevent casual users from reading,
+      modifying, or adding CGI programs.</p></li>
+<li><p>Don't allow server-parsed HTML to run on your CGI directory
+      or on files with extensions mapped as CGI programs.</p></li>
+<li><p>Don't trust the data the browser sends to your program. Parse
+      the QUERY_STRING or standard input. If your program is a
+      non-compiled script, characters with special meanings in that
+      language can cause problems if the browser fails to encode
+      them as hexadecimal values.</p></li>
+<li><p>Check for odd filenames and directory paths in the input.
+      For example, you should be careful about allow paths
+      containing: ., ../, //, or the name of the directory that
+      contains your CGI programs.</p></li>
+<li><p>Be careful with statements that construct and execute a
+      command line or system call using input from the reader. For
+      example, be careful using the eval statement in Perl and the
+      Bourne shell. If the reader sends input that begins with a
+      semicolon (;), they may be able to get your system to perform
+      any command they like. Likewise, if you use calls to popen()
+      and system(), make sure you put a backslash (\) before any
+      characters with special meaning in the shell that will run.</p></li>
+</ul>
+</li>
+<li><p>How can I debug my CGI programs? Errors that go to the stderr
+     location will be available in the NaviServer's server.log file.</p>
+<p>One simple way to debug CGI programs is to temporarily include
+ print statements that send additional diagnostic
+ information to the client or to a file. If your program
+ is written in C and you have a debugging tool on your
+ system, you can call sleep (or use a long loop) at the
+ beginning of the program. Then, you can attach to the
+ program with the debugger while the program is sleeping.</p>
+<p>If your programs are not executed, make sure the program file
+ allows read and execute access.</p></li>
+<li><p>How can I debug my nscgi configuration?</p>
+<p>For debugging the nsgci configuration, you one can turn on
+  logging for the system log via the command:</p>
+<pre class="doctools_example">
+ ns_logctl severity Debug(cgi) on
+</pre>
+</li>
+</ul>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_register_cgi.html">ns_register_cgi</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#cgi">CGI</a>, <a href="../../index.html#fastpath">fastpath</a>, <a href="../../index.html#module">module</a>, <a href="../../index.html#nscgi">nscgi</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

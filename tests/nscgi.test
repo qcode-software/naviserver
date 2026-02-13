@@ -24,24 +24,29 @@ test nscgi-1.1 {check required and provided variables} -constraints {serverListe
     nstest::http -getbody 1 GET /info.cgi
 } -returnCodes {error ok} -match glob -result {*missing 0*}
 
+test nscgi-1.1 {check syntax} -body {
+    ns_register_cgi
+} -returnCodes {error ok} -result {wrong # args: should be "ns_register_cgi ?-constraints /constraints/? ?-noinherit? ?-matchsegments? ?-path /value/? ?--? /method/ /url/"}
+
+
 #
 # Check server names
 #
 test nscgi-1.2.0 {check SERVER_NAME} -constraints {serverListen tclsh} -body {
     nstest::http \
-        -setheaders [list Host test] \
+        -setheaders [list host test] \
         -getbody 1 GET /info.cgi?var=SERVER_NAME
 } -returnCodes {error ok} -match glob -result "*SERVER_NAME: <test>*}"
 
 test nscgi-1.2.1 {check SERVER_NAME with trusted virtual host} -constraints {serverListen tclsh} -body {
     nstest::http \
-                -setheaders [list Host example.com] \
+                -setheaders [list host example.com] \
                 -getbody 1 GET /info.cgi?var=SERVER_NAME
 } -returnCodes {error ok} -match glob -result "*SERVER_NAME: <example.com>*"
 
 test nscgi-1.2.2 {check SERVER_NAME with untrusted virtual host} -constraints {serverListen tclsh} -body {
     nstest::http \
-                -setheaders [list Host hacker.com] \
+                -setheaders [list host hacker.com] \
                 -getbody 1 GET /info.cgi?var=SERVER_NAME
 } -returnCodes {error ok} -match glob -result "*SERVER_NAME: <test>*"
 
@@ -93,7 +98,7 @@ test nscgi-1.5.1 {
 } -constraints {serverListen tclsh knownBug} -body {
     #ns_logctl severity Debug(cgi) on
     #ns_logctl severity Debug(request) on
-    nstest::http -getheaders {Location} GET /info.cgi?location=/test.html
+    nstest::http -getheaders {location} GET /info.cgi?location=/test.html
 } -returnCodes {error ok} -result {200 {}}
 
 test nscgi-1.5.2 {
@@ -102,7 +107,7 @@ test nscgi-1.5.2 {
 } -constraints {serverListen tclsh} -body {
     #ns_logctl severity Debug(cgi) on
     #ns_logctl severity Debug(request) on
-    nstest::http -getheaders {Location} GET /info.cgi?location=http://www.php.net/
+    nstest::http -getheaders {location} GET /info.cgi?location=http://www.php.net/
 } -returnCodes {error ok} -result {302 http://www.php.net/}
 
 test nscgi-1.5.3 {
@@ -111,7 +116,7 @@ test nscgi-1.5.3 {
 } -constraints {serverListen tclsh} -body {
     #ns_logctl severity Debug(cgi) on
     #ns_logctl severity Debug(request) on
-    nstest::http -getheaders {Location} GET /info.cgi?location=http://www.php.net/&content=test
+    nstest::http -getheaders {location} GET /info.cgi?location=http://www.php.net/&content=test
 } -returnCodes {error ok} -result {302 http://www.php.net/}
 
 
@@ -330,7 +335,7 @@ test nscgi-1.7.3.3a {
 
 test nscgi-1.7.3.3b {
     mapping based on directory
-    access static resource in a sub-directory
+    access static resource in a subdirectory
 } -constraints {serverListen tclsh} -body {
     #ns_logctl severity Debug(cgi) on
     nstest::http -getbody 1 GET /cgi-dir/sub/resource-cgi-sub.txt
@@ -348,6 +353,20 @@ test nscgi-1.8.0 {
     #ns_log notice $r
     return HOME=[regexp {HOME: <\S+>} $r]
 } -returnCodes {error return ok} -result "HOME=1"
+
+# POST request
+
+test nscgi-2.0 {small POST} -constraints {serverListen tclsh} -body {
+    nstest::http POST /info.cgi "x"
+} -result 200
+
+test nscgi-2.1 {not so large POST} -constraints {serverListen tclsh} -body {
+    nstest::http POST /info.cgi [string repeat "x" [expr {[ns_config "ns/module/nssock" maxupload]}]]
+} -result 200
+
+test nscgi-2.2 {large POST} -constraints {serverListen tclsh} -body {
+    nstest::http POST /info.cgi [string repeat "x" [expr {[ns_config "ns/module/nssock" maxupload]+1}]]
+} -result 200
 
 
 cleanupTests

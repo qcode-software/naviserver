@@ -13,6 +13,41 @@ NaviServer applications.
 
 [list_begin definitions]
 
+[call [cmd ns_parsehtml] \
+        [opt [option -noangle]] \
+        [opt [option -onlytags]] \
+        [opt --] \
+        [arg html]]
+
+Parses the provided HTML text into a tagged list, where each list item
+starts with a type tag indicating the element's content. Possible type
+tags are
+[term comment], [term pi], [term tag], or [term text]. For [term tag]
+elements, the type tag is followed by the parsed string in the first list
+element and by a Tcl dict in the second list element containing the
+parsed HTML attributes.
+
+[para]
+When the option [opt -noangle] is specified, the angle brackets (less
+and greater sign) are removed in the result.
+
+[para]
+When the option [opt -onlytags] is specified, only tag elements are
+returned, without the leading type tag. This can be used for checking whether tags in an HTML
+snippets needs to be closed.
+
+[example_begin]
+ % ns_parsehtml {hello <b>foo</b> anchor <a href="/foo">world</a>.}
+ {text {hello }} {tag <b> {b {}}} {text foo} {tag </b> /b} {text { anchor }} {tag {<a href="/foo">} {a {href /foo}}} {text world} {tag </a> /a} {text .}
+ 
+ % ns_parsehtml -noangle  {hello <b>foo</b> anchor <a href="/foo">world</a>.}
+ {text {hello }} {tag b {b {}}} {text foo} {tag /b /b} {text { anchor }} {tag {a href="/foo"} {a {href /foo}}} {text world} {tag /a /a} {text .}
+ 
+ % ns_parsehtml -onlytags {hello <b>foo</b> anchor <a href="/foo">world</a>.}
+ {b {}} /b {a {href /foo}} /a
+[example_end]
+
+
 [call [cmd ns_quotehtml] [arg html]]
 
 Returns the contents of HTML with certain characters that are special in HTML
@@ -47,9 +82,10 @@ ASCII control characters are omitted.
 
 
 [call [cmd ns_reflow_text] \
-       	[opt [option "-width [arg width]"]] \
-       	[opt [option "-offset [arg offset]"]] \
-       	[opt [option "-prefix [arg prefix]"]] \
+        [opt [option "-width [arg integer]"]] \
+        [opt [option "-offset [arg integer]"]] \
+        [opt [option "-prefix [arg value]"]] \
+        [opt --] \
         [arg text]]
 
 Reflow a text to the specified length. The arguments
@@ -61,8 +97,9 @@ with a constant string.
 
 [call [cmd ns_trim] \
         [opt [option "-subst"]] \
-        [opt [option "-delimiter [arg delimiter]"]] \
-        [opt [option "-prefix [arg prefix]"]] \
+        [opt [option "-delimiter [arg value]"]] \
+        [opt [option "-prefix [arg value]"]] \
+        [opt --] \
         [arg text]]
 
 Multi-line trim with optional [arg delimiter] or [arg prefix].

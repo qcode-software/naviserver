@@ -55,21 +55,24 @@ The main sections of a configuration file are:
 
 [item] Global configuration values
    [list_begin itemized]
-   [item] general parameters (starting with "ns/parameters")
-   [item] thread parameters (starting with "ns/threads")
-   [item] mimetypes (starting with "ns/mimetypes")
-   [item] database drivers (starting with "ns/db")
-   [item] global modules (starting with "ns/modules")
-   [item] servers (starting with "ns/servers")      
+   [item] general parameters (section starting with [const ns/parameters])
+   [item] thread parameters (section starting with [const ns/threads])
+   [item] mimetypes (section starting with [const ns/mimetypes])
+   [item] database drivers (section starting with [const ns/db])
+   [item] global modules (section starting with [const ns/modules])
+   [item] servers (section starting with [const ns/servers])
    [list_end]
 [para] Examples for global parameters are in the mentioned
-sample configuration files and also e.g. in [term tcl-libraries]
+sample configuration files and also, e.g., in [term tcl-libraries]
 and [term admin-tuning].
 
-[item] Server specific parameters (starting with "ns/server/$server")
+[item] Server specific parameters (section starting with
+[const {ns/server/$server}]), where [const {$server}] is either a Tcl
+variable with the server configuration name, or should be replaced by
+the actual name (typically, when multiple server configurations are used).
 
 [item] Module specific parameters (like [term nssock], [term nsssl],
-[term nscp], [term nslog], [term nscgi] or [term nsperm].
+[term nscp], [term nslog], [term nscgi] or [term nsperm]).
 
 [list_end]
 
@@ -80,7 +83,7 @@ In general, when modifying configuration files, it is always a good
 idea to check whether a configuration file is syntactically correct
 before starting the server. This can reduce the downtime of a
 production server in case of typos. A configuration file named
-"nsd-config.tcl" can be checked with the command line option [term -T]
+[const nsd-config.tcl] can be checked with the command line option [term -T]
 of NaviServer.
 
 [example_begin]
@@ -96,7 +99,7 @@ a proxy server or not.
  ns_section ns/parameters {
    ns_param home             /var/www/myserver/
    ns_param tcllibrary       tcl
-   ns_param serverlog        error.log
+   ns_param systemlog        nsd.log
    # ...
    ns_param reverseproxymode true
  }
@@ -155,12 +158,13 @@ server "s1" under the name "http". We show, in
 later examples, how to load a network driver globally, such that one
 network driver can be used for multiple servers.
 
-[subsection {Multiple alternative servers in one configuration file}]
+[subsection {Multiple alternative server configurations in one configuration file}]
 
-It is as well possible to define multiple servers in the same
-configuration file (here [emph s1] and [emph s2]). These servers
-use the same driver [emph nsock] but with different ports.
-In this case, it is sufficient to load the driver once.
+It is as well possible to define multiple server configurations in the
+same configuration file (here [emph s1] and [emph s2]). IN the
+following example these servers use the same driver [emph nsock] but
+with different ports.  In this case, it is sufficient to load the
+driver once.
 
 [example_begin]
  ns_section ns/servers {
@@ -193,7 +197,8 @@ In this case, it is sufficient to load the driver once.
  }
 [example_end]
 
-When the configuration file above is named e.g. two-server-config.tcl,
+When the configuration file above is named e.g.,
+[const two-server-config.tcl],
 the two servers can be started with a command line like:
 
 [example_begin]
@@ -302,23 +307,53 @@ instance.
 
 [subsection {Virtual servers}]
 
-By using virtual servers, multiple different server configurations can
-be used while using only a single IP address/port combination. The
-main different between a virtual server and the case of defining
-multiple alternative servers above is that the servers are available
-concurrently. The server determines by the "Host:" header field
-provided by the client to which server the request should be
-routed. Using such virtual servers is a common technique, where
-e.g. for the same IP address, multiple DNS names are
-registered. According to HTTP/1.1, clients have to send the hostname
-in the host header field to the server, such that the server can
-behave differently depending on the contents of this field.
+ Virtual servers allow you to host multiple, distinct server
+ configurations on the same IP address and port. Unlike defining
+ alternative server configurations that are activated one at a time
+ (what we have done above), virtual servers coexist concurrently.
+ When a request arrives, NaviServer examines the HTTP/1.1 [const Host:] header
+ to select the matching virtual server configuration.
 
-[para] NaviServer can define multiple virtual servers, where each of
-the servers has a separate setup (e.g., different number of threads defined,
-different page directories), separate blueprints (e.g., loading
-of different modules), uses different network drivers, etc. (see
-Figure 1).
+ [para ] A common use case is serving the same content under several
+ DNS names (e.g. [const foo.com] and [const www.foo.com]) using the
+ same server configuration. To enable this, list each hostname under
+ the [const ns/module/http/servers] section, mapping names to a single
+ server instance.
+
+
+[example_begin]
+ ns_section ns/servers {
+   ns_param s1  "Virtual Instance 1"
+ }
+ 
+ ns_section ns/modules {
+   ns_param http nssock.so
+ }
+ 
+ ns_section ns/module/http {
+   ns_param address  0.0.0.0
+   ns_param port     8000
+ }
+ 
+ #
+ # Map DNS names to the s1 server configuration
+ #
+ ns_section ns/module/http/servers {
+   #
+   # Domain names for s1
+   #
+   ns_param s1 foo.com
+   ns_param s1 www.foo.com
+ }
+[example_end]
+
+[para] In the example above, a single server instance "s1" responds to both
+[const foo.com] and [const www.foo.com]. You can also define multiple
+server configurations, each with its own thread pool, document root, loaded modules,
+and network driver by adding additional entries in [const ns/servers] and
+corresponding [const ns/module/http/servers] mappings. By doing so,
+you can define that a certain set of DNS names are routed to one
+server and some to another server (see Figure 1).
 
 [para][image blueprint3 "NaviServer Blueprint"]
 [para]Figure 1: NaviServer Blueprint (per server)
@@ -361,7 +396,7 @@ between the hostnames and the defined servers.
 
 [example_begin]
  #
- # Define two servers s1 and d2 as virtual servers
+ # Define two servers s1 and s2 as virtual servers
  #
  ns_section ns/servers {
    ns_param s1  "Virtual Server s1"
@@ -497,17 +532,19 @@ server "s1" separately ([const foo.com.pem]).
  # Furthermore, activate for server "s1" also OCSP stapling.
  # 
  ns_section ns/server/s1/module/https {
-   ns_param certificate   /usr/local/ns/modules/https/foo.com.pem
-   ns_param OCSPstapling  on
+   ns_param certificate       /usr/local/ns/modules/https/foo.com.pem
+   ns_param OCSPstapling      on
+   ns_param OCSPcheckInterval 5m
  }
 [example_end]
 
 OCSP (abbreviation of Online Certificate Status Protocol, RFC 2560 and
 RFC 6066) is a protocol that checks the validity status of a
-certificate. The term "OCSP stapling" refers to the use of
+certificate. The term [term "OCSP stapling"] refers to the use of
 digitally-signed time-stamped OCSP responses in the web server for
 performance reasons. In the example above, OCSP stapling is defined
-for server "s1".
+for server "s1". The parameter [term OCSPcheckInterval] defines the
+interval for re-checking the validity of a certificate.
 
 
 [subsection {Single virtual server with mass virtual hosting (HTTP)}]
@@ -523,7 +560,7 @@ domains, serving e.g. from different page directories.
 [para] The following example defines server "s1" serving only for
 HTTP connections over port 8000. The new part is the registration of a
 callback via [cmd ns_serverrootproc], which determines the root
-directory for serving pages based on the "host" header field. The
+directory for serving pages based on the "host:" header field. The
 definition assumes a directory structure like the following, where
 "foo.com" has, e.g., a different [const index.html] file.
 
@@ -549,6 +586,27 @@ under [const /var/www], it is used as the pageroot for this request.
  ns_section ns/servers {
    ns_param s1        "Sample Server"
  }
+ ns_section ns/server/s1 {
+   ns_param serverdir /var/www
+   ns_param serverrootproc {
+     #
+     # Register callback for computing the per-request "serverdir":
+     #
+     set rootDir [lb]ns_server serverdir[rb]
+     set host [lb]ns_conn host ""[rb]
+     if {$host ne "" && [lb]file isdirectory $rootDir/$host [rb]} {
+       #
+       # A "host" header field was provided in the request, and a matching
+       # folder exists in the filesystem -> use it as "serverdir"
+       #
+       set serverDir $rootDir/$host
+     } else {
+       set serverDir $rootDir/[lb]ns_info server[rb]
+       ns_log notice "... $rootDir/$host does not exist, use default '$serverDir'"
+     }
+     return $serverDir
+   }
+ }
  ns_section ns/server/s1/modules {
    ns_param http      nssock.so
  }
@@ -558,40 +616,8 @@ under [const /var/www], it is used as the pageroot for this request.
  }
  ns_section ns/server/s1/fastpath {
    ns_param pagedir   ""
-   ns_param serverdir /var/www
  }
  
- ns_section ns/server/s1/tcl {
-   ns_param initcmds {
-     #
-     # Register callback for accessing the root directory:
-     #
-     ns_serverrootproc {
-       set rootDir [lb]ns_server serverdir[rb]
-       set dir default
-       if {[lb]ns_conn isconnected[rb]} {
-         set host [lb]ns_conn host ""[rb]
-         if {$host ne ""} {
-           #
-           # A "host" header field was provided in the request,
-           # build the name of the root folder.
-           #
-           if {[lb]::file isdirectory $rootDir/$host[rb]} {
-             #
-             # The folder exists in the filesystem, accept it.
-             #
-             set dir $host
-           } else {
-             ns_log debug "... $rootDir/$host does not exist, fallback to $dir"
-           }
-         }
-       }
-       set rootDir $rootDir/$dir
-       ns_log debug "... setting rootdir '$rootDir'"
-       return $rootDir
-     }
-   }
- }
 [example_end]
 
 [para] With this approach additional domains can be added at runtime
@@ -628,7 +654,7 @@ the name based on the SNI hostname, where ".pem" was added
 
 Note that in this setup only a single server configuration is needed
 (in the example above, the server "s1"). Together with the definition
-of the [cmd ns_serverrootproc], it will provide mass virtual hosting over
+of the [term serverrootproc] callback, it will provide mass virtual hosting over
 HTTPS. Below is a minimal setup showing the directory structure for
 serving [const dotlrn.net] via this mechanism. Note the certificates
 [const dotlrn.net.pem], [const example.com.pem], and [const default.pem]
@@ -659,8 +685,8 @@ certificate.
 [para] It is a common requirement to redirect incoming traffic from
 HTTP to HTTPS. When a user has connected once via HTTPS, it is
 recommended to use HSTS ([uri \
-        https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security \
-        "HTTP Strict-Transport-Security"])
+        https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/strict-transport-security \
+        "HTTP strict-transport-security"])
 to cause the browser to stay on the secure connection. This is
 recommended to avoid certain man-in-the-middle attacks.
 
@@ -740,16 +766,16 @@ are as well requirements for adding response header fields for all
 requests. The following response header fields are often recommended:
 
 [example_begin]
- X-Frame-Options            "SAMEORIGIN"
- X-Content-Type-Options     "nosniff"
- X-XSS-Protection           "1; mode=block"
- Referrer-Policy            "strict-origin"
+ x-frame-options            "SAMEORIGIN"
+ x-content-type-options     "nosniff"
+ x-xss-protection           "1; mode=block"
+ referrer-policy            "strict-origin"
 [example_end]
 
 or for HTTPS requests
 
 [example_begin]
-  Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  strict-transport-security "max-age=31536000; includeSubDomains"
 [example_end]
 
 or, e.g., CSP rules on static pages to address the security threads of
@@ -819,73 +845,651 @@ will be served with the following extra response header fields.
 
 [para]
 
+[subsection {HTTPS Client Certificate Management}]
+
+ The sections above explain how to configure server certificates when
+ NaviServer handles incoming HTTPS connections
+ (see parameters [const certificate] and
+ [const vhostcertificates]). In contrast, this section focuses on cases
+ where NaviServer acts as an HTTPS client - for example, when it
+ performs web service requests or manages infrastructure and
+ administrative tasks over HTTPS. Historically, some systems and
+ libraries have been configured to disable certificate validation
+ entirely
+ (see e.g., [uri https://www.cs.utexas.edu/~shmat/shmat_ccs12.pdf "The Most Dangerous Code"]),
+ leaving them vulnerable to man-in-the-middle attacks.
+
+ [para]
+
+ In NaviServer, client-side certificate management (for outgoing HTTPS
+ connections) is configured in the per-server [term httpclient]
+ section of the server configuration. While above examples refers to
+ server names like [term s1] or [term s2], any valid server name can be used.
+
+
+[para]
+This [term httpclient] section also includes parameters for managing
+keep-alive behavior and logging for outgoing requests. In this subsection,
+we focus on certificate management and security-related settings.
+
+ [para]
+
+ The most important parameter is [term validateCertificates], which
+ defaults to [const true]. This is the recommended setting and
+ protects against man-in-the-middle attacks by rejecting forged or
+ otherwise invalid certificates. Nonetheless, internal or development
+ servers often use self-signed or expired certificates, leading to
+ request failures under strict validation. This likely explains why
+ NaviServer 4.x was historically permissive by default.
+
+[example_begin]
+ #---------------------------------------------------------------------
+ # HTTP client (ns_http, ns_connchan) configuration
+ #---------------------------------------------------------------------
+ ns_section ns/server/$server/httpclient {
+  
+   # Set default keep-alive timeout for outgoing ns_http requests.
+   ...
+   #
+   ns_param validateCertificates true        ;# default: true
+   ...
+   # ... additional validation settings ...
+   ...
+   # Configure log file for outgoing ns_http requests
+   ...
+ }
+[example_end]
+
+ [para]
+ 
+ In NaviServer 5, you can specify the default location of trusted
+ certificates:
+ [list_begin itemized]
+ [item] [term CAfile] references a single file with trusted root certificates (commonly [term ca-bundle.crt])]
+ [item] [term CApath] references a directory containing multiple trusted certificates]
+ [list_end]
+
+ Both parameters map directly to OpenSSL
+ settings. Whenever new certificates are added to [term CApath], you
+ must run [term "openssl rehash"] for OpenSSL to recognize them on
+ subsequent requests.
+
+ [para]
+ 
+ You can further control the depth of certificate validation using
+ [term validationDepth]:
+ [list_begin itemized]
+ [item] 0 means accepting only self-signed certificates]
+ [item] 1 means certificates are issued by at most one CA or are self-signed
+ [item] 2 or higher means certificate chains up to that length are allowed
+ [list_end]
+
+ [para]
+ 
+ Use [term validationException] to define exceptions for specific
+ validation errors (e.g., [term certificate-expired] or
+ [term self-signed-certificate]) from certain IP addresses or CIDR
+ ranges. Multiple rules can be defined, each possibly including:
+
+[list_begin itemized]
+[item] [term ip:] The IP address or CIDR range. If omitted, the rule applies
+   to all hosts.
+[item] [term accept:] A list of validation errors to allow, or [term "*"] to allow all.
+   If omitted, the default is [term "accept *"].
+[list_end]
+
+ For example:
+ 
+[example_begin]
+ns_param validationException {
+  ip 127.0.0.1
+  accept {certificate-expired self-signed-certificate}
+}
+[example_end]
+The sample [term httpclient] configuration below contains several examples.
+
+[para]
+
+ Acceptance rules do not replace [term CApath] or [term CAfile], but
+ help simplify certificate management. Administrators can manually
+ consolidate rejected certificates into the CA path, but doing so can
+ be laborious when they reside in multiple administrative domains.
+
+ [para]
+ 
+ Whenever an acceptance rule is applied, NaviServer stores the flagged
+ certificate in a directory for invalid certificates and logs an entry
+ to the system log. By default, this directory is named
+ [const invalid-certificates], though you can specify an alternative name or
+ path via [term invalidCertificates]. This mechanism allows
+ administrators to review such certificates later for potential manual
+ handling or auditing.
+
+ [para] A recejected certificate can be examined with:
+[example_begin]
+ openssl x509 -in CERT.PEM -noout -text
+[example_end]
+
+[para]
+
+Below is a sample [term httpclient] configuration illustrating
+certificate validation and exception rules:
+
+
+[example_begin]
+ #---------------------------------------------------------------------
+ # HTTP client (ns_http, ns_connchan) configuration
+ #---------------------------------------------------------------------
+ ns_section ns/server/$server/httpclient {
+    #
+    # Set default keep-alive timeout for outgoing ns_http requests.
+    # The specified value determines how long connections remain open for reuse.
+    #
+    ns_param    keepalive       5s       ;# default: 0s
+ 
+    #
+    # If you wish to disable certificate validation for "ns_http" or
+    # "ns_connchan" requests, set "validateCertificates" to "false".
+    # However, this is NOT recommended, as it significantly increases
+    # vulnerability to man-in-the-middle attacks.
+    #
+    #ns_param validateCertificates false        ;# default: true
+ 
+    if {[lb]ns_config ns/server/$server/httpclient validateCertificates true[rb]} {
+        #
+        # The following parameters are only relevant when peer certificate
+        # validation is enabled.
+        #
+ 
+        # Specify trusted certificates using
+        #   - A single CA bundle file (CAfile) for top-level certificates, or
+        #   - A directory (CApath) containing multiple trusted certificates.
+        #
+        # These default locations can be overridden per request in
+        # "ns_http" and "ns_connchan" requests.
+ 
+        ns_param CApath certificates           ;# default: [lb]ns_info home[rb]/certificates/
+        ns_param CAfile ca-bundle.crt          ;# default: [lb]ns_info home[rb]/ca-bundle.crt
+ 
+        #
+        # "validationDepth" sets the maximum allowed length of a certificate chain:
+        #   0: Accept only self-signed certificates.
+        #   1: Accept certificates issued by a single CA or self-signed.
+        #   2 or higher: Accept chains up to the specified length.
+ 
+        #ns_param validationDepth 0   ;# default: 9
+ 
+        #
+        # When defining exceptions below, invalid certificates are stored
+        # in the specified directory. Administrators can move these
+        # certificates to the accepted certificates folder and run "openssl rehash"
+        # to reduce future security warnings.
+ 
+        #ns_param invalidCertificates ;# default: [lb]ns_info home[rb]/invalid-certificates/
+ 
+        #
+        # Define white-listed validation exceptions:
+        #
+        # Accept all certificates from ::1 (IPv6 loopback):
+        ns_param validationException {ip ::1}
+ 
+        # For IPv4 127.0.0.1, ignore two specific validation errors:
+        ns_param validationException {ip 127.0.0.1 accept {certificate-expired self-signed-certificate}}
+ 
+        # Allow expired certificates from any IP in the 192.168.1.0/24 range:
+        ns_param validationException {ip 192.168.1.0/24 accept certificate-expired}
+ 
+        # Accept self-signed certificates from any IP address:
+        ns_param validationException {accept self-signed-certificate}
+ 
+        # Accept all validation errors from any IP address (like disabled validation, but collects certificates)
+        #ns_param validationException {accept *}
+    }
+ 
+    #
+    # Configure log file for outgoing ns_http requests
+    #
+    ns_param     logging          on       ;# default: off
+    ns_param     logfile          httpclient.log ;# default: [lb]ns_info home[rb]/logs/httpclient.log
+    ns_param     logrollfmt       %Y-%m-%d ;# format appended to log filename
+    #ns_param    logmaxbackup     100      ;# 10, max number of backup log files
+    #ns_param    logroll          true     ;# true, should server log files automatically
+    #ns_param    logrollonsignal  true     ;# false, perform log rotation on SIGHUP
+    #ns_param    logrollhour      0        ;# 0, specify at which hour to roll
+ }
+[example_end]
+
+[subsection {Maintenance Tasks for Client Certificate Management}]
+
+[list_begin itemized]
+
+[item] Transitioning to certificate validation:
+
+ [para] Switching from a configuration with certificate validation disabled
+ to one with validation enabled can initially result in many failures,
+ especially if various services rely on self-signed or otherwise
+ untrusted certificates. One approach is to enable validation but
+ accept all validation failures. This allows the HTTPS connections to
+ remain functional while NaviServer logs warnings and stores the
+ rejected certificates, giving you the opportunity to address them
+ individually.
+
+[example_begin]
+ ns_section ns/server/$server/httpclient {
+   ...
+   ns_param validateCertificates true
+   ns_param validationException {accept *}
+   ...
+ }
+[example_end]
+
+ With these settings, any validation errors will be logged, and the
+ invalid certificates will be saved:
+
+[example_begin]
+ ... Warning: invalid certificate accepted (... self-signed certificate in certificate chain)
+ ... Notice: saved invalid certificate: .../invalid-certificates/...-2-19.pem
+[example_end]
+
+[item] Updating [const ca-bundle.crt]:
+
+ [para] Keeping your [const ca-bundle.crt] file up to date ensures that your
+ application trusts the newest certificate authorities (CAs) and
+ rejects compromised or revoked certificates. Most operating systems
+ and distributions offer automated updates via package managers (e.g.,
+ [const "apt-get install ca-certificates"] on Debian/Ubuntu or
+ ca-certificates RPM packages on Fedora/RHEL).
+
+ [para]
+ Alternatively, you can manually download and replace your CA bundle,
+ often derived from
+ [uri https://curl.se/docs/caextract.html "Mozilla’s trusted CA list"].
+ Whenever you update [const ca-bundle.crt], verify its integrity
+ (e.g., via checksums).
+ You might consider to schedule these updates (e.g., through [cmd ns_schedule]).
+
+[list_end]
+
+
+[subsection {Forward and Reverse Proxy Server Configuration}]
+
+NaviServer can be configured additionally as a classical "forward"
+HTTP proxy server, and/or as a reverse proxy server. As described
+above, NaviServer can be configured to run behind a reverse proxy
+server, which has consequences on determining, e.g., the client's peer
+IP address and logging. The configuration for running behind a reverse
+proxy server was described in the section
+[sectref {Server Network Configuration}].
+
+[para] A forwarding proxy server handles outbound traffic on behalf of
+clients, shielding the client’s identity or controlling outbound
+traffic.  This is different from a reverse proxy server, which is
+managing traffic towards internal servers. A reverse proxy server
+receives HTTP requests from outside and forwards these requests to
+some internal servers (backend servers), which are typically not
+reachable directly from the clients.
+
+[para] For the configuration as a forwarding proxy server, the
+parameter [term enablehttpproxy] must be activated. It is also
+recommended to load the [term revproxy] module to since this contains
+a scaling infrastructure for proxy requests. If the module is not
+activated, a simple fallback is used.
+
+[example_begin]
+ ns_section ns/server/s1 {
+    ...
+    ns_param enablehttpproxy true
+    ...
+ }
+ ns_section ns/server/s1/modules {
+   ns_param revproxy tcl
+ }
+[example_end]
+
+For the activation and configuration of NaviServer as a reverse proxy
+server, see the [uri ../../revproxy/files/revproxy.html "revproxy"] configuration.
+
 
 [para] More to come here...
 
-[section {Basic Templating Configuration}]
 
-In certain situations, NaviServer returns dynamic content, which is
-not user generated. Such situations are, e.g., error messages,
-directorly listings, or other situations, where a developer choses
-to use [cmd ns_returnnotice].
+[section {Customizing System Generated HTTP Responses}]
 
-[para] The output can be configured via the ADP template
-[const SERVERHOME/conf/returnnotice.adp] which receives the variables
-[const title], [const notice], and [const noticedetail]. For custom
-styling, other templates can be configured via the configuration
-parameter [const noticeadp] in the [const server] section in the
-configuration file (here, for the server configuration [emph s1]).
+[para]
+
+ In many situations, NaviServer returns dynamically generated content
+ that is not directly provided by users. Examples include error
+ messages, directory listings, or notices generated by commands such
+ as [uri ../../naviserver/files/returnstatus-cmds.html "ns_returnnotice"].
+ Administrators can customize these
+ system-generated responses to enhance security and maintain a
+ consistent appearance.
+
+[subsection {Omit Server and Version Information in HTTP Responses}]
+
+ The configuration parameter [const noticeDetail] in the server
+ section determines whether server name and version information are
+ included in these responses. Exposing such details may aid attackers
+ by revealing information about the server and its software version.
+
+[para]
+
+ Similarly, the [const stealthMode] parameter controls whether the
+ [const Server:] header is sent in HTTP responses.
+ When [const stealthMode] is set to true, the [const Server:] header is omitted,
+ reducing the information available to potential attackers.
 
 [example_begin]
  ns_section ns/server/s1 {
    # ...
-   ns_param noticeadp    returnnotice.adp ;# ADP file for ns_returnnotice
-   #ns_param noticedetail false	          ;# return detail information in server reply
-
+   #ns_param noticeDetail false   ;# Exclude server name and version from system responses
+   #ns_param stealthMode false    ;# Omit the Server header in HTTP responses
    # ...
  }
 [example_end]
 
- When the configured value for name [const noticeadp]
- is not absolute, it is assumed to be located in
- the directory [const SERVERHOME/conf/].
- When the parameter is set to an empty string,
- the old-style hard-coded template is used.
+[subsection {Basic Templating Configuration}]
 
-[para] When the custom template leads to an error, a hardcoded basic
- template is used.
+ The appearance of system-generated HTTP responses can be customized
+ using an ADP template, typically located at
+ [const SERVERHOME/conf/returnnotice.adp]. This template receives the
+ variables [const title], [const notice], and [const noticedetail] to
+ render the response. For a consistent look when using custom themes,
+ you can specify an alternative template via the [const noticeADP]
+ parameter in the server configuration (e.g., for server [emph s1]).
 
-[para] The configuration parameter [const noticedetail] can be used
- to control, whether the detailed server version information should be
- included in these server retplies (revealing this kind of information
- is often not wanted for security reasons).
+[example_begin]
+ ns_section ns/server/s1 {
+   # ...
+   #ns_param noticeADP returnnotice.adp ;# Specify the ADP file for ns_returnnotice responses
+   # ...
+ }
+[example_end]
 
+ If the [const noticeadp] value is not an absolute path, it is assumed
+ to reside in [const SERVERHOME/conf/]. When set to an empty string,
+ the module falls back to a hard-coded template. In cases where the
+ custom template causes an error, a basic built-in template is used as
+ a fallback.
 
-[section {Templating depending on error status codes}]
+[subsection {Templating Depending on Error Status Codes}]
 
-In addition to the basic templating configuration, on can provide
-tailored error messages depending on the HTTP status codes.
+ In addition to the basic template, you can define custom error pages
+ for specific HTTP status codes. This allows you to provide tailored
+ messages for errors such as 404, 403, 503, and 500. In the following
+ example configuration, these are residing in a directory [const shared].
 
 [example_begin]
  #---------------------------------------------------------------------
- # Special HTTP pages
+ # Special HTTP Pages
  #---------------------------------------------------------------------
  ns_section ns/server/s1/redirects {
-   ns_param   404 /shared/404
-   ns_param   403 /shared/403
-   ns_param   503 /shared/503
-   ns_param   500 /shared/500
+   ns_param 404 /shared/404
+   ns_param 403 /shared/403
+   ns_param 503 /shared/503
+   ns_param 500 /shared/500
  }
 [example_end]
 
 
-[keywords module nssock nsssl \
+[section {Customizing Directory Structure}]
+
+ A typical NaviServer installation follows a basic directory structure
+ similar to the example below:
+
+[example_begin]
+ HOME      /usr/local/ns/
+ BINDIR    /usr/local/ns/bin/
+ LOGDIR    /usr/local/ns/logs/
+ TCLLIBDIR /usr/local/ns/tcl/
+[example_end]
+
+ The root directory ([const home]) is determined at compile time, but
+ all of these paths can be modified via the configuration file. For
+ instance, the default settings are defined as:
+
+[example_begin]
+ ns_section ns/parameters {
+   ns_param home        /usr/local/ns/
+   ns_param logdir      logs
+   ns_param tcllibrary  tcl
+   ns_param bindir      bin
+ }
+[example_end]
+
+ For all paths except [const home], you may specify either absolute or
+ relative names. Absolute paths are used as given, whereas relative
+ paths in the [const ns/parameters] section are resolved relative to
+ the value of [const home].
+
+
+[subsection {Per-Server Directory Structure}]
+
+ Beyond the global configuration, you can define server-specific file
+ location settings by specifying a [const serverdir] that acts as the
+ root for that server’s log and page directories.
+
+[para]
+
+ The key parameters for per-server file locations are:
+
+[para]
+
+[list_begin itemized]
+
+[item] [const serverdir]:
+
+       Defines the root directory for a server’s log and page
+       directories. A relative [const serverdir] is resolved against
+       [const home]. By default, [const serverdir] is empty, meaning
+       the global [const home] is used.
+
+       [para] Alternatively, a [const serverrootproc] callback can
+       dynamically compute the server directory per request (e.g.,
+       based on the "Host:" header).
+
+
+[item] [const logdir]: Specifies the directory for log files (e.g.,
+       access.log or httpsclient.log). The value can be given as an
+       absolute path or a relative path, in which case it is resolved
+       against [const serverdir].  Note that a log directory specified
+       for a particular server takes precedence over the global
+       configuration.
+
+[item] [const pagedir]: Specifies the directory from which page
+       requests are served. Like [const logdir], this may be absolute or
+       relative (resolved against [const serverdir]).
+
+[list_end]
+
+[example_begin]
+ ns_section ns/server/SERVER1 {
+   ns_param serverdir  ""
+   #ns_param serverrootproc ...
+   ns_param logdir     logs
+ }
+ 
+ ns_section ns/server/SERVER1/fastpath {
+    ns_param pagedir   pages
+ }
+[example_end]
+
+
+[subsection {Per-Server Tcl-Source Locations}]
+
+ You can specify the locations of Tcl source files on a per-server
+ basis. In the per-server [const tcl] section, the [const initfile]
+ parameter defines the Tcl initialization file to be executed during
+ server startup, and the [const library] parameter specifies the
+ directory containing additional Tcl scripts to be loaded. Both
+ parameters may be given as absolute paths or as relative paths
+ (resolved against [const home]).
+
+[example_begin]
+ ns_section ns/server/SERVER1/tcl {
+    ns_param initfile  bin/init.tcl
+    ns_param library   modules/tcl/
+ }
+[example_end]
+
+[section {Global and Per-Server Logfiles}]
+
+ NaviServer maintains a single system log (by default [const nsd.log])
+ that aggregates system and application messages via [cmd ns_log]. In
+ addition, each server can have its own log files, such as
+ [const access.log] (managed by the [term nslog] module) or
+ [const httpclient.log] (configured in the [term httpclient] section). All
+ per-server log files can be automatically rotated by enabling the
+ boolean [term rolllog] parameter in the section where the logfile is
+ defined.
+
+ [para] For instance, the snippet below defines automated rolling for
+ the access log along with the other relevant parameters controlling
+ this log file:
+
+[example_begin]
+ ns_section ns/server/SERVER1/modules {
+    ns_param nslog   nslog
+ }
+ 
+ ns_section ns/server/SERVER1/module/nslog {
+    # ns_param	file		access.log
+    ns_param	rolllog		true
+    #
+    # ns_param	suppressquery	true	;# false, suppress query portion in log entry
+    # ns_param	logreqtime	true	;# false, include time to service the request
+    ns_param	logpartialtimes	true	;# false, include high-res start time and partial request durations
+    ns_param    logthreadname   true    ;# default: false; include thread name for linking with nsd.log
+    # ns_param	formattedtime	true	;# true, timestamps formatted or in secs (unix time)
+    # ns_param	logcombined	true	;# true, Log in NSCA Combined Log Format (referer, user-agent)
+    ns_param	masklogaddr     true    ;# false, mask IP address in log file for GDPR (like anonip IP anonymizer)
+    ns_param	maskipv4        255.255.255.0  ;# mask for IPv4 addresses
+    ns_param	maskipv6        ff:ff:ff:ff::  ;# mask for IPv6 addresses
+    # ...
+    # ns_param	maxbackup	100	 ;# 10, max number of backup log files
+    # ns_param	rollhour	0	 ;# 0, specify at which hour to roll
+    # ns_param	rollonsignal	true	 ;# false, perform log rotation on SIGHUP
+    # ns_param	rollfmt		%Y-%m-%d ;# format appended to log filename
+}
+[example_end]
+
+While the accesslog is activated, when the [term nslog] module is
+loaded and the full section is just for configuring this particular
+access log. 
+
+[para] the situation for the httpclient log is slightly
+different. Here, no extra module has to be loaded, but the logging is
+turned on via the [term logging] parameter. Since the [term httpclient]
+section is used for multiple purposes concerning HTTP client requests,
+the parameters are prefixed with [const log] to avoid potential
+confusions.
+
+[para] The snippet below defines automated rolling for
+the httpclient log along with the other relevant parameters controlling
+this log file:
+
+[example_begin]
+ ns_section ns/server/SERVER1/httpclient {
+    # ...
+    # ns_param	logfile		httpclient.log
+    ns_param	logging		on       ;# default: off
+    ns_param	logroll		true     ;# true, roll log files automatically
+    #
+    # ns_param	logmaxbackup	100      ;# 10, max number of backup log files
+    # ns_param	logrollhour	0        ;# 0, specify at which hour to roll
+    # ns_param	logrollonsignal	true     ;# false, perform roll on SIGHUP
+    # ns_param	logrollfmt	%Y-%m-%d ;# format appended to log filename
+    # ...
+}
+[example_end]
+
+ [para] For the system log, there is no no dedicated configuration
+ parameter to control automatic rotation of the system log. Automated
+ log rotation can be achieved via a scheduled procedure, as shown in
+ the following snippet, which uses
+ [uri ../../naviserver/files/ns_schedule.html "ns_schedule_daily"]
+ to call [uri ../../naviserver/files/ns_log.html "ns_log"]
+ every day at midnight.
+
+[example_begin]
+ ns_schedule_daily 0 0 ns_logroll
+[example_end]
+
+ In configurations employing mass virtual hosting, a single server may
+ generate multiple access log files and httpclient log file (one for
+ every virtual server). In such cases, the [const serverrootproc]
+ callback dynamically computes the appropriate [const serverdir] to
+ resolve relative log file paths.  In this case, log rotation is
+ applied to all log files configured for that server. Note that only
+ actively used (open) log files are subject to rotation.
+
+ [para] By default, log files are rolled by appending a numerical
+ suffix indicating their age. Alternatively, you can specify a custom
+ roll format for all log files. For example, setting [term rollfmt]
+ to [const %Y-%m-%d] causes the log rotation process to append the
+ actual date instead of a number. This method offers the advantage of
+ stable log filenames after rolling, which may simplify long-term log
+ management and reduces backup requirements.
+
+[para]
+ The following nipped shows the parameters for customizing the system log.
+
+[example_begin]
+ ns_section ns/parameters {
+    # ...
+    # ns_param	logdir      	log
+    # ns_param	systemlog	nsd.log
+    # ns_param	logrollonsignal	on       ;# enable log rotation on SIGHUP
+    ns_param	logmaxbackup	100      ;# 10 is default
+    ns_param	logrollfmt	%Y-%m-%d ;# format appended to system log filename when rolled
+    # ns_param  logsec          false    ;# add timestamps in second resolution (default: true)
+    # ns_param  logusec         true     ;# add timestamps in microsecond (usec) resolution (default: false)
+    # ns_param  logusecdiff     true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
+    # ns_param  logthread       false    ;# add thread-info the log file lines (default: true)
+    # ns_param	logcolorize	true     ;# colorize log file with ANSI colors (default: false)
+    # ns_param	logprefixcolor	green    ;# black, red, green, yellow, blue, magenta, cyan, gray, default
+    # ns_param  logprefixintensity normal;# bright or normal
+    # ns_param  sanitizelogfiles 2       ;# default: 2; 0: none, 1: full, 2: human-friendly, 3: 2 with tab expansion
+    # ...
+}
+[example_end]
+
+
+
+[section {Stack Size}]
+
+ Complex pages with deep call stacks may require an increased
+ per-thread stack size to avoid unexplained crashes. Although Tcl
+ crashes from stack overflows are often due to operating system limits
+ rather than Tcl itself, increasing the stack size can provide
+ additional safety.
+
+ [para] The per-thread stack size is configured via the
+ [const stacksize] parameter in your configuration file. The default value
+ (e.g., 64kB) is typically insufficient for demanding applications;
+ for example, OpenACS deployments use typically a stack size of 1MB.
+
+[example_begin]
+ #
+ # Thread library (nsthread) parameters
+ #
+ ns_section ns/threads {
+   ns_param   stacksize 1MB  ;# default: 64kB; Per-thread stack size.
+ }
+[example_end]
+
+
+
+[keywords module nssock nsssl "network driver" \
 	performance tuning configuration \
 	SO_REUSEPORT TCP TCP_FASTOPEN \
 	"connection thread pools" \
-	driver prebind pagedir reverseproxy \
-        certificate TLS HTTPS OCSP SNI initcmds letsencrypt redirect \
-        ADP templates]
+	driver pagedir logging logdir serverdir systemlog \
+        "scheduled procedures" \
+        proxy "reverse proxy" "forwarding proxy" "behind reverse proxy" \
+        certificate vhostcertificates invalid-certificates \
+        TLS HTTPS OCSP SNI initcmds letsencrypt redirect CApath CAfile \
+        ADP templates reverseproxymode stealthMode noticeDetail]
 [see_also tcl-libraries tcl-overview]
 [manpage_end]
 

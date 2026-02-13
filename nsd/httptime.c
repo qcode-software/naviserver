@@ -67,7 +67,7 @@ static Ns_Mutex lock = NULL;
  */
 
 char *
-Ns_HttpTime(Ns_DString *dsPtr, const time_t *when)
+Ns_HttpTime(Tcl_DString *dsPtr, const time_t *when)
 {
     time_t           now;
     const struct tm *tmPtr;
@@ -288,7 +288,7 @@ Ns_ParseHttpTime(const char *chars)
  */
 
 int
-NsTclParseHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclParseHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *timeString;
@@ -333,7 +333,7 @@ NsTclParseHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_
  */
 
 int
-NsTclHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, itime = 0;
     Ns_ObjvSpec args[] = {
@@ -345,10 +345,10 @@ NsTclHttpTimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
         result = TCL_ERROR;
 
     } else {
-        Ns_DString ds;
+        Tcl_DString ds;
         time_t     t = (time_t) itime;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         (void) Ns_HttpTime(&ds, &t);
         Tcl_DStringResult(interp, &ds);
     }

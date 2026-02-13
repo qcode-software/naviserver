@@ -27,8 +27,10 @@ typedef struct TaskQueue {
     Ns_Thread          tid;               /* Service thread ID */
     Ns_Mutex           lock;              /* Queue list and signal lock */
     Ns_Cond            cond;              /* Task and queue signal condition */
+    intptr_t           count;             /* Usage count */
     bool               shutdown;          /* Shutdown flag */
     bool               stopped;           /* Stop flag */
+    int                numTasks;          /* Number of tasks running on queue */
     NS_SOCKET          trigger[2];        /* Trigger pipes */
     char               name[1];           /* Name of the queue */
 } TaskQueue;
@@ -155,7 +157,7 @@ DStringAppendTaskFlags(Tcl_DString *dsPtr, unsigned int flags)
         { TASK_EXPIRED,  "EXPIRED"},
     };
 
-    for (i=0; i<sizeof(options)/sizeof(options[0]); i++) {
+    for (i = 0; i < sizeof(options) / sizeof(options[0]); i++) {
         if ((options[i].state & flags) != 0u) {
             if (count > 0) {
                 Tcl_DStringAppend(dsPtr, "|", 1);
@@ -384,7 +386,8 @@ Ns_TaskTimedCreate(NS_SOCKET sock, Ns_TaskProc *proc, void *arg, Ns_Time *expPtr
     taskPtr = (Task *)Ns_TaskCreate(sock, proc, arg);
 
     if (expPtr != NULL) {
-        Ns_Time atime, *expirePtr;
+        Ns_Time        atime;
+        const Ns_Time *expirePtr;
 
         expirePtr = Ns_AbsoluteTime(&atime, expPtr);
         taskPtr->flags |= TASK_EXPIRE;
@@ -466,6 +469,11 @@ Ns_TaskEnqueue(Ns_Task *task, Ns_TaskQueue *queue)
            (void*)taskPtr, (void*)queuePtr);
     if (unlikely(SignalQueue(queuePtr, taskPtr, TASK_INIT) != NS_TRUE)) {
         status = NS_ERROR;
+    } else {
+        Ns_MutexLock(&queuePtr->lock);
+        queuePtr->numTasks++;
+        queuePtr->count++;
+        Ns_MutexUnlock(&queuePtr->lock);
     }
     Ns_Log(Ns_LogTaskDebug, "Ns_TaskEnqueue: task:%p status:%d",
            (void*)taskPtr, status);
@@ -514,7 +522,7 @@ Ns_TaskRun(Ns_Task *task)
     flags |= (TASK_TIMEDOUT|TASK_EXPIRED);
 
     while (status == NS_OK && (taskPtr->flags & (flags|TASK_DONE)) == 0u) {
-        Ns_Time *timeoutPtr = NULL;
+        const Ns_Time *timeoutPtr = NULL;
 
         if ((taskPtr->flags & TASK_TIMEOUT) != 0u) {
             timeoutPtr = &taskPtr->timeout;
@@ -621,7 +629,8 @@ Ns_TaskWait(Ns_Task *task, Ns_Time *timeoutPtr)
 {
     Task          *taskPtr;
     TaskQueue     *queuePtr;
-    Ns_Time        atime, *toPtr = NULL;
+    Ns_Time        atime;
+    const Ns_Time *toPtr = NULL;
     unsigned int   flags = 0u;
     Ns_ReturnCode  result = NS_OK;
 
@@ -649,6 +658,7 @@ Ns_TaskWait(Ns_Task *task, Ns_Time *timeoutPtr)
     }
     taskPtr->signalFlags = 0;
     if (result == NS_OK) {
+        queuePtr->numTasks--;
         taskPtr->queuePtr = NULL;
     }
     Ns_MutexUnlock(&queuePtr->lock);
@@ -697,6 +707,40 @@ Ns_TaskCompleted(const Ns_Task *task)
     return completed;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TaskSetCompleted --
+ *
+ *      Mark a task to be completed. It actually decrements the number of
+ *      running tasks.
+ *
+ * Results:
+ *      None
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_TaskSetCompleted(const Ns_Task *task)
+{
+    Task      *taskPtr;
+    TaskQueue *queuePtr;
+
+    NS_NONNULL_ASSERT(task != NULL);
+
+    taskPtr = (Task *)task;
+    queuePtr = taskPtr->queuePtr;
+
+    if (queuePtr != NULL) {
+        Ns_MutexLock(&queuePtr->lock);
+        queuePtr->numTasks--;
+        Ns_MutexUnlock(&queuePtr->lock);
+    }
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -728,6 +772,9 @@ void Ns_TaskWaitCompleted(Ns_Task *task)
     Ns_MutexLock(&queuePtr->lock);
     while ((taskPtr->signalFlags & TASK_DONE) == 0u) {
         Ns_CondWait(&queuePtr->cond, &queuePtr->lock);
+        if ((taskPtr->signalFlags & TASK_DONE) != 0u) {
+            queuePtr->numTasks--;
+        }
     }
     Ns_MutexUnlock(&queuePtr->lock);
 
@@ -756,7 +803,7 @@ void
 Ns_TaskCallback(Ns_Task *task, Ns_SockState when, const Ns_Time *timeoutPtr)
 {
     Task         *taskPtr;
-    unsigned int  index, flags = 0u;
+    unsigned int  idx, flags = 0u;
 
     NS_NONNULL_ASSERT(task != NULL);
 
@@ -784,9 +831,9 @@ Ns_TaskCallback(Ns_Task *task, Ns_SockState when, const Ns_Time *timeoutPtr)
      * Map Ns_SockState bits to poll bits.
      */
     taskPtr->events = 0;
-    for (index = 0u; index < Ns_NrElements(map); index++) {
-        if (when == map[index].when) {
-            taskPtr->events |= map[index].event;
+    for (idx = 0u; idx < Ns_NrElements(map); idx++) {
+        if (when == map[idx].when) {
+            taskPtr->events |= map[idx].event;
         }
     }
 
@@ -798,7 +845,8 @@ Ns_TaskCallback(Ns_Task *task, Ns_SockState when, const Ns_Time *timeoutPtr)
     if (timeoutPtr == NULL) {
         taskPtr->flags &= ~(TASK_TIMEOUT);
     } else {
-        Ns_Time atime, *timePtr;
+        Ns_Time        atime;
+        const Ns_Time *timePtr;
 
         timePtr = Ns_AbsoluteTime(&atime, (Ns_Time *)timeoutPtr);
         taskPtr->timeout = *timePtr;
@@ -845,6 +893,91 @@ Ns_TaskDone(Ns_Task *task)
 
     Ns_Log(Ns_LogTaskDebug, "Ns_TaskDone: task:%p", (void *)taskPtr);
     taskPtr->flags |= TASK_DONE;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TaskQueueLength --
+ *
+ *      Return number of tasks in the queue.
+ *
+ * Results:
+ *      Number of tasks.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+Ns_TaskQueueLength(Ns_TaskQueue *queue)
+{
+    TaskQueue *queuePtr = (TaskQueue *)queue;
+    int numTasks;
+
+    NS_NONNULL_ASSERT(queuePtr != NULL);
+
+    Ns_MutexLock(&queuePtr->lock);
+    numTasks = queuePtr->numTasks;
+    Ns_MutexUnlock(&queuePtr->lock);
+
+    return numTasks;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TaskQueueName --
+ *
+ *      Returns the name of a task.
+ *
+ * Results:
+ *      String
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_TaskQueueName(Ns_TaskQueue *queue)
+{
+    NS_NONNULL_ASSERT(queue != NULL);
+
+    return ((TaskQueue *)queue)->name;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_TaskQueueRequests --
+ *
+ *      Returns the number of requests processed by this queue.
+ *
+ * Results:
+ *      String
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+intptr_t
+Ns_TaskQueueRequests(Ns_TaskQueue *queue)
+{
+    TaskQueue *queuePtr = (TaskQueue *)queue;
+    intptr_t result;
+
+    NS_NONNULL_ASSERT(queuePtr != NULL);
+
+    Ns_MutexLock(&queuePtr->lock);
+    result = queuePtr->count;
+    Ns_MutexUnlock(&queuePtr->lock);
+
+    return result;
 }
 
 
@@ -978,7 +1111,7 @@ RunTask(Task *taskPtr, short revents, const Ns_Time *nowPtr)
         Call(taskPtr, NS_SOCK_TIMEOUT);
 
     } else if (revents != 0) {
-        unsigned int index;
+        unsigned int idx;
 
         /*
          * NB: Treat POLLHUP as POLLIN on systems which return it.
@@ -986,11 +1119,11 @@ RunTask(Task *taskPtr, short revents, const Ns_Time *nowPtr)
         if ((revents & POLLHUP) != 0) {
             revents |= (short)POLLIN;
         }
-        for (index = 0u; index < Ns_NrElements(map); index++) {
-            if ((revents & map[index].event) != 0) {
+        for (idx = 0u; idx < Ns_NrElements(map); idx++) {
+            if ((revents & map[idx].event) != 0) {
                 Ns_Log(Ns_LogTaskDebug, "RunTask: task:%p event:%.2x",
-                       (void*)taskPtr, map[index].when);
-                Call(taskPtr, map[index].when);
+                       (void*)taskPtr, map[idx].when);
+                Call(taskPtr, map[idx].when);
             }
         }
     } else if ((taskPtr->flags & TASK_TIMEOUT) != 0u
@@ -1219,6 +1352,7 @@ ReserveTask(Task *taskPtr)
     return;
 }
 
+
 
 /*
  *----------------------------------------------------------------------
@@ -1243,7 +1377,7 @@ TaskThread(void *arg)
     struct pollfd *pFds;
     size_t         maxFds = 100u; /* Initial count of pollfd's */
 
-    Ns_ThreadSetName("task:%s", queuePtr->name);
+    Ns_ThreadSetName("-task:%s", queuePtr->name);
     Ns_Log(Notice, "starting");
 
     pFds = (struct pollfd *)ns_calloc(maxFds, sizeof(struct pollfd));
@@ -1273,9 +1407,9 @@ TaskThread(void *arg)
 
                 Tcl_DStringInit(&dsFlags);
                 Tcl_DStringInit(&dsSignalFlags);
-                Ns_Log(Ns_LogTaskDebug, "signal-list handling for task:%p"
+                Ns_Log(Ns_LogTaskDebug, "signal-list handling for task:%p queue:%p"
                        " signalflags:%s flags:%s",
-                       (void*)taskPtr,
+                       (void*)taskPtr, (void*)queuePtr,
                        DStringAppendTaskFlags(&dsFlags, taskPtr->signalFlags),
                        DStringAppendTaskFlags(&dsFlags, taskPtr->flags));
                 Tcl_DStringFree(&dsFlags);
@@ -1401,7 +1535,7 @@ TaskThread(void *arg)
                  */
                 if (maxFds <= (size_t)nFds) {
                     maxFds  = (size_t)nFds + 100u;
-                    pFds = (struct pollfd *)ns_realloc(pFds, maxFds);
+                    pFds = (struct pollfd *)ns_realloc(pFds, maxFds * sizeof(struct pollfd));
                 }
 
                 taskPtr->idx = nFds;

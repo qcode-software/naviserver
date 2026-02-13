@@ -17,7 +17,7 @@
 
 #include "nsd.h"
 
-#ifndef _MSC_VER
+#if !(defined _MSC_VER || defined __MINGW32__)
 # include <dlfcn.h>
 #endif
 
@@ -42,10 +42,10 @@ static const char *mallocLibraryVersionString = "unknown";
  *
  * Ns_InfoHomePath --
  *
- *      Return the home dir.
+ *      Returns the home directory.
  *
  * Results:
- *      Home dir.
+ *      String with the full path.
  *
  * Side effects:
  *      None.
@@ -57,6 +57,28 @@ const char *
 Ns_InfoHomePath(void)
 {
     return nsconf.home;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_InfoLogPath --
+ *
+ *      Returns the absolute path of the log directory.
+ *
+ * Results:
+ *      String with the full path.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+const char *
+Ns_InfoLogPath(void)
+{
+    return nsconf.logDir;
 }
 
 
@@ -525,25 +547,59 @@ Ns_InfoSSL(void)
 void
 NsInitInfo(void)
 {
-    Ns_DString addr;
+    Tcl_DString addr;
 
     if (gethostname((char *)nsconf.hostname, sizeof(nsconf.hostname)) != 0) {
         memcpy(nsconf.hostname, "localhost", 10u);
     }
-    Ns_DStringInit(&addr);
+    Tcl_DStringInit(&addr);
     if (Ns_GetAddrByHost(&addr, nsconf.hostname)) {
         assert(addr.length < (int)sizeof(nsconf.address));
         memcpy(nsconf.address, addr.string, (size_t)addr.length + 1u);
     } else {
         memcpy(nsconf.address, NS_IP_UNSPECIFIED, strlen(NS_IP_UNSPECIFIED));
     }
-    Ns_DStringFree(&addr);
+    Tcl_DStringFree(&addr);
 
 
-#ifndef _MSC_VER
+#if !(defined _MSC_VER || defined __MINGW32__)    
     {
+        char *preloadString = getenv("LD_PRELOAD");
 
-        preload_library_name = getenv("LD_PRELOAD");
+        if (preloadString != NULL) {
+            Tcl_DString ds;
+            char       *token;
+
+            /*
+             * The content of LD_PRELOAD might contain multiple
+             * libraries.  Look for the first one with a plausible
+             * name and just open this library later.
+             */
+            Tcl_DStringInit(&ds);
+            Tcl_DStringAppend(&ds, preloadString, TCL_INDEX_NONE);
+            token = ns_strtok(ds.string, ": ");
+
+            if (token == NULL) {
+                /*
+                 * Single token.
+                 */
+                if (ns_memmem(ds.string, (size_t)ds.length, "tcmalloc", 8)) {
+                    preload_library_name = ns_strdup(ds.string);
+                }
+            } else {
+                /*
+                 * Multiple tokens.
+                 */
+                while (token != NULL) {
+                    if (ns_memmem(token, strlen(token), "tcmalloc", 8)) {
+                        preload_library_name = ns_strdup(token);
+                        break;
+                    }
+                    token = ns_strtok(NULL, ": ");
+                }
+            }
+            Tcl_DStringFree(&ds);
+        }
 
         if (preload_library_name != NULL) {
             typedef const char *(*MallocExtension_GetVersion_t)(int *, int *, const char**);
@@ -558,7 +614,7 @@ NsInitInfo(void)
             if (preload_library_handle == NULL) {
                 Ns_Log(Warning, "could not open preload library '%s'", preload_library_name);
             } else {
-                void *symbol;
+                const void *symbol;
 
                 symbol = dlsym(preload_library_handle, "MallocExtension_GetStats");
                 memcpy(&MallocExtensionGetStats, &symbol, sizeof(ns_funcptr_t));
@@ -616,7 +672,7 @@ NsInitInfo(void)
  */
 
 int
-NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int             opt, result = TCL_OK;
     bool            done = NS_TRUE;
@@ -624,46 +680,68 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
     Tcl_DString     ds;
 
     static const char *const opts[] = {
-        "address", "argv0", "boottime", "builddate", "buildinfo", "callbacks",
-        "config", "home", "hostname", "ipv6", "locks", "log",
-        "major", "meminfo", "minor", "mimetypes", "name", "nsd", "pagedir",
-        "pageroot", "patchlevel", "pid", "platform", "pools",
+        "address", "argv", "argv0", "bindir", "boottime", "builddate", "buildinfo",
+        "callbacks", "config", "home", "hostname", "ipv6", "locks", "log", "logdir",
+        "major", "meminfo", "minor", "mimetypes", "name", "nsd",
+        "patchlevel", "pid", "pools",
         "scheduled", "server", "servers",
-        "sockcallbacks", "ssl", "tag", "tcllib", "threads", "uptime",
-        "version", "winnt", "filters", "traces", "requestprocs",
-        "url2file", "shutdownpending", "started", NULL
+        "sockcallbacks", "ssl", "tag", "threads", "uptime",
+        "version",
+        "shutdownpending", "started",
+#ifdef NS_WITH_DEPRECATED
+        "filters", "pagedir", "pageroot", "platform", "traces",
+        "requestprocs", "tcllib", "url2file", "winnt",
+#endif
+        NULL
     };
 
     enum {
-        IAddressIdx, IArgv0Idx, IBoottimeIdx, IBuilddateIdx, IBuildinfoIdx, ICallbacksIdx,
-        IConfigIdx, IHomeIdx, IHostNameIdx, IIpv6Idx, ILocksIdx, ILogIdx,
+        IAddressIdx, IArgvIdx, IArgv0Idx, IBindirIdx, IBoottimeIdx, IBuilddateIdx, IBuildinfoIdx,
+        ICallbacksIdx, IConfigIdx, IHomeIdx, IHostNameIdx, IIpv6Idx, ILocksIdx, ILogIdx, ILogdirIdx,
         IMajorIdx, IMeminfoIdx, IMinorIdx, IMimeIdx, INameIdx, INsdIdx,
-        IPageDirIdx, IPageRootIdx, IPatchLevelIdx,
-        IPidIdx, IPlatformIdx, IPoolsIdx,
+        IPatchLevelIdx,
+        IPidIdx, IPoolsIdx,
         IScheduledIdx, IServerIdx, IServersIdx,
-        ISockCallbacksIdx, ISSLIdx, ITagIdx, ITclLibIdx, IThreadsIdx, IUptimeIdx,
-        IVersionIdx, IWinntIdx, IFiltersIdx, ITracesIdx, IRequestProcsIdx,
-        IUrl2FileIdx, IShutdownPendingIdx, IStartedIdx
+        ISockCallbacksIdx, ISSLIdx, ITagIdx, IThreadsIdx, IUptimeIdx,
+        IVersionIdx,
+        IShutdownPendingIdx, IStartedIdx,
+#ifdef NS_WITH_DEPRECATED
+        IFiltersIdx, IPageDirIdx, IPageRootIdx, IPlatformIdx, ITracesIdx,
+        IRequestProcsIdx, ITclLibIdx, IUrl2FileIdx, IWinntIdx,
+#endif
+        INULL
     };
 
     if (unlikely(objc < 2)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option");
+        Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/");
         return TCL_ERROR;
-    } else if (unlikely(Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
+    } else if (unlikely(Tcl_GetIndexFromObj(interp, objv[1], opts, "subcommand", 0,
                                      &opt) != TCL_OK)) {
         return TCL_ERROR;
     }
     if ((opt != IMeminfoIdx && objc != 2)
-        || (opt == IMeminfoIdx && (objc < 2 || objc > 3))) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option");
-        return TCL_ERROR;
+        || (opt == IMeminfoIdx && objc > 3)) {
+        if (Ns_ParseObjv(NULL, NULL, interp, 2, objc, objv) != NS_OK) {
+            return TCL_ERROR;
+        } else {
+            Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/");
+            return TCL_ERROR;
+        }
     }
 
     Tcl_DStringInit(&ds);
 
     switch (opt) {
+    case IArgvIdx:
+        Tcl_SetObjResult(interp, nsconf.argvObj);
+        break;
+
     case IArgv0Idx:
         Tcl_SetObjResult(interp, Tcl_NewStringObj(nsconf.argv0, TCL_INDEX_NONE));
+        break;
+
+    case IBindirIdx:
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(nsconf.binDir, TCL_INDEX_NONE));
         break;
 
     case IStartedIdx:
@@ -726,9 +804,8 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
         }
         break;
 
-    case IPlatformIdx:
-        Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoPlatform(), TCL_INDEX_NONE));
+    case ILogdirIdx:
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoLogPath(), TCL_INDEX_NONE));
         break;
 
     case IHostNameIdx:
@@ -780,15 +857,6 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
         Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoHomePath(), TCL_INDEX_NONE));
         break;
 
-    case IWinntIdx:
-        Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
-#ifdef _WIN32
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
-#else
-        Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
-#endif
-        break;
-
     case IBuilddateIdx:
         Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoBuildDate(), TCL_INDEX_NONE));
         break;
@@ -811,7 +879,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
     case IBuildinfoIdx:
         {
             Tcl_Obj *dictObj = Tcl_NewDictObj();
-            int defined_NDEBUG, defined_SYSTEM_MALLOC;
+            int defined_NDEBUG, defined_SYSTEM_MALLOC, defined_NS_WITH_DEPRECATED;
 
             /*
              * Detect the compiler.
@@ -853,7 +921,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
                            Tcl_NewStringObj("assertions", 10),
                            Tcl_NewIntObj(defined_NDEBUG));
             /*
-             * Compiled with SYSTEM_MALLOC.
+             * Compiled with SYSTEM_MALLOC?
              */
             defined_SYSTEM_MALLOC =
 #if defined(SYSTEM_MALLOC)
@@ -865,17 +933,32 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
             Tcl_DictObjPut(NULL, dictObj,
                            Tcl_NewStringObj("system_malloc", 13),
                            Tcl_NewIntObj(defined_SYSTEM_MALLOC));
+
+            /*
+             * Compiled with NS_WITH_DEPRECATED?
+             */
+            defined_NS_WITH_DEPRECATED =
+#if defined(NS_WITH_DEPRECATED)
+                                         1
+#else
+                                         0
+#endif
+                ;
+            Tcl_DictObjPut(NULL, dictObj,
+                           Tcl_NewStringObj("with_deprecated", 15),
+                           Tcl_NewIntObj(defined_NS_WITH_DEPRECATED));
+
             /*
              * The nsd binary was built against this version of Tcl
              */
             Tcl_DictObjPut(NULL, dictObj,
                            Tcl_NewStringObj("tcl", 3),
-                           Tcl_NewStringObj(TCL_PATCH_LEVEL, -1));
+                           Tcl_NewStringObj(TCL_PATCH_LEVEL, TCL_INDEX_NONE));
 
             Tcl_SetObjResult(interp, dictObj);
             Tcl_DStringFree(&ds);
-            break;
         }
+        break;
 
     case IMeminfoIdx: {
         Tcl_Obj    *resultObj = Tcl_NewDictObj();
@@ -915,6 +998,25 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
         break;
     }
 
+#ifdef NS_WITH_DEPRECATED
+        /*
+         * All following cases are deprecated.
+         */
+    case IPlatformIdx:
+        Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
+        Tcl_SetObjResult(interp, Tcl_NewStringObj(Ns_InfoPlatform(), TCL_INDEX_NONE));
+        break;
+
+    case IWinntIdx:
+        Ns_LogDeprecated(objv, 2, "$::tcl_platform(platform)", NULL);
+# ifdef _WIN32
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(1));
+# else
+        Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
+# endif
+        break;
+#endif
+
     default:
         /* cases handled below */
         done = NS_FALSE;
@@ -931,19 +1033,18 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
             result = TCL_ERROR;
 
         } else {
-            const char *server;
-
-            server = itPtr->servPtr->server;
+            const NsServer *servPtr = itPtr->servPtr;
+            const char *server = servPtr->server;
 
             switch (opt) {
             case IServerIdx:
                 Tcl_SetObjResult(interp,  Tcl_NewStringObj(server, TCL_INDEX_NONE));
                 break;
 
+#ifdef NS_WITH_DEPRECATED
                 /*
                  * All following cases are deprecated.
                  */
-
             case IPageDirIdx: NS_FALL_THROUGH; /* fall through */
             case IPageRootIdx:
                 Ns_LogDeprecated(objv, 2, "ns_server ?-server s? pagedir", NULL);
@@ -958,13 +1059,13 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
 
             case IFiltersIdx:
                 Ns_LogDeprecated(objv, 2, "ns_server ?-server s? filters", NULL);
-                NsGetFilters(&ds, server);
+                NsGetFilters(&ds, servPtr);
                 Tcl_DStringResult(interp, &ds);
                 break;
 
             case ITracesIdx:
                 Ns_LogDeprecated(objv, 2, "ns_server ?-server s? traces", NULL);
-                NsGetTraces(&ds, server);
+                NsGetTraces(&ds, servPtr);
                 Tcl_DStringResult(interp, &ds);
                 break;
 
@@ -980,6 +1081,7 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
                 Tcl_DStringResult(interp, &ds);
                 break;
 
+#endif
             default:
                 Tcl_SetObjResult(interp, Tcl_NewStringObj("unrecognized option", TCL_INDEX_NONE));
                 result = TCL_ERROR;
@@ -1008,39 +1110,40 @@ NsTclInfoObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_
  */
 
 int
-NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclLibraryObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    int          result = TCL_OK;
-    char        *kindString = (char *)NS_EMPTY_STRING, *moduleString = NULL;
-    const char  *lib = NS_EMPTY_STRING;
+    int             result = TCL_OK, kind;
+    char           *moduleString = NULL;
+    const char     *lib = NS_EMPTY_STRING;
     const NsInterp *itPtr = clientData;
+    static Ns_ObjvTable kindTable[] = {
+        {"private",  1u},
+        {"shared",   2u},
+        {NULL,       0u}
+    };
     Ns_ObjvSpec  args[] = {
-        {"kind",    Ns_ObjvString,  &kindString, NULL},
-        {"?module", Ns_ObjvString,  &moduleString, NULL},
+        {"kind",    Ns_ObjvIndex,  &kind,         &kindTable},
+        {"?module", Ns_ObjvString, &moduleString, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
 
-    } else if (STREQ(kindString, "private")) {
+    } else if (kind == 1u) {
         lib = itPtr->servPtr->tcl.library;
-    } else if (STREQ(kindString, "shared")) {
+    } else /* if (kind == 2u)*/ {
         lib = nsconf.tcl.sharedlibrary;
-    } else {
-        Ns_TclPrintfResult(interp, "unknown library \"%s\":"
-                           " should be private or shared", kindString);
-        result = TCL_ERROR;
     }
 
     if (result == TCL_OK) {
-        Ns_DString ds;
+        Tcl_DString ds;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         if (moduleString != NULL) {
-            (void)Ns_MakePath(&ds, lib, moduleString, (char *)0L);
+            (void)Ns_MakePath(&ds, lib, moduleString, NS_SENTINEL);
         } else {
-            (void)Ns_MakePath(&ds, lib, (char *)0L);
+            (void)Ns_MakePath(&ds, lib, NS_SENTINEL);
         }
         Tcl_DStringResult(interp, &ds);
     }

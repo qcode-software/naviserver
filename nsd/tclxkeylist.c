@@ -24,6 +24,7 @@
 
 #include "nsd.h"
 
+#ifdef NS_WITH_DEPRECATED
 static int  TclX_WrongArgs(Tcl_Interp *interp, Tcl_Obj *commandNameObj, const char *msg);
 static bool TclX_IsNullObj(Tcl_Obj *objPtr) NS_GNUC_NONNULL(1);
 
@@ -48,7 +49,7 @@ static bool TclX_IsNullObj(Tcl_Obj *objPtr) NS_GNUC_NONNULL(1);
  * listType is used in TclX_IsNullObj() in read-only mode
  * therefore no need to mutex protect them (see below).
  */
-static const Tcl_ObjType *listType;
+static CONST86 Tcl_ObjType *listType;
 
 /*
  * This is called once from InitInterp() call in tclinit.c
@@ -57,6 +58,10 @@ static const Tcl_ObjType *listType;
 void NsTclInitKeylistType(void)
 {
     listType = Tcl_GetObjType("list");
+
+    if (listType == NULL) {
+        Ns_Log(Warning, "tclxkeylist: cannot determine Tcl list type");
+    }
 }
 
 /*-----------------------------------------------------------------------------
@@ -481,7 +486,7 @@ static Tcl_SetFromAnyProc      SetKeyedListFromAny;
 /*
  * Type definition.
  */
-static const Tcl_ObjType keyedListType = {
+static CONST86 Tcl_ObjType keyedListType = {
     "keyedList",              /* name */
     FreeKeyedListInternalRep, /* freeIntRepProc */
     DupKeyedListInternalRep,  /* dupIntRepProc */
@@ -1283,18 +1288,20 @@ TclX_KeyedListGetKeys(Tcl_Interp *interp, Tcl_Obj *keylPtr, const char *key, Tcl
 /*-----------------------------------------------------------------------------
  * Tcl_KeylgetObjCmd --
  *     Implements the Tcl keylget command:
- *         keylget listvar ?key? ?retvar | {}?
+ *         keylget listvar ?/key/? ?/retvar/ | {}?
  *-----------------------------------------------------------------------------
  */
 int
-TclX_KeylgetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+TclX_KeylgetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj    *keylPtr, *valuePtr;
     int         status;
     TCL_SIZE_T  keyLen;
 
+    Ns_LogDeprecated(objv, 1, "dict ...", NULL);
+
     if ((objc < 2) || (objc > 4)) {
-        status = TclX_WrongArgs(interp, objv[0], "listvar ?key? ?retvar | {}?");
+        status = TclX_WrongArgs(interp, objv[0], "listvar ?/key/? ?/retvar/ | {}?");
 
     } else if (objc == 2) {
         /*
@@ -1363,21 +1370,23 @@ TclX_KeylgetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, T
 /*-----------------------------------------------------------------------------
  * Tcl_KeylsetObjCmd --
  *     Implements the Tcl keylset command:
- *         keylset listvar key value ?key value...?
+ *         keylset listvar /key/ /value/ ?/key/ /value/ ...?
  *-----------------------------------------------------------------------------
  */
 int
-TclX_KeylsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+TclX_KeylsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
 
+    Ns_LogDeprecated(objv, 1, "dict ...", NULL);
+
     if ((objc < 4) || ((objc % 2) != 0)) {
         result = TclX_WrongArgs(interp, objv[0],
-                                "listvar key value ?key value...?");
+                                "listvar /key/ /value/ ?/key//value/ ...?");
     } else {
         Tcl_Obj    *keylVarPtr, *newVarObj;
         TCL_SIZE_T  keyLen;
-        TCL_OBJC_T  i;
+        TCL_SIZE_T  i;
 
         /*
          * Get the variable that we are going to update.  If the var
@@ -1424,16 +1433,18 @@ TclX_KeylsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
 /*-----------------------------------------------------------------------------
  * Tcl_KeyldelObjCmd --
  *     Implements the Tcl keyldel command:
- *         keyldel listvar key ?key ...?
+ *         keyldel listvar /key/ ?/key/ ...?
  *----------------------------------------------------------------------------
  */
 int
-TclX_KeyldelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+TclX_KeyldelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
+    Ns_LogDeprecated(objv, 1, "dict ...", NULL);
+
     if (objc < 3) {
-        result = TclX_WrongArgs(interp, objv[0], "listvar key ?key ...?");
+        result = TclX_WrongArgs(interp, objv[0], "listvar /key/ ?/key/ ...?");
 
     } else {
         Tcl_Obj *keylVarPtr;
@@ -1461,7 +1472,7 @@ TclX_KeyldelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
                 }
             }
             if (result == TCL_OK) {
-                TCL_OBJC_T i;
+                TCL_SIZE_T i;
 
                 keylPtr = keylVarPtr;
 
@@ -1489,16 +1500,18 @@ TclX_KeyldelObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
 /*-----------------------------------------------------------------------------
  * Tcl_KeylkeysObjCmd --
  *     Implements the Tcl keylkeys command:
- *         keylkeys listvar ?key?
+ *         keylkeys listvar ?/key/?
  *-----------------------------------------------------------------------------
  */
 int
-TclX_KeylkeysObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+TclX_KeylkeysObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result;
 
+    Ns_LogDeprecated(objv, 1, "dict ...", NULL);
+
     if ((objc < 2) || (objc > 3)) {
-        result = TclX_WrongArgs(interp, objv[0], "listvar ?key?");
+        result = TclX_WrongArgs(interp, objv[0], "listvar ?/key/?");
     } else {
         const char *varName = Tcl_GetString(objv[1]);
         Tcl_Obj    *keylPtr = Tcl_GetVar2Ex(interp, varName, NULL, TCL_LEAVE_ERR_MSG);
@@ -1539,6 +1552,7 @@ TclX_KeylkeysObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
     }
     return result;
 }
+#endif
 
 /*
  * Local Variables:

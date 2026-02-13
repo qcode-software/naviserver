@@ -4,6 +4,7 @@ package require tcltest 2.2
 namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
+if {$::tcl_version < 8.6} {package require try}
 
 # rfc2396 unreserved URI characters, except for + which receives
 # special treatment by the HTTP URL scheme.
@@ -11,7 +12,7 @@ set unreservedChars "-.!~*'()0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO
 
 test ns_urlencode-1.1.1 {basic syntax} -body {
     ns_urlencode
-} -returnCodes error -result {wrong # args: should be "ns_urlencode ?-charset charset? ?-part part? ?-uppercase? ?--? args"}
+} -returnCodes error -result {wrong # args: should be "ns_urlencode ?-charset /value/? ?-part query|path|cookie|oauth1? ?-uppercase? ?--? /component .../"}
 
 test ns_urlencode-1.1.2 {basic syntax} -body {
     ns_urlencode -part x y
@@ -19,7 +20,7 @@ test ns_urlencode-1.1.2 {basic syntax} -body {
 
 test ns_urlencode-1.2.1 {basic syntax} -body {
     ns_urldecode
-} -returnCodes error -result {wrong # args: should be "ns_urldecode ?-charset charset? ?-fallbackcharset fallbackcharset? ?-part part? ?--? string"}
+} -returnCodes error -result {wrong # args: should be "ns_urldecode ?-charset /value/? ?-fallbackcharset /value/? ?-part query|path|cookie|oauth1? ?--? /string/"}
 
 test ns_urlencode-1.2.2 {basic syntax} -body {
     ns_urldecode -part x y
@@ -195,6 +196,7 @@ test ns_urlencode-2.5.18.3 {invalid 2byte utf-8 - text with cp850 chars} -body {
 } -result 0
 
 test ns_urlencode-2.5.19.1 {invalid 2byte utf-8 - premature end} -body {
+    #ns_logctl severity Debug on
     catch {ns_urldecode -part path "/mot%C3"}
 } -result 1
 test ns_urlencode-2.5.19.2 {invalid 2byte utf-8 - premature end} -body {
@@ -286,6 +288,7 @@ test ns_urlencode-2.10.2 {charset encode} -body {
 if {[ns_config test listenport] ne ""} {
     testConstraint serverListen true
 }
+ns_log warning DONE
 
 test ns_urlencode-3.0 {test request with unencoded path segments} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
@@ -332,7 +335,10 @@ test ns_urlencode-3.3 {
 } -result {200 {URL /foo URLV foo}}
 
 
-test ns_urlencode-4.0 {test request with encoded path segments} -constraints {serverListen} -setup {
+#
+# "ns_conn url" and "ns_conn urlv" with encoded paths
+#
+test ns_urlencode-4.0 {test request with encoded path segments containing space} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
         ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
@@ -342,18 +348,41 @@ test ns_urlencode-4.0 {test request with encoded path segments} -constraints {se
     ns_unregister_op GET /foo/*
 } -result {200 {URL {/foo/bar baz.tcl} URLV {foo {bar baz.tcl}}}}
 
-test ns_urlencode-4.1 {test request with encoded path segments} -constraints {serverListen} -setup {
+test ns_urlencode-4.1 {test request with encoded path segments containing slash} -constraints {serverListen} -setup {
     ns_register_proc GET /foo/* {
         ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
     }
 } -body {
-    nstest::http -http 1.1 -getbody 1 GET /foo/bar%2fbaz.tcl
+    nstest::http -getbody 1 GET /foo/bar%2fbaz.tcl
 } -cleanup {
     ns_unregister_op GET /foo/*
 } -result {200 {URL /foo/bar/baz.tcl URLV {foo bar/baz.tcl}}}
 
+test ns_urlencode-4.2 {test request with encoded path segments containing backslash} -constraints {serverListen} -setup {
+    ns_register_proc GET /foo/* {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -getbody 1 GET /foo/bar%5cbaz.tcl
+} -cleanup {
+    ns_unregister_op GET /foo/*
+} -result {200 {URL {/foo/bar\baz.tcl} URLV {foo {bar\baz.tcl}}}}
+
+test ns_urlencode-4.3 {test request with encoded path segments containing leading backslash} -constraints {serverListen} -setup {
+    ns_register_proc GET /*.ttcl {
+        ns_return 200 text/plain [list URL [ns_conn url] URLV [ns_conn urlv]]
+    }
+} -body {
+    nstest::http -getbody 1 GET %5c/baz.ttcl
+} -cleanup {
+    ns_unregister_op GET /*.ttcl
+} -result {200 {URL {/\/baz.ttcl} URLV {\\ baz.ttcl}}}
 
 
+
+#
+# encoding/decoding path segments
+#
 test ns_urlencode-5.0 {encode and unencode character sequence with percent codes - path segment} -constraints {serverListen} -setup {
     ns_register_proc GET /encode-decode {
         set s "/%20,'\".=+"
@@ -445,9 +474,11 @@ test ns_urlencode-6.0 {security check: see, if we can sneek in a binary 0 to tri
 test ns_urlencode-7.0 {
     Funny chars: URL ends with question mark
 } -constraints {serverListen} -setup {
+    dict set oldSeverity error [ns_logctl severity error 0]
     ns_register_proc GET /a? {
         ns_return 200 text/plain [list [ns_conn url] [ns_info server]]
     }
+    foreach {severity level} $oldSeverity { ns_logctl severity $severity $level }
 } -body {
     nstest::http -http 1.1 GET /[ns_urlencode -part path a?]
 } -cleanup {
@@ -468,7 +499,7 @@ test ns_urlencode-7.0.2 {
     test on vhost with custom error page
 } -constraints {serverListen} -body {
     set r [nstest::http -http 1.1 -getbody 1 \
-               -setheaders [list Host testvhost:[ns_config test listenport]] \
+               -setheaders [list host testvhost:[ns_config test listenport]] \
                GET /[ns_urlencode -part path a?]]
     #ns_log notice r=$r
     string match "404*CUSTOM 404 page*" $r
@@ -477,9 +508,11 @@ test ns_urlencode-7.0.2 {
 test ns_urlencode-7.1 {
     Funny chars: URL is just a question mark
 } -constraints {serverListen} -setup {
+    dict set oldSeverity error [ns_logctl severity error 0]
     ns_register_proc GET /? {
         ns_return 200 text/plain [list ok [ns_conn url] [ns_info server]]
     }
+    foreach {severity level} $oldSeverity { ns_logctl severity $severity $level }
 } -body {
     nstest::http -http 1.1 GET /%3F
 } -cleanup {
@@ -500,7 +533,7 @@ test ns_urlencode-7.1.2 {
     test on vhost with custom error page
 } -constraints {serverListen} -body {
     set r [nstest::http -http 1.1 -getbody 1 \
-               -setheaders [list Host testvhost:[ns_config test listenport]] \
+               -setheaders [list host testvhost:[ns_config test listenport]] \
                GET /%3F]
     #ns_log notice r=$r
     string match "404*CUSTOM 404 page*" $r
@@ -513,7 +546,7 @@ test ns_urlencode-7.1.2 {
 #
 test ns_parsequery-1.0 {basic syntax} -body {
     ns_parsequery
-} -returnCodes error -result {wrong # args: should be "ns_parsequery ?-charset charset? ?-fallbackcharset fallbackcharset? ?--? querystring"}
+} -returnCodes error -result {wrong # args: should be "ns_parsequery ?-charset /value/? ?-fallbackcharset /value/? ?--? /querystring/"}
 
 test ns_parsequery-1.1 {simple operation} -body {
     ns_set array [ns_parsequery a=1&b=2]
@@ -561,6 +594,15 @@ test parsequery-1.5 {parsequery using bad urlencoding} -setup {
 
 unset unreservedChars
 
+
+
+test ns_percentencode-1.0.0 {basic syntax} -body {
+    ns_percentencode
+} -returnCodes error -result {wrong # args: should be "ns_percentencode ?-charset /value/? ?-scheme query|path|cookie|oauth1? ?-uppercase? ?--? /string/"}
+
+test ns_percentdecode-1.0.0 {basic syntax} -body {
+    ns_percentdecode
+} -returnCodes error -result {wrong # args: should be "ns_percentdecode ?-charset /value/? ?-fallbackcharset /value/? ?-scheme query|path|cookie|oauth1? ?--? /string/"}
 
 
 cleanupTests

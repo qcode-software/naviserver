@@ -19,15 +19,15 @@
  */
 
 int
-main(TCL_OBJC_T argc, char **argv)
+main(TCL_SIZE_T argc, char **argv)
 {
-    TCL_OBJC_T i;
+    TCL_SIZE_T i;
     char buf[8192];
 
     if (strstr(argv[0], "nph-") != NULL) {
         printf("HTTP/1.0 200 OK\r\nServer: %s\r\n", argv[0]);
     }
-    printf("Content-type: text/plain\r\n\r\n");
+    printf("content-type: text/plain\r\n\r\n");
     puts("\nArgs:");
     for (i = 0; i < argc; ++i) {
         puts(argv[i]);

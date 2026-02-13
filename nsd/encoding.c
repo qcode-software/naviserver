@@ -166,7 +166,7 @@ static const struct {
      * The following entries are strictly speaking not needed, since the
      * IANA name is identical with the Tcl charset name. We add these to
      * be able to return full set of supported IANA charsets via
-     * [ns_charset].
+     * [ns_charsets].
      *
      * See: https://www.iana.org/assignments/character-sets/character-sets.xml
      */
@@ -251,16 +251,16 @@ ConfigServerEncodings(const char *server)
         result = NS_ERROR;
 
     } else {
-        const char *path;
+        const char *section;
 
         /*
          * Configure the encoding used in the request URL.
          */
 
-        path = Ns_ConfigSectionPath(NULL, server, NULL, (char *)0L);
+        section = Ns_ConfigSectionPath(NULL, server, NULL, NS_SENTINEL);
 
         servPtr->encoding.urlCharset =
-            ns_strcopy(Ns_ConfigString(path, "urlCharset", "utf-8"));
+            ns_strcopy(Ns_ConfigString(section, "urlcharset", "utf-8"));
 
         servPtr->encoding.urlEncoding =
             Ns_GetCharsetEncoding(servPtr->encoding.urlCharset);
@@ -270,7 +270,7 @@ ConfigServerEncodings(const char *server)
                    servPtr->encoding.urlCharset);
         }
         servPtr->encoding.formFallbackCharset =
-            ns_strcopy(Ns_ConfigString(path, "FormFallbackCharset", NULL));
+            ns_strcopy(Ns_ConfigString(section, "formfallbackcharset", NULL));
         if (servPtr->encoding.formFallbackCharset != NULL
             && *servPtr->encoding.formFallbackCharset == '\0') {
             servPtr->encoding.formFallbackCharset  = NULL;
@@ -281,7 +281,7 @@ ConfigServerEncodings(const char *server)
          */
 
         servPtr->encoding.outputCharset =
-            ns_strcopy(Ns_ConfigString(path, "outputCharset", "utf-8"));
+            ns_strcopy(Ns_ConfigString(section, "outputcharset", "utf-8"));
 
         servPtr->encoding.outputEncoding =
             Ns_GetCharsetEncoding(servPtr->encoding.outputCharset);
@@ -345,7 +345,7 @@ Ns_GetFileEncoding(const char *file)
  *
  * Ns_GetTypeEncoding --
  *
- *      Return the Tcl_Encoding for the given Content-type header,
+ *      Return the Tcl_Encoding for the given content-type header,
  *      e.g., "text/html; charset=iso-8859-1" returns Tcl_Encoding
  *      for iso8859-1.
  *
@@ -408,7 +408,7 @@ Ns_GetCharsetEncodingEx(const char *charset, TCL_SIZE_T len)
 {
     const Tcl_HashEntry *hPtr;
     Tcl_Encoding         encoding;
-    Ns_DString           ds;
+    Tcl_DString          ds;
 
     NS_NONNULL_ASSERT(charset != NULL);
 
@@ -419,25 +419,27 @@ Ns_GetCharsetEncodingEx(const char *charset, TCL_SIZE_T len)
      * match (e.g., big5).
      */
 
-    Ns_DStringInit(&ds);
-    Ns_DStringNAppend(&ds, charset, len);
+    Tcl_DStringInit(&ds);
+    Tcl_DStringAppend(&ds, charset, len);
     charset = Ns_StrTrim(Ns_StrToLower(ds.string));
     hPtr = Tcl_FindHashEntry(&charsets, charset);
     if (hPtr != NULL) {
         charset = Tcl_GetHashValue(hPtr);
     }
     encoding = LoadEncoding(charset);
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return encoding;
 }
 
+#ifdef NS_WITH_DEPRECATED
 Tcl_Encoding
 Ns_GetEncoding(const char *name)
 {
     /* Deprecated, use Ns_GetCharsetEncodingEx(). */
     return LoadEncoding(name);
 }
+#endif
 
 
 /*
@@ -536,22 +538,29 @@ NsFindCharset(const char *mimetype, size_t *lenPtr)
 
 int
 NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                    TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
+                    TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    const Tcl_HashEntry *hPtr;
-    Tcl_HashSearch       search;
-    Tcl_Obj             *listObj = Tcl_NewListObj(0, NULL);
+    int result = TCL_OK;
 
-    for (hPtr = Tcl_FirstHashEntry(&charsets, &search);
-         hPtr != NULL;
-         hPtr = Tcl_NextHashEntry(&search)
-         ) {
-        const char *key = Tcl_GetHashKey(&charsets, hPtr);
-        Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
+    if (Ns_ParseObjv(NULL, NULL, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        const Tcl_HashEntry *hPtr;
+        Tcl_HashSearch       search;
+        Tcl_Obj             *listObj = Tcl_NewListObj(0, NULL);
+
+        for (hPtr = Tcl_FirstHashEntry(&charsets, &search);
+             hPtr != NULL;
+             hPtr = Tcl_NextHashEntry(&search)
+             ) {
+            const char *key = Tcl_GetHashKey(&charsets, hPtr);
+            Tcl_ListObjAppendElement(interp, listObj, Tcl_NewStringObj(key, TCL_INDEX_NONE));
+        }
+        Tcl_SetObjResult(interp, listObj);
     }
-    Tcl_SetObjResult(interp, listObj);
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -574,12 +583,12 @@ NsTclCharsetsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  */
 
 int
-NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclEncodingForCharsetObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "charset");
+        Tcl_WrongNumArgs(interp, 1, objv, "/charset/");
         result =  TCL_ERROR;
     } else {
         TCL_SIZE_T   encodingNameLen;
@@ -702,14 +711,14 @@ static void
 AddCharset(const char *charset, const char *name)
 {
     Tcl_HashEntry  *hPtr;
-    Ns_DString      ds;
+    Tcl_DString     ds;
     int             isNew;
 
     NS_NONNULL_ASSERT(charset != NULL);
     NS_NONNULL_ASSERT(name != NULL);
 
-    Ns_DStringInit(&ds);
-    charset = Ns_StrToLower(Ns_DStringAppend(&ds, charset));
+    Tcl_DStringInit(&ds);
+    charset = Ns_StrToLower(Tcl_DStringAppend(&ds, charset, TCL_INDEX_NONE));
 
     /*
      * Map in the forward direction: charsets to encodings.
@@ -728,7 +737,7 @@ AddCharset(const char *charset, const char *name)
         Tcl_SetHashValue(hPtr, ns_strdup(charset));
     }
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 }
 
 /*

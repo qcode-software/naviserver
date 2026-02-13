@@ -1,0 +1,774 @@
+'\"
+'\" Generated from file 'ns_set\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "ns_set" n 5\&.0\&.4 naviserver "NaviServer Built-in Commands"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+ns_set \- Data Structure for Multimap with Potentially Case-insentitive Key-value Pairs
+.SH SYNOPSIS
+\fBns_set array\fR \fIsetId\fR
+.sp
+\fBns_set cleanup\fR
+.sp
+\fBns_set copy\fR \fIsetId\fR
+.sp
+\fBns_set cput\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR \fIvalue\fR
+.sp
+\fBns_set create\fR ?\fB-nocase\fR? ?--? ?\fIname\fR? ?\fIkey\fR? ?\fIvalue\fR? \&.\&.\&.
+.sp
+\fBns_set delete\fR \fIsetId\fR \fIfieldNumber\fR
+.sp
+\fBns_set delkey\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR
+.sp
+\fBns_set find\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR
+.sp
+\fBns_set format\fR ?\fB-noname\fR? ?\fB-lead \fIvalue\fR\fR? ?\fB-separator \fIvalue\fR\fR? ?--? \fIsetId\fR
+.sp
+\fBns_set free\fR \fIsetId\fR
+.sp
+\fBns_set get\fR ?\fB-all\fR? ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR ?\fIdefault\fR?
+.sp
+\fBns_set isnull\fR \fIsetId\fR \fIfieldNumber\fR
+.sp
+\fBns_set key\fR \fIsetId\fR \fIfieldNumber\fR
+.sp
+\fBns_set keys\fR \fIsetId\fR ?\fIpattern\fR?
+.sp
+\fBns_set list\fR
+.sp
+\fBns_set merge\fR ?\fB-nocase\fR? ?--? \fIsetId1\fR \fIsetId2\fR
+.sp
+\fBns_set move\fR \fIsetId1\fR \fIsetId2\fR
+.sp
+\fBns_set name\fR \fIsetId\fR
+.sp
+\fBns_set put\fR \fIsetId\fR \fIkey\fR \fIvalue\fR
+.sp
+\fBns_set size\fR \fIsetId\fR ?\fInrElements\fR? ?\fIbufferSize\fR?
+.sp
+\fBns_set split\fR \fIsetId\fR ?\fIsplitChar\fR?
+.sp
+\fBns_set truncate\fR \fIsetId\fR \fIfieldNumber\fR
+.sp
+\fBns_set unique\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR
+.sp
+\fBns_set update\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR \fIvalue\fR
+.sp
+\fBns_set value\fR \fIsetId\fR \fIfieldNumber\fR
+.sp
+\fBns_set values\fR \fIsetId\fR ?\fIpattern\fR?
+.sp
+.BE
+.SH DESCRIPTION
+This command provides functions for manipulating sets of key-value
+pairs, or "fields"\&.  Fields in the set are ordered numerically,
+starting at zero and increasing by one up to the total number of
+fields\&.  An \fBns_set\fR is actually a multimap (also called
+multiset, or bag), meaning the same key can appear
+multiple times within the same set\&.
+Optionally, sets can be defined to be case-insensitive, meaning that
+mixed and uppercase keys are treated exactly like
+lowercase keys (for details, see \fBCase Sensitivity\fR)\&.
+.PP
+The \fBns_set\fR data structure is especially useful for
+handling data like HTTP headers, which are per definition case
+insensitive and may have repeated keys\&.
+.SH COMMANDS
+.TP
+\fBns_set array\fR \fIsetId\fR
+Returns the contents of the \fIsetId\fR in a string format similar to
+Tcl's array-get syntax\&.  This is helpful for iterating over
+key-value pairs with \fBforeach\fR\&.  The result can also be used for
+creating a Tcl \fBdict\fR or a Tcl \fBarray\fR\&. Note that since
+\fBns_set\fR can contain duplicate keys, these conversion may
+lose duplicates, as keys in dicts and arrays are unique\&.
+.CS
+
+
+ # Output HTTP request headers as string
+ set headers [ns_conn headers]
+ set output ""
+  foreach {key value} [ns_set array $headers] {
+    append output "$key = $value \\n"
+  }
+  set output
+
+.CE
+.TP
+\fBns_set cleanup\fR
+Deletes all sets in the current interpreter\&.
+See also the section \fBStorage Management\fR below\&.
+.TP
+\fBns_set copy\fR \fIsetId\fR
+Returns a new set with the same name and contents as the specified
+\fIsetId\fR\&. See also the section \fBStorage Management\fR below\&.
+.TP
+\fBns_set cput\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR \fIvalue\fR
+Conditionally appends a new field to the set with the specified
+\fIkey\fR and \fIvalue\fR, only if the key does not already exist in the set\&.
+Returns the field number of the newly added field, or the field
+number of the existing field if it already exists\&.
+.TP
+\fBns_set create\fR ?\fB-nocase\fR? ?--? ?\fIname\fR? ?\fIkey\fR? ?\fIvalue\fR? \&.\&.\&.
+Creates a new set and returns its \fIsetId\fR\&.
+.sp
+If a \fIname\fR is provided, it sets the name of the set\&. You
+can also initialize the set with \fIkey\fR/\fIvalue\fR pairs by
+providing them as additional arguments\&.
+.sp
+If the \fB-nocase\fR option is used, the set becomes
+case-insensitive for all commands that accept a \fIkey\fR parameter\&.
+Keys are stored in case-insensitive sets in lowercase and returned
+in lowercase\&.
+.CS
+
+
+ # Create a case-insensitive set with initial values
+ set mySet [ns_set create -nocase mySetName a 1 B 2 c 3]
+
+.CE
+.TP
+\fBns_set delete\fR \fIsetId\fR \fIfieldNumber\fR
+Deletes the field in the set at the specified field number\&.
+.TP
+\fBns_set delkey\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR
+Removes the first occurrence of a field in the set with the
+specified \fIkey\fR\&. Note that multiple fields with the same key may
+exist; this command only removes the first occurrence\&.
+.TP
+\fBns_set find\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR
+Returns the index of the first field in the specified \fIsetId\fR
+with a matching \fIkey\fR\&. If no matching field is found, returns -1\&.
+.TP
+\fBns_set format\fR ?\fB-noname\fR? ?\fB-lead \fIvalue\fR\fR? ?\fB-separator \fIvalue\fR\fR? ?--? \fIsetId\fR
+Formats the specified set in a human-friendly way and returns the
+string as result\&. Option \fB-noname\fR will omit the name from
+the output\&. When \fIlead\fR is specified, every key in the output
+will be preceded by this lead string (default is "")\&. When
+\fIseparator\fR is specified, every key in the output will be followed by
+this separator string (default is ": ")\&.
+.CS
+
+
+ # Example of ns_set format
+ % set mySet [ns_set create mySetName a 1 b 2 c 3]
+ % ns_set format $mySet
+ mySetName:
+   a: 1
+   b: 2
+   c: 3
+
+ # Using options
+ % ns_set format -noname -lead "-> " -separator " = " $mySet
+ -> a = 1
+ -> b = 2
+ -> c = 3
+
+.CE
+.TP
+\fBns_set free\fR \fIsetId\fR
+Frees (deletes) the specified set\&. Although sets are automatically
+freed at the end of the request (see section
+\fBStorage Management\fR), freeing sets manually can
+save temporary memory within loops with many iterations\&.
+.TP
+\fBns_set get\fR ?\fB-all\fR? ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR ?\fIdefault\fR?
+Returns the first value associated with the specified \fIkey\fR\&. If the
+key is not found, the default value or an empty string is returned\&.
+With the \fB-all\fR option, all values for the key are returned
+as a list\&.
+.CS
+
+
+ % set mySet [ns_set create mySetName a 1 b 2 c 3 a 4]
+ # Get the first value for key 'a'
+ % ns_set get $mySet a
+ 1
+
+ # Get all values for key 'a' (if there are duplicates)
+ % ns_set get -all $mySet a
+ 1 4
+
+ # Case-insensitive get
+ % ns_set get -nocase $mySet A
+ 1
+
+.CE
+.TP
+\fBns_set isnull\fR \fIsetId\fR \fIfieldNumber\fR
+Returns 1 if the field specified by \fIfieldNumber\fR is null, and 0
+if it is not\&.  Note that an empty string is distinct from null; this
+command returns 0 for an empty string\&.
+.TP
+\fBns_set key\fR \fIsetId\fR \fIfieldNumber\fR
+Returns the key for the field at the specified \fIfieldNumber\fR\&.
+.TP
+\fBns_set keys\fR \fIsetId\fR ?\fIpattern\fR?
+Returns a list of all keys in the specified \fIsetId\fR\&. If a
+\fIpattern\fR is provided, only keys matching the pattern are returned,
+following Tcl's string match rules\&.
+.TP
+\fBns_set list\fR
+Returns a list of all \fBns_set\fR instances in the current interpreter\&.
+.TP
+\fBns_set merge\fR ?\fB-nocase\fR? ?--? \fIsetId1\fR \fIsetId2\fR
+Merges \fIsetId2\fR into \fIsetId1\fR\&. Fields from \fIsetId2\fR are
+appended to \fIsetId1\fR only if their keys do not already exist in
+\fIsetId1\fR\&.
+.CS
+
+
+ # Example of ns_set merge
+ # Create two sets
+ % set set1 [ns_set create key1 value1 key2 value2]
+ % set set2 [ns_set create key2 value2_new key3 value3]
+
+ # Merge set2 into set1
+ % ns_set merge $set1 $set2
+
+ # Now set1 contains key1, key2 (original value), and key3
+ % ns_set keys $set1
+ key1 key2 key3
+
+.CE
+.TP
+\fBns_set move\fR \fIsetId1\fR \fIsetId2\fR
+Moves all fields from \fIsetId2\fR to the end of \fIsetId1\fR,
+leaving \fIsetId2\fR as an empty but valid set\&.
+.CS
+
+
+ # Example of ns_set move
+ # Create two sets
+ % set set1 [ns_set create key1 value1]
+ % set set2 [ns_set create key2 value2 key3 value3]
+
+ # Move fields from set2 to set1
+ % ns_set move $set1 $set2
+
+ # Now set1 contains key1, key2, key3
+ % ns_set keys $set1
+ key1 key2 key3
+
+ # set2 is empty
+ % ns_set size $set2
+ 0
+
+.CE
+.TP
+\fBns_set name\fR \fIsetId\fR
+Returns the name of the set or an empty string if no name has been
+set\&.
+.TP
+\fBns_set put\fR \fIsetId\fR \fIkey\fR \fIvalue\fR
+Appends a new field with the specified \fIkey\fR and \fIvalue\fR to
+the set and returns the field number of the new field\&. Use
+\fBns_set update\fR if you want to update a field with a certain key\&.
+.TP
+\fBns_set size\fR \fIsetId\fR ?\fInrElements\fR? ?\fIbufferSize\fR?
+Returns the number of fields in the set\&.
+.sp
+The optional \fInrElements\fR can be used to change the
+internal size of the set, the number of elements can be increased or
+decreased\&. A decrease * might entail a truncation of the set\&.
+.sp
+The optional \fIbufferSize\fR can be used to change the
+internal buffer size to either free some memory, when the
+set was previously used to store many large objects, or to
+pre-allocate storage to avoid resource operations in the internal
+string buffer\&.
+.TP
+\fBns_set split\fR \fIsetId\fR ?\fIsplitChar\fR?
+Splits one set into multiple sets based on a specific character,
+\fIsplitChar\fR used in the key, and returns a list of
+IDs for the newly created sets\&.
+Defaults to using a period ("\&.") as the split character\&.
+.CS
+
+
+ # Create a set with keys containing periods
+ % set s1 [ns_set create]
+ % ns_set put $s1 dog\&.food "Yummy dog food!"
+ % ns_set put $s1 cat\&.food "Yummy cat food!"
+
+ % ns_set format $s1
+ dog\&.food: Yummy dog food!
+ cat\&.food: Yummy cat food!
+
+ # Split the set into multiple (actually 2) sets based on '\&.' in the key
+ % set newSets [ns_set split $s1]
+ d2 d3
+
+ # Show the result of the created new sets
+ % set result ""
+ % foreach s $newSets {
+ %   append result [ns_set format $s]
+ % }
+ % set result
+ dog:
+   food: Yummy dog food!
+ cat:
+   food: Yummy cat food!
+
+.CE
+.TP
+\fBns_set truncate\fR \fIsetId\fR \fIfieldNumber\fR
+Removes all fields from \fIfieldNumber\fR onward\&.
+.TP
+\fBns_set unique\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR
+Returns 1 if the specified \fIkey\fR is unique in the set and 0 if it is
+not\&.
+.CS
+
+
+ # Create a set with duplicate keys
+ % set headers [ns_set create]
+ % ns_set put $headers Accept "text/html"
+ % ns_set put $headers Accept "application/xml"
+ % ns_set put $headers Host "www\&.example\&.com"
+
+ # Check if 'Accept' header is unique
+ % ns_set unique $headers Accept
+ 0
+
+ # Check if 'Host' header is unique
+ % ns_set unique $headers Host
+ 1
+
+.CE
+.TP
+\fBns_set update\fR ?\fB-nocase\fR? ?--? \fIsetId\fR \fIkey\fR \fIvalue\fR
+Updates the first occurrence of a field with the specified \fIkey\fR,
+replacing its value with the new \fIvalue\fR\&. Equivalent to
+\fBns_set delkey\fR followed by \fBns_set put\fR\&.
+.TP
+\fBns_set value\fR \fIsetId\fR \fIfieldNumber\fR
+Returns the value of the field at the specified \fIfieldNumber\fR\&.
+.TP
+\fBns_set values\fR \fIsetId\fR ?\fIpattern\fR?
+Returns a list of all values in the set\&. If a \fIpattern\fR is specified,
+only values matching the pattern are returned\&.
+.PP
+.SH OPTIONS
+The option \fB-nocase\fR is valid for multiple commands\&.  The options
+valid for just a single command are described above\&.
+.TP
+\fB-nocase\fR
+When specified on a submethod accepting a \fIkey\fR the lookup for
+the key will be case-insensitive, even if the underlying set is
+case-sensitive\&.
+.PP
+.SH EXAMPLES
+Basic operations on ns_sets:
+.CS
+
+
+ # Create an ns_set with several fields, named "mySetName"
+ % set mySet [ns_set create mySetName a b c d e f A Joe B John C Jeff]
+ % ns_set size $mySet
+ 6
+
+ # Get the name of the ns_set
+ % ns_set name $mySet
+ mySetName
+
+ # Get all keys and values of the ns_set
+ % ns_set array $mySet
+ a b c d e f A Joe B John C Jeff
+
+ % ns_set keys $mySet
+ a c e A B C
+
+ % ns_set values $mySet
+ b d f Joe John Jeff
+
+ # Get the value of the field with key 'A'
+ % ns_set get $mySet A
+ Joe
+
+ # Get the value of the field with key 'a'
+ % ns_set get $mySet a
+ b
+
+ # Is the key 'a' unique in the ns_set?
+ % ns_set unique $mySet a
+ 1
+
+ # Is the key 'a' unique in the ns_set, when the case is ignored?
+ % ns_set unique -nocase $mySet a
+ 0
+
+ # Truncate the set after the third field
+ % ns_set truncate $mySet 3
+ % ns_set format $mySet
+ mySetName:
+   a: b
+   c: d
+   e: f
+
+ # Update the value of the field with key "c"
+ % ns_set update $mySet c "Hello World!"
+ 2
+ % ns_set format $mySet
+ mySetName:
+   a: b
+   c: Hello World!
+   e: f
+
+ # Lookup position of existing key
+ % ns_set find $mySet c
+ 1
+
+ # Lookup position of non-existing key
+ % ns_set find $mySet nokey
+ -1
+
+ # Delete the field at position 0
+ % ns_set delete $mySet 0
+ % ns_set format $mySet
+ mySetName:
+   c: Hello World!
+   e: f
+
+.CE
+.PP
+Iterating over the fields of an ns_set:
+.CS
+
+
+ # Run through an ns_set based on key/value pairs
+ foreach {key value} [ns_set array $myset]} {
+   ns_log notice "key: $key, value: $value"
+ }
+
+ # Run through an ns_set based on indices
+ for {set i 0} {$i < [ns_set size $myset]} {incr i} {
+   set key [ns_set key $myset $i]
+   set value [ns_set value $myset $i]
+   ns_log notice "key: $key, value: $value"
+ }
+
+.CE
+.SH "CASE SENSITIVITY"
+.PP
+Sets can be defined to be case-sensitive (default) or
+case-insensitive\&. When a set is defined case-insensitive, all keys
+are converted internally to lowercase\&. Every lookup operation with
+an upper or mixed case key will then succeed when the key in
+lowercase exists\&.
+.PP
+Case-sensitive and case-insensitive sets can be
+created either from Tcl or from C\&.
+To create a case-insensitive set from Tcl, use the option
+\fB-nocase\fR for the \fBns_set create\fR command\&.
+When a case-insensitive set is duplicated via \fBns_set copy\fR or
+\fBns_set split\fR, the resulting set is also case-insensitive\&.
+The sets used for HTTP request headers and configuration values are
+created automatically from C as case-insensitive\&.
+.PP
+Even, when a set is defined as case-sensitive, all subcommands of
+\fBns_set\fR receiving a key as input include the option \fB-nocase\fR,
+to make a single lookup case-insensitive\&.
+.PP
+Legacy: previous versions of NaviServer have used special names for
+the subcommands where the keys should be treated
+case-insensitive\&. These subcommand names were prefixed with the
+character "i" and were named "icput", "idelkey", "ifind", "iget",
+"imerge", "iunique", and "iupdate"\&. These names are still supported
+for compatibility, but it is recommended to use the option
+\fB-nocase\fR instead\&.
+.SH "STORAGE MANAGEMENT"
+.PP
+Sets created via the Tcl interface using \fBns_set\fR and the
+subcommands \fBcreate\fR, \fBcopy\fR, and \fBsplit\fR are
+automatically deleted after each request, or when
+\fBns_set cleanup\fR is executed\&. The cleanup is performed
+automatically after every request by the command \fBns_cleanup\fR\&.
+.PP
+It is also possible to delete a specified set with the command
+\fBns_set free\fR\&.
+.SH NOTES
+.PP
+NULL values, distinct from empty strings, are useful when
+representing a database row as an \fBns_set\fR\&. Currently, obtaining
+a NULL value in an \fBns_set\fR through the Tcl API can be
+challenging\&.  NULL values may occur in sets created by
+\fBns_parsequery\fR or by omitting the last value when seeding an
+\fBns_set\fR in the create subcommand, among other scenarios\&.
+NULL-valued fields can also be created through the C API\&.
+.PP
+\fBns_set\fR is intended for relatively small amounts of data\&.
+Since keys are found by linear search, loading very large datasets
+into an \fBns_set\fR may result in poor performance\&. In such cases,
+consider using a Tcl array or dict structure instead\&.
+.SH "SEE ALSO"
+ns_cleanup, ns_conn, ns_findset, ns_ictl, ns_parsequery
+.SH KEYWORDS
+bag, data structure, global built-in, multimap, multiset, ns_set

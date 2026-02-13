@@ -24,7 +24,7 @@
 
 typedef struct Args {
     char     **argv;
-    TCL_OBJC_T argc;
+    TCL_SIZE_T argc;
 } Args;
 
 /*
@@ -58,6 +58,7 @@ extern void NsdInit();
 #endif
 
 static const char *configParametersReverseproxySection = "ns/parameters/reverseproxymode";
+static const char *configServersSection = "ns/servers";
 
 /*
  * Used by other files as well.
@@ -133,6 +134,13 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 #endif
 
     nsconf.argv0 = argv[0];
+    nsconf.argvObj = Tcl_NewListObj(0, NULL);
+    Tcl_IncrRefCount(nsconf.argvObj);
+    for (optionIndex = 1; optionIndex < argc; optionIndex++) {
+        Tcl_ListObjAppendElement(NULL, nsconf.argvObj,
+                                 Tcl_NewStringObj( argv[optionIndex], TCL_INDEX_NONE));
+    }
+
 
     /*
      * Parse the command line arguments.
@@ -243,6 +251,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     if (mode == 'V') {
         printf("%s/%s\n", PACKAGE_NAME, PACKAGE_VERSION);
         printf("   Tag:             %s\n", Ns_InfoTag());
+        printf("   Version:         %d\n", NS_VERSION_NUM);
         printf("   Built:           %s\n", nsBuildDate);
         printf("   Tcl version:     %s\n", TCL_PATCH_LEVEL);
         printf("   Platform:        %s\n", Ns_InfoPlatform());
@@ -262,6 +271,11 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     Ns_MutexLock(&nsconf.state.lock);
     nsconf.state.started = NS_FALSE;
     Ns_MutexUnlock(&nsconf.state.lock);
+
+    /*
+     * We need the name of the executable already in the test mode.
+     */
+    nsconf.nsd = ns_strdup(Tcl_GetNameOfExecutable());
 
     if (testMode) {
         const char *fileContent;
@@ -476,8 +490,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
 #endif /* ! _WIN32 */
 
-    nsconf.nsd = ns_strdup(Tcl_GetNameOfExecutable());
-
     /*
      * Find and read configuration file, if given at the command line, just use it,
      * if not specified, try to figure out by looking in the current dir for
@@ -550,7 +562,29 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         if (Ns_SetUser(uarg) == NS_ERROR) {
             Ns_Fatal("nsmain: failed to switch to user %s", uarg);
         }
+    } else {
+        if (uarg != NULL) {
+            Ns_Log(Warning, "nsmain: command line argument '-u %s' is ignored"
+                   " since not running as a privileged user", uarg);
+        }
+        if (garg != NULL) {
+            Ns_Log(Warning, "nsmain: command line argument '-g %s' is ignored"
+                   " since not running as a privileged user", garg);
+        }
     }
+#ifndef _WIN32
+    {
+        Tcl_DString dsName, dsGroup;
+
+        Tcl_DStringInit(&dsName);
+        Tcl_DStringInit(&dsGroup);
+        Ns_GetNameForUid(&dsName, getuid());
+        Ns_GetNameForGid(&dsGroup, getgid());
+        Ns_Log(Notice, "Running nsd with user '%s' and group '%s'", dsName.string, dsGroup.string);
+        Tcl_DStringFree(&dsName);
+        Tcl_DStringFree(&dsGroup);
+    }
+#endif
 
 #ifdef __linux
 
@@ -645,7 +679,7 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 #endif
 
     nsconf.formFallbackCharset =
-        ns_strcopy(Ns_ConfigString(NS_GLOBAL_CONFIG_PARAMETERS, "FormFallbackCharset", NULL));
+        ns_strcopy(Ns_ConfigString(NS_GLOBAL_CONFIG_PARAMETERS, "formfallbackcharset", NULL));
     if (nsconf.formFallbackCharset != NULL
         && *nsconf.formFallbackCharset == '\0') {
         nsconf.formFallbackCharset  = NULL;
@@ -656,9 +690,9 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
      * so all default config values will be used for that server
      */
 
-    servers = Ns_ConfigGetSection("ns/servers");
+    servers = Ns_ConfigGetSection(configServersSection);
     if (servers == NULL) {
-        servers = Ns_ConfigCreateSection("ns/servers");
+        servers = Ns_ConfigCreateSection(configServersSection);
     }
     if (Ns_SetSize(servers) == 0u) {
         (void)Ns_SetPutSz(servers, "default", 7, "Default NaviServer", 18);
@@ -676,8 +710,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         if (idx < 0) {
             Ns_Log(Error, "nsmain: no such server '%s' in configuration file '%s'",
                    server, nsconf.configFile);
-            Ns_Log(Warning, "nsmain: Writing the server names we DO have to stderr now:");
-            Ns_SetPrint(servers);
+            Ns_Log(Warning, "nsmain: Writing known server names stderr:");
+            Ns_SetPrint(NULL, servers);
             Ns_Fatal("nsmain: no such server '%s'", server);
         }
         server = Ns_SetKey(servers, idx);
@@ -686,7 +720,6 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     /*
      * Verify and change to the home directory.
      */
-
     nsconf.home = Ns_ConfigGetValue(NS_GLOBAL_CONFIG_PARAMETERS, "home");
     if (nsconf.home == NULL && mode != 'c') {
 
@@ -734,10 +767,32 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         assert(nsconf.home != NULL);
     }
     nsconf.home = SetCwd(nsconf.home);
+
+    /*
+     * The value of nsconf.home is set. We can use it now as the base
+     * directory for completion for "logdir" and "bindir" in case they are
+     * relative. The logdir is required early in the startup to be usable as a
+     * base directory for e.g. the pid file.
+     */
+    nsconf.logDir = Ns_ConfigFilename(NS_GLOBAL_CONFIG_PARAMETERS,
+                                      "logdir", 6,
+                                      nsconf.home, "logs", NS_FALSE, NS_FALSE);
+
+    nsconf.binDir = Ns_ConfigFilename(NS_GLOBAL_CONFIG_PARAMETERS,
+                                      "bindir", 6,
+                                      nsconf.home, "bin", NS_TRUE, NS_TRUE);
+    /*
+     * Assure log directory is available since it is expected
+     * from some subsystems (tclhttp, log, ...).
+     */
+    if (Ns_RequireDirectory(nsconf.logDir) != NS_OK) {
+        Ns_Fatal("nsmain: log directory '%s' could not be created", nsconf.logDir);
+    }
+
     nsconf.reject_already_closed_or_detached_connection =
         Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "rejectalreadyclosedconn", NS_TRUE);
     nsconf.sanitize_logfiles =
-        Ns_ConfigIntRange(NS_GLOBAL_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 2);
+        Ns_ConfigIntRange(NS_GLOBAL_CONFIG_PARAMETERS, "sanitizelogfiles", 2, 0, 3);
     /*
      * Old-style, backward compatible. Can be overridden by "ns/params/reverseproxy"
      */
@@ -745,15 +800,15 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
         Ns_ConfigBool(NS_GLOBAL_CONFIG_PARAMETERS, "reverseproxymode", NS_FALSE);
 
     /*
-     * New-style reverse proxy server configuration. Overridden old-style.
+     * New-style reverse proxy server configuration. Use old-style value as default.
      */
-
     nsconf.reverseproxymode.enabled =
-        Ns_ConfigBool(configParametersReverseproxySection, "enabled", NS_FALSE);
+        Ns_ConfigBool(configParametersReverseproxySection, "enabled", nsconf.reverseproxymode.enabled);
     nsconf.reverseproxymode.skipnonpublic =
         Ns_ConfigBool(configParametersReverseproxySection, "skipnonpublic", NS_FALSE);
     nsconf.reverseproxymode.trustedservers =
         Ns_ConfigGetValue(configParametersReverseproxySection, "trustedservers");
+
     if (nsconf.reverseproxymode.trustedservers != NULL) {
         if (*nsconf.reverseproxymode.trustedservers == '\0') {
             nsconf.reverseproxymode.trustedservers = NULL;
@@ -778,9 +833,8 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
     /*
      * Make the result queryable.
      */
-
     set = Ns_ConfigCreateSection(NS_GLOBAL_CONFIG_PARAMETERS);
-    Ns_SetUpdateSz(set, "home", 4, nsconf.home, TCL_INDEX_NONE);
+    Ns_SetIUpdateSz(set, "home", 4, nsconf.home, TCL_INDEX_NONE);
 
     /*
      * Update core config values.
@@ -790,11 +844,21 @@ Ns_Main(int argc, char *const* argv, Ns_ServerInitProc *initProc)
 
     nsconf.tmpDir = ns_strcopy(Ns_ConfigGetValue(NS_GLOBAL_CONFIG_PARAMETERS, "tmpdir"));
     if (nsconf.tmpDir == NULL) {
+        size_t dirNameLength;
+
         nsconf.tmpDir = getenv("TMPDIR");
         if (nsconf.tmpDir == NULL) {
             nsconf.tmpDir = P_tmpdir;
         }
-        Ns_SetUpdateSz(set, "tmpdir", 6, nsconf.tmpDir, TCL_INDEX_NONE);
+        dirNameLength = strlen(nsconf.tmpDir);
+        if (nsconf.tmpDir[dirNameLength-1] == '/') {
+            char *tmpDirName = ns_strdup(nsconf.tmpDir);
+
+            tmpDirName[dirNameLength-1] = '\0';
+            nsconf.tmpDir = tmpDirName;
+        }
+
+        Ns_SetIUpdateSz(set, "tmpdir", 6, nsconf.tmpDir, TCL_INDEX_NONE);
     }
 
 #ifdef _WIN32
@@ -1156,7 +1220,7 @@ Ns_StopServer(char *server)
  */
 
 int
-NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclShutdownObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         sig = NS_SIGTERM, result = TCL_OK;
     Ns_Time    *timeoutPtr = NULL;
@@ -1379,7 +1443,7 @@ MakePath(const char *file)
              * Make sure we have valid path on all platforms
              */
             obj = Tcl_NewStringObj(nsconf.nsd, (TCL_SIZE_T)(str - nsconf.nsd));
-            Tcl_AppendStringsToObj(obj, "/", file, (char *)0L);
+            Tcl_AppendStringsToObj(obj, "/", file, NS_SENTINEL);
 
             Tcl_IncrRefCount(obj);
             if (Tcl_FSGetNormalizedPath(NULL, obj) != NULL) {

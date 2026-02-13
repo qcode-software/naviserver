@@ -5,7 +5,11 @@ namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
 
-test ns_striphtml-1.0 {basic test} -body {
+test ns_striphtml-1.0 {syntax: ns_striphtml} -body {
+    ns_striphtml
+} -returnCodes error -result {wrong # args: should be "ns_striphtml /html/"}
+
+test ns_striphtml-1.1 {basic operation} -body {
     ns_striphtml {hello <b>world</b>}
 } -result "hello world"
 
@@ -93,8 +97,7 @@ test ns_striphtml-2.4b {yen numeric entity} -body {
 
 test ns_striphtml-3.0 {table} -body {
     set t {
-        {"lates",   5, "⪭︀",   6, "/* U+02AAD U+0FE00 */"},
-        
+                                {"lates",   5, "⪭︀",   6, "/* U+02AAD U+0FE00 */"},
                                 {"AElig",   5, "Æ", 2},
                                 {"Aacute",  6, "Á", 2},
                                 {"Acirc",   5, "Â", 2},
@@ -327,7 +330,6 @@ test ns_striphtml-3.0 {table} -body {
         [subst {{"ThickSpace", 10, "\u205F\u200A", 6}}], \n \
         [subst {{"nsce",        4, "\u2AB0\u0338", 6}}] \n \
 
-    
     regsub -all {{NULL,    0, "", 0}} $t "" t
     regsub -all {,} $t " " t
     set string ""
@@ -369,8 +371,11 @@ test ns_striphtml-4.0 {strip HTML comment} -body {
 #######################################################################################
 #  test ns_quotehtml
 #######################################################################################
+test ns_quotehtml-1.0 {ns_unquotehtml syntax} -body {
+    ns_quotehtml
+} -returnCodes error -result {wrong # args: should be "ns_quotehtml /html/"}
 
-test ns_quotehtml-1.0 {ns_quotehtml with typical value} -body {
+test ns_quotehtml-1.1 {ns_quotehtml with typical value} -body {
     return [ns_quotehtml {<span class="foo">}]
 } -result {&lt;span class=&#34;foo&#34;&gt;}
 
@@ -378,21 +383,25 @@ test ns_quotehtml-1.0 {ns_quotehtml with typical value} -body {
 #  test ns_unquotehtml
 #######################################################################################
 
-test ns_unquotehtml-1.0 {ns_unquotehtml with typical value} -body {
+test ns_unquotehtml-1.0 {ns_unquotehtml syntax} -body {
+    ns_unquotehtml
+} -returnCodes error -result {wrong # args: should be "ns_unquotehtml /html/"}
+
+test ns_unquotehtml-1.1 {ns_unquotehtml with typical value} -body {
     return [ns_unquotehtml [ns_quotehtml {<span class="foo">...</span>}]]
 } -result {<span class="foo">...</span>}
 
-test ns_unquotehtml-1.1 {ns_unquotehtml with typical value} -body {
+test ns_unquotehtml-1.2 {ns_unquotehtml with typical value} -body {
     return [ns_unquotehtml [ns_quotehtml {aaa<span class='foo'>...</span>zzz}]]
 } -result {aaa<span class='foo'>...</span>zzz}
 
-test ns_unquotehtml-1.2 {ns_unquotehtml with named UTF-8 entity} -body {
+test ns_unquotehtml-1.3 {ns_unquotehtml with named UTF-8 entity} -body {
     return [ns_unquotehtml {a&otimes;b}]
 } -result {a⊗b}
-test ns_unquotehtml-1.3 {two entities next to each other} -body {
+test ns_unquotehtml-1.4 {two entities next to each other} -body {
     ns_unquotehtml {&lt;&gt;}
 } -result "<>"
-test ns_unquotehtml-1.4 {two entities next to each other. embedded} -body {
+test ns_unquotehtml-1.5 {two entities next to each other. embedded} -body {
     ns_unquotehtml {hello&lt;&gt;world}
 } -result "hello<>world"
 
@@ -445,7 +454,11 @@ test ns_unquotehtml-3.1.0 {growing byte representation} -body {
 #  test ns_parsehtml
 #######################################################################################
 
-test ns_parsehtml-1.0 {ns_parsehtml just with tags} -body {
+test ns_parsehtml-1.0 {syntax: ns_parsehtml} -body {
+    ns_parsehtml
+} -returnCodes error -result {wrong # args: should be "ns_parsehtml ?-noangle? ?-onlytags? ?--? /html/"}
+
+test ns_parsehtml-1.1 {ns_parsehtml just with tags} -body {
     set text {hello <b>foo</b> anchor <a href="/foo">world</a>.}
     ns_parsehtml $text
 } -result {{text {hello }} {tag <b> {b {}}} {text foo} {tag </b> /b} {text { anchor }} {tag {<a href="/foo">} {a {href /foo}}} {text world} {tag </a> /a} {text .}}

@@ -33,9 +33,10 @@ can not be cancelled.
 
 
 [call [cmd "ns_job configure"] \
-	[opt [option {-jobsperthread N}]] \
-	[opt [option {-logminduration T}]] \
-	[opt [option {-timeout T}]]]
+	[opt [option "-jobsperthread [arg integer]"]] \
+	[opt [option "-logminduration [arg time]"]] \
+	[opt [option "-timeout [arg time]"]] \
+        ]
 
 Configures jobs system, parameters are:
 
@@ -49,19 +50,24 @@ help reduce memory consumption and cleanup Tcl resources.
 [para] The parameter [option -timeout] defines maximum idle time for the
 job worker thread. When the timeout expires, the thread exits like
 when [option -jobsperthread] runs out. When the [option -timeout] is 0, the
-there will be no timeout.
+there will be no timeout. The value of [option -timeout] can be specified in the form
+[arg secs[opt :microsecs]], or [arg secs.fraction],
+or as a number with a time unit.
 
 [para] The parameter [option -logminduration] defines a time limit for
 logging the system log. When a job takes longer than the time limit
-it will be logged.
+it will be logged. The value can be specified in the form
+[arg secs[opt :microsecs]], or [arg secs.fraction],
+or as a number with a time unit.
 
 [para] Without any arguments, the command just returns current
 settings values in form of a dict.
 
 
 [call [cmd "ns_job create"] \
-	[opt [option {-desc description}]] \
-	[arg queueId] [opt [arg maxthreads]]]
+	[opt [option "-desc [arg value]"]] \
+	[arg queueId] \
+        [opt [arg maxthreads]]]
 
 Create a new job queue called queueId. If maxthreads is not specified,
 then the default of 4 is used.
@@ -128,10 +134,11 @@ Return a list of the job IDs.
 
 
 [call [cmd "ns_job queue"] \
-	[opt [option {-detached}]] \
+	[opt [option -detached]] \
 	[opt [option -head]] \
-	[opt [option {-jobid id}]] \
-	[arg queueId] [arg script]]
+	[opt [option "-jobid [arg value]"]] \
+	[arg queueId] \
+        [arg script]]
 
 Add a new job to the queue. When [opt [option {-head}]] is specified, add
 the new jab to the front of the queue. If there are less than
@@ -196,24 +203,29 @@ Returns a list of the thread pool's fields.
 
 
 [call [cmd "ns_job wait"] \
-	[opt [option {-timeout T}]] \
-	[arg queueId] [arg jobId]]
+	[opt [option "-timeout [arg time]"]] \
+	[arg queueId] \
+        [arg jobId]]
 
 Wait for the specified queued or running job to finish.
 [cmd "ns_job wait"] returns the results of the script.
 
-[para] An error is thrown if the specified timeout period (given in
-seconds and fractions of seconds) is reached.
+[para] An error is thrown if the specified timeout period is reached.
+The value of [option -timeout] can be specified in the form
+[arg secs[opt :microsecs]], or [arg secs.fraction],
+or as a number with a time unit.
 
 
 [call [cmd "ns_job waitany"] \
-	[opt [option {-timeout T}]] \
+	[opt [option "-timeout [arg time]"]] \
 	[arg queueId]]
 
 Wait for any job on the queue complete.
 
-[para] An error is thrown if the specified timeout period (given in
-seconds and fractions of seconds) is reached.
+[para] An error is thrown if the specified timeout period is reached.
+The value of [option -timeout] can be specified in the form
+[arg secs[opt :microsecs]], or [arg secs.fraction],
+or as a number with a time unit.
 
 [list_end]
 

@@ -37,39 +37,42 @@
 
 [call [cmd "ns_asynclogfile write"] \
 	[opt [option -binary]] \
-	[opt [option "-sanitize sanitize"]] \
-	[arg handle] \
+	[opt [option "-sanitize 0|1|2|3"]] \
+	[arg fd] \
 	[arg line]]
 
 Write the provided [arg line] to an opened logfile denoted by the
-[arg handle]. If the line should be terminated by a new-line
+[arg fd] handle. If the line should be terminated by a new-line
 character, the caller has to provide this character.
 
 The option [option -binary] should be provided for binary data.
 The optional parameter [option -sanitize] can be used to sanitize the
 input. The default is taken from the global parameter
-[term sanitizelogfiles].
+[term sanitizelogfiles] which is set in the NaviServer distribution to
+[term 2].
 
 [list_begin itemized]
 [item] The value of [term 0] means that no sanitize should happen.
 [item] The value [term 1] means that full sanitizing is in place,
-which means that non-printable characters are written as hex values.
-[item] The a sanitize value of [term 2] means that sanitizing happens
-in a human friendly fashion: newlines are preserved, but sanitizing
-makes sure that multiline content cannot not confused with different
-log file entries. After a new-line character a continuation character
-starts the new line followed by 4 spaces.
+  which means that non-printable characters are written as hex values.
+[item] The sanitize value of [term 2] means that sanitizing happens
+  in a human friendly fashion: newlines are preserved, but sanitizing
+  makes sure that multiline content cannot not confused with different
+  log file entries. After a new-line character a continuation character
+  starts the new line followed by 4 spaces.
+[item] The sanitize value of [term 3] is the same as for [term 2], but
+  tab characters are expanded (tabulator character is replaced by 4 spaces).
 [list_end]
 
 [call [cmd "ns_asynclogfile close"] \
-	[arg handle]]
+	[arg fd]]
 
  Close the logfile.
 
 [list_end]
 
 [see_also ns_log ns_write ns_accesslog]
-[keywords "server built-in" log]
+[keywords "server built-in" logging sanitizelogfiles]
 
 [manpage_end]
 

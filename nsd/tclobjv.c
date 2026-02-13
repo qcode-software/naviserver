@@ -36,8 +36,8 @@ static void FreeSpecs(Ns_ObjvSpec *specPtr)
 static int SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static void WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec,
-                         Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv);
+static void WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
+                         TCL_SIZE_T preObjc, TCL_SIZE_T objc, Tcl_Obj *const* objv);
 
 static int GetOptIndexObjvSpec(Tcl_Obj *obj, const Ns_ObjvSpec *tablePtr, int *idxPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
@@ -50,13 +50,23 @@ static void UpdateStringOfMemUnit(Tcl_Obj *objPtr)
 static int SetMemUnitFromAny(Tcl_Interp *interp, Tcl_Obj *objPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static void AppendRange(Ns_DString *dsPtr, const Ns_ObjvValueRange *r)
+static void AppendRange(Tcl_DString *dsPtr, const Ns_ObjvValueRange *r)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void AppendLiteral(Tcl_DString *dsPtr, const Ns_ObjvSpec *specPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+static void AppendParameter(Tcl_DString *dsPtr, const char *separator, TCL_SIZE_T separatorLength,
+                            bool withRange, bool withDots, const Ns_ObjvSpec *specPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(6);
+
+static char *GetOptEnumeration(Tcl_DString *dsPtr, const Ns_SubCmdSpec *tablePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * Static variables defined in this file.
  */
-static const Tcl_ObjType specType = {
+static CONST86 Tcl_ObjType specType = {
     "ns:spec",
     FreeSpecObj,
     DupSpec,
@@ -67,7 +77,7 @@ static const Tcl_ObjType specType = {
 #endif
 };
 
-static const Tcl_ObjType memUnitType = {
+static CONST86 Tcl_ObjType memUnitType = {
     "ns:mem_unit",
     NULL,
     NULL,
@@ -188,14 +198,19 @@ GetOptIndexObjvSpec(Tcl_Obj *obj, const Ns_ObjvSpec *tablePtr, int *idxPtr)
  */
 Ns_ReturnCode
 Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
-             TCL_OBJC_T offset, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+             TCL_SIZE_T parseOffset, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    Ns_ObjvSpec  *specPtr;
-    int           optIndex;
-    TCL_OBJC_T    requiredArgs = 0;
-    TCL_SIZE_T    remain = (TCL_SIZE_T)(objc - offset);
+    Ns_ObjvSpec    *specPtr;
+    int             optIndex;
+    Tcl_Obj *const* parseObjv;
+    TCL_SIZE_T      requiredArgs = 0, parseObjc, remain;
+    TCL_SIZE_T      leadOffset = 0;
 
     NS_NONNULL_ASSERT(interp != NULL);
+
+    parseObjc = objc - leadOffset;
+    parseObjv = objv + leadOffset;
+    remain = (TCL_SIZE_T)(parseObjc - parseOffset);
 
     /*
      * In case, the number of actual arguments is equal to the number
@@ -214,7 +229,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
             }
             requiredArgs++;
         }
-        if (requiredArgs+offset == objc) {
+        if (requiredArgs+parseOffset == parseObjc) {
             /*
              * No need to process optional parameters.
              */
@@ -225,7 +240,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
     if (likely(optSpec != NULL) && likely(optSpec->key != NULL)) {
 
         while (remain > 0) {
-            Tcl_Obj *obj = objv[objc - (TCL_OBJC_T)remain];
+            Tcl_Obj *obj = parseObjv[parseObjc - (TCL_SIZE_T)remain];
             int      result;
 
 #ifdef NS_TCL_PRE87
@@ -255,7 +270,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
 
             --remain;
             specPtr = optSpec + optIndex;
-            result = specPtr->proc(specPtr, interp, &remain, objv + ((TCL_SIZE_T)objc - remain));
+            result = specPtr->proc(specPtr, interp, &remain, parseObjv + ((TCL_SIZE_T)parseObjc - remain));
 
             if (result == TCL_BREAK) {
                 break;
@@ -267,7 +282,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
     if (unlikely(argSpec == NULL)) {
         if (remain > 0) {
         badargs:
-            WrongNumArgs(optSpec, argSpec, interp, offset, objv);
+            WrongNumArgs(optSpec, argSpec, interp, leadOffset, parseOffset-leadOffset, objv);
             return NS_ERROR;
         }
         return NS_OK;
@@ -280,7 +295,7 @@ Ns_ParseObjv(Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
             }
             return NS_OK;
         }
-        if (unlikely(specPtr->proc(specPtr, interp, &remain, objv + ((TCL_SIZE_T)objc - remain)))
+        if (unlikely(specPtr->proc(specPtr, interp, &remain, parseObjv + ((TCL_SIZE_T)parseObjc - remain)))
             != TCL_OK) {
             return NS_ERROR;
         }
@@ -775,7 +790,7 @@ Ns_ObjvObj(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr,
  * Ns_ObjvTime --
  *
  *      Consume exactly one argument, returning a pointer to the
- *      Ns_Time into *spec->dest.
+ *      convertred Ns_Time* into *spec->dest.
  *
  * Results:
  *      TCL_OK or TCL_ERROR.
@@ -1080,7 +1095,7 @@ Ns_ObjvIndex(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr,
     return result;
 }
 
-
+#ifdef NS_WITH_DEPRECATED_5_0
 /*
  *----------------------------------------------------------------------
  *
@@ -1147,6 +1162,7 @@ Ns_ObjvFlags(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr,
 
     return result;
 }
+#endif
 
 
 /*
@@ -1154,7 +1170,7 @@ Ns_ObjvFlags(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr,
  *
  * Ns_ObjvBreak --
  *
- *          Handle '--' option/argument separator.
+ *          Handle "--" option/argument separator.
  *
  * Results:
  *      Always TCL_BREAK.
@@ -1248,6 +1264,50 @@ Ns_ObjvServer(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Ob
     return result;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ObjvUrlspaceSpec --
+ *
+ *      Get Urlspace spec from argument, consume it, put result into "dest".
+ *
+ * Results:
+ *      TCL_OK or TCL_ERROR.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+Ns_ObjvUrlspaceSpec(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Obj *const* objv)
+{
+    NsUrlSpaceContextSpec **dest;
+    int                     result = TCL_OK;
+
+    NS_NONNULL_ASSERT(spec != NULL);
+    NS_NONNULL_ASSERT(interp != NULL);
+
+    dest = spec->dest;
+
+    if (likely(*objcPtr > 0) && likely(dest != NULL)) {
+        NsUrlSpaceContextSpec *specPtr = NsObjToUrlSpaceContextSpec(interp, objv[0]);
+
+        if (likely(specPtr != NULL)) {
+            *dest = specPtr;
+            *objcPtr -= 1;
+        } else {
+            result = TCL_ERROR;
+        }
+    } else {
+        result = TCL_ERROR;
+    }
+
+    return result;
+}
+
+
 
 /*
  *----------------------------------------------------------------------
@@ -1266,14 +1326,14 @@ Ns_ObjvServer(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Ob
  */
 
 int
-NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj  **argv, *argsObj;
     TCL_SIZE_T argc;
     int        status = TCL_OK;
 
     if (objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "specification args");
+        Tcl_WrongNumArgs(interp, 1, objv, "/argspec/ /arg .../");
         return TCL_ERROR;
     }
     /*
@@ -1297,7 +1357,7 @@ NsTclParseArgsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
 
         opts = objv[1]->internalRep.twoPtrValue.ptr1;
         args = objv[1]->internalRep.twoPtrValue.ptr2;
-        if (Ns_ParseObjv(opts, args, interp, 0, (TCL_OBJC_T)argc, argv) != NS_OK) {
+        if (Ns_ParseObjv(opts, args, interp, 0, (TCL_SIZE_T)argc, argv) != NS_OK) {
             status = TCL_ERROR;
 
         } else {
@@ -1767,7 +1827,243 @@ SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
     return result;
 }
 
-
+/*
+ *----------------------------------------------------------------------
+ *
+ * AppendRange --
+ *
+ *      Append Range notation to Tcl_DString.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updating Tcl_DString.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void
+AppendRange(Tcl_DString *dsPtr, const Ns_ObjvValueRange *r)
+{
+    if (r->minValue == LLONG_MIN) {
+        Tcl_DStringAppend(dsPtr, "[MIN,", 5);
+    } else {
+        Ns_DStringPrintf(dsPtr, "[%" TCL_LL_MODIFIER "d,", r->minValue);
+    }
+
+    if (r->maxValue == TCL_SIZE_MAX) {
+        Tcl_DStringAppend(dsPtr, "MAX]", 4);
+
+    } else if (r->maxValue == LLONG_MAX) {
+        Tcl_DStringAppend(dsPtr, "MAX]", 4);
+
+    } else if (r->maxValue == INT_MAX) {
+        Tcl_DStringAppend(dsPtr, "MAX]", 4);
+
+    } else {
+        Ns_DStringPrintf(dsPtr, "%" TCL_LL_MODIFIER "d]", r->maxValue);
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ObjvTablePrint --
+ *
+ *      Append enumeration strings from Ns_ObjvTable to Tcl_DString.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updating Tcl_DString.
+ *
+ *----------------------------------------------------------------------
+ */
+char *Ns_ObjvTablePrint(Tcl_DString *dsPtr, Ns_ObjvTable *values)
+{
+    const char *key;
+
+    for (key = values->key; key != NULL; key = (++values)->key) {
+        Tcl_DStringAppend(dsPtr, key, TCL_INDEX_NONE);
+        Tcl_DStringAppend(dsPtr, "|", 1);
+    }
+    Tcl_DStringSetLength(dsPtr, dsPtr->length - 1);
+    return dsPtr->string;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * AppendLiteral --
+ *
+ *      Append literal value to Tcl_DString.
+ *      Supported are Booleans and enumeration types.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updating Tcl_DString.
+ *
+ *----------------------------------------------------------------------
+ */
+static void
+AppendLiteral(Tcl_DString *dsPtr, const Ns_ObjvSpec *specPtr)
+{
+    if (specPtr->proc == Ns_ObjvBool) {
+        Tcl_DStringAppend(dsPtr, "true|false", 10);
+    } else if (specPtr->proc == Ns_ObjvIndex) {
+        assert(specPtr->arg);
+        Ns_ObjvTablePrint(dsPtr, specPtr->arg);
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * AppendParameter --
+ *
+ *      Append a single parameter Tcl_DString.  Supported are
+ *      positional and non-positional, optional and non-optional
+ *      parameters.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      Updating Tcl_DString.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static void
+AppendParameter(Tcl_DString *dsPtr, const char *separator, TCL_SIZE_T separatorLength,
+                bool withRange, bool withDots, const Ns_ObjvSpec *specPtr)
+{
+    const char  *name = specPtr->key;
+    const char   firstChar = *name;
+    TCL_SIZE_T   nameLength = (TCL_SIZE_T)strlen(name);
+    bool         isLiteral = (specPtr->proc == Ns_ObjvBool || specPtr->proc == Ns_ObjvIndex);
+
+    /*
+     * For optional parameter, use always the question mark as
+     * separator.
+     */
+    if (firstChar == '?') {
+        separator = "?";
+        separatorLength = 1;
+    }
+
+    if (firstChar == '-') {
+        Tcl_DStringAppend(dsPtr, separator, separatorLength);
+        Tcl_DStringAppend(dsPtr, name, nameLength);
+
+        /*
+         * Is this a Boolean switch? If not, output the argument of the
+         * non positional parameter.
+         */
+        if (specPtr->proc != Ns_ObjvBool || specPtr->arg == NULL) {
+            Ns_ObjvProc *objvProc = specPtr->proc;
+
+            Tcl_DStringAppend(dsPtr, " ", 1);
+            if (isLiteral) {
+                AppendLiteral(dsPtr, specPtr);
+            } else {
+                /*
+                 * Non-literal cases. Use placeholder syntax.
+                 */
+                Tcl_DStringAppend(dsPtr, "/", 1);
+
+                if (objvProc == Ns_ObjvString || objvProc == Ns_ObjvObj) {
+                    Tcl_DStringAppend(dsPtr, "value", 5);
+                } else if (objvProc == Ns_ObjvByteArray) {
+                    Tcl_DStringAppend(dsPtr, "data", 4);
+                } else if (objvProc == Ns_ObjvMemUnit) {
+                    Tcl_DStringAppend(dsPtr, "memory-size", 11);
+                } else if (objvProc == Ns_ObjvTime) {
+                    Tcl_DStringAppend(dsPtr, "time", 4);
+                } else if (objvProc == Ns_ObjvSet) {
+                    Tcl_DStringAppend(dsPtr, "setId", 5);
+                } else if (objvProc == Ns_ObjvServer) {
+                    Tcl_DStringAppend(dsPtr, "server", 6);
+                } else if (objvProc == Ns_ObjvWideInt || objvProc == Ns_ObjvInt || objvProc == Ns_ObjvLong) {
+                    Tcl_DStringAppend(dsPtr, "integer", 7);
+                } else if (objvProc == Ns_ObjvUShort) {
+                    Tcl_DStringAppend(dsPtr, "port", 4);
+                } else {
+                    /*
+                     * No type information, repeat the variable name
+                     */
+                    /*fprintf(stderr, "PARAMETER PRINT: fall back to <%s> %s\n", name + 1,
+                      objvProc == Ns_ObjvObj ? "(generic object)" : "");*/
+                    Tcl_DStringAppend(dsPtr, name + 1, nameLength - 1);
+                }
+                if (withRange) {
+                    AppendRange(dsPtr, specPtr->arg);
+                } else if (withDots) {
+                    Tcl_DStringAppend(dsPtr, " ...", 4);
+                }
+                Tcl_DStringAppend(dsPtr, "/", 1);
+            }
+        }
+        Tcl_DStringAppend(dsPtr, separator, separatorLength);
+
+    } else if (firstChar == '?') {
+        /*
+         * Optional positional parameter, just placeholder are supported.
+         */
+        if (isLiteral) {
+            /*
+             * We have to provide question marks in the literal case
+             * manually.
+             */
+            Tcl_DStringAppend(dsPtr, "?", 1);
+            AppendLiteral(dsPtr, specPtr);
+            Tcl_DStringAppend(dsPtr, "?", 1);
+        } else {
+            /*
+             * Placeholder notation
+             */
+            Tcl_DStringAppend(dsPtr, separator, separatorLength);
+            Tcl_DStringAppend(dsPtr, "/", 1);
+            Tcl_DStringAppend(dsPtr, name + 1, nameLength - 1);
+            if (withRange) {
+                AppendRange(dsPtr, specPtr->arg);
+            } else if (withDots) {
+                Tcl_DStringAppend(dsPtr, " ...", 4);
+            }
+            Tcl_DStringAppend(dsPtr, "/", 1);
+            Tcl_DStringAppend(dsPtr, separator, separatorLength);
+        }
+    } else {
+        /*
+         * Required positional parameter.
+         */
+        if (isLiteral) {
+            AppendLiteral(dsPtr, specPtr);
+        } else {
+            /*
+             * Placeholder notation
+             */
+            Tcl_DStringAppend(dsPtr, separator, separatorLength);
+            Tcl_DStringAppend(dsPtr, name, nameLength);
+            if (withRange) {
+                AppendRange(dsPtr, specPtr->arg);
+            } else if (withDots) {
+                Tcl_DStringAppend(dsPtr, " ...", 4);
+            }
+            Tcl_DStringAppend(dsPtr, separator, separatorLength);
+        }
+    }
+
+    /*
+     * Append space at the end.
+     */
+    Tcl_DStringAppend(dsPtr, " ", 1);
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -1784,79 +2080,82 @@ SetValue(Tcl_Interp *interp, const char *key, Tcl_Obj *valueObj)
  *----------------------------------------------------------------------
  */
 
-static void AppendRange(Ns_DString *dsPtr, const Ns_ObjvValueRange *r)
-{
-    if (r->minValue == LLONG_MIN) {
-        Tcl_DStringAppend(dsPtr, "[LLONG_MIN,", 11);
-    } else {
-        Ns_DStringPrintf(dsPtr, "[%" TCL_LL_MODIFIER "d,", r->minValue);
-    }
-
-    if (r->maxValue == LLONG_MAX) {
-        Tcl_DStringAppend(dsPtr, "LLONG_MAX]", 10);
-    } else {
-        Ns_DStringPrintf(dsPtr, "%" TCL_LL_MODIFIER "d]", r->maxValue);
-    }
-}
-
 static void
 WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *interp,
-             TCL_OBJC_T objc, Tcl_Obj *const* objv)
+               TCL_SIZE_T preObjc, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const Ns_ObjvSpec *specPtr;
-    Ns_DString         ds;
+    Tcl_DString        ds;
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
 
     if (optSpec != NULL) {
         for (specPtr = optSpec; specPtr->key != NULL; ++specPtr) {
             if (STREQ(specPtr->key, "--")) {
-                Ns_DStringAppend(&ds, "?--? ");
-            } else if (specPtr->proc == Ns_ObjvBool && specPtr->arg != NULL) {
-                Ns_DStringPrintf(&ds, "?%s? ", specPtr->key);
+                Tcl_DStringAppend(&ds, "?--? ", 5);
             } else {
-                const char *p = specPtr->key;
-                if (*specPtr->key == '-') {
-                    ++p;
-                }
-                Ns_DStringPrintf(&ds, "?%s %s", specPtr->key, p);
-
-                if ((specPtr->proc == Ns_ObjvInt
-                     || specPtr->proc == Ns_ObjvLong
-                     || specPtr->proc == Ns_ObjvWideInt
-                     ) && specPtr->arg != NULL) {
-                    AppendRange(&ds, specPtr->arg);
-                }
-                Tcl_DStringAppend(&ds, "? ", 2);
+                AppendParameter(&ds, "?", 1,
+                                ((specPtr->proc == Ns_ObjvInt
+                                  || specPtr->proc == Ns_ObjvLong
+                                  || specPtr->proc == Ns_ObjvWideInt
+                                  ) && specPtr->arg != NULL),
+                                (specPtr->proc == Ns_ObjvArgs),
+                                specPtr);
             }
         }
     }
     if (argSpec != NULL) {
         for (specPtr = argSpec; specPtr->key != NULL; ++specPtr) {
-            Tcl_DStringAppend(&ds, specPtr->key, TCL_INDEX_NONE);
-
-            if ((specPtr->proc == Ns_ObjvInt
-                 || specPtr->proc == Ns_ObjvLong
-                 || specPtr->proc == Ns_ObjvWideInt
-                 ) && specPtr->arg != NULL) {
-                AppendRange(&ds, specPtr->arg);
-            }
-            if (*specPtr->key == '?') {
-                Tcl_DStringAppend(&ds, "?", 1);
-            }
-            Tcl_DStringAppend(&ds, " ", 1);
+            AppendParameter(&ds, "/", 1,
+                            ((specPtr->proc == Ns_ObjvInt
+                              || specPtr->proc == Ns_ObjvLong
+                              || specPtr->proc == Ns_ObjvWideInt
+                              ) && specPtr->arg != NULL),
+                            (specPtr->proc == Ns_ObjvArgs),
+                            specPtr);
         }
     }
 
     if (ds.length > 0) {
-        Ns_DStringSetLength(&ds, ds.length - 1);
-        /*Ns_Log(Notice, ".... call tclwrongnumargs %ld size %ld <%s>", objc, sizeof(objc), ds.string);*/
-        Tcl_WrongNumArgs(interp, (TCL_SIZE_T)objc, objv, ds.string);
+        /*
+         * Strip last blank character.
+         */
+        Tcl_DStringSetLength(&ds, ds.length - 1);
+        /*Ns_Log(Notice, ".... call tclwrongnumargs %d size %lu <%s>", objc+preObjc, sizeof(objc), ds.string);*/
+        Tcl_WrongNumArgs(interp, (TCL_SIZE_T)objc+preObjc, objv, ds.string);
     } else {
         Tcl_WrongNumArgs(interp, (TCL_SIZE_T)objc, objv, NULL);
     }
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SubcmdObjvGetOptEnumeration --
+ *
+ *      Get an enumeration string containing the key items of the input
+ *      table separated by vertical bars into the provided Tcl_DString.
+ *
+ * Results:
+ *      string
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+static char *
+GetOptEnumeration(Tcl_DString *dsPtr, const Ns_SubCmdSpec *tablePtr) {
+    const Ns_SubCmdSpec *entryPtr;
+
+    for (entryPtr = tablePtr; entryPtr->key != NULL;  entryPtr++) {
+        Tcl_DStringAppend(dsPtr, entryPtr->key, TCL_INDEX_NONE);
+        Tcl_DStringAppend(dsPtr, "|", 1);
+    }
+    Tcl_DStringSetLength(dsPtr, dsPtr->length - 1);
+    return dsPtr->string;
 }
 
 /*
@@ -1875,20 +2174,30 @@ WrongNumArgs(const Ns_ObjvSpec *optSpec, Ns_ObjvSpec *argSpec, Tcl_Interp *inter
  *
  *----------------------------------------------------------------------
  */
+
 int
 Ns_SubcmdObjv(const Ns_SubCmdSpec *subcmdSpec, ClientData clientData, Tcl_Interp *interp,
-              TCL_OBJC_T objc, Tcl_Obj *const* objv)
+              TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int opt = 0, result;
 
     if (objc < 2) {
         /*
          * The command was called without selector for the
-         * subcmd. With out own machinery (as used in
+         * subcmd. With our own machinery (as used in
          * GetOptIndexSubcmdSpec()) we could list the available
          * options, but that is just used for shared objects.
          */
-        Tcl_WrongNumArgs(interp, 1, objv, "command ?args?");
+        Tcl_DString ds;
+
+        Tcl_DStringInit(&ds);
+        (void)GetOptEnumeration(&ds, subcmdSpec);
+        Tcl_DStringAppend(&ds, " ?/arg .../?", 11);
+
+        Tcl_WrongNumArgs(interp, 1, objv, ds.string);
+        //Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/ ?/arg .../?");
+
+        Tcl_DStringFree(&ds);
         result = TCL_ERROR;
     } else {
         Tcl_Obj *selectorObj = objv[1];
@@ -1896,11 +2205,18 @@ Ns_SubcmdObjv(const Ns_SubCmdSpec *subcmdSpec, ClientData clientData, Tcl_Interp
          * If the obj is shared, don't trust its internal representation.
          */
         result = Tcl_IsShared(selectorObj)
-            ? GetOptIndexSubcmdSpec(interp, selectorObj, "subcmd", subcmdSpec, &opt)
-            : Tcl_GetIndexFromObjStruct(interp, objv[1], subcmdSpec, sizeof(Ns_SubCmdSpec), "subcmd",
+            ? GetOptIndexSubcmdSpec(interp, selectorObj, "subcommand", subcmdSpec, &opt)
+            : Tcl_GetIndexFromObjStruct(interp, objv[1], subcmdSpec, sizeof(Ns_SubCmdSpec), "subcommand",
                                         TCL_EXACT, &opt);
         if (likely(result == TCL_OK)) {
             result = (*subcmdSpec[opt].proc)(clientData, interp, objc, objv);
+        } else {
+            /*
+             * Include the main command name in the error message.
+             */
+            Ns_TclPrintfResult(interp, "%s: %s",
+                               Tcl_GetString(objv[0]),
+                               Tcl_GetString(Tcl_GetObjResult(interp)));
         }
     }
     return result;
@@ -1925,6 +2241,7 @@ Ns_SubcmdObjv(const Ns_SubCmdSpec *subcmdSpec, ClientData clientData, Tcl_Interp
  *
  *----------------------------------------------------------------------
  */
+
 static int
 GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const Ns_SubCmdSpec *tablePtr, int *idxPtr)
 {
@@ -1968,34 +2285,34 @@ GetOptIndexSubcmdSpec(Tcl_Interp *interp, Tcl_Obj *obj, const char *msg, const N
          * Produce a fancy error message.
          */
         resultPtr = Tcl_NewObj();
-        Tcl_AppendStringsToObj(resultPtr, "bad ", msg, " \"", key, (char *)0L);
+        Tcl_AppendStringsToObj(resultPtr, "bad ", msg, " \"", key, NS_SENTINEL);
 
         entryPtr = tablePtr;
         if (entryPtr->key == NULL) {
             /*
              * The table is empty
              */
-            Tcl_AppendStringsToObj(resultPtr, "\": no valid options", (char *)0L);
+            Tcl_AppendStringsToObj(resultPtr, "\": no valid options", NS_SENTINEL);
         } else {
             int count = 0;
             /*
              * The table has keys
              */
-            Tcl_AppendStringsToObj(resultPtr, "\": must be ", entryPtr->key, (char *)0L);
+            Tcl_AppendStringsToObj(resultPtr, "\": must be ", entryPtr->key, NS_SENTINEL);
             entryPtr++;
             while (entryPtr->key != NULL) {
                 if ((entryPtr+1)->key == NULL) {
                     Tcl_AppendStringsToObj(resultPtr, (count > 0 ? "," : NS_EMPTY_STRING),
-                                           " or ", entryPtr->key, (char *)0L);
+                                           " or ", entryPtr->key, NS_SENTINEL);
                 } else {
-                    Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, (char *)0L);
+                    Tcl_AppendStringsToObj(resultPtr, ", ", entryPtr->key, NS_SENTINEL);
                     count++;
                 }
                 entryPtr++;
             }
         }
         Tcl_SetObjResult(interp, resultPtr);
-        Tcl_SetErrorCode(interp, "TCL", "LOOKUP", "INDEX", msg, key, (char *)0L);
+        Tcl_SetErrorCode(interp, "TCL", "LOOKUP", "INDEX", msg, key, NS_SENTINEL);
     }
 
    return result;

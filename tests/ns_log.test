@@ -7,26 +7,115 @@ namespace import -force ::tcltest::*
 ::tcltest::configure {*}$argv
 
 
+#######################################################################################
+#  test ns_asynclogfile
+#######################################################################################
+test ns_asynclogfile-1.0 {syntax: ns_asynclogfile} -body {
+    ns_asynclogfile
+} -returnCodes error -result {wrong # args: should be "ns_asynclogfile open|write|close ?/arg .../"}
 
-test ns_log-1.1 {basic syntax} -body {
+test ns_asynclogfile-1.1 {syntax: ns_asynclogfile} -body {
+    ns_asynclogfile ?
+} -returnCodes error -result {ns_asynclogfile: bad subcommand "?": must be open, write, or close}
+
+test ns_asynclogfile-1.2 {syntax: ns_asynclogfile close} -body {
+    ns_asynclogfile close
+} -returnCodes error -result {wrong # args: should be "ns_asynclogfile close /fd[0,MAX]/"}
+
+test ns_asynclogfile-1.3 {syntax: ns_asynclogfile open} -body {
+    ns_asynclogfile open
+} -returnCodes error -result {wrong # args: should be "ns_asynclogfile open /filename/ ?/mode/?"}
+
+test ns_asynclogfile-1.4 {syntax: ns_asynclogfile write} -body {
+    ns_asynclogfile write
+} -returnCodes error -result {wrong # args: should be "ns_asynclogfile write ?-binary? ?-sanitize 0|1|2|3? /fd[0,MAX]/ /line/"}
+
+
+#######################################################################################
+#  test ns_log
+#######################################################################################
+
+test ns_log-1.0 {syntax: ns_log} -body {
     ns_log
-} -returnCodes error -result {wrong # args: should be "ns_log severity string ?string ...?"}
+} -returnCodes error -result {wrong # args: should be "ns_log /severity/ /message .../"}
 
-test ns_log-1.2 {basic syntax} -body {
-    ns_log ? ?
-} -returnCodes error -match glob -result {unknown severity: "?": should be one of: Notice Warning Error Fatal Bug Debug Dev*}
+#######################################################################################
+#  test ns_logroll
+#######################################################################################
+
+test ns_logroll-1.0 {syntax: ns_logroll} -body {
+    ns_logroll ?
+} -returnCodes error -result {wrong # args: should be "ns_logroll"}
 
 
+#######################################################################################
+#  test ns_logctl
+#######################################################################################
 
-test ns_log-2.1 {basic syntax} -body {
+test ns_logctl-1.0 {basic syntax} -body {
     ns_logctl
-} -returnCodes error -result {wrong # args: should be "ns_logctl option ?arg?"}
+} -returnCodes error -result {wrong # args: should be "ns_logctl /subcommand/ ?/arg/?"}
 
-test ns_log-2.2 {basic syntax} -body {
+test ns_logctl-1.1 {basic syntax} -body {
     ns_logctl ?
-} -returnCodes error -result {bad option "?": must be count, flush, get, grep, hold, peek, register, release, severities, severity, stats, truncate, or unregister}
+} -returnCodes error -result {bad subcommand "?": must be count, flush, get, grep, hold, peek, register, release, severities, severity, stats, truncate, or unregister}
+
+test ns_logctl-1.2 {syntax: ns_logctl count} -body {
+    ns_logctl count -
+} -returnCodes error -result {wrong # args: should be "ns_logctl count"}
+
+test ns_logctl-1.3 {syntax: ns_logctl flush} -body {
+    ns_logctl flush -
+} -returnCodes error -result {wrong # args: should be "ns_logctl flush"}
+
+test ns_logctl-1.4 {syntax: ns_logctl get} -body {
+    ns_logctl get -
+} -returnCodes error -result {wrong # args: should be "ns_logctl get"}
+
+test ns_logctl-1.5 {syntax: ns_logctl grep} -body {
+    ns_logctl grep - -
+} -returnCodes error -result {wrong # args: should be "ns_logctl grep ?-filename /value/? ?--? /string/"}
+
+test ns_logctl-1.6 {syntax: ns_logctl hold} -body {
+    ns_logctl hold -
+} -returnCodes error -result {wrong # args: should be "ns_logctl hold"}
+
+test ns_logctl-1.7 {syntax: ns_logctl peek} -body {
+    ns_logctl peek -
+} -returnCodes error -result {wrong # args: should be "ns_logctl peek"}
+
+test ns_logctl-1.8 {syntax: ns_logctl register} -body {
+    ns_logctl register
+} -returnCodes error -result {wrong # args: should be "ns_logctl register /script/ ?/arg .../?"}
+
+test ns_logctl-1.9 {syntax: ns_logctl release} -body {
+    ns_logctl release -
+} -returnCodes error -result {wrong # args: should be "ns_logctl release"}
+
+test ns_logctl-1.10 {syntax: ns_logctl severities} -body {
+    ns_logctl severities -
+} -returnCodes error -result {wrong # args: should be "ns_logctl severities"}
+
+test ns_logctl-1.11 {syntax: ns_logctl severity} -body {
+    ns_logctl severity
+} -returnCodes error -result {wrong # args: should be "ns_logctl severity /severity/ ?-color black|red|green|yellow|blue|magenta|cyan|gray|default? ?-intensity normal|bright? ?true|false?"}
+
+test ns_logctl-1.12 {syntax: ns_logctl stats} -body {
+    ns_logctl stats -
+} -returnCodes error -result {wrong # args: should be "ns_logctl stats"}
+
+test ns_logctl-1.13 {syntax: ns_logctl truncate} -body {
+    ns_logctl truncate 1 -
+} -returnCodes error -result {wrong # args: should be "ns_logctl truncate ?/count[0,MAX]/?"}
+
+test ns_logctl-1.14 {syntax: ns_logctl unregister} -body {
+    ns_logctl unregister
+} -returnCodes error -result {wrong # args: should be "ns_logctl unregister /handle/"}
 
 
+#
+# general tests
+#
 
 ns_logctl hold
 ns_logctl trunc
@@ -35,6 +124,10 @@ set logdebug   [ns_logctl severity debug on]
 set logdev     [ns_logctl severity dev on]
 set lognotice  [ns_logctl severity notice on]
 set logwarning [ns_logctl severity warning on]
+
+test ns_log-2.0 {ns_log, unknown severity} -body {
+    ns_log ? ?
+} -returnCodes error -match glob -result {unknown severity: "?": should be one of: Notice Warning Error Fatal Bug Debug Deprecated Dev*}
 
 test ns_log-3.1 {severity} -body {
     ns_log notice test
@@ -52,7 +145,7 @@ test ns_log-3.3 {severity} -body {
 } -match glob -result "* Error: test\n"
 
 test ns_log-3.4 {ns_log + severity "fatal" never writes} -body {
-    ns_log fatal test
+    ns_log fatal test - Don't panic!
     ns_logctl get
 } -result {}
 
@@ -128,7 +221,7 @@ test ns_log-5.6 {get} -body {
 } -result {}
 
 test ns_log-5.7 {get} -body {
-        ns_logctl flush
+    ns_logctl flush
     ns_log notice test
     set n [ns_logctl count]
     ns_logctl get
@@ -142,7 +235,7 @@ test ns_log-5.8 {flush} -body {
 } -result {}
 
 test ns_log-5.9 {flush} -body {
-        ns_logctl flush
+    ns_logctl flush
     ns_log notice test
     set n [ns_logctl count]
     ns_logctl flush
@@ -153,36 +246,36 @@ test ns_log-5.9 {flush} -body {
 
 test ns_log-6.1 {configuration} -body {
     ns_logctl severity
-} -returnCodes error -result {wrong # args: should be "ns_logctl severity severity-level ?-color color? ?-intensity intensity? ?bool?"}
+} -returnCodes error -result {wrong # args: should be "ns_logctl severity /severity/ ?-color black|red|green|yellow|blue|magenta|cyan|gray|default? ?-intensity normal|bright? ?true|false?"}
 
 test ns_log-6.2 {configuration} -body {
     ns_logctl severity ?
-} -returnCodes error -match glob -result {unknown severity: "?": should be one of: Notice Warning Error Fatal Bug Debug Dev*}
+} -returnCodes error -match glob -result {unknown severity: "?": should be one of: Notice Warning Error Fatal Bug Debug Deprecated Dev*}
 
 test ns_log-6.3 {enable/disable} -body {
-        set orig [ns_logctl severity debug]
-        set old  [ns_logctl severity debug [expr {$orig ? 0 : 1}]]
-        set new  [ns_logctl severity debug $orig]
-        expr {"$orig $old $new" eq "1 1 0" || "$orig $old $new" eq "0 0 1"}
+    set orig [ns_logctl severity debug]
+    set old  [ns_logctl severity debug [expr {$orig ? 0 : 1}]]
+    set new  [ns_logctl severity debug $orig]
+    expr {"$orig $old $new" eq "1 1 0" || "$orig $old $new" eq "0 0 1"}
 } -cleanup {
-        unset -nocomplain orig old new
+    unset -nocomplain orig old new
 } -result 1
 
 test ns_log-6.4 {list severities} -body {
-        ns_logctl severities
-} -match glob -result {Notice Warning Error Fatal Bug Debug Dev*}
+    ns_logctl severities
+} -match glob -result {Notice Warning Error Fatal Bug Debug Deprecated Dev*}
 
 test ns_log-6.5 {bounds check} -body {
-        ns_logctl flush
-        ns_logctl hold
-        ns_log 639 test
-        set n [ns_logctl count]
-        ns_logctl release
+    ns_logctl flush
+    ns_logctl hold
+    ns_log 639 test
+    set n [ns_logctl count]
+    ns_logctl release
 } -result {}
 
 test ns_log-6.6 {bounds check} -body {
-        ns_log 640 test
-} -returnCodes error -match glob -result {unknown severity: "640": should be one of: Notice Warning Error Fatal Bug Debug Dev*}
+    ns_log 640 test
+} -returnCodes error -match glob -result {unknown severity: "640": should be one of: Notice Warning Error Fatal Bug Debug Deprecated Dev*}
 
 
 

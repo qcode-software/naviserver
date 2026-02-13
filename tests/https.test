@@ -23,6 +23,30 @@ if {[ns_info ssl] ne ""} {
     testConstraint serverListen true
 }
 
+#
+# Syntax tests
+#
+test ns_certctl-1.0 {syntax: ns_certctl} -body {
+    ns_certctl
+} -returnCodes error -result {wrong # args: should be "ns_certctl list|reload ?/arg .../"}
+
+test ns_certctl-1.0 {syntax: ns_certctl} -body {
+    ns_certctl ""
+} -returnCodes error -result {ns_certctl: bad subcommand "": must be list or reload}
+
+test ns_certctl-1.2 {syntax: ns_certctl list} -body {
+    ns_certctl list ?
+} -returnCodes error -result {wrong # args: should be "ns_certctl list"}
+
+test ns_certctl-1.3 {syntax: ns_certctl reload} -body {
+    ns_certctl reload ?
+} -returnCodes error -result {wrong # args: should be "ns_certctl reload"}
+
+
+#
+# Functional tests
+#
+
 test https-1.1 {short request 1.0} -constraints {serverListen} -setup {
     ns_register_proc GET /get {
         ns_return 200 text/plain "Hello World"
@@ -31,7 +55,7 @@ test https-1.1 {short request 1.0} -constraints {serverListen} -setup {
     nstest::https -http 1.0 -getbody 1 GET /get
 } -cleanup {
     ns_unregister_op GET /get
-} -result "200 {Hello World}"
+} -returnCodes {error ok} -result "200 {Hello World}"
 
 
 test https-1.2 {short request 1.1} -constraints {serverListen} -setup {
@@ -42,7 +66,7 @@ test https-1.2 {short request 1.1} -constraints {serverListen} -setup {
     nstest::https -http 1.1 -getbody 1 GET /get
 } -cleanup {
     ns_unregister_op GET /get
-} -result "200 {Hello World}"
+} -returnCodes {error ok} -result "200 {Hello World}"
 
 
 test https-1.3 {longer request} -constraints {serverListen} -setup {
@@ -50,10 +74,10 @@ test https-1.3 {longer request} -constraints {serverListen} -setup {
         ns_return 200 text/plain [string repeat "0123456789" 100]
     }
 } -body {
-    nstest::https -getbody 0 -getheaders {Content-Length} GET /get
+    nstest::https -getbody 0 -getheaders {content-length} GET /get
 } -cleanup {
     ns_unregister_op GET /get
-} -result "200 1000"
+} -returnCodes {error ok} -result "200 1000"
 
 
 test https-1.4 {via writer} -constraints {serverListen} -setup {
@@ -61,10 +85,10 @@ test https-1.4 {via writer} -constraints {serverListen} -setup {
         ns_return 200 text/plain [string repeat "0123456789" 500]
     }
 } -body {
-    nstest::https -http 1.1 -getbody 0 -getheaders {Content-Length} GET /get
+    nstest::https -http 1.1 -getbody 0 -getheaders {content-length} GET /get
 } -cleanup {
     ns_unregister_op GET /get
-} -result "200 5000"
+} -returnCodes {error ok} -result "200 5000"
 
 
 test https-1.5 {via writer 500k} -constraints {serverListen} -setup {
@@ -72,10 +96,10 @@ test https-1.5 {via writer 500k} -constraints {serverListen} -setup {
         ns_return 200 text/plain [string repeat "0123456789" 50000]
     }
 } -body {
-    nstest::https -http 1.1 -getbody 0 -getheaders {Content-Length} GET /get
+    nstest::https -http 1.1 -getbody 0 -getheaders {content-length} GET /get
 } -cleanup {
     ns_unregister_op GET /get
-} -result "200 500000"
+} -returnCodes {error ok} -result "200 500000"
 
 
 test https-1.6 {with query} -constraints {serverListen} -setup {
@@ -86,21 +110,21 @@ test https-1.6 {with query} -constraints {serverListen} -setup {
     nstest::https -http 1.1 -getbody 1 GET /get/foo?q=1
 } -cleanup {
     ns_unregister_op GET /get/foo
-} -result "200 q=1"
+} -returnCodes {error ok} -result "200 q=1"
 
 
 
 test https-2.0 {ns_http for small file} -constraints {serverListen} -body {
     nstest::https -http 1.1 -getbody 1 GET /123
-} -result {200 123}
+} -returnCodes {error ok} -result {200 123}
 
 test https-2.1 {ns_http for small file} -constraints {serverListen} -body {
     nstest::https -hostname foo -http 1.1 -getbody 1 GET /123
-} -result {200 123}
+} -returnCodes {error ok} -result {200 123}
 
 test https-2.2 {ns_http for small file} -constraints {serverListen} -body {
     nstest::https -hostname test -http 1.1 -getbody 1 GET /123
-} -result {200 123}
+} -returnCodes {error ok} -result {200 123}
 
 test https-7.0 {ns_http with body and text datatype} -constraints {serverListen} -setup {
     ns_register_proc POST /post {
@@ -110,7 +134,7 @@ test https-7.0 {ns_http with body and text datatype} -constraints {serverListen}
 } -body {
     set string "Testing 'äöüß'"
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     #ns_log notice "queueing request for [ns_config test listenurl]/post"
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
@@ -118,7 +142,7 @@ test https-7.0 {ns_http with body and text datatype} -constraints {serverListen}
 } -cleanup {
     ns_unregister_op POST /post
     unset -nocomplain r
-} -result {200 {utf-8 <text/plain> AÄATesting 'äöüß'ZÜZ}}
+} -returnCodes {error return ok} -result {200 {utf-8 <text/plain> AÄATesting 'äöüß'ZÜZ}}
 
 test https-7.1 {ns_http with body and text datatype with encoding} -constraints {serverListen} -setup {
     ns_register_proc POST /post {
@@ -130,14 +154,14 @@ test https-7.1 {ns_http with body and text datatype with encoding} -constraints 
     set encoding iso8859-1
     set string [encoding convertto $encoding "Testing 'äöüß'"]
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type "text/plain; $encoding"
+    ns_set update $queryHeaders content-type "text/plain; $encoding"
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     return [list [dict get $result status] [dict get $result body]]
 } -cleanup {
     ns_unregister_op POST /post
     unset -nocomplain r
-} -result {200 {<text/plain; iso8859-1> AÄATesting 'äöüß'ZÜZ}}
+} -returnCodes {error return ok} -result {200 {<text/plain; iso8859-1> AÄATesting 'äöüß'ZÜZ}}
 
 test https-7.2a {ns_http with body and binary datataype} -constraints {serverListen} -setup {
     ns_register_proc POST /post {
@@ -147,7 +171,7 @@ test https-7.2a {ns_http with body and binary datataype} -constraints {serverLis
 } -body {
     set string "\x00\x01\x02\r"
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type application/octet-stream
+    ns_set update $queryHeaders content-type application/octet-stream
     set result [ns_http run -headers $queryHeaders -body $string -method POST \
                     [ns_config test listenurl]/post]
     set R [dict get $result body]
@@ -157,7 +181,7 @@ test https-7.2a {ns_http with body and binary datataype} -constraints {serverLis
 } -cleanup {
     ns_unregister_op POST /post
     unset -nocomplain r
-} -result {200 {0000 0001 0002 000D}}
+} -returnCodes {error return ok} -result {200 {0000 0001 0002 000D}}
 
 test https-7.2b {ns_http with body and binary datataype} -constraints {serverListen} -setup {
     ns_register_proc POST /post {
@@ -173,7 +197,7 @@ test https-7.2b {ns_http with body and binary datataype} -constraints {serverLis
 } -body {
     set string "\x00\x01\x02\r"
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type application/octet-stream
+    ns_set update $queryHeaders content-type application/octet-stream
     set result [ns_http run -headers $queryHeaders -body $string \
                     -method POST [ns_config test listenurl]/post]
     set R [dict get $result body]
@@ -186,7 +210,7 @@ test https-7.2b {ns_http with body and binary datataype} -constraints {serverLis
 } -cleanup {
     ns_unregister_op POST /post
     unset -nocomplain result R R1
-} -result {200 {0000 0001 0002 000D}}
+} -returnCodes {error return ok} -result {200 {0000 0001 0002 000D}}
 
 
 test https-8.0 {ns_http with body_file} -constraints {serverListen} -setup {
@@ -196,7 +220,7 @@ test https-8.0 {ns_http with body_file} -constraints {serverListen} -setup {
     }
 } -body {
     set queryHeaders [ns_set create]
-    ns_set update $queryHeaders Content-Type text/plain
+    ns_set update $queryHeaders content-type text/plain
     #ns_log notice "queueing request for [ns_config test listenurl]/put in dir [pwd]"
     set result [ns_http run -headers $queryHeaders -body_file testserver/pages/123 -method PUT \
                     [ns_config test listenurl]/put]
@@ -204,7 +228,7 @@ test https-8.0 {ns_http with body_file} -constraints {serverListen} -setup {
 } -cleanup {
     ns_unregister_op PUT /put
     unset -nocomplain result
-} -result {200 {utf-8 <text/plain> <123>}}
+} -returnCodes {error return ok} -result {200 {utf-8 <text/plain> <123>}}
 #-returnCodes error
 
 

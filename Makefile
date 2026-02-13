@@ -10,13 +10,13 @@
 #
 #
 #
-MAN_CSS=man.css
-HEADER_INC=header.inc
+MAN_CSS=man-5.0.css
+HEADER_INC=header-5.0.inc
 
 NSBUILD=1
 include include/Makefile.global
 
-dirs   = nsthread nsd nssock nscgi nscp nslog nsperm nsdb nsdbtest nsssl
+dirs    = nsthread nsd nssock nscgi nscp nslog nsperm nsdb nsdbtest nsssl revproxy
 
 # Unix only modules
 ifeq (,$(findstring MINGW,$(uname)))
@@ -26,9 +26,9 @@ endif
 distfiles = $(dirs) doc tcl contrib include tests win win32 configure m4 \
 	Makefile autogen.sh install-sh missing aclocal.m4 configure.ac \
 	config.guess config.sub \
-	README NEWS sample-config.tcl.in simple-config.tcl openacs-config.tcl \
+	README.md NEWS sample-config.tcl.in simple-config.tcl openacs-config.tcl \
 	nsd-config.tcl index.adp license.terms naviserver.rdf naviserver.rdf.in \
-	version_include.man.in bitbucket-install.tcl
+	version_include.man.in install-from-repository.tcl
 
 all:
 	@for i in $(dirs); do \
@@ -47,7 +47,7 @@ help:
 	@echo '  runtest      - start the server in interactive command mode'
 	@echo '  gdbruntest   - start the server in command mode, under the debugger'
 	@echo '  memcheck     - run all tests, under the valgrind memory checker'
-	@echo '  build-doc    - build the html and nroff documentation'
+	@echo '  build-doc    - build the HTML and nroff documentation'
 	@echo '  dist         - create a source tarball naviserver-'$(NS_PATCH_LEVEL)'.tar.gz'
 	@echo '  clean        - remove files created by other targets'
 	@echo
@@ -59,7 +59,7 @@ help:
 	@echo
 
 install: install-dirs install-include install-tcl install-modules \
-	install-config install-certificate install-doc install-examples install-notice
+	install-config install-certificates install-doc install-examples install-notice
 
 HAVE_NSADMIN := $(shell id -u nsadmin 2> /dev/null)
 
@@ -68,7 +68,7 @@ install-notice:
 	@echo ""
 	@echo "Congratulations, you have installed NaviServer."
 	@echo ""
-	@if [ "`whoami`" = "root" ]; then \
+	@if [ $(shell id -u) = 0 ]; then \
 	    if [ "x${HAVE_NSADMIN}" = "x" ] ; then \
 		echo "  When running as root, the server needs an unprivileged user to be"; \
 		echo "  specified (e.g. nsadmin). This user can be created on a Linux-like system with"; \
@@ -95,25 +95,35 @@ install-notice:
 	echo ""
 
 install-dirs: all
-	@for i in bin lib logs include tcl pages conf modules modules/tcl cgi-bin; do \
+	@for i in bin lib logs include tcl pages conf certificates modules modules/tcl cgi-bin; do \
 		$(MKDIR) $(DESTDIR)$(NAVISERVER)/$$i; \
 	done
 
 install-config: all
-	@mkdir -p $(DESTDIR)$(NAVISERVER)/conf $(DESTDIR)$(NAVISERVER)/pages/
+	@$(MKDIR) $(DESTDIR)$(NAVISERVER)/conf $(DESTDIR)$(NAVISERVER)/pages/
 	@for i in returnnotice.adp nsd-config.tcl sample-config.tcl simple-config.tcl openacs-config.tcl ; do \
 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/conf/; \
 	done
-	@for i in index.adp bitbucket-install.tcl; do \
+	@for i in index.adp install-from-repository.tcl; do \
 		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/pages/; \
 	done
 	$(INSTALL_SH) install-sh $(DESTDIR)$(INSTBIN)/
 
-install-certificate: $(PEM_FILE)
-	@mkdir -p $(DESTDIR)$(NAVISERVER)/etc
-	for i in $(PEM_FILE) ; do \
-		$(INSTALL_DATA) $(PEM_FILE) $(DESTDIR)$(NAVISERVER)/etc/; \
+install-certificates: $(PEM_FILE) ca-bundle.crt
+	@$(MKDIR) $(DESTDIR)$(NAVISERVER)/certificates
+	@$(MKDIR) $(DESTDIR)$(NAVISERVER)/invalid-certificates
+	@if [ -f "$(DESTDIR)$(NAVISERVER)/etc" ]; then \
+		for i in `ls $(DESTDIR)$(NAVISERVER)/etc/*pem` ; do \
+			$(LN) -sf $$i $(DESTDIR)$(NAVISERVER)/certificates ; \
+		done; \
+	fi
+	for i in `ls ./certificates/*` ; do \
+		$(INSTALL_DATA) $$i $(DESTDIR)$(NAVISERVER)/certificates/; \
 	done
+	@if [ -n "$(OPENSSL_LIBS)" ]; then \
+		$(OPENSSL) rehash $(DESTDIR)$(NAVISERVER)/certificates ; \
+	fi
+	$(INSTALL_DATA) ca-bundle.crt $(DESTDIR)$(NAVISERVER)/
 
 install-modules: all
 	@for i in $(dirs); do \
@@ -179,6 +189,7 @@ build-doc:
 		       nsperm \
 		       nssock \
 		       nsssl \
+		       revproxy \
 		       doc/src/manual \
 		       doc/src/naviserver \
 		       modules/nsexpat \
@@ -193,6 +204,9 @@ build-doc:
 		fi; \
 	done
 	$(CP) doc/images/manual/*.png doc/tmp/manual/
+	$(CP) doc/images/naviserver/*.png doc/tmp/naviserver/
+	$(CP) revproxy/doc/mann/*.png doc/tmp/revproxy/
+	$(CP) doc/commandlist_include.man doc/tmp/
 	@cd doc/tmp; \
 	for srcdir in `ls`; do \
 	    echo $$srcdir; \
@@ -217,7 +231,13 @@ build-doc:
 # Testing:
 #
 
-NS_TEST_CFG	= -u root -c -d -t $(srcdir)/tests/test.nscfg
+ifeq ($(shell id -u),0)
+NS_TEST_CFG	= -u nsadmin -c -d -t $(srcdir)/tests/test.nscfg
+else
+NS_TEST_CFG	= -c -d -t $(srcdir)/tests/test.nscfg
+endif
+
+
 NS_TEST_ALL	= $(srcdir)/tests/all.tcl $(TESTFLAGS)
 NS_LD_LIBRARY_PATH	= \
    LD_LIBRARY_PATH="$(srcdir)/nsd:$(srcdir)/nsthread:$(srcdir)/nsdb:$(srcdir)/nsproxy:$$LD_LIBRARY_PATH" \
@@ -226,29 +246,37 @@ NS_LD_LIBRARY_PATH	= \
 EXTRA_TEST_DIRS =
 ifneq ($(OPENSSL_LIBS),)
   #EXTRA_TEST_DIRS += nsssl
-  PEM_FILE        = tests/testserver/etc/server.pem
-  PEM_PRIVATE     = tests/testserver/etc/myprivate.pem
-  PEM_PUBLIC      = tests/testserver/etc/mypublic.pem
-  SSLCONFIG       = tests/testserver/etc/openssl.cnf
-  EXTRA_TEST_REQ  = $(PEM_FILE)
+  TEST_CERTIFICATES = tests/testserver/certificates
+  PEM_FILE          = $(TEST_CERTIFICATES)/server.pem
+  PEM_PRIVATE       = $(TEST_CERTIFICATES)/myprivate.pem
+  PEM_PUBLIC        = $(TEST_CERTIFICATES)/mypublic.pem
+  SSLCONFIG         = $(TEST_CERTIFICATES)/openssl.cnf
+  EXTRA_TEST_REQ    = $(PEM_FILE)
 endif
 
 $(PEM_FILE): $(PEM_PRIVATE)
-	openssl genrsa 2048 > host.key
-	openssl req -new -config $(SSLCONFIG) -x509 -nodes -sha1 -days 365 -key host.key > host.cert
-	cat host.cert host.key > server.pem
-	rm -rf host.cert host.key
-	openssl dhparam 1024 >> server.pem
-	mv server.pem $(PEM_FILE)
+	$(OPENSSL) genrsa 2048 > host.key
+	# openssl rejects on some platforms building certificates with SHA1, which requires TLS>1.0, excluding Windows XP.
+	$(OPENSSL) req -new -config $(SSLCONFIG) -x509 -nodes -sha256 -days 365 -key host.key > host.cert
+	$(CAT) host.cert host.key > server.pem
+	$(RM) -rf host.cert host.key
+	$(OPENSSL) dhparam 1024 >> server.pem
+	$(MKDIR) certificates
+	$(CP) server.pem certificates/
+	$(MV) server.pem $(PEM_FILE)
+	($(OPENSSL) rehash $(TEST_CERTIFICATES) 2>/dev/null || true)
 
 $(PEM_PRIVATE):
-	openssl genrsa -out $(PEM_PRIVATE) 512
-	openssl rsa -in $(PEM_PRIVATE) -pubout > $(PEM_PUBLIC)
-	chmod 644 $(PEM_PRIVATE)
+	$(OPENSSL) genrsa -out $(PEM_PRIVATE) 512
+	$(OPENSSL) rsa -in $(PEM_PRIVATE) -pubout > $(PEM_PUBLIC)
+	$(CHMOD) 644 $(PEM_PRIVATE)
 
 check: test
 
 test: all $(EXTRA_TEST_REQ)
+	@if [ $(shell id -u) = 0 ]; then \
+	    $(CHOWN) -R nsadmin $(srcdir)/tests ; \
+	fi;
 	$(NS_LD_LIBRARY_PATH) ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 	@for i in $(EXTRA_TEST_DIRS); do \
 		( cd $$i && $(MAKE) test ) || exit 1; \
@@ -261,7 +289,7 @@ gdbtest: all
 	$(NS_LD_LIBRARY_PATH) gdb -ex=run --args ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
 #	@echo set args $(NS_TEST_CFG) $(NS_TEST_ALL) > gdb.run
 #	$(NS_LD_LIBRARY_PATH) gdb -x gdb.run ./nsd/nsd
-#	rm gdb.run
+#	$(RM) gdb.run
 
 lldbtest: all
 	$(NS_LD_LIBRARY_PATH) lldb -- ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
@@ -273,7 +301,7 @@ lldb-sample: all
 gdbruntest: all
 	@echo set args $(NS_TEST_CFG) > gdb.run
 	$(NS_LD_LIBRARY_PATH) gdb -x gdb.run ./nsd/nsd
-	rm gdb.run
+	$(RM) gdb.run
 
 memcheck: all
 	$(NS_LD_LIBRARY_PATH) valgrind --tool=memcheck ./nsd/nsd $(NS_TEST_CFG) $(NS_TEST_ALL)
@@ -284,7 +312,8 @@ CPPCHECK_SYS_INCLUDES=-I/usr/include
 #CPPCHECK_SYS_INCLUDES=-I`xcrun --show-sdk-path`/usr/include
 
 cppcheck:
-	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c nsssl/*.c \
+	$(CPPCHECK) --verbose --inconclusive -j4 --enable=all --checkers-report=cppcheck.txt --check-level=exhaustive \
+		nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c nsssl/*.c \
 		-I./include $(CPPCHECK_SYS_INCLUDES) -D__x86_64__ -DNDEBUG $(DEFS)
 
 CLANG_TIDY_CHECKS=
@@ -292,7 +321,7 @@ CLANG_TIDY_CHECKS=
 #CLANG_TIDY_CHECKS=-checks=-*,modernize-*,performance-*,portability-*,cert-*
 #CLANG_TIDY_CHECKS=-checks=-*,bugprone-*
 clang-tidy:
-	clang-tidy-mp-14 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
+	clang-tidy-mp-19 nscp/*.c nscgi/*.c nsd/*.c nsdb/*.c nsproxy/*.c nssock/*.c nsperm/*.c \
 		$(CLANG_TIDY_CHECKS) -- \
 		-I./include -I/usr/include $(DEFS)
 
@@ -311,13 +340,16 @@ clean-bak: clean
 
 distclean: clean
 	$(RM) config.status config.log config.cache autom4te.cache aclocal.m4 configure \
-	include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
-	naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl
+		include/{Makefile.global,Makefile.module,config.h,config.h.in,stamp-h1} \
+		naviserver-$(NS_PATCH_LEVEL).tar.gz sample-config.tcl \
+		$(PEM_FILE) $(PEM_PRIVATE) $(PEM_PUBLIC)
 
 config.guess:
-	wget -O config.guess 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD'
+	curl -s -fS -k -L -o config.guess 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.guess;hb=HEAD'
 config.sub:
-	wget -O config.sub 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD'
+	curl -s -fS -k -L -o config.sub 'https://git.savannah.gnu.org/gitweb/?p=config.git;a=blob_plain;f=config.sub;hb=HEAD'
+ca-bundle.crt:
+	curl -s -fS -k -L -o ca-bundle.crt 'https://raw.githubusercontent.com/bagder/ca-bundle/refs/heads/master/ca-bundle.crt'
 
 dist: config.guess config.sub clean
 	$(RM) naviserver-$(NS_PATCH_LEVEL)
@@ -336,10 +368,10 @@ dist: config.guess config.sub clean
 	find naviserver-$(NS_PATCH_LEVEL) -name '*.c-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*.h-*' -exec rm \{} \;
 	find naviserver-$(NS_PATCH_LEVEL) -name '*~' -exec rm \{} \;
-	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --no-xattrs --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
+	tar czf naviserver-$(NS_PATCH_LEVEL).tar.gz --exclude='*/.*' --no-xattrs --disable-copyfile --exclude="._*" naviserver-$(NS_PATCH_LEVEL)
 	$(RM) naviserver-$(NS_PATCH_LEVEL)
 
 
 .PHONY: all install clean distclean \
 	install-dirs install-include install-tcl install-modules \
-	install-config install-certificate install-doc install-examples install-notice
+	install-config install-certificates install-doc install-examples install-notice

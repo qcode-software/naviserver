@@ -42,6 +42,7 @@ typedef Ns_ReturnCode  (SpSetParamProc) (Ns_DbHandle *handle, char *args);
 typedef int            (SpExecProc) (Ns_DbHandle *handle);
 typedef Ns_ReturnCode  (SpReturnCodeProc) (Ns_DbHandle *dbhandle, const char *returnCode, int bufsize);
 typedef Ns_Set *       (SpGetParamsProc) (Ns_DbHandle *handle);
+typedef Tcl_Obj*       (VersionProc) (Ns_DbHandle *handle);
 
 
 /*
@@ -71,6 +72,7 @@ typedef struct DbDriver {
     SpExecProc       *spexecProc;
     SpReturnCodeProc *spreturncodeProc;
     SpGetParamsProc  *spgetparamsProc;
+    VersionProc      *versionProc;
 } DbDriver;
 
 /*
@@ -204,13 +206,14 @@ Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs)
             driverPtr->spgetparamsProc = (SpGetParamsProc *) procs->func;
             break;
 
+        case DbFn_Version:
+            driverPtr->versionProc = (VersionProc *) procs->func;
+            break;
+
+#ifdef NS_WITH_DEPRECATED
             /*
              * The following functions are no longer supported.
              */
-
-        case DbFn_End:
-            UnsupProcId("End");
-            break;
 
         case DbFn_GetTableInfo:
             UnsupProcId("GetTableInfo");
@@ -222,6 +225,10 @@ Ns_DbRegisterDriver(const char *driver, const Ns_DbProc *procs)
 
         case DbFn_BestRowId:
             UnsupProcId("BestRowId");
+            break;
+#endif
+        case DbFn_End:
+            UnsupProcId("End");
             break;
 
         }
@@ -296,7 +303,47 @@ Ns_DbDriverDbType(Ns_DbHandle *handle)
     return result;
 }
 
-
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_DbDriverVersionInfo --
+ *
+ *      Retrieve driver-specific version information for the given
+ *      database handle.  If the handle is connected and its associated
+ *      driver provides a versionProc callback, that callback is invoked
+ *      to obtain a Tcl_Obj* describing the driver and server versions.
+ *      Otherwise, NULL is returned.
+ *
+ * Results:
+ *      Returns a Tcl_Obj* as produced by the driver's versionProc, or
+ *      NULL if no driver is set, no versionProc is available, or the
+ *      handle is not connected.
+ *
+ * Side effects:
+ *      Depends on the driver's versionProc implementation; may allocate
+ *      and return a new Tcl object.
+ *
+ *----------------------------------------------------------------------
+ */
+
+Tcl_Obj *
+Ns_DbDriverVersionInfo(Ns_DbHandle *handle)
+{
+    Tcl_Obj *result;
+    const DbDriver *driverPtr = NsDbGetDriver(handle);
+
+    if (driverPtr == NULL
+        || driverPtr->versionProc == NULL
+        || !handle->connected) {
+
+        result = NULL;
+    } else {
+        result = (*driverPtr->versionProc)(handle);
+    }
+    return result;
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -732,7 +779,7 @@ NsDbLoadDriver(const char *driver)
         if (module == NULL) {
             Ns_Log(Error, "dbdrv: no such driver '%s'", driver);
         } else {
-            const char *path = Ns_ConfigSectionPath(NULL, NULL, NULL, "db", "driver", driver, (char *)0L);
+            const char *path = Ns_ConfigSectionPath(NULL, NULL, NULL, "db", "driver", driver, NS_SENTINEL);
 
             /*
              * For unknown reasons, Ns_ModuleLoad is called with a
@@ -931,7 +978,7 @@ Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtyp
 {
     const DbDriver *driverPtr;
     Ns_ReturnCode    status = NS_ERROR;
-    Ns_DString       args;
+    Tcl_DString      args;
 
     NS_NONNULL_ASSERT(handle != NULL);
 
@@ -940,11 +987,11 @@ Ns_DbSpSetParam(Ns_DbHandle *handle, const char *paramname, const char *paramtyp
         && driverPtr != NULL
         && driverPtr->spsetparamProc != NULL) {
 
-        Ns_DStringInit(&args);
+        Tcl_DStringInit(&args);
         Ns_DStringVarAppend(&args, paramname, " ", paramtype, " ", direction, " ",
-                            value, (char *)0L);
+                            value, NS_SENTINEL);
         status = (*driverPtr->spsetparamProc)(handle, args.string);
-        Ns_DStringFree(&args);
+        Tcl_DStringFree(&args);
     }
 
     return status;

@@ -1,0 +1,342 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>admin-tuning - NaviServer Manual</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'admin-tuning.man' by tcllib/doctools with format 'html'
+   -->
+<!-- admin-tuning.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/manual/files/admin-tuning.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/manual/files/admin-tuning.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">admin-tuning(n)</h1>
+    <p class="man-details">NaviServer Manual &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>admin-tuning - NaviServer Tuning and Scaling Guide</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection1">Configure Spooling Threads</a></li>
+<li class="doctools_subsection"><a href="#subsection2">Tune the Connection Threads</a></li>
+<li class="doctools_subsection"><a href="#subsection3">Only Load Modules You Need</a></li>
+<li class="doctools_subsection"><a href="#subsection4">Turn Off DNS Lookups if Possible</a></li>
+<li class="doctools_subsection"><a href="#subsection5">Experiment with the ADP Cache</a></li>
+<li class="doctools_subsection"><a href="#subsection6">Experiment with the FastPath Cache</a></li>
+<li class="doctools_subsection"><a href="#subsection7">Disable CheckModifiedSince if Appropriate</a></li>
+<li class="doctools_subsection"><a href="#subsection8">Monitor Memory Usage</a></li>
+<li class="doctools_subsection"><a href="#subsection9">Beware the Database</a></li>
+<li class="doctools_subsection"><a href="#subsection10">Collect Metrics and Use Them</a></li>
+<li class="doctools_subsection"><a href="#subsection11">Further Parameters for Tuning</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>NaviServer is designed for high scalability. It originally served as
+ the core of web infrastructures supporting some of the most heavily
+ visited environments in the world, such as AOL. The sections below
+ discuss various configuration parameters and techniques that can help
+ you optimize and scale your NaviServer deployment.  For a complete
+ reference, see the &quot;<b class="file">sample-config.tcl</b>&quot; configuration file.</p>
+<div id="subsection1" class="doctools_subsection"><h3><a name="subsection1">Configure Spooling Threads</a></h3>
+<p>This section is especially relevant for sites requiring high
+ throughput. Throughput refers to the number of requests handled in a
+ given time interval. NaviServer scales by using a combination of
+ event-driven I/O handling (spooling techniques) and connection worker
+ threads which are responsible for the heavy lifting. The spooling
+ threads can efficiently manage large numbers of concurrent requests
+ with a relatively small number of lightweight threads.</p>
+<p>NaviServer treats sending and receiving data over network
+ connections as an I/O-driven process. The server’s event-driven model
+ triggers actions based on the arrival of incoming data or the
+ readiness of the kernel’s send queues. This approach assumes that I/O
+ operations require relatively little CPU time, allowing a single
+ thread to handle many concurrent connections. However, if a thread
+ performs CPU-intensive operations or waits on locks, all requests
+ managed by that thread are blocked as well for this time. This might
+ not be acceptable for serving latency sensitive data such as live
+ video streams via NaviServer.</p>
+<p>While static page serving is mostly I/O bound, real-world web
+ applications often perform CPU-intensive operations, such as database
+ queries, middleware interactions, and legacy backend
+ integrations. For example, NaviServer is known to handle up to 16,000
+ SQL queries per second on mid-range servers using OpenACS,
+ illustrating the need to efficiently handle mixed I/O and CPU loads.</p>
+<p>Processing an HTTP/HTTPS request happens in three phases:</p>
+<ul class="doctools_itemized">
+ 
+<li><p>Receive the request</p></li>
+<li><p>Process the request (e.g., run scripts, queries, etc.)</p></li>
+<li><p>Deliver the response</p></li>
+</ul>
+<p><img alt="Phases of Request Processing" src="../../image/request-phases.png"></p>
+<p>Figure 1: Request Phases
+ Without spooling threads, all three phases tie up a single connection
+ thread. This can become a bottleneck if, for example, a client is
+ slow to receive data or large uploads are involved. Slow-read or
+ slow-write attacks exploit this behavior by forcing the server to
+ keep a connection thread occupied a long time.</p>
+<p>NaviServer uses spooling threads to mitigate such bottlenecks:</p>
+<ul class="doctools_itemized">
+ 
+<li><p><em>driver</em> threads accept requests</p></li>
+<li><p><em>spooler</em> threads handle large uploads during the receive phase, offloading this work from driver threads</p></li>
+<li><p><em>writer</em> threads manage response delivery to clients</p></li>
+</ul>
+<p>Multiple of these spooling threads can be configured for each network driver (e.g., HTTP, HTTPS).</p>
+<p>Figure 2 illustrates how three concurrent requests (r0, r1,
+ r2) interact with spooling threads. By delegating I/O-intensive tasks
+ to driver and writer threads, connection threads spend less time
+ waiting and more time processing. This approach allows one connection
+ thread to handle many more requests per second.  Remember, every
+ spooling thread is capable to server a high number of concurrent
+ requests without latency degradation for the client. Only the process
+ phases (marked in orange) occupy time in the connection thread.</p>
+<p><img alt="Concurrent Requests with Spooling Threads" src="../../image/concurrent-requests1.png"></p>
+<p>Figure 2: Concurrent Request with Spooling Threads</p>
+<p>Only the processing phase requires always a connection
+thread. By reducing the time required in the connection thread, the
+scalability improves, the same number of connection threads is able to
+process more requests.
+Figure 3 shows how six requests are served by four connection threads.</p>
+<p><img alt="Concurrent Requests and Scalability" src="../../image/concurrent-requests2.png"></p>
+<p>Figure 3: Concurrent Requests and Scalability</p>
+<p>Actually, thanks to reduced processing time, these connection
+threads could serve much more requests.
+Without spooling threads, the server throughput is roughly:</p>
+<pre class="doctools_example">
+(total requests/sec) ≈ (number of connection threads * (1 / avg total request time))
+</pre>
+<p>With spooling threads, the server throughput approximates:</p>
+<pre class="doctools_example">
+(total requests/sec) ≈ (number of connection threads * (1 / avg process phase time))
+</pre>
+<p>Example:</p>
+<ul class="doctools_itemized">
+<li><p>Average total time per request: 25 ms</p></li>
+<li><p>Average process-phase time per request: 4 ms</p></li>
+<li><p>Without spooling:</p>
+<ul class="doctools_itemized">
+    
+<li><p>Per thread: 1000ms/25ms = 40 requests/sec</p></li>
+<li><p>With 4 connection threads: 160 requests/sec</p></li>
+</ul>
+</li>
+<li><p>With spooling:</p>
+<ul class="doctools_itemized">
+    
+<li><p>Per thread: 1000ms/4ms = 250 requests/sec</p></li>
+<li><p>With 4 connection threads: 1000 requests/sec</p></li>
+</ul>
+</li>
+</ul>
+<p>Actual figures depend on application complexity, database performance,
+network conditions, and more. Use the <b class="cmd">nsstats</b> module to gather
+metrics and understand your environment better. For determining the
+right number of, e.g., the right number of connection threads, the
+<b class="cmd">nsstats</b> module provides statistics for average queueing time,
+filter and run time, etc.</p>
+</div>
+<div id="subsection2" class="doctools_subsection"><h3><a name="subsection2">Tune the Connection Threads</a></h3>
+<p>For smaller deployments (e.g., 100K requests/day), the default
+ settings in &quot;<b class="file">sample-config.tcl</b>&quot; or &quot;<b class="file">openacs-config.tcl</b>&quot; are
+ often sufficient. For larger or more resource-constrained setups, you
+ may need to adjust parameters in the <i class="term">ns/server/$server</i>
+ section:</p>
+<p>Key parameters include:
+<i class="term">connsperthread</i>,
+<i class="term">highwatermark</i>, 
+<i class="term">lowwatermark</i>, 
+<i class="term">maxconnections</i>,
+<i class="term">maxthreads</i>,
+<i class="term">minthreads</i>,
+<i class="term">rejectoverrun</i>,
+<i class="term">retryafter</i>,
+<i class="term">poolratelimit</i>,
+<i class="term">connectionratelimit</i> and
+<i class="term">threadtimeout</i>.
+ See also the section <i class="term"><a href="../../index.html#connection_thread_pools">connection thread pools</a></i> in the keywords section.</p>
+<p>In most cases, the defaults work well, but <i class="term">minthreads</i>
+ and <i class="term">maxthreads</i> need often tuning. Setting these parameters
+ carefully based on load is essential.  Frequent starting and stopping
+ of threads can be costly if your application initializes large Tcl
+ environments. Sometimes it’s best to set
+ <i class="term">minthreads</i> = <i class="term">maxthreads</i> to avoid thread startup overhead.</p>
+<p><i class="term">maxconnections</i> defines the length of the connection
+ queue for a pool. If no connection thread is available, requests
+ queue up. If the queue overflows and <i class="term">rejectoverrun</i> is true, a
+ 503 error is returned to the client. If <i class="term">retryafter</i> is set, a
+ &quot;Retry-After&quot; header field is also provided. When <i class="term">rejectoverrun</i> is
+ false, NaviServer retries requests more aggressively, which can
+ consume memory if exploited by flooding attacks. For internal
+ servers, this behavior may still be desirable.</p>
+<p>On busy machines, define multiple connection thread pools and
+ map certain HTTP methods, URLs, or context constraints to them. See the
+ documentation of &quot;connection thread pools&quot; and the <b class="cmd">ns_server</b>
+ command for details.  You can create additional pools via in the
+ <i class="term">pools</i> section in the configuration file and configure them
+ separately.</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/pools {
+   #
+   # To activate connection thread pools, uncomment one of the
+   # following lines and/or add other pools.
+ 
+   ns_param   monitor	&quot;Monitoring actions&quot;
+   ns_param   fast	&quot;Fast requests (e.g., &lt;10ms)&quot;
+ }
+ 
+ ns_section ns/server/$server/pool/monitor {
+   ns_param   minthreads 2
+   ns_param   maxthreads 2
+ 
+   ns_param   map &quot;GET /admin/nsstats&quot;
+   ns_param   map &quot;GET /SYSTEM&quot;
+   ns_param   map &quot;GET /ds&quot;
+   ns_param   map &quot;POST /ds&quot;
+   ns_param   map &quot;GET /request-monitor&quot;
+ }
+ 
+ ns_section ns/server/$server/pool/fast {
+   ns_param   minthreads 2
+   ns_param   maxthreads 2
+ 
+   ns_param   map &quot;GET /*.png&quot;
+   ns_param   map &quot;GET /*.PNG&quot;
+   ns_param   map &quot;GET /*.jpg&quot;
+   ns_param   map &quot;GET /*.pdf&quot;
+   ns_param   map &quot;GET /*.gif&quot;
+   ns_param   map &quot;GET /*.mp4&quot;
+   ns_param   map &quot;GET /*.ts&quot;
+   ns_param   map &quot;GET /*.m3u8&quot;
+ }
+ 
+ ns_section ns/server/$server/pool/bots {
+   ns_param   map &quot;GET  /* {user-agent *bot*}&quot;
+   ns_param   map &quot;GET  /* {user-agent *rawl*}&quot;
+   ns_param   map &quot;GET  /* {user-agent *pider*}&quot;
+   ns_param   map &quot;GET  /* {user-agent *baidu*}&quot;
+   ns_param   map &quot;GET  /* {user-agent *Knowledge*}&quot;
+   ns_param   minthreads 2
+   ns_param   maxthreads 2
+   ns_param   poolratelimit 1000    ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
+   ns_param   rejectoverrun true
+ }
+</pre>
+<p>Different pools can have distinct parameters, including limiting
+ outgoing traffic rates per connection or for the entire pool.</p>
+</div>
+<div id="subsection3" class="doctools_subsection"><h3><a name="subsection3">Only Load Modules You Need</a></h3>
+<p>Loading unnecessary modules can introduce overhead. For instance:</p>
+<ul class="doctools_itemized">
+ 
+<li><p><i class="term"><a href="../../index.html#nsperm">nsperm</a></i> adds extra checks per request.</p></li>
+<li><p><i class="term">nscgi</i> and <i class="term"><a href="../../index.html#nscp">nscp</a></i> are not needed if you don’t run CGI or the control port.</p></li>
+</ul>
+<p>The general rule is not to load modules not used by your application to reduce overhead.</p>
+</div>
+<div id="subsection4" class="doctools_subsection"><h3><a name="subsection4">Turn Off DNS Lookups if Possible</a></h3>
+<p>Although NaviServer performs DNS caching, DNS lookups can slow down
+ request handling, especially for failed lookups. By default, <i class="term">nslog</i>
+ performs no DNS lookups, but verify your configuration. If you’re not using
+ host-based access controls with <i class="term"><a href="../../index.html#nsperm">nsperm</a></i>, disable DNS lookups
+ there as well. For <i class="term">nscgi</i>, DNS is off by default, but check for
+ gethostbyaddr settings. If you must use DNS, tune <i class="term">dnscache</i>,
+ <i class="term">dnswaittimeout</i>, and <i class="term">dnscachetimeout</i> to improve
+ performance.</p>
+</div>
+<div id="subsection5" class="doctools_subsection"><h3><a name="subsection5">Experiment with the ADP Cache</a></h3>
+<p>In the <i class="term">ns/server/$server/adp</i> section, parameters like
+ <i class="term">cache</i>, <i class="term">cachesize</i>, and <i class="term">threadcache</i> control the ADP
+ cache. The default is a 10 MB cache, which stores parsed ADP pages in
+ memory, reducing the need to re-parse on each request. Adjust these
+ settings based on memory availability and application needs.</p>
+</div>
+<div id="subsection6" class="doctools_subsection"><h3><a name="subsection6">Experiment with the FastPath Cache</a></h3>
+<p>The FastPath cache stores static HTML pages. In
+ <i class="term">ns/server/$server/fastpath</i>, adjust <i class="term">cache</i>,
+ <i class="term">cachemaxentry</i>, and <i class="term">cachemaxsize</i>. Default is 10 MB.  On some
+ systems, enabling <i class="term">mmap</i> can improve performance further.</p>
+</div>
+<div id="subsection7" class="doctools_subsection"><h3><a name="subsection7">Disable CheckModifiedSince if Appropriate</a></h3>
+<p>If your site rarely updates its content, you can disable
+ <i class="term">checkmodifiedsince</i> in section <i class="term">ns/server/$server</i>. This prevents NaviServer
+ from checking file modification times on every cached entry, potentially boosting
+ performance on slower systems.</p>
+</div>
+<div id="subsection8" class="doctools_subsection"><h3><a name="subsection8">Monitor Memory Usage</a></h3>
+<p>Monitor memory usage with tools like &quot;ps -leaf&quot;. Ideally, the
+ Resident Set Size (RSS) of the nsd process should be large compared
+ to its allocated size to avoid thrashing.  Operating system policies
+ or memory constraints can limit how much memory nsd can use
+ efficiently.</p>
+<p>The extra NaviServer module <i class="term">nsstats</i> offers detailed
+ memory analysis, including memory used for caching, <i class="term">nsv</i>, or
+ statistics from the system memory allocator, when, e.g., TCmalloc
+ from Google's perftools is used.</p>
+</div>
+<div id="subsection9" class="doctools_subsection"><h3><a name="subsection9">Beware the Database</a></h3>
+<p>Databases are often the main bottleneck of web
+ applications. Streamline queries and use stored procedures to
+ minimize round-trips and ensure only the required data is
+ retrieved. Check the statistics such as sequential tuple scans and
+ the like and optimize your database indices. This reduces the
+ server’s overhead in assembling <b class="cmd">ns_getrow</b> structures.</p>
+</div>
+<div id="subsection10" class="doctools_subsection"><h3><a name="subsection10">Collect Metrics and Use Them</a></h3>
+<p>NaviServer’s built-in statistics system (e.g., via module
+ <i class="term">nsstats</i>) provides insight into caching behavior, Tcl interpreters,
+ thread usage, and more. These metrics are invaluable for informed
+ tuning and capacity planning.</p>
+</div>
+<div id="subsection11" class="doctools_subsection"><h3><a name="subsection11">Further Parameters for Tuning</a></h3>
+<p>Additional parameters may improve performance in certain
+ contexts. For example, concurrent interpreter creation can now be
+ enabled with Tcl 8.6+:</p>
+<pre class="doctools_example">
+ ns_section ns/parameters {
+   ns_param concurrentinterpcreate true  ;# default: false
+ }
+</pre>
+<p>When this is activated, multiple threads containing Tcl interpreters
+ can be created concurrently. In previous version, the interpereter
+ creation had to be serialized to avoid crashes.</p>
+<p>Check the sample configuration files for more hints:</p>
+<ul class="doctools_itemized">
+<li><p><a href="https://raw.githubusercontent.com/naviserver-project/naviserver/main/nsd-config.tcl">nsd-config.tcl</a></p></li>
+<li><p><a href="https://raw.githubusercontent.com/naviserver-project/naviserver/main/simple-config.tcl">simple-config.tcl</a></p></li>
+<li><p><a href="https://raw.githubusercontent.com/naviserver-project/naviserver/main/openacs-config.tcl">openacs-config.tcl</a></p></li>
+</ul>
+</div>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#so_reuseport">SO_REUSEPORT</a>, <a href="../../index.html#tcp">TCP</a>, <a href="../../index.html#tcp_fastopen">TCP_FASTOPEN</a>, <a href="../../index.html#blueprint">blueprint</a>, <a href="../../index.html#configuration">configuration</a>, <a href="../../index.html#connection_thread_pools">connection thread pools</a>, <a href="../../index.html#driver">driver</a>, <a href="../../index.html#module">module</a>, <a href="../../index.html#nssock">nssock</a>, <a href="../../index.html#nsssl">nsssl</a>, <a href="../../index.html#pagedir">pagedir</a>, <a href="../../index.html#performance">performance</a>, <a href="../../index.html#spooling_threads">spooling threads</a>, <a href="../../index.html#tuning">tuning</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

@@ -5,25 +5,48 @@ namespace import -force ::tcltest::*
 
 ::tcltest::configure {*}$argv
 
-#######################################################################################
-#  test ns_parsefieldvalue
-#######################################################################################
+testConstraint with_deprecated [dict get [ns_info buildinfo] with_deprecated]
 
-test ns_random-1.0 {ns_rand with 1 arg - integer} -body {
+#######################################################################################
+#  test ns_rand
+#######################################################################################
+test ns_rand-1.0 {syntax: ns_rand} -body {
+    ns_rand 1 x
+} -returnCodes error -result {wrong # args: should be "ns_rand ?/maximum[1,MAX]/?"}
+
+test ns_rand-1.1 {ns_rand with 1 arg - integer} -body {
     set rand [ns_rand 10]
     return [list [expr {$rand < 10}] [string is integer -strict $rand] ]
 } -result {1 1}
 
-test ns_random-1.1 {ns_rand with 0 arg - float} -body {
+test ns_rand-1.2 {ns_rand with 0 arg - float} -body {
     set rand [ns_rand]
     return [list [expr {$rand < 1}] [string is double -strict $rand] ]
 } -result {1 1}
 
 #######################################################################################
+#  test ns_parseheader
+#######################################################################################
+test ns_parseheader-1.0 {syntax: ns_parseheader} -body {
+    ns_parseheader
+} -returnCodes error -result {wrong # args: should be "ns_parseheader ?-prefix /value/? /set/ /headerline/ ?/disposition/?"}
+
+#######################################################################################
+#  test ns_parsemessage
+#######################################################################################
+test ns_parsemessage-1.0 {syntax: ns_parsemessage} -body {
+    ns_parsemessage
+} -returnCodes error -result {wrong # args: should be "ns_parsemessage /message/"}
+
+#######################################################################################
 #  test ns_fmttime
 #######################################################################################
 
-test ns_fmttime-1.0 {ns_fmttime without format} -body {
+test ns_fmttime-1.0 {syntax: ns_fmttime} -body {
+    ns_fmttime
+} -returnCodes error -result {wrong # args: should be "ns_fmttime /time[0,MAX]/ ?/fmt/?"}
+
+test ns_fmttime-1.1 {ns_fmttime without format} -body {
     #
     # "ns_fmttime" depends on the local time-zone. Since we cannot
     # pass the timezone as an argument, we make a rough test here.
@@ -31,7 +54,7 @@ test ns_fmttime-1.0 {ns_fmttime without format} -body {
     return [llength [ns_fmttime 1563812758]]
 } -result {5}
 
-test ns_fmttime-1.1 {ns_rand with 0 arg - float} -body {
+test ns_fmttime-1.2 {ns_rand with 0 arg - float} -body {
     #
     # The year information is in all timezones for this timestamp
     # identical.
@@ -43,9 +66,10 @@ test ns_fmttime-1.1 {ns_rand with 0 arg - float} -body {
 #  test ns_trim
 #######################################################################################
 
-test ns_trim-0.0 {ns_trim without arguments} -body {
+test ns_trim-0.0 {syntax: ns_trim} -body {
     ns_trim
-} -returnCodes error -result {wrong # args: should be "ns_trim ?-subst? ?-delimiter delimiter? ?-prefix prefix? ?--? text"}
+} -returnCodes error -result {wrong # args: should be "ns_trim ?-subst? ?-delimiter /value/? ?-prefix /value/? ?--? /text/"}
+
 test ns_trim-0.1 {ns_trim with invalid delimiter} -body {
     ns_trim -delimiter aa "hello world"
 } -returnCodes error -result {invalid arguments: -delimiter must be a single character}
@@ -58,7 +82,7 @@ test ns_trim-1.1 {nothing to trim} -body {
 } -result {line1\nline2}
 test ns_trim-1.2 {trim spaces} -body {
     string map {\n \\n} [ns_trim " line1\n  line2\nline3\n "]
-} -result {line1\nline2\nline3\n}
+} -result {line1\nline2\nline3}
 test ns_trim-1.3 {trim with delimiter} -body {
     string map {\n \\n} [ns_trim -delimiter : " : line1\n  : line2\n    : line3\n :"]
 } -result { line1\n line2\n line3\n}
@@ -79,8 +103,13 @@ test ns_trim-2.2 {trim with delimiter and no occurrence of prefix} -body {
 #######################################################################################
 #  test ns_strcoll
 #######################################################################################
-testConstraint collateFold [expr {$::tcl_platform(os) in {Linux}}]
+testConstraint collateFold [expr {$::tcl_platform(os) in {Darwin Linux}}]
+testConstraint collateDash [expr {$::tcl_platform(os) in {Linux}}]
 testConstraint localeCollate [expr {$::tcl_platform(os) in {Darwin Linux}}]
+
+test ns_strcoll-1.0 {syntax: ns_strcoll} -body {
+    ns_strcoll
+} -returnCodes error -result {wrong # args: should be "ns_strcoll ?-locale /value/? ?--? /string1/ /string2/"}
 
 #
 # The constraint 'collateFold' means to sort upper and lower character
@@ -89,44 +118,49 @@ testConstraint localeCollate [expr {$::tcl_platform(os) in {Darwin Linux}}]
 # strcoll_l on these systems is based on the ICU library
 # (International Components for Unicode).
 #
-test ns_strcoll-1.0.0 {ns_strcoll without locale (assuming en_US.UTF-8)} \
+test ns_strcoll-1.2 {ns_strcoll without locale (assuming en_US.UTF-8)} \
     -constraints localeCollate -body {
         return [expr {[ns_strcoll Bär Bor] < 0}]
     } -result 1
 
-test ns_strcoll-1.0.1 {ns_strcoll with locale C} \
+test ns_strcoll-1.3 {ns_strcoll with locale C} \
     -body {
         return [expr {[ns_strcoll -locale C Bär Bor] > 0}]
     } -result 1
 
-test ns_strcoll-1.0.2 {ns_strcoll with locale en_US.UTF-8 } \
+test ns_strcoll-1.4 {ns_strcoll with locale en_US.UTF-8 } \
     -constraints localeCollate -body {
         return [expr {[ns_strcoll -locale en_US.UTF-8 Bär Bor] < 0}]
     } -result 1
 
-test ns_strcoll-1.1 {ns_strcoll without locale specified} \
+test ns_strcoll-1.5 {ns_strcoll without locale specified} \
     -constraints localeCollate -body {
         set l {Önce Ince Once Ance Adam Çengel Art Ceb Dora Pravda Правда Omikron ό Zeppelin Bar Bor Bär}
         return [lsort -command ns_strcoll $l]
-    } -result {Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin ό Правда}
+    } -match glob -result {*Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin*}
+#
+# For macOS Seqouia 15.4, the collating order of cyrillc characters
+# changed. New they are in front, before they were at the end. See:
+# -result {Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin ό Правда}
 
-test ns_strcoll-1.2 {ns_strcoll with locale en_US.UTF-8} \
+test ns_strcoll-1.6 {ns_strcoll with locale en_US.UTF-8} \
     -constraints localeCollate -body {
         set l {Önce Ince Once Ance Adam Çengel Art Ceb Dora Pravda Правда Omikron ό Zeppelin Bar Bor Bär}
         return [lsort -command {ns_strcoll -locale en_US.UTF-8 --} $l]
-    } -result {Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin ό Правда}
+    } -match glob -result {*Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin*}
+# -result {Adam Ance Art Bar Bär Bor Ceb Çengel Dora Ince Omikron Once Önce Pravda Zeppelin ό Правда}
 
 #
 # Check ignored dashes
 #
 test ns_strcoll-2.1 {sort with leading dashes, without locale specified} \
-    -constraints {collateFold} -body {
+    -constraints {collateDash} -body {
         set l {b 1 -a}
         return [lsort -command ns_strcoll $l]
     } -result {1 -a b}
 
 test ns_strcoll-2.2 {sort with leading dashes, with locale en_US.UTF-8} \
-    -constraints {collateFold} -body {
+    -constraints {collateDash} -body {
         set l {b 1 -a}
         return [lsort -command {ns_strcoll -locale en_US.UTF-8 --} $l]
     } -result {1 -a b}
@@ -162,44 +196,218 @@ test ns_strcoll-3.3 {sort with upper and lowercase characters, locale C} \
 #  test ns_valid_utf8
 #######################################################################################
 
-test ns_valid_utf8-1.0 {ns_valid_utf8 with typical value} -body {
+test ns_valid_utf8-1.0 {syntax: ns_valid_utf8} -body {
+    ns_valid_utf8 - - -
+} -returnCodes error -result {wrong # args: should be "ns_valid_utf8 /string/ ?/varname/?"}
+
+test ns_valid_utf8-1.1 {ns_valid_utf8 with typical value} -body {
     return [ns_valid_utf8 "hello world"]
 } -result 1
 
-test ns_valid_utf8-1.1 {invalid utf8, containing x85 at the end} -body {
+test ns_valid_utf8-1.2 {invalid utf8, containing x85 at the end} -body {
     return [ns_valid_utf8 "forschungsprojek\x85"]
 } -result 0
 
-test ns_valid_utf8-1.2 {valid utf8, containing x85 at the end} -body {
+test ns_valid_utf8-1.3 {valid utf8, containing x85 at the end} -body {
     return [ns_valid_utf8 "forschungsprojek\xc3\x85"]
 } -result 1
 
-test ns_valid_utf8-1.3 {invalid utf8, containing xF0 at the end} -body {
-    ns_valid_utf8 "forschungsprojek\xF0" errorString
-    set errorString
+test ns_valid_utf8-1.4 {invalid utf8, containing xF0 at the end} -body {
+    ns_valid_utf8 "forschungsprojek\xF0" errorString; set errorString
 } -result {forschungs...|\xf0|}
 
-test ns_valid_utf8-1.4 {invalid utf8, containing x85 in the middle} -body {
-    ns_valid_utf8 "mot\x85rhead" errorString
-    set errorString
+test ns_valid_utf8-1.5 {invalid utf8, containing x85 in the middle} -body {
+    ns_valid_utf8 "mot\x85rhead" errorString; set errorString
 } -result {mot|\x85r|...}
 
+test ns_valid_utf8-2.0 {invalid utf8, lone continuation byte} -body {
+    ns_valid_utf8 "\x80" errorString; set errorString
+} -result {|\x80|}
+
+test ns_valid_utf8-2.1 {invalid utf8, lone continuation byte at the start} -body {
+    ns_valid_utf8 "\x80hello" errorString; set errorString
+} -result {|\x80h|...}
+
+test ns_valid_utf8-2.2 {invalid utf8, lone continuation byte at the end} -body {
+    ns_valid_utf8 "hello\x80" errorString; set errorString
+} -result {hello|\x80|}
+
+test ns_valid_utf8-2.3 {invalid utf8, lone continuation byte in the middle} -body {
+    ns_valid_utf8 "hello\x80world" errorString; set errorString
+} -result {hello|\x80w|...}
+
+test ns_valid_utf8-3.0 {invalid utf8, too few continuation bytes} -body {
+    ns_valid_utf8 "\xE2\x82" errorString; set errorString
+} -result {|\xe2\x82|}
+
+test ns_valid_utf8-3.1 {invalid utf8, too few continuation bytes at the start} -body {
+    ns_valid_utf8 "\xE2\x82hello" errorString; set errorString
+} -result {|\xe2\x82h|...}
+
+test ns_valid_utf8-3.2 {invalid utf8, too few continuation bytes at the end} -body {
+    ns_valid_utf8 "hello\xE2\x82" errorString; set errorString
+} -result {hello|\xe2\x82|}
+
+test ns_valid_utf8-3.3 {invalid utf8, too few continuation bytes in the middle} -body {
+    ns_valid_utf8 "hello\xE2\x82world" errorString; set errorString
+} -result {hello|\xe2\x82w|...}
+
+
+test ns_valid_utf8-4.0 {3-byte utf8, invalid 2nd byte} -body {
+    ns_valid_utf8 "\xE2_\xA1" errorString; set errorString
+} -result {|\xe2_\xa1|...}
+
+test ns_valid_utf8-4.1 {3-byte utf8, invalid continuation byte at the start} -body {
+    ns_valid_utf8 "\xE2_\xA1hello" errorString; set errorString
+} -result {|\xe2_\xa1|...}
+
+test ns_valid_utf8-4.2 {3-byte utf8, invalid continuation byte at the end} -body {
+    ns_valid_utf8 "hello\xE2_\xA1" errorString; set errorString
+} -result {hello|\xe2_\xa1|...}
+
+test ns_valid_utf8-4.3 {3-byte utf8, invalid continuation byte in the middle} -body {
+    ns_valid_utf8 "hello\xE2_\xA1world" errorString; set errorString
+} -result {hello|\xe2_\xa1|...}
+
+
+test ns_valid_utf8-5.0 {invalid utf8, invalid leading byte} -body {
+    ns_valid_utf8 "\xBF\xA3" errorString; set errorString
+} -result {|\xbf\xa3|...}
+
+test ns_valid_utf8-5.1 {invalid utf8, invalid leading byte at the start} -body {
+    ns_valid_utf8 "\xBF\xA3hello" errorString; set errorString
+} -result {|\xbf\xa3|...}
+
+test ns_valid_utf8-5.2 {invalid utf8, invalid leading byte at the end} -body {
+    ns_valid_utf8 "hello\xBF\xA3" errorString; set errorString
+} -result {hello|\xbf\xa3|...}
+
+test ns_valid_utf8-5.3 {invalid utf8, invalid leading byte in the middle} -body {
+    ns_valid_utf8 "hello\xBF\xA3world" errorString; set errorString
+} -result {hello|\xbf\xa3|...}
+
+
+test ns_valid_utf8-6.0 {invalid 4-byte utf8, out of range code point} -body {
+    ns_valid_utf8 "\xF8\x80\x80\x80\x80" errorString; set errorString
+} -result {|\xf8\x80\x80\x80|...}
+
+test ns_valid_utf8-6.1 {invalid 4-byte utf8, out of range code point at the start} -body {
+    ns_valid_utf8 "\xF8\x80\x80\x80\x80hello" errorString; set errorString
+} -result {|\xf8\x80\x80\x80|...}
+
+test ns_valid_utf8-6.2 {invalid 4-byte utf8, out of range code point at the end} -body {
+    ns_valid_utf8 "hello\xF8\x80\x80\x80\x80" errorString; set errorString
+} -result {hello|\xf8\x80\x80\x80|...}
+
+test ns_valid_utf8-6.3 {invalid 4-byte utf8, out of range code point in the middle} -body {
+    ns_valid_utf8 "hello\xF8\x80\x80\x80\x80world" errorString; set errorString
+} -result {hello|\xf8\x80\x80\x80|...}
+
+
+test ns_valid_utf8-7.0 {invalid utf8, surrogate halves} -body {
+    ns_valid_utf8 "\xED\xA0\x80" errorString; set errorString
+} -result {|\xed\xa0\x80|...}
+
+test ns_valid_utf8-7.1 {invalid utf8, surrogate halves at the start} -body {
+    ns_valid_utf8 "\xED\xA0\x80hello" errorString; set errorString
+} -result {|\xed\xa0\x80|...}
+
+test ns_valid_utf8-7.2 {invalid utf8, surrogate halves at the end} -body {
+    ns_valid_utf8 "hello\xED\xA0\x80" errorString; set errorString
+} -result {hello|\xed\xa0\x80|...}
+
+test ns_valid_utf8-7.3 {invalid utf8, surrogate halves in the middle} -body {
+    ns_valid_utf8 "hello\xED\xA0\x80world" errorString; set errorString
+} -result {hello|\xed\xa0\x80|...}
+
+
+test ns_valid_utf8-8.0 {invalid utf8, overlong encoding} -body {
+    ns_valid_utf8 "\xC0\xAF" errorString; set errorString
+} -result {|\xc0\xaf|...}
+
+test ns_valid_utf8-8.1 {invalid utf8, overlong encoding at the start} -body {
+    ns_valid_utf8 "\xC0\xAFhello" errorString; set errorString
+} -result {|\xc0\xaf|...}
+
+test ns_valid_utf8-8.2 {invalid utf8, overlong encoding at the end} -body {
+    ns_valid_utf8 "hello\xC0\xAF" errorString; set errorString
+} -result {hello|\xc0\xaf|...}
+
+test ns_valid_utf8-8.3 {invalid utf8, overlong encoding in the middle} -body {
+    ns_valid_utf8 "hello\xC0\xAFworld" errorString; set errorString
+} -result {hello|\xc0\xaf|...}
+
+
 #######################################################################################
-#  test ns_subnetmatch
+#  test ns_ip
 #######################################################################################
 
-test ns_subnetmatch-1.0 {ns_subnetmatch IPv4} -body {
-    return [ns_subnetmatch 137.208.0.0/16 137.208.116.31]
+test ns_ip-1.0.1 {syntax: ns_ip} -body {
+    ns_ip
+} -returnCodes error -result {wrong # args: should be "ns_ip inany|match|properties|public|trusted|valid ?/arg .../"}
+
+test ns_ip-1.0.2 {syntax: ns_ip subcommand} -body {
+    ns_ip x
+} -returnCodes error -result {ns_ip: bad subcommand "x": must be inany, match, properties, public, trusted, or valid}
+
+test ns_ip-1.1.0 {syntax: ns_ip match} -body {
+    ns_ip match
+} -returnCodes error -result {wrong # args: should be "ns_ip match /cidr/ /ipaddr/"}
+test ns_ip-1.1.1 {syntax: ns_ip properties} -body {
+    ns_ip properties
+} -returnCodes error -result {wrong # args: should be "ns_ip properties /ipaddr/"}
+test ns_ip-1.1.2 {syntax: ns_ip public} -body {
+    ns_ip public
+} -returnCodes error -result {wrong # args: should be "ns_ip public /ipaddr/"}
+test ns_ip-1.1.3 {syntax: ns_ip trusted} -body {
+    ns_ip trusted
+} -returnCodes error -result {wrong # args: should be "ns_ip trusted /ipaddr/"}
+test ns_ip-1.1.4 {syntax: ns_ip valid} -body {
+    ns_ip valid
+} -returnCodes error -result {wrong # args: should be "ns_ip valid ?-type ipv4|ipv6? ?--? /ipaddr/"}
+test ns_ip-1.1.5 {syntax: ns_ip inany} -body {
+    ns_ip inany
+} -returnCodes error -result {wrong # args: should be "ns_ip inany /ipaddr/"}
+
+
+test ns_ip-1.2.1 {ns_ip properties particular address} -body {
+   ns_ip properties 127.0.0.1
+} -match glob -result {public 0 trusted [01] inany [01] type IPv4}
+
+test ns_ip-1.3.1 {ns_ip inany} -body {
+    lmap ip {192.168.64.1 127.0.0.1 ::1 :: 0.0.0.0 137.208.116.31 2001:628:404:74::31} {ns_ip inany $ip}
+} -returnCodes {error ok} -result {0 0 0 1 1 0 0}
+
+test ns_ip-1.3.2 {ns_ip public} -body {
+    lmap ip {192.168.64.1 127.0.0.1 ::1 0.0.0.0 ::
+        137.208.116.31 2001:628:404:74::31} {ns_ip public $ip}
+} -result {0 0 0 0 0 1 1}
+
+test ns_ip-1.3.3 {ns_ip trusted} -body {
+    lmap ip {137.208.116.31 2001:628:404:74::31} {ns_ip trusted $ip}
+} -result {0 0}
+
+test ns_ip-1.3.4 {ns_ip valid} -body {
+    lmap ip {192.168.64.1 127.0.0.1 ::1 0.0.0.0 :: 137.208.116.31 2001:628:404:74::31
+        1.1.1.1.1 openacs.org } {ns_ip valid $ip}
+} -result {1 1 1 1 1 1 1 0 0}
+
+
+#
+#  test ns_ip match
+#
+test ns_ip_match--1.0 {ns_ip match IPv4} -body {
+    return [ns_ip match 137.208.0.0/16 137.208.116.31]
 } -result 1
 
-test ns_subnetmatch-1.1 {ns_subnetmatch IPv4 invalid cidr} -body {
-    ns_subnetmatch 137.208/16 137.208.116.31
+test ns_ip_match--1.1 {ns_ip match IPv4 invalid cidr} -body {
+    ns_ip match 137.208/16 137.208.116.31
 } -returnCodes error  -result {'137.208/16' is not a valid CIDR string for IPv4 or IPv6}
-test ns_subnetmatch-1.2 {ns_subnetmatch IPv4 invalid ip} -body {
-    ns_subnetmatch 137.208.0.0/16 137.208.116
+test ns_ip_match--1.2 {ns_ip match IPv4 invalid ip} -body {
+    ns_ip match 137.208.0.0/16 137.208.116
 } -returnCodes error  -result {'137.208.116' is not a valid IPv4 or IPv6 address}
 
-test ns_subnetmatch-1.3 {ns_subnetmatch IPv4} -body {
+test ns_ip_match--1.3 {ns_ip match IPv4} -body {
     lmap ip {
         137.208.215.0
         137.208.216.0
@@ -207,10 +415,10 @@ test ns_subnetmatch-1.3 {ns_subnetmatch IPv4} -body {
         137.208.220.0
         137.208.223.0
         137.208.224.0
-    } {ns_subnetmatch 137.208.216.0/21 $ip}
+    } {ns_ip match 137.208.216.0/21 $ip}
 } -result {0 1 1 1 1 0}
 
-test ns_subnetmatch-1.4 {ns_subnetmatch IPv4} -body {
+test ns_ip_match--1.4 {ns_ip match IPv4} -body {
     lmap ip {
         137.208.215.0
         137.208.216.0
@@ -218,32 +426,278 @@ test ns_subnetmatch-1.4 {ns_subnetmatch IPv4} -body {
         137.208.220.0
         137.208.223.0
         137.208.224.0
-    } {ns_subnetmatch 0.0.0.0/0 $ip}
+    } {ns_ip match 0.0.0.0/0 $ip}
 } -result {1 1 1 1 1 1}
 
-test ns_subnetmatch-2.0 {ns_subnetmatch IPv6} -body {
-    return [ns_subnetmatch 2001:4860:4860::8888/32 2001:4860:6666:6666:6666:6666:6666:66FF]
+test ns_ip_match--2.0 {ns_ip match IPv6} -body {
+    return [ns_ip match 2001:4860:4860::8888/32 2001:4860:6666:6666:6666:6666:6666:66FF]
 } -result 1
 
-test ns_subnetmatch-2.1 {ns_subnetmatch IPv6 invalid cidr} -body {
-    ns_subnetmatch 2001:4860:4860:8888/32 2001:4860:6666:6666:6666:6666:6666:66FF
+test ns_ip_match--2.1 {ns_ip match IPv6 invalid cidr} -body {
+    ns_ip match 2001:4860:4860:8888/32 2001:4860:6666:6666:6666:6666:6666:66FF
 } -returnCodes error  -result {'2001:4860:4860:8888/32' is not a valid CIDR string for IPv4 or IPv6}
 
-test ns_subnetmatch-2.2 {ns_subnetmatch IPv6 invalid ip} -body {
-    ns_subnetmatch 2001:4860:4860::8888/32 2001:4860:6666:6666:6666:6666:6666
+test ns_ip_match--2.2 {ns_ip match IPv6 invalid ip} -body {
+    ns_ip match 2001:4860:4860::8888/32 2001:4860:6666:6666:6666:6666:6666
 } -returnCodes error  -result {'2001:4860:6666:6666:6666:6666:6666' is not a valid IPv4 or IPv6 address}
 
-test ns_subnetmatch-2.3 {ns_subnetmatch comparing IPv4 with IPv6} -body {
-    ns_subnetmatch 2001:628:404:74::31/64 137.206.1.1
+test ns_ip_match--2.3 {ns_ip match comparing IPv4 with IPv6} -body {
+    ns_ip match 2001:628:404:74::31/64 137.206.1.1
 } -result 0
 
-test ns_subnetmatch-2.4 {ns_subnetmatch IPv4} -body {
+test ns_ip_match--2.4 {ns_ip match IPv4} -body {
     lmap ip {
         2001:628:404:74::31
         ::1
         ::0
-    } {ns_subnetmatch ::/0 $ip}
+    } {ns_ip match ::/0 $ip}
 } -result {1 1 1}
+
+
+#######################################################################################
+#  test ns_rlimit
+#######################################################################################
+
+test ns_rlimit-1.0 {ns_rlimit general} -body {
+    ns_rlimit
+} -returnCodes error -result {wrong # args: should be "ns_rlimit /subcommand/ ?/arg .../?"}
+
+test ns_rlimit-1.1 {ns_rlimit wrong subcommand} -body {
+    ns_rlimit ?
+} -returnCodes error -result {bad subcommand "?": must be coresize, datasize, files, filesize, or vmsize}
+
+test ns_rlimit-1.2 {syntax: ns_rlimit coresize} -body {
+    ns_rlimit coresize 1 ?
+} -returnCodes error -result {wrong # args: should be "ns_rlimit coresize ?/value/?"}
+
+test ns_rlimit-1.3 {syntax: ns_rlimit datasize} -body {
+    ns_rlimit datasize 1 ?
+} -returnCodes error -result {wrong # args: should be "ns_rlimit datasize ?/value/?"}
+
+test ns_rlimit-1.4 {syntax: ns_rlimit files} -body {
+    ns_rlimit files 1 ?
+} -returnCodes error -result {wrong # args: should be "ns_rlimit files ?/value/?"}
+
+test ns_rlimit-1.5 {syntax: ns_rlimit filesize} -body {
+    ns_rlimit filesize 1 ?
+} -returnCodes error -result {wrong # args: should be "ns_rlimit filesize ?/value/?"}
+
+test ns_rlimit-1.6 {syntax: ns_rlimit vmsize} -body {
+    ns_rlimit vmsize 1 ?
+} -returnCodes error -result {wrong # args: should be "ns_rlimit vmsize ?/value/?"}
+
+#######################################################################################
+#  ns_baseunit
+#######################################################################################
+
+test ns_baseunit-1.0 {syntax: ns_baseunit} -body {
+    ns_baseunit ?
+} -returnCodes error -result {wrong # args: should be "ns_baseunit ?-size /memory-size/? ?-time /time/?"}
+
+#######################################################################################
+#  ns_setprivileges
+#######################################################################################
+
+test ns_setgroup-1.0 {syntax: ns_setgroup} -body {
+    ns_setgroup
+} -returnCodes error -result {wrong # args: should be "ns_setgroup /group/"}
+
+test ns_setuser-1.0 {syntax: ns_setuser} -body {
+    ns_setuser
+} -returnCodes error -result {wrong # args: should be "ns_setuser /user/"}
+
+#######################################################################################
+#  Other commands, in part defined in Tcl
+#######################################################################################
+
+test ns_browsermatch-1.0 {syntax: ns_hash} -constraints with_deprecated -body {
+    ns_browsermatch
+} -returnCodes error -result {wrong # args: should be "ns_browsermatch pattern"}
+# ns_browsermatch is a Tcl proc: message should be {wrong # args: should be "ns_browsermatch /pattern/"}
+
+test ns_htmlselect-1.0 {syntax: ns_htmlselect} -body {
+    ns_htmlselect
+} -match glob -result {*<select name=*}
+# "ns_htmlselect" is a Tcl proc: message should be {wrong # args: should be "ns_htmlselect ?-multi? ?-sort? ?-labels /labels/? /name/ /values/ ?/selectedData/?"}
+
+
+test ns_hash-1.0 {syntax: ns_hash} -body {
+    ns_hash
+} -returnCodes error -result {wrong # args: should be "ns_hash /value/"}
+
+test ns_crash-1.0 {syntax: ns_crash} -body {
+    ns_crash ?
+} -returnCodes error -result {wrong # args: should be "ns_crash"}
+
+test ns_urlcharset-1.0 {syntax: ns_urlcharset} -body {
+    ns_urlcharset
+} -returnCodes error -result {wrong # args: should be "ns_urlcharset charset"}
+
+# ns_urlcharset is a Tcl proc: message should be {wrong # args: should be "ns_urlcharset /charset/"}
+
+test ns_issmallint-1.0 {syntax: ns_issmallint} -body {
+    ns_issmallint
+} -returnCodes error -result {wrong # args: should be "ns_issmallint value"}
+# ns_issmallint is a Tcl proc: message should be {wrong # args: should be "ns_issmallint /value/"}
+
+test ns_paren-1.0 {syntax: ns_paren} -constraints with_deprecated -body {
+    ns_paren x y
+} -returnCodes error -result {wrong # args: should be "ns_paren val"}
+# ns_paren is a Tcl proc: message should be {wrong # args: should be "ns_paren /value/"}
+
+
+test ns_setexpires-1.0 {syntax: ns_setexpires} -body {
+    ns_setexpires x y
+} -returnCodes error -result {usage: ns_setexpires ?-cache-control public|private|no-cache|no-store|no-transform|must-revalidate|proxy-revalidate? seconds}
+# ns_setexpires is a Tcl proc: message should be {wrong # args: should be "ns_setexpires ?-cache-control public|private|no-cache|no-store|no-transform|must-revalidate|proxy-revalidate? /seconds/"}
+
+test ns_tagelement-1.0 {syntax: ns_tagelement} -constraints with_deprecated -body {
+    ns_tagelement
+} -returnCodes error -result {wrong # args: should be "ns_tagelement tag key"}
+# ns_tagelement is a Tcl proc: message should be {wrong # args: should be "ns_tagelement /tag/ /attribute/"}
+
+test ns_tagelementset-1.0 {syntax: ns_tagelement} -constraints with_deprecated -body {
+    ns_tagelementset
+} -returnCodes error -result {wrong # args: should be "ns_tagelementset tagvar key value"}
+# ns_tagelementset is a Tcl proc: message should be {wrong # args: should be "ns_tagelementset /tagvar/ /attribute/ /value/"}
+
+test ns_cookiecharset-1.0 {syntax: ns_cookiecharset} -constraints with_deprecated -body {
+    ns_cookiecharset
+} -returnCodes error -result {wrong # args: should be "ns_cookiecharset name"}
+
+# ns_cookiecharset is a Tcl proc: message should be {wrong # args: should be "ns_cookiecharset /name/"}
+
+test ns_choosecharset-1.0 {syntax: ns_choosecharset} -constraints with_deprecated -body {
+    ns_choosecharset x
+} -returnCodes error -result {Usage: ns_choosecharset ?-preference charset-list?}
+
+# ns_choosecharset is a Tcl proc: message should be {wrong # args: should be "ns_choosecharset ?-preference /charset-list/?"}
+
+test ns_formfieldcharset-1.0 {syntax: ns_formfieldcharset} -constraints with_deprecated -body {
+    ns_formfieldcharset
+} -returnCodes error -result {wrong # args: should be "ns_formfieldcharset name"}
+
+# ns_formfieldcharset is a Tcl proc: message should be {wrong # args: should be "ns_formfieldcharset /name/"}
+
+test ns_sendmail_config-1.0 {syntax: ns_sendmail_config} -body {
+    ns_sendmail_config ? ?
+} -returnCodes error -result {wrong # args: should be "ns_sendmail_config ?mode?"}
+# should be  {wrong # args: should be "ns_sendmail_config ?log?"}
+
+test ns_sendmail-1.0 {syntax: ns_sendmail} -body {
+    ns_sendmail -? ?
+} -returnCodes error -result {wrong # args: should be "?-to /to/? ?-from /from/? ?-subject /subject/? ?-body /body/? ?-headers /headers/? ?-bcc /bcc/? ?-cc /cc/?"}
+# ns_sendmail is a Tcl proc: message should be {wrong # args: should be "ns_sendmail -to /value/ -from /value/ ?-subject /value/? ?-body /value/? ?-headers /value/? ?-bcc /value/? ?-cc /value/?"}
+
+#######################################################################################
+#  test ns_parsemessage
+#######################################################################################
+
+test ns_parsemessage-2.0.1 {ns_parsemessage plain case crlf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {content-length: 2} {} {OK}} \r\n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {content-length 2} body OK}
+
+test ns_parsemessage-2.0.2 {ns_parsemessage plain case lf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {content-length: 2} {} {OK}} \n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {content-length 2} body OK}
+
+
+test ns_parsemessage-2.1.1 {ns_parsemessage empty body crlf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {content-length: 2} {} {}} \r\n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {content-length 2} body {}}
+
+test ns_parsemessage-2.1.2 {ns_parsemessage empty body lf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {content-length: 2} {} {}} \n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {content-length 2} body {}}
+
+
+test ns_parsemessage-2.2.1 {ns_parsemessage one-char body crlf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {content-length: 2} {} {X}} \r\n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {content-length 2} body X}
+
+test ns_parsemessage-2.2.2 {ns_parsemessage empty body lf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {content-length: 2} {} {X}} \n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {content-length 2} body X}
+
+
+test ns_parsemessage-2.3.1 {ns_parsemessage empty headers crlf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {} {OK}} \r\n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {} body OK}
+
+test ns_parsemessage-2.3.2 {ns_parsemessage empty headers lf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {} {OK}} \n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {} body OK}
+
+
+test ns_parsemessage-2.4.1 {ns_parsemessage folded multi-line headers crlf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {h1: a} {h2: begin} {  continue} {h3: z} {OK}} \r\n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {h1 a h2 {begin continue} h3 z} body OK}
+
+test ns_parsemessage-2.4.2 {ns_parsemessage folded multi-line headers lf} -body {
+    set d [ns_parsemessage [join {{HTTP/1.1 200 OK} {h1: a} {h2: begin} {  continue} {h3: z} {OK}} \r\n]]
+    dict with d { list firstline $firstline headers [ns_set array $headers] body $body }
+} -returnCodes {error ok} -result {firstline {HTTP/1.1 200 OK} headers {h1 a h2 {begin continue} h3 z} body OK}
+
+
+
+#######################################################################################
+#  test ns_getcsv
+#######################################################################################
+
+test ns_getcsv-1.0 {syntax: ns_getcsv} -body {
+    ns_getcsv
+} -returnCodes error -result {wrong # args: should be "ns_getcsv ?-delimiter /value/? ?-quotechar /value/? ?-trim? ?--? /channelId/ /varname/"}
+
+test ns_getcsv-2.0 {ns_getcsv} -body {
+    set csvFile [ns_server pagedir]/csv
+    set f [open $csvFile]
+
+    while {1} {
+        set r [ns_getcsv $f line]
+        switch $r {
+           -1       {break}
+            0       {}
+            default {lappend lines $line}
+        }
+    }
+    close $f
+    set lines
+} -cleanup {
+    unset -nocomplain lines r f
+} -returnCodes {ok error} -result {{aaa bbb ccc} {aaa {b
+bb} ccc} {zzz yyy xxx} {{ 1 } { 2 } { 3 }} {includes(\")quote {quoted includes (") quote}} {elm2 {} empty} single {last3 empty {} {} {}}} ;# "
+
+test ns_getcsv-2.1 {ns_getcsv with trim} -body {
+    set csvFile [ns_server pagedir]/csv
+    set f [open $csvFile]
+
+    while {1} {
+        set r [ns_getcsv -trim $f line]
+        switch $r {
+           -1       {break}
+            0       {}
+            default {lappend lines $line}
+        }
+    }
+    close $f
+    set lines
+} -cleanup {
+    unset -nocomplain lines r f
+} -returnCodes {ok error} -result {{aaa bbb ccc} {aaa {b
+bb} ccc} {zzz yyy xxx} {1 2 3} {includes(\")quote {quoted includes (") quote}} {elm2 {} empty} single {last3 empty {} {} {}}} ;# "
+
+
+
+cleanupTests
 
 #
 # Local variables:

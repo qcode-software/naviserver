@@ -1,0 +1,98 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_parseheader - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_parseheader.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_parseheader.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_parseheader.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_parseheader.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_parseheader(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_parseheader - Parse HTTP header</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_parseheader</b> <span class="opt">?<b class="option">-prefix <i class="arg">value</i></b>?</span> <i class="arg">set</i> <i class="arg">headerline</i> <span class="opt">?<i class="arg">disposition</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This function parses a single HTTP header line into a predefined
+<b class="cmd"><a href="ns_set.html">ns_set</a></b> specified by <i class="arg">set</i>.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_parseheader</b> <span class="opt">?<b class="option">-prefix <i class="arg">value</i></b>?</span> <i class="arg">set</i> <i class="arg">headerline</i> <span class="opt">?<i class="arg">disposition</i>?</span></a></dt>
+<dd><p>The <i class="arg">headerline</i> specifies a line containing HTTP
+header fields, where the field name is parsed into a key of the
+<b class="cmd"><a href="ns_set.html">ns_set</a></b> and the field value to the value of the entry.</p>
+<p>The option <b class="option">-prefix</b> can be used to specify a prefix for the
+key.</p>
+<p>Optional argument <i class="arg">disposition</i> can be one of the following</p>
+<ul class="doctools_itemized">
+    
+<li><p>toupper - convert header names to uppercase</p></li>
+<li><p>tolower - convert header names to lowercase</p></li>
+<li><p>preserve - preserve the existing case</p></li>
+</ul>
+<p>When no <i class="arg">disposition</i> is provided, it defaults to <i class="term">tolower</i></p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ set reply [ns_set create reply]
+ ns_parseheader $reply &quot;Connection: Upgrade&quot;
+ 
+ #
+ # Return the content of the ns_set in form of a dict
+ #
+ ns_set array $reply
+ % connection Upgrade
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_parsefieldvalue.html">ns_parsefieldvalue</a>, <a href="ns_parsemessage.html">ns_parsemessage</a>, <a href="ns_parseurl.html">ns_parseurl</a>, <a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#http">HTTP</a>, <a href="../../index.html#naviserver">NaviServer</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#parse">parse</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

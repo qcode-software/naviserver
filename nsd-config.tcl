@@ -2,6 +2,11 @@
 # Sample configuration file for NaviServer
 ########################################################################
 
+if {[info commands ::ns_configure_variables] eq ""} {
+    ns_log notice "backward compatibility hook (pre NaviServer 5): have to source init.tcl"
+    source [file normalize [file dirname [file dirname [ns_info nsd]]]/tcl/init.tcl]
+}
+
 # All default variables in "defaultConfig" can be overloaded by:
 #
 # 1) Setting these variables explicitly in this file after
@@ -38,19 +43,19 @@ dict set defaultConfig pagedir     {$home/pages}
 dict set defaultConfig logdir      {$home/logs}
 dict set defaultConfig certificate {$home/etc/server.pem}
 dict set defaultConfig vhostcertificates {$home/etc/certificates}
-dict set defaultConfig reverseproxymode false
 dict set defaultConfig serverprettyname "My NaviServer Instance"
-
+dict set defaultConfig reverseproxymode false
+dict set defaultConfig trustedservers ""
+dict set defaultConfig enablehttpproxy false
 
 #
 # For all potential variables defined by the dict "defaultConfig",
-# allow environment variables such as "nsd_httpport" or
-# "nsd_ipaddress" to override local values.
+# allow environment variables with the prefix "nsd_" (such as
+# "nsd_httpport" or "nsd_ipaddress") to override local values.
 #
-source [file dirname [ns_info nsd]]/../tcl/init.tcl
 ns_configure_variables "nsd_" $defaultConfig
 
-set max_file_upload_size       20mb
+set max_file_upload_size       20MB
 set max_file_upload_duration   5m
 
 #---------------------------------------------------------------------
@@ -58,19 +63,19 @@ set max_file_upload_duration   5m
 # server.
 #
 set http_extraheaders {
-    X-Frame-Options            "SAMEORIGIN"
-    X-Content-Type-Options     "nosniff"
-    X-XSS-Protection           "1; mode=block"
-    Referrer-Policy            "strict-origin"
+    x-frame-options            "SAMEORIGIN"
+    x-content-type-options     "nosniff"
+    x-xss-protection           "1; mode=block"
+    referrer-policy            "strict-origin"
 }
 
 set https_extraheaders {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    strict-transport-security "max-age=63072000; includeSubDomains"
 }
 append https_extraheaders $http_extraheaders
 
 ########################################################################
-# Global settings (for all servers)
+# Global NaviServer parameters (for all servers)
 ########################################################################
 
 ns_section ns/parameters {
@@ -79,6 +84,8 @@ ns_section ns/parameters {
     # General server settings
     #
     ns_param    home                $home
+    ns_param    logdir              $logdir
+    #ns_param    bindir             bin
     ns_param    tcllibrary          tcl
     #ns_param   pidfile             ${home}/logs/nsd.pid
 
@@ -94,7 +101,6 @@ ns_section ns/parameters {
 
     # Reject output operations on already closed or detached connections (e.g. subsequent ns_return statements)
     #ns_param   rejectalreadyclosedconn false;# default: true
-    ns_param    reverseproxymode $reverseproxymode   ;# running behind a reverse proxy server? (default: false
 
     #
     # Tcl settings
@@ -104,17 +110,17 @@ ns_section ns/parameters {
     #ns_param   mutexlocktrace      true     ;# default false; print durations of long mutex calls to stderr
 
     #
-    # Log settings (systemlog aka error.log)
+    # Log settings (systemlog aka nsd.log, former error.log)
     #
-    ns_param    serverlog           $logdir/error.log
+    #ns_param   systemlog           nsd.log  ;# default: nsd.log
     #ns_param   logdebug            true     ;# default: false
-    #ns_param   logroll             false    ;# default: true
+    #ns_param   logrollonsignal     false    ;# default: true
     #ns_param	logrollfmt          %Y-%m-%d ;# format appended to log filename
     #ns_param   logsec              false    ;# add timestamps in second resolution (default: true)
     #ns_param   logusec             true     ;# add timestamps in microsecond (usec) resolution (default: false)
     #ns_param   logusecdiff         true     ;# add timestamp diffs since in microsecond (usec) resolution (default: false)
     #ns_param   logthread           false    ;# add thread-info the log file lines (default: true)
-    #ns_param   sanitizelogfiles    1        ;# default: 2; 0: none, 1: full, 2: human-friendly
+    #ns_param   sanitizelogfiles    1        ;# default: 2; 0: none, 1: full, 2: human-friendly, 3: 2 with tab expansion
 
     #
     # Encoding settings
@@ -129,12 +135,19 @@ ns_section ns/parameters {
     ns_param    jobsperthread       1000     ;# default: 0
     #ns_param   jobtimeout          0s       ;# default: 5m
     ns_param	joblogminduration   100s     ;# default: 1s
-    ns_param    schedsperthread     10       ;# default: 0
+    ns_param    schedsperthread     10       ;# number of jobs before restart; default: 0 (no auto restart)
     #ns_param	schedlogminduration 2s       ;# print warnings when scheduled job takes longer than that
 
     #ns_param   dbcloseonexit       off      ;# default: off; from nsdb
 
-    # configure SMTP module
+    #
+    # Configure the number of task threads for ns_http
+    #
+    # ns_param    nshttptaskthreads  2     ;# default: 1; number of task threads for ns_http
+
+    #
+    # Configure SMTP module
+    #
     ns_param    smtphost            "localhost"
     ns_param    smtpport            25
     ns_param    smtptimeout         60
@@ -146,7 +159,35 @@ ns_section ns/parameters {
     ns_param    smtpauthmode        ""
     ns_param    smtpauthuser        ""
     ns_param    smtpauthpassword    ""
+
 }
+
+#
+# When running behind a reverse proxy, use the following parameters
+#
+ns_section ns/parameters/reverseproxymode {
+    #
+    # Is the server running behind a reverse proxy server?
+    #
+    ns_param enabled $reverseproxymode
+    #
+    # When defining "trustedservers", the x-forwarded-for header field
+    # is only accepted in requests received from one of the specified
+    # servers. The list of servers can be provided by using IP
+    # addresses or CIDR masks. Additionally, the processing mode of
+    # the contents of the x-forwarded-for contents switches to
+    # right-to-left, skipping trusted servers. So, the danger of
+    # obtaining spoofed addresses can be reduced.
+    #
+    ns_param trustedservers $trustedservers
+    #
+    # Optionally, non-public entries in the content of x-forwarded-for
+    # can be ignored. These are not useful for e.g. geo-location
+    # analysis.
+    #
+    #ns_param skipnonpublic  false
+}
+
 
 ns_section ns/threads {
     ns_param    stacksize           512kB
@@ -190,7 +231,7 @@ if {[info exists httpport] && $httpport ne ""} {
     ns_section ns/module/http {
         ns_param defaultserver  default
         ns_param port           $httpport
-        ns_param address        $ipaddress   ;# Space separated list of IP addresses
+        ns_param address        $ipaddress  ;# Space separated list of IP addresses
         #ns_param hostname      [ns_info hostname]
 
         #ns_param backlog       1024         ;# default: 256; backlog for listen operations
@@ -233,7 +274,7 @@ if {[info exists httpport] && $httpport ne ""} {
     # server. This parameter is for virtual servers. Here we have just
     # the "default" server and we register the $hostname and the
     # $address (in case, the server is addressed via its IP address).
-    # The variable "hostname" can contain multiple host names (domain
+    # The variable "hostname" can contain multiple hostnames (domain
     # names) which are all registered for the server "default".
     #
     ns_section ns/module/http/servers {
@@ -247,18 +288,11 @@ if {[info exists httpport] && $httpport ne ""} {
     }
 }
 
-ns_log notice "HTTPSPORT=[info exists httpsport]"
-
 if {[info exists httpsport] && $httpsport ne ""} {
-    #
-    # We have an "httpsport" configured, so configure this module.
-    #
     #
     # We have an "httpsport" configured, so load and configure the
     # module "nsssl" as a global server module with the name "https".
     #
-    ns_log notice "HTTPSPORT=[info exists httpsport] => <$httpsport>"
-
     ns_section ns/modules {
         ns_param https nsssl
     }
@@ -315,6 +349,7 @@ if {[info exists httpsport] && $httpsport ne ""} {
         ns_param extraheaders	$https_extraheaders
         ns_param OCSPstapling   on        ;# off; activate OCSP stapling
         # ns_param OCSPstaplingVerbose  on ;# off; make OCSP stapling more verbose
+        # ns_param OCSPcheckInterval 15m   ;# default 5m; OCSP (re)check intervale
     }
     #
     # Define, which "host" (as supplied by the "host:" header field)
@@ -322,7 +357,7 @@ if {[info exists httpsport] && $httpsport ne ""} {
     # server. This parameter is for virtual servers. Here we have just
     # the "default" server and we register the $hostname and the
     # $address (in case, the server is addressed via its IP address).
-    # The variable "hostname" can contain multiple host names (domain
+    # The variable "hostname" can contain multiple hostnames (domain
     # names) which are all registered for the server "default".
     #
     ns_section ns/module/https/servers {
@@ -352,6 +387,7 @@ ns_section ns/module/http/servers {
 ########################################################################
 
 ns_section ns/server/default {
+    ns_param    enablehttpproxy     $enablehttpproxy
     ns_param    enabletclpages      true  ;# default: false
     #ns_param   filterrwlocks       false ;# default: true
     ns_param    checkmodifiedsince  false ;# default: true, check modified-since before returning files from cache. Disable for speedup
@@ -367,13 +403,21 @@ ns_section ns/server/default {
     #ns_param    poolratelimit       200  ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
 
     # Extra server-specific response header fields
-    #ns_param   extraheaders  {Referrer-Policy "strict-origin"}
+    #ns_param   extraheaders  {referrer-policy "strict-origin"}
+
+    # Server and version information in HTTP responses
+    #ns_param     noticeADP    returnnotice.adp ;# ADP file for ns_returnnotice commands (errors, redirects, ...)x
+    #ns_param     noticedetail false ;# default: true; include server signature in ns_returnnotice commands (errors, redirects, ...)
+    #ns_param     stealthmode  true  ;# default: false; omit server header field in all responses
+    #ns_param      logdir      /var/logs/default
 }
 
 ns_section ns/server/default/modules {
     if {$nscpport ne ""} {ns_param nscp nscp}
     ns_param    nslog               nslog
     ns_param    nscgi               nscgi
+    ns_param    nsperm              nsperm
+    ns_param    revproxy            tcl
 }
 
 ns_section ns/server/default/fastpath {
@@ -405,6 +449,90 @@ ns_section ns/server/default/adp {
     #ns_param   bufsize             1MB
 }
 
+#---------------------------------------------------------------------
+# HTTP client (ns_http, ns_connchan) configuration
+#---------------------------------------------------------------------
+ns_section ns/server/default/httpclient {
+    #
+    # Set default keep-alive timeout for outgoing ns_http requests.
+    # The specified value determines how long connections remain open for reuse.
+    #
+    #ns_param	keepalive       5s       ;# default: 0s
+
+    #
+    # Default timeout to be used, when ns_http is called without an
+    # explicit "-timeout" or "-expire" parameter.
+    #
+    #ns_param	defaultTimeout  5s       ;# default: 5s
+
+    #
+    # If you wish to disable certificate validation for "ns_http" or
+    # "ns_connchan" requests, set validateCertificates to false.
+    # However, this is NOT recommended, as it significantly increases
+    # vulnerability to man-in-the-middle attacks.
+    #
+    #ns_param validateCertificates false        ;# default: true
+
+    if {[ns_config ns/server/default/httpclient validateCertificates true]} {
+        #
+        # Specify trusted certificates using
+        #   - A single CA bundle file (CAfile) for top-level certificates, or
+        #   - A directory (CApath) containing multiple trusted certificates.
+        #
+        # These default locations can be overridden per request in
+        # "ns_http" and "ns_connchan" requests.
+        #
+        #ns_param CApath certificates   ;# default: [ns_info home]/certificates/
+        #ns_param CAfile ca-bundle.crt  ;# default: [ns_info home]/ca-bundle.crt
+
+        #
+        # "validationDepth" sets the maximum allowed length of a certificate chain:
+        #   0: Accept only self-signed certificates.
+        #   1: Accept certificates issued by a single CA or self-signed.
+        #   2 or higher: Accept chains up to the specified length.
+        #
+        #ns_param validationDepth 0   ;# default: 9
+
+        #
+        # When defining exceptions below, invalid certificates are stored
+        # in the specified directory. Administrators can move these
+        # certificates to the accepted certificates folder and run "openssl rehash"
+        # to reduce future security warnings.
+        #
+        #ns_param invalidCertificates $home/invalid-certificates/   ;# default: [ns_info home]/invalid-certificates
+
+        #
+        # Define white-listed validation exceptions:
+        #
+        # Accept all certificates from ::1 (IPv6 loopback):
+        #ns_param validationException {ip ::1}
+
+        # For IPv4 127.0.0.1, ignore two specific validation errors:
+        #ns_param validationException {ip 127.0.0.1 accept {certificate-expired self-signed-certificate}}
+
+        # Allow expired certificates from any IP in the 192.168.1.0/24 range:
+        #ns_param validationException {ip 192.168.1.0/24 accept certificate-expired}
+
+        # Accept self-signed certificates from any IP address:
+        #ns_param validationException {accept self-signed-certificate}
+
+        # Accept all validation errors from any IP address (like disabled validation, but collects certificates)
+        ns_param validationException {accept *}
+    }
+
+    #
+    # Configure log file for outgoing ns_http requests
+    #
+    #ns_param	logging		on       ;# default: off
+    #ns_param	logfile		httpclient.log
+    #ns_param	logrollfmt	%Y-%m-%d ;# format appended to log filename
+    #ns_param	logmaxbackup	100      ;# 10, max number of backup log files
+    #ns_param	logroll		true     ;# true, should server rotate log files automatically
+    #ns_param	logrollonsignal	true     ;# false, perform log rotation on SIGHUP
+    #ns_param	logrollhour	0        ;# 0, specify at which hour to roll
+}
+
+
 ns_section ns/server/default/tcl {
     ns_param    nsvbuckets          16       ;# default: 8
     ns_param    nsvrwlocks          false    ;# default: true
@@ -430,15 +558,15 @@ ns_section ns/interps/CGIinterps {
 }
 
 ns_section ns/server/default/module/nslog {
-    ns_param   file                 $logdir/access.log
+    ns_param   file                 access.log
     #ns_param   rolllog             true     ;# default: true; should server log files automatically
-    #ns_param   rollonsignal        false    ;# default: false; perform roll on a sighup
+    #ns_param   rollonsignal        false    ;# default: false; perform log rotation on SIGHUP
     #ns_param   rollhour            0        ;# default: 0; specify at which hour to roll
     ns_param    maxbackup           7        ;# default: 10; max number of backup log files
     #ns_param   rollfmt             %Y-%m-%d-%H:%M	;# format appended to log filename
     #ns_param   logpartialtimes     true     ;# default: false
     #ns_param   logreqtime          true     ;# default: false; include time to service the request
-    ns_param    logthreadname       true     ;# default: false; include thread name for linking with error.log
+    ns_param    logthreadname       true     ;# default: false; include thread name for linking with nsd.log
 
     ns_param	masklogaddr         true    ;# false, mask IP address in log file for GDPR (like anonip IP anonymizer)
     ns_param	maskipv4            255.255.255.0  ;# mask for IPv4 addresses
@@ -446,12 +574,19 @@ ns_section ns/server/default/module/nslog {
 }
 
 ns_section ns/server/default/module/nscp {
-    ns_param   port     $nscpport
-    #ns_param   address  0.0.0.0
+    ns_param  port         $nscpport
+    ns_param address       127.0.0.1    ;# default: 127.0.0.1 or ::1 for IPv6
+    #ns_param echopasswd   on           ;# default: off
+    #ns_param cpcmdlogging on           ;# default: off
+    #ns_param allowLoopbackEmptyUser on ;# default: off
 }
 
 ns_section ns/server/default/module/nscp/users {
     ns_param user "::"
+}
+
+ns_section ns/server/default/module/revproxy {
+    ns_param verbose 1
 }
 
 set ::env(RANDFILE) $home/.rnd

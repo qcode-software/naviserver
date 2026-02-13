@@ -1,0 +1,136 @@
+[include version_include.man]
+[manpage_begin ns_ip n [vset version]]
+[moddesc {NaviServer Built-in Commands}]
+
+
+[titledesc {Determine properties of IP addresses in the current configuration}]
+
+[description]
+
+ The command [cmd ns_ip] is used to determine certain properties of IP
+ addresses. It accepts as input IPv4 or IPv6 addresses and checks, for
+ example, whether the address is valid, whether the IP is a public or
+ trusted IP address, or whether it is in the range of a subnet
+ specification in CIDR notation.
+
+ [uri https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing]
+
+[section {COMMANDS}]
+
+[list_begin definitions]
+
+[call [cmd "ns_ip inany"] [arg ipaddr]]
+
+ ***to be completed***
+ 
+ Determines whether the provided IP address is an "any" (unspecified)
+ address. For IPv4, this is equivalent to INADDR_ANY (typically
+ [const 0.0.0.0]; for IPv6, it corresponds to in6addr_any (an all-zero
+ address, [const ::]). The command returns a boolean value.
+
+[example_begin]
+ ns_ip inany 0.0.0.0
+ # Expected result: 1 (true)
+ 
+ ns_ip inany 192.168.1.100
+ # Expected result: 0 (false)
+ 
+ ns_ip inany ::
+ # Expected result: 1 (true) for an unspecified IPv6 address
+[example_end]
+
+[call [cmd "ns_ip match"] [arg cidr] [arg ipaddr]]
+
+ Validates the provided [arg cidr] (subnet) specification (IPv4
+ or IPv6 address followed by slash and number of significant bits) and
+ the provided [arg ipaddr] and tests whether the IP address is in the
+ implied range. The command returns a boolean value as the result. When
+ comparing an IPv4 and IPv6 address/CIDR specification or vice versa,
+ the result is always false.
+
+
+[call [cmd "ns_ip properties"]  [arg ipaddr]]
+
+ Returns a dict with the members "trusted", "public", and
+ "type" for the provided [arg ipaddr].
+
+[call [cmd "ns_ip public"]  [arg ipaddr]]
+
+ Tests if the provided [arg ipaddr] is a public IP
+ address, i.e., reachable from the public Internet. This excludes
+ e.g. loopback, private, link-local addresses and networks.
+
+
+[call [cmd "ns_ip trusted"]  [arg ipaddr]]
+
+ Tests if the provided [arg ipaddr] was defined as a trusted IP
+ address for an upstream reverse proxy server in the used
+ configuration file. This is important for running behind a reverse
+ proxy server.
+
+[call [cmd "ns_ip valid"]\
+        [opt [option "-type ipv4|ipv6"]] \
+        [opt --] \
+        [arg ipaddr]]
+
+ Tests if the provided [arg ipaddr] is a valid IP
+ address. With the optional [opt [option "-type"]] argument the result
+ can be constraint further to check, if the address is an IPv4 or an
+ IPv6 address.
+
+[list_end]
+
+
+[section EXAMPLES]
+
+[example_begin]
+ % ns_ip match 137.208.0.0/16 137.208.116.31
+ 1
+ 
+ % ns_ip match 137.208.0.0/16 112.207.16.33
+ 0
+
+ % ns_ip match 2001:628:404:74::31/64 [lb]ns_conn peeraddr[rb]
+ ...
+ 
+ # Is IP address a valid IPv6 address?
+ % set ip [lb]ns_conn peeraddr[rb]
+ % ns_ip valid -type ipv6 $ip
+ % ns_ip match ::/0 $ip
+ % string equal IPv6 [lb]dict get [lb]ns_ip properties $ip[rb] type[rb]
+ 
+ # Is IP address a valid IPv4 address?
+ % ns_ip valid -type ipv4 $ip
+ % ns_ip match 0.0.0.0/0 $ip
+ % string equal IPv4 [lb]dict get [lb]ns_ip properties $ip[rb] type[rb]
+
+[example_end]
+
+[section CONFIGURATION]
+
+
+[example_begin]
+ ns_section ns/parameters/reverseproxymode {
+    ns_param enabled 1
+    #
+    # Define some address ranges of cloudflare as trusted sources
+    # for the "x-forwarded-for" header field.
+    #
+    ns_param trustedservers {
+       103.21.244.0/22
+       104.24.0.0/14
+       2400:cb00::/32
+       2606:4700::/32
+    }
+    # ....
+ }
+[example_end]
+
+
+[keywords "global built-in" IPv4 IPv6 CIDR subnet \
+        trustedservers reverseproxymode \
+        "behind reverse proxy" "reverse proxy"]
+[see_also ns_conn]
+
+[manpage_end]
+

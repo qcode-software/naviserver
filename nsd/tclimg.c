@@ -74,12 +74,12 @@ static Tcl_Channel GetFileChan(Tcl_Interp *interp, const char *path) NS_GNUC_NON
  */
 
 int
-NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char        *file = NULL;
     int          result;
     Ns_ObjvSpec  args[] = {
-        {"file",  Ns_ObjvString, &file, NULL},
+        {"filename",  Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -125,12 +125,12 @@ NsTclImgTypeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  */
 
 int
-NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
     Ns_ObjvSpec args[] = {
-        {"file",  Ns_ObjvString, &file, NULL},
+        {"filename",  Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -177,12 +177,12 @@ NsTclImgMimeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  */
 
 int
-NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result = TCL_OK;
     Ns_ObjvSpec args[] = {
-        {"file",  Ns_ObjvString, &file, NULL},
+        {"filename",  Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -239,12 +239,12 @@ NsTclImgSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  */
 
 int
-NsTclGifSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclGifSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
     Ns_ObjvSpec args[] = {
-        {"gif_file", Ns_ObjvString, &file, NULL},
+        {"filename", Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -289,12 +289,12 @@ NsTclGifSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  */
 
 int
-NsTclPngSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclPngSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
     Ns_ObjvSpec args[] = {
-        {"png_file", Ns_ObjvString, &file, NULL},
+        {"filename", Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -339,12 +339,12 @@ NsTclPngSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  */
 
 int
-NsTclJpegSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclJpegSizeObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *file = NULL;
     int         result;
     Ns_ObjvSpec args[] = {
-        {"jpeg_file", Ns_ObjvString, &file, NULL},
+        {"filename", Ns_ObjvString, &file, NULL},
         {NULL, NULL, NULL, NULL}
     };
 

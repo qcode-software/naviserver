@@ -24,6 +24,7 @@ typedef struct Section {
     Ns_Set   *defaults;
     uintmax_t readArray[4];
     uintmax_t defaultArray[4];
+    bool      update;
 } Section;
 
 typedef enum {
@@ -35,7 +36,7 @@ typedef enum {
 
 /*
  * Older versions of gcc (and probably some other compilers as well)
- * do not accept const variables as const expressions. Therefore, we 
+ * do not accept const variables as const expressions. Therefore, we
  * introduced here the const expression NS_BITELEMENTS.
  */
 #define NS_BITELEMENTS (sizeof(uintmax_t) * 8)
@@ -65,13 +66,15 @@ static const char* ConfigGet(const char *section, const char *key, bool exact, c
 static bool ToBool(const char *value, bool *valuePtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static Tcl_WideInt
-ConfigWideIntRange(const char *section, const char *key,
-                   const char *defaultString, Tcl_WideInt defaultValue,
-                   Tcl_WideInt minValue, Tcl_WideInt maxValue,
-                   Ns_ReturnCode (converter)(const char *chars, Tcl_WideInt *intPtr),
-                   const char *kind)
+static Tcl_WideInt ConfigWideIntRange(const char *section, const char *key,
+                                      const char *defaultString, Tcl_WideInt defaultValue,
+                                      Tcl_WideInt minValue, Tcl_WideInt maxValue,
+                                      Ns_ReturnCode (converter)(const char *chars, Tcl_WideInt *intPtr),
+                                      const char *kind)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(7) NS_GNUC_NONNULL(8);
+
+static const char *NormalizePath(const char *input, TCL_SIZE_T *lengthPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 
 /*
@@ -114,7 +117,7 @@ Ns_ConfigString(const char *section, const char *key, const char *defaultValue)
  *
  * Ns_ConfigSet --
  *
- *      Return an Ns_Set *from a config value specified as Tcl list. The list
+ *      Return an Ns_Set from a config value specified as Tcl list. The list
  *      has to be a flat list with attributes and values (also a Tcl dict).
  *
  * Results:
@@ -143,7 +146,7 @@ Ns_ConfigSet(const char *section, const char *key, const char *name)
     if (value != NULL) {
         Tcl_Obj *valueObj = Tcl_NewStringObj(value, TCL_INDEX_NONE);
 
-        setPtr = Ns_SetCreateFromDict(NULL, name, valueObj);
+        setPtr = Ns_SetCreateFromDict(NULL, name, valueObj, NS_SET_OPTION_NOCASE);
         Tcl_DecrRefCount(valueObj);
     } else {
         setPtr = NULL;
@@ -691,6 +694,131 @@ Ns_ConfigGetBool(const char *section, const char *key, bool *valuePtr)
     return found;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NormalizePath --
+ *
+ *      Converts the provided input path to a normalized form.  This function
+ *      creates a Tcl object from the input string and uses
+ *      Tcl_FSGetNormalizedPath() to obtain a normalized version of the path.
+ *      If successful, it returns a newly allocated duplicate of the
+ *      normalized path and updates the provided length pointer with the new
+ *      string length.  If normalization fails, the original input path is
+ *      returned.
+ *
+ * Parameters:
+ *      input      - A pointer to the input path string.
+ *      lengthPtr  - Pointer to the length of the input string. On return, it contains
+ *                   the length of the normalized path.
+ *
+ * Results:
+ *      A pointer to a null-terminated string containing the normalized path.
+ *      Memory for the normalized path is allocated and should be freed by the caller.
+ *
+ * Side Effects:
+ *      May allocate memory for the normalized path.
+ *
+ *----------------------------------------------------------------------
+ */
+static const char *
+NormalizePath(const char *input, TCL_SIZE_T *lengthPtr)
+{
+    const char *result;
+    Tcl_Obj    *pathObj = Tcl_NewStringObj(input, *lengthPtr), *normalizedPathObj;
+
+    Tcl_IncrRefCount(pathObj);
+    normalizedPathObj = Tcl_FSGetNormalizedPath(NULL, pathObj);
+    if (normalizedPathObj != NULL) {
+        result = ns_strdup(Tcl_GetStringFromObj(normalizedPathObj, lengthPtr));
+    } else {
+        result = input;
+    }
+    Tcl_DecrRefCount(pathObj);
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ConfigFilename --
+ *
+ *      Retrieves a filename from the configuration file based on the
+ *      specified "section" and "key" parameters. The "directory" argument
+ *      is used to resolve the "defaultValue" if a relative path is provided.
+ *
+ * Results:
+ *      Returns a newly allocated string containing the absolute file path.
+ *      The caller is responsible for freeing this string.
+ *
+ * Side effects:
+ *      Allocates memory.
+ *
+ *----------------------------------------------------------------------
+ */
+
+const char *
+Ns_ConfigFilename(const char *section, const char *key, TCL_SIZE_T keyLength, const char *directory, const char* defaultValue,
+                  bool normalizePath, bool update)
+{
+    const char *value, *result;
+    TCL_SIZE_T  pathLength = 0;
+
+    NS_NONNULL_ASSERT(section != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
+    NS_NONNULL_ASSERT(directory != NULL);
+    NS_NONNULL_ASSERT(defaultValue != NULL);
+
+    value = Ns_ConfigString(section, key, defaultValue);
+
+    if (Ns_PathIsAbsolute(value)) {
+        /*fprintf(stderr, "=== %s %s RAWABS '%s'\n", section, key, value);*/
+        if (strstr(value, "..") != NULL) {
+            pathLength = (TCL_SIZE_T)strlen(value);
+            result = NormalizePath(value, &pathLength);
+            //fprintf(stderr, "=== %s %s NormalizePath '%s'\n", section, key, result);
+        } else {
+            result = ns_strdup(value);
+        }
+    } else {
+        Tcl_DString ds, *dsPtr = &ds;
+
+        Tcl_DStringInit(dsPtr);
+        Ns_MakePath(dsPtr, directory, value, NS_SENTINEL);
+        pathLength = dsPtr->length;
+        result = Ns_DStringExport(dsPtr);
+
+        if (normalizePath && strchr(result, INTCHAR('/')) != NULL) {
+            const char *input;
+            /*
+             * The path contains a slash, it might be not normalized;
+             */
+            /*fprintf(stderr, "=== %s %s RAW    '%s'\n", section, key, value);
+              fprintf(stderr, "=== %s %s BEFORE '%s'\n", section, key, result);*/
+            input = result;
+            result = NormalizePath(input, &pathLength);
+            if (result != input) {
+                ns_free((void*)input);
+            }
+            /*fprintf(stderr, "=== %s %s NORMAL '%s'\n", section, key, result);*/
+        }
+    }
+
+    if (update && pathLength > 0) {
+        Ns_Set *set;
+        /*
+         * The path was changed. Make the result queryable.
+         */
+        set = Ns_ConfigCreateSection(section);
+        Ns_SetIUpdateSz(set, key, keyLength, result, pathLength);
+    }
+
+    /*fprintf(stderr, "Ns_ConfigFilename ================== %s %s: <%s>\n", section, key, result);*/
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -884,18 +1012,18 @@ Ns_ConfigGetSections(void)
 static void ConfigMark(Section *sectionPtr, size_t i, ValueOperation op)
 {
     if (i < maxBitElements) {
-        int index = (int)(i / bitElements);
+        int idx   = (int)(i / bitElements);
         int shift = (int)(i % bitElements);
 
         switch (op) {
         case value_set:
-            sectionPtr->defaultArray[index] &= ~((uintmax_t)1u << shift);
+            sectionPtr->defaultArray[idx] &= ~((uintmax_t)1u << shift);
             break;
         case value_defaulted:
-            sectionPtr->defaultArray[index] |= ((uintmax_t)1u << shift);
+            sectionPtr->defaultArray[idx] |= ((uintmax_t)1u << shift);
             break;
         case value_read:
-            sectionPtr->readArray[index] |= ((uintmax_t)1u << shift);
+            sectionPtr->readArray[idx] |= ((uintmax_t)1u << shift);
             break;
         }
     } else {
@@ -1041,7 +1169,7 @@ Ns_GetVersion(int *majorV, int *minorV, int *patchLevelV, int *type)
  *
  * Results:
  *      Configuration file content in an ns_malloc'ed string.
- *      Caller is responsible to free the content.
+ *      Caller is responsible to free the returned file content.
  *
  * Side Effects:
  *      Server aborts if the file cannot be read for any reason.
@@ -1066,7 +1194,6 @@ NsConfigRead(const char *file)
         buf = NULL;
 
     } else {
-
         /*
          * Slurp entire file into memory.
          */
@@ -1080,6 +1207,7 @@ NsConfigRead(const char *file)
             const char *data = Tcl_GetStringFromObj(buf, &length);
 
             fileContent = ns_strncopy(data, (ssize_t)length);
+            Ns_Log(Notice, "using configuration file '%s'", file);
         }
     }
 
@@ -1130,6 +1258,10 @@ NsConfigEval(const char *config, const char *configFileName,
      */
 
     interp = Ns_TclCreateInterp();
+
+    (void) Tcl_EvalEx(interp, "source [file normalize [file dirname [ns_info nsd]]/../tcl/init.tcl]",
+                      TCL_INDEX_NONE, 0);
+
     (void)TCL_CREATEOBJCOMMAND(interp, "ns_section", SectionObjCmd, &sectionPtr, NULL);
     (void)TCL_CREATEOBJCOMMAND(interp, "ns_param", ParamObjCmd, &sectionPtr, NULL);
     for (i = 0; argv[i] != NULL; ++i) {
@@ -1168,7 +1300,7 @@ NsConfigEval(const char *config, const char *configFileName,
  */
 
 static int
-ParamObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+ParamObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     Tcl_Obj    *nameObj, *valueObj;
@@ -1191,7 +1323,12 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj 
 
             nameString = Tcl_GetStringFromObj(nameObj, &nameLength);
             valueString = Tcl_GetStringFromObj(valueObj, &valueLength);
-            i = Ns_SetPutSz(sectionPtr->set, nameString, nameLength, valueString, valueLength);
+
+            if (sectionPtr->update) {
+                i = Ns_SetUpdateSz(sectionPtr->set, nameString, nameLength, valueString, valueLength);
+            } else {
+                i = Ns_SetPutSz(sectionPtr->set, nameString, nameLength, valueString, valueLength);
+            }
             if (!nsconf.state.started) {
                 ConfigMark(sectionPtr, i, value_set);
             }
@@ -1225,18 +1362,24 @@ ParamObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj 
  */
 
 static int
-SectionObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+SectionObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    int         result = TCL_OK;
+    int         result = TCL_OK, update = 0;
     char       *sectionName = NULL;
     Tcl_Obj    *blockObj = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-update", Ns_ObjvBool, &update, INT2PTR(NS_TRUE)},
+        {"--", Ns_ObjvBreak, NULL, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
     Ns_ObjvSpec args[] = {
         {"sectionname", Ns_ObjvString, &sectionName, NULL},
         {"?block",      Ns_ObjvObj,    &blockObj, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
-    if (unlikely(Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK)) {
+    if (unlikely(Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK)) {
         result = TCL_ERROR;
 
     } else {
@@ -1245,6 +1388,7 @@ SectionObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Ob
 
         assert(sectionName != NULL);
         sectionPtr = GetSection(sectionName, NS_TRUE);
+        sectionPtr->update = update;
         *passedSectionPtr = sectionPtr;
 
         if (blockObj != NULL) {
@@ -1284,21 +1428,23 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defaultS
     sectionPtr = GetSection(section, NS_FALSE);
 
     if (sectionPtr != NULL && sectionPtr->set != NULL) {
-        int idx;
+        TCL_SIZE_T keyLength = (TCL_SIZE_T)strlen(key);
+        Ns_DList   dl, *dlPtr = &dl;
+        int        idx = -1;
+        size_t     count;
 
-        if (exact) {
-            idx = Ns_SetFind(sectionPtr->set, key);
-        } else {
-            idx = Ns_SetIFind(sectionPtr->set, key);
-        }
+        Ns_DListInit(dlPtr);
+        count = likely(sectionPtr->set != NULL)
+            ? NsSetGetCmpDListAppend(sectionPtr->set, key, NS_TRUE, exact == 0 ? strcmp : strcasecmp, dlPtr, NS_TRUE)
+            : 0u;
 
-        if (idx >= 0) {
-            /*
-             * The configuration value was found in the ns_set for this
-             * section.
-             */
+        if (count > 0) {
+            idx =  PTR2INT(dlPtr->data[0]);
             s = Ns_SetValue(sectionPtr->set, idx);
-
+            if (count > 1) {
+                Ns_Log(Warning, "config values returns the first of %ld values (section '%s' key '%s')",
+                       count, section, key);
+            }
         } else if (!nsconf.state.started /*&& defaultString != NULL && *defaultString != '\0'*/) {
             /*
              * The configuration value was NOT found. Since we want to be able
@@ -1308,19 +1454,18 @@ ConfigGet(const char *section, const char *key, bool exact, const char *defaultS
              * startup when we there is a single thread. Changing ns_sets is
              * not thread safe.
              */
-            idx = (int)Ns_SetPutSz(sectionPtr->set, key, TCL_INDEX_NONE,
-                                 defaultString, defaultString == NULL ? 0 : TCL_INDEX_NONE);
+            idx = (int)Ns_SetPutSz(sectionPtr->set, key, keyLength,
+                                   defaultString, defaultString == NULL ? 0 : TCL_INDEX_NONE);
             ConfigMark(sectionPtr, (size_t)idx, value_defaulted);
             s = Ns_SetValue(sectionPtr->set, idx);
-
         } else {
             s = defaultString;
         }
+
         if (!nsconf.state.started && idx >= 0) {
             ConfigMark(sectionPtr, (size_t)idx, value_read);
             if (defaultString != NULL) {
-                (void)Ns_SetPutSz(sectionPtr->defaults,
-                                  key, TCL_INDEX_NONE,
+                (void)Ns_SetPutSz(sectionPtr->defaults, key, keyLength,
                                   defaultString, TCL_INDEX_NONE);
             }
         }
@@ -1346,25 +1491,26 @@ NsConfigSectionGetFiltered(const char *section, char filter)
             Ns_Set *set = sectionPtr->set;
 
             result = Ns_SetCreate(section);
+            result->flags |= NS_SET_OPTION_NOCASE;
             for (i = 0u; i < set->size; i++) {
 
                 if (i < maxBitElements) {
-                    int index = (int)(i / bitElements);
+                    int idx   = (int)(i / bitElements);
                     int shift = (int)(i % bitElements);
                     uintmax_t mask = ((uintmax_t)1u << shift);
 
-                    if (filter == 'u' && (sectionPtr->readArray[index] & mask) == 0u) {
+                    if (filter == 'u' && (sectionPtr->readArray[idx] & mask) == 0u) {
                         /*fprintf(stderr, "unused parameter: %s/%s (%lu)\n",
                           section, set->fields[i].name, i);*/
                         Ns_SetPutSz(result,
-                                    set->fields[i].name, TCL_INDEX_NONE,
+                                    set->fields[i].name, (TCL_SIZE_T)strlen(set->fields[i].name),
                                     set->fields[i].value, TCL_INDEX_NONE);
-                    } else if  (filter == 'd' && (sectionPtr->defaultArray[index] & mask) != 0u) {
+                    } else if  (filter == 'd' && (sectionPtr->defaultArray[idx] & mask) != 0u) {
                         /*fprintf(stderr, "defaulted parameter: %s/%s (%lu) defaults %p mask %p\n",
                           section, set->fields[i].name, i,
                           (void*)sectionPtr->defaultArray[0], (void*)mask);*/
                         Ns_SetPutSz(result,
-                                    set->fields[i].name, TCL_INDEX_NONE,
+                                    set->fields[i].name, (TCL_SIZE_T)strlen(set->fields[i].name),
                                     set->fields[i].value, TCL_INDEX_NONE);
                     }
                 }
@@ -1388,7 +1534,7 @@ NsConfigSectionGetFiltered(const char *section, char filter)
  *      When "create" is not set, the function might return NULL.
  *
  * Side effects:
- *      Section set created (if necessary and "create" is given as true).
+ *      Section set created (if necessary and "create" is NS_TRUE).
  *
  *----------------------------------------------------------------------
  */
@@ -1441,6 +1587,7 @@ GetSection(const char *section, bool create)
             sectionPtr = ns_calloc(1u, sizeof(Section));
             sectionPtr->defaults = Ns_SetCreate(section);
             sectionPtr->set = Ns_SetCreate(section);
+            sectionPtr->set->flags |= NS_SET_OPTION_NOCASE;
             Tcl_SetHashValue(hPtr, sectionPtr);
         }
     }

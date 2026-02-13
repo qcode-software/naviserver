@@ -1,0 +1,480 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_set - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_set.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_set.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_set.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_set.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_set(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_set - Data Structure for Multimap with Potentially Case-insentitive Key-value Pairs</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">OPTIONS</a></li>
+<li class="doctools_section"><a href="#section4">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#section5">Case Sensitivity</a></li>
+<li class="doctools_section"><a href="#section6">Storage Management</a></li>
+<li class="doctools_section"><a href="#section7">NOTES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_set array</b> <i class="arg">setId</i></a></li>
+<li><a href="#2"><b class="cmd">ns_set cleanup</b></a></li>
+<li><a href="#3"><b class="cmd">ns_set copy</b> <i class="arg">setId</i></a></li>
+<li><a href="#4"><b class="cmd">ns_set cput</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i> <i class="arg">value</i></a></li>
+<li><a href="#5"><b class="cmd">ns_set create</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <span class="opt">?<i class="arg">name</i>?</span> <span class="opt">?<i class="arg">key</i>?</span> <span class="opt">?<i class="arg">value</i>?</span> ...</a></li>
+<li><a href="#6"><b class="cmd">ns_set delete</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></li>
+<li><a href="#7"><b class="cmd">ns_set delkey</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i></a></li>
+<li><a href="#8"><b class="cmd">ns_set find</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i></a></li>
+<li><a href="#9"><b class="cmd">ns_set format</b> <span class="opt">?<b class="option">-noname</b>?</span> <span class="opt">?<b class="option">-lead <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-separator <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i></a></li>
+<li><a href="#10"><b class="cmd">ns_set free</b> <i class="arg">setId</i></a></li>
+<li><a href="#11"><b class="cmd">ns_set get</b> <span class="opt">?<b class="option">-all</b>?</span> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i> <span class="opt">?<i class="arg">default</i>?</span></a></li>
+<li><a href="#12"><b class="cmd">ns_set isnull</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></li>
+<li><a href="#13"><b class="cmd">ns_set key</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></li>
+<li><a href="#14"><b class="cmd">ns_set keys</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">pattern</i>?</span></a></li>
+<li><a href="#15"><b class="cmd">ns_set list</b></a></li>
+<li><a href="#16"><b class="cmd">ns_set merge</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId1</i> <i class="arg">setId2</i></a></li>
+<li><a href="#17"><b class="cmd">ns_set move</b> <i class="arg">setId1</i> <i class="arg">setId2</i></a></li>
+<li><a href="#18"><b class="cmd">ns_set name</b> <i class="arg">setId</i></a></li>
+<li><a href="#19"><b class="cmd">ns_set put</b> <i class="arg">setId</i> <i class="arg">key</i> <i class="arg">value</i></a></li>
+<li><a href="#20"><b class="cmd">ns_set size</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">nrElements</i>?</span> <span class="opt">?<i class="arg">bufferSize</i>?</span></a></li>
+<li><a href="#21"><b class="cmd">ns_set split</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">splitChar</i>?</span></a></li>
+<li><a href="#22"><b class="cmd">ns_set truncate</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></li>
+<li><a href="#23"><b class="cmd">ns_set unique</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i></a></li>
+<li><a href="#24"><b class="cmd">ns_set update</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i> <i class="arg">value</i></a></li>
+<li><a href="#25"><b class="cmd">ns_set value</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></li>
+<li><a href="#26"><b class="cmd">ns_set values</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">pattern</i>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides functions for manipulating sets of key-value
+  pairs, or &quot;fields&quot;.  Fields in the set are ordered numerically,
+  starting at zero and increasing by one up to the total number of
+  fields.  An <b class="cmd">ns_set</b> is actually a multimap (also called
+  multiset, or bag), meaning the same key can appear
+  multiple times within the same set.
+  Optionally, sets can be defined to be case-insensitive, meaning that
+  mixed and uppercase keys are treated exactly like
+  lowercase keys (for details, see <span class="sectref"><a href="#section5">Case Sensitivity</a></span>).</p>
+<p>The <b class="cmd">ns_set</b> data structure is especially useful for
+  handling data like HTTP headers, which are per definition case
+  insensitive and may have repeated keys.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_set array</b> <i class="arg">setId</i></a></dt>
+<dd><p>Returns the contents of the <i class="arg">setId</i> in a string format similar to
+ Tcl's array-get syntax.  This is helpful for iterating over
+ key-value pairs with <b class="cmd">foreach</b>.  The result can also be used for
+ creating a Tcl <b class="cmd">dict</b> or a Tcl <b class="cmd">array</b>. Note that since
+ <b class="cmd">ns_set</b> can contain duplicate keys, these conversion may
+ lose duplicates, as keys in dicts and arrays are unique.</p>
+<pre class="doctools_example">
+ # Output HTTP request headers as string
+ set headers [ns_conn headers]
+ set output &quot;&quot;
+  foreach {key value} [ns_set array $headers] {
+    append output &quot;$key = $value \n&quot;
+  }
+  set output
+</pre>
+</dd>
+<dt><a name="2"><b class="cmd">ns_set cleanup</b></a></dt>
+<dd><p>Deletes all sets in the current interpreter.
+  See also the section <span class="sectref"><a href="#section6">Storage Management</a></span> below.</p></dd>
+<dt><a name="3"><b class="cmd">ns_set copy</b> <i class="arg">setId</i></a></dt>
+<dd><p>Returns a new set with the same name and contents as the specified
+  <i class="arg">setId</i>. See also the section <span class="sectref"><a href="#section6">Storage Management</a></span> below.</p></dd>
+<dt><a name="4"><b class="cmd">ns_set cput</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i> <i class="arg">value</i></a></dt>
+<dd><p>Conditionally appends a new field to the set with the specified
+  <i class="arg">key</i> and <i class="arg">value</i>, only if the key does not already exist in the set.
+  Returns the field number of the newly added field, or the field
+  number of the existing field if it already exists.</p></dd>
+<dt><a name="5"><b class="cmd">ns_set create</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <span class="opt">?<i class="arg">name</i>?</span> <span class="opt">?<i class="arg">key</i>?</span> <span class="opt">?<i class="arg">value</i>?</span> ...</a></dt>
+<dd><p>Creates a new set and returns its <i class="arg">setId</i>.</p>
+<p>If a <i class="arg">name</i> is provided, it sets the name of the set. You
+  can also initialize the set with <i class="arg">key</i>/<i class="arg">value</i> pairs by
+  providing them as additional arguments.</p>
+<p>If the <b class="option">-nocase</b> option is used, the set becomes
+  case-insensitive for all commands that accept a <i class="arg">key</i> parameter.
+  Keys are stored in case-insensitive sets in lowercase and returned
+  in lowercase.</p>
+<pre class="doctools_example">
+ # Create a case-insensitive set with initial values
+ set mySet [ns_set create -nocase mySetName a 1 B 2 c 3]
+</pre>
+</dd>
+<dt><a name="6"><b class="cmd">ns_set delete</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></dt>
+<dd><p>Deletes the field in the set at the specified field number.</p></dd>
+<dt><a name="7"><b class="cmd">ns_set delkey</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i></a></dt>
+<dd><p>Removes the first occurrence of a field in the set with the
+  specified <i class="arg">key</i>. Note that multiple fields with the same key may
+  exist; this command only removes the first occurrence.</p></dd>
+<dt><a name="8"><b class="cmd">ns_set find</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i></a></dt>
+<dd><p>Returns the index of the first field in the specified <i class="arg">setId</i>
+  with a matching <i class="arg">key</i>. If no matching field is found, returns -1.</p></dd>
+<dt><a name="9"><b class="cmd">ns_set format</b> <span class="opt">?<b class="option">-noname</b>?</span> <span class="opt">?<b class="option">-lead <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-separator <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i></a></dt>
+<dd><p>Formats the specified set in a human-friendly way and returns the
+  string as result. Option <b class="option">-noname</b> will omit the name from
+  the output. When <i class="arg">lead</i> is specified, every key in the output
+  will be preceded by this lead string (default is &quot;&quot;). When
+  <i class="arg">separator</i> is specified, every key in the output will be followed by
+  this separator string (default is &quot;: &quot;).</p>
+<pre class="doctools_example">
+ # Example of ns_set format
+ % set mySet [ns_set create mySetName a 1 b 2 c 3]
+ % ns_set format $mySet
+ mySetName:
+   a: 1
+   b: 2
+   c: 3
+ 
+ # Using options
+ % ns_set format -noname -lead &quot;-&gt; &quot; -separator &quot; = &quot; $mySet
+ -&gt; a = 1
+ -&gt; b = 2
+ -&gt; c = 3
+</pre>
+</dd>
+<dt><a name="10"><b class="cmd">ns_set free</b> <i class="arg">setId</i></a></dt>
+<dd><p>Frees (deletes) the specified set. Although sets are automatically
+  freed at the end of the request (see section
+  <span class="sectref"><a href="#section6">Storage Management</a></span>), freeing sets manually can
+  save temporary memory within loops with many iterations.</p></dd>
+<dt><a name="11"><b class="cmd">ns_set get</b> <span class="opt">?<b class="option">-all</b>?</span> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i> <span class="opt">?<i class="arg">default</i>?</span></a></dt>
+<dd><p>Returns the first value associated with the specified <i class="arg">key</i>. If the
+  key is not found, the default value or an empty string is returned.
+  With the <b class="option">-all</b> option, all values for the key are returned
+  as a list.</p>
+<pre class="doctools_example">
+ % set mySet [ns_set create mySetName a 1 b 2 c 3 a 4]
+ # Get the first value for key 'a'
+ % ns_set get $mySet a
+ 1
+ 
+ # Get all values for key 'a' (if there are duplicates)
+ % ns_set get -all $mySet a
+ 1 4
+ 
+ # Case-insensitive get
+ % ns_set get -nocase $mySet A
+ 1
+</pre>
+</dd>
+<dt><a name="12"><b class="cmd">ns_set isnull</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></dt>
+<dd><p>Returns 1 if the field specified by <i class="arg">fieldNumber</i> is null, and 0
+  if it is not.  Note that an empty string is distinct from null; this
+  command returns 0 for an empty string.</p></dd>
+<dt><a name="13"><b class="cmd">ns_set key</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></dt>
+<dd><p>Returns the key for the field at the specified <i class="arg">fieldNumber</i>.</p></dd>
+<dt><a name="14"><b class="cmd">ns_set keys</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">pattern</i>?</span></a></dt>
+<dd><p>Returns a list of all keys in the specified <i class="arg">setId</i>. If a
+  <i class="arg">pattern</i> is provided, only keys matching the pattern are returned,
+  following Tcl's string match rules.</p></dd>
+<dt><a name="15"><b class="cmd">ns_set list</b></a></dt>
+<dd><p>Returns a list of all <b class="cmd">ns_set</b> instances in the current interpreter.</p></dd>
+<dt><a name="16"><b class="cmd">ns_set merge</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId1</i> <i class="arg">setId2</i></a></dt>
+<dd><p>Merges <i class="arg">setId2</i> into <i class="arg">setId1</i>. Fields from <i class="arg">setId2</i> are
+  appended to <i class="arg">setId1</i> only if their keys do not already exist in
+  <i class="arg">setId1</i>.</p>
+<pre class="doctools_example">
+ # Example of ns_set merge
+ # Create two sets
+ % set set1 [ns_set create key1 value1 key2 value2]
+ % set set2 [ns_set create key2 value2_new key3 value3]
+ 
+ # Merge set2 into set1
+ % ns_set merge $set1 $set2
+ # Now set1 contains key1, key2 (original value), and key3
+ % ns_set keys $set1
+ key1 key2 key3
+ </pre>
+</dd>
+<dt><a name="17"><b class="cmd">ns_set move</b> <i class="arg">setId1</i> <i class="arg">setId2</i></a></dt>
+<dd><p>Moves all fields from <i class="arg">setId2</i> to the end of <i class="arg">setId1</i>,
+  leaving <i class="arg">setId2</i> as an empty but valid set.</p>
+<pre class="doctools_example">
+ # Example of ns_set move
+ # Create two sets
+ % set set1 [ns_set create key1 value1]
+ % set set2 [ns_set create key2 value2 key3 value3]
+ 
+ # Move fields from set2 to set1
+ % ns_set move $set1 $set2
+ 
+ # Now set1 contains key1, key2, key3
+ % ns_set keys $set1
+ key1 key2 key3
+ 
+ # set2 is empty
+ % ns_set size $set2
+ 0
+</pre>
+</dd>
+<dt><a name="18"><b class="cmd">ns_set name</b> <i class="arg">setId</i></a></dt>
+<dd><p>Returns the name of the set or an empty string if no name has been
+  set.</p></dd>
+<dt><a name="19"><b class="cmd">ns_set put</b> <i class="arg">setId</i> <i class="arg">key</i> <i class="arg">value</i></a></dt>
+<dd><p>Appends a new field with the specified <i class="arg">key</i> and <i class="arg">value</i> to
+  the set and returns the field number of the new field. Use
+  <b class="cmd">ns_set update</b> if you want to update a field with a certain key.</p></dd>
+<dt><a name="20"><b class="cmd">ns_set size</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">nrElements</i>?</span> <span class="opt">?<i class="arg">bufferSize</i>?</span></a></dt>
+<dd><p>Returns the number of fields in the set.</p>
+<p>The optional <i class="arg">nrElements</i> can be used to change the
+  internal size of the set, the number of elements can be increased or
+  decreased. A decrease * might entail a truncation of the set.</p>
+<p>The optional <i class="arg">bufferSize</i> can be used to change the
+  internal buffer size to either free some memory, when the
+  set was previously used to store many large objects, or to
+  pre-allocate storage to avoid resource operations in the internal
+  string buffer.</p></dd>
+<dt><a name="21"><b class="cmd">ns_set split</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">splitChar</i>?</span></a></dt>
+<dd><p>Splits one set into multiple sets based on a specific character,
+  <i class="arg">splitChar</i> used in the key, and returns a list of
+  IDs for the newly created sets.
+  Defaults to using a period (&quot;.&quot;) as the split character.</p>
+<pre class="doctools_example">
+ # Create a set with keys containing periods
+ % set s1 [ns_set create]
+ % ns_set put $s1 dog.food &quot;Yummy dog food!&quot;
+ % ns_set put $s1 cat.food &quot;Yummy cat food!&quot;
+ 
+ % ns_set format $s1
+ dog.food: Yummy dog food!
+ cat.food: Yummy cat food!
+ 
+ # Split the set into multiple (actually 2) sets based on '.' in the key
+ % set newSets [ns_set split $s1]
+ d2 d3
+ 
+ # Show the result of the created new sets
+ % set result &quot;&quot;
+ % foreach s $newSets {
+ %   append result [ns_set format $s]
+ % }
+ % set result
+ dog:
+   food: Yummy dog food!
+ cat:
+   food: Yummy cat food!
+</pre>
+</dd>
+<dt><a name="22"><b class="cmd">ns_set truncate</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></dt>
+<dd><p>Removes all fields from <i class="arg">fieldNumber</i> onward.</p></dd>
+<dt><a name="23"><b class="cmd">ns_set unique</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i></a></dt>
+<dd><p>Returns 1 if the specified <i class="arg">key</i> is unique in the set and 0 if it is
+  not.</p>
+<pre class="doctools_example">
+ # Create a set with duplicate keys
+ % set headers [ns_set create]
+ % ns_set put $headers Accept &quot;text/html&quot;
+ % ns_set put $headers Accept &quot;application/xml&quot;
+ % ns_set put $headers Host &quot;www.example.com&quot;
+ 
+ # Check if 'Accept' header is unique
+ % ns_set unique $headers Accept
+ 0
+ 
+ # Check if 'Host' header is unique
+ % ns_set unique $headers Host
+ 1
+</pre>
+</dd>
+<dt><a name="24"><b class="cmd">ns_set update</b> <span class="opt">?<b class="option">-nocase</b>?</span> <span class="opt">?--?</span> <i class="arg">setId</i> <i class="arg">key</i> <i class="arg">value</i></a></dt>
+<dd><p>Updates the first occurrence of a field with the specified <i class="arg">key</i>,
+  replacing its value with the new <i class="arg">value</i>. Equivalent to
+  <b class="cmd">ns_set delkey</b> followed by <b class="cmd">ns_set put</b>.</p></dd>
+<dt><a name="25"><b class="cmd">ns_set value</b> <i class="arg">setId</i> <i class="arg">fieldNumber</i></a></dt>
+<dd><p>Returns the value of the field at the specified <i class="arg">fieldNumber</i>.</p></dd>
+<dt><a name="26"><b class="cmd">ns_set values</b> <i class="arg">setId</i> <span class="opt">?<i class="arg">pattern</i>?</span></a></dt>
+<dd><p>Returns a list of all values in the set. If a <i class="arg">pattern</i> is specified,
+  only values matching the pattern are returned.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">OPTIONS</a></h2>
+<p>The option <b class="option">-nocase</b> is valid for multiple commands.  The options
+  valid for just a single command are described above.</p>
+<dl class="doctools_options">
+<dt><b class="option">-nocase</b></dt>
+<dd><p>When specified on a submethod accepting a <i class="arg">key</i> the lookup for
+  the key will be case-insensitive, even if the underlying set is
+  case-sensitive.</p></dd>
+</dl>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">EXAMPLES</a></h2>
+<p>Basic operations on ns_sets:</p>
+<pre class="doctools_example">
+ # Create an ns_set with several fields, named &quot;mySetName&quot;
+ % set mySet [ns_set create mySetName a b c d e f A Joe B John C Jeff]
+ % ns_set size $mySet
+ 6
+ 
+ # Get the name of the ns_set
+ % ns_set name $mySet
+ mySetName
+ 
+ # Get all keys and values of the ns_set
+ % ns_set array $mySet
+ a b c d e f A Joe B John C Jeff
+ 
+ % ns_set keys $mySet
+ a c e A B C
+ 
+ % ns_set values $mySet
+ b d f Joe John Jeff
+ 
+ # Get the value of the field with key 'A'
+ % ns_set get $mySet A
+ Joe
+ 
+ # Get the value of the field with key 'a'
+ % ns_set get $mySet a
+ b
+ 
+ # Is the key 'a' unique in the ns_set?
+ % ns_set unique $mySet a
+ 1
+ 
+ # Is the key 'a' unique in the ns_set, when the case is ignored?
+ % ns_set unique -nocase $mySet a
+ 0
+ 
+ # Truncate the set after the third field
+ % ns_set truncate $mySet 3
+ % ns_set format $mySet
+ mySetName:
+   a: b
+   c: d
+   e: f
+ 
+ # Update the value of the field with key &quot;c&quot;
+ % ns_set update $mySet c &quot;Hello World!&quot;
+ 2
+ % ns_set format $mySet
+ mySetName:
+   a: b
+   c: Hello World!
+   e: f
+ 
+ # Lookup position of existing key
+ % ns_set find $mySet c
+ 1
+ 
+ # Lookup position of non-existing key
+ % ns_set find $mySet nokey
+ -1
+ 
+ # Delete the field at position 0
+ % ns_set delete $mySet 0
+ % ns_set format $mySet
+ mySetName:
+   c: Hello World!
+   e: f
+</pre>
+<p>Iterating over the fields of an ns_set:</p>
+<pre class="doctools_example">
+ # Run through an ns_set based on key/value pairs
+ foreach {key value} [ns_set array $myset]} {
+   ns_log notice &quot;key: $key, value: $value&quot;
+ }
+ 
+ # Run through an ns_set based on indices
+ for {set i 0} {$i &lt; [ns_set size $myset]} {incr i} {
+   set key [ns_set key $myset $i]
+   set value [ns_set value $myset $i]
+   ns_log notice &quot;key: $key, value: $value&quot;
+ }
+</pre>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Case Sensitivity</a></h2>
+<p>Sets can be defined to be case-sensitive (default) or
+  case-insensitive. When a set is defined case-insensitive, all keys
+  are converted internally to lowercase. Every lookup operation with
+  an upper or mixed case key will then succeed when the key in
+  lowercase exists.</p>
+<p>Case-sensitive and case-insensitive sets can be
+  created either from Tcl or from C.
+  To create a case-insensitive set from Tcl, use the option
+  <b class="option">-nocase</b> for the <b class="cmd">ns_set create</b> command.
+  When a case-insensitive set is duplicated via <b class="cmd">ns_set copy</b> or
+  <b class="cmd">ns_set split</b>, the resulting set is also case-insensitive.
+  The sets used for HTTP request headers and configuration values are
+  created automatically from C as case-insensitive.</p>
+<p>Even, when a set is defined as case-sensitive, all subcommands of
+  <b class="cmd">ns_set</b> receiving a key as input include the option <b class="option">-nocase</b>,
+  to make a single lookup case-insensitive.</p>
+<p>Legacy: previous versions of NaviServer have used special names for
+  the subcommands where the keys should be treated
+  case-insensitive. These subcommand names were prefixed with the
+  character &quot;i&quot; and were named &quot;icput&quot;, &quot;idelkey&quot;, &quot;ifind&quot;, &quot;iget&quot;,
+  &quot;imerge&quot;, &quot;iunique&quot;, and &quot;iupdate&quot;. These names are still supported
+  for compatibility, but it is recommended to use the option
+  <b class="option">-nocase</b> instead.</p>
+</div>
+<div id="section6" class="doctools_section"><h2><a name="section6">Storage Management</a></h2>
+<p>Sets created via the Tcl interface using <b class="cmd">ns_set</b> and the
+  subcommands <b class="cmd">create</b>, <b class="cmd">copy</b>, and <b class="cmd">split</b> are
+  automatically deleted after each request, or when
+  <b class="cmd">ns_set cleanup</b> is executed. The cleanup is performed
+  automatically after every request by the command <b class="cmd"><a href="../../index.html#ns_cleanup">ns_cleanup</a></b>.</p>
+<p>It is also possible to delete a specified set with the command
+  <b class="cmd">ns_set free</b>.</p>
+</div>
+<div id="section7" class="doctools_section"><h2><a name="section7">NOTES</a></h2>
+<p>NULL values, distinct from empty strings, are useful when
+  representing a database row as an <b class="cmd">ns_set</b>. Currently, obtaining
+  a NULL value in an <b class="cmd">ns_set</b> through the Tcl API can be
+  challenging.  NULL values may occur in sets created by
+  <b class="cmd"><a href="ns_parsequery.html">ns_parsequery</a></b> or by omitting the last value when seeding an
+  <b class="cmd">ns_set</b> in the create subcommand, among other scenarios.
+  NULL-valued fields can also be created through the C API.</p>
+<p><b class="cmd">ns_set</b> is intended for relatively small amounts of data.
+  Since keys are found by linear search, loading very large datasets
+  into an <b class="cmd">ns_set</b> may result in poor performance. In such cases,
+  consider using a Tcl array or dict structure instead.</p>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../index.html#ns_cleanup">ns_cleanup</a>, <a href="ns_conn.html">ns_conn</a>, <a href="ns_findset.html">ns_findset</a>, <a href="ns_ictl.html">ns_ictl</a>, <a href="ns_parsequery.html">ns_parsequery</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#bag">bag</a>, <a href="../../index.html#data_structure">data structure</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#multimap">multimap</a>, <a href="../../index.html#multiset">multiset</a>, <a href="../../index.html#ns_set">ns_set</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

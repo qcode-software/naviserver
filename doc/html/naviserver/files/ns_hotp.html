@@ -1,0 +1,111 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_hotp - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_hotp.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_hotp.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_hotp.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_hotp.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_hotp(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_hotp - Returns a decimal-coded one-time password (HOTP)</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">OPTIONS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_hotp</b> <span class="opt">?<b class="option">-digest <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-digits <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <i class="arg">counter</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The function returns a one-time password based on the HMAC algorithm
+  (HOTP) as described in RFC-4226, allowing the choice of message
+  digest algorithm and the number of digits for the truncated output.</p>
+<p>RFC-4226 defines HOTP as:</p>
+<pre class="doctools_example">
+ HOTP(K,C) = Truncate(HMAC-SHA-1(K,C))
+ 
+ K: key
+ C: counter (moving factor for one time passwd)
+</pre>
+<p>The implemented function <b class="cmd">ns_hotp</b> is an extension of the standard
+RFC by allowing you to specify the message digest algorithm and the
+number of characters in the truncated output.</p>
+<p>The command is available when NaviServer is compiled with OpenSSL
+support and the nsf package is installed.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_hotp</b> <span class="opt">?<b class="option">-digest <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-digits <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <i class="arg">counter</i></a></dt>
+<dd><p><i class="arg">counter</i> specifies the moving factor for the one-time password
+ (referred to as &quot;C&quot; in the formula above). The counter is a 64-bit
+ moving factor, encoded in big-endian order and passed as the message
+ to the HMAC calculation.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">OPTIONS</a></h2>
+<dl class="doctools_options">
+<dt><b class="option">-digest</b> <i class="arg">digest</i></dt>
+<dd><p>Specifies the digest algorithm used for the HMAC
+ computation. Available algorithms are provided by OpenSSL and
+ include: &quot;dsa&quot;, &quot;dsa-sha&quot;, &quot;ecdsa-with-sha1&quot;, &quot;md4&quot;, &quot;md5&quot;, &quot;mdc2&quot;,
+ &quot;ripemd160&quot;, &quot;sha&quot;, &quot;sha1&quot;, &quot;sha224&quot;, &quot;sha256&quot;, &quot;sha384&quot;, &quot;sha512&quot;,
+ and &quot;whirlpool&quot;. The default algorithm is &quot;sha256&quot;.</p></dd>
+<dt><b class="option">-digits</b> <i class="arg">digits</i></dt>
+<dd><p>Specifies the number of digits for the resulting one-time
+ password. The default is 6 digits.</p></dd>
+<dt><b class="option">-key</b> <i class="arg">key</i></dt>
+<dd><p>Specifies the secret key used to generate the one-time password
+ (corresponds to &quot;K&quot; in the formula above).</p></dd>
+</dl>
+<pre class="doctools_example">
+ # provide coutner in 64-bit big-endian order
+ % ns_hotp -key &quot;tweedie123&quot; [binary format W 1]
+ 601045
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_crypt.html">ns_crypt</a>, <a href="ns_hmac.html">ns_hmac</a>, <a href="ns_md.html">ns_md</a>, <a href="ns_rand.html">ns_rand</a>, <a href="ns_sha1.html">ns_sha1</a>, <a href="ns_totp.html">ns_totp</a>, <a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#hotp">HOTP</a>, <a href="../../index.html#crypto">crypto</a>, <a href="../../index.html#encoding">encoding</a>, <a href="../../index.html#nsf">nsf</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>
