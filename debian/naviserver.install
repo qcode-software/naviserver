@@ -9,5 +9,4 @@ etc/naviserver/*            etc/naviserver
 *.crt                       usr/lib/naviserver
 certificates                usr/lib/bin/naviserver/certificates
 conf/*.tcl                  usr/share/doc/naviserver/examples
-conf/*.adp                  usr/share/doc/naviserver/examples
 
