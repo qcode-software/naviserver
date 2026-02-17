@@ -13,4 +13,4 @@ pages/bitbucket-install.tcl usr/share/doc/naviserver
 pages/examples/*            usr/share/doc/naviserver/examples
 etc/naviserver/*            etc/naviserver
 etc/server.pem              etc/naviserver
-etc/*.crt                   etc/naviserver
+*.crt                       usr/lib/naviserver
