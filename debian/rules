@@ -32,7 +32,7 @@ override_dh_auto_install:
 override_dh_install:
 	dh_install --sourcedir $(TARGETDIR)
 	# Avoid dealing with generated html
-	rm -r $(CURDIR)/pages
+	rm -r $(TARGETDIR)/pages
 
 override_dh_missing:
 	dh_missing --sourcedir $(TARGETDIR)
