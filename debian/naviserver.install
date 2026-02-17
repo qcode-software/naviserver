@@ -1,12 +1,12 @@
 bin/*.so*                   usr/lib/naviserver/bin
 bin/init.tcl                usr/lib/naviserver/bin
-bin/naviserver-nsd          usr/sbin
-bin/naviserver-nsproxy      usr/bin
+bin/nsd                     usr/lib/naviserver/bin
+bin/nsproxy-helper          usr/lib/naviserver/bin
 bin/nsthreadtest            usr/lib/naviserver/bin
 modules                     usr/lib/naviserver/modules
 tcl/*                       usr/lib/naviserver/tcl
 etc/naviserver/*            etc/naviserver
 *.crt                       usr/lib/naviserver
-certificates                usr/lib/bin/naviserver/certificates
+certificates                usr/lib/naviserver/certificates
 conf/*.tcl                  usr/share/doc/naviserver/examples
 
