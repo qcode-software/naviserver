@@ -14,6 +14,9 @@ PACKAGE=naviserver
 COREPACKAGE=naviserver-core
 TARGETDIR=$(CURDIR)/debian/tmp
 
+override_dh_auto_test:
+	# NaviServer tests assume some installed files are in place.
+
 override_dh_auto_configure:
 	dh_auto_configure -- --with-tcl=/usr/lib/tcl8.6 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
 #	#./configure --with-tcl=/usr/lib/tcl8.6 --prefix=$(PREFIX) --enable-rpath --enable-threads --mandir=/usr/share/man
