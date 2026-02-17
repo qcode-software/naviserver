@@ -7,9 +7,8 @@ Build-Depends: debhelper (>= 13),
                zlib1g-dev,
                mawk,
                mime-support,
-               autoconf,
                tcllib
-Standards-Version: 4.6.2
+Standards-Version: 4.7.0
 Homepage: http://wiki.tcl.tk/2090
 
 Package: naviserver
