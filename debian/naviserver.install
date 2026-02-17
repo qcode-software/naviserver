@@ -3,13 +3,8 @@ bin/init.tcl                usr/lib/naviserver/bin
 bin/naviserver-nsd          usr/sbin
 bin/naviserver-nsproxy      usr/bin
 bin/nsthreadtest            usr/lib/naviserver/bin
-conf/*.tcl                  usr/share/doc/naviserver/examples
-pages/index.adp             usr/share/doc/naviserver
 modules                     usr/lib/naviserver/modules
 tcl/*                       usr/lib/naviserver/tcl
-pages/doc/*                 usr/share/doc/naviserver/doc
-pages/install-from-repository.tcl usr/share/doc/naviserver
-pages/examples/*            usr/share/doc/naviserver/examples
 etc/naviserver/*            etc/naviserver
 *.crt                       usr/lib/naviserver
 certificates                usr/lib/bin/naviserver/certificates
