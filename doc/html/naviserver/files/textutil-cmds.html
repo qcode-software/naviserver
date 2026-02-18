@@ -1,0 +1,204 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>textutil-cmds - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'textutil-cmds.man' by tcllib/doctools with format 'html'
+   -->
+<!-- textutil-cmds.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/textutil-cmds.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/textutil-cmds.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">textutil-cmds(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>textutil-cmds - Utility commands for processing text</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_parsehtml</b> <span class="opt">?<b class="option">-noangle</b>?</span> <span class="opt">?<b class="option">-onlytags</b>?</span> <span class="opt">?--?</span> <i class="arg">html</i></a></li>
+<li><a href="#2"><b class="cmd">ns_quotehtml</b> <i class="arg">html</i></a></li>
+<li><a href="#3"><b class="cmd">ns_unquotehtml</b> <i class="arg">html</i></a></li>
+<li><a href="#4"><b class="cmd">ns_striphtml</b> <i class="arg">html</i></a></li>
+<li><a href="#5"><b class="cmd">ns_reflow_text</b> <span class="opt">?<b class="option">-width <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-offset <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-prefix <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">text</i></a></li>
+<li><a href="#6"><b class="cmd">ns_trim</b> <span class="opt">?<b class="option">-subst</b>?</span> <span class="opt">?<b class="option">-delimiter <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-prefix <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">text</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>These commands support common tasks of processing text chunks in
+NaviServer applications.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_parsehtml</b> <span class="opt">?<b class="option">-noangle</b>?</span> <span class="opt">?<b class="option">-onlytags</b>?</span> <span class="opt">?--?</span> <i class="arg">html</i></a></dt>
+<dd><p>Parses the provided HTML text into a tagged list, where each list item
+starts with a type tag indicating the element's content. Possible type
+tags are
+<i class="term">comment</i>, <i class="term">pi</i>, <i class="term"><a href="../../index.html#tag">tag</a></i>, or <i class="term"><a href="../../index.html#text">text</a></i>. For <i class="term"><a href="../../index.html#tag">tag</a></i>
+elements, the type tag is followed by the parsed string in the first list
+element and by a Tcl dict in the second list element containing the
+parsed HTML attributes.</p>
+<p>When the option <span class="opt">?-noangle?</span> is specified, the angle brackets (less
+and greater sign) are removed in the result.</p>
+<p>When the option <span class="opt">?-onlytags?</span> is specified, only tag elements are
+returned, without the leading type tag. This can be used for checking whether tags in an HTML
+snippets needs to be closed.</p>
+<pre class="doctools_example">
+ % ns_parsehtml {hello &lt;b&gt;foo&lt;/b&gt; anchor &lt;a href=&quot;/foo&quot;&gt;world&lt;/a&gt;.}
+ {text {hello }} {tag &lt;b&gt; {b {}}} {text foo} {tag &lt;/b&gt; /b} {text { anchor }} {tag {&lt;a href=&quot;/foo&quot;&gt;} {a {href /foo}}} {text world} {tag &lt;/a&gt; /a} {text .}
+ 
+ % ns_parsehtml -noangle  {hello &lt;b&gt;foo&lt;/b&gt; anchor &lt;a href=&quot;/foo&quot;&gt;world&lt;/a&gt;.}
+ {text {hello }} {tag b {b {}}} {text foo} {tag /b /b} {text { anchor }} {tag {a href=&quot;/foo&quot;} {a {href /foo}}} {text world} {tag /a /a} {text .}
+ 
+ % ns_parsehtml -onlytags {hello &lt;b&gt;foo&lt;/b&gt; anchor &lt;a href=&quot;/foo&quot;&gt;world&lt;/a&gt;.}
+ {b {}} /b {a {href /foo}} /a
+</pre>
+</dd>
+<dt><a name="2"><b class="cmd">ns_quotehtml</b> <i class="arg">html</i></a></dt>
+<dd><p>Returns the contents of HTML with certain characters that are special in HTML
+replaced with an escape code.  The resulting text can be literally displayed
+in a webpage with an HTML renderer. Specifically:</p>
+<dl class="doctools_definitions">
+<dt></dt>
+<dd><p>&amp; becomes &amp;amp;</p></dd>
+<dt></dt>
+<dd><p>&lt; becomes &amp;lt;</p></dd>
+<dt></dt>
+<dd><p>&gt; becomes &amp;gt;</p></dd>
+<dt></dt>
+<dd><p>' becomes &amp;#39;</p></dd>
+<dt></dt>
+<dd><p>&quot; becomes &amp;#34;</p></dd>
+</dl>
+<p>All other characters are unmodified in the output.</p></dd>
+<dt><a name="3"><b class="cmd">ns_unquotehtml</b> <i class="arg">html</i></a></dt>
+<dd><p>This is essentially the inverse operation of <b class="cmd">ns_quotehtml</b> and
+replaces the named and numeric entities in decimal or hexadecimal
+notation contained in the provided string by their native characters.
+ASCII control characters are omitted.</p></dd>
+<dt><a name="4"><b class="cmd">ns_striphtml</b> <i class="arg">html</i></a></dt>
+<dd><p>Returns the contents of <i class="arg">html</i> with all HTML tags removed.
+ This function replaces as well all known HTML4 named entities and
+ numeric entities in decimal or hexadecimal notation
+ by its UTF-8 representations and removes HTML comments.
+ ASCII control characters are omitted.</p></dd>
+<dt><a name="5"><b class="cmd">ns_reflow_text</b> <span class="opt">?<b class="option">-width <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-offset <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-prefix <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">text</i></a></dt>
+<dd><p>Reflow a text to the specified length. The arguments
+<i class="arg">width</i> (default 80) and <i class="arg">offset</i> (default 0)
+are integers referring to number of characters. The
+<i class="arg">prefix</i> can be used to prefix every resulting line
+with a constant string.</p></dd>
+<dt><a name="6"><b class="cmd">ns_trim</b> <span class="opt">?<b class="option">-subst</b>?</span> <span class="opt">?<b class="option">-delimiter <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-prefix <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">text</i></a></dt>
+<dd><p>Multi-line trim with optional <i class="arg">delimiter</i> or <i class="arg">prefix</i>.
+The command is useful, when not the full indentation from the source code
+file (with a indentation depending on the nesting level) should
+be preserved on the output (such as SQL statements, HTML markup, etc.).</p>
+<p>When neither <b class="option">-delimiter</b> or <b class="option">-prefix</b> is specified
+all leading whitespace is stripped from the result.
+When <b class="option">-delimiter</b> is specified, the delimiter is stripped as
+well.  The specified <i class="arg">delimiter</i> has to be a single character.</p>
+<p>When <b class="option">-prefix</b> is used the specified string will be stripped from
+lines starting exactly with this prefix (example: use
+<b class="option">-prefix <i class="term">&gt;&gt;</i></b> to strip the prefix <i class="term">&gt;&gt;</i> from
+every line starting with it. This option is mutual exclusive with
+the option <b class="option">-delimiter</b>.</p>
+<p>Optionally, substitution can be used, which is applied before
+trimming (not really needed but sometimes convenient).</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ % ns_quotehtml &quot;Hello World!&quot;
+ Hello World!
+ 
+ % ns_quotehtml &quot;The &lt;STRONG&gt; tag is used to indicate strongly emphasized text.&quot;
+ The &amp;lt;STRONG&amp;gt; tag is used to indicate strongly emphasized text.
+ 
+ % ns_quotehtml {&lt;span class=&quot;foo&quot;&gt;}
+ &amp;lt;span class=&amp;#34;foo&amp;#34;&amp;gt;
+</pre>
+<pre class="doctools_example">
+ % ns_reflow_text -width 15 -prefix &quot;&gt; &quot; &quot;one two three four five six seven eight nine ten&quot;
+ &gt; one two three
+ &gt; four five six
+ &gt; seven eight
+ &gt; nine ten
+</pre>
+<pre class="doctools_example">
+ % ns_striphtml &quot;&lt;MARQUEE direction='right'&gt;&lt;BLINK&gt;Hello World!&lt;/BLINK&gt;&lt;/MARQUEE&gt;&quot;
+ Hello World!
+</pre>
+<pre class="doctools_example">
+ % ns_trim {
+    SELECT object_id, object_name
+    FROM   acs_objects
+    WHERE  object_id &gt; 10000
+ }
+ SELECT object_id, object_name
+ FROM   acs_objects
+ WHERE  object_id &gt; 10000
+ 
+ % ns_trim -delimiter | {
+    | &lt;ul&gt;
+    |   &lt;li&gt; one
+    |   &lt;li&gt; two
+    |   &lt;li&gt; three
+    | &lt;/ul&gt;
+ }
+  &lt;ul&gt;
+    &lt;li&gt; one
+    &lt;li&gt; two
+    &lt;li&gt; three
+  &lt;/ul&gt;
+ ns_trim -prefix &quot;&gt; &quot; {
+ &gt; line 1
+ &gt; line 2 
+ }
+  
+ line 1
+ line 2 
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_hrefs.html">ns_hrefs</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#html">HTML</a>, <a href="../../index.html#encoding">encoding</a>, <a href="../../index.html#entity">entity</a>, <a href="../../index.html#quote">quote</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#text">text</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

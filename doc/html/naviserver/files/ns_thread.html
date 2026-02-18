@@ -1,0 +1,143 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_thread - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_thread.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_thread.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_thread.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_thread.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_thread(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_thread - Operate on threads</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_thread create</b> <span class="opt">?<b class="option">-detached</b>?</span> <span class="opt">?<b class="option">-name <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">script</i></a></li>
+<li><a href="#2"><b class="cmd">ns_thread handle</b></a></li>
+<li><a href="#3"><b class="cmd">ns_thread id</b></a></li>
+<li><a href="#4"><b class="cmd">ns_thread name</b> <span class="opt">?<i class="arg">name</i>?</span></a></li>
+<li><a href="#5"><b class="cmd">ns_thread stackinfo</b></a></li>
+<li><a href="#6"><b class="cmd">ns_thread wait</b> <i class="arg">threadid</i></a></li>
+<li><a href="#7"><b class="cmd">ns_thread yield</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The <b class="cmd">ns_thread</b> command provides mechanisms to create and
+manipulate threads, facilitating concurrent programming within
+NaviServer.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_thread create</b> <span class="opt">?<b class="option">-detached</b>?</span> <span class="opt">?<b class="option">-name <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">--</b>?</span> <i class="arg">script</i></a></dt>
+<dd><p>Creates a new thread and executes the provided <i class="arg">script</i>. The optional
+<b class="option">-detached</b> flag specifies that the thread runs detached, meaning it
+cannot be joined or waited for. If <b class="option">-name</b> is specified,
+the thread is named in the format <i class="term">-tcl-$name:$nr-</i>, where <i class="term">$nr</i> is a
+unique counter.</p>
+<dl class="doctools_definitions">
+<dt>Joinable threads (default):</dt>
+<dd><p>Threads created without
+<b class="option">-detached</b> are joinable, allowing the main program to wait for their
+completion using <b class="cmd">ns_thread wait</b>. These threads must be joined to
+ensure resources are properly freed.</p></dd>
+<dt>Detached threads:</dt>
+<dd><p>Threads created with <b class="option">-detached</b> run
+independently and do not need to be joined. This command returns an
+empty result for detached threads.</p></dd>
+</dl></dd>
+<dt><a name="2"><b class="cmd">ns_thread handle</b></a></dt>
+<dd><p>Returns the handle for the current thread.
+ The handle is used as argument <i class="arg">threadid</i> in <b class="cmd">ns_thread wait</b>.</p></dd>
+<dt><a name="3"><b class="cmd">ns_thread id</b></a></dt>
+<dd><p>Returns the current thread's ID as a hex value. This ID matches the
+ third element in the sub-list returned from <b class="cmd">ns_info threads</b>.</p></dd>
+<dt><a name="4"><b class="cmd">ns_thread name</b> <span class="opt">?<i class="arg">name</i>?</span></a></dt>
+<dd><p>Returns the name of the current thread. If the optional <i class="arg">name</i>
+ argument is provided, sets the current thread's name to the specified
+ value.</p></dd>
+<dt><a name="5"><b class="cmd">ns_thread stackinfo</b></a></dt>
+<dd><p>Returns the maximum available size of the C stack and the currently
+ free size of the C stack for the current thread in form of a Tcl dict.
+ Example result: <i class="term">max 2048000 free 2024408</i>.</p></dd>
+<dt><a name="6"><b class="cmd">ns_thread wait</b> <i class="arg">threadid</i></a></dt>
+<dd><p>Waits for the thread identified by <i class="arg">threadid</i> to complete. If the
+ thread is still running, the caller blocks until the thread
+ finishes. The command returns the result of the script executed by
+ the joined thread.</p>
+<p>Note: Waiting on an invalid threadid or a threadid that has
+ already been joined will cause the server to abort with a fatal
+ error.</p></dd>
+<dt><a name="7"><b class="cmd">ns_thread yield</b></a></dt>
+<dd><p>Causes the current thread to yield its CPU time, allowing other
+ threads to execute.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>Example 1: Creating and Waiting for a Thread</p>
+<pre class="doctools_example">
+ set threadHandle [ns_thread create {
+   ns_log notice &quot;Thread is executing&quot;
+   return &quot;Finished processing&quot;
+ }]
+ set result [ns_thread wait $threadHandle]
+ ns_log notice &quot;Main thread received result: $result&quot;
+</pre>
+<p>Example 2: Detached Thread</p>
+<pre class="doctools_example">
+ ns_thread create -detached {
+   ns_log notice &quot;Detached thread running independently&quot;
+ }
+</pre>
+<p>Example 3: Setting and Retrieving Thread Name</p>
+<pre class="doctools_example">
+ ns_thread name &quot;myCustomThread&quot;
+ ns_log notice &quot;Thread name: [ns_thread name]&quot;
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_cond.html">ns_cond</a>, <a href="ns_critsec.html">ns_critsec</a>, <a href="ns_mutex.html">ns_mutex</a>, <a href="ns_rwlock.html">ns_rwlock</a>, <a href="ns_sema.html">ns_sema</a>, ns_thread</p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#concurrency">concurrency</a>, <a href="../../index.html#multithreading">multithreading</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#synchronization">synchronization</a>, <a href="../../index.html#thread_management">thread management</a>, <a href="../../index.html#threading">threading</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

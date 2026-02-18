@@ -1,0 +1,253 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_config - NaviServer Built-In Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_config.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_config.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_config.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_config.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_config(n)</h1>
+    <p class="man-details">NaviServer Built-In Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_config - Configuration parameters</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">CONFIGURATION FILE COMMANDS</a></li>
+<li class="doctools_section"><a href="#section4">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_config</b> <span class="opt">?<b class="option">-all</b>?</span> <span class="opt">?<b class="option">-bool</b>?</span> <span class="opt">?<b class="option">-int</b>?</span> <span class="opt">?<b class="option">-min <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-max <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-exact</b>?</span> <span class="opt">?<b class="option">-set</b>?</span> <span class="opt">?--?</span> <i class="arg">section</i> <i class="arg">key</i> <span class="opt">?<i class="arg">default</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_configsection</b> <span class="opt">?<b class="option">-filter unread|defaulted|defaults</b>?</span> <span class="opt">?--?</span> <i class="arg">section</i></a></li>
+<li><a href="#3"><b class="cmd">ns_configsections</b></a></li>
+<li><a href="#4"><b class="cmd">ns_section</b> <span class="opt">?<b class="option">-update</b>?</span> <span class="opt">?--?</span> <i class="arg">name</i></a></li>
+<li><a href="#5"><b class="cmd">ns_param</b> <i class="arg">key</i> <i class="arg">value</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The NaviServer process reads a Tcl configuration file (specified with the
+<em>-t</em> command line option) during early start-up. After it has changed to the
+correct <i class="term">user id</i> and <i class="term">group id</i>, bound to port 80, and possibly
+performed a <i class="term"><a href="../../index.html#chroot">chroot</a></i>, it evaluates the configuration file as a Tcl script.</p>
+<p>The configuration file may contain standard Tcl and NaviServer commands, plus
+the <b class="cmd">ns_section</b> and <b class="cmd">ns_param</b> commands used to define a configuration
+structure. Parameters are key-value pairs and are grouped into sections. Section
+names must be unique -- parameter keys may be duplicates.</p>
+<p>The configuration is global and read-only. Parameters may be retrieved at
+run-time using <b class="cmd">ns_config</b>, although usually configuration parameters are
+used by Tcl library files at start-up.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<p>The following commands are available at run-time to retrieve information from the
+configuration file.</p>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_config</b> <span class="opt">?<b class="option">-all</b>?</span> <span class="opt">?<b class="option">-bool</b>?</span> <span class="opt">?<b class="option">-int</b>?</span> <span class="opt">?<b class="option">-min <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-max <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-exact</b>?</span> <span class="opt">?<b class="option">-set</b>?</span> <span class="opt">?--?</span> <i class="arg">section</i> <i class="arg">key</i> <span class="opt">?<i class="arg">default</i>?</span></a></dt>
+<dd><p>Returns the parameter value associated with the given <i class="arg">section</i> and <i class="arg">key</i> from
+the configuration file.  If the parameter is not found, then the optional <i class="arg">default</i>
+is returned, otherwise the empty string is returned.</p>
+<p>Parameter keys are matched case-insensitively. The first parameter is returned
+if duplicate keys are present.</p>
+<dl class="doctools_options">
+<dt><b class="option">-all</b></dt>
+<dd><p>Specifies that the command should return all values provided
+from the underlying multi-set. If not specified, just the first value
+is returned. The command is similar to <b class="cmd">ns_set get</b>.</p></dd>
+<dt><b class="option">-bool</b></dt>
+<dd><p>Specifies that the parameter should be a valid boolean value, using any form
+understood by <b class="cmd">string is boolean</b>. An error will be thrown if this is not
+the case, unless a valid <i class="arg">default</i> is given.</p></dd>
+<dt><b class="option">-int</b></dt>
+<dd><p>Specifies that the parameter should be a valid integer value, using any form
+understood by <b class="cmd">string is integer</b>. An error will be thrown is this is not
+the case, unless a valid <i class="arg">default</i> is given.</p></dd>
+<dt><b class="option">-min</b> minint</dt>
+<dd><p>Specifies the lower bound for an integer parameter value. An error will be thrown
+if the parameter &lt; <i class="arg">minint</i>, unless a valid default value is given.</p></dd>
+<dt><b class="option">-max</b> maxint</dt>
+<dd><p>Specifies the upper bound for an integer parameter value. An error will be thrown
+if the parameter &gt; <i class="arg">maxint</i>, unless a valid default value is given.</p></dd>
+<dt><b class="option">-exact</b></dt>
+<dd><p>Specifies case-sensitive parameter key matching. Not recommended.</p></dd>
+<dt><b class="option">-set</b></dt>
+<dd><p>Specifies that the parameter is set to the default value,
+when this parameter was not provided earlier. When this is done,
+the default is later retrievable via <b class="cmd">ns_config</b>.</p></dd>
+</dl></dd>
+<dt><a name="2"><b class="cmd">ns_configsection</b> <span class="opt">?<b class="option">-filter unread|defaulted|defaults</b>?</span> <span class="opt">?--?</span> <i class="arg">section</i></a></dt>
+<dd><p>Returns the <b class="cmd"><a href="ns_set.html">ns_set</a></b> which contains the actual values for all
+parameters defined in the specified <i class="arg">section</i>.  If there is no
+matching section, an empty string is returned.</p>
+<p>The <b class="option">-filter</b> can be used to return different kind of
+information about the parameters defined in this section.</p>
+<dl class="doctools_options">
+<dt><b class="option">-filter</b> <i class="term">unread</i></dt>
+<dd><p>return the parameter, which were set
+during configuration (i.e., in the configuration file) but which were
+not read in the startup phase of the server. This option is useful to
+determine e.g. typographical errors of specified parameter names.</p></dd>
+<dt><b class="option">-filter</b> <i class="term">defaulted</i></dt>
+<dd><p>return the parameter, from which
+the default values were read (i.e., which were not explicitly set)</p></dd>
+<dt><b class="option">-filter</b> <i class="term">defaults</i></dt>
+<dd><p>return the defaults of the
+parameter. This is useful for contrasting the actual values with the
+default values, e.g. in a web based interface.</p></dd>
+</dl></dd>
+<dt><a name="3"><b class="cmd">ns_configsections</b></a></dt>
+<dd><p>Returns a list of <b class="cmd"><a href="ns_set.html">ns_set</a></b>s, one for every section in the configuration
+file.  The sets contain the key-value pairs for the configuration section that
+the set represents. The <b class="cmd"><a href="ns_set.html">ns_set</a></b> name contains the <i class="arg">section</i>.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">CONFIGURATION FILE COMMANDS</a></h2>
+<p>The following commands are available only within the Tcl
+ configuration file, which is evaluated once at server start-up.</p>
+<dl class="doctools_definitions">
+<dt><a name="4"><b class="cmd">ns_section</b> <span class="opt">?<b class="option">-update</b>?</span> <span class="opt">?--?</span> <i class="arg">name</i></a></dt>
+<dd><p>Begins a new configuration section identified by the specified
+ <i class="arg">name</i>. All subsequent calls to <b class="cmd">ns_param</b> will add parameters to
+ this section until another <b class="cmd">ns_section</b> command is invoked with a
+ different section name.</p>
+<p>Multiple invocations of <b class="cmd">ns_section</b> using the same <i class="arg">name</i>
+ allow you to build the section incrementally. The following two
+ snippets are equivalent:</p>
+<p>Snippet 1:</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_section</b> foo {
+   <b class="cmd">ns_param</b> x 1
+   <b class="cmd">ns_param</b> y 1
+ }
+</pre>
+<p>Snippet 2:</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_section</b> foo {
+   <b class="cmd">ns_param</b> x 1
+ }
+ <b class="cmd">ns_section</b> foo {
+   <b class="cmd">ns_param</b> y 1
+ }
+</pre>
+<p>All configuration data is stored internally in <b class="cmd"><a href="ns_set.html">ns_set</a></b>
+ structures. Since ns_set is defined as a multi-map storage, multiple
+ values can be associated with the same key. This powerful feature may
+ lead to surprises: when a scalar value is requested and multiple
+ values are stored for the same key, only the first value is returned
+ (as with <b class="cmd">ns_set get</b>). To retrieve all values for a key, use
+ the <b class="option">-all</b> option with <b class="cmd">ns_config</b> or <b class="cmd"><a href="ns_set.html">ns_set</a></b>.</p>
+<p>The <b class="option">-update</b> flag can be used with <b class="cmd">ns_section</b> to update
+ an existing section by overwriting previous values instead of simply
+ appending new ones.</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_section</b> foo {
+   <b class="cmd">ns_param</b> x 1
+ }
+ 
+ # Later in the configuration file:
+ <b class="cmd">ns_section</b> -update foo {
+   <b class="cmd">ns_param</b> x 2
+ }
+ 
+ # Query the value of parameter 'x'
+ <b class="cmd">ns_config</b> foo x
+ # Result: 2
+</pre>
+</dd>
+<dt><a name="5"><b class="cmd">ns_param</b> <i class="arg">key</i> <i class="arg">value</i></a></dt>
+<dd><p>Sets the specified <i class="arg">key</i> to <i class="arg">value</i> in the currently active
+ section. Keys are matched in a case-insensitive manner, and duplicate
+ keys are allowed.</p></dd>
+</dl>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">EXAMPLES</a></h2>
+<p>The following example demonstrates how to set parameter values for
+ the <b class="const">foo</b> module:</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_section</b> &quot;ns/server/server1/modules/foo&quot; {
+   <b class="cmd">ns_param</b>   enabled   true
+   <b class="cmd">ns_param</b>   map       /some/url
+   <b class="cmd">ns_param</b>   map       /some-other/url
+ }
+</pre>
+<p>Alternatively, the section content can be specified without braces
+ (old style):</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_section</b> &quot;ns/server/server1/modules/foo&quot;
+ <b class="cmd">ns_param</b>   enabled   true
+ <b class="cmd">ns_param</b>   map       /some/url
+ <b class="cmd">ns_param</b>   map       /some-other/url
+</pre>
+<p>The following example shows how to read configuration parameters for
+ the <b class="const">foo</b> module.  In this case, the <b class="cmd">ns_config</b> command
+ checks for a boolean <b class="const">enabled</b> parameter (defaulting to
+ false). If enabled, it retrieves all values associated with the
+ <b class="const">map</b> key and registers a handler for GET requests on each
+ corresponding URL:</p>
+<pre class="doctools_example">
+ set path ns/server/[<b class="cmd"><a href="ns_info.html">ns_info</a></b> server]/modules/foo
+ 
+ if {[<b class="cmd">ns_config</b> -bool $path enabled false]} {
+    foreach url [<b class="cmd">ns_config</b> -all $path map] {
+      <b class="cmd">ns_register_proc</b> GET $url foo_module_handler
+    }
+ }
+</pre>
+<p>The following example prints all configuration parameters from every
+ section of the configuration file. It retrieves each section's ns_set
+ via <b class="cmd">ns_configsections</b> and uses <b class="cmd">ns_set array</b> to list all
+ key/value pairs:</p>
+<pre class="doctools_example">
+ <b class="cmd">ns_register_proc</b> GET /config-print {
+    set config &quot;&quot;
+    foreach section [<b class="cmd">ns_configsections</b>] {
+        append config &quot;section: [<b class="cmd"><a href="ns_set.html">ns_set</a></b> name $section]\n&quot;
+        foreach {key value} [<b class="cmd"><a href="ns_set.html">ns_set</a></b> array $section] {
+            append config &quot;  $key: $value\n&quot;
+        }
+    }
+    <b class="cmd"><a href="ns_return.html">ns_return</a></b> 200 text/plain $config
+ }
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_env.html">ns_env</a>, <a href="ns_info.html">ns_info</a>, <a href="ns_register.html">ns_register</a>, <a href="ns_set.html">ns_set</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#configuration">configuration</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#interp">interp</a>, <a href="../../index.html#parameter">parameter</a>, <a href="../../index.html#startup">startup</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

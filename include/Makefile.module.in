@@ -61,8 +61,33 @@ else
     include $(NAVISERVER)/include/Makefile.global
 endif
 
+#
+# Compare with the numerical version of NaviServer. If the version
+# test holds, nothing is installed. If "Version" is not found in the
+# result of "nsd -V", this indicates an older version of NaviServer
+# and the installation is performed.
+#
+# The numerical version is computed as
+#
+#   NS_MAJOR_VERSION * 10000 + NS_MINOR_VERSION * 100 + NS_RELEASE_SERIAL
+#
+# NaviServer 5.0.0 has the numerical value of 50000.
+#
+ifdef INCLUDED_IN_NAVISERVER
+    V = $(shell $(NAVISERVER)/bin/nsd -V | grep "Version" | cut -d ":" -f 2)
+    ifeq ($(shell test $(V) -ge $(INCLUDED_IN_NAVISERVER); echo $$?),0)
+        $(info This module is already included in NaviServer $(INCLUDED_IN_NAVISERVER))
+	TCL=
+	MOD=
+	LIBNM=
+	ALIB=
+	PGM=
+	LIBHDRS=
+    endif
+endif
+
 ifdef MOD
-    ifneq (,$(findstring MINGW,$(uname)))
+    ifeq (.exe,$(EXEEXT))
         MOD := $(shell basename $(MOD) .so)$(LIBEXT)
     endif
     BUILD     += $(MOD)
@@ -102,8 +127,8 @@ ifdef ALIB
 endif
 
 ifdef PGM
-    ifneq (,$(findstring MINGW,$(uname)))
-        PGM := $(PGM).exe
+    ifeq (.exe,$(EXEEXT))
+	PGM := $(PGM)$(EXEEXT)
     endif
     BUILD   += $(PGM)
     INSTALL += install-pgm
@@ -148,9 +173,10 @@ install-tcl: $(TCL)
 	done
 
 install-lib: $(LIBFILE)
-	$(INSTALL_SH) $(LIBFILE) $(DESTDIR)$(INSTLIB)/
-    ifneq (,$(findstring MINGW,$(uname)))
+    ifeq (.exe,$(EXEEXT))
 		$(INSTALL_SH) $(LIBFILE) $(DESTDIR)$(INSTBIN)/
+    else
+		$(INSTALL_SH) $(LIBFILE) $(DESTDIR)$(INSTLIB)/
     endif
 
 install-alib: $(ALIBFILE)

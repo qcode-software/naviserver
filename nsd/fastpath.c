@@ -57,8 +57,6 @@ static Ns_ReturnCode FastReturn(Ns_Conn *conn, int statusCode, const char *mimeT
 static int  CompressExternalFile(Tcl_Interp *interp, const char *cmdName, const char *fileName, const char *gzFileName)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
-static void NormalizePath(const char **pathPtr)
-    NS_GNUC_NONNULL(1);
 
 static const char *
 CheckStaticCompressedDelivery(
@@ -68,7 +66,8 @@ CheckStaticCompressedDelivery(
     const char *ext,
     const char *cmdName,
     const char *fileName,
-    const char *encoding
+    const char *encoding,
+    size_t encodingLength
 ) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5) NS_GNUC_NONNULL(6) NS_GNUC_NONNULL(7);
 
 
@@ -109,76 +108,25 @@ static bool      useBrotliRefresh = NS_FALSE; /* Update outdated brotli files au
 void
 NsConfigFastpath(void)
 {
-    const char *path;
+    const char *section;
 
-    path    = Ns_ConfigSectionPath(NULL, NULL, NULL, "fastpath", (char *)0L);
-    useMmap = Ns_ConfigBool(path, "mmap", NS_FALSE);
-    useGzip = Ns_ConfigBool(path, "gzip_static", NS_FALSE);
-    useGzipRefresh = Ns_ConfigBool(path, "gzip_refresh", NS_FALSE);
-    useBrotli = Ns_ConfigBool(path, "brotli_static", NS_FALSE);
-    useBrotliRefresh = Ns_ConfigBool(path, "brotli_refresh", NS_FALSE);
+    section = Ns_ConfigSectionPath(NULL, NULL, NULL, "fastpath", NS_SENTINEL);
+    useMmap = Ns_ConfigBool(section, "mmap", NS_FALSE);
+    useGzip = Ns_ConfigBool(section, "gzip_static", NS_FALSE);
+    useGzipRefresh = Ns_ConfigBool(section, "gzip_refresh", NS_FALSE);
+    useBrotli = Ns_ConfigBool(section, "brotli_static", NS_FALSE);
+    useBrotliRefresh = Ns_ConfigBool(section, "brotli_refresh", NS_FALSE);
 
-    if (Ns_ConfigBool(path, "cache", NS_FALSE)) {
-        size_t size = (size_t)Ns_ConfigMemUnitRange(path, "cachemaxsize", "10MB",
+    if (Ns_ConfigBool(section, "cache", NS_FALSE)) {
+        size_t size = (size_t)Ns_ConfigMemUnitRange(section, "cachemaxsize", "10MB",
                                                     1024*10000, 1024, INT_MAX);
         cache = Ns_CacheCreateSz("ns:fastpath", TCL_STRING_KEYS, size, FreeEntry);
-        maxentry = (int)Ns_ConfigMemUnitRange(path, "cachemaxentry", "8KB", 8192, 8, INT_MAX);
+        maxentry = (int)Ns_ConfigMemUnitRange(section, "cachemaxentry", "8KB", 8192, 8, INT_MAX);
     }
     /*
      * Register the fastpath initialization for every server.
      */
     NsRegisterServerInit(ConfigServerFastpath);
-}
-
-
-/*
- *----------------------------------------------------------------------
- *
- * NormalizePath --
- *
- *      Normalize the path to provide canonical directory names. The
- *      canonicalization is called, when the path contains a slash,
- *      otherwise the provided path is not touched.
- *
- * Results:
- *      None.
- *
- * Side effects:
- *      Potentially replacing the string in *pathPtr.
- *
- *----------------------------------------------------------------------
- */
-static void
-NormalizePath(const char **pathPtr) {
-
-    NS_NONNULL_ASSERT(pathPtr != NULL);
-    assert(*pathPtr != NULL);
-
-    if (strchr(*pathPtr, INTCHAR('/')) != NULL) {
-        Tcl_Obj *pathObj, *normalizedPathObj;
-        /*
-         * The path contains a slash, it might be not normalized;
-         */
-        pathObj = Tcl_NewStringObj(*pathPtr, TCL_INDEX_NONE);
-        Tcl_IncrRefCount(pathObj);
-
-        normalizedPathObj = Tcl_FSGetNormalizedPath(NULL, pathObj);
-        if (normalizedPathObj != NULL) {
-            /*
-             * Normalization was successful, replace the string in
-             * *pathPtr with the normalized string.
-             *
-             * The values returned by Ns_ConfigString() are the string
-             * values from the ns_set. We do not want to free *pathPtr
-             * here, but we overwrite it with a freshly allocated
-             * string. When this function is used from other contexts,
-             * not freeing the old value could be a potential memory
-             * leak.
-             *
-             */
-            *pathPtr = ns_strdup(Tcl_GetString(normalizedPathObj));
-        }
-    }
 }
 
 
@@ -209,53 +157,50 @@ ConfigServerFastpath(const char *server)
         result = NS_ERROR;
 
     } else {
-        Ns_DString  ds;
-        const char *path, *p;
+        Tcl_DString ds;
+        const char *section, *p;
 
-        path = Ns_ConfigSectionPath(NULL, server, NULL, "fastpath", (char *)0L);
-        Ns_DStringInit(&ds);
+        section = Ns_ConfigSectionPath(NULL, server, NULL, "fastpath", NS_SENTINEL);
+        Tcl_DStringInit(&ds);
 
-        p = Ns_ConfigString(path, "directoryfile", "index.adp index.tcl index.html index.htm");
+        p = Ns_ConfigString(section, "directoryfile", "index.adp index.tcl index.html index.htm");
         if (p != NULL && Tcl_SplitList(NULL, p, &servPtr->fastpath.dirc,
                                        &servPtr->fastpath.dirv) != TCL_OK) {
             Ns_Log(Error, "fastpath[%s]: directoryfile is not a list: %s", server, p);
         }
-        /*
-         * The string in servPtr->fastpath.dirv should be freed with
-         * Tcl_Free() in case the server is reconfigured or deleted.
-         */
 
-        servPtr->fastpath.serverdir =
-            ns_strcopy(Ns_ConfigString(path, "serverdir", NS_EMPTY_STRING));
-
-        if (!Ns_PathIsAbsolute(servPtr->fastpath.serverdir)) {
-            (void)Ns_HomePath(&ds, servPtr->fastpath.serverdir, (char *)0L);
-            servPtr->fastpath.serverdir = Ns_DStringExport(&ds);
-        }  else {
-            NormalizePath(&servPtr->fastpath.serverdir);
+#ifdef NS_WITH_DEPRECATED_5_0
+        if (Ns_ConfigGetValue(section, "serverdir") != NULL) {
+            Ns_LogDeprecatedParameter(section, "serverdir",
+                                      Ns_ConfigSectionPath(NULL, server, NULL, NS_SENTINEL), "serverdir",
+                                      NULL);
+            servPtr->opts.serverdir = Ns_ConfigFilename(section, "serverdir", 9,
+                                                            nsconf.home, NS_EMPTY_STRING,
+                                                            NS_TRUE, NS_FALSE);
         }
+#endif
+        //fprintf(stderr, "=== final <%s>\n", servPtr->opts.serverdir);
 
+#ifdef NS_WITH_DEPRECATED
+        /*
+         * "pageroot" is always and absolute path.
+         */
+        servPtr->fastpath.pageroot = Ns_ConfigFilename(section, "pagedir", 7,
+                                                       servPtr->opts.serverdir, "pages",
+                                                       NS_TRUE, NS_FALSE);
+#endif
         /*
          * Not sure, we still need fastpath.pageroot AND fastpath.pagedir.
          * "pageroot" always points to the absolute path, while "pagedir"
          * might contain the relative path (or is the same as "pageroot").
          */
-        servPtr->fastpath.pagedir = ns_strcopy(Ns_ConfigString(path, "pagedir", "pages"));
-        if (Ns_PathIsAbsolute(servPtr->fastpath.pagedir) == NS_TRUE) {
-            servPtr->fastpath.pageroot = servPtr->fastpath.pagedir;
-            NormalizePath(&servPtr->fastpath.pageroot);
-        } else {
-            (void)Ns_MakePath(&ds, servPtr->fastpath.serverdir,
-                              servPtr->fastpath.pagedir, (char *)0L);
-            servPtr->fastpath.pageroot = Ns_DStringExport(&ds);
-        }
+        servPtr->fastpath.pagedir = ns_strcopy(Ns_ConfigString(section, "pagedir", "pages"));
+        servPtr->fastpath.dirproc = ns_strcopy(Ns_ConfigString(section, "directoryproc", "_ns_dirlist"));
+        servPtr->fastpath.diradp  = ns_strcopy(Ns_ConfigString(section, "directoryadp", NULL));
 
-        servPtr->fastpath.dirproc = ns_strcopy(Ns_ConfigString(path, "directoryproc", "_ns_dirlist"));
-        servPtr->fastpath.diradp  = ns_strcopy(Ns_ConfigString(path, "directoryadp", NULL));
-
-        Ns_RegisterRequest(server, "GET", "/",  Ns_FastPathProc, NULL, NULL, 0u);
-        Ns_RegisterRequest(server, "HEAD", "/", Ns_FastPathProc, NULL, NULL, 0u);
-        Ns_RegisterRequest(server, "POST", "/", Ns_FastPathProc, NULL, NULL, 0u);
+        Ns_RegisterRequest2(NULL, server, "GET", "/",  Ns_FastPathProc, NULL, NULL, 0u, NULL);
+        Ns_RegisterRequest2(NULL, server, "HEAD", "/", Ns_FastPathProc, NULL, NULL, 0u, NULL);
+        Ns_RegisterRequest2(NULL, server, "POST", "/", Ns_FastPathProc, NULL, NULL, 0u, NULL);
 
         result = NS_OK;
     }
@@ -321,7 +266,7 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
     Conn         *connPtr;
     NsServer     *servPtr;
     const char   *url;
-    Ns_DString    ds;
+    Tcl_DString   ds;
     Ns_ReturnCode result;
 
     NS_NONNULL_ASSERT(conn != NULL);
@@ -330,7 +275,7 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
     servPtr = connPtr->poolPtr->servPtr;
     url = conn->request.url;
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
 
     if ((NsUrlToFile(&ds, servPtr, url) != NS_OK)
         || (Ns_Stat(ds.string, &connPtr->fileInfo) == NS_FALSE)) {
@@ -355,11 +300,11 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
          */
 
         for (i = 0; i < servPtr->fastpath.dirc; ++i) {
-            Ns_DStringSetLength(&ds, 0);
+            Tcl_DStringSetLength(&ds, 0);
             if (NsUrlToFile(&ds, servPtr, url) != NS_OK) {
                 goto notfound;
             }
-            Ns_DStringVarAppend(&ds, "/", servPtr->fastpath.dirv[i], (char *)0L);
+            Ns_DStringVarAppend(&ds, "/", servPtr->fastpath.dirv[i], NS_SENTINEL);
 
             if ((stat(ds.string, &connPtr->fileInfo) == 0)
                 && S_ISREG(connPtr->fileInfo.st_mode)
@@ -369,10 +314,10 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
                 if (url[strlen(url) - 1u] != '/') {
                     const char* query = conn->request.query;
 
-                    Ns_DStringSetLength(&ds, 0);
-                    Ns_DStringVarAppend(&ds, url, "/", (char *)0L);
+                    Tcl_DStringSetLength(&ds, 0);
+                    Ns_DStringVarAppend(&ds, url, "/", NS_SENTINEL);
                     if (query != NULL) {
-                        Ns_DStringVarAppend(&ds, "?", query, (char *)0L);
+                        Ns_DStringVarAppend(&ds, "?", query, NS_SENTINEL);
                     }
                     result = Ns_ConnReturnRedirect(conn, ds.string);
                 } else {
@@ -409,7 +354,7 @@ Ns_FastPathProc(const void *UNUSED(arg), Ns_Conn *conn)
     }
 
  done:
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return result;
 }
@@ -469,27 +414,26 @@ Ns_UrlIsDir(const char *server, const char *url)
 static bool
 UrlIs(const char *server, const char *url, bool isDir)
 {
-    Ns_DString   ds;
+    Tcl_DString  ds;
     struct stat  st;
     bool         is = NS_FALSE;
 
     NS_NONNULL_ASSERT(server != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     if (Ns_UrlToFile(&ds, server, url) == NS_OK
         && stat(ds.string, &st) == 0
         && ((isDir && S_ISDIR(st.st_mode))
             || (!isDir && S_ISREG(st.st_mode)))) {
         is = NS_TRUE;
     }
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return is;
 }
 
-
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  *
@@ -522,6 +466,7 @@ Ns_PageRoot(const char *server)
 
     return pageRoot;
 }
+#endif
 
 
 /*
@@ -537,8 +482,8 @@ Ns_PageRoot(const char *server)
  *      Tcl Result Code
  *
  * Side effects:
- *      Compressed file in the same directory.
- *      When compression fails, the command writes a warning to the error.log.
+ *      Compressed file in the same directory.  When compression
+ *      fails, the command writes a warning to the system log file.
  *
  *----------------------------------------------------------------------
  */
@@ -594,7 +539,8 @@ CheckStaticCompressedDelivery(
     const char *ext,
     const char *cmdName,
     const char *fileName,
-    const char *encoding
+    const char *encoding,
+    size_t      encodingLength
 ) {
     const char  *result = NULL;
     struct stat  gzStat;
@@ -617,7 +563,7 @@ CheckStaticCompressedDelivery(
 
 
     if (Ns_Stat(compressedFileName, &gzStat)) {
-        Ns_ConnCondSetHeaders(conn, "Vary", "Accept-Encoding");
+        Ns_ConnCondSetHeadersSz(conn, "vary", 4, "accept-encoding", 15);
         //fprintf(stderr, "=== we have the file <%s> compressed <%s>\n", fileName, compressedFileName);
 
         /*
@@ -642,7 +588,7 @@ CheckStaticCompressedDelivery(
              */
             connPtr->fileInfo = gzStat;
             result = compressedFileName;
-            Ns_ConnCondSetHeaders(conn, "Content-Encoding", encoding);
+            Ns_ConnCondSetHeadersSz(conn, "content-encoding", 16, encoding, (TCL_SIZE_T)encodingLength);
         } else {
             Ns_Log(Warning, "gzip: the gzip file %s is older than the uncompressed file",
                    compressedFileName);
@@ -729,14 +675,14 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
     if (useBrotli && (connPtr->flags & NS_CONN_BROTLIACCEPTED) != 0u) {
         compressedFileName = CheckStaticCompressedDelivery(conn, dsPtr, useBrotliRefresh,
                                                            ".br", "::ns_brotlifile",
-                                                           fileName, "br");
+                                                           fileName, "br", 2u);
     }
 
     if (compressedFileName == NULL && useGzip && (connPtr->flags & NS_CONN_ZIPACCEPTED) != 0u) {
         Tcl_DStringSetLength(dsPtr, 0);
         compressedFileName = CheckStaticCompressedDelivery(conn, dsPtr, useGzipRefresh,
                                                            ".gz", "::ns_gzipfile",
-                                                           fileName, "gzip");
+                                                           fileName, "gzip", 4u);
     }
 
     if (compressedFileName != NULL) {
@@ -749,7 +695,7 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
      */
 
     if ((conn->flags & NS_CONN_SKIPBODY) != 0u) {
-        Ns_DStringFree(dsPtr);
+        Tcl_DStringFree(dsPtr);
         return Ns_ConnReturnData(conn, statusCode, NS_EMPTY_STRING,
                                  (ssize_t)connPtr->fileInfo.st_size, mimeType);
     }
@@ -878,14 +824,14 @@ FastReturn(Ns_Conn *conn, int statusCode, const char *mimeType, const char *file
         }
     }
 
-    Ns_DStringFree(dsPtr);
+    Tcl_DStringFree(dsPtr);
     return status;
 
  notfound:
 
     Ns_Log(Debug, "FastReturn for '%s' returns 404", fileName);
 
-    Ns_DStringFree(dsPtr);
+    Tcl_DStringFree(dsPtr);
     return Ns_ConnReturnNotFound(conn);
 }
 
@@ -945,14 +891,14 @@ static Ns_ReturnCode
 FastGetRestart(Ns_Conn *conn, const char *page)
 {
     Ns_ReturnCode status;
-    Ns_DString    ds;
+    Tcl_DString   ds;
 
     NS_NONNULL_ASSERT(conn != NULL);
     NS_NONNULL_ASSERT(page != NULL);
 
-    Ns_DStringInit(&ds);
-    status = Ns_ConnRedirect(conn, Ns_MakePath(&ds, conn->request.url, page, (char *)0L));
-    Ns_DStringFree(&ds);
+    Tcl_DStringInit(&ds);
+    status = Ns_ConnRedirect(conn, Ns_MakePath(&ds, conn->request.url, page, NS_SENTINEL));
+    Tcl_DStringFree(&ds);
 
     return status;
 }
@@ -1029,13 +975,12 @@ FreeEntry(void *arg)
  *----------------------------------------------------------------------
  */
 int
-NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         contents = (int)NS_FALSE, reset = (int)NS_FALSE, result = TCL_OK;
     Ns_ObjvSpec opts[] = {
         {"-contents", Ns_ObjvBool,  &contents, INT2PTR(NS_TRUE)},
         {"-reset",    Ns_ObjvBool,  &reset,    INT2PTR(NS_TRUE)},
-        {"--",        Ns_ObjvBreak, NULL,      NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -1043,10 +988,10 @@ NsTclFastPathCacheStatsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
         result = TCL_ERROR;
 
     } else if (cache != NULL) {
-        Ns_DString      ds;
+        Tcl_DString     ds;
         Ns_CacheSearch  search;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         Ns_CacheLock(cache);
 
         if (contents != 0) {

@@ -1,0 +1,673 @@
+'\"
+'\" Generated from file 'admin-maintenance\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "admin-maintenance" n 5\&.0\&.4 manual "NaviServer Manual"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+admin-maintenance \- NaviServer Maintenance Guide
+.SH DESCRIPTION
+This guide provides essential information for maintaining and securing
+NaviServer\&.
+.SH "MAINTENANCE TASKS"
+.PP
+Regular maintenance is essential for ensuring continuous and reliable service\&.
+Key tasks include:
+.IP [1]
+Backing up pages and associated files for each virtual server\&.
+.IP [2]
+Archiving the access log to preserve historical data\&.
+.IP [3]
+Backing up the server log, especially when verbose logging is enabled\&.
+.IP [4]
+Backing up Tcl script directories\&.
+.IP [5]
+Backing up the bin directory, particularly if custom loadable modules are used\&.
+.PP
+Detailed instructions for each maintenance task are provided in the following sections\&.
+.SH "MAINTAIN THE DIRECTORIES"
+Regular backups of key NaviServer directories are vital to protect
+against data loss due to filesystem failures\&.
+.SS "BACK UP THE PAGES DIRECTORY"
+The pages directory is defined by the \fIPageDir\fR parameter which
+defaults to the \fB/pages\fR subdirectory under NaviServer home\&.
+When multiple servers are running with the same server configuration,
+the home directory can be determined dynamically based on the
+\fBHost:\fR header field
+\fImass virtual hosting\fR [\&./admin-config\&.html#subsection9]\&.
+Keep this in mind, when performing backups\&.
+.PP
+Schedule regular backups using your preferred method (e\&.g\&., nightly
+cron jobs)\&.
+.PP
+Notice, that NaviServer provides cron-like service by
+using \fIns_schedule\fR [\&.\&./\&.\&./naviserver/files/ns_schedule\&.html] to
+run jobs periodically or at certain times in the background\&. This can
+ease maintenance since everything can be done in the same environment\&.
+.SS "BACK UP THE ACCESS LOG"
+The access log, per default located in \fBlogs/access\&.log\fR, should be
+backed up frequently\&.  Since NaviServer automatically deletes older
+logs beyond the configured \fIMaxBackup\fR limit, manual backups are
+required to retain a complete log history\&.
+It is recommended to use timestamp based filenames for logfile rolling (using\&. e\&.g\&.\&. the
+day in the filename; see
+\fIns_accesslog\fR [\&.\&./\&.\&./nslog/files/ns_accesslog\&.html])\&. This
+has the advantage, that the filenames are stable, such that on a
+system-wide backup, the old logfilenames are stable and do not required
+backups, whenever the log files is rolled\&.
+.SS "BACK UP THE SERVER LOG"
+Regular backups are recommended to preserve this critical information,
+since the file often reveals intrusion attempts, or provides
+information, when a certain behavior started, etc\&.
+Although the server log generally grows slowly on small sites, verbose
+logging (e\&.g\&., during debugging) can cause rapid expansion, especially
+when the tracffic is high\&.  For keeping storage requirement low, use
+a timestamp based filenames for logfile rolling (see
+\fIns_log\fR [\&.\&./\&.\&./naviserver/files/ns_log\&.html])\&.
+.SS "BACK UP THE TCL SCRIPTS DIRECTORY"
+Back up the Tcl scripts directories, which include both virtual
+server-specific scripts (typically in the \fB/tcl\fR subdirectory) and
+global scripts (in \fB/modules/tcl\fR)\&. Also, ensure that any external
+files referenced by these scripts are included in your backup
+strategy\&.
+.SS "BACK UP THE \FBBIN\FR DIRECTORY"
+The \fB/bin\fR directory contains the NaviServer binary and any
+dynamically loadable modules\&.  If you maintain custom modules, back up
+both the binaries and their source code to avoid lengthy
+recompilations after a failure\&.
+.SH "DIRECTORY STRUCTURE"
+The following table outlines the primary directories created during
+NaviServer installation, the types of files they contain, and the
+configuration parameters that affect them\&.
+.TP
+\fB/certificates\fR
+Default directory for storing certificates in PEM format\&.
+.TP
+\fB/conf\fR
+Directory containing NaviServer configuration files\&. Although this
+is the conventional location, configuration files can reside
+anywhere if the nsd process is provided with an absolute path\&.
+.sp
+Typical Files:
+.CS
+
+
+ \&.tcl files (e\&.g\&., nsd-config\&.tcl sample-config\&.tcl openacs-config\&.tcl}
+
+.CE
+.TP
+\fB/bin\fR
+Directory containing the NaviServer binary, supplementary binaries,
+and dynamically loadable C modules\&.
+.sp
+Typical files:
+.CS
+
+
+ nsd, tclsh, critcl, nsproxy-helper, \&.so files, etc\&.
+
+.CE
+.TP
+\fB/include\fR
+Directory containing header files needed for compiling additional C modules\&.
+.sp
+Typical files:
+.CS
+
+
+ \&.h files
+
+.CE
+.TP
+\fB/invalid-certificates\fR
+Default directory for storing certificates that fail validation,
+populated by \fBns_http\fR\&.
+For details, see
+\fIHTTPS Client Certificate Management\fR [\&./admin-config\&.html#subsection13]\&.
+.TP
+\fB/lib\fR
+Directory containing libraries used to build custom components and
+support extra installed modules\&.
+.sp
+Typical files:
+.CS
+
+
+ libnsd\&.so,
+ libnsdb\&.so,
+ libnsthread\&.so,
+ libnsproxy\&.so,
+ \&.\&.\&.
+
+.CE
+.TP
+\fB/logs\fR
+Default directory containing log files and the server PID file\&.
+.sp
+Typical files:
+.CS
+
+
+ access\&.log,
+ server\&.log,
+ nsd\&.pid
+
+.CE
+.TP
+\fB/modules\fR
+Contains directories for modules that operate across servers (e\&.g\&.,
+"tcl", "nsperm")\&.
+.TP
+\fB/modules/nsperm\fR
+Directory containing user, group, and permission files used by the
+nsperm module for authentication and access control\&.
+.sp
+Typical files:
+.CS
+
+
+ passwd, group, hosts\&.allow, hosts\&.deny, perms
+
+.CE
+.TP
+\fB/modules/tcl\fR
+Default directory for the server’s private Tcl script library\&.
+.sp
+Typical files:
+.CS
+
+
+ \&.tcl files
+
+.CE
+.TP
+\fB/pages\fR
+Default directory where pages and images are stored\&. Users
+typically organize content into subdirectories\&.
+.sp
+Typical files:
+.CS
+
+
+ \&.htm, \&.html, \&.shtml, \&.adp, \&.png, \&.css, \&.\&.\&.
+
+.CE
+.TP
+\fB/tcl\fR
+Default directory for the shared Tcl script library, including
+examples and module-specific scripts\&.  Top-level files in this
+directory are loaded during startup\&.
+.sp
+Typical files:
+.CS
+
+
+ \&.tcl files
+
+.CE
+.PP
+.SH "SECURITY GUIDE"
+This section provides guidelines to secure your NaviServer
+installation and protect sensitive data from unauthorized
+access\&. Follow these recommendations to minimize vulnerabilities and
+safeguard your system\&.
+.SS "GENERAL PASSWORDS"
+The default management user is \fBnsadmin\fR with a predefined
+password\&. NaviServer does not include a built-in, advanced password
+management system\&. In production, it is common to integrate
+NaviServer with external systems (e\&.g\&., PAM, Azure, OpenACS) for
+robust password management\&.
+.PP
+Alternatively, the \fInsperm\fR module provides a basic password
+management solution suitable for small to medium deployments\&. If
+nsperm is enabled without customization, it uses a default password
+and warns you at startup to change the \fBnsadmin\fR password\&.
+.PP
+You can change the default password using the Tcl command
+\fBns_permpasswd\fR or by editing the \fB/modules/nsperm/passwd\fR file
+directly\&. For example, the default entry is:
+.CS
+
+
+ nsadmin:CUdnvgBYocLSI:::::
+
+.CE
+.PP
+Replace the password hash (e\&.g\&., \fBCUdnvgBYocLSI\fR) with a new hash
+generated using \fBns_crypt\fR:
+.CS
+
+
+ nsd -c
+ % ns_crypt MyNewPassword xx
+ xxhR1Y2vt4OOY
+
+.CE
+Alternatively, generate the hash using a command-line tool such as
+Perl:
+.CS
+
+
+ $ perl -le 'print crypt("MyNewPassword","xx");'
+ xxhR1Y2vt4OOY
+
+.CE
+For more details, see \fIDefining Users\fR [\&.\&./\&.\&./nsperm/files/nsperm\&.html#section4]\&.
+.SS "ADVANCED PASSWORD HASHES"
+Traditional Unix systems use the "crypt" algorithm to encrypt
+passwords using a salt\&. However, with the increasing power of GPUs,
+these hashes are vulnerable to cracking\&. Therefore, NaviServer
+supports stronger password hash algorithms such as Argon2, PBKDF2
+(SCRAM), and Scrypt\&. For more information, refer to
+\fIns_crypto\fR [\&.\&./\&.\&./naviserver/files/ns_crypto\&.html]\&. These
+advanced hashes are, for example, employed in OpenACS for local
+accounts that require enhanced security\&.
+.SS "PERMISSION SETTINGS"
+Effective permission management is critical for securing your
+server\&. Authentication is only the first step; comprehensive
+permission settings ensure that users have appropriate access
+rights\&. Systems like OpenACS employ dynamic, role-based permission
+management for files and directories\&. If you use the \fInsperm\fR
+module, you can implement file-level security in ADP pages and set
+appropriate permission records as follows:
+.IP [1]
+Maintain identical permission records for both GET and POST requests\&.
+.IP [2]
+Remove permission records for network publishing operations (PUT, DELETE, MKDIR, BROWSE) for all users except nsadmin\&.
+.IP [3]
+Note that a permission record for a directory typically applies recursively to all its subdirectories\&.
+.PP
+Define permission entries in the \fB/modules/nsperm/perms\fR file;
+the default file includes comments explaining the format\&.
+.PP
+For more details on setting permissions via the nsperm module, see
+the \fIPermissions\fR [\&.\&./\&.\&./nsperm/files/nsperm\&.html#section6]
+section\&.
+.SS "SECURITY RECOMMENDATIONS"
+To further enhance security, consider the following recommendations:
+.IP \(bu
+Keep NaviServer up to date - use the latest released version\&.
+.IP \(bu
+Consider running NaviServer containerized or within a chroot
+environment\&.
+.IP \(bu
+For HTTP client requests (\fIns_http\fR, \fIns_connchan\fR),
+do not disable peer certificate validation; ensure that the
+trusted root certificates (e\&.g\&., \fICAfile\fR
+\fBca-bundle\&.crt\fR) are current\&.
+.IP \(bu
+Regularly review your system log for entries especially with severity
+\fBSecurity\fR and any unusual activity\&.
+.IP \(bu
+Enable logging for HTTP client and SMTP requests (via the
+\fInssmtpd\fR module) when these services are in use\&.
+.IP \(bu
+When using the \fInsperm\fR module, ensure that a secure
+password is set\&.
+.IP \(bu
+When using the \fInscp\fR module, restrict access to the
+control port to localhost only (see
+\fINaviServer Control Port Guide\fR [\&.\&./\&.\&./nscp/files/nscp\&.html])\&.
+.IP \(bu
+When using the \fInsstats\fR module, particularly with
+OpenACS, restrict access to secured administration paths or configure
+nsperm accordingly\&.
+.IP \(bu
+Limit the installed modules and packages to those essential for
+your NaviServer deployment\&.
+.IP \(bu
+Monitor resource usage (requests, threads, memory, locks, etc\&.)
+using the \fInsstats\fR module or external tools (e\&.g\&., Munin)
+to detect bottlenecks and ensure availability\&.
+.IP \(bu
+For high security web sites, do no reveal the server
+implementation and the version information\&. You might
+deactivate this information per server in the
+configuration file:
+.CS
+
+
+ ns_section ns/server/$server {
+   \&.\&.\&.
+   #
+   # Configuration of HTTP responses
+   #
+   ns_param noticedetail false		  ;# include server signature in ns_returnnotice commands (errors, redirects, \&.\&.\&.)
+   ns_param noticeadp    returnnotice\&.adp ;# ADP file for ns_returnnotice commands (errors, redirects, \&.\&.\&.)
+   ns_param stealthmode  true             ;# omit "Server:" header field in responses
+ }
+
+.CE
+.IP \(bu
+Scan you site regularly with
+\fIVulnerability Scanning Tools\fR [https://owasp\&.org/www-community/Vulnerability_Scanning_Tools]\&.
+.PP
+.SS "SETUP CHROOT ENVIRONMENT"
+In case you are deciding to stetup a chroot jail, this section
+provides basic instructions for setting up NaviServer in a
+chroot environment (sometimes called a chroot jail)\&.
+.PP
+Running NaviServer in a chroot environment confines the server to a
+specified directory, making all absolute file paths relative to the
+new root\&. Although chroot does not secure file content, it
+effectively limits access to sensitive files (e\&.g\&., passwords,
+configuration files)\&.
+.PP
+Because a chroot jail must be self-contained, you need to copy all
+necessary programs, device files, and libraries into the new root
+directory\&. Example:
+.CS
+
+
+ mkdir $root/dev $root/tmp $root/etc
+ chmod 1777 $root/tmp
+ $root/dev; /dev/MAKEDEV generic usema
+ cp /etc/passwd /etc/resolve\&.conf $root/etc
+
+.CE
+For Debian/Ubuntu platforms, you can use
+\fIdebootstrap\fR [https://help\&.ubuntu\&.com/community/DebootstrapChroot]
+package for setting up the chroot environment\&.
+.PP
+Once the chroot environment is created, you can run NaviServer with
+the \fB-r\fR option:
+.CS
+
+
+ nsd -t nsd\&.tcl -r $root
+
+.CE
+.SS "TCL COMMANDS AND LIBRARY"
+Restrict access to Tcl commands and libraries to minimize potential
+abuse\&. Although NaviServer runs as a non-privileged user, a
+compromised account might still execute dangerous Tcl
+commands\&. Consider disabling the following if they are not required
+by your application:
+.IP \(bu
+File system related functions, such as open, read, and puts
+.IP \(bu
+The NaviServer ns_sock* Tcl functions
+.IP \(bu
+The Tcl socket routines
+.IP \(bu
+The exec command
+.IP \(bu
+The file command, or at least the delete and rename features
+.IP \(bu
+The exit command
+.IP \(bu
+Database access (e\&.g\&. via \fBnsdb\fR)\&.
+.PP
+In Tcl, you can completely disable (delete) unsafe commands to
+prevent unauthorized execution\&. But deleting is certainly only
+an option, when these commands are not used by your application\&.
+.SH "SEE ALSO"
+admin-install, commandlist, ns_server
+.SH KEYWORDS
+certificate, chroot, container, nscp, nsd, nsdb, nsperm, password, security

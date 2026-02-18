@@ -26,7 +26,7 @@
  * Local functions defined in this file
  */
 
-static char* ParseUpTo(char *chars, char ch)
+static char* ParseUpTo(const char *chars, char ch)
     NS_GNUC_NONNULL(1);
 
 
@@ -190,7 +190,7 @@ ParseUserInfo(char *chars, char **userinfo)
  */
 
 static char *
-ParseUpTo(char *chars, char ch)
+ParseUpTo(const char *chars, char ch)
 {
     char *p = strchr(chars, INTCHAR(ch));
 
@@ -506,7 +506,7 @@ Ns_ParseUrl(char *url, bool strict, Ns_URL *urlPtr, const char **errorMsg)
             *errorMsg = "invalid authority";
             return NS_ERROR;
         }
-
+#if 0
         if (urlPtr->port != NULL) {
 
             /*
@@ -520,8 +520,8 @@ Ns_ParseUrl(char *url, bool strict, Ns_URL *urlPtr, const char **errorMsg)
              */
 
             url = urlPtr->port;
-            urlPtr->port = url;
         }
+#endif
     } else {
         end = url;
     }
@@ -667,9 +667,9 @@ Ns_ParseUrl(char *url, bool strict, Ns_URL *urlPtr, const char **errorMsg)
  */
 
 Ns_ReturnCode
-Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *urlString, const char *baseString)
+Ns_AbsoluteUrl(Tcl_DString *dsPtr, const char *urlString, const char *baseString)
 {
-    Ns_DString    urlDs, baseDs;
+    Tcl_DString   urlDs, baseDs;
     Ns_URL        url, base;
     const char   *errorMsg = NULL;
     Ns_ReturnCode status;
@@ -678,16 +678,20 @@ Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *urlString, const char *baseString)
      * Copy the URL's to allow Ns_ParseUrl to destroy them.
      */
 
-    Ns_DStringInit(&urlDs);
-    Ns_DStringInit(&baseDs);
+    Tcl_DStringInit(&urlDs);
+    Tcl_DStringInit(&baseDs);
 
     /*
-     * The first part does not have to be a valid URL.
+     * The first part does not have to be a valid URL. If it is just empty,
+     * interpret it as "/".
      */
-    Ns_DStringAppend(&urlDs, urlString);
+    Tcl_DStringAppend(&urlDs, urlString, TCL_INDEX_NONE);
+    if (unlikely(urlDs.length == 0)) {
+        Tcl_DStringAppend(&urlDs, "/", 1);
+    }
     (void) Ns_ParseUrl(urlDs.string, NS_FALSE, &url, &errorMsg);
 
-    Ns_DStringAppend(&baseDs, baseString);
+    Tcl_DStringAppend(&baseDs, baseString, TCL_INDEX_NONE);
     status = Ns_ParseUrl(baseDs.string, NS_FALSE, &base, &errorMsg);
 
     if (base.protocol == NULL || base.host == NULL || base.path == NULL) {
@@ -715,27 +719,100 @@ Ns_AbsoluteUrl(Ns_DString *dsPtr, const char *urlString, const char *baseString)
          * We have to use IP literal notation to avoid ambiguity of colon
          * (part of address or separator for port).
          */
-        Ns_DStringVarAppend(dsPtr, url.protocol, "://", url.host, (char *)0L);
+        Ns_DStringVarAppend(dsPtr, url.protocol, "://", url.host, NS_SENTINEL);
     } else {
-        Ns_DStringVarAppend(dsPtr, url.protocol, "://[", url.host, "]", (char *)0L);
+        Ns_DStringVarAppend(dsPtr, url.protocol, "://[", url.host, "]", NS_SENTINEL);
     }
     if (url.port != NULL) {
-        Ns_DStringVarAppend(dsPtr, ":", url.port, (char *)0L);
+        Ns_DStringVarAppend(dsPtr, ":", url.port, NS_SENTINEL);
     }
     if (*url.path == '\0') {
-        Ns_DStringVarAppend(dsPtr, "/", url.tail, (char *)0L);
+        Ns_DStringVarAppend(dsPtr, "/", url.tail, NS_SENTINEL);
     } else {
-        Ns_DStringVarAppend(dsPtr, "/", url.path, "/", url.tail, (char *)0L);
+        Ns_DStringVarAppend(dsPtr, "/", url.path, "/", url.tail, NS_SENTINEL);
     }
 done:
-    Ns_DStringFree(&urlDs);
-    Ns_DStringFree(&baseDs);
+    Tcl_DStringFree(&urlDs);
+    Tcl_DStringFree(&baseDs);
 
     return status;
 }
 
 
-
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsUrlToDictObj --
+ *
+ *      Converts an Ns_URL structure into a Tcl dictionary object.
+ *      Each non-null component of the URL (protocol, userinfo, host, port,
+ *      path, tail, query, fragment) is added as a key/value pair to the
+ *      resulting dictionary. The keys are short string identifiers (e.g.,
+ *      "proto", "host") and the corresponding values are the respective
+ *      parts of the URL.
+ *
+ * Parameters:
+ *      interp  - The Tcl interpreter to be used for creating Tcl objects.
+ *      urlPtr  - Pointer to an Ns_URL structure containing the parsed URL.
+ *
+ * Results:
+ *      Returns a Tcl_Obj* that is a dictionary representation of the URL.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+Tcl_Obj *
+NsUrlToDictObj(Tcl_Interp *interp, Ns_URL *urlPtr)
+{
+    Tcl_Obj *resultObj = Tcl_NewDictObj();
+
+    if (urlPtr->protocol != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("proto", 5),
+                       Tcl_NewStringObj(urlPtr->protocol, TCL_INDEX_NONE));
+    }
+    if (urlPtr->userinfo != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("userinfo", 8),
+                       Tcl_NewStringObj(urlPtr->userinfo, TCL_INDEX_NONE));
+    }
+    if (urlPtr->host != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("host", 4),
+                       Tcl_NewStringObj(urlPtr->host, TCL_INDEX_NONE));
+    }
+    if (urlPtr->port != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("port", 4),
+                       Tcl_NewStringObj(urlPtr->port, TCL_INDEX_NONE));
+    }
+    if (urlPtr->path != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("path", 4),
+                       Tcl_NewStringObj(urlPtr->path, TCL_INDEX_NONE));
+
+    }
+    if (urlPtr->tail != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("tail", 4),
+                       Tcl_NewStringObj(urlPtr->tail, TCL_INDEX_NONE));
+    }
+    if (urlPtr->query != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("query", 5),
+                       Tcl_NewStringObj(urlPtr->query, TCL_INDEX_NONE));
+    }
+    if (urlPtr->fragment != NULL) {
+        Tcl_DictObjPut(interp, resultObj,
+                       Tcl_NewStringObj("fragment", 8),
+                       Tcl_NewStringObj(urlPtr->fragment, TCL_INDEX_NONE));
+    }
+
+    return resultObj;
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -752,14 +829,14 @@ done:
  *
  *----------------------------------------------------------------------
  */
-
 int
-NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, strict = 0;
     char       *urlString;
     Ns_ObjvSpec opts[] = {
-        {"-strict",     Ns_ObjvBool,    &strict,          INT2PTR(NS_TRUE)},
+        {"-strict",   Ns_ObjvBool,   &strict,  INT2PTR(NS_TRUE)},
+        {"--",        Ns_ObjvBreak,  NULL,     NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -777,45 +854,11 @@ NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
         url = ns_strdup(urlString);
 
         if (Ns_ParseUrl(url, (bool)strict, &u, &errorMsg) == NS_OK) {
-            Tcl_Obj *resultObj = Tcl_NewListObj(0, NULL);
-
-            if (u.protocol != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("proto", 5));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.protocol, TCL_INDEX_NONE));
-            }
-            if (u.userinfo != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("userinfo", 8));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.userinfo, TCL_INDEX_NONE));
-            }
-            if (u.host != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("host", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.host, TCL_INDEX_NONE));
-            }
-            if (u.port != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("port", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.port, TCL_INDEX_NONE));
-            }
-            if (u.path != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("path", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.path, TCL_INDEX_NONE));
-            }
-            if (u.tail != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("tail", 4));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.tail, TCL_INDEX_NONE));
-            }
-            if (u.query != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("query", 5));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.query, TCL_INDEX_NONE));
-            }
-            if (u.fragment != NULL) {
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj("fragment", 8));
-                Tcl_ListObjAppendElement(interp, resultObj, Tcl_NewStringObj(u.fragment, TCL_INDEX_NONE));
-            }
             if (errorMsg != NULL) {
                 Ns_TclPrintfResult(interp, "Could not parse URL \"%s\": %s", urlString, errorMsg);
                 result = TCL_ERROR;
             } else {
-                Tcl_SetObjResult(interp, resultObj);
+                Tcl_SetObjResult(interp, NsUrlToDictObj(interp, &u));
             }
 
         } else {
@@ -847,12 +890,13 @@ NsTclParseUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
  */
 
 int
-NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK, strict = 0;
     char       *hostportString;
     Ns_ObjvSpec opts[] = {
-        {"-strict",     Ns_ObjvBool,    &strict,          INT2PTR(NS_TRUE)},
+        {"-strict",   Ns_ObjvBool,   &strict,  INT2PTR(NS_TRUE)},
+        {"--",        Ns_ObjvBreak,  NULL,     NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -909,7 +953,7 @@ NsTclParseHostportObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_
  *----------------------------------------------------------------------
  */
 int
-NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAbsoluteUrlObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int         result = TCL_OK;
     char       *urlString, *baseString;

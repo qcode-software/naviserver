@@ -22,7 +22,9 @@
 #define LOG_FMTTIME       0x02u
 #define LOG_REQTIME       0x04u
 #define LOG_PARTIALTIMES  0x08u
-#define LOG_CHECKFORPROXY 0x10u
+#ifdef NS_WITH_DEPRECATED
+# define LOG_CHECKFORPROXY 0x10u
+#endif
 #define LOG_SUPPRESSQUERY 0x20u
 #define LOG_THREADNAME    0x40u
 #define LOG_MASKIP        0x80u
@@ -33,11 +35,12 @@
 
 NS_EXTERN const int Ns_ModuleVersion;
 NS_EXPORT const int Ns_ModuleVersion = 1;
-
+static const char *logType = "ACCESSLOG";
 
 typedef struct {
     Ns_Mutex     lock;
     const char  *module;
+    const char  *server;
     const char  *filename;
     const char  *rollfmt;
     const char  *extendedHeaders;
@@ -58,6 +61,7 @@ typedef struct {
     struct sockaddr            *ipv6maskPtr;
 #endif
     Tcl_DString   buffer;
+    bool serverRootProcEnabled;
 } Log;
 
 /*
@@ -77,9 +81,6 @@ static Ns_ReturnCode LogFlush(Log *logPtr, Tcl_DString *dsPtr);
 static Ns_LogCallbackProc LogOpen;
 static Ns_LogCallbackProc LogClose;
 static Ns_LogCallbackProc LogRoll;
-
-static void AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static Ns_ReturnCode ParseExtendedHeaders(Log *logPtr, const char *str)
     NS_GNUC_NONNULL(1);
@@ -109,7 +110,7 @@ AppendExtHeaders(Tcl_DString *dsPtr, const char **argv, const Ns_Set *set)
 NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
-    const char   *path, *file;
+    const char   *section;
     Log          *logPtr;
     Tcl_DString   ds;
     static bool   first = NS_TRUE;
@@ -143,89 +144,87 @@ Ns_ModuleInit(const char *server, const char *module)
 
     logPtr = ns_calloc(1u, sizeof(Log));
     logPtr->module = module;
+    logPtr->server = server;
     logPtr->fd = NS_INVALID_FD;
+    logPtr->serverRootProcEnabled = Ns_ServerRootProcEnabled(server);
     Ns_MutexInit(&logPtr->lock);
     Ns_MutexSetName2(&logPtr->lock, "nslog", server);
     Tcl_DStringInit(&logPtr->buffer);
 
-    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
+    section = Ns_ConfigSectionPath(NULL, server, module, NS_SENTINEL);
 
-    /*
-     * Determine the name of the log file
-     */
+    {
+        Tcl_DStringInit(&ds);
+        Ns_Log(Notice, "nslog: ModuleInit rootproc enabled %d fd %d server '%s' serverpath <%s> server logdir <%s>",
+               logPtr->serverRootProcEnabled,
+               logPtr->fd,
+               server,
+               Ns_ServerPath(&ds, server, NS_SENTINEL),
+               Ns_ServerLogDir(server));
+        Tcl_DStringSetLength(&ds, 0);
+    }
 
-    file = Ns_ConfigString(path, "file", "access.log");
-    if (Ns_PathIsAbsolute(file) == NS_TRUE) {
-        logPtr->filename = ns_strdup(file);
-    } else {
+    {
         /*
-         * If log file is not given in absolute format, it is expected to
-         * exist in the global logs directory if such exists or module
-         * specific directory, which is created if necessary.
+         * Determine the name of the log directory and the absolute filename.
          */
+        const char *serverLogDir = Ns_ServerLogDir(server);
 
-        if (Ns_HomePathExists("logs", (char *)0L)) {
-            (void) Ns_HomePath(&ds, "logs", "/", file, (char *)0L);
-        } else {
-            Tcl_Obj *dirpath;
-            int      rc;
+        logPtr->filename = Ns_ConfigFilename(section, "file", 4, serverLogDir, "access.log",
+                                             NS_FALSE, NS_FALSE);
+        /*
+         * Create the serverLogDir only when we have no ServerRootProcEnabled.
+         */
+        Ns_Log(Debug, "logfilename <%s> serverrootproc enabled %d", logPtr->filename,
+               logPtr->serverRootProcEnabled);
 
-            Tcl_DStringSetLength(&ds, 0);
-            (void) Ns_ModulePath(&ds, server, module, (char *)0L);
-            dirpath = Tcl_NewStringObj(ds.string, TCL_INDEX_NONE);
-            Tcl_IncrRefCount(dirpath);
-            rc = Tcl_FSCreateDirectory(dirpath);
-            Tcl_DecrRefCount(dirpath);
-            if (rc != TCL_OK && Tcl_GetErrno() != EEXIST && Tcl_GetErrno() != EISDIR) {
-                Ns_Log(Error, "nslog: create directory (%s) failed: '%s'",
-                       ds.string, strerror(Tcl_GetErrno()));
-                Tcl_DStringFree(&ds);
-                return NS_ERROR;
+        if (!logPtr->serverRootProcEnabled) {
+            if (Ns_RequireDirectory(serverLogDir) != NS_OK) {
+                Ns_Fatal("nslog: log directory '%s' could not be created", serverLogDir);
             }
-            Tcl_DStringSetLength(&ds, 0);
-            (void) Ns_ModulePath(&ds, server, module, file, (char *)0L);
         }
-        logPtr->filename = Ns_DStringExport(&ds);
     }
 
     /*
      * Get other parameters from configuration file
      */
 
-    logPtr->rollfmt = ns_strcopy(Ns_ConfigGetValue(path, "rollfmt"));
-    logPtr->maxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(path, "maxbackup", 100, 1, INT_MAX);
-    logPtr->maxlines = Ns_ConfigIntRange(path, "maxbuffer", 0, 0, INT_MAX);
-    if (Ns_ConfigBool(path, "formattedtime", NS_TRUE)) {
+    logPtr->rollfmt = ns_strcopy(Ns_ConfigGetValue(section, "rollfmt"));
+    logPtr->maxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(section, "maxbackup", 100, 1, INT_MAX);
+    logPtr->maxlines = Ns_ConfigIntRange(section, "maxbuffer", 0, 0, INT_MAX);
+    if (Ns_ConfigBool(section, "formattedtime", NS_TRUE)) {
         logPtr->flags |= LOG_FMTTIME;
     }
-    if (Ns_ConfigBool(path, "logcombined", NS_TRUE)) {
+    if (Ns_ConfigBool(section, "logcombined", NS_TRUE)) {
         logPtr->flags |= LOG_COMBINED;
     }
-    if (Ns_ConfigBool(path, "logreqtime", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "logreqtime", NS_FALSE)) {
         logPtr->flags |= LOG_REQTIME;
     }
-    if (Ns_ConfigBool(path, "logpartialtimes", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "logpartialtimes", NS_FALSE)) {
         logPtr->flags |= LOG_PARTIALTIMES;
     }
-    if (Ns_ConfigBool(path, "logthreadname", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "logthreadname", NS_FALSE)) {
         logPtr->flags |= LOG_THREADNAME;
     }
-    if (Ns_ConfigBool(path, "suppressquery", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "suppressquery", NS_FALSE)) {
         logPtr->flags |= LOG_SUPPRESSQUERY;
     }
-    if (Ns_ConfigBool(path, "checkforproxy", NS_FALSE)) {
-        Ns_Log(Warning, "parameter checkforproxy of module nslog is deprecated; "
-               "use global parameter reversproxymode instead");
+#ifdef NS_WITH_DEPRECATED
+    if (Ns_ConfigBool(section, "checkforproxy", NS_FALSE)) {
+        Ns_LogDeprecatedParameter(section, "checkforproxy",
+                                  "ns/parameter", "reverseproxymode",
+                                  NULL);
         logPtr->flags |= LOG_CHECKFORPROXY;
     }
-
-    logPtr->driverPattern = ns_strcopy(Ns_ConfigString(path, "driver", NULL));
+#endif
+    logPtr->driverPattern = ns_strcopy(Ns_ConfigString(section, "driver", NULL));
 
     logPtr->ipv4maskPtr = NULL;
 #ifdef HAVE_IPV6
     logPtr->ipv6maskPtr = NULL;
 #endif
-    if (Ns_ConfigBool(path, "masklogaddr", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "masklogaddr", NS_FALSE)) {
         const char* maskString;
         const char *default_ipv4MaskString = "255.255.255.0";
 #ifdef HAVE_IPV6
@@ -234,7 +233,7 @@ Ns_ModuleInit(const char *server, const char *module)
         logPtr->flags |= LOG_MASKIP;
 
 #ifdef HAVE_IPV6
-        maskString = Ns_ConfigGetValue(path, "maskipv6");
+        maskString = Ns_ConfigGetValue(section, "maskipv6");
         if (maskString == NULL) {
             maskString = default_ipv6MaskString;
         }
@@ -243,7 +242,7 @@ Ns_ModuleInit(const char *server, const char *module)
             logPtr->ipv6maskPtr = (struct sockaddr *)&logPtr->ipv6maskStruct;
         }
 #endif
-        maskString = Ns_ConfigGetValue(path, "maskipv4");
+        maskString = Ns_ConfigGetValue(section, "maskipv4");
         if (maskString == NULL) {
             maskString = default_ipv4MaskString;
         }
@@ -256,26 +255,26 @@ Ns_ModuleInit(const char *server, const char *module)
      *  Schedule various log roll and shutdown options.
      */
 
-    if (Ns_ConfigBool(path, "rolllog", NS_TRUE)) {
-        int hour = Ns_ConfigIntRange(path, "rollhour", 0, 0, 23);
+    if (Ns_ConfigBool(section, "rolllog", NS_TRUE)) {
+        int hour = Ns_ConfigIntRange(section, "rollhour", 0, 0, 23);
 
         Ns_ScheduleDaily(LogRollCallback, logPtr,
                          0, hour, 0, NULL);
     }
-    if (Ns_ConfigBool(path, "rollonsignal", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "rollonsignal", NS_FALSE)) {
         Ns_RegisterAtSignal((Ns_Callback *)(ns_funcptr_t)LogRollCallback, logPtr);
     }
 
     /*
      * Parse extended headers; it is just a list of names
      */
-    (void)ParseExtendedHeaders(logPtr, Ns_ConfigGetValue(path, "extendedheaders"));
+    (void)ParseExtendedHeaders(logPtr, Ns_ConfigGetValue(section, "extendedheaders"));
 
     /*
      *  Open the log and register the trace
      */
 
-    if (LogOpen(logPtr) != NS_OK) {
+    if (!logPtr->serverRootProcEnabled && LogOpen(logPtr) != NS_OK) {
         return NS_ERROR;
     }
 
@@ -300,14 +299,16 @@ AddCmds(Tcl_Interp *interp, const void *arg)
  *
  * ParseExtendedHeaders --
  *
- *      Parse a string specifying the extended parameters.
+ *      Parse a string specifying the extended parameters and set on success
+ *      logPtr->extendedHeaders.
+ *
  *      The string might be:
  *
- *       - a Tcl list of plain request header fields, like e.g.
- *         {Referer X-Forwarded-For}
+ *       - a Tcl list of plain request header fields, like, e.g.,
+ *         {Referer x-forwarded-for}
  *
  *       - a Tcl list of header fields with tags to denote request or response
- *          header fields, like e.g. {req:Referer response:Content-Type}
+ *          header fields, like e.g. {req:Referer response:content-type}
  *
  * Results:
  *      None
@@ -418,7 +419,7 @@ ParseExtendedHeaders(Log *logPtr, const char *str)
  */
 
 static int
-LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const char    *strarg;
     int            rc, cmd, result = TCL_OK;
@@ -435,105 +436,133 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
     };
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option ?arg ...?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/ ?/arg .../?");
         return TCL_ERROR;
     }
-    rc = Tcl_GetIndexFromObj(interp, objv[1], subcmd, "option", 0, &cmd);
+    rc = Tcl_GetIndexFromObj(interp, objv[1], subcmd, "subcommand", 0, &cmd);
     if (rc != TCL_OK) {
         return TCL_ERROR;
     }
 
     switch (cmd) {
-    case ROLLFMT:
-        Ns_MutexLock(&logPtr->lock);
-        if (objc > 2) {
-            strarg = ns_strdup(Tcl_GetString(objv[2]));
-            ns_free((char *)logPtr->rollfmt);
-            logPtr->rollfmt = strarg;
-        }
-        strarg = logPtr->rollfmt;
-        Ns_MutexUnlock(&logPtr->lock);
-        if (strarg != NULL) {
-            Tcl_SetObjResult(interp, Tcl_NewStringObj(strarg, TCL_INDEX_NONE));
-        }
-        break;
 
-    case MAXBACKUP:
-        {
-            int intarg = 0;
+    case ROLLFMT: {
+        char       *fmt = NULL;
+        Ns_ObjvSpec largs[] = {
+            {"?timeformat", Ns_ObjvString, &fmt, NULL},
+            {NULL, NULL, NULL, NULL}
+        };
 
-            if (objc > 2) {
-                if (Tcl_GetIntFromObj(interp, objv[2], &intarg) != TCL_OK) {
-                    result = TCL_ERROR;
-                } else {
-                    if (intarg < 1) {
-                        intarg = 100;
-                    }
-                }
-            }
-            if (result == TCL_OK) {
-                Ns_MutexLock(&logPtr->lock);
-                if (objc > 2) {
-                    logPtr->maxbackup = (TCL_SIZE_T)intarg;
-                } else {
-                    intarg = (int)logPtr->maxbackup;
-                }
-                Ns_MutexUnlock(&logPtr->lock);
-                Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
-            }
-        }
-        break;
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
 
-    case MAXBUFFER:
-        {
-            int intarg = 0;
-
-            if (objc > 2) {
-                if (Tcl_GetIntFromObj(interp, objv[2], &intarg) != TCL_OK) {
-                    result = TCL_ERROR;
-                } else {
-                    if (intarg < 0) {
-                        intarg = 0;
-                    }
-                }
-            }
-            if (result == TCL_OK) {
-                Ns_MutexLock(&logPtr->lock);
-                if (objc > 2) {
-                    logPtr->maxlines = intarg;
-                } else {
-                    intarg = logPtr->maxlines;
-                }
-                Ns_MutexUnlock(&logPtr->lock);
-                Tcl_SetObjResult(interp, Tcl_NewIntObj(intarg));
-            }
-        }
-        break;
-
-    case EXTHDRS:
-        {
+        } else {
             Ns_MutexLock(&logPtr->lock);
-            if (objc > 2) {
-                result = ParseExtendedHeaders(logPtr, Tcl_GetString(objv[2]));
+
+            if (fmt != NULL) {
+                ns_free((char *)logPtr->rollfmt);
+                logPtr->rollfmt = ns_strdup(fmt);
+            }
+            fmt = (char *)logPtr->rollfmt;
+            Ns_MutexUnlock(&logPtr->lock);
+            if (fmt != NULL) {
+                Tcl_SetObjResult(interp, Tcl_NewStringObj(fmt, TCL_INDEX_NONE));
+            }
+        }
+        break;
+    }
+
+    case MAXBACKUP: {
+        int               nrFiles = -1;
+        Ns_ObjvValueRange nrFilesRange = {1, INT_MAX};
+        Ns_ObjvSpec largs[] = {
+            {"?nrfiles", Ns_ObjvInt, &nrFiles, &nrFilesRange},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
+
+        } else {
+            Ns_MutexLock(&logPtr->lock);
+            if (nrFiles != -1) {
+                logPtr->maxbackup = (TCL_SIZE_T)nrFiles;
+            } else {
+                nrFiles = (int)logPtr->maxbackup;
+            }
+            Ns_MutexUnlock(&logPtr->lock);
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(nrFiles));
+        }
+        break;
+    }
+
+    case MAXBUFFER: {
+        int               nrLines = -1;
+        Ns_ObjvValueRange nrLinesRange = {0, INT_MAX};
+        Ns_ObjvSpec largs[] = {
+            {"?nrlines", Ns_ObjvInt, &nrLines, &nrLinesRange},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
+
+        } else {
+
+            Ns_MutexLock(&logPtr->lock);
+            if (nrLines != -1) {
+                logPtr->maxlines = nrLines;
+            } else {
+                nrLines = logPtr->maxlines;
+            }
+            Ns_MutexUnlock(&logPtr->lock);
+            Tcl_SetObjResult(interp, Tcl_NewIntObj(nrLines));
+        }
+        break;
+    }
+
+    case EXTHDRS: {
+        char       *headers = NULL;
+        Ns_ObjvSpec largs[] = {
+            {"?headers", Ns_ObjvString, &headers, NULL},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
+
+        } else {
+            Ns_MutexLock(&logPtr->lock);
+            if (headers != NULL) {
+                if (ParseExtendedHeaders(logPtr, headers) != NS_OK) {
+                    Ns_TclPrintfResult(interp, "invalid header specification: '%s'", headers);
+                }
             }
             if (result == TCL_OK) {
                 Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->extendedHeaders, TCL_INDEX_NONE));
-            } else {
-                Ns_TclPrintfResult(interp, "invalid value: %s",
-                                   Tcl_GetString(objv[2]));
             }
             Ns_MutexUnlock(&logPtr->lock);
         }
         break;
+    }
 
-    case FLAGS:
-        {
+    case FLAGS: {
+        char       *flagString = NULL;
+        Ns_ObjvSpec largs[] = {
+            {"?flags", Ns_ObjvString, &flagString, NULL},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
+
+        } else {
             unsigned int flags;
 
             Tcl_DStringInit(&ds);
-            if (objc > 2) {
+            if (flagString != NULL) {
                 flags = 0u;
-                Tcl_DStringAppend(&ds, Tcl_GetString(objv[2]), TCL_INDEX_NONE);
+                Tcl_DStringAppend(&ds, flagString, TCL_INDEX_NONE);
                 Ns_StrToLower(ds.string);
                 if (strstr(ds.string, "logcombined")) {
                     flags |= LOG_COMBINED;
@@ -547,13 +576,16 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
                 if (strstr(ds.string, "logpartialtimes")) {
                     flags |= LOG_PARTIALTIMES;
                 }
+#ifdef NS_WITH_DEPRECATED
                 if (strstr(ds.string, "checkforproxy")) {
                     flags |= LOG_CHECKFORPROXY;
                 }
+#endif
                 if (strstr(ds.string, "suppressquery")) {
                     flags |= LOG_SUPPRESSQUERY;
                 }
                 Tcl_DStringSetLength(&ds, 0);
+
                 Ns_MutexLock(&logPtr->lock);
                 logPtr->flags = flags;
                 Ns_MutexUnlock(&logPtr->lock);
@@ -562,6 +594,7 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
                 flags = logPtr->flags;
                 Ns_MutexUnlock(&logPtr->lock);
             }
+
             if ((flags & LOG_COMBINED)) {
                 Tcl_DStringAppend(&ds, "logcombined ", TCL_INDEX_NONE);
             }
@@ -574,48 +607,71 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
             if ((flags & LOG_PARTIALTIMES)) {
                 Tcl_DStringAppend(&ds, "logpartialtimes ", TCL_INDEX_NONE);
             }
+#ifdef NS_WITH_DEPRECATED
             if ((flags & LOG_CHECKFORPROXY)) {
                 Tcl_DStringAppend(&ds, "checkforproxy ", TCL_INDEX_NONE);
             }
+#endif
             if ((flags & LOG_SUPPRESSQUERY)) {
                 Tcl_DStringAppend(&ds, "suppressquery ", TCL_INDEX_NONE);
             }
             Tcl_DStringResult(interp, &ds);
         }
         break;
+    }
 
-    case FILE:
-        if (objc > 2) {
-            Tcl_DStringInit(&ds);
-            strarg = Tcl_GetString(objv[2]);
-            if (Ns_PathIsAbsolute(strarg) == NS_FALSE) {
-                Ns_HomePath(&ds, strarg, (char *)0L);
-                strarg = ds.string;
-            }
-            Ns_MutexLock(&logPtr->lock);
-            LogClose(logPtr);
-            ns_free((char *)logPtr->filename);
-            logPtr->filename = ns_strdup(strarg);
-            Tcl_DStringFree(&ds);
-            LogOpen(logPtr);
+
+    case FILE: {
+        char       *filepath = NULL;
+        Ns_ObjvSpec largs[] = {
+            {"?filepath", Ns_ObjvString, &filepath, NULL},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
         } else {
             Ns_MutexLock(&logPtr->lock);
-        }
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->filename, TCL_INDEX_NONE));
-        Ns_MutexUnlock(&logPtr->lock);
-        break;
 
-    case ROLL:
-        {
+            if (filepath != NULL) {
+                Tcl_DStringInit(&ds);
+                if (Ns_PathIsAbsolute(filepath) == NS_FALSE) {
+                    Ns_HomePath(&ds, filepath, NS_SENTINEL);
+                    strarg = ds.string;
+                } else {
+                    strarg = filepath;
+                }
+                LogClose(logPtr);
+                ns_free((char *)logPtr->filename);
+                logPtr->filename = ns_strdup(strarg);
+                Tcl_DStringFree(&ds);
+                LogOpen(logPtr);
+            }
+
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(logPtr->filename, TCL_INDEX_NONE));
+            Ns_MutexUnlock(&logPtr->lock);
+        }
+        break;
+    }
+
+    case ROLL: {
+        char       *filepath = NULL;
+        Ns_ObjvSpec largs[] = {
+            {"?filepath", Ns_ObjvString, &filepath, NULL},
+            {NULL, NULL, NULL, NULL}
+        };
+
+        if (Ns_ParseObjv(NULL, largs, interp, 2, objc, objv) != NS_OK) {
+            result = TCL_ERROR;
+        } else {
             Ns_ReturnCode status = NS_ERROR;
 
             Ns_MutexLock(&logPtr->lock);
-            if (objc == 2) {
+            if (filepath == NULL) {
                 status = LogRoll(logPtr);
-            } else if (objc > 2) {
-                strarg = Tcl_GetString(objv[2]);
+            } else  {
                 if (Tcl_FSAccess(objv[2], F_OK) == 0) {
-                    status = Ns_RollFile(strarg, logPtr->maxbackup);
+                    status = Ns_RollFile(filepath, logPtr->maxbackup);
                 } else {
                     Tcl_Obj *path = Tcl_NewStringObj(logPtr->filename, TCL_INDEX_NONE);
 
@@ -641,78 +697,10 @@ LogObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *c
         }
         break;
     }
-
+    }
     return result;
 }
-
-/*
- *----------------------------------------------------------------------
- *
- * AppendEscaped --
- *
- *      Append a string with escaped characters
- *
- * Results:
- *      None.
- *
- * Side effects:
- *      updated dstring
- *
- *----------------------------------------------------------------------
- */
 
-static void
-AppendEscaped(Tcl_DString *dsPtr, const char *toProcess)
-{
-    const char *breakChar;
-
-    NS_NONNULL_ASSERT(dsPtr != NULL);
-    NS_NONNULL_ASSERT(toProcess != NULL);
-
-    do {
-        breakChar = strpbrk(toProcess, "\r\n\t\\\"");
-        if (breakChar == NULL) {
-            /*
-             * No break-char found, append all and stop
-             */
-            Tcl_DStringAppend(dsPtr, toProcess, TCL_INDEX_NONE);
-        } else {
-            /*
-             * Append the break-char free prefix
-             */
-            Tcl_DStringAppend(dsPtr, toProcess, (TCL_SIZE_T)(breakChar - toProcess));
-
-            /*
-             * Escape the break-char
-             */
-            switch (*breakChar) {
-            case '\n':
-                Tcl_DStringAppend(dsPtr, "\\n", 2);
-                break;
-            case '\r':
-                Tcl_DStringAppend(dsPtr, "\\r", 2);
-                break;
-            case '\t':
-                Tcl_DStringAppend(dsPtr, "\\t", 2);
-                break;
-            case '"':
-                Tcl_DStringAppend(dsPtr, "\\\"", 2);
-                break;
-            case '\\':
-                Tcl_DStringAppend(dsPtr, "\\\\", 2);
-                break;
-            default:
-                /*should not happen */ assert(0);
-                break;
-            }
-
-            /*
-             * Check for further protected characters after the break char.
-             */
-            toProcess = breakChar + 1;
-        }
-    } while (breakChar != NULL);
-}
 
 /*
  *----------------------------------------------------------------------
@@ -744,7 +732,7 @@ AppendExtHeaders(Tcl_DString *dsPtr, const char **argv, const Ns_Set *set)
             Tcl_DStringAppend(dsPtr, " \"", 2);
             p = Ns_SetIGet(set, *h);
             if (p != NULL) {
-                AppendEscaped(dsPtr, p);
+                Ns_DStringAppendEscaped(dsPtr, p);
             }
             Tcl_DStringAppend(dsPtr, "\"", 1);
         }
@@ -757,7 +745,7 @@ AppendExtHeaders(Tcl_DString *dsPtr, const char **argv, const Ns_Set *set)
  *
  * LogTrace --
  *
- *      Trace routine for appending the log with the current
+ *      Trace routine for appending the access.log with the current
  *      connection results.
  *
  * Results:
@@ -775,11 +763,12 @@ LogTrace(void *arg, Ns_Conn *conn)
     Log          *logPtr = arg;
     const char   *user, *p, *driverName;
     char          buffer[PIPE_BUF], *bufferPtr = NULL;
-    int           n;
+    int           n, fd;
     Ns_ReturnCode status;
     size_t        bufferSize = 0u;
     Tcl_DString   ds, *dsPtr = &ds;
     char          ipString[NS_IPADDR_SIZE];
+    const char   *server;
     struct NS_SOCKADDR_STORAGE  ipStruct, maskedStruct;
     struct sockaddr            *maskPtr = NULL,
         *ipPtr     = (struct sockaddr *)&ipStruct,
@@ -797,13 +786,28 @@ LogTrace(void *arg, Ns_Conn *conn)
          */
         return;
     }
+    server = Ns_ConnServer(conn);
 
     Tcl_DStringInit(dsPtr);
+
+    if (logPtr->serverRootProcEnabled) {
+        const char *section = Ns_ConfigSectionPath(NULL, server, logPtr->module, NS_SENTINEL);
+        const char *filename = Ns_ConfigString(section, "file", "access.log"), *fullFilename;
+
+        fullFilename = Ns_LogPath(dsPtr, server, filename);
+        fprintf(stderr, "LogTrace: server %s filename '%s' -> fullFilename '%s'\n", server, filename, fullFilename);
+        fd = Ns_ServerLogGetFd(server, logType, fullFilename);
+        Tcl_DStringSetLength(dsPtr, 0);
+    } else {
+        fd = logPtr->fd;
+    }
+
     Ns_MutexLock(&logPtr->lock);
 
     /*
      * Append the peer address.
      */
+#ifdef NS_WITH_DEPRECATED
     if ((logPtr->flags & LOG_CHECKFORPROXY) != 0u) {
         /*
          * This branch is deprecated and kept only for backward
@@ -813,7 +817,9 @@ LogTrace(void *arg, Ns_Conn *conn)
         if (*p == '\0') {
             p = Ns_ConnPeerAddr(conn);
         }
-    } else {
+    } else
+#endif
+    {
         p = Ns_ConnConfiguredPeerAddr(conn);
     }
 
@@ -850,7 +856,7 @@ LogTrace(void *arg, Ns_Conn *conn)
 
     /*
      * Append the thread name, if requested.
-     * This eases to link access-log with error-log entries
+     * This eases to link access log with system log entries.
      */
     Tcl_DStringAppend(dsPtr, " ", 1);
     if ((logPtr->flags & LOG_THREADNAME) != 0) {
@@ -908,7 +914,7 @@ LogTrace(void *arg, Ns_Conn *conn)
 
         Tcl_DStringAppend(dsPtr, " \"", 2);
         if (likely(string != NULL)) {
-            AppendEscaped(dsPtr, string);
+            Ns_DStringAppendEscaped(dsPtr, string);
         }
         Tcl_DStringAppend(dsPtr, "\" ", 2);
 
@@ -933,12 +939,12 @@ LogTrace(void *arg, Ns_Conn *conn)
         Tcl_DStringAppend(dsPtr, " \"", 2);
         p = Ns_SetIGet(conn->headers, "referer");
         if (p != NULL) {
-            AppendEscaped(dsPtr, p);
+            Ns_DStringAppendEscaped(dsPtr, p);
         }
         Tcl_DStringAppend(dsPtr, "\" \"", 3);
         p = Ns_SetIGet(conn->headers, "user-agent");
         if (p != NULL) {
-            AppendEscaped(dsPtr, p);
+            Ns_DStringAppendEscaped(dsPtr, p);
         }
         Tcl_DStringAppend(dsPtr, "\"", 1);
     }
@@ -1038,8 +1044,8 @@ LogTrace(void *arg, Ns_Conn *conn)
     Ns_MutexUnlock(&logPtr->lock);
     (void)(status); /* ignore status */
 
-    if (likely(bufferPtr != NULL) && likely(logPtr->fd >= 0) && likely(bufferSize > 0)) {
-        (void)NsAsyncWrite(logPtr->fd, bufferPtr, bufferSize);
+    if (likely(bufferPtr != NULL) && likely(fd >= 0) && likely(bufferSize > 0)) {
+        (void)NsAsyncWrite(fd, bufferPtr, bufferSize);
     }
 
     Tcl_DStringFree(dsPtr);
@@ -1110,7 +1116,11 @@ static Ns_ReturnCode
 LogClose(void *arg)
 {
     Ns_ReturnCode status = NS_OK;
-    Log *logPtr = (Log *)arg;
+    Log          *logPtr = arg;
+
+    if (logPtr->serverRootProcEnabled) {
+        status = Ns_ServerLogCloseAll(logPtr->server, logType);
+    }
 
     if (logPtr->fd >= 0) {
         status = LogFlush(logPtr, &logPtr->buffer);
@@ -1186,14 +1196,18 @@ LogRoll(void *arg)
     Ns_ReturnCode status;
     Log          *logPtr = (Log *)arg;
 
-    status = Ns_RollFileCondFmt(LogOpen, LogClose, logPtr,
-                                logPtr->filename,
-                                logPtr->rollfmt,
-                                logPtr->maxbackup);
+    Ns_Log(Notice, "nslog: roll server '%s', rootproc enabled %d",
+           logPtr->server, logPtr->serverRootProcEnabled);
 
-    //if (status == NS_OK) {
-    //    status = LogOpen(logPtr);
-    //}
+    if (logPtr->serverRootProcEnabled) {
+        status = Ns_ServerLogRollAll(logPtr->server, logType, logPtr->rollfmt, logPtr->maxbackup);
+
+    } else {
+        status = Ns_RollFileCondFmt(LogOpen, LogClose, logPtr,
+                                    logPtr->filename,
+                                    logPtr->rollfmt,
+                                    logPtr->maxbackup);
+    }
 
     return status;
 }

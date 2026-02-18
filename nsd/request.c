@@ -25,7 +25,7 @@
  * Local functions defined in this file.
  */
 
-static void SetUrl(Ns_Request *request, char *url)
+static Ns_ReturnCode SetUrl(Ns_Request *request, char *url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void FreeUrl(Ns_Request *request)
@@ -35,8 +35,9 @@ static const char *GetQvalue(const char *str, int *lenPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static const char *GetEncodingFormat(const char *encodingString,
-                                     const char *encodingFormat, double *qValue)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
+                                     const char *encodingFormat, size_t encodingFormatLength,
+                                     double *qValue)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(4);
 
 static void RequestCleanupMembers(Ns_Request *request)
     NS_GNUC_NONNULL(1);
@@ -69,6 +70,7 @@ RequestCleanupMembers(Ns_Request *request)
     ns_free((char *)request->protocol);
     ns_free((char *)request->host);
     ns_free(request->query);
+    ns_free((char *)request->fragment);
     ns_free((char *)request->serverRoot);
     FreeUrl(request);
 }
@@ -158,8 +160,8 @@ Ns_ReturnCode
 Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
 {
     char       *url, *l, *p;
-    Ns_DString  ds;
-    const char *errorMsg = "unknown error";
+    Tcl_DString ds;
+    const char *errorMsg;
 
     NS_NONNULL_ASSERT(line != NULL);
 
@@ -205,13 +207,13 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
 #endif
 
     memset(request, 0, sizeof(Ns_Request));
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
 
     /*
      * Make a copy of the line to chop up. Make sure it isn't blank.
      */
 
-    Ns_DStringNAppend(&ds, line, (TCL_SIZE_T)len);
+    Tcl_DStringAppend(&ds, line, (TCL_SIZE_T)len);
     l = Ns_StrTrim(ds.string);
     if (*l == '\0') {
         errorMsg = "empty request line";
@@ -375,14 +377,14 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
          */
         if (*p != '\0' && *p != '/') {
             bool  hostParsedOk;
-            char *h = p, *end;
+            char *h = p, *end, *hostName;
 
             /*
              * Search for the next slash
              */
             p = strchr(p, INTCHAR('/'));
             if (p != NULL) {
-                //*p++ = '\0';
+                *p++ = '\0';
                 url = p;
             } else {
                 url = (char*)"";
@@ -391,16 +393,16 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
             /*
              * Parse actually host and port
              */
-            hostParsedOk = Ns_HttpParseHost2(h, NS_FALSE, NULL, &p, &end);
+            hostParsedOk = Ns_HttpParseHost2(h, NS_FALSE, &hostName, &p, &end);
             if (hostParsedOk) {
-                //Ns_Log(Notice, "Parse host+port <%s> -> %d p <%s> end <%s>", h, hostParsedOk, p, end);
+                Ns_Log(Notice, "Parse host+porthostName <%s> p <%s> end <%s>", hostName, p, end);
                 if (p != NULL) {
                     /*
                      * We know, the port string is terminated by a slash or NUL.
                      */
                     request->port = (unsigned short)strtol(p, NULL, 10);
                 }
-                request->host = ns_strdup(h);
+                request->host = ns_strdup(hostName);
             }
 
             /*
@@ -417,26 +419,30 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
                 }
 
             } else if (request->requestType == NS_REQUEST_TYPE_PROXY) {
-                errorMsg = "invalid proxy request";
                 if (*url == '\0') {
-                    Ns_Log(Warning, "%s, path must not be empty"
+                    url = (char*)"/";
+                } else {
+                    errorMsg = "invalid proxy request";
+                    if (request->protocol == NULL) {
+                        Ns_Log(Warning, "%s, protocol must be specified"
+                               " setting host '%s' port %hu path '%s' from line '%s'",
+                               errorMsg, request->host, request->port,  url, line);
+                        goto error;
+                    }
+                }
+
+            } else if (request->requestType == NS_REQUEST_TYPE_CONNECT) {
+                if (*url != '\0') {
+                    errorMsg = "invalid CONNECT request";
+                    Ns_Log(Warning, "%s, path must be empty"
                            " setting host '%s' port %hu protocol '%s' path '%s' from line '%s'",
                            errorMsg, request->host, request->port, request->protocol, url, line);
                     goto error;
                 }
-                if (request->protocol == NULL) {
-                    Ns_Log(Warning, "%s, protocol must be specified"
-                           " setting host '%s' port %hu path '%s' from line '%s'",
-                           errorMsg, request->host, request->port,  url, line);
-                    goto error;
-                }
-
-            } else if (request->requestType == NS_REQUEST_TYPE_CONNECT && *url != '\0') {
-                errorMsg = "invalid CONNECT request";
-                Ns_Log(Warning, "%s, path must be empty"
-                       " setting host '%s' port %hu protocol '%s' path '%s' from line '%s'",
-                       errorMsg, request->host, request->port, request->protocol, url, line);
-                goto error;
+                /*
+                 * We need a URL in SetUrl(), without SetUrl, NsUrlSpecificGet() will crash
+                 */
+                url = (char*)"/";
 
             } else if (request->requestType == NS_REQUEST_TYPE_ASTERISK
                        && strcasecmp(request->method, "OPTIONS") != 0) {
@@ -455,12 +461,15 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
                    : request->requestType == NS_REQUEST_TYPE_CONNECT ? "CONNECT"
                    : "asterisk",
                    request->host, request->port, request->protocol, request->requestType,
-                   url,line);
+                   url, line);
         }
     }
 
-    SetUrl(request, url);
-    Ns_DStringFree(&ds);
+    if (SetUrl(request, url) != NS_OK) {
+        errorMsg = "invalid UTF-8 in request URL";
+        goto error;
+    }
+    Tcl_DStringFree(&ds);
 
     return NS_OK;
 
@@ -476,7 +485,7 @@ Ns_ParseRequest(Ns_Request *request, const char *line, size_t len)
         request->host = NULL;
     }
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
     return NS_ERROR;
 }
 
@@ -529,7 +538,7 @@ Ns_SkipUrl(const Ns_Request *request, int n)
  *    Set the URL in a request structure.
  *
  * Results:
- *    None.
+ *    NS_OK or NS_ERROR (on encoding errors)
  *
  * Side effects:
  *    Makes a copy of URL.
@@ -537,19 +546,22 @@ Ns_SkipUrl(const Ns_Request *request, int n)
  *----------------------------------------------------------------------
  */
 
-void
+Ns_ReturnCode
 Ns_SetRequestUrl(Ns_Request *request, const char *url)
 {
-    Ns_DString      ds;
+    Tcl_DString   ds;
+    Ns_ReturnCode status;
 
     NS_NONNULL_ASSERT(request != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
     FreeUrl(request);
-    Ns_DStringInit(&ds);
-    Ns_DStringAppend(&ds, url);
-    SetUrl(request, ds.string);
-    Ns_DStringFree(&ds);
+    Tcl_DStringInit(&ds);
+    Tcl_DStringAppend(&ds, url, TCL_INDEX_NONE);
+    status = SetUrl(request, ds.string);
+    Tcl_DStringFree(&ds);
+
+    return status;
 }
 
 
@@ -602,19 +614,19 @@ FreeUrl(Ns_Request *request)
  *----------------------------------------------------------------------
  */
 
-static void
+static Ns_ReturnCode
 SetUrl(Ns_Request *request, char *url)
 {
-    Tcl_DString  ds1, ds2;
-    char        *p;
-    const char  *encodedPath;
-    Tcl_Encoding encoding;
+    Tcl_DString   ds1;
+    char         *p;
+    const char   *encodedPath;
+    Tcl_Encoding  encoding;
+    Ns_ReturnCode status = NS_OK;
 
     NS_NONNULL_ASSERT(request != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
     Tcl_DStringInit(&ds1);
-    Tcl_DStringInit(&ds2);
 
     /*
      * Look for a query string at the end of the URL.
@@ -634,76 +646,87 @@ SetUrl(Ns_Request *request, char *url)
      */
     encodedPath = url;
     encoding = Ns_GetUrlEncoding(NULL);
-    Ns_Log(Debug, "### Request SetUrl calls Ns_UrlPathDecode '%s'", encodedPath);
     p = Ns_UrlPathDecode(&ds1, encodedPath, encoding);
-    Ns_Log(Debug, " ### decoded path '%s'", p);
+    Ns_Log(Debug, "### Request SetUrl '%s' decoded path '%s' length %ld", encodedPath, p, (long)ds1.length);
 
     if (p == NULL) {
         p = url;
+
+    } else if (ds1.length == 0) {
+        Ns_Log(Debug, "### Request SetUrl '%s' is invalid", encodedPath);
+        status = NS_ERROR;
     }
-    (void)Ns_NormalizeUrl(&ds2, p);
-    Tcl_DStringSetLength(&ds1, 0);
 
-    /*
-     * Append a trailing slash to the normalized URL if the original URL
-     * ended in slash that wasn't also the leading slash.
-     */
+    if (status == NS_OK) {
+        Tcl_DString ds2;
 
-    while (*url == '/') {
-        ++url;
-    }
-    if (*url != '\0' && url[strlen(url) - 1u] == '/') {
-        Tcl_DStringAppend(&ds2, "/", 1);
-    }
-    request->url = ns_strdup(ds2.string);
-    request->url_len = ds2.length;
-    Tcl_DStringFree(&ds2);
+        Tcl_DStringInit(&ds2);
+        (void)Ns_NormalizeUrl(&ds2, p);
+        Tcl_DStringSetLength(&ds1, 0);
 
-    /*
-     * Build the urlv and set urlc.
-     */
-    {
-        Tcl_Obj *listPtr, *segmentObj;
-
-        listPtr = Tcl_NewListObj(0, NULL);
-        Tcl_IncrRefCount(listPtr);
         /*
-         * Skip the leading slash.
+         * Append a trailing slash to the normalized URL if the original URL
+         * ended in slash that wasn't also the leading slash.
          */
-        encodedPath++;
 
-        while (*encodedPath != '\0') {
-            p = strchr(encodedPath, INTCHAR('/'));
-            if (p == NULL) {
-                break;
+        while (*url == '/') {
+            ++url;
+        }
+        if (*url != '\0' && url[strlen(url) - 1u] == '/') {
+            Tcl_DStringAppend(&ds2, "/", 1);
+        }
+        request->url = ns_strdup(ds2.string);
+        request->url_len = ds2.length;
+        Tcl_DStringFree(&ds2);
+
+        /*
+         * Build the urlv and set urlc.
+         */
+        {
+            Tcl_Obj *listPtr, *segmentObj;
+
+            listPtr = Tcl_NewListObj(0, NULL);
+            Tcl_IncrRefCount(listPtr);
+            /*
+             * Skip the leading slash.
+             */
+            encodedPath++;
+
+            while (*encodedPath != '\0') {
+                p = strchr(encodedPath, INTCHAR('/'));
+                if (p == NULL) {
+                    break;
+                }
+                *p = '\0';
+                Ns_UrlPathDecode(&ds1, encodedPath, encoding);
+                segmentObj = Tcl_NewStringObj(ds1.string, ds1.length);
+                Tcl_ListObjAppendElement(NULL, listPtr, segmentObj);
+                Tcl_DStringSetLength(&ds1, 0);
+                encodedPath = p + 1;
             }
-            *p = '\0';
-            Ns_UrlPathDecode(&ds1, encodedPath, encoding);
-            segmentObj = Tcl_NewStringObj(ds1.string, ds1.length);
-            Tcl_ListObjAppendElement(NULL, listPtr, segmentObj);
-            Tcl_DStringSetLength(&ds1, 0);
-            encodedPath = p + 1;
-        }
-        /*
-         * Append last segment if not empty (for compatibility with previous
-         * versions).
-         */
-        if (*encodedPath != '\0') {
-            Ns_UrlPathDecode(&ds1, encodedPath, encoding);
-            segmentObj = Tcl_NewStringObj(ds1.string, ds1.length);
-            Tcl_ListObjAppendElement(NULL, listPtr, segmentObj);
-        }
+            /*
+             * Append last segment if not empty (for compatibility with previous
+             * versions).
+             */
+            if (*encodedPath != '\0') {
+                Ns_UrlPathDecode(&ds1, encodedPath, encoding);
+                segmentObj = Tcl_NewStringObj(ds1.string, ds1.length);
+                Tcl_ListObjAppendElement(NULL, listPtr, segmentObj);
+            }
 
-        /*
-         * Set request->urlc and request->urlv based on the listPtr.
-         */
-        Tcl_ListObjLength(NULL, listPtr, &request->urlc);
-        request->urlv = ns_strdup(Tcl_GetString(listPtr));
-        request->urlv_len = (TCL_SIZE_T)strlen(request->urlv);
+            /*
+             * Set request->urlc and request->urlv based on the listPtr.
+             */
+            Tcl_ListObjLength(NULL, listPtr, &request->urlc);
+            request->urlv = ns_strdup(Tcl_GetString(listPtr));
+            request->urlv_len = (TCL_SIZE_T)strlen(request->urlv);
 
-        Tcl_DecrRefCount(listPtr);
+            Tcl_DecrRefCount(listPtr);
+        }
     }
     Tcl_DStringFree(&ds1);
+
+    return status;
 }
 
 
@@ -756,13 +779,13 @@ Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseD
                 ++line;
             }
             if (*line != '\0') {
-                Ns_DString ds;
+                Tcl_DString ds;
                 char      *value = Ns_SetValue(set, idx);
 
-                Ns_DStringInit(&ds);
-                Ns_DStringVarAppend(&ds, value, " ", line, (char *)0L);
+                Tcl_DStringInit(&ds);
+                Ns_DStringVarAppend(&ds, value, " ", line, NS_SENTINEL);
                 Ns_SetPutValueSz(set, idx, ds.string, ds.length);
-                Ns_DStringFree(&ds);
+                Tcl_DStringFree(&ds);
             }
         }
     } else {
@@ -820,6 +843,170 @@ Ns_ParseHeader(Ns_Set *set, const char *line, const char *prefix, Ns_HeaderCaseD
         *fieldNumberPtr = idx;
     }
     return status;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_HttpMessageParse --
+ *
+ *      Parse an HTTP message (first line, headers, body).
+ *      The headers are returned into the provided Ns_Set,
+ *      while the rest is returned via output args.
+ *
+ * Results:
+
+ *      Ns_ReturnCode and output variables "firstLineLength", "htrPtr", and
+ *      "payloadPtr".  "firstLineLength" contains the line end characters.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+Ns_ReturnCode
+Ns_HttpMessageParse(
+    char *messageString,
+    size_t messageLength,
+    size_t *firstLineLengthPtr,
+    Ns_Set *hdrPtr,
+    char **payloadPtr
+) {
+    Ns_ReturnCode result = NS_OK;
+    char         *eol;
+
+    NS_NONNULL_ASSERT(messageString != NULL);
+    NS_NONNULL_ASSERT(firstLineLengthPtr != NULL);
+    NS_NONNULL_ASSERT(hdrPtr != NULL);
+
+    if (payloadPtr != NULL) {
+        *payloadPtr = NULL;
+    }
+    Ns_Log(Ns_LogTaskDebug, "Message Parse <%s>", messageString);
+
+    eol = strchr(messageString, INTCHAR('\n'));
+    if (eol == NULL || ((size_t)(eol + 1 - messageString) > messageLength)) {
+        Ns_Log(Ns_LogTaskDebug,
+               "==== Ns_HttpMessageParse <%s> eol <%s> %ld> %ld  => ERR",
+               messageString,
+               eol,
+               eol ? (size_t)(eol - messageString + 1) : 0,
+               messageLength);
+        result = NS_ERROR;
+
+    } else {
+        char   *p;
+        int     firsthdr = 1;
+        size_t  parsed;
+
+        p = eol+1;
+        if (*p == '\r') {
+            p++;
+        }
+        *firstLineLengthPtr = (size_t)(p - messageString);
+
+        while ((eol = strchr(p, INTCHAR('\n'))) != NULL) {
+            size_t len;
+
+            *eol++ = '\0';
+            len = (size_t)((eol-p)-1);
+
+            if (len > 0u && p[len - 1u] == '\r') {
+                p[len - 1u] = '\0';
+            }
+            if (firsthdr != 0) {
+                //ns_free((void *)hdrPtr->name);
+                //hdrPtr->name = ns_strdup(p);
+                firsthdr = 0;
+            }
+            if (len < 2 || Ns_ParseHeader(hdrPtr, p, NULL, ToLower, NULL) != NS_OK) {
+                break;
+            }
+            p = eol;
+        }
+        parsed = (size_t)(p - messageString);
+
+        if (payloadPtr != NULL && (messageLength - parsed) >= 2u) {
+            //fprintf(stderr, "BEFORE BODY 0 <%c> %d pos %ld\n", *p, *p, (p - messageString));
+            //fprintf(stderr, "BEFORE BODY ? <%c> %d pos %ld\n", *(p+1), *(p+1), ((p+1) - messageString));
+            /*
+             * CRLF means 2 NUL characters, LF alone just one.
+             */
+            if (*p == '\0') {
+                p++;
+            }
+            if (*p == '\0') {
+                p++;
+            }
+            //fprintf(stderr, "BEFORE BODY 3 <%c> %d pos %ld\n", *p, *p, (p - messageString));
+            //fprintf(stderr, "==== Ns_HttpMessageParse return messageLength %ld current %ld body <%s>\n",
+            //        messageLength, p-messageString, p);
+
+            *payloadPtr = p;
+        }
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_HttpResponseMessageParse --
+ *
+ *      Parse an HTTP response message (first line, headers, and body) and
+ *      perform response-specific processing of the first line.  The headers
+ *      are returned into the provided Ns_Set, while the rest is returned via
+ *      output args.
+ *
+ * Results:
+ *
+ *      Ns_ReturnCode and output variables "majorPtr", "minorPtr",
+ *      "statusPtr", and "payloadPtr".
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+Ns_HttpResponseMessageParse(
+    char *messageString,
+    size_t messageLength,
+    Ns_Set *hdrPtr,
+    int *majorPtr,
+    int *minorPtr,
+    int *statusPtr,
+    char **payloadPtr
+) {
+    Ns_ReturnCode result = NS_OK;
+    int           major, minor;
+    size_t        firstLineLength = 0u;
+
+    NS_NONNULL_ASSERT(hdrPtr != NULL);
+    NS_NONNULL_ASSERT(messageString != NULL);
+    NS_NONNULL_ASSERT(statusPtr != NULL);
+
+    if (majorPtr == NULL) {
+        majorPtr = &major;
+    }
+    if (minorPtr == NULL) {
+        minorPtr = &minor;
+    }
+    /*Ns_Log(Ns_LogTaskDebug, "HttpResponseMessageParse Parse <%s>", messageString);*/
+
+    result = Ns_HttpMessageParse(messageString, messageLength, &firstLineLength, hdrPtr, payloadPtr);
+    if (result == NS_OK && firstLineLength > 12) {
+        int items = sscanf(messageString, "HTTP/%2d.%2d %3d", majorPtr, minorPtr, statusPtr);
+
+        if (items != 3) {
+            result = NS_ERROR;
+        }
+    }
+
+    return result;
 }
 
 
@@ -924,7 +1111,7 @@ GetQvalue(const char *str, int *lenPtr) {
  *----------------------------------------------------------------------
  */
 static const char *
-GetEncodingFormat(const char *encodingString, const char *encodingFormat, double *qValue) {
+GetEncodingFormat(const char *encodingString, const char *encodingFormat, size_t encodingFormatLength, double *qValue) {
     const char *encodingStr;
 
     NS_NONNULL_ASSERT(encodingString != NULL);
@@ -935,7 +1122,7 @@ GetEncodingFormat(const char *encodingString, const char *encodingFormat, double
 
     if (encodingStr != NULL) {
         int         len = 0;
-        const char *qValueString = GetQvalue(encodingStr + strlen(encodingFormat), &len);
+        const char *qValueString = GetQvalue(encodingStr + encodingFormatLength, &len);
 
         if (qValueString != NULL) {
             *qValue = strtod(qValueString, NULL);
@@ -1036,10 +1223,10 @@ NsParseAcceptEncoding(double version, const char *hdr, bool *gzipAcceptPtr, bool
     NS_NONNULL_ASSERT(gzipAcceptPtr != NULL);
     NS_NONNULL_ASSERT(brotliAcceptPtr != NULL);
 
-    gzipFormat    = GetEncodingFormat(hdr, "gzip", &gzipQvalue);
-    brotliFormat  = GetEncodingFormat(hdr, "br", &brotliQvalue);
-    starFormat    = GetEncodingFormat(hdr, "*", &starQvalue);
-    (void)GetEncodingFormat(hdr, "identity", &identityQvalue);
+    gzipFormat    = GetEncodingFormat(hdr, "gzip", 4u, &gzipQvalue);
+    brotliFormat  = GetEncodingFormat(hdr, "br", 2u, &brotliQvalue);
+    starFormat    = GetEncodingFormat(hdr, "*", 1u, &starQvalue);
+    (void)GetEncodingFormat(hdr, "identity", 8u, &identityQvalue);
 
     //fprintf(stderr, "hdr line <%s> gzipFormat <%s> brotliFormat <%s>\n", hdr, gzipFormat, brotliFormat);
     if ((gzipFormat != NULL) || (brotliFormat != NULL)) {
@@ -1079,6 +1266,7 @@ NsParseAcceptEncoding(double version, const char *hdr, bool *gzipAcceptPtr, bool
     *gzipAcceptPtr   = gzipAccept;
     *brotliAcceptPtr = brotliAccept;
 }
+
 
 /*
  * Local Variables:

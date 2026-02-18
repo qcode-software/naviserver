@@ -1,0 +1,401 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_conn - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_conn.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_conn.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_conn.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_conn.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_conn(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_conn - Query or modify state information about the current HTTP connection</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_conn acceptedcompression</b></a></li>
+<li><a href="#2"><b class="cmd">ns_conn auth</b></a></li>
+<li><a href="#3"><b class="cmd">ns_conn authpassword</b></a></li>
+<li><a href="#4"><b class="cmd">ns_conn authuser</b></a></li>
+<li><a href="#5"><b class="cmd">ns_conn channel</b></a></li>
+<li><a href="#6"><b class="cmd">ns_conn clientdata</b> <span class="opt">?<i class="arg">value</i>?</span></a></li>
+<li><a href="#7"><b class="cmd">ns_conn close</b></a></li>
+<li><a href="#8"><b class="cmd">ns_conn compress</b> <span class="opt">?<i class="arg">level</i>?</span></a></li>
+<li><a href="#9"><b class="cmd">ns_conn content</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<i class="arg">offset</i>?</span> <span class="opt">?<i class="arg">length</i>?</span></a></li>
+<li><a href="#10"><b class="cmd">ns_conn contentfile</b></a></li>
+<li><a href="#11"><b class="cmd">ns_conn contentlength</b></a></li>
+<li><a href="#12"><b class="cmd">ns_conn contentsentlength</b> <span class="opt">?<i class="arg">bytes</i>?</span></a></li>
+<li><a href="#13"><b class="cmd">ns_conn copy</b> <i class="arg">offset</i> <i class="arg">length</i> <i class="arg">channelId</i></a></li>
+<li><a href="#14"><b class="cmd">ns_conn currentaddr</b></a></li>
+<li><a href="#15"><b class="cmd">ns_conn currentport</b></a></li>
+<li><a href="#16"><b class="cmd">ns_conn details</b></a></li>
+<li><a href="#17"><b class="cmd">ns_conn driver</b></a></li>
+<li><a href="#18"><b class="cmd">ns_conn encoding</b> <span class="opt">?<i class="arg">encoding</i>?</span></a></li>
+<li><a href="#19"><b class="cmd">ns_conn fileheaders</b> <i class="arg">file</i></a></li>
+<li><a href="#20"><b class="cmd">ns_conn filelength</b> <i class="arg">file</i></a></li>
+<li><a href="#21"><b class="cmd">ns_conn fileoffset</b> <i class="arg">file</i></a></li>
+<li><a href="#22"><b class="cmd">ns_conn files</b></a></li>
+<li><a href="#23"><b class="cmd">ns_conn flags</b></a></li>
+<li><a href="#24"><b class="cmd">ns_conn form</b> <span class="opt">?<b class="option">-fallbackcharset <i class="arg">value</i></b>?</span></a></li>
+<li><a href="#25"><b class="cmd">ns_conn fragment</b></a></li>
+<li><a href="#26"><b class="cmd">ns_conn headerlength</b></a></li>
+<li><a href="#27"><b class="cmd">ns_conn headers</b></a></li>
+<li><a href="#28"><b class="cmd">ns_conn host</b> <span class="opt">?<i class="arg">default</i>?</span></a></li>
+<li><a href="#29"><b class="cmd">ns_conn id</b></a></li>
+<li><a href="#30"><b class="cmd">ns_conn isconnected</b></a></li>
+<li><a href="#31"><b class="cmd">ns_conn keepalive</b> <span class="opt">?<i class="arg">value</i>?</span></a></li>
+<li><a href="#32"><b class="cmd">ns_conn location</b></a></li>
+<li><a href="#33"><b class="cmd">ns_conn method</b></a></li>
+<li><a href="#34"><b class="cmd">ns_conn outputheaders</b></a></li>
+<li><a href="#35"><b class="cmd">ns_conn peeraddr</b> <span class="opt">?<b class="option">-source configured|direct|forwarded</b>?</span></a></li>
+<li><a href="#36"><b class="cmd">ns_conn peerport</b></a></li>
+<li><a href="#37"><b class="cmd">ns_conn pool</b></a></li>
+<li><a href="#38"><b class="cmd">ns_conn port</b></a></li>
+<li><a href="#39"><b class="cmd">ns_conn protocol</b></a></li>
+<li><a href="#40"><b class="cmd">ns_conn query</b></a></li>
+<li><a href="#41"><b class="cmd">ns_conn partialtimes</b></a></li>
+<li><a href="#42"><b class="cmd">ns_conn ratelimit</b> <span class="opt">?<i class="arg">limit</i>?</span></a></li>
+<li><a href="#43"><b class="cmd">ns_conn request</b></a></li>
+<li><a href="#44"><b class="cmd">ns_conn server</b></a></li>
+<li><a href="#45"><b class="cmd">ns_conn sock</b></a></li>
+<li><a href="#46"><b class="cmd">ns_conn start</b></a></li>
+<li><a href="#47"><b class="cmd">ns_conn status</b> <span class="opt">?<i class="arg">status-code</i>?</span></a></li>
+<li><a href="#48"><b class="cmd">ns_conn target</b></a></li>
+<li><a href="#49"><b class="cmd">ns_conn timeout</b></a></li>
+<li><a href="#50"><b class="cmd">ns_conn url</b></a></li>
+<li><a href="#51"><b class="cmd">ns_conn urlc</b></a></li>
+<li><a href="#52"><b class="cmd">ns_conn urldict</b></a></li>
+<li><a href="#53"><b class="cmd">ns_conn urlencoding</b> <span class="opt">?<i class="arg">encoding</i>?</span></a></li>
+<li><a href="#54"><b class="cmd">ns_conn urlv</b> <span class="opt">?<i class="arg">idx</i>?</span></a></li>
+<li><a href="#55"><b class="cmd">ns_conn version</b></a></li>
+<li><a href="#56"><b class="cmd">ns_conn zipaccepted</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This command provides various subcommands that allow you to query and
+ modify properties of the current HTTP connection.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<p>The subcommands of ns_conn (listed here in alphabetical order)
+include:</p>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_conn acceptedcompression</b></a></dt>
+<dd><p>Returns a Tcl list of the compression algorithms the client accepts,
+as advertised by its Accept-Encoding header (for example,
+gzip, deflate, br).</p></dd>
+<dt><a name="2"><b class="cmd">ns_conn auth</b></a></dt>
+<dd><p>Returns the content of the Authorization header as an <b class="cmd"><a href="ns_set.html">ns_set</a></b>.
+ Every set containis the key <b class="const">AuthMethod</b> with values such as
+ <b class="const">Basic</b>, <b class="const">Digest</b>, or <b class="const">Bearer</b>. Depending on the
+ authorization method, different fields are returned</p>
+<ul class="doctools_itemized">
+<li><p>Basic Authentication
+ The set also includes  <b class="const">username</b> and  <b class="const">password</b> entries
+ (equivalent to <b class="cmd">ns_conn authuser</b> and <b class="cmd">ns_conn authpassword</b>).</p></li>
+<li><p>Digest Authentication
+ The set includes all standard digest fields as provided:
+ <b class="const">realm</b>,
+ <b class="const">nonce</b>,
+ <b class="const">uri</b>,
+ <b class="const">qop</b>,
+ <b class="const">nc</b>,
+ <b class="const">cnonce</b>,
+ <b class="const">response</b>, and
+ <b class="const">opaque</b>.</p></li>
+<li><p>Bearer Authentication
+  The set contains the raw base64-encoded token.</p></li>
+</ul>
+<p>You may also modify this ns_set.</p>
+<p>For other authorization schemes, the <b class="const">Authorization</b> header is
+ treated like any other request header. For example:</p>
+<pre class="doctools_example">
+ set auth_header [ns_set get [ns_conn header] Authorization &quot;&quot;]
+</pre>
+</dd>
+<dt><a name="3"><b class="cmd">ns_conn authpassword</b></a></dt>
+<dd><p>Returns the decoded user password extracted from the authorization data.</p></dd>
+<dt><a name="4"><b class="cmd">ns_conn authuser</b></a></dt>
+<dd><p>Returns the decoded username extracted from the authorization data.</p></dd>
+<dt><a name="5"><b class="cmd">ns_conn channel</b></a></dt>
+<dd><p>Returns the Tcl channel name for the current connection.</p></dd>
+<dt><a name="6"><b class="cmd">ns_conn clientdata</b> <span class="opt">?<i class="arg">value</i>?</span></a></dt>
+<dd><p>Queries or sets the client data associated with the current
+ connection.  This application-defined data may be shared across
+ threads to help maintain context of running requests (e.g. to
+ determine which user initiated a request).</p></dd>
+<dt><a name="7"><b class="cmd">ns_conn close</b></a></dt>
+<dd><p>Closes the connection so that the script or ADP can perform
+ time-consuming processing without delaying the client.  When using
+ ns_conn close in an ADP, ensure that streaming is enabled (e.g., via
+ <b class="const">&lt;SCRIPT RUNAT=SERVER STREAM=ON&gt;</b>) so that output is sent
+ before the connection is terminated in this case.</p></dd>
+<dt><a name="8"><b class="cmd">ns_conn compress</b> <span class="opt">?<i class="arg">level</i>?</span></a></dt>
+<dd><p>Queries or sets the compression level for the current connection.
+ Specifying a level of 0 disables compression.</p></dd>
+<dt><a name="9"><b class="cmd">ns_conn content</b> <span class="opt">?<b class="option">-binary</b>?</span> <span class="opt">?<i class="arg">offset</i>?</span> <span class="opt">?<i class="arg">length</i>?</span></a></dt>
+<dd><p>Returns the body of the HTTP request.  Optionally, you can specify an
+ offset and length to extract a substring.  If the <b class="option">-binary</b> option is
+ used, raw binary content is returned; otherwise, the content is
+ converted to the connection’s encoding.  Note that the response
+ content may be delivered either as a string (via ns_conn content) or
+ as a file (see <b class="cmd">ns_conn contentfile</b>), depending on
+ configuration options.</p></dd>
+<dt><a name="10"><b class="cmd">ns_conn contentfile</b></a></dt>
+<dd><p>Returns the name of the temporary file that holds the request
+ content.  Whether the received contemt is spooled to a file depends
+ on the configuration settings.</p></dd>
+<dt><a name="11"><b class="cmd">ns_conn contentlength</b></a></dt>
+<dd><p>Returns the length (in bytes) of the HTTP request body.</p></dd>
+<dt><a name="12"><b class="cmd">ns_conn contentsentlength</b> <span class="opt">?<i class="arg">bytes</i>?</span></a></dt>
+<dd><p>Queries or sets the number of bytes of content that have been sent.</p></dd>
+<dt><a name="13"><b class="cmd">ns_conn copy</b> <i class="arg">offset</i> <i class="arg">length</i> <i class="arg">channelId</i></a></dt>
+<dd><p>Copies a specified number of bytes from the connection’s buffered
+ data to a Tcl channel.  The <i class="arg">offset</i> and <i class="arg">length</i> parameters
+ define the starting position and the number of bytes to copy.</p>
+<p>This command is intended for specialized use cases where the
+ raw, unsent content is needed (available only if the data is not
+ spooled to a file).  For most applications, consider using
+ <b class="cmd"><a href="ns_getcontent.html">ns_getcontent</a></b> instead.</p></dd>
+<dt><a name="14"><b class="cmd">ns_conn currentaddr</b></a></dt>
+<dd><p>Returns the local IP address (IPv4 or IPv6) of the current connection
+ (i.e. the destination address of the socket).</p></dd>
+<dt><a name="15"><b class="cmd">ns_conn currentport</b></a></dt>
+<dd><p>Returns the local port (i.e. the destination port of the socket) for
+ the current connection.</p></dd>
+<dt><a name="16"><b class="cmd">ns_conn details</b></a></dt>
+<dd><p>Returns a dict containing driver-specific details for the current
+ connection.  This dict typically includes the local IP address, its
+ <b class="const">type</b> (IPv4/IPv6), whether it is <b class="const">public</b> or
+ <b class="const">trusted</b>, and whether the connection is proxied.  For HTTPS
+ connections, additional fields such as <b class="const">sslversion</b>,
+ <b class="const">cipher</b>, and <b class="const">servername</b> (as provided via SNI) are included.</p></dd>
+<dt><a name="17"><b class="cmd">ns_conn driver</b></a></dt>
+<dd><p>Returns the name of the module (e.g., <i class="term"><a href="../../index.html#nssock">nssock</a></i> or <i class="term"><a href="../../index.html#nsssl">nsssl</a></i>)
+ acting as the communications driver for this connection.</p></dd>
+<dt><a name="18"><b class="cmd">ns_conn encoding</b> <span class="opt">?<i class="arg">encoding</i>?</span></a></dt>
+<dd><p>Queries or sets the encoding for the current connection.   If an
+ <i class="arg">encoding</i> is provided, it sets the encoding; otherwise, it returns
+ the current encoding.</p></dd>
+<dt><a name="19"><b class="cmd">ns_conn fileheaders</b> <i class="arg">file</i></a></dt>
+<dd><p>Returns an ns_set containing header information for the uploaded file
+ specified by <i class="arg">file</i> (as returned by <b class="cmd">ns_conn files</b>).  If
+ the file was uploaded using the HTML5 <i class="term">multiple</i> attribute, a list of
+ ns_sets is returned.</p></dd>
+<dt><a name="20"><b class="cmd">ns_conn filelength</b> <i class="arg">file</i></a></dt>
+<dd><p>Returns the length (in bytes) of the uploaded file specified by
+ <i class="arg">file</i>.  For files uploaded using the HTML5 <i class="term">multiple</i> attribute, a
+ list of file lengths is returned.</p></dd>
+<dt><a name="21"><b class="cmd">ns_conn fileoffset</b> <i class="arg">file</i></a></dt>
+<dd><p>Returns the byte offset of the uploaded file specified by <i class="arg">file</i>.
+ For files uploaded using the HTML5 <i class="term">multiple</i> attribute, a list of
+ offsets is returned.</p></dd>
+<dt><a name="22"><b class="cmd">ns_conn files</b></a></dt>
+<dd><p>Returns a list of files uploaded with the current form.</p></dd>
+<dt><a name="23"><b class="cmd">ns_conn flags</b></a></dt>
+<dd><p>Returns the internal connection flags.  Use with caution as these
+ flags may change in future releases.</p></dd>
+<dt><a name="24"><b class="cmd">ns_conn form</b> <span class="opt">?<b class="option">-fallbackcharset <i class="arg">value</i></b>?</span></a></dt>
+<dd><p>Returns any submitted form data as an ns_set.  The form data may be
+ submitted via POST or included in the URL of a GET request.</p>
+<p>The option `-fallbackcharset` specifies an alternative
+ character set for decoding the form data if the default decoding
+ results in invalid UTF-8.  (This fallback charset can also be set
+ globally via the <i class="term"><a href="../../index.html#formfallbackcharset">formfallbackcharset</a></i> configuration parameter.)
+ For multipart form data file uploads, use <b class="cmd"><a href="ns_getform.html">ns_getform</a></b> instead.</p></dd>
+<dt><a name="25"><b class="cmd">ns_conn fragment</b></a></dt>
+<dd><p>Returns the fragment identifier of the request URL (the portion
+ following the <b class="const">#</b> character).</p></dd>
+<dt><a name="26"><b class="cmd">ns_conn headerlength</b></a></dt>
+<dd><p>Returns the length of the HTTP request header.  Combined with
+ <b class="cmd">ns_conn contentlength</b>, this can be used to determine the total
+ uncompressed size of the request (excluding any chunked encoding
+ overhead).</p></dd>
+<dt><a name="27"><b class="cmd">ns_conn headers</b></a></dt>
+<dd><p>Returns all HTTP request header fields as an ns_set, where each key
+ is a header field name.  The case of the header names depends on the
+ <i class="term">HeaderCase</i> configuration parameter (default is <b class="const">Preserve</b>).</p></dd>
+<dt><a name="28"><b class="cmd">ns_conn host</b> <span class="opt">?<i class="arg">default</i>?</span></a></dt>
+<dd><p>Returns the host part of the URL in the HTTP request line.  This
+ field is set only when NaviServer is used as a (forward) proxy server.</p></dd>
+<dt><a name="29"><b class="cmd">ns_conn id</b></a></dt>
+<dd><p>Returns a unique identifier for the current connection.</p></dd>
+<dt><a name="30"><b class="cmd">ns_conn isconnected</b></a></dt>
+<dd><p>Returns 1 if the current code is executing in a connection thread and
+ the connection is open (allowing ns_conn calls), or 0 otherwise
+ (e.g., when running in a schedule procedure).</p></dd>
+<dt><a name="31"><b class="cmd">ns_conn keepalive</b> <span class="opt">?<i class="arg">value</i>?</span></a></dt>
+<dd><p>Queries or sets the keepalive value for the current connection.</p></dd>
+<dt><a name="32"><b class="cmd">ns_conn location</b></a></dt>
+<dd><p>Returns the location string for the virtual server handling the
+   request in the format (&quot;:port&quot; is optional):
+   protocol://hostname:port</p>
+<p>The location is determined by:</p>
+<ol class="doctools_enumerated">
+    
+<li><p>If ns_locationproc is configured, its result is returned.</p></li>
+<li><p>If virtual hosting is enabled and a valid &quot;Host:&quot; header is
+    provided, its value is used.</p></li>
+<li><p>Otherwise, the virtual hosts mapping table (as defined in
+    the ns/module/nssock/servers or ns/module/nsssl/servers section)
+    is consulted.</p></li>
+<li><p>If no match is found and a connection is open, the current
+    socket address is used.</p></li>
+<li><p>If all else fails, the location is derived from the driver's configuration.</p></li>
+</ol></dd>
+<dt><a name="33"><b class="cmd">ns_conn method</b></a></dt>
+<dd><p>Returns the HTTP method (e.g., GET, POST).</p></dd>
+<dt><a name="34"><b class="cmd">ns_conn outputheaders</b></a></dt>
+<dd><p>Returns an ns_set containing the HTTP response header fields that
+ will be sent to the client.  This ns_set can be modified to extend,
+ update, or clear the response headers. For example:</p>
+<pre class="doctools_example">
+ ns_set put [ns_conn outputheaders ] &quot;Content-Disposition&quot; &quot;attachment;filename=export.xotcl&quot;
+</pre>
+</dd>
+<dt><a name="35"><b class="cmd">ns_conn peeraddr</b> <span class="opt">?<b class="option">-source configured|direct|forwarded</b>?</span></a></dt>
+<dd><p>Returns the client's IP address (the remote endpoint of the
+ connection).  For IPv4, the address is returned in dotted decimal
+ notation; for IPv6, in colon-separated format.  In reverse proxy
+ mode, the IP is derived from the <b class="const">x-forwarded-for</b> header.  The
+ optional <b class="option">-source</b> parameter can force the return of the
+ <b class="option">configured</b>, <b class="option">direct</b>, or <b class="option">forwarded</b> IP address.</p></dd>
+<dt><a name="36"><b class="cmd">ns_conn peerport</b></a></dt>
+<dd><p>Returns the connection pool associated with the current server.</p></dd>
+<dt><a name="37"><b class="cmd">ns_conn pool</b></a></dt>
+<dd><p>Returns the currently associated connection pool of this request.</p></dd>
+<dt><a name="38"><b class="cmd">ns_conn port</b></a></dt>
+<dd><p>Returns the port specified in the host header or the protocol's
+ default port.  In proxy mode, it returns the port specified in the
+ HTTP request URL, or 0 for backwards compatibility.</p></dd>
+<dt><a name="39"><b class="cmd">ns_conn protocol</b></a></dt>
+<dd><p>Returns the protocol used by the current connection.  In (forward)
+ proxy mode, this reflects the URL present in the request line.</p></dd>
+<dt><a name="40"><b class="cmd">ns_conn query</b></a></dt>
+<dd><p>Returns the query parameters of the HTTP request (the portion after
+ the <b class="const">?</b> and before the <b class="const">#</b> in the URL).</p></dd>
+<dt><a name="41"><b class="cmd">ns_conn partialtimes</b></a></dt>
+<dd><p>Returns detailed timing information for the current request as a
+ dict. Keys include:</p>
+<ul class="doctools_itemized">
+  
+<li><p>accepttime: Time between socket acceptance and queueing.</p></li>
+<li><p>queuetime: Time spent in the queue.</p></li>
+<li><p>filtertime: Time spent executing filters.</p></li>
+<li><p>runtime: Total time elapsed during request processing.</p></li>
+</ul></dd>
+<dt><a name="42"><b class="cmd">ns_conn ratelimit</b> <span class="opt">?<i class="arg">limit</i>?</span></a></dt>
+<dd><p>Queries or sets the rate limit for the current connection in
+ kilobytes per second (KB/s).  A value of 0 indicates no limit.
+ Default limits can be set at the connection pool level (parameter
+ <i class="term">ratelimit</i>) or at the driver level (<i class="term">writerratelimit</i>).
+ Rate limiting is enforced only on connections using writer threads.</p></dd>
+<dt><a name="43"><b class="cmd">ns_conn request</b></a></dt>
+<dd><p>Returns the HTTP request line as received from the client
+ (e.g., &quot;GET / HTTP/1.1&quot;).</p></dd>
+<dt><a name="44"><b class="cmd">ns_conn server</b></a></dt>
+<dd><p>Returns the name of the server handling the request.</p></dd>
+<dt><a name="45"><b class="cmd">ns_conn sock</b></a></dt>
+<dd><p>Returns the socket identifier (integer file descriptor) for the current connection.</p></dd>
+<dt><a name="46"><b class="cmd">ns_conn start</b></a></dt>
+<dd><p>Returns the time when the connection request started in &quot;sec:usec&quot;
+ (<b class="cmd"><a href="ns_time.html">ns_time</a></b>) format.</p></dd>
+<dt><a name="47"><b class="cmd">ns_conn status</b> <span class="opt">?<i class="arg">status-code</i>?</span></a></dt>
+<dd><p>Queries or sets the HTTP status code for the current connection.</p></dd>
+<dt><a name="48"><b class="cmd">ns_conn target</b></a></dt>
+<dd><p>Returns the URI target from the start line of the HTTP request (this
+ may include query variables).</p></dd>
+<dt><a name="49"><b class="cmd">ns_conn timeout</b></a></dt>
+<dd><p>Returns an absolute time value beyond which the connection will not
+ wait for resources (e.g., condition variables).</p></dd>
+<dt><a name="50"><b class="cmd">ns_conn url</b></a></dt>
+<dd><p>Returns the URL of the HTTP request. This is the portion of the URL
+ following the hostname (e.g., &quot;/index.adp&quot;).</p>
+<pre class="doctools_example">
+ if { [string match /page/* [ns_conn url]] } {
+  ns_returnnotfound
+ }
+</pre>
+</dd>
+<dt><a name="51"><b class="cmd">ns_conn urlc</b></a></dt>
+<dd><p>Returns the number of elements in the URL, as determined by splitting
+ on the <b class="const">/</b> character.</p></dd>
+<dt><a name="52"><b class="cmd">ns_conn urldict</b></a></dt>
+<dd><p>Returns the current request URL as a Tcl dictionary. The dictionary
+ separates the URL into its constituent components (such as protocol,
+ host, port, path, query, fragment, etc.).</p>
+<p>This structured representation allows you to modify specific
+ parts of the URL programmatically (for example, removing the query or
+ adding a fragment) and then rebuild the complete URL using
+ <b class="cmd">ns_joinurl</b>. This is especially useful for dynamic web applications
+ that require URL manipulation based on request context or custom
+ routing logic.</p>
+<pre class="doctools_example">
+ # Original URL: /foo/bar?x=1
+ set urldict [ns_conn urldict]
+ # Example result: {path foo tail bar query x=1}
+ 
+ dict unset urldict query
+ dict set urldict fragment sect2
+ set url [ns_joinurl $urldict]
+ # Resulting URL: /foo/bar#sect2
+</pre>
+</dd>
+<dt><a name="53"><b class="cmd">ns_conn urlencoding</b> <span class="opt">?<i class="arg">encoding</i>?</span></a></dt>
+<dd><p>Queries or sets the URL encoding for the current connection. If an
+ <i class="arg">encoding</i> value is provided, it sets the URL encoding;
+ otherwise, it returns the current encoding.</p></dd>
+<dt><a name="54"><b class="cmd">ns_conn urlv</b> <span class="opt">?<i class="arg">idx</i>?</span></a></dt>
+<dd><p>Returns a list of the URL components (delimited by `/').
+ If <i class="arg">idx</i> is provided, returns the nth element of the URL vector.</p></dd>
+<dt><a name="55"><b class="cmd">ns_conn version</b></a></dt>
+<dd><p>Returns the HTTP version of the current request (typically 1.0 or
+ 1.1).</p></dd>
+<dt><a name="56"><b class="cmd">ns_conn zipaccepted</b></a></dt>
+<dd><p>Returns 0 or 1 depending on whether the client accepts a zip-encoded response.</p></dd>
+</dl>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_adp.html">ns_adp</a>, <a href="ns_getcontent.html">ns_getcontent</a>, <a href="ns_getform.html">ns_getform</a>, <a href="ns_locationproc.html">ns_locationproc</a>, <a href="ns_queryget.html">ns_queryget</a>, <a href="ns_set.html">ns_set</a>, <a href="ns_time.html">ns_time</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#ipv4">IPv4</a>, <a href="../../index.html#ipv6">IPv6</a>, <a href="../../index.html#sni">SNI</a>, <a href="../../index.html#connection">connection</a>, <a href="../../index.html#gzip">gzip</a>, <a href="../../index.html#reverse_proxy">reverse proxy</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#virtual_host">virtual host</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

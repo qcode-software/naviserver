@@ -64,42 +64,32 @@ ReportError(Tcl_Interp *interp, const char *fmt, ...)
 # include <openssl/ssl.h>
 # include <openssl/err.h>
 
-/*
- * OpenSSL < 0.9.8f does not have SSL_set_tlsext_host_name() In some
- * versions, this function is defined as a macro, on some versions as
- * a library call, which complicates detection via m4.
- */
-# if OPENSSL_VERSION_NUMBER > 0x00908070
-#  define HAVE_SSL_set_tlsext_host_name 1
-# endif
-
-# ifndef HAVE_OPENSSL_PRE_1_1
-#  define OPENSSL_HAVE_DH_AUTO
-#  define OPENSSL_HAVE_READ_BUFFER_LEN
-# endif
-
-# ifndef HAVE_X509_STORE_CTX_GET_OBJ_BY_SUBJECT
-#  define OPENSSL_NO_OCSP 1
-# endif
-
-# ifndef OPENSSL_NO_OCSP
+# ifdef HAVE_OPENSSL_OCSP
 #  include <openssl/ocsp.h>
-# endif
 
-# ifndef OPENSSL_NO_OCSP
 /*
  * Structure passed to cert status callback
  */
 typedef struct {
     int            timeout;
-    //char          *respin;     /* File to load OCSP Response from (or NULL if no file) */
     int            verbose;
-    OCSP_RESPONSE *resp;
-    Ns_Time        expire;
+    OCSP_RESPONSE *OCSPresp;
+    Ns_Time        OCSPexpire;
+    Ns_Time        OCSPcheckInterval;
 } SSLCertStatusArg;
 
 static SSLCertStatusArg sslCertStatusArg;
 # endif
+
+/*
+ * For HTTP client requests, use a data index to obtain server
+ * information from an SSL_CTX.
+ */
+static int ClientCtxDataIndex;
+
+/*
+ * Local functions defined in this file
+ */
 
 /*
  * OpenSSL callback functions.
@@ -109,17 +99,25 @@ static int SSLPassword(char *buf, int num, int rwflag, void *userdata);
 # ifdef HAVE_OPENSSL_PRE_1_1
 static void SSL_infoCB(const SSL *ssl, int where, int ret);
 # endif
+static int CertficateValidationCB(int preverify_ok, X509_STORE_CTX *ctx);
 
-#ifndef OPENSSL_HAVE_DH_AUTO
-static DH *SSL_dhCB(SSL *ssl, int isExport, int keyLength);
-#endif
+static Ns_ReturnCode StoreInvalidCertificate(X509 *cert, int x509err, int currentDepth, NsServer *servPtr)
+    NS_GNUC_NONNULL(4);
+static bool ValidationExcpetionExists(int x509err, NS_SOCKET sock, Ns_DList *validationExceptionsPtr, struct sockaddr *saPtr)
+     NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
 
-# ifndef OPENSSL_NO_OCSP
+static void DrainErrorStack(Ns_LogSeverity severity, const char *errorContext, unsigned long sslERRcode)
+    NS_GNUC_NONNULL(2);
+
+static Ns_ReturnCode WaitFor(NS_SOCKET sock, unsigned int st, const Ns_Time *timeoutPtr);
+
+static void CertTableInit(void);
+static void CertTableReload(void *UNUSED(arg));
+static void CertTableAdd(const NS_TLS_SSL_CTX *ctx, const char *cert)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+
+# ifdef HAVE_OPENSSL_OCSP
 static int SSL_cert_statusCB(SSL *ssl, void *arg);
 
-/*
- * Local functions defined in this file
- */
 static Ns_ReturnCode
 PartialTimeout(const Ns_Time *endTimePtr, Ns_Time *diffPtr, Ns_Time *defaultPartialTimeoutPtr,
                Ns_Time **partialTimeoutPtrPtr)
@@ -128,31 +126,19 @@ PartialTimeout(const Ns_Time *endTimePtr, Ns_Time *diffPtr, Ns_Time *defaultPart
 static bool
 OCSP_ResponseIsValid(OCSP_RESPONSE *resp, OCSP_CERTID *id)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-# endif
 
-static void DrainErrorStack(Ns_LogSeverity severity, const char *errorContext, unsigned long sslERRcode)
-    NS_GNUC_NONNULL(2);
-
-static Ns_ReturnCode WaitFor(NS_SOCKET sock, unsigned int st, Ns_Time *timeoutPtr);
-
-static void CertTableInit(void);
-static void CertTableReload(void *UNUSED(arg));
-static void CertTableAdd(const NS_TLS_SSL_CTX *ctx, const char *cert)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-
-
-# ifndef OPENSSL_NO_OCSP
 static int OCSP_FromCacheFile(Tcl_DString *dsPtr, OCSP_CERTID *id, OCSP_RESPONSE **resp)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
-static OCSP_CERTID *OCSP_get_cert_id(const SSL *ssl, X509 *cert)
+static OCSP_CERTID *OCSP_get_cert_id(const SSL *ssl, X509 *cert, bool *selfSignedPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static int OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **resp)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static OCSP_RESPONSE *OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
-    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-#endif
+    NS_GNUC_NONNULL(1);
+# endif /* HAVE_OPENSSL_OCSP */
 
 # if !defined(HAVE_OPENSSL_PRE_1_1) && !defined(LIBRESSL_VERSION_NUMBER)
 static void *NS_CRYPTO_malloc(size_t num, const char *UNUSED(file), int UNUSED(line)) NS_GNUC_MALLOC NS_ALLOC_SIZE1(1) NS_GNUC_RETURNS_NONNULL;
@@ -160,8 +146,7 @@ static void *NS_CRYPTO_realloc(void *addr, size_t num, const char *UNUSED(file),
 static void NS_CRYPTO_free(void *addr, const char *UNUSED(file), int UNUSED(line));
 # endif
 
-
-#ifndef OPENSSL_HAVE_DH_AUTO
+#ifndef HAVE_OPENSSL_DH_AUTO
 /*
  *----------------------------------------------------------------------
  *
@@ -215,7 +200,9 @@ DH_set0_pqg(DH *dh, BIGNUM *p, BIGNUM *q, BIGNUM *g)
 }
 # endif /* LIBRESSL_VERSION_NUMBER */
 
-#include "dhparams.h"
+#ifndef HAVE_OPENSSL_DH_AUTO
+# include "dhparams.h"
+#endif
 
 /*
  *----------------------------------------------------------------------
@@ -392,7 +379,139 @@ SSL_serverNameCB(SSL *ssl, int *al, void *UNUSED(arg))
     return result;
 }
 
-#ifndef OPENSSL_NO_OCSP
+#ifdef HAVE_OPENSSL_OCSP
+/*
+ *----------------------------------------------------------------------
+ *
+ * SSL_cert_has_must_staple --
+ *
+ *      Check whether an X.509 certificate has the “must-staple” TLS
+ *      Feature extension (OCSP Must-Staple, OID 1.3.6.1.5.5.7.1.24)
+ *      indicating that the certificate requires OCSP stapling.
+ *
+ * Parameters:
+ *      cert    - pointer to the X509 certificate to inspect
+ *
+ * Returns:
+ *      1  if the TLS Feature extension is present and includes the
+ *         status_request feature (value 5), indicating Must-Staple.
+ *      0  if the extension is absent or present but does not include
+ *         the status_request feature.
+ *     -1  on error (e.g. OID lookup or extension parsing failure).
+ *
+ * Side Effects:
+ *      Logs a warning if the TLS Feature extension is present but
+ *      cannot be parsed.
+ *
+ *----------------------------------------------------------------------
+ */
+static int SSL_cert_has_must_staple(X509 *cert) {
+    int ext_index;
+    ASN1_OBJECT *obj = OBJ_txt2obj("1.3.6.1.5.5.7.1.24", 1);  // TLS Feature OID
+
+    if (obj == NULL) {
+        return -1;
+    }
+    ext_index = X509_get_ext_by_OBJ(cert, obj, -1);
+    ASN1_OBJECT_free(obj);
+
+    if (ext_index < 0) {
+        /*
+         * TLS Feature extension not found
+         */
+        return 0;
+    } else {
+        X509_EXTENSION      *ext = X509_get_ext(cert, ext_index);
+        ASN1_OCTET_STRING   *octet = X509_EXTENSION_get_data(ext);
+        const unsigned char *p = ASN1_STRING_get0_data(octet);
+        long                 len = ASN1_STRING_length(octet);
+        STACK_OF(ASN1_TYPE) *features = d2i_ASN1_SEQUENCE_ANY(NULL, &p, len);
+
+        if (!features) {
+            Ns_Log(Warning, "OCSP: Failed to parse TLS Feature extension");
+            return -1;
+        }
+
+        for (int i = 0; i < sk_ASN1_TYPE_num(features); i++) {
+            ASN1_TYPE *type = sk_ASN1_TYPE_value(features, i);
+            if (type->type == V_ASN1_INTEGER) {
+                ASN1_INTEGER *feature = type->value.integer;
+                long val = ASN1_INTEGER_get(feature);
+                if (val == 5) { // 5 = status_request (i.e., Must-Staple)
+                    sk_ASN1_TYPE_pop_free(features, ASN1_TYPE_free);
+                    return 1;
+                }
+            }
+        }
+        sk_ASN1_TYPE_pop_free(features, ASN1_TYPE_free);
+    }
+
+    return 0;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * openssl_string_free --
+ *
+ *      Helper functionto free strings allocated by OpenSSL stack APIs.
+ *
+ * Parameters:
+ *      string - pointer to the string to free
+ *
+ * Side Effects:
+ *      Calls OPENSSL_free() on the given pointer.
+ *
+ *----------------------------------------------------------------------
+ */
+static void openssl_string_free(char *chars)
+{
+    OPENSSL_free(chars);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * SSL_cert_can_staple --
+ *
+ *      Determine whether an X.509 certificate supports OCSP stapling
+ *      by checking for the presence of one or more OCSP responder URLs
+ *      in its Authority Information Access (AIA) extension.
+ *
+ * Parameters:
+ *      cert    - pointer to the X509 certificate to inspect (may be NULL)
+ *
+ * Returns:
+ *      true  if the certificate contains at least one OCSP URI and thus
+ *            can staple OCSP responses;
+ *      false if cert is NULL or if no OCSP URI is found.
+ *
+ * Side Effects:
+ *      Calls X509_get1_ocsp() to extract a STACK_OF(OPENSSL_STRING),
+ *      and then frees that stack and its strings via sk_OPENSSL_STRING_pop_free()
+ *      with openssl_free() as the deallocator.
+ *
+ *----------------------------------------------------------------------
+ */
+static bool SSL_cert_can_staple(X509 *cert) {
+    bool success = NS_FALSE;
+
+    if (cert != NULL) {
+        /*
+         * Get the stack of OCSP URIs from the AIA extension
+         */
+        STACK_OF(OPENSSL_STRING) *ocsp_uris = X509_get1_ocsp(cert);
+        if (ocsp_uris != NULL) {
+            /*
+             * We have an OCSP URI, we can staple
+             */
+            success = NS_TRUE;
+            sk_OPENSSL_STRING_pop_free(ocsp_uris, openssl_string_free);
+        }
+    }
+    return success;
+}
+
 static int SSL_cert_statusCB(SSL *ssl, void *arg)
 {
     SSLCertStatusArg *srctx = arg;
@@ -400,10 +519,27 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
     OCSP_RESPONSE    *resp = NULL;
     unsigned char    *rspder = NULL;
     int               rspderlen;
+    bool              muststaple, canstaple;
     Ns_Time           now, diff;
+    X509             *cert;
 
     if (srctx->verbose) {
         Ns_Log(Notice, "cert_status: callback called");
+    }
+
+    cert = SSL_get_certificate(ssl);
+    if (cert == NULL) {
+        /*
+         * No certificate available
+         */
+        return SSL_TLSEXT_ERR_NOACK;
+    }
+    muststaple = (SSL_cert_has_must_staple(cert) == 1);
+    canstaple = (SSL_cert_can_staple(cert) == 1);
+
+    Ns_Log(Debug, "tls: SSL_cert_statusCB must staple %d, can staple %d", muststaple, canstaple);
+    if (!canstaple) {
+        return SSL_TLSEXT_ERR_NOACK;
     }
 
     Ns_GetTime(&now);
@@ -411,31 +547,30 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
      * If there is a in-memory changed OCSP response, validate this if
      * necessary.
      */
-    if (srctx->resp != NULL) {
+    if (srctx->OCSPresp != NULL) {
 
-        if (Ns_DiffTime(&srctx->expire, &now, &diff) < 0) {
+        if (Ns_DiffTime(&srctx->OCSPexpire, &now, &diff) < 0) {
             OCSP_CERTID *cert_id;
             bool         flush;
 
             Ns_Log(Notice, "cert_status: must validate OCSP response " NS_TIME_FMT " sec",
                     (int64_t) diff.sec, diff.usec);
 
-            cert_id = OCSP_get_cert_id(ssl, SSL_get_certificate(ssl));
+            cert_id = OCSP_get_cert_id(ssl, SSL_get_certificate(ssl), NULL);
             if (cert_id == NULL) {
                 Ns_Log(Warning, "cert_status: OCSP validation: certificate id is unknown");
                 flush = NS_TRUE;
             } else {
                 Ns_Log(Debug, "cert_status: CAN VALIDATE OCSP response");
-                flush = !OCSP_ResponseIsValid(srctx->resp, cert_id);
+                flush = !OCSP_ResponseIsValid(srctx->OCSPresp, cert_id);
             }
             if (flush) {
                 Ns_Log(Debug, "cert_status: flush OCSP response");
-                OCSP_RESPONSE_free(srctx->resp);
-                srctx->resp = NULL;
+                OCSP_RESPONSE_free(srctx->OCSPresp);
+                srctx->OCSPresp = NULL;
             } else {
-                /* TODO: provide a configurable re-check value */
-                now.sec += 300;
-                srctx->expire = now;
+                now.sec += srctx->OCSPcheckInterval.sec;
+                srctx->OCSPexpire = now;
             }
         } else {
             Ns_Log(Debug, "cert_status: RECENT OCSP response, recheck in " NS_TIME_FMT " sec",
@@ -453,8 +588,8 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
      * OCSP response based on the timeout.
      */
 
-    if (srctx->resp == NULL
-        && ((srctx->expire.sec == 0) || Ns_DiffTime(&srctx->expire, &now, &diff) < 0)
+    if (srctx->OCSPresp == NULL
+        && ((srctx->OCSPexpire.sec == 0) || Ns_DiffTime(&srctx->OCSPexpire, &now, &diff) < 0)
         ) {
 
         result = OCSP_computeResponse(ssl, srctx, &resp);
@@ -479,17 +614,16 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
             /*
              * Perform in-memory caching of the OCSP_RESPONSE.
              */
-            srctx->resp = resp;
+            srctx->OCSPresp = resp;
             /*
              * Avoid Ns_GetTime() on every invocation.
              */
         }
         Ns_GetTime(&now);
-        /* TODO: provide a configurable re-check value */
-        now.sec += 300;
-        srctx->expire = now;
+        now.sec +=  srctx->OCSPcheckInterval.sec;
+        srctx->OCSPexpire = now;
     } else {
-        resp = srctx->resp;
+        resp = srctx->OCSPresp;
     }
 
     if (resp != NULL) {
@@ -499,7 +633,7 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
         if (rspderlen <= 0) {
             if (resp != NULL) {
                 OCSP_RESPONSE_free(resp);
-                srctx->resp = NULL;
+                srctx->OCSPresp = NULL;
             }
             goto err;
         }
@@ -521,6 +655,7 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
         result = SSL_TLSEXT_ERR_NOACK;
 
         ERR_clear_error();
+
         Ns_Log(Notice, "cert_status: OCSP cannot validate the certificate");
     }
 
@@ -552,7 +687,7 @@ static int SSL_cert_statusCB(SSL *ssl, void *arg)
  *----------------------------------------------------------------------
  */
 static OCSP_CERTID *
-OCSP_get_cert_id(const SSL *ssl, X509 *cert)
+OCSP_get_cert_id(const SSL *ssl, X509 *cert, bool *selfSignedPtr)
 {
     X509_STORE_CTX *store_ctx;
     OCSP_CERTID    *result = NULL;
@@ -579,7 +714,6 @@ OCSP_get_cert_id(const SSL *ssl, X509 *cert)
             Ns_Log(Warning, "cert_status: OCSP stapling ignored, "
                    "issuer certificate not found");
         }
-
         x509_obj = X509_STORE_CTX_get_obj_by_subject(store_ctx, X509_LU_X509,
                                             X509_get_issuer_name(cert));
         if (x509_obj == NULL) {
@@ -588,6 +722,10 @@ OCSP_get_cert_id(const SSL *ssl, X509 *cert)
         } else {
             result = OCSP_cert_to_id(NULL, cert, X509_OBJECT_get0_X509(x509_obj));
             X509_OBJECT_free(x509_obj);
+        }
+        if (selfSignedPtr != NULL) {
+            *selfSignedPtr = (X509_NAME_hash_ex(X509_get_issuer_name(cert), NULL, NULL, NULL)
+                              == X509_NAME_hash_ex(X509_get_subject_name(cert), NULL, NULL, NULL));
         }
     }
 
@@ -673,52 +811,47 @@ OCSP_FromCacheFile(Tcl_DString *dsPtr, OCSP_CERTID *id, OCSP_RESPONSE **resp)
 
     if (OCSP_id_get0_info(NULL, NULL, NULL, &pserial, id) != 0) {
         Tcl_DString outputBuffer;
+        struct stat fileInfo;
+        const char *fileName;
 
         Tcl_DStringInit(&outputBuffer);
         Tcl_DStringSetLength(&outputBuffer, (TCL_SIZE_T)(pserial->length*2 + 1));
 
         Ns_HexString(pserial->data, outputBuffer.string, (TCL_SIZE_T)pserial->length, NS_TRUE);
+
         /*
-         * Check for the "logs" directory below NaviServer home.
+         * A result of TCL_CONTINUE or TCL_OK implies a computed filename
+         * of the cache file in dsPtr;
          */
-        if (Ns_HomePathExists("logs", (char *)0L)) {
-            struct stat fileInfo;
-            const char *fileName;
+        Tcl_DStringAppend(&outputBuffer, ".der", 4);
+        fileName = Ns_MakePath(dsPtr, nsconf.logDir, outputBuffer.string, NS_SENTINEL);
+        result = TCL_CONTINUE;
 
-            /*
-             * A result of TCL_CONTINUE or TCL_OK implies a computed filename
-             * of the cache file in dsPtr;
-             */
-            Tcl_DStringAppend(&outputBuffer, ".der", 4);
-            fileName = Ns_HomePath(dsPtr, "logs", "/", outputBuffer.string, (char *)0L);
-            result = TCL_CONTINUE;
+        if (Ns_Stat(dsPtr->string, &fileInfo)) {
+            BIO *derbio;
 
-            if (Ns_Stat(dsPtr->string, &fileInfo)) {
-                BIO *derbio;
+            /*fprintf(stderr, "... file %s exists (%ld bytes)\n",
+              fileName, (long)fileInfo.st_size);*/
+            Ns_Log(Notice, "OCSP cache file exists: %s", fileName);
 
-                /*fprintf(stderr, "... file %s exists (%ld bytes)\n",
-                  fileName, (long)fileInfo.st_size);*/
-                Ns_Log(Notice, "OCSP cache file exists: %s", fileName);
+            derbio = BIO_new_file(fileName, "rb");
+            if (derbio == NULL) {
+                Ns_Log(Warning, "cert_status: Cannot open OCSP response file: %s", fileName);
 
-                derbio = BIO_new_file(fileName, "rb");
-                if (derbio == NULL) {
-                    Ns_Log(Warning, "cert_status: Cannot open OCSP response file: %s", fileName);
-
-                } else {
-
-                    *resp = d2i_OCSP_RESPONSE_bio(derbio, NULL);
-                    BIO_free(derbio);
-
-                    if (*resp == NULL) {
-                        Ns_Log(Warning, "cert_status: Error reading OCSP response file: %s", fileName);
-                    } else if (OCSP_ResponseIsValid(*resp, id)) {
-                        result = TCL_OK;
-                    }
-                }
             } else {
-                Ns_Log(Warning, "OCSP cache file does not exist: %s", fileName);
-                result = TCL_CONTINUE;
+
+                *resp = d2i_OCSP_RESPONSE_bio(derbio, NULL);
+                BIO_free(derbio);
+
+                if (*resp == NULL) {
+                    Ns_Log(Warning, "cert_status: Error reading OCSP response file: %s", fileName);
+                } else if (OCSP_ResponseIsValid(*resp, id)) {
+                    result = TCL_OK;
+                }
             }
+        } else {
+            Ns_Log(Warning, "OCSP cache file does not exist: %s", fileName);
+            result = TCL_CONTINUE;
         }
         Tcl_DStringFree(&outputBuffer);
 
@@ -756,6 +889,7 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
     OCSP_CERTID    *id;
     OCSP_REQUEST   *req = NULL;
     int             rc, result = SSL_TLSEXT_ERR_NOACK;
+    bool            selfSigned = NS_FALSE;
     Tcl_DString     cachedResponseFile;
     STACK_OF(OPENSSL_STRING) *aia = NULL; /* Authority Information Access (AIA) Extension */
 
@@ -766,8 +900,8 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
     Tcl_DStringInit(&cachedResponseFile);
 
     cert = SSL_get_certificate(ssl);
-    id = OCSP_get_cert_id(ssl, cert);
-    if (id == NULL) {
+    id = OCSP_get_cert_id(ssl, cert, &selfSigned);
+    if (id == NULL || selfSigned) {
         goto err;
     }
 
@@ -808,6 +942,7 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
             X509_EXTENSION *ext = sk_X509_EXTENSION_value(exts, i);
 
             if (!OCSP_REQUEST_add_ext(req, ext, -1)) {
+                sk_X509_EXTENSION_pop_free(exts, X509_EXTENSION_free);
                 goto err;
             }
         }
@@ -834,6 +969,7 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
 
             result = SSL_TLSEXT_ERR_OK;
         }
+        sk_X509_EXTENSION_pop_free(exts, X509_EXTENSION_free);
         goto done;
     }
 
@@ -844,7 +980,7 @@ OCSP_computeResponse(SSL *ssl, const SSLCertStatusArg *srctx, OCSP_RESPONSE **re
      * If we parsed AIA we need to free
      */
     if (aia != NULL) {
-        X509_email_free(aia);
+        sk_OPENSSL_STRING_pop_free(aia, openssl_string_free);
     }
     OCSP_CERTID_free(id);
     OCSP_REQUEST_free(req);
@@ -877,8 +1013,11 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
     int            derLength;
 
     NS_NONNULL_ASSERT(req != NULL);
-    NS_NONNULL_ASSERT(aiaURL != NULL);
 
+    if (aiaURL == NULL) {
+        Ns_Log(Warning, "The certificate says it supports OCSP, but has a NULL AIA URL");
+        return rsp;
+    }
     Ns_Log(Notice, "OCSP_FromAIA url <%s> timeout %d", aiaURL, req_timeout);
 
     /*
@@ -997,7 +1136,7 @@ OCSP_FromAIA(OCSP_REQUEST *req, const char *aiaURL, int req_timeout)
     return rsp;
 }
 
-#endif /* Of OPENSSL_NO_OCSP */
+#endif /* HAVE_OPENSSL_OCSP */
 
 # if !defined(HAVE_OPENSSL_PRE_1_1) && !defined(LIBRESSL_VERSION_NUMBER)
 static void *NS_CRYPTO_malloc(size_t num, const char *UNUSED(file), int UNUSED(line))
@@ -1068,6 +1207,7 @@ NsInitOpenSSL(void)
 #  else
         OPENSSL_init_ssl(0, NULL);
 #  endif
+        ClientCtxDataIndex = SSL_CTX_get_ex_new_index(0, (char*)"NaviServer Client Info", NULL, NULL, NULL);
         initialized = 1;
         /*
          * We do not want to get this message when, e.g., the nsproxy
@@ -1101,12 +1241,14 @@ NsInitOpenSSL(void)
  *----------------------------------------------------------------------
  */
 
+
 int
 Ns_TLS_CtxClientCreate(Tcl_Interp *interp,
                        const char *cert, const char *caFile, const char *caPath, bool verify,
                        NS_TLS_SSL_CTX **ctxPtr)
 {
     NS_TLS_SSL_CTX *ctx;
+    char errorBuffer[256];
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(ctxPtr != NULL);
@@ -1114,24 +1256,67 @@ Ns_TLS_CtxClientCreate(Tcl_Interp *interp,
     ctx = SSL_CTX_new(SSLv23_client_method());
     *ctxPtr = ctx;
     if (ctx == NULL) {
-        char errorBuffer[256];
-
         Ns_TclPrintfResult(interp, "ctx init failed: %s", ERR_error_string(ERR_get_error(), errorBuffer));
         return TCL_ERROR;
     }
 
     SSL_CTX_set_default_verify_paths(ctx);
-    if (caFile != NULL || caPath != NULL) {
-        SSL_CTX_load_verify_locations(ctx, caFile, caPath);
+    if (verify && (caFile != NULL || caPath != NULL)) {
+        int rc;
+
+        rc = SSL_CTX_load_verify_locations(ctx, caFile, caPath);
+        if (rc == 0) {
+            Ns_TclPrintfResult(interp, "cannot load cerfificates from CAfile %s and CApath %s: %s",
+                               caFile != NULL ? caFile : "none",
+                               caPath != NULL ? caPath : "none",
+                               ERR_error_string(ERR_get_error(), errorBuffer));
+            goto fail;
+        }
+        Ns_Log(Debug, "SSL_CTX_load_verify_locations ctx %p caFile <%s> caPath <%s> ",
+               (void*)ctx,
+               caFile != NULL ? caFile : "none",
+               caPath != NULL ? caPath : "none");
     }
-    SSL_CTX_set_verify(ctx, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, NULL);
+    if (verify) {
+        int verify_depth = 9;
+        NsInterp *itPtr = NsGetInterpData(interp);
+        SSL_verify_cb verifyCB = NULL;
+
+        if (itPtr != NULL) {
+            NsServer *servPtr = itPtr->servPtr;
+
+            if (likely(servPtr != NULL)) {
+                /*
+                 * We can set the specified validation depth. In case
+                 * we have validation exception provided, we register
+                 * our own certificate validation callback.
+                 */
+                verify_depth = servPtr->httpclient.verify_depth;
+                SSL_CTX_set_ex_data(ctx, ClientCtxDataIndex, servPtr);
+
+                if (servPtr->httpclient.validationExceptions.size > 0) {
+                    Ns_Log(Debug, "Ns_TLS_CtxClientCreate %ld validation exceptions provided",
+                           servPtr->httpclient.validationExceptions.size);
+                    verifyCB = CertficateValidationCB;
+                }
+            } else {
+                Ns_Log(Warning, "Ns_TLS_CtxClientCreate cannot obtain server information;"
+                       " detailed validation settings are ignored");
+                SSL_CTX_set_ex_data(ctx, ClientCtxDataIndex, NULL);
+            }
+        }
+        SSL_CTX_set_verify_depth(ctx, verify_depth + 1);
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, verifyCB);
+    } else {
+        SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+    }
+
+    //SSL_CTX_set_verify(ctx, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, NULL);
     SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
     SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
     if (cert != NULL) {
         if (SSL_CTX_use_certificate_chain_file(ctx, cert) != 1) {
-            char errorBuffer[256];
-
             Ns_TclPrintfResult(interp, "certificate load error: %s",
                                ERR_error_string(ERR_get_error(), errorBuffer));
             goto fail;
@@ -1195,7 +1380,7 @@ Ns_TLS_CtxFree(NS_TLS_SSL_CTX *ctx)
  *----------------------------------------------------------------------
  */
 static Ns_ReturnCode
-WaitFor(NS_SOCKET sock, unsigned int st, Ns_Time *timeoutPtr)
+WaitFor(NS_SOCKET sock, unsigned int st, const Ns_Time *timeoutPtr)
 {
     Ns_Time timeout;
     if (timeoutPtr == NULL) {
@@ -1250,8 +1435,8 @@ PartialTimeout(const Ns_Time *endTimePtr, Ns_Time *diffPtr, Ns_Time *defaultPart
  */
 Ns_ReturnCode
 Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
-                  const char *sni_hostname, const Ns_Time *timeoutPtr,
-                  NS_TLS_SSL **sslPtr)
+                  const char *sni_hostname, const char *caFile, const char *caPath,
+                  const Ns_Time *timeoutPtr, NS_TLS_SSL **sslPtr)
 {
     NS_TLS_SSL     *ssl;
     Ns_ReturnCode   result = NS_OK;
@@ -1273,29 +1458,28 @@ Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
         result = NS_ERROR;
 
     } else {
+        int sslErr;
+
         if (sni_hostname != NULL) {
-# if HAVE_SSL_set_tlsext_host_name
             Ns_Log(Debug, "tls: setting SNI hostname '%s'", sni_hostname);
             if (SSL_set_tlsext_host_name(ssl, sni_hostname) != 1) {
                 Ns_Log(Warning, "tls: setting SNI hostname '%s' failed, value ignored", sni_hostname);
             }
-# else
-            Ns_Log(Warning, "tls: SNI hostname '%s' is not supported by version of OpenSSL", sni_hostname);
-# endif
         }
         SSL_set_fd(ssl, sock);
         SSL_set_connect_state(ssl);
 
         for (;;) {
-            int           sslRc, err;
+            int           sslRc;
             Ns_Time       timeout, *partialTimeoutPtr = NULL;
 
             Ns_Log(Debug, "ssl connect on sock %d", sock);
-            sslRc = SSL_connect(ssl);
-            err   = SSL_get_error(ssl, sslRc);
-            //fprintf(stderr, "### ssl connect sock %d returned err %d\n", sock, err);
+            sslRc  = SSL_connect(ssl);
+            sslErr = SSL_get_error(ssl, sslRc);
 
-            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+            //fprintf(stderr, "### ssl connect sock %d returned err %d\n", sock, sslErr);
+
+            if (sslErr == SSL_ERROR_WANT_READ || sslErr == SSL_ERROR_WANT_WRITE) {
                 if (timeoutPtr != NULL) {
                     /*
                      * Since there might be many WANT_READ or
@@ -1309,15 +1493,43 @@ Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET sock, NS_TLS_SSL_CTX *ctx,
                     }
                 }
                 (void) WaitFor(sock,
-                               (unsigned int)(err == SSL_ERROR_WANT_READ ? NS_SOCK_READ : NS_SOCK_WRITE),
+                               (unsigned int)(sslErr == SSL_ERROR_WANT_READ ? NS_SOCK_READ : NS_SOCK_WRITE),
                                partialTimeoutPtr);
                 continue;
             }
             break;
         }
 
+        /*Ns_Log(Notice, "============================= CONNECT result %s finished %d ERROR %d (is SSL_ERROR_SSL %d)",
+               Ns_ReturnCodeString(result), SSL_is_init_finished(ssl),
+               sslErr, sslErr == SSL_ERROR_SSL);*/
+
         if (result == NS_OK && !SSL_is_init_finished(ssl)) {
-            Ns_TclPrintfResult(interp, "ssl connect failed: %s", ERR_error_string(ERR_get_error(), NULL));
+            long  x509err = X509_V_OK;
+
+            Ns_Log(Debug, "CONNECT ERROR %d (is SSL_ERROR_SSL %d)",  sslErr, sslErr == SSL_ERROR_SSL);
+
+            if (sslErr == SSL_ERROR_SSL) {
+                Ns_Log(Debug, "CONNECT SSL_ERROR_SSL: A failure in the SSL library occurred: %s", ERR_error_string(ERR_get_error(), NULL));
+                x509err = SSL_get_verify_result(ssl);
+                if (x509err != X509_V_OK) {
+                    /*
+                     * We have a specific error code for the certificate validation failure.
+                     */
+                    Ns_TclPrintfResult(interp, "ssl connect failed: %s (reason %ld: %s)",
+                                       ERR_error_string(ERR_get_error(), NULL),
+                                       x509err,  X509_verify_cert_error_string(x509err));
+                    Ns_Log(Notice, "certificate validation error: %s\nCAfile: %s\nCApath: %s",
+                           X509_verify_cert_error_string(x509err),
+                           caFile, caPath);
+                    //X509_NAME_oneline(X509_get_issuer_name(err_cert), errorbuf, sizeof(errorbuf));
+                }
+            }
+            if (x509err == X509_V_OK) {
+                Ns_TclPrintfResult(interp, "ssl connect failed: %s", ERR_error_string(ERR_get_error(), NULL));
+            }
+            DrainErrorStack(Warning, "ssl connect", ERR_get_error());
+
             result = NS_ERROR;
         } else {
             //const char *verifyString = X509_verify_cert_error_string(SSL_get_verify_result(ssl));
@@ -1400,14 +1612,14 @@ DrainErrorStack(Ns_LogSeverity severity, const char *errorContext, unsigned long
  *----------------------------------------------------------------------
  */
 NsSSLConfig *
-NsSSLConfigNew(const char *path)
+NsSSLConfigNew(const char *section)
 {
     NsSSLConfig *cfgPtr;
 
     cfgPtr = ns_calloc(1, sizeof(NsSSLConfig));
-    cfgPtr->deferaccept = Ns_ConfigBool(path, "deferaccept", NS_FALSE);
-    cfgPtr->nodelay = Ns_ConfigBool(path, "nodelay", NS_TRUE);
-    cfgPtr->verify = Ns_ConfigBool(path, "verify", 0);
+    cfgPtr->deferaccept = Ns_ConfigBool(section, "deferaccept", NS_FALSE);
+    cfgPtr->nodelay = Ns_ConfigBool(section, "nodelay", NS_TRUE);
+    cfgPtr->verify = Ns_ConfigBool(section, "verify", 0);
     return cfgPtr;
 }
 
@@ -1429,7 +1641,7 @@ NsSSLConfigNew(const char *path)
  *----------------------------------------------------------------------
  */
 int
-Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
+Ns_TLS_CtxServerInit(const char *section, Tcl_Interp *interp,
                      unsigned int flags,
                      void *app_data,
                      NS_TLS_SSL_CTX **ctxPtr)
@@ -1437,12 +1649,12 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
     int         result;
     const char *cert;
 
-    cert = Ns_ConfigGetValue(path, "certificate");
-    Ns_Log(Notice, "load certificate '%s' specified in section %s", cert, path);
+    cert = Ns_ConfigGetValue(section, "certificate");
+    Ns_Log(Notice, "load certificate '%s' specified in section %s", cert, section);
 
     if (cert == NULL) {
-        Ns_Log(Error, "nsssl: certificate parameter must be specified in the configuration file under %s", path);
-        result = NS_ERROR;
+        Ns_Log(Error, "nsssl: certificate parameter must be specified in the configuration file under %s", section);
+        result = TCL_ERROR;
     } else {
         const char *ciphers, *ciphersuites, *protocols;
         Ns_DList dl, *dlPtr = &dl;
@@ -1454,16 +1666,16 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
         Ns_DListInit(dlPtr);
 
         cert         = Ns_DListSaveString(dlPtr, cert);
-        ciphers      = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(path, "ciphers"));
-        ciphersuites = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(path, "ciphersuites"));
-        protocols    = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(path, "protocols"));
+        ciphers      = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(section, "ciphers"));
+        ciphersuites = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(section, "ciphersuites"));
+        protocols    = Ns_DListSaveString(dlPtr, Ns_ConfigGetValue(section, "protocols"));
 
         Ns_Log(Debug, "Ns_TLS_CtxServerInit calls Ns_TLS_CtxServerCreate with app data %p",
                (void*) app_data);
 
         result = Ns_TLS_CtxServerCreate(interp, cert,
                                         NULL /*caFile*/, NULL /*caPath*/,
-                                        Ns_ConfigBool(path, "verify", 0),
+                                        Ns_ConfigBool(section, "verify", 0),
                                         ciphers, ciphersuites, protocols,
                                         ctxPtr);
         if (result == TCL_OK) {
@@ -1486,7 +1698,7 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
                  * while the app_data of an SSL connection is the
                  * sockPtr (Ns_Sock*).
                  */
-                cfgPtr = NsSSLConfigNew(path);
+                cfgPtr = NsSSLConfigNew(section);
                 cfgPtr->ctx = *ctxPtr;
                 Ns_Log(Debug, "Ns_TLS_CtxServerInit created new app data %p for cert <%s> ctx %p",
                         (void*)cfgPtr, cert, (void*)(cfgPtr->ctx));
@@ -1530,7 +1742,7 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
              *     SSL_MODE_ASYNC
              */
 
-#ifdef OPENSSL_HAVE_READ_BUFFER_LEN
+#ifdef HAVE_OPENSSL_READ_BUFFER_LEN
             /*
              * read_buffer_len is apparently just useful, when crypto
              * pipelining is set up. In general, the OpenSSL "dasync"
@@ -1553,7 +1765,7 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
                 SSL_CTX_set_tlsext_servername_callback(*ctxPtr, SSL_serverNameCB);
                 /* SSL_CTX_set_tlsext_servername_arg(cfgPtr->ctx, app_data); // not really needed */
             }
-#ifdef OPENSSL_HAVE_DH_AUTO
+#ifdef HAVE_OPENSSL_DH_AUTO
             SSL_CTX_set_dh_auto(*ctxPtr, 1);
 #else
             cfgPtr->dhKey512 = get_dh512();
@@ -1580,20 +1792,23 @@ Ns_TLS_CtxServerInit(const char *path, Tcl_Interp *interp,
                 rc = X509_STORE_load_locations(storePtr, cert, NULL);
                 Ns_Log(Debug, "nsssl:X509_STORE_load_locations %d", rc);
             }
-#ifndef OPENSSL_NO_OCSP
-            Ns_Log(Notice, "nsssl: activate OCSP stapling for %s -> %d",
-                   path, Ns_ConfigBool(path, "ocspstapling", NS_FALSE));
-
-            if (Ns_ConfigBool(path, "ocspstapling", NS_FALSE)) {
+#ifdef HAVE_OPENSSL_OCSP
+            if (Ns_ConfigBool(section, "ocspstapling", NS_FALSE)) {
+                Ns_Log(Notice, "nsssl: activate OCSP stapling for %s", section);
 
                 memset(&sslCertStatusArg, 0, sizeof(sslCertStatusArg));
                 sslCertStatusArg.timeout = -1;
-                sslCertStatusArg.verbose = Ns_ConfigBool(path, "ocspstaplingverbose", NS_FALSE);
+                sslCertStatusArg.verbose = Ns_ConfigBool(section, "ocspstaplingverbose", NS_FALSE);
+                Ns_ConfigTimeUnitRange(section, "ocspcheckinterval",
+                                       "5m", 1, 0, LONG_MAX, 0,
+                                       &sslCertStatusArg.OCSPcheckInterval);
 
                 SSL_CTX_set_tlsext_status_cb(*ctxPtr, SSL_cert_statusCB);
                 SSL_CTX_set_tlsext_status_arg(*ctxPtr, &sslCertStatusArg);
+            } else {
+                Ns_Log(Notice, "nsssl: OCSP stapling for %s not activated", section);
             }
-#endif
+#endif /* HAVE_OPENSSL_OCSP */
 
 #if OPENSSL_VERSION_NUMBER > 0x00908070 && !defined(HAVE_OPENSSL_3) && !defined(OPENSSL_NO_EC)
             /*
@@ -1672,7 +1887,7 @@ static void CertTableReload(void *UNUSED(arg))
     Ns_MasterLock();
     hPtr = Tcl_FirstHashEntry(&certTable, &search);
     while (hPtr != NULL) {
-        NS_TLS_SSL_CTX *ctx = Tcl_GetHashKey(&certTable, hPtr);
+        NS_TLS_SSL_CTX *ctx = (NS_TLS_SSL_CTX *)Tcl_GetHashKey(&certTable, hPtr);
         const char     *cert = Tcl_GetHashValue(hPtr);
 
         Ns_Log(Notice, "CertTableReload: sslCtx %p cert '%s'", (void *)ctx, cert);
@@ -1690,6 +1905,273 @@ static void CertTableReload(void *UNUSED(arg))
         hPtr = Tcl_NextHashEntry(&search);
     }
     Ns_MasterUnlock();
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ValidationExcpetionExists --
+ *
+ *      Check whether we can accept the error code in "x509err" based
+ *      on the security exception rules provided in
+ *      validationExceptionsPtr.
+ *
+ * Results:
+ *      NS_TRUE in case the errorCode is accepted.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static bool
+ValidationExcpetionExists(int x509err, NS_SOCKET sock, Ns_DList *validationExceptionsPtr, struct sockaddr *saPtr)
+{
+    bool      accept = NS_FALSE;
+    socklen_t socklen = (socklen_t)sizeof(struct NS_SOCKADDR_STORAGE);
+    size_t    specNr;
+
+    NS_NONNULL_ASSERT(validationExceptionsPtr != NULL);
+    NS_NONNULL_ASSERT(saPtr != NULL);
+
+    /*
+     * We have a peer address, we could check it against the addresses
+     * in the validation exception rules.
+     */
+    if (getpeername(sock, saPtr, &socklen) != 0) {
+        memset(saPtr, 0, sizeof(socklen));
+    }
+    Ns_Log(Debug, "??? ValidationExcpetionExists nr validation exceptions %ld", validationExceptionsPtr->size);
+
+    /*
+     * We can check the error code against the accepted ones in the validation exceptions.
+     */
+    for (specNr = 0u; specNr < validationExceptionsPtr->size; specNr ++) {
+        NsCertValidationException_t *validationExceptionPtr = validationExceptionsPtr->data[specNr];
+        bool                         ipMatch, ruleAccept = NS_FALSE;
+
+        /*
+         * Either accept all IP addresses, or check the IP address in
+         * the rule whether it matches.
+         */
+        ipMatch = (validationExceptionPtr->flags & NS_CERT_TRUST_ALL_IPS) != 0
+            ? NS_TRUE
+            : Ns_SockaddrMaskedMatch(saPtr, (struct sockaddr *)&validationExceptionPtr->mask, (struct sockaddr *)&validationExceptionPtr->ip);
+
+        if (validationExceptionPtr->accept[0] == 0) {
+            /*
+             * Accept all certificate validation errors from this site.
+             */
+            ruleAccept = ipMatch;
+        } else if (ipMatch) {
+            int i;
+
+            /*
+             * Check list of accepted exceptions.
+             */
+            for (i = 0u; i < NS_MAX_VALIDITY_ERRORS_PER_RULE-1; i++) {
+                int canAcceptCode = (int)validationExceptionPtr->accept[i];
+
+                if (canAcceptCode == 0) {
+                    /*
+                     * We reached end of list of accepted errors.
+                     */
+                    break;
+                } else if (canAcceptCode == NS_X509_V_ERR_MATCH_ALL) {
+                    ruleAccept = NS_TRUE;
+                } else {
+                    //ns_inet_ntop((struct sockaddr *)&validationExceptionPtr->ip, ipString, sizeof(ipString));
+
+                    //Ns_Log(Notice, "?????? %d: ip %s x509err %d acceptCode %d (equals %d)",
+                    //       i, ipString, x509err, canAcceptCode, canAcceptCode == x509err);
+                    if (canAcceptCode == x509err) {
+                        ruleAccept = NS_TRUE;
+                    }
+                }
+            }
+        }
+        Ns_Log(Debug, "??? [%ld] x509err %d flags %.4lx --> accept %d", specNr, x509err, validationExceptionPtr->flags, ruleAccept);
+
+        if (ruleAccept == NS_TRUE) {
+            /*
+             * No need to check, if other rules might hold as well.
+             */
+            accept = NS_TRUE;
+            break;
+        }
+    }
+    return accept;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * StoreInvalidCertificate --
+ *
+ *      Store the (invalid) certificate in the filesystem in a folder
+ *      (typically named "invalid-certificates"). The filename
+ *      consists of a digest of the certificate, followed by the
+ *      validation depth and the x509error.
+ *
+ * Results:
+ *      NS_OK for success, NS_ERROR otherwise.
+ *
+ * Side effects:
+ *      Typically writing a file to the filesystem.
+ *
+ *----------------------------------------------------------------------
+ */
+static Ns_ReturnCode
+StoreInvalidCertificate(X509 *cert, int x509err, int currentDepth, NsServer *servPtr) {
+    Ns_ReturnCode result = NS_OK;
+    unsigned char md[EVP_MAX_MD_SIZE];
+    unsigned int  mdLength = 0;
+    struct stat   statInfo;
+
+    if (unlikely(cert == NULL)) {
+        Ns_Log(Warning, "cannot obtain invalid certificate from OpenSSL");
+        result = NS_ERROR;
+
+    } else if (!Ns_Stat(servPtr->httpclient.invalidCaPath, &statInfo)) {
+        Ns_Log(Warning, "StoreInvalidCertificate: invalidCaPath '%s' does not exist", servPtr->httpclient.invalidCaPath);
+        result = NS_ERROR;
+
+    } else if (X509_digest(cert, /*EVP_sha1()*/ EVP_sha256(), md, &mdLength) != 1) {
+        /*
+         * Could not computed the SHA digest of the certificate.
+         */
+        Ns_Log(Warning, "StoreInvalidCertificate Failed to compute digest of certificate");
+        result = NS_ERROR;
+
+    } else {
+        Tcl_DString ds, *dsPtr = &ds;
+        TCL_SIZE_T  pathLength;
+
+        Ns_Log(Debug, "??? StoreInvalidCertificate digest length %d (max %d), path %s",
+               mdLength, EVP_MAX_MD_SIZE, servPtr->httpclient.invalidCaPath);
+
+        /*
+         * Build the path for storing the invalid certificate
+         */
+        Tcl_DStringInit(dsPtr);
+        Tcl_DStringAppend(dsPtr, servPtr->httpclient.invalidCaPath, TCL_INDEX_NONE);
+        if (dsPtr->string[dsPtr->length-1] != '/') {
+            Tcl_DStringAppend(dsPtr, "/", 1);
+        }
+        pathLength = dsPtr->length;
+        Tcl_DStringSetLength(dsPtr, pathLength + (TCL_SIZE_T)mdLength * 2 + 1);
+
+        /*
+         * The filename of the PEM file consists of the hex-value of
+         * the digest of the certificate, followed by the current
+         * validation depth and the SSL error code.
+         */
+        Ns_HexString(md, dsPtr->string + pathLength, (TCL_SIZE_T)mdLength, NS_FALSE);
+        Tcl_DStringSetLength(dsPtr, pathLength+(TCL_SIZE_T)mdLength * 2);
+        Ns_DStringPrintf(dsPtr, "-%d-%d.pem", currentDepth, x509err);
+
+        if (Ns_Stat(dsPtr->string, &statInfo)) {
+            Ns_Log(Notice, "invalid certificate stored already: %s", dsPtr->string);
+        } else {
+            /*
+             * Save the certificate. We do no care about concurrency
+             * here.
+             */
+            FILE *fp = fopen(dsPtr->string, "w");
+
+            if (fp) {
+                if (PEM_write_X509(fp, cert)) {
+                    Ns_Log(Security, "saved invalid certificate: %s", dsPtr->string);
+                } else {
+                    Ns_Log(Warning, "failed to save invalid certificate in: %s", dsPtr->string);
+                }
+                fclose(fp);
+            } else {
+                Ns_Log(Warning, "could not open %s for writing", dsPtr->string);
+            }
+        }
+
+        Tcl_DStringFree(dsPtr);
+    }
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * CertificateValidationCB --
+ *
+ *      OpenSSL callback invoked to validate a certificate. This function
+ *      is called for each certificate in the chain. The parameter
+ *      "preverify_ok" indicates whether the certificate has passed the
+ *      default validation checks (1 = passed, 0 = failed).
+ *
+ *      The "ctx" argument is an X509_STORE_CTX structure containing
+ *      verification details (e.g., current error, certificate depth, etc.).
+ *
+ * Results:
+ *      Return 1 to accept the certificate, or 0 to reject it.
+ *      If 0 is returned, the TLS handshake is aborted.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+CertficateValidationCB(int preverify_ok, X509_STORE_CTX *ctx)
+{
+    int  certificateAccepted = preverify_ok;
+    SSL *sslPtr = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
+
+    /*
+     * In case we want to set an error, we could use something like
+     *    X509_STORE_CTX_set_error(ctx, X509_V_ERR_CERT_CHAIN_TOO_LONG);
+     */
+
+    if (!certificateAccepted && sslPtr != NULL) {
+        int       currentDepth = X509_STORE_CTX_get_error_depth(ctx);
+        SSL_CTX  *sslCtx       = SSL_get_SSL_CTX(sslPtr);
+        NsServer *servPtr      = SSL_CTX_get_ex_data(sslCtx, ClientCtxDataIndex);
+        NS_SOCKET sock         = SSL_get_fd(sslPtr);
+
+        Ns_Log(Debug, "??? CertficateValidationCB got socket %d ctx %p currentDepth %d index %d servPtr %p",
+               sock, (void*)sslCtx, currentDepth, ClientCtxDataIndex, (void*)servPtr);
+
+        if (unlikely(servPtr == NULL)) {
+            Ns_Log(Warning, "CertficateValidationCB cannot determine server");
+
+        } else if (sock != NS_INVALID_SOCKET) {
+            struct NS_SOCKADDR_STORAGE sa;
+            struct sockaddr           *saPtr = (struct sockaddr *)&sa;
+            int x509err = X509_STORE_CTX_get_error(ctx);
+
+            Ns_Log(Debug, "??? CertficateValidationCB servPtr %p '%s' depth: configured %d verify depth %d",
+                   (void*)servPtr, servPtr->server, servPtr->httpclient.verify_depth, currentDepth);
+
+            certificateAccepted = ValidationExcpetionExists(x509err, sock, &servPtr->httpclient.validationExceptions, saPtr);
+            if (certificateAccepted) {
+                char ipString[NS_IPADDR_SIZE];
+
+                ns_inet_ntop(saPtr, ipString, NS_IPADDR_SIZE);
+                Ns_Log(Warning, "invalid certificate accepted (%s %s)", ipString, X509_verify_cert_error_string(x509err));
+                (void)StoreInvalidCertificate(X509_STORE_CTX_get_current_cert(ctx), x509err, currentDepth, servPtr);
+            }
+
+        } else {
+            Ns_Log(Warning, "CertficateValidationCB cannot determine peer address, since socket is invalid");
+        }
+    } else if (sslPtr == NULL) {
+        Ns_Log(Warning, "CertficateValidationCB could not obtain SSL pointer");
+    }
+
+    Ns_Log(Debug, "??? CertficateValidationCB ===> returns %d (accepted by openssl %d)",
+           certificateAccepted, preverify_ok);
+
+    return certificateAccepted;
 }
 
 /*
@@ -1798,6 +2280,7 @@ Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
 
     SSL_CTX_set_default_verify_paths(ctx);
     SSL_CTX_load_verify_locations(ctx, caFile, caPath);
+    // SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT
     SSL_CTX_set_verify(ctx, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, NULL);
     SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
     SSL_CTX_set_mode(ctx, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
@@ -1825,7 +2308,7 @@ Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
          */
         CertTableAdd(ctx, cert);
 
-#ifndef OPENSSL_HAVE_DH_AUTO
+#ifndef HAVE_OPENSSL_DH_AUTO
         /*
          * Get DH parameters from .pem file
          */
@@ -1866,8 +2349,12 @@ Ns_TLS_CtxServerCreate(Tcl_Interp *interp,
  *
  * Ns_TLS_SSLAccept --
  *
- *      Initialize a socket as ssl socket and wait until the socket
- *      is usable (is accepted, handshake performed)
+ *      Accept a new SSL/TLS connection by performing the TLS
+ *      handshake on an incoming connection. This function wraps the
+ *      OpenSSL SSL_accept() call, establishing a secure channel on
+ *      the provided socket. If the handshake is successful, the SSL
+ *      structure is fully initialized and the connection can be used
+ *      for secure communication.
  *
  * Results:
  *      A standard Tcl result.
@@ -2074,7 +2561,7 @@ Ns_SSLRecvBufs2(SSL *sslPtr, struct iovec *bufs, int UNUSED(nbufs),
             }
 #endif
             if (reasonCode == SSL_R_SSLV3_ALERT_CERTIFICATE_UNKNOWN) {
-                Ns_Log(Notice, "SSL_read(%d) client complains: CERTIFICATE_UNKNOWN", sock);
+                Ns_Log(Debug, "SSL_read(%d) client complains: CERTIFICATE_UNKNOWN", sock);
                 nRead = 0;
                 sockState = NS_SOCK_AGAIN;
                 break;
@@ -2210,7 +2697,7 @@ Ns_SSLSetErrorCode(Tcl_Interp *interp, unsigned long sslERRcode)
          */
         ERR_error_string_n(sslERRcode, errorBuf, sizeof(errorBuf));
 
-        Tcl_SetErrorCode(interp, "OPENSSL", errorBuf, (char *)0L);
+        Tcl_SetErrorCode(interp, "OPENSSL", errorBuf, NS_SENTINEL);
         errorMsg = ERR_reason_error_string(sslERRcode);
     }
 
@@ -2223,8 +2710,10 @@ Ns_SSLSetErrorCode(Tcl_Interp *interp, unsigned long sslERRcode)
  *
  * NsCertCtlListCmd - subcommand of NsTclCertCtlObjCmd --
  *
- *      Implements "ns_certctl list" command.
- *      List loaded certificates.
+ *      Implements "ns_certctl reload" command for listing
+ *      certificates. This function retrieves and formats a list of
+ *      certificates currently loaded or managed by the server,
+ *      returning the information as a Tcl list.
  *
  * Results:
  *      Standard Tcl result.
@@ -2236,7 +2725,7 @@ Ns_SSLSetErrorCode(Tcl_Interp *interp, unsigned long sslERRcode)
  */
 
 static int
-NsCertCtlListCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsCertCtlListCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
@@ -2254,7 +2743,7 @@ NsCertCtlListCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
         hPtr = Tcl_FirstHashEntry(&certTable, &search);
         while (hPtr != NULL) {
             Tcl_Obj         *listObj = Tcl_NewListObj(0, NULL);
-            NS_TLS_SSL_CTX  *ctx = Tcl_GetHashKey(&certTable, hPtr);
+            NS_TLS_SSL_CTX  *ctx = (NS_TLS_SSL_CTX *)Tcl_GetHashKey(&certTable, hPtr);
             const char      *cert = Tcl_GetHashValue(hPtr);
             X509            *x509 = SSL_CTX_get0_certificate(ctx);
             const ASN1_TIME *notAfter = X509_get0_notAfter(x509);
@@ -2290,19 +2779,26 @@ NsCertCtlListCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
  *
  * NsCertCtlListCmd - subcommand of NsTclCertCtlObjCmd --
  *
- *      Implements "ns_certctl reload" command.
- *      Reload certificates.
+ *      Implements the "ns_certctl reload" command for certificate
+ *      control.  This function triggers a reload of certificates -
+ *      typically in response to a configuration change or an
+ *      administrative signal (e.g., SIGHUP).  It scans for updated
+ *      certificate files and reloads them into the server's SSL
+ *      contexts, ensuring that any changes to certificates are
+ *      applied without requiring a server restart.
  *
  * Results:
- *      Standard Tcl result.
+ *      Returns a standard Tcl result (TCL_OK on success, TCL_ERROR on
+ *      failure).
  *
  * Side effects:
- *      None.
+ *      May update the certificate store and SSL contexts. Logs error
+ *      messages if any certificate reload operations fail.
  *
  *----------------------------------------------------------------------
  */
 static int
-NsCertCtlReloadCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsCertCtlReloadCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result;
 
@@ -2324,21 +2820,26 @@ NsCertCtlReloadCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T
  *
  * NsTclICtlObjCmd --
  *
- *      Implements "ns_certctl". This command is used to manage
- *      information about tls interactions, include certificate
- *      management.
+ *      Implements the "ns_cert_ctl" command for certificate control
+ *      and management. This command allows administrators to query,
+ *      update, or reload certificate-related settings. It parses
+ *      subcommands and their arguments, performs the requested
+ *      certificate control operations, and returns a standard Tcl
+ *      result.
  *
  * Results:
- *      Standard Tcl result.
+ *      A standard Tcl result indicating success or failure.
  *
  * Side effects:
- *      Depends on the subcommand.
+ *      May update certificate configuration, reload certificates, or
+ *      perform other certificate management tasks depending on the
+ *      specific subcommand.
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclCertCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclCertCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"list",                 NsCertCtlListCmd},
@@ -2365,8 +2866,8 @@ void NsInitOpenSSL(void)
 
 int
 Ns_TLS_SSLConnect(Tcl_Interp *interp, NS_SOCKET UNUSED(sock), NS_TLS_SSL_CTX *UNUSED(ctx),
-                  const char *UNUSED(sni_hostname), const Ns_Time *UNUSED(timeoutPtr),
-                  NS_TLS_SSL **UNUSED(sslPtr))
+                  const char *UNUSED(sni_hostname), const char **UNUSED(caFile), const char **UNUSED(caPath),
+                  const Ns_Time *UNUSED(timeoutPtr), NS_TLS_SSL **UNUSED(sslPtr))
 {
     Ns_TclPrintfResult(interp, "SSLCreate failed: no support for OpenSSL built in");
     return TCL_ERROR;
@@ -2407,7 +2908,7 @@ Ns_TLS_CtxFree(NS_TLS_SSL_CTX *UNUSED(ctx))
 }
 
 int
-NsTclCertCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclCertCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     ReportError(interp, "ns_certctl failed: no support for OpenSSL built in");
     return TCL_ERROR;
@@ -2423,6 +2924,66 @@ Ns_TLS_CtxServerInit(const char *UNUSED(path), Tcl_Interp *UNUSED(interp),
 }
 
 #endif
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTlsGetParameters --
+ *
+ *      Check TLS specific parameters and return optionally the
+ *      default values.  For insecure requests, set "caFile" and
+ *      "caPath" to NULL.  Furthermore, leave an error message in the
+ *      interp, when called without an TLS context.
+ *
+ * Results:
+ *      Standard Tcl result.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+int NsTlsGetParameters(NsInterp *itPtr, bool tlsContext, int insecureInt,
+                       const char *cert, const char *caFile, const char *caPath,
+                       const char **caFilePtr, const char **caPathPtr)
+{
+    int         result = TCL_OK;
+    Tcl_Interp *interp;
+    NsServer   *servPtr;
+
+    NS_NONNULL_ASSERT(itPtr != NULL);
+    NS_NONNULL_ASSERT(caFilePtr != NULL);
+    NS_NONNULL_ASSERT(caPathPtr != NULL);
+
+    servPtr = itPtr->servPtr;
+    interp = itPtr->interp;
+
+    if (tlsContext) {
+        if (caFile == NULL || *caFile == '\0') {
+            caFile = servPtr->httpclient.caFile;
+        }
+        if (caPath == NULL || *caPath == '\0') {
+            caPath = servPtr->httpclient.caPath;
+        }
+        *caFilePtr = (insecureInt == 0) ? caFile : NULL;
+        *caPathPtr = (insecureInt == 0) ? caPath : NULL;
+    } else if (insecureInt == itPtr->servPtr->httpclient.validateCertificates) {
+        Ns_TclPrintfResult(interp, "parameter '-insecure' only allowed on HTTPS connections");
+        result = TCL_ERROR;
+    } else if (caFile != NULL) {
+        Ns_TclPrintfResult(interp, "parameter '-caFile' only allowed on HTTPS connections");
+        result = TCL_ERROR;
+    } else if (caPath != NULL) {
+        Ns_TclPrintfResult(interp, "parameter '-caPath' only allowed on HTTPS connections");
+        result = TCL_ERROR;
+    } else if (cert != NULL) {
+        Ns_TclPrintfResult(interp, "parameter '-cert' only allowed on HTTPS connections");
+        result = TCL_ERROR;
+    }
+
+    return result;
+}
+
 
 /*
  * Local Variables:

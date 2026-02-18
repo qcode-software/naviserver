@@ -37,7 +37,12 @@ typedef struct {
 
 static Ns_ServerInitProc ConfigServerProxy;
 static void WalkCallback(Tcl_DString *dsPtr, const void *arg) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static void FreeRegisteredProc(void *arg) NS_GNUC_NONNULL(1);
+static void RegisteredProcDecrRef(void *arg) NS_GNUC_NONNULL(1);
+static void RegisterRequest(const char *server, const char *method, const char *url,
+                            Ns_OpProc *proc, Ns_Callback *deleteCallback, void *arg,
+                            unsigned int flags, void *contextSpec)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3)
+    NS_GNUC_NONNULL(4);
 
 /*
  * Static variables defined in this file.
@@ -91,25 +96,27 @@ ConfigServerProxy(const char *server)
  *
  * Ns_RegisterRequest2 --
  *
- *      Register a new procedure to be called to service matching given method
- *      and URL path pattern. Before calling function Ns_RegisterRequest(),
- *      this functions verifies, if the URL path is correct. In particular, in
- *      the OP urlspace, query parameters or fragments are not allowed. For
- *      smooth upgrades, such URLs are fixed, and error message is included in
- *      the log. Future version might raise an exception in this case.
+ *      Register a new request handler callback for a given server,
+ *      HTTP method, and URL path, after validating that the URL is a
+ *      plain path (no illegal characters).  If URL validation fails,
+ *      logs an error (or optionally returns a Tcl error) and does not
+ *      register the handler.
  *
  * Results:
- *      TCL return code.
+ *      TCL_OK if the handler was successfully registered or if URL
+ *      validation failed but errors are only logged.  TCL_ERROR if URL
+ *      validation fails and error raising is enabled on the interpreter.
  *
- * Side effects:
- *      When raiseError is set, in case of an error, the error message is left
- *      in the result of the interp.
+ * Side Effects:
+ *      On success, invokes RegisterRequest() to allocate and insert
+ *      the handler into the URL dispatch table.  May emit a log entry
+ *      for invalid URL paths.
  *
  *----------------------------------------------------------------------
  */
 int Ns_RegisterRequest2(Tcl_Interp *interp, const char *server, const char *method, const char *url,
                         Ns_OpProc *proc, Ns_Callback *deleteCallback, void *arg,
-                        unsigned int flags)
+                        unsigned int flags, void *contextSpec)
 {
     int          result = TCL_OK;
     const char  *errorMsg = NULL;
@@ -135,33 +142,33 @@ int Ns_RegisterRequest2(Tcl_Interp *interp, const char *server, const char *meth
         }
 
     } else {
-        Ns_RegisterRequest(server, method, url, proc, deleteCallback, arg, flags);
+        RegisterRequest(server, method, url, proc, deleteCallback, arg, flags, contextSpec);
     }
 
     return result;
 }
-
 /*
  *----------------------------------------------------------------------
  *
- * Ns_RegisterRequest --
+ * RegisterRequest --
  *
- *      Register a new procedure to be called to service matching
- *      given method and URL path pattern.
+ *      Internal helper to allocate and register a request handler
+ *      in the URL dispatch trie for a given server, method, and URL.
  *
  * Results:
  *      None.
  *
- * Side effects:
- *      Delete procedure of previously registered request, if any,
- *      will be called unless NS_OP_NODELETE flag is set.
+ * Side Effects:
+ *      Allocates a RegisteredProc structure, initializes its fields,
+ *      then locks the URL space mutex and calls Ns_UrlSpecificSet2()
+ *      to insert the handler into the server’s dispatch table.
  *
  *----------------------------------------------------------------------
  */
-void
-Ns_RegisterRequest(const char *server, const char *method, const char *url,
+static void
+RegisterRequest(const char *server, const char *method, const char *url,
                    Ns_OpProc *proc, Ns_Callback *deleteCallback, void *arg,
-                   unsigned int flags)
+                   unsigned int flags, void *contextSpec)
 {
     RegisteredProc *regPtr;
 
@@ -177,8 +184,36 @@ Ns_RegisterRequest(const char *server, const char *method, const char *url,
     regPtr->flags = flags;
     regPtr->refcnt = 1;
     Ns_MutexLock(&ulock);
-    Ns_UrlSpecificSet(server, method, url, uid, regPtr, flags, FreeRegisteredProc);
+    Ns_UrlSpecificSet2(server, method, url, uid, regPtr, flags,
+                       RegisteredProcDecrRef, contextSpec);
     Ns_MutexUnlock(&ulock);
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_RegisterRequest --
+ *
+ *      Public API to register a request handler callback for the
+ *      specified server, method, and URL.  This is a thin wrapper
+ *      around RegisterRequest() that omits a context specification.
+ *
+ * Results:
+ *      None.
+ *
+ * Side Effects:
+ *      Allocates and registers a handler identically to
+ *      RegisterRequest(), with contextSpec == NULL.
+ *
+ *----------------------------------------------------------------------
+ */
+void
+Ns_RegisterRequest(const char *server, const char *method, const char *url,
+                   Ns_OpProc *proc, Ns_Callback *deleteCallback, void *arg,
+                   unsigned int flags)
+{
+    RegisterRequest(server, method, url, proc, deleteCallback, arg, flags, NULL);
 }
 
 
@@ -202,8 +237,8 @@ Ns_RegisterRequest(const char *server, const char *method, const char *url,
  */
 void
 NsGetRequest2(NsServer *servPtr, const char *method, const char *url,
-              unsigned int flags, NsUrlSpaceOp op,
-              NsUrlSpaceContextFilterProc proc, void *context,
+              unsigned int flags, Ns_UrlSpaceOp op,
+              Ns_UrlSpaceContextFilterEvalProc proc, void *context,
               Ns_OpProc **procPtr, Ns_Callback **deletePtr, void **argPtr,
               unsigned int *flagsPtr)
 {
@@ -218,9 +253,9 @@ NsGetRequest2(NsServer *servPtr, const char *method, const char *url,
     NS_NONNULL_ASSERT(flagsPtr != NULL);
 
     Ns_MutexLock(&ulock);
-    regPtr = NsUrlSpecificGet(servPtr, method, url,
-                              uid, flags, op, &matchInfo, proc, context);
-    Ns_Log(Notice, "NsGetRequest2 %s %s -> %p",  method, url, (void*)regPtr);
+    regPtr = Ns_UrlSpecificGet((Ns_Server*)servPtr, method, url,
+                               uid, flags, op, &matchInfo, proc, context);
+    Ns_Log(Debug, "NsGetRequest2 %s %s -> %p",  method, url, (void*)regPtr);
 
     if (regPtr != NULL) {
         *procPtr = regPtr->proc;
@@ -368,11 +403,15 @@ Ns_ConnRunRequest(Ns_Conn *conn)
         if ((conn->request.method != NULL) && (conn->request.url != NULL)) {
             RegisteredProc       *regPtr;
             Ns_UrlSpaceMatchInfo  matchInfo;
+            NsUrlSpaceContext     ctx;
+
+            NsUrlSpaceContextInit(&ctx, connPtr->sockPtr, connPtr->headers);
 
             Ns_MutexLock(&ulock);
-            regPtr = NsUrlSpecificGet(connPtr->poolPtr->servPtr,
-                                      conn->request.method, conn->request.url, uid,
-                                      0u, NS_URLSPACE_DEFAULT, &matchInfo, NULL, NULL);
+            regPtr = Ns_UrlSpecificGet((Ns_Server *)(connPtr->poolPtr->servPtr),
+                                       conn->request.method, conn->request.url, uid,
+                                       0u, NS_URLSPACE_DEFAULT, &matchInfo,
+                                       NsUrlSpaceContextFilterEval, &ctx);
             /*Ns_Log(Notice, "Ns_ConnRunRequest %s %s -> %p (isSegmentMatch %d, offset %ld)",
                    conn->request.method, conn->request.url, (void*)regPtr,
                    matchInfo.isSegmentMatch, matchInfo.offset);*/
@@ -391,7 +430,7 @@ Ns_ConnRunRequest(Ns_Conn *conn)
                 status = (*regPtr->proc) (regPtr->arg, conn);
 
                 Ns_MutexLock(&ulock);
-                FreeRegisteredProc(regPtr);
+                RegisteredProcDecrRef(regPtr);
                 Ns_MutexUnlock(&ulock);
             }
         }
@@ -431,19 +470,16 @@ Ns_ConnRedirect(Ns_Conn *conn, const char *url)
     /*
      * Update the request URL.
      */
+    status = Ns_SetRequestUrl(&conn->request, url);
 
-    Ns_SetRequestUrl(&conn->request, url);
+    if (status == NS_OK) {
+        const char *authority = NULL;
+        /*
+         * Re-authorize and run the request.
+         */
+        status = Ns_AuthorizeRequest(conn, &authority);
+    }
 
-    /*
-     * Re-authorize and run the request.
-     */
-
-    status = Ns_AuthorizeRequest(Ns_ConnServer(conn),
-                                 conn->request.method,
-                                 conn->request.url,
-                                 Ns_ConnAuthUser(conn),
-                                 Ns_ConnAuthPasswd(conn),
-                                 Ns_ConnPeerAddr(conn));
     switch (status) {
     case NS_OK:
         status = Ns_ConnRunRequest(conn);
@@ -499,12 +535,12 @@ Ns_RegisterProxyRequest(const char *server, const char *method, const char *prot
         Ns_Log(Error, "Ns_RegisterProxyRequest: no such server: %s", server);
     } else {
         RegisteredProc *regPtr;
-        Ns_DString      ds;
+        Tcl_DString     ds;
         int             isNew;
         Tcl_HashEntry  *hPtr;
 
-        Ns_DStringInit(&ds);
-        Ns_DStringVarAppend(&ds, method, protocol, (char *)0L);
+        Tcl_DStringInit(&ds);
+        Ns_DStringVarAppend(&ds, method, protocol, NS_SENTINEL);
         regPtr = ns_malloc(sizeof(RegisteredProc));
         regPtr->refcnt = 1;
         regPtr->proc = proc;
@@ -514,11 +550,11 @@ Ns_RegisterProxyRequest(const char *server, const char *method, const char *prot
         Ns_MutexLock(&servPtr->request.plock);
         hPtr = Tcl_CreateHashEntry(&servPtr->request.proxy, ds.string, &isNew);
         if (isNew == 0) {
-            FreeRegisteredProc(Tcl_GetHashValue(hPtr));
+            RegisteredProcDecrRef(Tcl_GetHashValue(hPtr));
         }
         Tcl_SetHashValue(hPtr, regPtr);
         Ns_MutexUnlock(&servPtr->request.plock);
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
     }
 }
 
@@ -553,18 +589,18 @@ Ns_UnRegisterProxyRequest(const char *server, const char *method,
     servPtr = NsGetServer(server);
     if (servPtr != NULL) {
         Tcl_HashEntry *hPtr;
-        Ns_DString     ds;
+        Tcl_DString    ds;
 
-        Ns_DStringInit(&ds);
-        Ns_DStringVarAppend(&ds, method, protocol, (char *)0L);
+        Tcl_DStringInit(&ds);
+        Ns_DStringVarAppend(&ds, method, protocol, NS_SENTINEL);
         Ns_MutexLock(&servPtr->request.plock);
         hPtr = Tcl_FindHashEntry(&servPtr->request.proxy, ds.string);
         if (hPtr != NULL) {
-            FreeRegisteredProc(Tcl_GetHashValue(hPtr));
+            RegisteredProcDecrRef(Tcl_GetHashValue(hPtr));
             Tcl_DeleteHashEntry(hPtr);
         }
         Ns_MutexUnlock(&servPtr->request.plock);
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
     }
 }
 
@@ -592,15 +628,15 @@ NsConnRunProxyRequest(Ns_Conn *conn)
     NsServer            *servPtr;
     RegisteredProc      *regPtr = NULL;
     Ns_ReturnCode        status;
-    Ns_DString           ds;
+    Tcl_DString          ds;
     const Tcl_HashEntry *hPtr;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
     servPtr = ((Conn *) conn)->poolPtr->servPtr;
 
-    Ns_DStringInit(&ds);
-    Ns_DStringVarAppend(&ds, conn->request.method, conn->request.protocol, (char *)0L);
+    Tcl_DStringInit(&ds);
+    Ns_DStringVarAppend(&ds, conn->request.method, conn->request.protocol, NS_SENTINEL);
     Ns_MutexLock(&servPtr->request.plock);
     hPtr = Tcl_FindHashEntry(&servPtr->request.proxy, ds.string);
     if (hPtr != NULL) {
@@ -613,10 +649,10 @@ NsConnRunProxyRequest(Ns_Conn *conn)
     } else {
         status = (*regPtr->proc) (regPtr->arg, conn);
         Ns_MutexLock(&servPtr->request.plock);
-        FreeRegisteredProc(regPtr);
+        RegisteredProcDecrRef(regPtr);
         Ns_MutexUnlock(&servPtr->request.plock);
     }
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return status;
 }
@@ -670,7 +706,7 @@ WalkCallback(Tcl_DString *dsPtr, const void *arg)
 /*
  *----------------------------------------------------------------------
  *
- * FreeRegisteredProc --
+ * RegisteredProcDecrRef --
  *
  *      URL space callback to delete a request structure.
  *
@@ -684,7 +720,7 @@ WalkCallback(Tcl_DString *dsPtr, const void *arg)
  */
 
 static void
-FreeRegisteredProc(void *arg)
+RegisteredProcDecrRef(void *arg)
 {
     RegisteredProc *regPtr = (RegisteredProc *) arg;
 

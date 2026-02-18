@@ -1,0 +1,221 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_percentencode - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_percentencode.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_percentencode.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_percentencode.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_percentencode.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_percentencode(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_percentencode - Encoding and Decoding Percent-Encoded Strings</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">SCHEMES</a></li>
+<li class="doctools_section"><a href="#section4">OPTIONS</a></li>
+<li class="doctools_section"><a href="#section5">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_percentencode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-scheme query|path|cookie|oauth1</b>?</span> <span class="opt">?<b class="option">-uppercase</b>?</span> <span class="opt">?--?</span> <i class="arg">string</i></a></li>
+<li><a href="#2"><b class="cmd">ns_percentdecode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-fallbackcharset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-scheme query|path|cookie|oauth1</b>?</span> <span class="opt">?--?</span> <i class="arg">string</i></a></li>
+<li><a href="#3"><b class="cmd">ns_urlencode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-part query|path|cookie|oauth1</b>?</span> <span class="opt">?<b class="option">-uppercase</b>?</span> <span class="opt">?--?</span> <i class="arg">component ...</i></a></li>
+<li><a href="#4"><b class="cmd">ns_urldecode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-fallbackcharset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-part query|path|cookie|oauth1</b>?</span> <span class="opt">?--?</span> <i class="arg">string</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This group of commands lets you safely encode and decode strings by
+ escaping unsafe characters as percent‑escape sequences (&quot;%xx&quot;) per
+ RFC&nbsp;3986 (or RFC&nbsp;1738 when in legacy mode). You can choose from
+ several encoding schemes (query, path, cookie, oauth1) to control
+ which characters remain unescaped and how spaces are handled. Hex
+ digits default to lowercase but can be forced uppercase.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+ 
+<dt><a name="1"><b class="cmd">ns_percentencode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-scheme query|path|cookie|oauth1</b>?</span> <span class="opt">?<b class="option">-uppercase</b>?</span> <span class="opt">?--?</span> <i class="arg">string</i></a></dt>
+<dd><p>Percent‑encodes a single string.
+ All characters not in the selected scheme’s unreserved set are
+ replaced by &quot;%&quot; and two hex digits.</p></dd>
+<dt><a name="2"><b class="cmd">ns_percentdecode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-fallbackcharset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-scheme query|path|cookie|oauth1</b>?</span> <span class="opt">?--?</span> <i class="arg">string</i></a></dt>
+<dd><p>Reverses the percent‑encoding in a string.  Under <b class="variable">query</b> scheme
+ only, &quot;+&quot; is converted back to space.  If decoding to UTF‑8 fails and
+ <b class="option">-fallbackcharset</b> is given (and <b class="option">-charset</b> is not), a second
+ decode attempt uses the fallback charset instead of raising an exception.</p></dd>
+<dt><a name="3"><b class="cmd">ns_urlencode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-part query|path|cookie|oauth1</b>?</span> <span class="opt">?<b class="option">-uppercase</b>?</span> <span class="opt">?--?</span> <i class="arg">component ...</i></a></dt>
+<dd><p>Alias for <b class="cmd">ns_percentencode</b>, using <b class="option">-part</b> in place of
+ <b class="option">-scheme</b>.  Accepts multiple components. With the <b class="variable">query</b>
+ scheme, components are joined by &quot;&amp;&quot;, in otherwise by &quot;/&quot;.</p></dd>
+<dt><a name="4"><b class="cmd">ns_urldecode</b> <span class="opt">?<b class="option">-charset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-fallbackcharset <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-part query|path|cookie|oauth1</b>?</span> <span class="opt">?--?</span> <i class="arg">string</i></a></dt>
+<dd><p>Alias for <b class="cmd">ns_percentdecode</b>, using <b class="option">-part</b> in place of
+ <b class="option">-scheme</b>.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">SCHEMES</a></h2>
+<ul class="doctools_itemized">
+<li><p><b class="variable">query</b> (default):
+  Encoding scheme for URL query strings and form data
+  (<b class="const">application/x-www-form-urlencoded</b>).
+  Spaces are encoded as &quot;+&quot;.  Unsafe characters from query components
+  from RFC 3986 are percent encoded.
+  76 characters remain unescapted:</p>
+<pre class="doctools_example">
+ ! $ ' ( ) * + - . / 0 1 2 3 4 5 6 7 8 9 : ? @
+ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z _
+ a b c d e f g h i j k l m n o p q r s t u v w x y z ~
+</pre>
+</li>
+<li><p><b class="variable">path</b>:
+  Encoding scheme per RFC&nbsp;3986 for path‐segment rules.
+  Spaces are encoded as &quot;%20&quot;; slashes embedded in path segments are
+  encoded as &quot;%2F&quot;.
+  76 characters remain unescapted:</p>
+<pre class="doctools_example">
+ ! $ &amp; ' ( ) * + , - . 0 1 2 3 4 5 6 7 8 9 : @
+ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z _
+ a b c d e f g h i j k l m n o p q r s t u v w x y z ~
+</pre>
+</li>
+<li><p><b class="variable">cookie</b>:
+ Encode cookie‐value segments per RFC 6265.
+ 89 characters remain unescaped:</p>
+<pre class="doctools_example">
+ ! # $ &amp; ' ( ) * + - . / 0 1 2 3 4 5 6 7 8 9 : &lt; = &gt; ? @
+ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z [ ] ^ _ `
+ a b c d e f g h i j k l m n o p q r s t u v w x y z { | } ~
+</pre>
+</li>
+<li><p><b class="variable">oauth1</b>:
+  Encoding scheme for OAuth 1.0 signature base strings (RFC 5849 &sect;3.6).
+  Spaces are encoded as &quot;%20&quot;; only unreserved chars per RFC 3986 remain literal.
+  66 characters remain unescaped:</p>
+<pre class="doctools_example">
+ - . 0 1 2 3 4 5 6 7 8 9
+ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z _
+ a b c d e f g h i j k l m n o p q r s t u v w x y z ~
+</pre>
+<p>This scheme is also used for AWS signature encoding..</p></li>
+</ul>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">OPTIONS</a></h2>
+<dl class="doctools_options">
+<dt><b class="option">-charset</b> value</dt>
+<dd><p>Specify the input string’s character set for encoding or decoding.</p></dd>
+<dt><b class="option">-fallbackcharset</b> value</dt>
+<dd><p>On decode, if the result is invalid UTF‑8 and <b class="option">-charset</b> is not
+given, retry using this charset instead of raising an exception.</p></dd>
+<dt><b class="option">-uppercase</b></dt>
+<dd><p>Output hex digits A–F in uppercase (&quot;%2F&quot; instead of &quot;%2f&quot;).</p></dd>
+<dt><b class="option">--</b></dt>
+<dd><p>Marks the end of options; any following arguments (even starting with &quot;-&quot;) are treated as data.</p></dd>
+</dl>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">EXAMPLES</a></h2>
+<p>Encode form data as an application/x-www-form-urlencoded POST body
+(<a href="https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4">https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4</a>):</p>
+<pre class="doctools_example">
+ set data {
+   first_name  John
+   second_name Doe
+   data        &quot;Hello World&quot;
+ }
+ 
+ set post_data {}
+ foreach {key value} $data {
+     lappend post_data &quot;[ns_urlencode -part query $key]=[ns_urlencode $value]&quot;
+ }
+ set post_data [join $post_data &amp;]
+</pre>
+<p>Encode path segments per W3C URI recommendations
+(examples 1 and 2 of
+<a href="https://www.w3.org/Addressing/URL/4_URI_Recommentations.html">URI Recommendation</a>):</p>
+<pre class="doctools_example">
+ % set e1 {albert bertram marie-claude}
+ % ns_urlencode -part path {*}$e1
+ albert/bertram/marie-claude
+ 
+ % set e2 {albert bertram/marie-claude}
+ % ns_urlencode -part path {*}$e2
+ albert/bertram%2fmarie-claude
+</pre>
+<p>By default escapes use lowercase, but you can request uppercase:</p>
+<pre class="doctools_example">
+ % ns_percentencode -scheme path -uppercase &quot;a/b c&quot;
+ A%2FB%20C
+</pre>
+<p>Use the <i class="term"><a href="../../index.html#cookie">cookie</a></i> scheme to percent‑encode only those bytes unsafe in cookie segments:</p>
+<pre class="doctools_example">
+ % ns_percentencode -scheme cookie &quot;key=value; path=/&quot;
+ key%3Dvalue%3B%20path%3D%2F
+</pre>
+<p>Construct an OAuth&nbsp;1.0 signature base string</p>
+<pre class="doctools_example">
+ % ns_percentencode -scheme oauth1 -uppercase &quot;Ladies + Gentlemen&quot;
+ Ladies%20%2B%20Gentlemen
+</pre>
+<p>If your percent‐encoded input isn’t valid UTF‑8, you can retry with a different charset:</p>
+<pre class="doctools_example">
+ % ns_percentdecode &quot;%C3%A9t%C3%A9&quot;
+ &eacute;t&eacute;
+ 
+ % ns_percentdecode &quot;%E9&quot;
+ input string '%E9' cannot be converted to UTF-8
+ 
+ % ns_percentdecode -charset iso8859-1 &quot;%E9&quot;
+ &eacute;
+</pre>
+<p>With the fallback charset, a valid UTF-8 string and a latin-1 string
+ can be decoded.</p>
+<pre class="doctools_example">
+ % ns_percentdecode -fallbackcharset iso8859-1 &quot;%C3%A9t%C3%A9&quot;
+ &eacute;t&eacute;
+ 
+ % ns_percentdecode -fallbackcharset iso8859-1 &quot;%E9&quot;
+ &eacute;
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_charsets.html">ns_charsets</a>, <a href="ns_http.html">ns_http</a>, <a href="ns_urlcharset.html">ns_urlcharset</a>, <a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#url">URL</a>, <a href="../../index.html#charset">charset</a>, <a href="../../index.html#encoding">encoding</a>, <a href="../../index.html#global_built_in">global built-in</a>, <a href="../../index.html#percent_encoding">percent-encoding</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

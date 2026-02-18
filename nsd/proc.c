@@ -45,7 +45,7 @@ static Tcl_FreeHashEntryProc   FreeFuncptrEntry;
  * Static variables defined in this file.
  */
 
-static const Tcl_HashKeyType funPtrHashKeyType = {
+static CONST86 Tcl_HashKeyType funPtrHashKeyType = {
   1,                  /* version         */
   0,                  /* flags           */
   FuncptrKey,         /* hashKeyProc     */
@@ -65,22 +65,24 @@ static const struct proc {
     const char   *desc;
     Ns_ArgProc   *argProc;
 } procs[] = {
-    { (ns_funcptr_t)NsTclThread,          "ns:tclthread",        NsTclThreadArgProc},
-    { (ns_funcptr_t)Ns_TclCallbackProc,   "ns:tclcallback",      Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsTclConnLocation,    "ns:tclconnlocation",  Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsTclSchedProc,       "ns:tclschedproc",     Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsTclServerRoot,      "ns:tclserverroot",    Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsTclSockProc,        "ns:tclsockcallback",  NsTclSockArgProc},
-    { (ns_funcptr_t)NsConnThread,         "ns:connthread",       NsConnArgProc},
-    { (ns_funcptr_t)NsTclFilterProc,      "ns:tclfilter",        Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsShortcutFilterProc, "ns:shortcutfilter",   NULL},
-    { (ns_funcptr_t)NsTclRequestProc,     "ns:tclrequest",       Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsAdpPageProc,        "ns:adppage",          NsAdpPageArgProc},
-    { (ns_funcptr_t)Ns_FastPathProc,      "ns:fastpath",         NULL},
-    { (ns_funcptr_t)NsTclTraceProc,       "ns:tcltrace",         Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsTclUrl2FileProc,    "ns:tclurl2file",      Ns_TclCallbackArgProc},
-    { (ns_funcptr_t)NsMountUrl2FileProc,  "ns:mounturl2file",    NsMountUrl2FileArgProc},
-    { (ns_funcptr_t)Ns_FastUrl2FileProc,  "ns:fasturl2file",     ServerArgProc},
+    { (ns_funcptr_t)NsTclThread,               "ns:tclthread",        NsTclThreadArgProc},
+    { (ns_funcptr_t)Ns_TclCallbackProc,        "ns:tclcallback",      Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclConnLocation,         "ns:tclconnlocation",  Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclSchedProc,            "ns:tclschedproc",     Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclServerRoot,           "ns:tclserverroot",    Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclSockProc,             "ns:tclsockcallback",  NsTclSockArgProc},
+    { (ns_funcptr_t)NsConnThread,              "ns:connthread",       NsConnArgProc},
+    { (ns_funcptr_t)NsTclFilterProc,           "ns:tclfilter",        Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsShortcutFilterProc,      "ns:shortcutfilter",   NULL},
+    { (ns_funcptr_t)NsTclRequestProc,          "ns:tclrequest",       Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclAuthorizeUserProc,    "ns:tclauthuser",      Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclAuthorizeRequestProc, "ns:tclauthrequest",   Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsAdpPageProc,             "ns:adppage",          NsAdpPageArgProc},
+    { (ns_funcptr_t)Ns_FastPathProc,           "ns:fastpath",         NULL},
+    { (ns_funcptr_t)NsTclTraceProc,            "ns:tcltrace",         Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsTclUrl2FileProc,         "ns:tclurl2file",      Ns_TclCallbackArgProc},
+    { (ns_funcptr_t)NsMountUrl2FileProc,       "ns:mounturl2file",    NsMountUrl2FileArgProc},
+    { (ns_funcptr_t)Ns_FastUrl2FileProc,       "ns:fasturl2file",     ServerArgProc},
     {NULL, NULL, NULL}
 };
 
@@ -298,9 +300,14 @@ NsGetProcFunction(const char *description)
 
         infoPtr = Tcl_GetHashValue(hPtr);
         if (strcmp(infoPtr->desc, description) == 0) {
+
             Ns_Log(Debug, "... function desc: '%s' => %d",
                    infoPtr->desc, strcmp(infoPtr->desc, description));
-            result = (ns_funcptr_t)Tcl_GetHashKey(&infoHashTable, hPtr);
+
+            assert(sizeof(void*) >= sizeof(ns_funcptr_t));
+            memcpy(&result, &hPtr->key.oneWordValue, sizeof(ns_funcptr_t));
+
+            break;
         }
         hPtr = Tcl_NextHashEntry(&search);
     }

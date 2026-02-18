@@ -17,7 +17,7 @@
 
 AC_PREREQ([2.68])
 
-AC_INIT([NaviServer],[5.0.0a],[naviserver-devel@lists.sourceforge.net])
+AC_INIT([NaviServer],[5.0.4],[naviserver-devel@lists.sourceforge.net])
 AC_CONFIG_MACRO_DIR([m4])
 
 #AM_INIT_AUTOMAKE([1.9 -Wall -Werror foreign])
@@ -32,8 +32,8 @@ AC_CONFIG_HEADERS([include/nsconfig.h])
 
 AC_SUBST([NS_MAJOR_VERSION],  [5])
 AC_SUBST([NS_MINOR_VERSION],  [0])
-AC_SUBST([NS_RELEASE_SERIAL], [0])
-AC_SUBST([NS_RELEASE_LEVEL],  [NS_ALPHA_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
+AC_SUBST([NS_RELEASE_SERIAL], [4])
+AC_SUBST([NS_RELEASE_LEVEL],  [NS_FINAL_RELEASE]) # NS_ ALPHA/BETA/FINAL _RELEASE
 
 AC_SUBST([NS_VERSION],     [\"${NS_MAJOR_VERSION}.${NS_MINOR_VERSION}\"])
 AC_SUBST([NS_PATCH_LEVEL], [\"$PACKAGE_VERSION\"])
@@ -58,18 +58,24 @@ case "$TCL_LIBS" in
      ;;
    *)
      ;;
-esac     
+esac
 
 TEA_SETUP_COMPILER
 TEA_ENABLE_THREADS
-if test "${TCL_THREADS}" != "1"; then
-    AC_MSG_ERROR([must build tcl with --enable-threads])
-fi
+case "$TCL_DEFS" in
+  *THREAD*)
+     echo "Tcl is built with thread support."
+     ;;
+   *)
+     AC_MSG_ERROR([must build tcl with --enable-threads])
+     ;;
+esac
 TEA_PUBLIC_TCL_HEADERS
 TEA_ENABLE_SHARED
 TEA_CONFIG_CFLAGS
 TEA_ENABLE_SYMBOLS
 TEA_TIME_HANDLER
+TEA_PROG_TCLSH
 
 #
 # Extract Tcl library path and library name.
@@ -139,6 +145,7 @@ esac
 
 SRCDIR=`cd $srcdir; pwd`
 NAVISERVER=$prefix
+AC_SUBST([EXEEXT])
 AC_SUBST([SRCDIR])
 AC_SUBST([LDLIB])
 AC_SUBST([LDSO])
@@ -195,6 +202,7 @@ AX_HAVE_CRYPT_R
 AX_HAVE_BSD_SENDFILE
 AX_HAVE_LINUX_SENDFILE
 AX_HAVE_MEMMEM
+AX_HAVE_MKDTEMP
 
 AX_PTHREAD(
    [ AC_DEFINE([HAVE_PTHREAD], 1, [Define if you have POSIX threads libraries and header files]) ],

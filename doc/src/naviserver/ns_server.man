@@ -14,27 +14,91 @@ connection pools and queues.  The allowed options (which may be abbreviated) are
 [list_begin definitions]
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
+	[cmd authprocs]]
+
+Returns currently defined authorization chain.
+Each element of the list is a tcl dict containing
+[const type] ("user" or "request"),
+[const authority] (the authority label supplied at registration), and
+[const proc] a string describing the C function or Tcl callback.
+
+[call [cmd ns_server] \
+	[opt [option "-server [arg server]"]] \
 	[cmd filters]]
 
 Returns a list of the currently defined filters.
 
+[call [cmd ns_server] \
+	[opt [option "-server [arg server]"]] \
+	[cmd hosts]]
+
+Returns a list of the registered hostnames for this server. This
+result list can be used as a white-list of configured and therefore
+secure contents accepted in the host header field of a request.
+
+[call [cmd  ns_server] \
+	[opt [option "-server [arg server]"]] \
+	[cmd mapped] \
+	[opt [option "-all"]] \
+	[opt [option "-exact"]] \
+	[opt [option "-noinherit"]] \
+	[arg "mapspec"] \
+	]
+
+Per default, returns the connection pool associated with the mapping
+specification (HTTP method and path). An empty value indicates the
+default connection pool.  When the [option -all] is specified, a dict
+is returned containing the keys [const pool] and [const handler]
+indicating the connection pool and the request handler handling this
+request.
+
+[para] When the option [option -exact] is used, the inheritance is
+deactivated, and only the values are returned directly assigned to the
+URL. When the option [option -noinherit] is specified, only values set
+with the [option -noinherit] flag are returned, not the files below
+in the subtree.
+
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
 	[cmd pagedir]]
 
 Returns the path of the virtual server's page directory root.
 
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
 	[cmd pools]]
 
 Returns a list of the pools defined for this server.
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
+	[cmd realm] \
+        [opt [arg newrealm]] \
+        ]
+
+Returns or sets the HTTP authentication “realm” for a server. The
+realm is the string presented in the browser’s login dialog (and in
+the WWW-Authenticate header) when Basic or Digest authentication is
+required—it identifies the protected area. When [arg newrealm] is
+specified, it updates the server’s realm to that value and returns the
+previous realm.
+
+[example_begin]
+ # Query the realm on the default server
+ % ns_server realm
+ Restricted Area
+
+ # Change the realm to "Administrators"
+ % ns_server realm "Administrators"
+ Restricted Area   ;# old value returned
+[example_end]
+
+
+[call [cmd ns_server] \
+	[opt [option "-server [arg server]"]] \
 	[cmd requestprocs]]
 
 Returns a list of the currently defined requestprocs  (the registered
@@ -42,33 +106,36 @@ procs for certain request patterns).
 
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[cmd serverdir]]
+	[opt [option "-server [arg server]"]] \
+	[cmd serverdir] \
+        [opt [option "-effective"]]]
 
-Returns the path of the virtual server's base directory.
+Returns the path of the virtual server's base directory. When the
+option [option "-effective"] is used, the path based on the results of
+the [term serverrootproc] callback is returned.
 
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
 	[cmd tcllib]]
 
 Returns the path of the virtual server's private Tcl library.
 
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
 	[cmd traces]]
 
 Returns a list of the currently defined traces.
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
 	[cmd url2file]]
 
 Returns a list of the mappings from URLs to files.
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
+	[opt [option "-server [arg server]"]] \
 	[cmd vhostenabled]]
 
 Returns a Boolean value to indicate whether virtual hosting is enabled
@@ -78,20 +145,20 @@ of [cmd "ns_conn location"].
 
 
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd active] \
 	[opt [option "-checkforproxy"]] \
 	]
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd all] \
 	[opt [option "-checkforproxy"]] \
 	]
 [call [cmd ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd queued] \
 	]
 
@@ -103,13 +170,13 @@ sub-command [arg all] returns the union of the running and queued
 requests.
 
 [para] When option [option -checkforproxy] is given, it tries to
-return the peer address from "X-Forwarded-For" header field. If this
+return the peer address from "x-forwarded-for" header field. If this
 is not possible (not given, or empty, or having the value "unknown") it falls
 back to the physical peer address.
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd connections]]
 
 Returns the number of connection requests processed by this pool since
@@ -117,8 +184,8 @@ startup.
 
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd map] \
 	[opt [option "-noinherit"]] \
 	[opt [arg "mapspec"]] \
@@ -135,30 +202,8 @@ and pool.
 
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[cmd mapped] \
-	[opt [option "-all"]] \
-	[opt [option "-exact"]] \
-	[opt [option "-noinherit"]] \
-	[arg "mapspec"] \
-	]
-
-Per default, return the connection pool associated with the mapping
-specification (HTTP method and path). An empty value indicates the
-default connection pool.  When the [option -all] is specified, a dict
-is returned containing the keys [const pool] and [const handler]
-indicating the connection pool and the request handler handling this
-request.
-
-[para] When the option [option -exact] is used, the inheritance is
-deactivated, and only the values are returned directly assigned to the
-URL. When the option [option -noinherit] is specified, only values set
-with the [option -noinherit] flag are returned.
-
-
-[call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd maxthreads] \
 	[opt [arg value]]]
 
@@ -168,8 +213,8 @@ the maximum number of connections.
 
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd minthreads] \
 	[opt [arg value]]]
 
@@ -178,8 +223,8 @@ and pool. The value must be between 1 and [arg maxthreads].
 
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd connectionratelimit] \
 	[opt [arg value]]]
 
@@ -187,8 +232,8 @@ Query or set the maximum transmission rate per connection when data is sent via
 writer threads. The value is provided as KB/s. 0 means no rate limit.
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd poolratelimit] \
 	[opt [arg value]]]
 
@@ -200,8 +245,8 @@ are managed.
 
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd stats]]
 
 Returns a list of attribute value pairs containing statistics for the
@@ -210,32 +255,32 @@ dropped requests (queue overruns), cumulative times,
 and the number of started threads.
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd threads]]
 
 Returns a list of attribute value pairs containing information about the
 number of connection threads for the server and pool.
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd unmap] \
 	[opt [option "-noinherit"]] \
 	[arg "mapspec"] \
 	]
 
-Undo the effect of a [cmd "ns_server map"] operation.  As a
+Undoes the effect of a [cmd "ns_server map"] operation.  As a
 consequence formerly mapped requests will be served by the default
 connection pool.
 
-[para] Limitation: when the mapspec contains a context filter (see
+[para] Limitation: when the mapspec contains a context constraints (see
 below) this is ignored, all entries with the specified HTTP method and
 path are unmapped.
 
 [call [cmd  ns_server] \
-	[opt [option "-server [arg s]"]] \
-	[opt [option "-pool [arg p]"]] \
+	[opt [option "-server [arg server]"]] \
+	[opt [option "-pool [arg value]"]] \
 	[cmd waiting]]
 
 Returns the number of connections waiting (i.e. queued) to be processed.
@@ -245,11 +290,11 @@ Returns the number of connections waiting (i.e. queued) to be processed.
 [section OPTIONS]
 [list_begin options]
 
-[opt_def -server [arg s]]
+[opt_def -server [arg server]]
 Specifies the (virtual) server to be queried. If this option is not
 specified, the current server is used as a source.
 
-[opt_def -pool [arg p]]
+[opt_def -pool [arg value]]
 Specifies the pool to be queried. If this option is not
 specified, the default pool of the server is used as a source.
 
@@ -257,21 +302,41 @@ specified, the default pool of the server is used as a source.
 mappings. When used, the specified path will be used literally, i.e.,
 only exactly this path, but no sub-paths are mapped.
 
-[opt_def mapspec ""]
+[opt_def [option mapspec] ""]
 A list of two or three arguments, containing an HTTP method, a path
-and optionally a context filter.
+and optionally a context constraints. The following example contains an HTTP
+method and a URL path.
 
 Example:
 [example_begin]
  GET /*.tcl
 [example_end]
 
+In this example, [const GET] is used as a key in the URL tree, the
+path is [const /] and the match filter is [const *.tcl] (see also
+[cmd ns_urlspace]). If no wildcard is provided, the default match filter is
+[const *] (i.e., match all). The option [opt -noinherit] is mostly
+useful for these situations, since the option can avoid matching the elements
+in the subtree.
+
+[para] Note that the following three [term mapspec] definitions are
+equivalent, the path is always [const /foo/bar] and the match filter is [const *].
+
+[example_begin]
+ GET /foo/bar
+ GET /foo/bar/
+ GET /foo/bar/*
+[example_end]
+
+[para]
 When the [term mapspec] is used as three element list, the last
-argument is the context filter, containing a request header-field and
+argument is the context constraints, containing a request header-field and
 a value for matching.  The pseudo request header-field "X-NS-ip" is
 used for mapping requests from a certain IP address of from an IP
 range (in CIDR notation). In reverse proxy mode, the client IP address
 is taken form the value as provided by the reverse proxy server.
+(For details about context constraints, see
+[uri ./ns_urlspace.html#section5 "Context Constraints"]).
 
 [para]
 Examples:
@@ -307,16 +372,22 @@ HTTP method and path will be served from this connection pool.
  }
 [example_end]
 
-The connection thread pools can be defined as usual in the config
-file:
+The connection thread pools are defined in the configuration file. In
+these sections, also the mapping of requests to the pools can be
+defined with the configuration values
+[term map-inherit] and [term map-noinherit].
+The term [term map] is the short form of [term map-inherit]
+The specification using [term map-noinherit] corresponds
+to the [option "-noinherit"] as described above.
+
 [example_begin]
- ns_section "ns/server/${server}/pools" {
+ ns_section "ns/server/$server/pools" {
     ns_param fast "Fast lane pool"
     ns_param slow "Slow lane pool"
     ns_param bots "Bot pool"
  }
  
- ns_section "ns/server/${server}/pool/fast" {
+ ns_section "ns/server/$server/pool/fast" {
     ns_param minthreads 4
     ns_param maxthreads 4
     ns_param rejectoverrun true
@@ -324,24 +395,25 @@ file:
     ns_param map "GET /*.png"
     ns_param map "GET /*.jpg"
     ns_param map "GET /*.pdf"
+    ns_param map-noinherit "GET /dotlrn/mt"
  }
  
- ns_section "ns/server/${server}/pool/slow" {
+ ns_section "ns/server/$server/pool/slow" {
     ns_param minthreads 5
     ns_param maxthreads 15
     ns_param maxconnections 200
     ns_param rejectoverrun true
  }
-
-ns_section "ns/server/${server}/pool/bots" {
-    ns_param   map "GET  /* {user-agent *bot*}"
-    ns_param   map "GET  /* {user-agent *rawl*}"
-    ns_param   map "GET  /* {user-agent *pider*}"
-    ns_param   map "GET  /* {user-agent *baidu*}"
-    ns_param   minthreads 2
-    ns_param   maxthreads 2
-    ns_param   rejectoverrun true
-    ns_param   poolratelimit 1000    ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
+ 
+ ns_section "ns/server/$server/pool/bots" {
+    ns_param map "GET /* {user-agent *bot*}"
+    ns_param map "GET /* {user-agent *rawl*}"
+    ns_param map "GET /* {user-agent *pider*}"
+    ns_param map "GET /* {user-agent *baidu*}"
+    ns_param minthreads 2
+    ns_param maxthreads 2
+    ns_param rejectoverrun true
+    ns_param poolratelimit 1000    ;# 0; limit rate for pool to this amount (KB/s); 0 means unlimited
 }
 [example_end]
 
@@ -354,10 +426,12 @@ You might query a certain mapping at runtime:
 
 Mapping with context constraints can also be
 provided in the configuration file. We extend the example above by
-adding a bot pool.
+adding a bot pool. An incoming request is mapped to the bot pool, when
+the [term user-agent] of the incoming request matches one of the
+specified names based on a wild-card match.
 
 [example_begin]
- ns_section "ns/server/${server}/pools" {
+ ns_section "ns/server/$server/pools" {
     ns_param fast "Fast lane pool"
     ns_param slow "Slow lane pool"
     ns_param bots "Bot pool"
@@ -365,11 +439,11 @@ adding a bot pool.
  #
  # ...
  #
- ns_section "ns/server/${server}/pool/bots" {
-    ns_param map "GET  /* {user-agent *bot*}"
-    ns_param map "GET  /* {user-agent *rawl*}"
-    ns_param map "GET  /* {user-agent *pider*}"
-    ns_param map "GET  /* {user-agent *baidu*}"
+ ns_section "ns/server/$server/pool/bots" {
+    ns_param map "GET /* {user-agent *bot*}"
+    ns_param map "GET /* {user-agent *rawl*}"
+    ns_param map "GET /* {user-agent *pider*}"
+    ns_param map "GET /* {user-agent *baidu*}"
     ns_param minthreads 2
     ns_param maxthreads 2
     ns_param rejectoverrun true
@@ -377,9 +451,11 @@ adding a bot pool.
 }
 [example_end]
 
-[see_also ns_conn ns_register]
+[see_also ns_conn ns_register ns_urlspace]
 [keywords \
+        "context constraints" \
 	"server built-in" configuration "connection thread pools" \
-	pools pagedir tuning reverseproxy "virtual hosting"]
+	mapspec pools pagedir serverdir serverrootproc \
+        tuning "reverse proxy" "virtual host"]
 
 [manpage_end]

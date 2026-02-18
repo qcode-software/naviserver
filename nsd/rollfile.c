@@ -174,11 +174,12 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, TCL_SIZE_T maxbackup)
 
     } else {
         time_t           now0, now1 = time(NULL);
-        Ns_DString       ds;
+        Tcl_DString      ds;
         Tcl_Obj         *newPath;
-        struct tm        tm0, tm1, *ptm0, *ptm1;
+        struct tm        tm0, tm1;
+        const struct tm *ptm0, *ptm1;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
 
         /*
          * Rolling happens often at midnight, using often a day
@@ -211,10 +212,10 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, TCL_SIZE_T maxbackup)
             (void) strftime(timeBuf, sizeof(timeBuf)-1u, rollfmt,
                             (ptm0->tm_mday < ptm1->tm_mday) ? ptm0 : ptm1);
 
-            Ns_DStringVarAppend(&ds, file, ".", timeBuf, (char *)0L);
+            Ns_DStringVarAppend(&ds, file, ".", timeBuf, NS_SENTINEL);
         } else {
             Ns_Log(Warning, "RollFileFmt: localtime returned NULL");
-            Ns_DStringVarAppend(&ds, file, (char *)0L);
+            Ns_DStringVarAppend(&ds, file, NS_SENTINEL);
         }
 
         newPath = Tcl_NewStringObj(ds.string, ds.length);
@@ -236,7 +237,7 @@ Ns_RollFileFmt(Tcl_Obj *fileObj, const char *rollfmt, TCL_SIZE_T maxbackup)
         }
 
         Tcl_DecrRefCount(newPath);
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
 
         if (status == NS_OK) {
             status = Ns_PurgeFiles(file, maxbackup);
@@ -330,7 +331,7 @@ Ns_RollFileCondFmt(Ns_LogCallbackProc openProc, Ns_LogCallbackProc closeProc,
         }
         Ns_Log(Notice, "rollfile: re-opening logfile '%s'", filename);
     } else {
-        Ns_Log(Warning, "rollfile: opening logfile failed: '%s'", filename);
+        Ns_Log(Warning, "rollfile: opening logfile '%s' failed: '%s'", filename, strerror(errno));
     }
 
     Tcl_DStringFree(&errorMsg);
@@ -343,7 +344,7 @@ Ns_RollFileCondFmt(Ns_LogCallbackProc openProc, Ns_LogCallbackProc closeProc,
  *
  * Ns_PurgeFiles, Ns_RollFileByDate --
  *
- *      Purge files by date, keeping max files.  The file parameter is
+ *      Purge files by date, keeping max files.  The file fileName is
  *      used as a basename to select files to purge.
  *
  *      Ns_RollFileByDate is deprecated and is a poorly named wrapper
@@ -357,12 +358,13 @@ Ns_RollFileCondFmt(Ns_LogCallbackProc openProc, Ns_LogCallbackProc closeProc,
  *
  *----------------------------------------------------------------------
  */
-
+#ifdef NS_WITH_DEPRECATED
 Ns_ReturnCode
 Ns_RollFileByDate(const char *fileName, TCL_SIZE_T max)
 {
     return Ns_PurgeFiles(fileName, max);
 }
+#endif
 
 Ns_ReturnCode
 Ns_PurgeFiles(const char *fileName, TCL_SIZE_T max)

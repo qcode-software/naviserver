@@ -78,15 +78,15 @@ Ns_ModuleInit(const char *server, const char *module)
 {
     Tcl_DString        ds;
     int                num, result;
-    const char        *path, *vhostcertificates;
+    const char        *section, *vhostcertificates;
     NsSSLConfig       *drvCfgPtr;
     Ns_DriverInitData  init;
 
     memset(&init, 0, sizeof(init));
     Tcl_DStringInit(&ds);
 
-    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
-    drvCfgPtr = NsSSLConfigNew(path);
+    section = Ns_ConfigSectionPath(NULL, server, module, NS_SENTINEL);
+    drvCfgPtr = NsSSLConfigNew(section);
 
     init.version = NS_DRIVER_VERSION_5;
     init.name = "nsssl";
@@ -102,7 +102,7 @@ Ns_ModuleInit(const char *server, const char *module)
     init.clientInitProc = ClientInit;
     init.opts = NS_DRIVER_SSL|NS_DRIVER_ASYNC;
     init.arg = drvCfgPtr;
-    init.path = path;
+    init.path = section;
     init.protocol = "https";
     init.defaultPort = 443;
 #ifdef OPENSSL_VERSION_TEXT
@@ -115,7 +115,7 @@ Ns_ModuleInit(const char *server, const char *module)
      * In case "vhostcertificates" was specified in the configuration file,
      * and it is valid, activate NS_DRIVER_SNI.
      */
-    vhostcertificates = Ns_ConfigGetValue(path, "vhostcertificates");
+    vhostcertificates = Ns_ConfigGetValue(section, "vhostcertificates");
     if (vhostcertificates != NULL && *vhostcertificates != '\0') {
         struct stat st;
 
@@ -156,9 +156,9 @@ Ns_ModuleInit(const char *server, const char *module)
 #endif
     Ns_Log(Notice, "nsssl: OpenSSL %s initialized", SSLeay_version(SSLEAY_VERSION));
 
-    result = Ns_TLS_CtxServerInit(path, NULL, NS_DRIVER_SNI, drvCfgPtr, &drvCfgPtr->ctx);
+    result = Ns_TLS_CtxServerInit(section, NULL, NS_DRIVER_SNI, drvCfgPtr, &drvCfgPtr->ctx);
     if (result != TCL_OK) {
-        Ns_Log(Error, "nsssl: could not initialize OpenSSL context (section %s): %s", path, strerror(errno));
+        Ns_Log(Error, "nsssl: could not initialize OpenSSL context (section %s): %s", section, strerror(errno));
         return NS_ERROR;
     }
 
@@ -205,14 +205,24 @@ static NS_SOCKET
 Listen(Ns_Driver *driver, const char *address, unsigned short port, int backlog, bool reuseport)
 {
     NS_SOCKET sock;
+    bool      unixDomainSocket;
 
-    sock = Ns_SockListenEx(address, port, backlog, reuseport);
-    if (sock != NS_INVALID_SOCKET) {
-        const NsSSLConfig *drvCfgPtr = driver->arg;
+    unixDomainSocket = (*address == '/');
 
-        (void) Ns_SockSetNonBlocking(sock);
-        if (drvCfgPtr->deferaccept) {
-            Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
+    if (unixDomainSocket) {
+        Ns_Log(Error, "nsssl driver does not support unix domain socket: unix:%s", address);
+        sock = NS_INVALID_SOCKET;
+    } else {
+        sock = Ns_SockListenEx(address, port, backlog, reuseport);
+        if (sock != NS_INVALID_SOCKET) {
+            const NsSSLConfig *drvCfgPtr = driver->arg;
+
+            (void) Ns_SockSetNonBlocking(sock);
+            if (drvCfgPtr->deferaccept) {
+                Ns_SockSetDeferAccept(sock, (long)driver->recvwait.sec);
+            }
+
+            Ns_Log(Notice, "listening on [%s]:%d (sock %d)", address, port, (int)sock);
         }
     }
     return sock;
@@ -374,8 +384,7 @@ Recv(Ns_Sock *sock, struct iovec *bufs, int nbufs,
  */
 
 static ssize_t
-Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
-     const Ns_Time *UNUSED(timeoutPtr), unsigned int UNUSED(flags))
+Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs, unsigned int UNUSED(flags))
 {
     SSLContext *sslCtx = sock->arg;
     ssize_t     sent = 0;
@@ -392,12 +401,27 @@ Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
                 int rc;
 
                 ERR_clear_error();
+                (void)Ns_SockFlagClear(sock, NS_CONN_SSL_WANT_WRITE);
+
+                if (Ns_SockGetSendRejected(sock)) {
+                    ssize_t lastSend = Ns_SockGetSendRejected(sock);
+                    Ns_Log(Notice, "nsssl send: sock (%d,%ld) last send %ld rejected,"
+                           " try again base %p len %ld errorCode last %.8lx",
+                           sock->sock, Ns_SockGetSendCount(sock), lastSend,
+                           bufs->iov_base, bufs->iov_len, Ns_SockGetSendErrno(sock));
+                    if ((size_t)lastSend != bufs->iov_len) {
+                        Ns_Log(Notice, "nsssl send: sock (%d,%ld) last send %ld now %ld: expect error!", sock->sock, Ns_SockGetSendCount(sock), lastSend, bufs->iov_len);
+                    }
+                }
+
                 rc = SSL_write(sslCtx->ssl, bufs->iov_base, (int)bufs->iov_len);
                 if (rc <= 0) {
-                    int sslerr = SSL_get_error(sslCtx->ssl, rc);
+                    int           sslerr    = SSL_get_error(sslCtx->ssl, rc);
+                    unsigned long errorCode = ERR_get_error();
 
                     /*fprintf(stderr,
-                      "### SSL_write %p len %d rc %d SSL_get_error => %d: %s\n",
+                      "### SSL_write sock(%s): %p len %d rc %d SSL_get_error => %d: %s\n",
+                      sock->sock,
                       (void*)bufs->iov_base, (int)bufs->iov_len,
                       rc, sslerr, ERR_error_string(ERR_get_error(), NULL));*/
 
@@ -408,8 +432,18 @@ Send(Ns_Sock *sock, const struct iovec *bufs, int nbufs,
                          * means we are against EWOULDBLOCK, so exit early,
                          * reporting so much bytes sent as we did so far.
                          */
-
+                        (void)Ns_SockFlagAdd(sock, NS_CONN_SSL_WANT_WRITE);
                         break;
+                    }
+
+                    Ns_Log(Debug, "... errorCode %.8lx ERR_GET_LIB %d ERR_LIB_SYS %d",
+                           errorCode, ERR_GET_LIB(errorCode), ERR_LIB_SYS);
+
+                    if (ERR_GET_LIB(errorCode) == ERR_LIB_SYS) {
+                         Ns_Log(Debug, "...... reason %d", ERR_GET_REASON(errorCode));
+                         Ns_SockSetSendErrno(sock, (unsigned long)ERR_GET_REASON(errorCode));
+                    } else {
+                        Ns_SockSetSendErrno(sock, errorCode);
                     }
 
                     SSL_set_shutdown(sslCtx->ssl, SSL_RECEIVED_SHUTDOWN);
@@ -477,7 +511,8 @@ Keep(Ns_Sock *sock)
  *
  * ConnInfo --
  *
- *      Return Tcl_Obj hinting connection details
+ *      Return Tcl_Obj hinting connection details in case the socket is not
+ *      NULL.
  *
  * Results:
  *      Tcl_Obj *
@@ -491,23 +526,23 @@ Keep(Ns_Sock *sock)
 static Tcl_Obj*
 ConnInfo(Ns_Sock *sock)
 {
-    SSLContext *sslCtx = sock->arg;
     Tcl_Obj    *resultObj;
 
     resultObj = Tcl_NewDictObj();
 
-    /*Tcl_DictObjPut(NULL, resultObj,
-                   Tcl_NewStringObj("protocol", 8),
-                   Tcl_NewStringObj(sock->driver->protocol, TCL_INDEX_NONE));*/
-    Tcl_DictObjPut(NULL, resultObj,
-                   Tcl_NewStringObj("sslversion", 10),
-                   Tcl_NewStringObj(SSL_get_version(sslCtx->ssl), TCL_INDEX_NONE));
-    Tcl_DictObjPut(NULL, resultObj,
-                   Tcl_NewStringObj("cipher", 6),
-                   Tcl_NewStringObj(SSL_get_cipher(sslCtx->ssl), TCL_INDEX_NONE));
-    Tcl_DictObjPut(NULL, resultObj,
-                   Tcl_NewStringObj("servername", 10),
-                   Tcl_NewStringObj(SSL_get_servername(sslCtx->ssl, TLSEXT_NAMETYPE_host_name), TCL_INDEX_NONE));
+    if (sock != NULL) {
+        SSLContext *sslCtx = sock->arg;
+
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("sslversion", 10),
+                       Tcl_NewStringObj(SSL_get_version(sslCtx->ssl), TCL_INDEX_NONE));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("cipher", 6),
+                       Tcl_NewStringObj(SSL_get_cipher(sslCtx->ssl), TCL_INDEX_NONE));
+        Tcl_DictObjPut(NULL, resultObj,
+                       Tcl_NewStringObj("servername", 10),
+                       Tcl_NewStringObj(SSL_get_servername(sslCtx->ssl, TLSEXT_NAMETYPE_host_name), TCL_INDEX_NONE));
+    }
 
     return resultObj;
 }
@@ -628,6 +663,8 @@ ClientInit(Tcl_Interp *interp, Ns_Sock *sockPtr, void *arg)
     if (Ns_TLS_SSLConnect(interp, sockPtr->sock,
                           params->ctx,
                           params->sniHostname,
+                          params->caFile,
+                          params->caPath,
                           NULL,
                           &ssl) == NS_OK) {
         SSLContext *sslCtx = ns_calloc(1, sizeof(SSLContext));

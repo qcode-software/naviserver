@@ -10,37 +10,123 @@ if {[ns_config test listenport]} {
     testConstraint serverListen true
 }
 testConstraint http09 true
+testConstraint with_deprecated [dict get [ns_info buildinfo] with_deprecated]
 
+#######################################################################################
+# Syntax tests
+#######################################################################################
 
-
-test tclresp-1.1.1 {basic syntax} -body {
+test ns_headers-1.0 {syntax: ns_headers} -body {
     ns_headers
-} -returnCodes error -result {wrong # args: should be "ns_headers ?-binary? ?--? status[100,599] ?type? ?length[0,LLONG_MAX]?"}
+} -returnCodes error -result {wrong # args: should be "ns_headers ?-binary? ?--? /status[100,599]/ ?/mimetype/? ?/length[0,MAX]/?"}
 
-test tclresp-1.1.2 {basic syntax} -body {
+test ns_return-1.0 {syntax: ns_return} -body {
+    ns_return
+} -returnCodes error -result {wrong # args: should be "ns_return ?-binary? /status[100,599]/ /mimetype/ /data/"}
+
+test ns_respond-1.1 {syntax: ns_respond} -body {
+    ns_respond -x
+} -returnCodes error -result {wrong # args: should be "ns_respond ?-status /integer[100,599]/? ?-type /value/? ?-length /integer[0,MAX]/? ?-headers /setId/? ?-string /value/? ?-file /value/? ?-fileid /value/? ?-data /data/? ?-binary /data/?"}
+# contains deprecated argument; {wrong # args: should be "ns_respond ?-status /integer[100,599]/? ?-type /value/? ?-length /integer[0,MAX]/? ?-headers /setId/? ?-string /value/? ?-file /value/? ?-fileid /value/? ?-data /data/?"}
+
+test ns_returnfile-1.0 {syntax: ns_returnfile} -body {
+    ns_returnfile
+} -returnCodes error -result {wrong # args: should be "ns_returnfile /status[100,599]/ /mimetype/ /filename/"}
+
+test ns_returnfp-1.0 {syntax: ns_returnfp} -body {
+    ns_returnfp
+} -returnCodes error -result {wrong # args: should be "ns_returnfp /status[100,599]/ /mimetype/ /channel/ /length[0,MAX]/"}
+
+
+test ns_returnbadrequest-1.0 {syntax: ns_returnbadrequest} -body {
+    ns_returnbadrequest
+} -returnCodes error -result {wrong # args: should be "ns_returnbadrequest /reason/"}
+
+test ns_returnnotfound-1.0 {syntax: ns_returnnotfound} -body {
+    ns_returnnotfound -x
+} -returnCodes error -result {wrong # args: should be "ns_returnnotfound"}
+
+
+test ns_returnok-1.0 {syntax: ns_returnok} -body {
+    ns_returnok x
+} -returnCodes error -result {wrong # args: should be "ns_returnok"}
+
+test ns_returnunauthorized-1.0 {syntax: ns_returnunauthorized} -body {
+    ns_returnunauthorized x
+} -returnCodes error -result {wrong # args: should be "ns_returnunauthorized"}
+
+
+test ns_returnforbidden-1.0 {syntax: ns_returnforbidden} -body {
+    ns_returnforbidden x
+} -returnCodes error -result {wrong # args: should be "ns_returnforbidden"}
+
+test ns_returnerror-1.0 {syntax: ns_returnerror} -body {
+    ns_returnerror
+} -returnCodes error -result {wrong # args: should be "ns_returnerror /status[100,599]/ /message/"}
+
+test ns_returnmoved-1.0 {syntax: ns_returnmoved} -body {
+    ns_returnmoved
+} -returnCodes error -result {wrong # args: should be "ns_returnmoved /location/"}
+
+test ns_returnnotice-1.0 {syntax: ns_returnnotice} -body {
+    ns_returnnotice
+} -returnCodes error -result {wrong # args: should be "ns_returnnotice /status[100,599]/ /title/ /message/"}
+
+test ns_returnunavailable-1.0 {syntax: ns_returnunavailable} -body {
+    ns_returnunavailable x
+} -returnCodes error -result {wrong # args: should be "ns_returnunavailable"}
+
+test ns_returnredirect-1.0 {syntax: ns_returnredirect} -body {
+    ns_returnredirect
+} -returnCodes error -result {wrong # args: should be "ns_returnredirect /location/"}
+
+test ns_internalredirect-1.0 {syntax: ns_internalredirect} -body {
+    ns_internalredirect
+} -returnCodes error -result {wrong # args: should be "ns_internalredirect /location/"}
+
+
+#######################################################################################
+# Functional tests
+#######################################################################################
+
+test ns_returnbadrequest-1.1 {ns_returnbadrequest} -body {
+    ns_returnbadrequest x
+} -returnCodes error -result {no connection}
+
+test ns_returnerror-1.1 {ns_returnerror with wrong argument and no connection} -body {
+    ns_returnerror 200 x
+} -returnCodes error -result {no connection}
+
+test ns_returnforbidden-1.1 {ns_returnforbidden correct syntax, no connection} -body {
+    ns_returnforbidden
+} -returnCodes error -result {no connection}
+
+test ns_returnunauthorized-1.1 {ns_returnunauthorized correct syntax, no connection} -body {
+    ns_returnunauthorized
+} -returnCodes error -result {no connection}
+
+test ns_returnnotfound-1.1 {ns_returnnotfound correct syntax, no connection} -body {
+    ns_returnnotfound
+} -returnCodes error -result {no connection}
+
+
+
+test ns_headers-1.1 {basic operation} -body {
     ns_headers 200
 } -returnCodes error -result {no connection}
 
-test tclresp-1.2.1 {basic syntax} -body {
-    ns_return
-} -returnCodes error -result {wrong # args: should be "ns_return ?-binary? status[100,599] type data"}
-
-test tclresp-1.2.2 {basic syntax} -body {
+test ns_return-1.1 {basic syntax} -body {
     ns_return 200 text/plain x
 } -returnCodes error -result {no connection}
 
-test tclresp-1.3.1 {basic syntax} -body {
-    ns_respond -x
-} -returnCodes error -result {wrong # args: should be "ns_respond ?-status status[100,599]? ?-type type? ?-length length[0,LLONG_MAX]? ?-headers headers? ?-string string? ?-file file? ?-fileid fileid? ?-binary binary?"}
-
-test tclresp-1.3.2 {basic syntax} -body {
+test ns_respond-1.1 {basic syntax} -body {
     ns_respond -string x
 } -returnCodes error -result {no connection}
 
-
-test tclresp-1.3.3 {basic syntax} -body {
+test ns_respond-1.2 {basic syntax} -body {
     ns_respond -string x -file y
 } -returnCodes error -result {no connection}
+
 
 test tclresp-1.3.3-c {basic syntax connected} -constraints serverListen -setup {
     ns_register_proc GET /tclresp {
@@ -51,7 +137,7 @@ test tclresp-1.3.3-c {basic syntax connected} -constraints serverListen -setup {
     nstest::http -getbody 1 GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
-} -result {200 {must specify only one of -string, -file, -binary or -fileid}}
+} -result {200 {must specify only one of -string, -file, -data or -fileid}}
 
 
 test tclresp-1.3.4 {basic syntax} -body {
@@ -72,7 +158,7 @@ test tclresp-1.3.4-c {basic syntax connected} -constraints serverListen -setup {
 
 test tclresp-1.3.5 {basic syntax} -body {
     ns_respond -headers h -string x
-} -returnCodes error -result {no connection}
+} -returnCodes error -result {no such set: 'h'}
 
 test tclresp-1.3.5-c {basic syntax connected} -constraints serverListen -setup {
     ns_register_proc GET /tclresp {
@@ -83,89 +169,50 @@ test tclresp-1.3.5-c {basic syntax connected} -constraints serverListen -setup {
     nstest::http -getbody 1 GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
-} -result {200 {invalid ns_set id: "h"}}
+} -result {200 {no such set: 'h'}}
 
 
 
-test tclresp-1.4.1 {basic syntax} -body {
-    ns_returnfile
-} -returnCodes error -result {wrong # args: should be "ns_returnfile status[100,599] type filename"}
 
-test tclresp-1.4.2 {basic syntax} -body {
-    ns_returnfile 200 text/plain x
-} -returnCodes error -result {no connection}
-
-test tclresp-1.5.1 {basic syntax} -body {
-    ns_returnfp
-} -returnCodes error -result {wrong # args: should be "ns_returnfp status[100,599] type channel length[0,LLONG_MAX]"}
-
-test tclresp-1.5.2 {basic syntax} -body {
-    ns_returnfp 200 text/plain x 0
-} -returnCodes error -result {no connection}
-
-test tclresp-1.6.1 {basic syntax} -body {
-    ns_returnbadrequest
-} -returnCodes error -result {wrong # args: should be "ns_returnbadrequest reason"}
-
-test tclresp-1.6.2 {basic syntax} -body {
-    ns_returnbadrequest x
-} -returnCodes error -result {no connection}
-
-test tclresp-1.7.1 {basic syntax} -body {
-    ns_returnnotfound
-} -returnCodes error -result {no connection}
-
-test tclresp-1.8.1 {basic syntax} -body {
-    ns_returnunauthorized
-} -returnCodes error -result {no connection}
-
-test tclresp-1.9.1 {basic syntax} -body {
-    ns_returnforbidden
-} -returnCodes error -result {no connection}
-
-test tclresp-1.10.1 {basic syntax} -body {
-    ns_returnerror
-} -returnCodes error -result {wrong # args: should be "ns_returnerror status[100,599] message"}
-
-test tclresp-1.10.2 {basic syntax} -body {
-    ns_returnerror 200 x
-} -returnCodes error -result {no connection}
-
-test tclresp-1.11.1 {basic syntax} -body {
-    ns_returnnotice
-} -returnCodes error -result {wrong # args: should be "ns_returnnotice status[100,599] title message"}
 
 test tclresp-1.11.2 {basic syntax} -body {
     ns_returnnotice 200 x y
 } -returnCodes error -result {no connection}
 
-test tclresp-1.12.1 {basic syntax} -body {
-    ns_returnredirect
-} -returnCodes error -result {wrong # args: should be "ns_returnredirect location"}
-
 test tclresp-1.12.2 {basic syntax} -body {
     ns_returnredirect http://example.com/
 } -returnCodes error -result {no connection}
 
+test ns_internalredirect-1.1 {simple redirect} -constraints serverListen -setup {
+    ns_register_proc GET /tclresp {
+        ns_internalredirect /2048bytes
+    }
+} -body {
+    nstest::http -getheaders {content-length} GET /tclresp
+} -cleanup {
+    ns_unregister_op GET /tclresp
+} -result {200 2048}
+
+
 test tclresp-1.13.1 {basic syntax} -body {
     ns_write
-} -returnCodes error -result {wrong # args: should be "ns_write data ?data ...?"}
+} -returnCodes error -result {wrong # args: should be "ns_write /data .../"}
 
 test tclresp-1.13.2 {basic syntax} -body {
     ns_write x
 } -returnCodes error -result {no connection}
 
-test tclresp-1.14.1 {basic syntax} -body {
+test tclresp-1.14.1 {basic syntax} -constraints with_deprecated -body {
     ns_connsendfp
-} -returnCodes error -result {wrong # args: should be "ns_connsendfp channel length[0,LLONG_MAX]"}
+} -returnCodes error -result {wrong # args: should be "ns_connsendfp /channel/ /length[0,MAX]/"}
 
-test tclresp-1.14.2 {basic syntax} -body {
+test tclresp-1.14.2 {basic syntax} -constraints with_deprecated -body {
     ns_connsendfp x 0
 } -returnCodes error -result {no connection}
 
 test tclresp-1.15.1 {basic syntax} -body {
     ns_writefp
-} -returnCodes error -result {wrong # args: should be "ns_writefp fileid ?nbytes?"}
+} -returnCodes error -result {wrong # args: should be "ns_writefp /channelId/ ?/nbytes/?"}
 
 test tclresp-1.15.2 {basic syntax} -body {
     ns_writefp junk
@@ -178,6 +225,11 @@ test tclresp-1.15.3 {basic syntax} -body {
 test tclresp-1.15.4 {basic syntax} -body {
     ns_writefp stdin x
 } -returnCodes error -result {expected integer but got "x"}
+
+test tclresp-1.5.2 {basic operatipm} -body {
+    ns_returnfp 200 text/plain x 0
+} -returnCodes error -result {no connection}
+
 
 #
 # The following tests various combinations of
@@ -198,7 +250,7 @@ test tclresp-2.1 {ns_headers, status, HTTP/1.0} -constraints serverListen -setup
         ns_write x
     }
 } -body {
-    nstest::http -http 1.0 -setheaders {Connection keep-alive} \
+    nstest::http -http 1.0 -setheaders {connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
@@ -211,7 +263,7 @@ test tclresp-2.2 {ns_headers, status, type, HTTP/1.0} -constraints serverListen 
         ns_write x
     }
 } -body {
-    nstest::http -http 1.0 -setheaders {Connection keep-alive} \
+    nstest::http -http 1.0 -setheaders {connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
@@ -224,7 +276,7 @@ test tclresp-2.3 {ns_headers, status, type, length, HTTP/1.0 keep-alive} -setup 
         ns_write abcdefghi
     }
 } -constraints http09 -body {
-    nstest::http-0.9 -http 1.0 -setheaders {Connection keep-alive} \
+    nstest::http-0.9 -http 1.0 -setheaders {connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
@@ -251,7 +303,7 @@ test tclresp-2.4 {ns_headers, status, type, length, HTTP/1.1} -setup {
         ns_write fghi
     }
 } -constraints http09 -body {
-    nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
+    nstest::http-0.9 -http 1.1 -setheaders {connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
@@ -265,7 +317,7 @@ test tclresp-2.5 {ns_headers, status, type, HTTP/1.1} -constraints serverListen 
         ns_write fghi
     }
 } -constraints http09 -body {
-    nstest::http-0.9 -http 1.1 -setheaders {Connection keep-alive} \
+    nstest::http-0.9 -http 1.1 -setheaders {connection keep-alive} \
         -getbody 1 -getheaders {content-type connection transfer-encoding content-length} \
         GET /tclresp
 } -cleanup {
@@ -280,7 +332,7 @@ fghi
 
 test tclresp-2.6 {ns_return and alter output headers} -setup {
     ns_register_proc GET /tclresp {
-        ns_set update [ns_conn outputheaders] content-type "text/html"
+        ns_set iupdate [ns_conn outputheaders] content-type "text/html"
         ns_return 200 text/plain "hello world"
     }
 }  -body {
@@ -322,14 +374,14 @@ test tclresp-3.3 {ns_return large string} -constraints serverListen -setup {
 test tclresp-3.4 {ns_return larger string than can be sent in one write} \
     -constraints serverListen -setup {
 
-    ns_register_proc GET /tclresp {
-        ns_return 200 text/plain [string repeat x 48983]
-    }
-} -body {
-    nstest::http -getbody 1 GET /tclresp
-} -cleanup {
-    ns_unregister_op GET /tclresp
-} -result [list 200 [string repeat x 48983]]
+        ns_register_proc GET /tclresp {
+            ns_return 200 text/plain [string repeat x 48983]
+        }
+    } -body {
+        nstest::http -getbody 1 GET /tclresp
+    } -cleanup {
+        ns_unregister_op GET /tclresp
+    } -result [list 200 [string repeat x 48983]]
 
 
 
@@ -377,8 +429,9 @@ test tclresp-4.5 {ns_respond} -setup {
     ns_unregister_op GET /tclresp
 } -result {200 v x}
 
+
 test tclresp-4.6 {ns_respond} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_respond -file [ns_pagepath 10bytes] ;#}
+    ns_register_proc GET /tclresp {ns_respond -file [ns_pagepath 10bytes] }
 } -body {
     nstest::http -getbody 1 -getheaders {content-type content-length} GET /tclresp
 } -cleanup {
@@ -386,7 +439,7 @@ test tclresp-4.6 {ns_respond} -constraints serverListen -setup {
 } -result {200 */* 10 0123456789}
 
 test tclresp-4.7 {ns_respond} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_respond -file noexist ;#}
+    ns_register_proc GET /tclresp {ns_respond -file noexist}
 } -body {
     nstest::http GET /tclresp
 } -cleanup {
@@ -394,7 +447,7 @@ test tclresp-4.7 {ns_respond} -constraints serverListen -setup {
 } -result 404
 
 test tclresp-4.8 {ns_respond} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_respond -length 5 -fileid [open [ns_pagepath 10bytes]] ;#}
+    ns_register_proc GET /tclresp {ns_respond -length 5 -fileid [open [ns_pagepath 10bytes]]}
 } -body {
     nstest::http -getbody 1 -getheaders {content-type content-length} GET /tclresp
 } -cleanup {
@@ -402,9 +455,14 @@ test tclresp-4.8 {ns_respond} -constraints serverListen -setup {
 } -result {200 */* 5 01234}
 
 
+test ns_returnfile-1.1 {basic operation} -body {
+    ns_returnfile 200 text/plain x
+} -returnCodes error -result {no connection}
+
+
 
 test tclresp-5.1 {ns_returnfile} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_returnfile 200 text/plain [ns_pagepath 10bytes] ;#}
+    ns_register_proc GET /tclresp {ns_returnfile 200 text/plain [ns_pagepath 10bytes]}
 } -body {
     nstest::http -getbody 1 -getheaders {content-type content-length} GET /tclresp
 } -cleanup {
@@ -412,7 +470,7 @@ test tclresp-5.1 {ns_returnfile} -constraints serverListen -setup {
 } -result {200 text/plain 10 0123456789}
 
 test tclresp-5.2 {ns_returnfile} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_returnfile 200 text/plain noexist ;#}
+    ns_register_proc GET /tclresp {ns_returnfile 200 text/plain noexist}
 } -body {
     nstest::http GET /tclresp
 } -cleanup {
@@ -480,7 +538,7 @@ test tclresp-5.4 {ns_eval of proc with comment} -constraints serverListen -setup
 
 
 test tclresp-6.1 {ns_returnfp} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_returnfp 200 text/plain [open [ns_pagepath 10bytes]] 5 ;#}
+    ns_register_proc GET /tclresp {ns_returnfp 200 text/plain [open [ns_pagepath 10bytes]] 5}
 } -body {
     nstest::http -getbody 1 -getheaders {content-type content-length} GET /tclresp
 } -cleanup {
@@ -536,7 +594,7 @@ test tclresp-9.1 {ns_returnerror} -constraints serverListen -setup {
 
 
 test tclresp-10.1 {ns_returnnotice} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_returnnotice 200 TITLE MESSAGE ;#}
+    ns_register_proc GET /tclresp {ns_returnnotice 200 TITLE MESSAGE}
 } -body {
     nstest::http -getbody 1 GET /tclresp
 } -cleanup {
@@ -545,21 +603,21 @@ test tclresp-10.1 {ns_returnnotice} -constraints serverListen -setup {
 
 
 
-test tclresp-11.1 {ns_returnredirect} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_returnredirect http://example.com/x ;#}
+test tclresp-11.1 {ns_returnredirect, complete URL} -constraints serverListen -setup {
+    ns_register_proc GET /tclresp {ns_returnredirect http://example.com/x}
 } -body {
     nstest::http -getbody 1 -getheaders location GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
-} -match glob -result {302 http://example.com/x *Redirection*http://example.com/x*}
+} -match glob -result {302 http://example.com/x*moved here*}
 
-test tclresp-11.2 {ns_returnmoved} -constraints serverListen -setup {
-    ns_register_proc GET /tclresp {ns_returnmoved http://example.com/x ;#}
+test tclresp-11.2 {ns_returnmoved, complete URL} -constraints serverListen -setup {
+    ns_register_proc GET /tclresp {ns_returnmoved http://example.com/x}
 } -body {
     nstest::http -getbody 1 -getheaders location GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
-} -match glob -result {301 http://example.com/x *Redirection*http://example.com/x*}
+} -match glob -result {301 http://example.com/x *moved permanently here*}
 
 test tclresp-12.1 {ns_write} -setup {
     ns_register_proc GET /tclresp {
@@ -604,7 +662,7 @@ test tclresp-12.3.1 {
         ns_write [binary format a x]
     }
 } -body {
-    nstest::http -http 1.1 -getbody 1 -getheaders {Content-Length Content-Type} \
+    nstest::http -http 1.1 -getbody 1 -getheaders {content-length content-type} \
         GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
@@ -643,18 +701,18 @@ test tclresp-12.5 {
 test tclresp-13.1 {ns_write without headers} -setup {
     ns_register_proc GET /tclresp ns_write x
 } -constraints http09  -body {
-    nstest::http-0.9 -getbody 1 -getheaders {Content-Type} GET /tclresp
+    nstest::http-0.9 -getbody 1 -getheaders {content-type} GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
 } -result {{} x}
 
 test tclresp-13.2 {ns_write w/ manual headers} -setup {
     ns_register_proc GET /tclresp {
-        ns_write "HTTP/1.0 200 OK\r\nContent-Length: 1\r\n\r\n"
+        ns_write "HTTP/1.0 200 OK\r\ncontent-length: 1\r\n\r\n"
         ns_write x
     }
 } -constraints http09 -body {
-    nstest::http-0.9 -getbody 1 -getheaders {Content-Length} GET /tclresp
+    nstest::http-0.9 -getbody 1 -getheaders {content-length} GET /tclresp
 } -cleanup {
     ns_unregister_op GET /tclresp
 } -result {200 1 x}
@@ -700,12 +758,12 @@ test tclresp-14.2 {ns_writefp Tcl channel, byte count} -setup {
 #### ns_startcontent is deprecated
 # test tclresp-13.3 {ns_startcontent w/ manual headers} -setup {
 #     ns_register_proc GET /tclresp {
-#         ns_write "HTTP/1.0 200 OK\r\nContent-Length: 1\r\n\r\n"
+#         ns_write "HTTP/1.0 200 OK\r\ncontent-length: 1\r\n\r\n"
 #         ns_startcontent
 #         ns_write x
 #     }
 # } -body {
-#     nstest::http -getbody 1 -getheaders {Content-Length} GET /tclresp
+#     nstest::http -getbody 1 -getheaders {content-length} GET /tclresp
 # } -cleanup {
 #     ns_unregister_op GET /tclresp
 # } -result {200 1 x}

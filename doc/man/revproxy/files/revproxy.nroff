@@ -1,0 +1,983 @@
+'\"
+'\" Generated from file 'revproxy\&.man' by tcllib/doctools with format 'nroff'
+'\"
+.TH "revproxy" n 5\&.0\&.4 revproxy "NaviServer Module"
+.\" The -*- nroff -*- definitions below are for supplemental macros used
+.\" in Tcl/Tk manual entries.
+.\"
+.\" .AP type name in/out ?indent?
+.\"	Start paragraph describing an argument to a library procedure.
+.\"	type is type of argument (int, etc.), in/out is either "in", "out",
+.\"	or "in/out" to describe whether procedure reads or modifies arg,
+.\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+.\"	needed;  use .AS below instead)
+.\"
+.\" .AS ?type? ?name?
+.\"	Give maximum sizes of arguments for setting tab stops.  Type and
+.\"	name are examples of largest possible arguments that will be passed
+.\"	to .AP later.  If args are omitted, default tab stops are used.
+.\"
+.\" .BS
+.\"	Start box enclosure.  From here until next .BE, everything will be
+.\"	enclosed in one large box.
+.\"
+.\" .BE
+.\"	End of box enclosure.
+.\"
+.\" .CS
+.\"	Begin code excerpt.
+.\"
+.\" .CE
+.\"	End code excerpt.
+.\"
+.\" .VS ?version? ?br?
+.\"	Begin vertical sidebar, for use in marking newly-changed parts
+.\"	of man pages.  The first argument is ignored and used for recording
+.\"	the version when the .VS was added, so that the sidebars can be
+.\"	found and removed when they reach a certain age.  If another argument
+.\"	is present, then a line break is forced before starting the sidebar.
+.\"
+.\" .VE
+.\"	End of vertical sidebar.
+.\"
+.\" .DS
+.\"	Begin an indented unfilled display.
+.\"
+.\" .DE
+.\"	End of indented unfilled display.
+.\"
+.\" .SO ?manpage?
+.\"	Start of list of standard options for a Tk widget. The manpage
+.\"	argument defines where to look up the standard options; if
+.\"	omitted, defaults to "options". The options follow on successive
+.\"	lines, in three columns separated by tabs.
+.\"
+.\" .SE
+.\"	End of list of standard options for a Tk widget.
+.\"
+.\" .OP cmdName dbName dbClass
+.\"	Start of description of a specific option.  cmdName gives the
+.\"	option's name as specified in the class command, dbName gives
+.\"	the option's name in the option database, and dbClass gives
+.\"	the option's class in the option database.
+.\"
+.\" .UL arg1 arg2
+.\"	Print arg1 underlined, then print arg2 normally.
+.\"
+.\" .QW arg1 ?arg2?
+.\"	Print arg1 in quotes, then arg2 normally (for trailing punctuation).
+.\"
+.\" .PQ arg1 ?arg2?
+.\"	Print an open parenthesis, arg1 in quotes, then arg2 normally
+.\"	(for trailing punctuation) and then a closing parenthesis.
+.\"
+.\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+.\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1 \\fI\\$2\\fP (\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+.\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+.\"	# BS - start boxed text
+.\"	# ^y = starting y location
+.\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+.\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+.\"	# VS - start vertical sidebar
+.\"	# ^Y = starting y location
+.\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+.\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+.\"	# Special macro to handle page bottom:  finish off current
+.\"	# box/sidebar if in box/sidebar mode, then invoked standard
+.\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+.\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+.\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+.\"	# SO - start of list of standard options
+.de SO
+'ie '\\$1'' .ds So \\fBoptions\\fR
+'el .ds So \\fB\\$1\\fR
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 5.5c 11c
+.ft B
+..
+.\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\*(So manual entry for details on the standard options.
+..
+.\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+.\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+..
+.\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+..
+.\"	# UL - underline word
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.\"	# QW - apply quotation marks to word
+.de QW
+.ie '\\*(lq'"' ``\\$1''\\$2
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\$2
+..
+.\"	# PQ - apply parens and quotation marks to word
+.de PQ
+.ie '\\*(lq'"' (``\\$1''\\$2)\\$3
+.\"" fix emacs highlighting
+.el (\\*(lq\\$1\\*(rq\\$2)\\$3
+..
+.\"	# QR - quoted range
+.de QR
+.ie '\\*(lq'"' ``\\$1''\\-``\\$2''\\$3
+.\"" fix emacs highlighting
+.el \\*(lq\\$1\\*(rq\\-\\*(lq\\$2\\*(rq\\$3
+..
+.\"	# MT - "empty" string
+.de MT
+.QW ""
+..
+.BS
+.SH NAME
+revproxy \- Reverse Proxy Module for NaviServer (Version 0\&.23)
+.SH SYNOPSIS
+\fBrevproxy::upstream\fR \fIwhen\fR \fB-target \fIvalue\fR\fR ?\fB-backendconnection \fIvalue\fR\fR? ?\fB-insecure\fR? ?\fB-connecttimeout \fIvalue\fR\fR? ?\fB-receivetimeout \fIvalue\fR\fR? ?\fB-sendtimeout \fIvalue\fR\fR? ?\fB-timeout \fIvalue\fR\fR? ?\fB-use_target_host_header true|false\fR? ?\fB-targethost \fIvalue\fR\fR? ?\fB-regsubs \fIvalue \&.\&.\&.\fR\fR? ?\fB-url_rewrite_callback \fIvalue\fR\fR? ?\fB-response_header_callback \fIvalue\fR\fR? ?\fB-backend_response_callback \fIvalue\fR\fR? ?\fB-exception_callback \fIvalue\fR\fR? ?\fB-validation_callback \fIvalue\fR\fR?
+.sp
+.BE
+.SH DESCRIPTION
+The \fIrevproxy\fR module implements a reverse proxy for NaviServer\&.
+It accepts external HTTP(S) requests and forwards them to one or more
+internal backend servers, shielding those servers from direct external access\&.
+The module also supports proxying of (secure) WebSocket connections\&.
+.PP
+Use the \fIrevproxy\fR module to route requests by HTTP method and
+URL pattern to create hybrid deployments: serve some paths directly
+from NaviServer and delegate others to external services\&.  For
+fine-grained control - such as allowing only authenticated users to
+reach certain backends you can invoke \fBrevproxy::upstream\fR
+directly in server-side code (for example, in OpenACS \&.vuh pages)\&.
+.PP
+NaviServer lets you specify \fIwhen\fR in the request lifecycle the proxy runs,
+and \fIhow\fR it connects to each backend\&.
+.IP \(bu
+\fIWhen:\fR
+Determine at which point in the pipeline requests are proxied:
+.RS
+.IP \(bu
+Filter (\fIns_register_filter\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html#3]):
+Executes early, before most other processing\&. Ideal if you need to
+forward unauthenticated or pre-authentication traffic to a backend
+that performs its own access control\&.
+.IP \(bu
+Request handler (\fIns_register_proc\fR [\&.\&./\&.\&./naviserver/files/ns_register\&.html#4]):
+Runs after filters (e\&.g\&., post-authentication)\&. Behaves like any other
+static or dynamic handler, matching method, path, and resource name\&.
+For example, you might forward all "\&.php" requests to a dedicated PHP backend\&.
+.IP \(bu
+Direct invocation:
+Call \fBrevproxy::upstream\fR programmatically in your Tcl code for
+conditional or on-demand proxying\&.
+.RE
+.IP \(bu
+\fIHow:\fR
+Choose one of three backend connection methods to balance streaming
+capability, performance, and observability\&. The default is
+recommended for most use cases\&.  See
+\fBBackend Connection Methods\fR for details\&.
+.PP
+.SH CONFIGURATION
+The reverse proxy module is configured by extending your standard
+NaviServer configuration file\&. In the "per-backend" style, each backend
+is defined in its own \fIns_section\fR\&. It is also possible to
+register the calls via \fBns_registerproc\fR and \fBns_registerfilter\fR
+by calling directly in the "ns_param register" section the API
+\fBrevproxy::upstream\fR\&.
+.PP
+To define sections per backend:
+.IP \(bu
+Load the revproxy module
+.IP \(bu
+Define backend sections (e\&.g\&., "backend1", "backend2")
+.IP \(bu
+Optionally override timeouts, callbacks, and connection methods per backend
+.PP
+.SS "LOADING THE MODULE"
+First, load the revproxy module in your server’s "modules" section:
+.CS
+
+
+ ns_section "ns/server/$server/modules" {
+   ns_param revproxy tcl
+ }
+
+.CE
+.SS "GLOBAL REVERSE PROXY SETTINGS"
+Next, set any global defaults for all backends\&. Here we define the
+verbosity and the "backendconnection" type\&. The latter can be defined
+for individual backends\&.
+.CS
+
+
+ ns_section ns/server/$server/module/revproxy {
+   #ns_param verbose 1
+   #
+   # Register extra handlers or filters\&. The following command
+   # registgered a handler for /nsstats\&.tcl to obtain stats from the
+   # reverse proxy itself, when this URL is used\&.  This assumes,
+   # that nsstats\&.{tcl,adp} has been installed into the pages
+   # directory of the proxy\&.
+
+   ns_param register {
+     ns_register_tcl GET /nsstats\&.tcl
+   }
+ }
+
+.CE
+.SS "DEFINING BACKENDS"
+Each backend requires its own \fIns_section\fR under the server’s
+revproxy module\&. The parameters, which can be set per backend are the
+same as those, which can be set via the
+\fBAPI Options\fR\&.
+.PP
+In the first example, "backend1" forwards "/api/*" over HTTPS
+with custom timeouts, and uses the target’s Host header on POST:
+.CS
+
+
+ ns_section ns/server/$server/module/revproxy/backend1 {
+   # Required: the upstream URL (or list of URLs)
+   ns_param target               https://server1\&.local:8080/
+
+   # Optional: override defaults for various timeouts
+   ns_param connecttimeout         2s                     ;# default: 1s
+   ns_param receivetimeout         15s                    ;# default: 10s
+   ns_param sendtimeout            15s                    ;# default: 10s
+
+   # Define which paths map to this backend
+   ns_param map "GET  /api/*"
+   ns_param map "POST /api/* {-use_target_host_header true}"
+ }
+
+.CE
+In this next snippet, "backend2" serves static files over plain HTTP
+and uses shorter timeouts; it only accepts GET or HEAD:
+.CS
+
+
+ ns_section ns/server/$server/module/revproxy/backend2 {
+   ns_param target               http://server2\&.local/
+   ns_param connecttimeout       1s
+   ns_param receivetimeout       1s
+
+   # Define which paths map to this backend
+   ns_param map "GET  /static/*"
+   ns_param map "HEAD /static/*"
+ }
+
+.CE
+The third backend forwards requests via HTTPS via a "preauth" filter
+after removing the prefix "/shiny" from the URL\&.
+.CS
+
+
+ ns_section ns/server/$server/module/revproxy/backend3 {
+   ns_param target               https://server3\&.local/
+   ns_param backendconnection    preauth
+   ns_param regsubs              {{/shiny ""}}
+   ns_param map "GET  /shiny/*"
+   ns_param map "POST /shiny/*"
+ }
+
+.CE
+.SS "CONDITIONAL REQUESTS"
+You can make forwarding conditional on headers or client IP using
+\fIContext Constraints\fR [\&.\&./\&.\&./naviserver/files/ns_urlspace\&.html#section5]\&.
+The example below only forwards "*\&.php" URLs when the incoming
+request has an "X-User" header matching "*admin*":
+.CS
+
+
+ ns_section ns/server/$server/module/revproxy/backend4 {
+   ns_param target               https://server4\&.local/
+   ns_param constraints          {X-User *admin*}
+   ns_param map "GET  /*\&.php"
+   ns_param map "POST /*\&.php"
+ }
+
+.CE
+Conjunctive (AND combined) context constraints can be defined by
+specifying multiple key/value pairs as a parameter value\&.
+When multiple separate \fIconstraints\fR
+parameters are set in a section, these are taken as a disjunction
+(combined with OR)\&. Technically this means, that the pattern is
+registered multiple times, each time with a different constraints value\&.
+.PP
+Example with conjunctive context constraints:
+.CS
+
+
+ \&.\&.\&.
+ # AND: both constraints must match for all mapped patterns
+ ns_param constraints {X-Foo A X-Bar B}
+ ns_param map "GET /foo/*"
+ ns_param map "POST /foo/*"
+ \&.\&.\&.
+
+.CE
+.PP
+Example with disjunctive context constraints:
+.CS
+
+
+  \&.\&.\&.
+ # OR: either header matches
+ ns_param constraints {X-Foo A}
+ ns_param constraints {X-Bar B}
+ ns_param map "GET /foo/*"
+ ns_param map "POST /foo/*"
+ \&.\&.\&.
+
+.CE
+You can also attach constraints directly to individual map entries,
+keeping other maps unconstrained:
+.CS
+
+
+ \&.\&.\&.
+ # GET is not constraint
+ ns_param map "GET /qux/*"
+
+ # DELETE is (has to come form the given IP range)
+ ns_param map "DELETE /qux/* {-constraints {x-ns-ip 10\&.0\&.0\&.0/8}}"
+ \&.\&.\&.
+
+.CE
+.SS "EXAMPLE: USING THE API DIRECTLY TO A REGISTER THE REVERSE
+PROXY VIA A REQUEST HANDLER"
+You can also register revproxy backends directly from Tcl rather than
+in separate sections\&. For example, this snippet distributes GET "/doc/*"
+requests round-robin between two backends, with a 20 s connect timeout:
+.CS
+
+
+ ns_section ns/server/default/module/revproxy {
+   set target {http://srv1\&.local:8080/ http://srv2\&.local:8080/}
+   ns_param register [subst {
+       ns_register_proc GET /doc {
+           ::revproxy::upstream proc -connecttimeout 20s -target [list ${target}]
+       }
+   }]
+ }
+
+.CE
+.PP
+This setup uses simple load distribution across multiple
+backends (round-robin)\&. Failover checks (health checks) for the
+backends are currently not performed\&.
+.SH "BACKEND CONNECTION METHODS"
+The \fIrevproxy\fR module supports three backend connection methods:
+.IP [1]
+\fIns_connchan\fR (Tcl-based)
+.RS
+.IP \(bu
+Fully event-driven, suitable for streaming HTML and WebSockets
+.IP \(bu
+Supports background operation (does not block connection threads)
+.IP \(bu
+Proven stability and robustness
+.IP \(bu
+May be required for requests that cannot currently be handled by
+ns_http (e\&.g\&., certain WebSocket upgrade requests)
+.IP \(bu
+No persistent connections supported
+.IP \(bu
+Partial reads/writes and error handling in Tcl (more complex)
+.RE
+.IP [2]
+\fIns_http\fR (C-based)
+.RS
+.IP \(bu
+Efficient partial reads/writes in C
+.IP \(bu
+Supports persistent connections (NaviServer 5\&.0+) for repeated requests
+.IP \(bu
+Integrates with (multiple) task threads, scaling well under heavy load
+.IP \(bu
+Provides separate logging and statistics for backend connections
+.IP \(bu
+For certain types of requests (e\&.g\&., the websocket upgrade request), automatic fall back to \fIns_connchan\fR possible\&.
+.IP \(bu
+Not optimal for streaming, since data arrives after full
+request has finished\&.
+.RE
+.IP [3]
+\fIns_http+ns_connchan\fR (Combined Implementation, default)
+.RS
+.IP \(bu
+Uses \fIns_http\fR to send request data and \fIns_connchan\fR to spool responses
+.IP \(bu
+Supports persistent connections and streaming
+.IP \(bu
+Supports background operation (non‐blocking)
+.RE
+.PP
+.PP
+You can set the default connection method globally via the configuration file,
+and override it per backend via the \fBbackendconnection\fR parameter
+.PP
+Figure 1 shows the interaction between a client, the reverse proxy
+server and the backend server, when the
+\fBbackendconnection\fR is set to \fIns_http+ns_connchan\fR\&. The incoming
+request is always processed by the network driver of NaviServer
+(\fInssock\fR or \fInsssl\fR)\&. After the request is processed, we have the
+request header in the form of an ns_set and the request body either as
+spool file or as string\&. At this time, the URL rewrite callbacj and
+later the validation callback is fired
+(see \fBAdvanced Customization via API\fR) for more details)\&.
+The chosen \fIbackendconnection\fR defines then, how the request is
+sent to the backend, and how the results are received and delivered to
+the client\&. In the case of \fIns_http+ns_connchan\fR, the response
+headers from the backend server are sent the client before the
+response body is received\&.  Also, the response body is forwarded to
+the client incrementally\&.
+.PP
+IMAGE: revproxy1 Reverse Proxy Server with backendconnection ns_http+ns_connchan
+.PP
+Figure 1: Reverse Proxy Server with configuration ns_http+ns_connchan
+.PP
+When the \fBbackendconnection\fR is
+\fIns_http\fR, forwarding to the client happens after the full request has
+been received by the reverse proxy\&. When \fIns_connchan\fR is used,
+the transfer is also incrementally, but with the drawbacks mentioned
+above\&.
+.SH "ADVANCED CUSTOMIZATION VIA API"
+The core command for proxying is \fBrevproxy::upstream\fR, which
+accepts:
+.TP
+\fBrevproxy::upstream\fR \fIwhen\fR \fB-target \fIvalue\fR\fR ?\fB-backendconnection \fIvalue\fR\fR? ?\fB-insecure\fR? ?\fB-connecttimeout \fIvalue\fR\fR? ?\fB-receivetimeout \fIvalue\fR\fR? ?\fB-sendtimeout \fIvalue\fR\fR? ?\fB-timeout \fIvalue\fR\fR? ?\fB-use_target_host_header true|false\fR? ?\fB-targethost \fIvalue\fR\fR? ?\fB-regsubs \fIvalue \&.\&.\&.\fR\fR? ?\fB-url_rewrite_callback \fIvalue\fR\fR? ?\fB-response_header_callback \fIvalue\fR\fR? ?\fB-backend_response_callback \fIvalue\fR\fR? ?\fB-exception_callback \fIvalue\fR\fR? ?\fB-validation_callback \fIvalue\fR\fR?
+This command defines the proxying semantics\&. It can be registered as a
+request handler, as a filter, or it can be called programmatically
+whenever needed\&. When registered as a filter, the parameter \fIwhen\fR
+is automatically added upon invocation\&. When registered as a request
+handler proc, provide constant "proc" as first argument\&.
+.PP
+.SS "GENERAL OPTIONS"
+.TP
+\fB-target\fR \fIvalue\fR
+Required\&. The \fIvalue\fR is a list of one or more backend URLs\&.  By
+default, the incoming path is appended before forwarding; use
+\fB-regsubs\fR or \fB-url_rewrite_callback\fR to alter it\&.
+.TP
+\fB-backendconnection\fR \fIvalue\fR
+Overrides the global connection method for this invocation\&.
+.TP
+\fB-insecure\fR
+Allow insecure TLS connections; do not verify the server
+certificate (For details, see
+\fIns_http documentation\fR [\&.\&./\&.\&./naviserver/files/ns_http\&.html])\&.
+.PP
+.SS "TIMEOUT OPTIONS"
+.TP
+\fB-connecttimeout\fR \fIvalue\fR
+Time allowed to establish a connection (default: 1s)\&.
+.TP
+\fB-receivetimeout\fR \fIvalue\fR
+Time allowed to receive a response (default: 10s)\&.
+.TP
+\fB-sendtimeout\fR \fIvalue\fR
+Time allowed to send the request (default: 10s)\&.
+.TP
+\fB-timeout\fR \fIvalue\fR
+Overall read/write timeout (default: 10s)\&.
+.PP
+.SS "HOST HEADER OPTIONS"
+.TP
+\fB-use_target_host_header\fR true|false
+If true, sets the Host header to the backend’s host\&.
+By default, the incoming Host header from the client is preserved\&.
+The option is a shortcut for \fB-targethost\fR\&.
+.TP
+\fB-targethost\fR \fIvalue\fR
+Explicit Host header value for backend requests\&.
+By default, the incoming Host header from the client is preserved\&.
+.PP
+.SS "URL REWRITING AND CALLBACKS"
+.TP
+\fB-regsubs\fR \fIvalue\fR
+A list of regsub patterns for simple URL rewriting\&.
+.TP
+\fB-url_rewrite_callback\fR \fIvalue\fR
+A callback to compute the final backend URL\&.  This callback can be
+used to dynamically compute the final upstream URL\&. This can be used
+in cases, where the option \fB-regsubs\fR is not sufficient\&.
+The default implementation is:
+.CS
+
+
+ nsf::proc ::revproxy::rewrite_url { -target -url {-query ""} {-fragment ""}} {
+   #
+   # Transforms an incoming URL and query into a URL used for the
+   # backend system\&.
+   #
+   # Parameters:
+   #   target: backend system (prefix), value provided in the ::revproxy::upstream invocation
+   #   url: URL path of the incoming request, as provided via [ns_conn url]
+   #   query: query of the incoming request as provided via [ns_conn query]
+   #   fragment: fragment of the incoming request as provided via [ns_conn fragment]
+   #
+   # Join the URL by avoiding double slashes
+   #
+   set newUrl [string trimright $target /]/[string trimleft $url /\&.]
+   if {$query ne ""} {append newUrl ?$query}
+   if {$fragment ne ""} {append newUrl #$fragment}
+   return $newUrl
+ }
+
+.CE
+.TP
+\fB-response_header_callback\fR \fIvalue\fR
+This callback is called, when the header fields of the backend have
+been received\&. The callback can be used to modify backend response
+headers, such as e\&.g\&. the "location" header field handling redirects\&.
+This callback has no default value\&.  Template for defining the
+callback:
+.CS
+
+
+ nsf::proc ::my_backend_response_callback {-responseHeaders -status -requester -url} {
+   #
+   # Modify or remove header fields in "responseHeaders" as needed\&.
+   #
+   # Parameters:
+   #   responseHeaders: ns_set containing the responseHeaders (which
+   #              might be altered
+   #   status: HTTP status code of the response
+   #   requester: contains the location (scheme + authority of RFC 3986),
+   #              might be required for redirects to the proxy server\&.
+   #   url: requesting URL
+ }
+
+.CE
+.TP
+\fB-backend_response_callback\fR \fIvalue\fR
+This callback is called, when the full response of the request was
+received\&.  In streaming mode, the response might have been also
+already been transmitted to the client\&. This callback has no default
+value\&.  Template for defining the callback:
+.CS
+
+
+ nsf::proc ::my_backend_response_callback {-responseHeaders -status -url {response ""}} {
+   #
+   # Perform actions, when the request was received\&.
+   #
+   # response: response dict, will be empty when streaming via ns_connchan\&.
+ }
+
+.CE
+.TP
+\fB-exception_callback\fR \fIvalue\fR
+A callback to handle proxy errors, can be used to
+generate custom error pages on failures\&.
+Default: \fB::revproxy::exception\fR
+.CS
+
+
+ nsf::proc ::revproxy::exception {
+     {-status 503}
+     {-msg ""}
+     -error
+     -url
+     {-frontendChan ""}
+ } {
+   if {$msg eq ""} {
+     ns_log warning "revproxy exception backend with URL '$url' failed with status $status"
+     set msg "Backend error: [ns_quotehtml $error]"
+   }
+   if {$frontendChan ne ""} {
+     switch $status {
+       502 {set phrase "Bad Gateway"}
+       503 {set phrase "Service Unavailable"}
+       504 {set phrase "Gateway Timeout"}
+       default {set phrase Error}
+     }
+     ns_connchan write $frontendChan "HTTP/1\&.0 $status $phrase\\r\\n\\r\\n$status $phrase: $url"
+   } else {
+     ns_returnerror $status $msg
+   }
+ }
+
+.CE
+.TP
+\fB-validation_callback\fR \fIvalue\fR
+A callback to validate or modify the complete request before proxying\&.
+This callback receives the \fB-url\fR and \fB-request\fR, and has
+the complete control over the proxying request\&. It can still modify
+the headers, the HTTP method and the request data\&. The \fIrequest\fR
+dict contains keys like \fBheaders\fR, \fBbinary\fR, and either
+\fBcontent\fR or \fBcontentfile\fR for uploaded request data\&.
+The callback has no default\&. Example signature:
+.CS
+
+
+ nsf::proc ::my_validation_callback {
+   -url
+   -request
+ } {
+   # Check final URL and request data provided by the "request" dict\&.
+   # Return unmodified or updated dict, or "" to abort\&.
+   # \&.\&.\&.\&.
+   return $request
+ }
+
+.CE
+.PP
+.SH "ENSURING NETWORK DRIVERS ARE LOADED"
+To use HTTP or HTTPS in backend connections, ensure the appropriate
+drivers (\fInssock\fR for HTTP, \fInsssl\fR for HTTPS) are
+loaded\&. Loading the network drivers entails listening on a port\&. If
+you wish to disable a particular listening port (e\&.g\&., HTTPS) while
+still using HTTPS for backend requests, configure the network driverf
+to listen on port 0:
+.CS
+
+
+ ns_section ns/modules {
+   ns_param http  nssock
+   ns_param https nsssl
+ }
+
+ ns_section ns/module/https {
+   ns_param port 0       ;# disable direct HTTPS listening if desired
+ }
+
+.CE
+.SH "FULL CONFIGURATION EXAMPLE"
+Below is a sample configuration file illustrating a possible reverse
+proxy setup\&. Save this file (e\&.g\&.,
+"\fI/usr/local/ns/conf/nsd-config-revproxy\&.tcl\fR") and start NaviServer
+with the appropriate shell/environment variables:
+.CS
+
+
+ ########################################################################
+ # Sample configuration file for NaviServer with reverse proxy setup\&.
+ ########################################################################
+
+ set home [file dirname [file dirname [info nameofexecutable]]]
+
+ ########################################################################
+ # Per default, the reverse proxy server uses the following
+ # configuration variables\&. Their values can be overloaded on startup
+ # via environment variables with the "nsd_" prefix, when starting the
+ # server, e\&.g\&., setting a different "revproxy_target" via:
+ #
+ #    nsd_revproxy_target=https://localhost:8445 /usr/local/ns/bin/nsd -f \&.\&.\&.
+ #
+ ########################################################################
+
+ dict set defaultConfig httpport                   48000
+ dict set defaultConfig httpsport                  48443
+ dict set defaultConfig revproxy_target            http://127\&.0\&.0\&.1:8080
+ dict set defaultConfig revproxy_backendconnection ns_http+ns_connchan
+ dict set defaultConfig address                    0\&.0\&.0\&.0
+
+ ns_configure_variables "nsd_" $defaultConfig
+
+ ns_section ns/parameters {
+   ns_param home       $home
+   ns_param tcllibrary tcl
+   #ns_param systemlog nsd\&.log
+ }
+
+ ns_section ns/servers {
+   ns_param default "Reverse proxy"
+ }
+
+ ns_section ns/modules {
+   if {$httpsport ne ""} { ns_param https nsssl }
+   if {$httpport ne ""}  { ns_param http nssock }
+ }
+
+ ns_section ns/module/http {
+   ns_param port      $httpport
+   ns_param address   $address
+   ns_param maxupload 1MB
+   ns_param writerthreads 1
+ }
+
+ ns_section ns/module/https {
+   ns_param port         $httpsport
+   ns_param address      $address
+   ns_param maxupload    1MB
+   ns_param writerthreads 1
+   ns_param ciphers     "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!RC4"
+   ns_param protocols    "!SSLv2:!SSLv3"
+   ns_param certificate  /usr/local/ns/etc/server\&.pem
+ }
+
+ ns_section ns/module/http/servers {
+   ns_param defaultserver default
+   ns_param default       localhost
+   ns_param default       [ns_info hostname]
+ }
+ ns_section ns/module/https/servers {
+   ns_param defaultserver default
+   ns_param default       [ns_info hostname]
+   ns_param default       localhost
+ }
+
+ ########################################################################
+ #  Settings for the "default" server
+ ########################################################################
+
+ ns_section ns/server/default {
+   ns_param connsperthread 1000
+   ns_param minthreads      5
+   ns_param maxthreads      100
+   ns_param maxconnections  100
+   ns_param rejectoverrun   true
+ }
+
+ ns_section ns/server/default/fastpath {
+   #
+   # From where to serve pages that are not proxied to a backend\&.
+   #
+   ns_param pagedir pages-revproxy
+ }
+
+ ns_section ns/server/default/modules {
+   ns_param nslog   nslog
+   ns_param revproxy tcl
+ }
+
+ ns_section ns/server/default/module/revproxy {
+   ns_param backendconnection $revproxy_backendconnection
+   ns_param verbose 1
+   ns_param register {
+     ns_register_tcl GET /nsstats\&.tcl
+   }
+ }
+
+ ns_section ns/server/default/module/revproxy/backend1 {
+    ns_param target           $revproxy_target
+    ns_param map "GET  /*"
+    ns_param map "POST /*"
+ }
+
+ ns_section ns/server/default/httpclient {
+   #
+   # Activate persistent connections for ns_http and request logging (with connection reuse statistics)
+   #
+   ns_param keepalive 5s
+   ns_param logging   on
+   ns_param logfile   httpclient-revproxy\&.log
+ }
+
+ set ::env(RANDFILE) $home/\&.rnd
+ set ::env(HOME)     $home
+ set ::env(LANG)     en_US\&.UTF-8
+
+.CE
+.PP
+Invoke NaviServer with this configuration file, for example:
+.CS
+
+
+nsd_revproxy_target=https://localhost:8445 \\
+    nsd_httpport=48000 \\
+    /usr/local/ns/bin/nsd -f -u nsadmin -g nsadmin -t /usr/local/ns/conf/nsd-config-revproxy\&.tcl 2>&1
+
+.CE
+In general, there are many way how to use the revproxy framework\&.
+The following examples shows, how to define a virtual server
+accepting requests with the host header field \fIcvs\&.local\fR (e\&.g\&.,
+add this domain name as alias to your host and use the name in the URL)\&.
+By defining the reverse proxy as a virtual server, one can
+specify different resource limits (number of connection threads, upload limits),
+different log files, different backend connection methods, etc\&.
+.PP
+Add this snippet to your NaviServer configuration and
+adjust the URLs/ports/names according to your needs\&. As it is, it will
+use the reverse proxy for HTTP/HTTPS requests addressed to \fIcvs\&.local\fR
+to the backend server \fI127\&.0\&.0\&.1:8060\fR\&.
+.CS
+
+
+ ########################################################################
+ # Virtual Server definition for e\&.g\&. handling CVS browser
+ ########################################################################
+
+ ns_section ns/servers {
+   ns_param cvs "Reverse proxy to CVS repository"
+ }
+ ns_section ns/module/http/servers {
+   ns_param cvs       cvs\&.local
+ }
+ ns_section ns/module/https/servers {
+   ns_param cvs       cvs\&.local
+ }
+ ns_section ns/server/cvs/httpclient {
+   ns_param keepalive 5s       ;# default: 0s
+ }
+ ns_section ns/server/cvs/modules {
+   ns_param revproxy  tcl
+ }
+ ns_section "ns/server/cvs/module/revproxy" {
+    ns_param backendconnection $revproxy_backendconnection
+    ns_param verbose  0
+ }
+ ns_section ns/server/cvs/module/revproxy/backend1 {
+    ns_param target   http://127\&.0\&.0\&.1:8060/
+    ns_param map "GET  /*"
+    ns_param map "POST /*"
+ }
+}
+
+.CE
+There are many configuration options possible combining the
+functionality of a reverse proxy with an application server and a
+traditional WEB server\&. One could make the default server the reverse proxy,
+and use other servers for other purposes\&. One could also combine
+\fImass virtual hosting\fR [\&.\&./\&.\&./manual/files/admin-config\&.html] with the reverse proxy
+by defining appropriate mapping rules\&.
+.SH REQUIREMENTS
+.IP \(bu
+\fBnsf\fR (Next Scripting Framework, \fIhttp://next-scripting\&.org/\fR)
+.PP
+.SH "SEE ALSO"
+ns_connchan, ns_http, ns_register
+.SH KEYWORDS
+HTTP, HTTP-client, HTTPS, configuration, context constraints, filter, handler, logging, module, nsf, proxy, request, reverse proxy

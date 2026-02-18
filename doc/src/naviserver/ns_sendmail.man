@@ -32,18 +32,18 @@ In case of an error the error code and message are returned.
 [section COMMANDS]
 [list_begin definitions]
 [call [cmd ns_sendmail] \
-	[option "-to"] \
-	[option "-from from"] \
-	[option "-subject subject"] \
-	[option "-body body"] \
-	[opt [option "-headers headers"]] \
-	[opt [option "-bcc bcc"]] \
-	[opt [option "-cc cc"]]]
+	[option "-to [arg value]"] \
+	[option "-from [arg value]"] \
+	[opt [option "-subject [arg value]"]] \
+	[opt [option "-body [arg value]"]] \
+	[opt [option "-headers [arg value]"]] \
+	[opt [option "-bcc [arg value]"]] \
+	[opt [option "-cc [arg value]"]]]
 
 [option -to]
 	Email address of recipient. To send a real name along with the address
 	give the name and place the latter between "<" and ">" like "John Foo <j.foo@example.com>".
-	This also applies to [emph from], [emph cc] and [emph bcc].
+	This also applies to [option -from], [option -cc] and [option -bcc].
 	Can be a comma-separated string with multiple recipients.
 [para]
 [option -from]
@@ -70,9 +70,10 @@ In case of an error the error code and message are returned.
 
 [call [cmd ns_sendmail_config] [opt log]]
 
-ns_sendmail_config returns the current configuration that is
-set up in the configuration file. Returns either an 
-array usable by "array get" or logs to the server logfile.
+Returns the current configuration that is
+set up in the configuration file. When the [opt log] is specified,
+the result is written to the system log, otherwise the result is
+returned as a flat key value list.
 
 
 [list_end]
@@ -134,7 +135,7 @@ Note: "boolean" in NaviServer configuration means value can be one of "true", "f
 [list_end]
 
 [section ALTERNATIVES]
-See the excellent Tcl Standard Library smtp and mime packages.
+See the excellent Tcl Standard Library smtp and MIME packages.
 
 [section EXAMPLES]
 [emph "Log current configuration to server log:"]
@@ -218,6 +219,6 @@ See the excellent Tcl Standard Library smtp and mime packages.
 
 [see_also nsd]
 
-[keywords NaviServer sendmail mail smtp RFC822 configuration]
+[keywords NaviServer sendmail mail SMTP RFC822 configuration]
 
 [manpage_end]

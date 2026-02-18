@@ -1,0 +1,399 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>admin-maintenance - NaviServer Manual</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'admin-maintenance.man' by tcllib/doctools with format 'html'
+   -->
+<!-- admin-maintenance.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/manual/files/admin-maintenance.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/manual/files/admin-maintenance.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">admin-maintenance(n)</h1>
+    <p class="man-details">NaviServer Manual &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>admin-maintenance - NaviServer Maintenance Guide</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">Maintenance Tasks</a></li>
+<li class="doctools_section"><a href="#section3">Maintain the Directories</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection1">Back Up the Pages Directory</a></li>
+<li class="doctools_subsection"><a href="#subsection2">Back Up the Access Log</a></li>
+<li class="doctools_subsection"><a href="#subsection3">Back Up the Server Log</a></li>
+<li class="doctools_subsection"><a href="#subsection4">Back Up the Tcl Scripts Directory</a></li>
+<li class="doctools_subsection"><a href="#subsection5">Back Up the <b class="const">bin</b> Directory</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#section4">Directory Structure</a></li>
+<li class="doctools_section"><a href="#section5">Security Guide</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection6">General Passwords</a></li>
+<li class="doctools_subsection"><a href="#subsection7">Advanced Password Hashes</a></li>
+<li class="doctools_subsection"><a href="#subsection8">Permission Settings</a></li>
+<li class="doctools_subsection"><a href="#subsection9">Security Recommendations</a></li>
+<li class="doctools_subsection"><a href="#subsection10">Setup chroot Environment</a></li>
+<li class="doctools_subsection"><a href="#subsection11">Tcl Commands and Library</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>This guide provides essential information for maintaining and securing
+NaviServer.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">Maintenance Tasks</a></h2>
+<p>Regular maintenance is essential for ensuring continuous and reliable service.
+Key tasks include:</p>
+<ol class="doctools_enumerated">
+<li><p>Backing up pages and associated files for each virtual server.</p></li>
+<li><p>Archiving the access log to preserve historical data.</p></li>
+<li><p>Backing up the server log, especially when verbose logging is enabled.</p></li>
+<li><p>Backing up Tcl script directories.</p></li>
+<li><p>Backing up the bin directory, particularly if custom loadable modules are used.</p></li>
+</ol>
+<p>Detailed instructions for each maintenance task are provided in the following sections.</p>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">Maintain the Directories</a></h2>
+<p>Regular backups of key NaviServer directories are vital to protect
+against data loss due to filesystem failures.</p>
+<div id="subsection1" class="doctools_subsection"><h3><a name="subsection1">Back Up the Pages Directory</a></h3>
+<p>The pages directory is defined by the <em>PageDir</em> parameter which
+defaults to the <b class="const">/pages</b> subdirectory under NaviServer home.
+When multiple servers are running with the same server configuration,
+the home directory can be determined dynamically based on the
+<b class="const">Host:</b> header field
+  <a href="./admin-config.html#subsection9">mass virtual hosting</a>.
+Keep this in mind, when performing backups.</p>
+<p>Schedule regular backups using your preferred method (e.g., nightly
+cron jobs).</p>
+<p>Notice, that NaviServer provides cron-like service by
+using <a href="../../naviserver/files/ns_schedule.html">ns_schedule</a> to
+run jobs periodically or at certain times in the background. This can
+ease maintenance since everything can be done in the same environment.</p>
+</div>
+<div id="subsection2" class="doctools_subsection"><h3><a name="subsection2">Back Up the Access Log</a></h3>
+<p>The access log, per default located in <b class="const">logs/access.log</b>, should be
+backed up frequently.  Since NaviServer automatically deletes older
+logs beyond the configured <em>MaxBackup</em> limit, manual backups are
+required to retain a complete log history.
+It is recommended to use timestamp based filenames for logfile rolling (using. e.g.. the
+day in the filename; see
+<a href="../../nslog/files/ns_accesslog.html">ns_accesslog</a>). This
+has the advantage, that the filenames are stable, such that on a
+system-wide backup, the old logfilenames are stable and do not required
+backups, whenever the log files is rolled.</p>
+</div>
+<div id="subsection3" class="doctools_subsection"><h3><a name="subsection3">Back Up the Server Log</a></h3>
+<p>Regular backups are recommended to preserve this critical information,
+since the file often reveals intrusion attempts, or provides
+information, when a certain behavior started, etc.
+Although the server log generally grows slowly on small sites, verbose
+logging (e.g., during debugging) can cause rapid expansion, especially
+when the tracffic is high.  For keeping storage requirement low, use
+a timestamp based filenames for logfile rolling (see 
+<a href="../../naviserver/files/ns_log.html">ns_log</a>).</p>
+</div>
+<div id="subsection4" class="doctools_subsection"><h3><a name="subsection4">Back Up the Tcl Scripts Directory</a></h3>
+<p>Back up the Tcl scripts directories, which include both virtual
+server-specific scripts (typically in the <b class="const">/tcl</b> subdirectory) and
+global scripts (in <b class="const">/modules/tcl</b>). Also, ensure that any external
+files referenced by these scripts are included in your backup
+strategy.</p>
+</div>
+<div id="subsection5" class="doctools_subsection"><h3><a name="subsection5">Back Up the <b class="const">bin</b> Directory</a></h3>
+<p>The <b class="const">/bin</b> directory contains the NaviServer binary and any
+dynamically loadable modules.  If you maintain custom modules, back up
+both the binaries and their source code to avoid lengthy
+recompilations after a failure.</p>
+</div>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">Directory Structure</a></h2>
+<p>The following table outlines the primary directories created during
+NaviServer installation, the types of files they contain, and the
+configuration parameters that affect them.</p>
+<dl class="doctools_definitions">
+<dt><b class="const">/certificates</b></dt>
+<dd><p>Default directory for storing certificates in PEM format.</p></dd>
+<dt><b class="const">/conf</b></dt>
+<dd><p>Directory containing NaviServer configuration files. Although this
+  is the conventional location, configuration files can reside
+  anywhere if the nsd process is provided with an absolute path.</p>
+<p>Typical Files:</p>
+<pre class="doctools_example">
+ .tcl files (e.g., nsd-config.tcl sample-config.tcl openacs-config.tcl}
+</pre>
+</dd>
+<dt><b class="const">/bin</b></dt>
+<dd><p>Directory containing the NaviServer binary, supplementary binaries,
+  and dynamically loadable C modules.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ nsd, tclsh, critcl, nsproxy-helper, .so files, etc.
+</pre>
+</dd>
+<dt><b class="const">/include</b></dt>
+<dd><p>Directory containing header files needed for compiling additional C modules.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ .h files
+</pre>
+</dd>
+<dt><b class="const">/invalid-certificates</b></dt>
+<dd><p>Default directory for storing certificates that fail validation,
+  populated by <b class="cmd">ns_http</b>.
+  
+  For details, see 
+  <a href="./admin-config.html#subsection13">HTTPS Client Certificate Management</a>.</p></dd>
+<dt><b class="const">/lib</b></dt>
+<dd><p>Directory containing libraries used to build custom components and
+  support extra installed modules.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ libnsd.so,
+ libnsdb.so,
+ libnsthread.so,
+ libnsproxy.so,
+ ...
+</pre>
+</dd>
+<dt><b class="const">/logs</b></dt>
+<dd><p>Default directory containing log files and the server PID file.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ access.log,
+ server.log,
+ nsd.pid
+</pre>
+</dd>
+<dt><b class="const">/modules</b></dt>
+<dd><p>Contains directories for modules that operate across servers (e.g.,
+  &quot;tcl&quot;, &quot;nsperm&quot;).</p></dd>
+<dt><b class="const">/modules/nsperm</b></dt>
+<dd><p>Directory containing user, group, and permission files used by the
+  nsperm module for authentication and access control.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ passwd, group, hosts.allow, hosts.deny, perms
+</pre>
+</dd>
+<dt><b class="const">/modules/tcl</b></dt>
+<dd><p>Default directory for the server’s private Tcl script library.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ .tcl files
+</pre>
+</dd>
+<dt><b class="const">/pages</b></dt>
+<dd><p>Default directory where pages and images are stored. Users
+  typically organize content into subdirectories.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ .htm, .html, .shtml, .adp, .png, .css, ...
+</pre>
+</dd>
+<dt><b class="const">/tcl</b></dt>
+<dd><p>Default directory for the shared Tcl script library, including
+ examples and module-specific scripts.  Top-level files in this
+ directory are loaded during startup.</p>
+<p>Typical files:</p>
+<pre class="doctools_example">
+ .tcl files
+</pre>
+</dd>
+</dl>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Security Guide</a></h2>
+<p>This section provides guidelines to secure your NaviServer
+installation and protect sensitive data from unauthorized
+access. Follow these recommendations to minimize vulnerabilities and
+safeguard your system.</p>
+<div id="subsection6" class="doctools_subsection"><h3><a name="subsection6">General Passwords</a></h3>
+<p>The default management user is <b class="const">nsadmin</b> with a predefined
+ password. NaviServer does not include a built-in, advanced password
+ management system. In production, it is common to integrate
+ NaviServer with external systems (e.g., PAM, Azure, OpenACS) for
+ robust password management.</p>
+<p>Alternatively, the <i class="term"><a href="../../index.html#nsperm">nsperm</a></i> module provides a basic password
+ management solution suitable for small to medium deployments. If
+ nsperm is enabled without customization, it uses a default password
+ and warns you at startup to change the <b class="const">nsadmin</b> password.</p>
+<p>You can change the default password using the Tcl command
+ <b class="cmd">ns_permpasswd</b> or by editing the <b class="const">/modules/nsperm/passwd</b> file
+ directly. For example, the default entry is:</p>
+<pre class="doctools_example">
+ nsadmin:CUdnvgBYocLSI:::::
+</pre>
+<p>Replace the password hash (e.g., <b class="const">CUdnvgBYocLSI</b>) with a new hash
+ generated using <b class="cmd">ns_crypt</b>:</p>
+<pre class="doctools_example">
+ nsd -c
+ % ns_crypt MyNewPassword xx
+ xxhR1Y2vt4OOY
+</pre>
+<p>Alternatively, generate the hash using a command-line tool such as
+ Perl:</p>
+<pre class="doctools_example">
+ $ perl -le 'print crypt(&quot;MyNewPassword&quot;,&quot;xx&quot;);'
+ xxhR1Y2vt4OOY
+</pre>
+<p>For more details, see <a href="../../nsperm/files/nsperm.html#section4">Defining Users</a>.</p>
+</div>
+<div id="subsection7" class="doctools_subsection"><h3><a name="subsection7">Advanced Password Hashes</a></h3>
+<p>Traditional Unix systems use the &quot;crypt&quot; algorithm to encrypt
+ passwords using a salt. However, with the increasing power of GPUs,
+ these hashes are vulnerable to cracking. Therefore, NaviServer
+ supports stronger password hash algorithms such as Argon2, PBKDF2
+ (SCRAM), and Scrypt. For more information, refer to
+ <a href="../../naviserver/files/ns_crypto.html">ns_crypto</a>. These
+ advanced hashes are, for example, employed in OpenACS for local
+ accounts that require enhanced security.</p>
+</div>
+<div id="subsection8" class="doctools_subsection"><h3><a name="subsection8">Permission Settings</a></h3>
+<p>Effective permission management is critical for securing your
+ server. Authentication is only the first step; comprehensive
+ permission settings ensure that users have appropriate access
+ rights. Systems like OpenACS employ dynamic, role-based permission
+ management for files and directories. If you use the <i class="term"><a href="../../index.html#nsperm">nsperm</a></i>
+ module, you can implement file-level security in ADP pages and set
+ appropriate permission records as follows:</p>
+<ol class="doctools_enumerated">
+<li><p>Maintain identical permission records for both GET and POST requests.</p></li>
+<li><p>Remove permission records for network publishing operations (PUT, DELETE, MKDIR, BROWSE) for all users except nsadmin.</p></li>
+<li><p>Note that a permission record for a directory typically applies recursively to all its subdirectories.</p></li>
+</ol>
+<p>Define permission entries in the <b class="const">/modules/nsperm/perms</b> file;
+ the default file includes comments explaining the format.</p>
+<p>For more details on setting permissions via the nsperm module, see
+ the <a href="../../nsperm/files/nsperm.html#section6">Permissions</a>
+ section.</p>
+</div>
+<div id="subsection9" class="doctools_subsection"><h3><a name="subsection9">Security Recommendations</a></h3>
+<p>To further enhance security, consider the following recommendations:</p>
+<ul class="doctools_itemized">
+<li><p>Keep NaviServer up to date - use the latest released version.</p></li>
+<li><p>Consider running NaviServer containerized or within a chroot
+       environment.</p></li>
+<li><p>For HTTP client requests (<i class="term">ns_http</i>, <i class="term">ns_connchan</i>),
+       do not disable peer certificate validation; ensure that the
+       trusted root certificates (e.g., <i class="term"><a href="../../index.html#cafile">CAfile</a></i>
+       <b class="const">ca-bundle.crt</b>) are current.</p></li>
+<li><p>Regularly review your system log for entries especially with severity
+       <b class="const">Security</b> and any unusual activity.</p></li>
+<li><p>Enable logging for HTTP client and SMTP requests (via the
+       <i class="term">nssmtpd</i> module) when these services are in use.</p></li>
+<li><p>When using the <i class="term"><a href="../../index.html#nsperm">nsperm</a></i> module, ensure that a secure
+       password is set.</p></li>
+<li><p>When using the <i class="term"><a href="../../index.html#nscp">nscp</a></i> module, restrict access to the
+       control port to localhost only (see
+       <a href="../../nscp/files/nscp.html">NaviServer Control Port Guide</a>).</p></li>
+<li><p>When using the <i class="term">nsstats</i> module, particularly with
+       OpenACS, restrict access to secured administration paths or configure
+       nsperm accordingly.</p></li>
+<li><p>Limit the installed modules and packages to those essential for
+       your NaviServer deployment.</p></li>
+<li><p>Monitor resource usage (requests, threads, memory, locks, etc.)
+       using the <i class="term">nsstats</i> module or external tools (e.g., Munin)
+       to detect bottlenecks and ensure availability.</p></li>
+<li><p>For high security web sites, do no reveal the server
+       implementation and the version information. You might
+       deactivate this information per server in the
+       configuration file:</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server {
+   ...
+   #
+   # Configuration of HTTP responses
+   #
+   ns_param noticedetail false		  ;# include server signature in ns_returnnotice commands (errors, redirects, ...)
+   ns_param noticeadp    returnnotice.adp ;# ADP file for ns_returnnotice commands (errors, redirects, ...)
+   ns_param stealthmode  true             ;# omit &quot;Server:&quot; header field in responses
+ }
+</pre>
+</li>
+<li><p>Scan you site regularly with
+       <a href="https://owasp.org/www-community/Vulnerability_Scanning_Tools">Vulnerability Scanning Tools</a>.</p></li>
+</ul>
+</div>
+<div id="subsection10" class="doctools_subsection"><h3><a name="subsection10">Setup chroot Environment</a></h3>
+<p>In case you are deciding to stetup a chroot jail, this section
+provides basic instructions for setting up NaviServer in a
+chroot environment (sometimes called a chroot jail).</p>
+<p>Running NaviServer in a chroot environment confines the server to a
+ specified directory, making all absolute file paths relative to the
+ new root. Although chroot does not secure file content, it
+ effectively limits access to sensitive files (e.g., passwords,
+ configuration files).</p>
+<p>Because a chroot jail must be self-contained, you need to copy all
+ necessary programs, device files, and libraries into the new root
+ directory. Example:</p>
+<pre class="doctools_example">
+ mkdir $root/dev $root/tmp $root/etc
+ chmod 1777 $root/tmp
+ $root/dev; /dev/MAKEDEV generic usema
+ cp /etc/passwd /etc/resolve.conf $root/etc
+</pre>
+<p>For Debian/Ubuntu platforms, you can use
+ <a href="https://help.ubuntu.com/community/DebootstrapChroot">debootstrap</a>
+ package for setting up the chroot environment.</p>
+<p>Once the chroot environment is created, you can run NaviServer with
+ the <b class="option">-r</b> option:</p>
+<pre class="doctools_example">
+ nsd -t nsd.tcl -r $root
+</pre>
+</div>
+<div id="subsection11" class="doctools_subsection"><h3><a name="subsection11">Tcl Commands and Library</a></h3>
+<p>Restrict access to Tcl commands and libraries to minimize potential
+ abuse. Although NaviServer runs as a non-privileged user, a
+ compromised account might still execute dangerous Tcl
+ commands. Consider disabling the following if they are not required
+ by your application:</p>
+<ul class="doctools_itemized">
+<li><p>File system related functions, such as open, read, and puts</p></li>
+<li><p>The NaviServer ns_sock* Tcl functions</p></li>
+<li><p>The Tcl socket routines</p></li>
+<li><p>The exec command</p></li>
+<li><p>The file command, or at least the delete and rename features</p></li>
+<li><p>The exit command</p></li>
+<li><p>Database access (e.g. via <b class="cmd"><a href="../../index.html#nsdb">nsdb</a></b>).</p></li>
+</ul>
+<p>In Tcl, you can completely disable (delete) unsafe commands to
+ prevent unauthorized execution. But deleting is certainly only
+ an option, when these commands are not used by your application.</p>
+</div>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="admin-install.html">admin-install</a>, commandlist, ns_server</p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#certificate">certificate</a>, <a href="../../index.html#chroot">chroot</a>, <a href="../../index.html#container">container</a>, <a href="../../index.html#nscp">nscp</a>, <a href="../../index.html#nsd">nsd</a>, <a href="../../index.html#nsdb">nsdb</a>, <a href="../../index.html#nsperm">nsperm</a>, <a href="../../index.html#password">password</a>, <a href="../../index.html#security">security</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

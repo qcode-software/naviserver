@@ -13,7 +13,7 @@
 /*
  * log.c --
  *
- *      Manage the global error log file.
+ *      Manage the global system log file.
  */
 
 #include "nsd.h"
@@ -81,7 +81,7 @@ typedef struct LogCache {
     size_t      lbufSize;
     LogEntry   *firstEntry;   /* First in the list of log entries */
     LogEntry   *currentEntry; /* Current in the list of log entries */
-    Ns_DString  buffer;       /* The log entries cache text-cache */
+    Tcl_DString buffer;       /* The log entries cache text-cache */
 } LogCache;
 
 static LogEntry *LogEntryGet(LogCache *cachePtr) NS_GNUC_NONNULL(1);
@@ -100,7 +100,7 @@ static
 #ifndef NS_TCL_PRE9
  TCL_NORETURN1
 #endif
-Tcl_PanicProc Panic;
+Tcl_PanicProc Panic NS_GNUC_PRINTF(1, 0);
 
 static Ns_LogFilter LogToFile;
 static Ns_LogFilter LogToTcl;
@@ -214,13 +214,15 @@ static struct {
     LogColor          color;
     LogColorIntensity intensity;
 } severityConfig[640] = {
-    { "Notice",  NS_TRUE,  0, COLOR_DEFAULT, COLOR_NORMAL },
-    { "Warning", NS_TRUE,  0, COLOR_DEFAULT, COLOR_BRIGHT },
-    { "Error",   NS_TRUE,  0, COLOR_RED,     COLOR_BRIGHT },
-    { "Fatal",   NS_TRUE,  0, COLOR_RED,     COLOR_BRIGHT },
-    { "Bug",     NS_TRUE,  0, COLOR_RED,     COLOR_BRIGHT },
-    { "Debug",   NS_FALSE, 0, COLOR_BLUE,    COLOR_NORMAL },
-    { "Dev",     NS_FALSE, 0, COLOR_GREEN,   COLOR_NORMAL }
+    { "Notice",     NS_TRUE,  0, COLOR_DEFAULT, COLOR_NORMAL },
+    { "Warning",    NS_TRUE,  0, COLOR_DEFAULT, COLOR_BRIGHT },
+    { "Error",      NS_TRUE,  0, COLOR_RED,     COLOR_BRIGHT },
+    { "Fatal",      NS_TRUE,  0, COLOR_RED,     COLOR_BRIGHT },
+    { "Bug",        NS_TRUE,  0, COLOR_RED,     COLOR_BRIGHT },
+    { "Debug",      NS_FALSE, 0, COLOR_BLUE,    COLOR_NORMAL },
+    { "Deprecated", NS_TRUE,  0, COLOR_MAGENTA, COLOR_NORMAL },
+    { "Dev",        NS_FALSE, 0, COLOR_GREEN,   COLOR_NORMAL },
+    { "Security",   NS_TRUE,  0, COLOR_MAGENTA, COLOR_BRIGHT }
 };
 
 static const Ns_LogSeverity severityMaxCount = (Ns_LogSeverity)(sizeof(severityConfig) / sizeof(severityConfig[0]));
@@ -341,19 +343,19 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
         result = Ns_ObjvIndex(&spec, NULL, &pos, &objPtr);
 
         if (unlikely(result != TCL_OK)) {
-            Ns_DString ds, *dsPtr = &ds;
+            Tcl_DString ds, *dsPtr = &ds;
 
-            Ns_DStringInit(dsPtr);
+            Tcl_DStringInit(dsPtr);
             while (tablePtr->key != NULL) {
-                Ns_DStringNAppend(dsPtr, tablePtr->key, TCL_INDEX_NONE);
-                Ns_DStringNAppend(dsPtr, " ", 1);
+                Tcl_DStringAppend(dsPtr, tablePtr->key, TCL_INDEX_NONE);
+                Tcl_DStringAppend(dsPtr, " ", 1);
                 tablePtr++;
             }
-            Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
+            Tcl_DStringSetLength(dsPtr, dsPtr->length - 1);
             Ns_Log(Warning, "ignoring invalid value '%s' for parameter '%s'; "
                    "possible values are: %s",
-                   valueString, param, Ns_DStringValue(dsPtr));
-            Ns_DStringFree(dsPtr);
+                   valueString, param, dsPtr->string);
+            Tcl_DStringFree(dsPtr);
         }
         Tcl_DecrRefCount(objPtr);
 
@@ -384,43 +386,52 @@ ObjvTableLookup(const char *path, const char *param, Ns_ObjvTable *tablePtr, int
 void
 NsConfigLog(void)
 {
-    Ns_DString  ds;
-    const char *path = NS_GLOBAL_CONFIG_PARAMETERS;
-    Ns_Set     *set  = Ns_ConfigCreateSection(path);
+    const char *section = NS_GLOBAL_CONFIG_PARAMETERS;
 
-    severityConfig[Debug ].enabled = Ns_ConfigBool(path, "logdebug",  NS_FALSE);
-    severityConfig[Dev   ].enabled = Ns_ConfigBool(path, "logdev",    NS_FALSE);
-    severityConfig[Notice].enabled = Ns_ConfigBool(path, "lognotice", NS_TRUE);
+    severityConfig[Debug ].enabled = Ns_ConfigBool(section, "logdebug",  NS_FALSE);
+    severityConfig[Dev   ].enabled = Ns_ConfigBool(section, "logdev",    NS_FALSE);
+    severityConfig[Notice].enabled = Ns_ConfigBool(section, "lognotice", NS_TRUE);
 
-    if (Ns_ConfigBool(path, "logroll", NS_TRUE) == NS_TRUE) {
-        flags |= LOG_ROLL;
+
+    {
+        bool rollonsignal = NS_TRUE;
+#ifdef NS_WITH_DEPRECATED_5_0
+        if (Ns_ConfigGetValue(section, "logroll") != NULL) {
+            Ns_LogDeprecatedParameter(section, "logroll", section, "logrollonsignal", NULL);
+            rollonsignal = Ns_ConfigBool(section, "logroll", rollonsignal);
+        }
+#endif
+        rollonsignal = Ns_ConfigBool(section, "logrollonsignal", rollonsignal);
+        if (rollonsignal) {
+            flags |= LOG_ROLL;
+        }
     }
-    if (Ns_ConfigBool(path, "logsec", NS_TRUE) == NS_TRUE) {
+    if (Ns_ConfigBool(section, "logsec", NS_TRUE) == NS_TRUE) {
         flags |= LOG_SEC;
     }
-    if (Ns_ConfigBool(path, "logusec", NS_FALSE) == NS_TRUE) {
+    if (Ns_ConfigBool(section, "logusec", NS_FALSE) == NS_TRUE) {
         flags |= LOG_USEC;
     }
-    if (Ns_ConfigBool(path, "logusecdiff", NS_FALSE) == NS_TRUE) {
+    if (Ns_ConfigBool(section, "logusecdiff", NS_FALSE) == NS_TRUE) {
         flags |= LOG_USEC_DIFF;
     }
-    if (Ns_ConfigBool(path, "logexpanded", NS_FALSE) == NS_TRUE) {
+    if (Ns_ConfigBool(section, "logexpanded", NS_FALSE) == NS_TRUE) {
         flags |= LOG_EXPAND;
     }
-    if (Ns_ConfigBool(path, "logthread", NS_TRUE) == NS_TRUE) {
+    if (Ns_ConfigBool(section, "logthread", NS_TRUE) == NS_TRUE) {
         flags |= LOG_THREAD;
     }
-    if (Ns_ConfigBool(path, "logcolorize", NS_FALSE) == NS_TRUE) {
+    if (Ns_ConfigBool(section, "logcolorize", NS_FALSE) == NS_TRUE) {
         flags |= LOG_COLORIZE;
     }
     if ((flags & LOG_COLORIZE) != 0u) {
         int result, idx;
 
-        result = ObjvTableLookup(path, "logprefixcolor", colors, &idx);
+        result = ObjvTableLookup(section, "logprefixcolor", colors, &idx);
         if (likely(result == TCL_OK)) {
             prefixColor = (LogColor)idx;
         }
-        result = ObjvTableLookup(path, "logprefixintensity", intensities, &idx);
+        result = ObjvTableLookup(section, "logprefixintensity", intensities, &idx);
         if (likely(result == TCL_OK)) {
             prefixIntensity = (LogColorIntensity)idx;
         }
@@ -428,29 +439,29 @@ NsConfigLog(void)
         /*
          * Just refer to these values to mark these as used.
          */
-        (void) Ns_ConfigString(path, "logprefixcolor", NS_EMPTY_STRING);
-        (void) Ns_ConfigString(path, "logprefixintensity", NS_EMPTY_STRING);
+        (void) Ns_ConfigString(section, "logprefixcolor", NS_EMPTY_STRING);
+        (void) Ns_ConfigString(section, "logprefixintensity", NS_EMPTY_STRING);
     }
 
-    maxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(path, "logmaxbackup", 10, 0, 999);
+    maxbackup = (TCL_SIZE_T)Ns_ConfigIntRange(section, "logmaxbackup", 10, 0, 999);
 
-    logfileName = ns_strcopy(Ns_ConfigString(path, "serverlog", "nsd.log"));
-    if (Ns_PathIsAbsolute(logfileName) == NS_FALSE) {
-        TCL_SIZE_T length;
-
-        Ns_DStringInit(&ds);
-        if (Ns_HomePathExists("logs", (char *)0L)) {
-            (void)Ns_HomePath(&ds, "logs", logfileName, (char *)0L);
-        } else {
-            (void)Ns_HomePath(&ds, logfileName, (char *)0L);
+#ifdef NS_WITH_DEPRECATED_5_0
+    if (Ns_ConfigGetValue(section, "serverlog") != NULL) {
+        Ns_LogDeprecatedParameter(section, "serverlog", section, "systemlog", NULL);
+        if (Ns_ConfigGetValue(section, "systemlog") == NULL) {
+            /*
+             * We have the deprecated parameter, but not the new one.
+             * Use the value from the deprecated parameter
+             */
+            logfileName = Ns_ConfigFilename(section, "serverlog", 9, nsconf.logDir, "nsd.log", NS_FALSE, NS_TRUE);
         }
-        length = ds.length;
-        ns_free((void*)logfileName);
-        logfileName = Ns_DStringExport(&ds);
-        Ns_SetUpdateSz(set, "serverlog", 9, logfileName, length);
+    }
+#endif
+    if (logfileName == NULL) {
+        logfileName = Ns_ConfigFilename(section, "systemlog", 9, nsconf.logDir, "nsd.log", NS_FALSE, NS_TRUE);
     }
 
-    rollfmt = ns_strcopy(Ns_ConfigString(path, "logrollfmt", NS_EMPTY_STRING));
+    rollfmt = ns_strcopy(Ns_ConfigString(section, "logrollfmt", NS_EMPTY_STRING));
 
 }
 
@@ -460,7 +471,8 @@ NsConfigLog(void)
  *
  * Ns_InfoErrorLog --
  *
- *      Returns the filename of the log file.
+ *      Returns the filename of the system log file.
+ *      FIXME: It should be: Ns_InfoSystemLog or Ns_InfoServerLog
  *
  * Results:
  *      Log filename or NULL if none.
@@ -516,7 +528,7 @@ Ns_CreateLogSeverity(const char *name)
         severity = severityIdx++;
         Tcl_SetHashValue(hPtr, INT2PTR(severity));
         severityConfig[severity].label = Tcl_GetHashKey(&severityTable, hPtr);
-        if (severity > Dev) {
+        if (severity >= PredefinedLogSeveritiesCount) {
             /*
              * For the lower severities, we have already defaults; initialize
              * just the higher ones.
@@ -789,9 +801,9 @@ Ns_VALog(Ns_LogSeverity severity, const char *fmt, va_list apSrc)
         cachePtr->currentEntry = entryPtr;
         cachePtr->count++;
 
-        offset = (size_t)Ns_DStringLength(&cachePtr->buffer);
+        offset = (size_t)cachePtr->buffer.length;
         Ns_DStringVPrintf(&cachePtr->buffer, fmt, apSrc);
-        length = (size_t)Ns_DStringLength(&cachePtr->buffer) - offset;
+        length = (size_t)cachePtr->buffer.length - offset;
 
         entryPtr->severity = severity;
         entryPtr->offset   = offset;
@@ -1122,32 +1134,32 @@ LogTime(LogCache *cachePtr, const Ns_Time *timePtr, bool gmt)
  */
 
 int
-NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     void *addrPtr;
     int   result = TCL_OK;
 
     if (objc < 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "severity string ?string ...?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/severity/ /message .../");
         result = TCL_ERROR;
     } else if (unlikely(GetSeverityFromObj(interp, objv[1], &addrPtr) != TCL_OK)) {
         result = TCL_ERROR;
     } else {
         Ns_LogSeverity severity = PTR2INT(addrPtr);
-        Ns_DString     ds;
+        Tcl_DString    ds;
 
         if (likely(objc == 3)) {
             Ns_Log(severity, "%s", Tcl_GetString(objv[2]));
         } else {
-            TCL_OBJC_T i;
+            TCL_SIZE_T i;
 
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             for (i = 2; i < objc; ++i) {
                 Ns_DStringVarAppend(&ds, Tcl_GetString(objv[i]),
-                                    i < (objc-1) ? " " : (char *)0, (char *)0L);
+                                    i < (objc-1) ? " " : NS_SENTINEL, NS_SENTINEL);
             }
-            Ns_Log(severity, "%s", Ns_DStringValue(&ds));
-            Ns_DStringFree(&ds);
+            Ns_Log(severity, "%s", ds.string);
+            Tcl_DStringFree(&ds);
         }
     }
     return result;
@@ -1171,7 +1183,7 @@ NsTclLogObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T obj
  */
 
 static int
-LogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+LogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogSeverity    severity = 0; /* default value for the error cases */
     void             *addrPtr = NULL;
@@ -1188,7 +1200,17 @@ LogCtlSeverityObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
     };
 
     if (likely(objc < 3)) {
-        Tcl_WrongNumArgs(interp, 2, objv, "severity-level ?-color color? ?-intensity intensity? ?bool?");
+        Tcl_DString  ds, *dsPtr = &ds;
+
+        Tcl_DStringInit(dsPtr);
+        Tcl_DStringAppend(dsPtr, "/severity/ ?-color ", TCL_INDEX_NONE);
+        Ns_ObjvTablePrint(dsPtr, colors);
+        Tcl_DStringAppend(&ds, "? ?-intensity ", TCL_INDEX_NONE);
+        Ns_ObjvTablePrint(dsPtr, intensities);
+        Tcl_DStringAppend(&ds, "? ?true|false?", TCL_INDEX_NONE);
+
+        Tcl_WrongNumArgs(interp, 2, objv, ds.string);
+        Tcl_DStringFree(dsPtr);
         result = TCL_ERROR;
 
     } else if (GetSeverityFromObj(interp, objv[2], &addrPtr) == TCL_OK) {
@@ -1327,7 +1349,7 @@ StripColorCodes(char *line, ssize_t len, TCL_SIZE_T *resultLen)
  */
 
 static int
-LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     char        *string, *filename = (char *)logfileName;
@@ -1367,7 +1389,7 @@ LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
              * Read the file line by line.
              */
             while (1) {
-                size_t  len;
+                size_t  len = 0;
                 ssize_t read;
 
                 read = ns_getline(&line, &len, file);
@@ -1389,7 +1411,7 @@ LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
                         if (*string != '\0' && strstr(fullLineDs.string, string) != NULL) {
                             strippedLine = StripColorCodes(fullLineDs.string, fullLineDs.length,
                                                            &strippedLen);
-                            Ns_DStringNAppend(&resultDs, strippedLine, strippedLen);
+                            Tcl_DStringAppend(&resultDs, strippedLine, strippedLen);
                         }
                         Tcl_DStringSetLength(&fullLineDs, 0);
                     }
@@ -1397,13 +1419,13 @@ LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
                 /*
                  * Always append the read line to full line.
                  */
-                Ns_DStringNAppend(&fullLineDs, line, (TCL_SIZE_T)read);
+                Tcl_DStringAppend(&fullLineDs, line, (TCL_SIZE_T)read);
             }
             if (fullLineDs.length != 0) {
                 if (*string != '\0' && strstr(fullLineDs.string, string) != NULL) {
                     strippedLine = StripColorCodes(fullLineDs.string, fullLineDs.length,
                                                    &strippedLen);
-                    Ns_DStringNAppend(&resultDs, strippedLine, strippedLen);
+                    Tcl_DStringAppend(&resultDs, strippedLine, strippedLen);
                 }
             }
 
@@ -1441,10 +1463,10 @@ LogCtlGrepObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T o
  */
 
 int
-NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int             result = TCL_OK, opt, i;
-    Ns_DString      ds;
+    Tcl_DString     ds;
     Tcl_Obj        *objPtr;
     LogCache       *cachePtr = GetCache();
     LogFilter       filter, *filterPtr = &filter;
@@ -1484,10 +1506,10 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
     };
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "option ?arg?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/subcommand/ ?/arg/?");
         result = TCL_ERROR;
 
-    } else if (Tcl_GetIndexFromObj(interp, objv[1], opts, "option", 0,
+    } else if (Tcl_GetIndexFromObj(interp, objv[1], opts, "subcommand", 0,
                             &opt) != TCL_OK) {
         result = TCL_ERROR;
 
@@ -1503,7 +1525,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
 
         case CRegisterIdx:
             if (objc < 3) {
-                Tcl_WrongNumArgs(interp, 2, objv, "script ?arg?");
+                Tcl_WrongNumArgs(interp, 2, objv, "/script/ ?/arg .../?");
                 result = TCL_ERROR;
             } else {
                 cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)Ns_TclCallbackProc,
@@ -1515,7 +1537,7 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
 
         case CUnregisterIdx:
             if (objc != 3) {
-                Tcl_WrongNumArgs(interp, 2, objv, "handle");
+                Tcl_WrongNumArgs(interp, 2, objv, "/handle/");
                 result = TCL_ERROR;
             } else if (Ns_TclGetAddrFromObj(interp, objv[2], filterType, &addr) != TCL_OK) {
                 result = TCL_ERROR;
@@ -1526,28 +1548,48 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
             break;
 
         case CHoldIdx:
-            cachePtr->hold = NS_TRUE;
+            if (objc > 2) {
+                Tcl_WrongNumArgs(interp, 2, objv, NULL);
+                result = TCL_ERROR;
+            } else {
+                cachePtr->hold = NS_TRUE;
+            }
             break;
 
         case CPeekIdx: NS_FALL_THROUGH; /* fall through */
         case CGetIdx:
-            memset(filterPtr, 0, sizeof(*filterPtr));
-            filterPtr->proc = LogToDString;
-            filterPtr->arg  = &ds;
-            Ns_DStringInit(&ds);
-            LogFlush(cachePtr, filterPtr, -1, (opt == CGetIdx), NS_FALSE);
-            Tcl_DStringResult(interp, &ds);
+            if (objc > 2) {
+                Tcl_WrongNumArgs(interp, 2, objv, NULL);
+                result = TCL_ERROR;
+            } else {
+                memset(filterPtr, 0, sizeof(*filterPtr));
+                filterPtr->proc = LogToDString;
+                filterPtr->arg  = &ds;
+                Tcl_DStringInit(&ds);
+                LogFlush(cachePtr, filterPtr, -1, (opt == CGetIdx), NS_FALSE);
+                Tcl_DStringResult(interp, &ds);
+            }
             break;
 
         case CReleaseIdx:
             cachePtr->hold = NS_FALSE;
             NS_FALL_THROUGH; /* fall through */
         case CFlushIdx:
-            LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
+            if (objc > 2) {
+                Tcl_WrongNumArgs(interp, 2, objv, NULL);
+                result = TCL_ERROR;
+            } else {
+                LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
+            }
             break;
 
         case CCountIdx:
-            Tcl_SetObjResult(interp, Tcl_NewIntObj(cachePtr->count));
+            if (objc > 2) {
+                Tcl_WrongNumArgs(interp, 2, objv, NULL);
+                result = TCL_ERROR;
+            } else {
+                Tcl_SetObjResult(interp, Tcl_NewIntObj(cachePtr->count));
+            }
             break;
 
         case CTruncIdx: {
@@ -1575,22 +1617,32 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
             break;
 
         case CSeveritiesIdx:
-            /*
-             * Return all registered severities in a list
-             */
-            objPtr = Tcl_GetObjResult(interp);
-            for (i = 0; i < severityIdx; i++) {
-                if (Tcl_ListObjAppendElement(interp, objPtr,
-                                             Tcl_NewStringObj(severityConfig[i].label, TCL_INDEX_NONE))
-                    != TCL_OK) {
-                    result = TCL_ERROR;
-                    break;
+            if (objc > 2) {
+                Tcl_WrongNumArgs(interp, 2, objv, NULL);
+                result = TCL_ERROR;
+            } else {
+                /*
+                 * Return all registered severities in a list
+                 */
+                objPtr = Tcl_GetObjResult(interp);
+                for (i = 0; i < severityIdx; i++) {
+                    if (Tcl_ListObjAppendElement(interp, objPtr,
+                                                 Tcl_NewStringObj(severityConfig[i].label, TCL_INDEX_NONE))
+                        != TCL_OK) {
+                        result = TCL_ERROR;
+                        break;
+                    }
                 }
             }
             break;
 
         case CStatsIdx:
-            Tcl_SetObjResult(interp, LogStats());
+            if (objc > 2) {
+                Tcl_WrongNumArgs(interp, 2, objv, NULL);
+                result = TCL_ERROR;
+            } else {
+                Tcl_SetObjResult(interp, LogStats());
+            }
             break;
 
         default:
@@ -1623,13 +1675,20 @@ NsTclLogCtlObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
 
 int
 NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
-                   TCL_OBJC_T UNUSED(ojbc), Tcl_Obj *const* UNUSED(objv))
+                   TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
-    if (Ns_LogRoll() != NS_OK) {
-        Ns_TclPrintfResult(interp, "could not roll server log");
+    int result = TCL_OK;
+
+    if (objc > 1) {
+        Tcl_WrongNumArgs(interp, 1, objv, NULL);
+        result = TCL_ERROR;
+    } else {
+        if (Ns_LogRoll() != NS_OK) {
+            Ns_TclPrintfResult(interp, "could not roll server log");
+        }
     }
 
-    return TCL_OK;
+    return result;
 }
 
 
@@ -1639,9 +1698,9 @@ NsTclLogRollObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp,
  * Ns_LogRoll --
  *
  *      Function and signal handler for SIGHUP which will roll the
- *      system log (e.g. "error.log" or stderr). When NaviServer is
- *      logging to stderr (when e.g. started with -f) no rolling will
- *      be performed. The function returns potentially errors from
+ *      system log (e.g. "nsd.log". When NaviServer is logging to
+ *      stderr (when e.g. started with -f) no rolling will be
+ *      performed. The function returns potential errors from
  *      opening the file named by logfileName as result.
  *
  * Results:
@@ -1657,6 +1716,9 @@ Ns_ReturnCode
 Ns_LogRoll(void)
 {
     Ns_ReturnCode status;
+
+    Ns_Log(Notice, "Ns_LogRoll called, logfileName '%s' logOpenCalled %d",
+           (logfileName != NULL) ? logfileName : "NULL", logOpenCalled);
 
     if (logfileName != NULL && logOpenCalled) {
         status = Ns_RollFileCondFmt(LogOpen, LogClose, NULL,
@@ -1692,12 +1754,14 @@ void
 NsLogOpen(void)
 {
     /*
-     * Open the log and schedule the signal roll.
+     * Open the log and register the signal roll.
      */
 
     if (LogOpen(NULL) != NS_OK) {
-        Ns_Fatal("log: failed to open server log '%s': '%s'",
-                 logfileName, strerror(errno));
+        int ecode = logfileName != NULL ? errno : ENOENT;
+
+        Ns_Fatal("log: failed to open system log file '%s': '%s'",
+                 logfileName != NULL ? logfileName : "NULL", strerror(ecode));
     }
     if ((flags & LOG_ROLL) != 0u) {
         Ns_Callback *proc = (Ns_Callback *)(ns_funcptr_t)Ns_LogRoll;
@@ -1738,36 +1802,45 @@ LogOpen(void *UNUSED(arg))
     oflags |= O_LARGEFILE;
 #endif
 
-    fd = ns_open(logfileName, (int)oflags, 0644);
-    if (fd == NS_INVALID_FD) {
-        Ns_Log(Error, "log: failed to re-open log file '%s': '%s'",
-               logfileName, strerror(errno));
+    if (logfileName == NULL) {
+        Ns_Log(Error, "log: undefined system log file");
         status = NS_ERROR;
     } else {
-
-        /*
-         * Route stderr to the file
-         */
-        if (fd != STDERR_FILENO && ns_dup2(fd, STDERR_FILENO) == -1) {
+        fd = ns_open(logfileName, (int)oflags, 0644);
+        if (fd == NS_INVALID_FD) {
+            Ns_Log(Error, "log: failed to open system log file '%s': '%s'",
+                   logfileName, strerror(errno));
             status = NS_ERROR;
-        }
 
-        /*
-         * Route stdout to the file
-         */
-        if (ns_dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-            Ns_Log(Error, "log: failed to route stdout to file: '%s'",
-                   strerror(errno));
-            status = NS_ERROR;
-        }
+        } else {
 
-        /*
-         * Clean up dangling 'open' reference to the fd
-         */
-        if (fd != STDERR_FILENO && fd != STDOUT_FILENO) {
-            (void) ns_close(fd);
+            /*
+             * Route stderr to the file
+             */
+            if (fd != STDERR_FILENO && ns_dup2(fd, STDERR_FILENO) == -1) {
+                status = NS_ERROR;
+            }
+
+            /*
+             * Route stdout to the file
+             */
+            if (ns_dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
+                Ns_Log(Error, "log: failed to route stdout to file: '%s'",
+                       strerror(errno));
+                status = NS_ERROR;
+            }
+
+            /*
+             * Clean up dangling 'open' reference to the fd
+             */
+            if (fd != STDERR_FILENO && fd != STDOUT_FILENO) {
+                (void) ns_close(fd);
+            }
+
+            Ns_Log(Notice, "log: continue system log via file: %s", logfileName);
         }
     }
+
     return status;
 }
 
@@ -1808,7 +1881,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
 
     ePtr = cachePtr->firstEntry;
     while (ePtr != NULL && cachePtr->currentEntry != NULL) {
-        const char *logString = Ns_DStringValue(&cachePtr->buffer) + ePtr->offset;
+        const char *logString = cachePtr->buffer.string + ePtr->offset;
 
         /*
          * Since listPtr is never NULL, a repeat-unil loop is
@@ -1859,7 +1932,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
             size_t length = (ePtr != NULL) ? (ePtr->offset + ePtr->length) : 0u;
             cachePtr->count = (length != 0u) ? nentry : 0;
             cachePtr->currentEntry = ePtr;
-            Ns_DStringSetLength(&cachePtr->buffer, (TCL_SIZE_T)length);
+            Tcl_DStringSetLength(&cachePtr->buffer, (TCL_SIZE_T)length);
         } else {
             LogEntry *entryPtr, *tmpPtr;
 
@@ -1874,7 +1947,7 @@ LogFlush(LogCache *cachePtr, LogFilter *listPtr, int count, bool trunc, bool loc
             cachePtr->count = 0;
             cachePtr->currentEntry = NULL;
             cachePtr->firstEntry = NULL;
-            Ns_DStringSetLength(&cachePtr->buffer, 0);
+            Tcl_DStringSetLength(&cachePtr->buffer, 0);
 
             for (; entryPtr != NULL; entryPtr = tmpPtr) {
                 tmpPtr = entryPtr->nextPtr;
@@ -1942,7 +2015,7 @@ static Ns_ReturnCode
 LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
             const char *msg, size_t len)
 {
-    Ns_DString *dsPtr  = (Ns_DString *)arg;
+    Tcl_DString *dsPtr  = (Tcl_DString *)arg;
     LogCache   *cachePtr = GetCache();
     char        buffer[COLOR_BUFFER_SIZE];
 
@@ -1974,11 +2047,11 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
          */
         timeString = LogTime(cachePtr, stamp, NS_FALSE);
         timeStringLength = cachePtr->lbufSize;
-        Ns_DStringNAppend(dsPtr, timeString, (TCL_SIZE_T)timeStringLength);
+        Tcl_DStringAppend(dsPtr, timeString, (TCL_SIZE_T)timeStringLength);
     }
 
     if ((flags & LOG_USEC) != 0u) {
-        Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
+        Tcl_DStringSetLength(dsPtr, dsPtr->length - 1);
         Ns_DStringPrintf(dsPtr, ".%06ld]", stamp->usec);
     }
 
@@ -1997,7 +2070,7 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
         /*
          * Skip last char.
          */
-        Ns_DStringSetLength(dsPtr, Ns_DStringLength(dsPtr) - 1);
+        Tcl_DStringSetLength(dsPtr, dsPtr->length - 1);
         /*
          * Handle change in seconds.
          */
@@ -2025,27 +2098,28 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
     }
 
     if ((flags & LOG_EXPAND) != 0u) {
-        Ns_DStringNAppend(dsPtr, "\n    ", 5);
+        Tcl_DStringAppend(dsPtr, "\n    ", 5);
     }
 
     /*
      * Add the log message
      */
-
-    if (len == 0u) {
-        len = strlen(msg);
-    }
-    if (nsconf.sanitize_logfiles > 0) {
-        Ns_DStringAppendPrintable(dsPtr, nsconf.sanitize_logfiles == 2, msg, len);
-    } else {
-        Ns_DStringNAppend(dsPtr, msg, (TCL_SIZE_T)len);
+    if (len > 0) {
+        if (nsconf.sanitize_logfiles > 0) {
+            Ns_DStringAppendPrintable(dsPtr,
+                                      nsconf.sanitize_logfiles >= 2,
+                                      nsconf.sanitize_logfiles == 3,
+                                      msg, len);
+        } else {
+            Tcl_DStringAppend(dsPtr, msg, (TCL_SIZE_T)len);
+        }
     }
     if ((flags & LOG_COLORIZE) != 0u) {
-        Ns_DStringNAppend(dsPtr, (const char *)LOG_COLOREND, 4);
+        Tcl_DStringAppend(dsPtr, (const char *)LOG_COLOREND, 4);
     }
-    Ns_DStringNAppend(dsPtr, "\n", 1);
+    Tcl_DStringAppend(dsPtr, "\n", 1);
     if ((flags & LOG_EXPAND) != 0u) {
-        Ns_DStringNAppend(dsPtr, "\n", 1);
+        Tcl_DStringAppend(dsPtr, "\n", 1);
     }
 
     return NS_OK;
@@ -2067,24 +2141,80 @@ LogToDString(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
  *
  *----------------------------------------------------------------------
  */
-
 static Ns_ReturnCode
 LogToFile(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
           const char *msg, size_t len)
 {
+#if defined(NS_THREAD_LOCAL)
     int        fd = PTR2INT(arg);
-    Ns_DString ds;
+    static NS_THREAD_LOCAL size_t sameLineCount = 1u;
+    static NS_THREAD_LOCAL size_t lastLen = 0u;
+    static NS_THREAD_LOCAL size_t lastHash = 0u;
+    static NS_THREAD_LOCAL Ns_LogSeverity lastSeverity = 0u;
+    size_t hash = 0u;
 
     NS_NONNULL_ASSERT(arg != NULL);
     NS_NONNULL_ASSERT(stamp != NULL);
     NS_NONNULL_ASSERT(msg != NULL);
 
-    Ns_DStringInit(&ds);
+    hash = NsTclHash(msg);
+    //fprintf(stderr, "LOG compute hash len %lu MSG <%s> hash %lu\n", len, msg, hash);
+
+    if (hash == lastHash && lastLen == len && lastSeverity == severity) {
+        /*
+         * The last message was the same.
+         */
+        sameLineCount++;
+        //fprintf(stderr, "LOG suppress len %lu MSG <%s> hash %lu\n", len, msg, NsTclHash(msg));
+    } else {
+        /*
+         * The last message was different. If we have sameLineCount >
+         * 0, add a message telling telling how often the last message
+         * was repeated, before reporting the actual message.
+         */
+        Tcl_DString ds;
+
+        Tcl_DStringInit(&ds);
+
+        //fprintf(stderr, "LOG len %lu MSG <%s> hash %lu same line count %lu\n", len, msg, hash, sameLineCount);
+
+        if (sameLineCount > 1) {
+            Tcl_DString dsRepeat;
+
+            Tcl_DStringInit(&dsRepeat);
+            Ns_DStringPrintf(&dsRepeat, "last log entry for this thread was repeated %lu times", sameLineCount);
+            (void) LogToDString(&ds, lastSeverity, stamp, dsRepeat.string, (size_t)dsRepeat.length);
+            (void) NsAsyncWrite(fd, ds.string, (size_t)ds.length);
+            Tcl_DStringFree(&dsRepeat);
+
+            Tcl_DStringSetLength(&ds, 0);
+            sameLineCount = 1u;
+        }
+
+        (void) LogToDString(&ds, severity, stamp, msg, len);
+        (void) NsAsyncWrite(fd, ds.string, (size_t)ds.length);
+        Tcl_DStringFree(&ds);
+
+        lastLen = len;
+        lastHash = hash;
+        lastSeverity = severity;
+    }
+#else
+    int        fd = PTR2INT(arg);
+    Tcl_DString ds;
+
+    NS_NONNULL_ASSERT(arg != NULL);
+    NS_NONNULL_ASSERT(stamp != NULL);
+    NS_NONNULL_ASSERT(msg != NULL);
+
+    Tcl_DStringInit(&ds);
 
     (void) LogToDString(&ds, severity, stamp, msg, len);
     (void) NsAsyncWrite(fd, Ns_DStringValue(&ds), (size_t)Ns_DStringLength(&ds));
 
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
+#endif
+
     return NS_OK;
 }
 
@@ -2136,7 +2266,7 @@ LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
         TCL_SIZE_T            ii;
         void                 *logfile = INT2PTR(STDERR_FILENO);
         Tcl_Obj              *stampObj;
-        Ns_DString            ds, ds2;
+        Tcl_DString           ds, ds2;
         Tcl_Interp           *interp;
         const Ns_TclCallback *cbPtr = (Ns_TclCallback *)arg;
 
@@ -2146,11 +2276,11 @@ LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
         interp = Ns_TclAllocateInterp(cbPtr->server);
         if (interp == NULL) {
             (void)LogToFile(logfile, Error, stamp,
-                            "LogToTcl: can't get interpreter", 0u);
+                            "LogToTcl: can't get interpreter", 31u);
             status = NS_ERROR;
         } else {
 
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             stampObj = Tcl_NewObj();
             Ns_TclSetTimeObj(stampObj, stamp);
 
@@ -2163,8 +2293,8 @@ LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
              * string instead of as list element.  Other arguments are
              * appended to it as elements.
              */
-            Ns_DStringVarAppend(&ds, cbPtr->script, " ", Ns_LogSeverityName(severity), (char *)0L);
-            Ns_DStringAppendElement(&ds, Tcl_GetString(stampObj));
+            Ns_DStringVarAppend(&ds, cbPtr->script, " ", Ns_LogSeverityName(severity), NS_SENTINEL);
+            Tcl_DStringAppendElement(&ds, Tcl_GetString(stampObj));
             Tcl_DecrRefCount(stampObj);
 
             /*
@@ -2172,27 +2302,26 @@ LogToTcl(const void *arg, Ns_LogSeverity severity, const Ns_Time *stamp,
              * Tcl_DStringAppendElement has no length parameter, we have
              * to use a temporary DString here.
              */
-            Ns_DStringInit(&ds2);
-            Ns_DStringNAppend(&ds2, msg, (TCL_SIZE_T)len);
-            Ns_DStringAppendElement(&ds, ds2.string);
-            Ns_DStringFree(&ds2);
+            Tcl_DStringInit(&ds2);
+            Tcl_DStringAppend(&ds2, msg, (TCL_SIZE_T)len);
+            Tcl_DStringAppendElement(&ds, ds2.string);
+            Tcl_DStringFree(&ds2);
 
             for (ii = 0; ii < cbPtr->argc; ii++) {
-                Ns_DStringAppendElement(&ds, cbPtr->argv[ii]);
+                Tcl_DStringAppendElement(&ds, cbPtr->argv[ii]);
             }
-            ret = Tcl_EvalEx(interp, Ns_DStringValue(&ds), Ns_DStringLength(&ds), 0);
+            ret = Tcl_EvalEx(interp, ds.string, ds.length, 0);
             if (ret == TCL_ERROR) {
 
                 /*
                  * Error in Tcl callback is always logged to file.
                  */
-                Ns_DStringSetLength(&ds, 0);
-                Ns_DStringAppend(&ds, "LogToTcl: ");
-                Ns_DStringAppend(&ds, Tcl_GetStringResult(interp));
-                (void)LogToFile(logfile, Error, stamp, Ns_DStringValue(&ds),
-                                (size_t)Ns_DStringLength(&ds));
+                Tcl_DStringSetLength(&ds, 0);
+                Tcl_DStringAppend(&ds, "LogToTcl: ", 10);
+                Tcl_DStringAppend(&ds, Tcl_GetStringResult(interp), TCL_INDEX_NONE);
+                (void)LogToFile(logfile, Error, stamp, ds.string, (size_t)ds.length);
             }
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
             Ns_TclDeAllocateInterp(interp);
 
             status = (ret == TCL_ERROR) ? NS_ERROR: NS_OK;
@@ -2226,7 +2355,7 @@ GetCache(void)
 
     if (cachePtr == NULL) {
         cachePtr = ns_calloc(1u, sizeof(LogCache));
-        Ns_DStringInit(&cachePtr->buffer);
+        Tcl_DStringInit(&cachePtr->buffer);
         Ns_TlsSet(&tls, cachePtr);
     }
 #else
@@ -2235,7 +2364,7 @@ GetCache(void)
     cachePtr = Ns_TlsGet(&tls);
     if (cachePtr == NULL) {
         cachePtr = ns_calloc(1u, sizeof(LogCache));
-        Ns_DStringInit(&cachePtr->buffer);
+        Tcl_DStringInit(&cachePtr->buffer);
         Ns_TlsSet(&tls, cachePtr);
     }
 #endif
@@ -2327,7 +2456,7 @@ FreeCache(void *arg)
 
         LogFlush(cachePtr, filters, -1, NS_TRUE, NS_TRUE);
 
-        Ns_DStringFree(&cachePtr->buffer);
+        Tcl_DStringFree(&cachePtr->buffer);
         ns_free(cachePtr);
     }
 }
@@ -2383,8 +2512,8 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
                 Ns_DStringPrintf(&ds, "unknown severity: \"%s\":"
                                  " should be one of: ", Tcl_GetString(objPtr));
                 for (i = 0; i < severityIdx; i++) {
-                    Ns_DStringAppend(&ds, severityConfig[i].label);
-                    Ns_DStringNAppend(&ds, " ", 1);
+                    Tcl_DStringAppend(&ds, severityConfig[i].label, TCL_INDEX_NONE);
+                    Tcl_DStringAppend(&ds, " ", 1);
                 }
                 Tcl_DStringResult(interp, &ds);
                 result = TCL_ERROR;
@@ -2401,7 +2530,7 @@ GetSeverityFromObj(Tcl_Interp *interp, Tcl_Obj *objPtr, void **addrPtrPtr)
     return result;
 }
 
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  *
@@ -2429,6 +2558,7 @@ Ns_SetNsLogProc(Ns_LogProc *UNUSED(procPtr))
 {
     Ns_Fatal("Ns_SetNsLogProc: deprecated, use Ns_AddLogFilter() instead");
 }
+#endif
 
 /*
  * Local Variables:

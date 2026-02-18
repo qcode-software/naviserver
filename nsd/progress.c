@@ -43,7 +43,7 @@ static size_t        progressMinSize; /* Config: progress enabled? */
 
 static Ns_Sls        slot;            /* Per-socket progress slot. */
 
-static Tcl_HashTable urlTable;        /* Large uploads in progress. */
+static Tcl_HashTable progressTable;        /* Large uploads in progress. */
 static Ns_Mutex      lock = NULL;     /* Lock around table and Progress struct. */
 
 
@@ -72,7 +72,7 @@ NsConfigProgress(void)
 
     if (progressMinSize > 0u) {
         Ns_SlsAlloc(&slot, ResetProgress);
-        Tcl_InitHashTable(&urlTable, TCL_STRING_KEYS);
+        Tcl_InitHashTable(&progressTable, TCL_STRING_KEYS);
         Ns_MutexSetName(&lock, "ns:progress");
         Ns_Log(Notice, "nsmain: enable progress statistics for uploads >= %" PRIdz " bytes",
                progressMinSize);
@@ -99,20 +99,20 @@ NsConfigProgress(void)
  */
 
 int
-NsTclProgressObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclProgressObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc != 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "url");
+        Tcl_WrongNumArgs(interp, 1, objv, "/key/");
         result = TCL_ERROR;
 
     } else if (progressMinSize > 0u) {
         const Tcl_HashEntry *hPtr;
-        const char          *url = Tcl_GetString(objv[1]);
+        const char          *key = Tcl_GetString(objv[1]);
 
         Ns_MutexLock(&lock);
-        hPtr = Tcl_FindHashEntry(&urlTable, url);
+        hPtr = Tcl_FindHashEntry(&progressTable, key);
         if (hPtr != NULL) {
             Tcl_Obj        *resObj;
             const Progress *pPtr;
@@ -129,9 +129,9 @@ NsTclProgressObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
         } else {
             /*
               Tcl_HashSearch  search;
-              hPtr = Tcl_FirstHashEntry(&urlTable, &search);
+              hPtr = Tcl_FirstHashEntry(&progressTable, &search);
               while (hPtr != NULL) {
-              CONST char *key = Tcl_GetHashKey(&urlTable, hPtr);
+              CONST char *key = Tcl_GetHashKey(&progressTable, hPtr);
               hPtr = Tcl_NextHashEntry(&search);
               */
         }
@@ -166,7 +166,7 @@ NsUpdateProgress(Ns_Sock *sock)
     const Request    *reqPtr;
     const Ns_Request *request;
     Tcl_HashEntry    *hPtr;
-    Ns_DString        ds;
+    Tcl_DString       ds;
     int               isNew;
 
     NS_NONNULL_ASSERT(sock != NULL);
@@ -190,12 +190,14 @@ NsUpdateProgress(Ns_Sock *sock)
         if (pPtr->hPtr == NULL) {
             const char *key = NULL;
             Ns_Set *set = NULL;
-            Ns_DString *dsPtr = NULL;
+            Tcl_DString *dsPtr = NULL;
 
             pPtr->size = reqPtr->length;
             pPtr->current = reqPtr->avail;
 
-            if (request->query != NULL) {
+            key = Ns_SetIGet(reqPtr->headers, "x-progress-id");
+
+            if (key == NULL && request->query != NULL) {
               set = Ns_SetCreate(NULL);
               if (Ns_QueryToSet(request->query, set,  Ns_GetUrlEncoding(NULL)) == NS_OK) {
                 key = Ns_SetGet(set, "X-Progress-ID");
@@ -205,13 +207,13 @@ NsUpdateProgress(Ns_Sock *sock)
 
             if (key == NULL) {
               dsPtr = &ds;
-              Ns_DStringInit(dsPtr);
-              Ns_DStringAppend(dsPtr, request->url);
+              Tcl_DStringInit(dsPtr);
+              Tcl_DStringAppend(dsPtr, request->url, TCL_INDEX_NONE);
               if (request->query != NULL) {
-                Ns_DStringAppend(dsPtr, "?");
-                Ns_DStringAppend(dsPtr, request->query);
+                  Tcl_DStringAppend(dsPtr, "?", 1);
+                  Tcl_DStringAppend(dsPtr, request->query, TCL_INDEX_NONE);
               }
-              key = Ns_DStringValue(dsPtr);
+              key = dsPtr->string;
               Ns_Log(Notice, "progress start URL '%s'", key);
             }
 
@@ -222,7 +224,7 @@ NsUpdateProgress(Ns_Sock *sock)
              */
 
             Ns_MutexLock(&lock);
-            hPtr = Tcl_CreateHashEntry(&urlTable, key, &isNew);
+            hPtr = Tcl_CreateHashEntry(&progressTable, key, &isNew);
             if (isNew != 0) {
                 pPtr->hPtr = hPtr;
                 Tcl_SetHashValue(pPtr->hPtr, pPtr);
@@ -237,7 +239,7 @@ NsUpdateProgress(Ns_Sock *sock)
                 Ns_SetFree(set);
             }
             if (dsPtr != NULL) {
-                Ns_DStringFree(dsPtr);
+                Tcl_DStringFree(dsPtr);
             }
 
         } else {

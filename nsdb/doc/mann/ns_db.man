@@ -30,7 +30,7 @@ is returned.
 
 [call [cmd "ns_db bindrow"] [arg handle]]
 
-ns_db bindrow returns an ns_set structure whose key names are the column names
+Returns an ns_set structure whose key names are the column names
 of the rows returned by the SQL command previously-executed with ns_db exec.
 If the database is not currently returning rows (i.e., a status other than
 NS_ROWS was returned by ns_db exec), an error is thrown. The handle argument is
@@ -46,14 +46,7 @@ database will be reset.
 
 [call [cmd "ns_db cancel"] [arg handle]]
 
-ns_db cancel cancels the current operation.
-
-
-[call [cmd "ns_db close"] [arg handle]]
-
-Closes the connection. Use this function only on handles that were obtained by
-the ns_db open function. The server automatically close handles when the
-operation is complete, so you don't normally have to call this function.
+Cancel the current operation.
 
 
 [call [cmd "ns_db connected"] [arg handle]]
@@ -62,7 +55,7 @@ Returns a boolean value indicating whether the connection to the database pool i
 
 [call [cmd "ns_db currenthandles"]]
 
-Return information about handles currently allocated to the thread
+Returns information about handles currently allocated to the thread
 performing this call. The result contains a dict with the pools,
 from which handles were allocated, the names of the handles and their
 "active" state (a handle is active between a "ns_db select" and the
@@ -93,7 +86,7 @@ Returns the database type for the database pool.
 
 [call [cmd "ns_db dml"] [arg handle] [arg sql]]
 
-ns_db dml executes the provided SQL DML statement that should be data
+Executes the provided SQL DML statement that should be data
 manipulation language such as an insert or update, or data definition
 language such as a create table.
 
@@ -105,10 +98,10 @@ Returns the name of the driver of the handle.
 
 [call [cmd "ns_db exception"] [arg handle]]
 
-ns_db exception returns the most recent exception for the database pool.
+Returns the most recent exception for the database pool.
 
 
-[call [cmd "ns_db exec"] [arg handle] [arg sqlcommand]]
+[call [cmd "ns_db exec"] [arg handle] [arg sql]]
 
 Executes the specified SQL command. It returns either NS_DML (if the SQL command
 is a DML or DDL command) or NS_ROWS (if the SQL command returns rows, such as
@@ -118,16 +111,17 @@ what kind of SQL command will be executed.
 
 [call [cmd "ns_db flush"] [arg handle]]
 
-ns_db flush flushes the results of an SQL select so you do not need to use ns_db
+Flushes the results of an SQL select so you do not need to use ns_db
 getrow to get all the rows and throw them away.
 
 
 [call [cmd "ns_db gethandle"] \
-     [opt [option "-timeout [arg t]"]] \
-     [arg poolname] \
+     [opt [option "-timeout [arg time]"]] \
+     [opt --] \
+     [opt [arg poolname]] \
      [opt [arg nhandles]] ]
 
-ns_db gethandle returns the specified number of handles from the specified pool.
+Returns the specified number of handles from the specified pool.
 If poolname is not specified, the Defaultpool from the configuration file is
 used. If nhandles is not specified, 1 handle is returned. (Note that if you
 specify nhandles, you must also specify a poolname.) If not enough handles are
@@ -146,31 +140,46 @@ become available. If timeout is greater than zero, ns_db gethandle will either
 return with the handles within that time period, or return "" if the time period
 was exceeded, or generate a Tcl error.
 See the examples for [cmd "ns_db gethandle"], below.
-The argument [arg t] can be specified in the form
+The argument [arg time] can be specified in the form
 [arg secs[opt :microsecs]], or [arg secs.fraction],
 or as a number with the time units ms, s, m, d.
 
+
 [call [cmd "ns_db getrow"] [arg handle] [arg setId]]
 
-ns_db getrow fetches the next row waiting to be retrieved after an ns_db select.
-The data is dumped right into the set associated with SETID, which should be the
-set returned by the ns_db select. It returns "1" if there are more rows waiting
-and returns "0" otherwise. If you call ns_db getrow again after already
-receiving "0" on the previous call, an error is returned.
+Fetches the next row from the result of a prior
+[cmd "ns_db select"] call, inserting its values into the [cmd ns_set]
+identified by [arg setId] (the same set returned by the [cmd "ns_db
+select"]). 
+The command returns "1" if there are more rows waiting
+and returns "0" otherwise.
+Calling [cmd "ns_db getrow"] again after receiving `0` will raise an error.
 
-[call [cmd "ns_db logminduration"] [arg pool] [opt [arg duration]]]
 
-Query or set a threshold for logging of SQL statements. Log only
-statements in the error.log, when SQL logging is turned on in general
-(via "ns_logctl severity Debug(sql) ...") and the statement took at
-least the specified duration. The [arg duration] can be specified in
+[call [cmd "ns_db info"] [arg handle]]
+
+Returns a Tcl dictionary with metadata about the database connection
+associated with [arg handle].  The dictionary may include:
+
+[const clientversion] (version of the client library),
+[const serverversion] (version of the connected database server)
+[const type] (the database type (e.g., [const PostgreSQL], [const Oracle])
+[const pool] (the connection pool name from which this handle was allocated).
+
+Note: not all drivers supply every field; for instance, some may omit version numbers.
+
+
+[call [cmd "ns_db logminduration"] [opt [arg poolname]] [opt [arg minduration]]]
+
+ Queries or sets the minimum execution time threshold for SQL
+ statement logging. When SQL debug logging is enabled (for example via
+ "ns_logctl severity Debug(sql) ..."), only statements that take at
+ least the specified duration will be emitted to the system log.
+
+If [arg poolname] is omitted, the operation is applied on all database
+pools. The [arg minduration] can be specified in
 the form [arg secs[opt :microsecs]], or [arg secs.fraction], or as a
 number with the time units ms, s, m, d.
-
-
-[call [cmd "ns_db open"] [arg driver] [arg datasource] [arg user] [arg password]]
-
-ns_db open returns a handle at a lower level, circumventing the pools.
 
 
 [call [cmd "ns_db password"] [arg handle]]
@@ -180,12 +189,12 @@ Returns the password of the user for the database pool.
 
 [call [cmd "ns_db poolname"] [arg handle]]
 
-ns_db poolname returns the database pool that this handle came from.
+Returns the database pool that this handle came from.
 
 
 [call [cmd "ns_db pools"]]
 
-ns_db pools returns a list of all database pools.
+Returns a list of all database pools.
 
 
 [call [cmd "ns_db releasehandle"] [arg handle]]
@@ -203,7 +212,7 @@ statements to know how many records updated.
 
 [call [cmd "ns_db select"] [arg handle] [arg sql]]
 
-ns_db select executes the SQL statement on the database server. It returns an
+Executes the SQL statement on the database server. It returns an
 ns_set with the keys set to the column names that were selected. Use ns_db
 getrow to retrieve rows. You cannot perform nested select statements. Before you
 start a new select statement, you must first either retrieve all the rows from
@@ -213,27 +222,24 @@ yet retrieved.
 
 [call [cmd "ns_db setexception"] [arg handle] [arg code] [arg message]]
 
-ns_db setexception returns the specified status code and message to the client.
+Returns the specified status code and message to the client.
 
 
 [call [cmd "ns_db sp_exec"] [arg handle]]
 
-ns_db sp_exec executes a stored procedure that has been initialized with ns_db
-sp_start and ns_db sp_setparam. It returns "NS_DML" if the command was
+Executes a stored procedure that has been initialized with
+[cmd "ns_db sp_start"] and [cmd "ns_db sp_setparam"]. It returns "NS_DML" if the command was
 successfully executed but did not return rows, or it returns "NS_ROWS" if the
 command was successfully executed and did return rows (which can then be fetched
-with ns_db bindrow and ns_db getrow). It throws an error if the command failed.
+with [cmd "ns_db bindrow"] and [cmd "ns_db getrow"]). It throws an error if the command failed.
 This function is implemented only for the Sybase database driver. See the
 Examples section, below, for an example of this function.
 
 
-[call [cmd "ns_db sp_getparams"]]
-
-ns_db sp_getparams gets any output parameters set after executing a stored
-procedure with ns_db sp_exec. It returns an ns_set or throws an error on failure.
-This function is implemented only for the Sybase database driver. See the Examples
-section, below, for an example of this function.
-
+[call [cmd "ns_db sp_getparams"] [arg handle]]
+]
+Returns any output parameters set after executing a stored
+procedure with [cmd "ns_db sp_exec"]. It returns an ns_set or throws an error on failure.
 
 [call [cmd "ns_db sp_returncode"] [arg handle]]
 
@@ -245,17 +251,17 @@ this function.
 
 [call [cmd "ns_db sp_setparam"] \
      [arg handle] \
-     [arg varname] \
-     [arg vartype] \
-     [arg direction] \
+     [arg paramname] \
+     [arg type] \
+     [const in|out] \
      [arg value] ]
 
-ns_db sp_setparam sets a parameter for a call to a stored
-procedure. [arg varname] is the name of the variable, for example
-"@name".  [arg vartype] is the data type of this parameter, for
-example "varchar". The [arg direction] argument indicates whether it
-is an input or output parameter. It must be set to either "in" or
-"out".  [arg value] denotes the parameter value to send. This function
+Sets a parameter for a call to a stored
+procedure. [arg paramname] is the name of the parameter, for example
+[term @name].  [arg type] is the data type of this parameter, for
+example [term varchar]. The nextg argument denotes the direction, whether it
+is an input or output parameter. It must be set to either [term in] or
+[term out].  [arg value] denotes the parameter value to send. This function
 returns 1 on success and throws an error on failure. This function is
 implemented only for the Sybase database driver. See the Examples
 section, below, for an example of this function.
@@ -263,7 +269,7 @@ section, below, for an example of this function.
 
 [call [cmd "ns_db sp_start"] [arg handle] [arg procname]]
 
-ns_db sp_start begins execution of the stored procedure called procname.
+Begins execution of the stored procedure called [arg procname].
 It returns 0 on success and throws an error on failure. This function is
 implemented only for the Sybase database driver. See the Examples section,
 below, for an example of this function.
@@ -286,28 +292,22 @@ Returns the user (as specified for the User parameter of the configuration file)
 for the database pool.
 
 
-[call [cmd "ns_db verbose"] [arg handle] [opt [arg enabled]]]
-
-Change the verbose setting (the Verbose parameter in the configuration file) for
-the given pool.
-
-
 [call [cmd "ns_dberrorcode"] [arg handle]]
 
-Return the database error code for the specified database handle.
+Returns the database error code for the specified database handle.
 
 [call [cmd "ns_dberrormsg"] [arg handle]]
 
-Return the database error message for the specified database handle.
+Returns the database error message for the specified database handle.
 
 [call [cmd "ns_dbconfigpath"]]
 
-Return the database section name file for the nsdb module from the
+Returns the database section name file for the nsdb module from the
 configuration file.
 
-[call [cmd "ns_pooldescription"] [arg poolname]]
+[call [cmd "ns_dbpooldescription"] [arg poolname]]
 
-Return the description of the provided database pool name from the
+Returns the description of the provided database pool name from the
 [lb]ns/db/pools[rb] section in the configuration file.
 
 [list_end]
@@ -342,6 +342,22 @@ These are valid uses of ns_db gethandle:
  # 5 handles from poolname, 2.0 sec timeout
 [example_end]
 
+Change the verbosity level to show all SQL commands or only these taking
+longer:
+[example_begin]
+ #
+ # Increase verbosity of SQL
+ #
+ ns_logctl debug(sql) on
+ 
+ #
+ # Set for every pool the longminduration to 0 to show all
+ # SQL commands (or e.g. to 10ms, meaning: show SQL commands
+ # taking longer than 10 milliseconds).
+ #
+ foreach pool [lb]ns_db pools[rb] {ns_db logminduration $pool 0}
+[example_end]
+
 
 
 [example_begin]
@@ -369,9 +385,10 @@ These are valid uses of ns_db gethandle:
 [example_end]
 
 
+
 [section CONFIGURATION]
 
-The nsdb module is typically loaded per-server, where every server
+The [term nsdb] module is typically loaded per-server, where every server
 might use multiple database pools. Below is a sample configuration for
 PostgreSQL using the [term nsdbpg] driver, using two database pools
 where [term pool1] is the default pool.
@@ -465,7 +482,7 @@ variables have to be set earlier to appropriate values.
 [example_begin]
  ns_section ns/db/pool/pool1 {
    ns_param	Connections        15
-   ns_param      LogMinDuration     10ms
+   ns_param     LogMinDuration     10ms
    ns_param	LogSQLerrors       $debug
    ns_param	driver             postgres
    ns_param	DataSource         ${db_host}:${db_port}:${db_name}
@@ -474,7 +491,7 @@ variables have to be set earlier to appropriate values.
  }
  ns_section ns/db/pool/pool2 {
    ns_param	Connections        5
-   ns_param      LogMinDuration     10ms
+   ns_param     LogMinDuration     10ms
    ns_param	LogSQLerrors       $debug
    ns_param	driver             postgres
    ns_param	DataSource         ${db_host}:${db_port}:${db_name}

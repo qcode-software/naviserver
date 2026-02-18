@@ -1,0 +1,235 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_adp_debug - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_adp_debug.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_adp_debug.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_adp_debug.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_adp_debug.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_adp_debug(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_adp_debug - Connect to the TclPro Debugger if not already connected</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a>
+<ul>
+<li class="doctools_subsection"><a href="#subsection1">Example Usage of the TclPro Debugger</a></li>
+<li class="doctools_subsection"><a href="#subsection2">Background and Availability of the TclPro Debugger</a></li>
+<li class="doctools_subsection"><a href="#subsection3">Installation of the TclPro Debugger</a></li>
+<li class="doctools_subsection"><a href="#subsection4">Basic operation of the TclPro Debugger with NaviServer</a></li>
+<li class="doctools_subsection"><a href="#subsection5">Limitations</a></li>
+</ul>
+</li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_adp_debug</b> <span class="opt">?<b class="option">-host <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-port <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-procs <i class="arg">value</i></b>?</span></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The <b class="cmd">ns_adp_debug</b> command integrates NaviServer with the
+ <a href="https://www.tcl.tk/software/tclpro/debugger.html">TclPro Debugger</a>,
+ a graphical debugging tool for Tcl code. It allows you to connect to
+ a running debugger process and step through code, inspect variables,
+ and examine the call stack. By default, it uses information from the
+ current request to determine the debugger host if not explicitly
+ provided, and defaults to port <i class="arg">2576</i> unless otherwise specified.</p>
+<p>You can use <b class="cmd">ns_adp_debug</b> to:</p>
+<ul class="doctools_itemized">
+ 
+<li><p>Connect to a remote TclPro Debugger instance running on a
+        specified host and port</p></li>
+<li><p>Inspect the call stack and local variables at breakpoints</p></li>
+<li><p>Step through Tcl procedures. This process requires
+        instrumentation, which can be enabled via command-line
+        parameters or through the TclPro Debugger GUI
+        (&quot;View-&gt;Procedures...&quot;).</p></li>
+</ul>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_adp_debug</b> <span class="opt">?<b class="option">-host <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-port <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-procs <i class="arg">value</i></b>?</span></a></dt>
+<dd><p>Connects to a running TclPro Debugger process. By default, if
+ <i class="arg">host</i> is not provided, <b class="cmd">ns_adp_debug</b> uses the <i class="term">Host</i>
+ header field from the incoming request. If the debugger is running on
+ a port different to the default 2576, you must specify
+ the <i class="arg">-port</i> option. If <i class="arg">-procs</i> is provided, it should
+ be a glob-style pattern indicating which Tcl procedures
+ to automatically instrument for debugging.</p></dd>
+</dl>
+<div id="subsection1" class="doctools_subsection"><h3><a name="subsection1">Example Usage of the TclPro Debugger</a></h3>
+<p>Below is an example of using the TclPro Debugger to debug the start
+ page of the <b class="cmd">nsstats</b> module.</p>
+<p><img alt="nsstats startpage from TclPro Debugger" src="../../image/tclpro-nsstats.png"></p>
+</div>
+<div id="subsection2" class="doctools_subsection"><h3><a name="subsection2">Background and Availability of the TclPro Debugger</a></h3>
+<p>The TclPro Debugger was originally developed as a commercial product
+ by Scriptics. After Scriptics was renamed to Ajuba and was later
+ acquired by Interwoven, the development moved to ActiveState as part
+ of the TclDevKit tool suite. When ActiveState discontinued TclDevKit,
+ the TclPro Debugger sources were released as open source. Currently,
+ multiple open-source variants exist:</p>
+<ul class="doctools_itemized">
+<li><p>Open-sourced TDK from ActiveState:
+       <a href="https://github.com/activestate/tdk">https://github.com/activestate/tdk</a></p></li>
+<li><p>FlightAware fork, upgraded from TclPro Debugger 1.5 to version 2.0:
+       <a href="https://github.com/flightaware/TclProDebug">https://github.com/flightaware/TclProDebug</a></p></li>
+<li><p>A fork of the FlightAware version, updated to version 3.0, supporting
+       the Microsoft Debug Adapter Protocol (usable with Vimspector,
+       Visual Studio, etc.):
+       <a href="https://github.com/puremourning/TclProDebug">https://github.com/puremourning/TclProDebug</a></p></li>
+<li><p>A fork of the FlightAware version (2.0) adapted for Tcl 9:
+       <a href="https://github.com/apnadkarni/TclProDebug">https://github.com/apnadkarni/TclProDebug</a></p></li>
+</ul>
+</div>
+<div id="subsection3" class="doctools_subsection"><h3><a name="subsection3">Installation of the TclPro Debugger</a></h3>
+<p>The TclPro Debugger is a Tk-based GUI application that
+ communicates with NaviServer over a network socket. You can run the
+ debugger on a separate machine from the server, provided you have
+ appropriate network access and a means to display the GUI (e.g., X
+ forwarding or remote desktop).</p>
+<p>The steps below demonstrate how to install Tcl, Tk, and
+ TclProDebug from source into a dedicated directory, avoiding
+ interference with system-wide installations. The example uses Tcl 9
+ on a Unix-like system, based on the last of the mentioned
+ variants. You may adapt these instructions for Tcl 8.6 or different
+ paths as needed.</p>
+<p>First, define the paths for the source and installation
+ directories, assuming Tcl, Tk, and TclProDebug are downloaded to the
+ specified locations.</p>
+<pre class="doctools_example">
+ INSTALL_DIR=/usr/local/ns9
+ # Uncomment TKFLAG if compiling under macOS with Aqua support
+ #TKFLAG=--enable-aqua
+ TCL_SRC=/usr/local/src/tcl9.0.0
+ TK_SRC=/usr/local/src/tk9.0.0
+ TCLDB_SRC=/usr/local/src/TclProDebug
+</pre>
+<p>Install Tcl9:</p>
+<pre class="doctools_example">
+ (cd ${TCL_SRC}/unix &amp;&amp; ./configure --prefix=${INSTALL_DIR} --with-tcl=${INSTALL_DIR}/lib/ &amp;&amp; sudo make install)
+</pre>
+<p>Install Tk9:</p>
+<pre class="doctools_example">
+ (cd ${TK_SRC}/unix &amp;&amp; ./configure --prefix=${INSTALL_DIR} --with-tcl=${INSTALL_DIR}/lib/ ${TKFLAG} &amp;&amp; sudo make install)
+</pre>
+<p>Install the Tcl parser from TclPro Debugger:</p>
+<pre class="doctools_example">
+ cd ${TCLDB_SRC}
+ (cd lib/tclparser/ &amp;&amp; autoreconf &amp;&amp; ./configure --prefix=${INSTALL_DIR} --with-tcl=${INSTALL_DIR}/lib &amp;&amp; sudo make install)
+</pre>
+<p>Make the remote debugging adapter available to NaviServer by linking
+ it into NaviServer’s <b class="const">tcl</b> directory (assuming NaviServer and the
+ debugger run on the same machine):</p>
+<pre class="doctools_example">
+ ln -s ${TCLDB_SRC}/lib/remotedebug/initdebug.tcl ${INSTALL_DIR}/tcl/
+</pre>
+<p>Start the TclPro Debugger GUI (here using wish from the Tk 9 installation):</p>
+<pre class="doctools_example">
+ ${INSTALL_DIR}/bin/wish9.0 bin/prodebug
+</pre>
+<p>In the TclPro Debugger GUI:</p>
+<pre class="doctools_example">
+  File -&gt; New Project
+    Select &quot;Remote Debugging&quot;
+    Leave Port 2576 (default)
+  File -&gt; Save Project As...
+</pre>
+</div>
+<div id="subsection4" class="doctools_subsection"><h3><a name="subsection4">Basic operation of the TclPro Debugger with NaviServer</a></h3>
+<p>NaviServer supports two primary modes for debugging ADP pages:</p>
+<ul class="doctools_itemized">
+<li><p><em>Full-page Debugging:</em>
+   In this mode, a full page can be debugged.</p>
+<ol class="doctools_enumerated">
+   
+<li><p>Enable ADP debugging in the NaviServer configuration file
+   for the server configuration.</p>
+<pre class="doctools_example">
+ ns_section ns/server/$server/adp {
+   ...
+   ns_param   enabledebug         true     ;# default: false
+   ...
+ }
+</pre>
+</li>
+<li><p>To debug a page, append a <i class="term"><a href="../../index.html#debug">debug</a></i> query variable to the page’s URL.
+     For example:</p>
+<pre class="doctools_example">
+ http://...../foo.adp?debug=*
+</pre>
+<p>The wildcard pattern matches the file to be debugged (useful for
+     complex ADP includes).  Additional query parameters like
+     <i class="term">dprocs</i>, <i class="term">dhost</i>, and <i class="term">dport</i> can override
+     defaults for procedure patterns, debugger host, and port, respectively.</p>
+<p>Note: Full-page debugging is recommended only for
+     development environments not accessible from the public Internet,
+     as it can expose source code and internal variable states to any
+     client requesting the <i class="term"><a href="../../index.html#debug">debug</a></i> parameter.</p></li>
+</ol>
+</li>
+<li><p><em>Debugging via Breakpoints:</em>
+ If you prefer not to enable full-page debugging, insert
+ <b class="cmd">ns_adp_debug</b> calls in your code at specific points to initiate a
+ debugger connection.  This method does not require changes to the
+ NaviServer configuration.  If needed, you can specify <i class="arg">host</i>,
+ <i class="arg">port</i>, and <i class="arg">procs</i> arguments just as in full-page debugging
+ mode. All parameters are optional.</p></li>
+</ul>
+<p>By default, the <i class="arg">host</i> is derived from the request’s Host header
+ field.  If you need a different host or a nondefault port, specify
+ them in the <b class="cmd">ns_adp_debug</b> call or via query parameters.</p>
+</div>
+<div id="subsection5" class="doctools_subsection"><h3><a name="subsection5">Limitations</a></h3>
+<p>The TclPro Debugger was designed primarily for debugging plain Tcl
+ scripts.  While it works reasonably well for basic debugging needs
+ for NaviServer and ADP pages, there are certain limitations when
+ dealing with large frameworks or complex code bases.  For instance,
+ stepping through code relies on instrumentation that serializes and
+ re-sources the procedures. This approach may be adequate for small
+ applications but can become cumbersome for larger frameworks (e.g.,
+ OpenACS) that define procedures via <b class="cmd">ad_proc</b>, employ
+ object-oriented extensions, or similar. Instrumentalization is
+ currently limited to Tcl procedures.</p>
+</div>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#naviserver">NaviServer</a>, <a href="../../index.html#tclpro_debugger">TclPro Debugger</a>, <a href="../../index.html#server_built_in">server built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

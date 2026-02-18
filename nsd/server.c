@@ -62,19 +62,47 @@ static ServerInit       *lastInitPtr;  /* Last in list of server config callback
  */
 
 NsServer *
-NsGetServer(const char *server)
+NsGetServerDebug(const char *server, const char *caller)
 {
     NsServer *result = NULL;
 
     if (server != NULL) {
         const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
+        fprintf(stderr, "NsGetServer LOOKUP <%s> %s -> %p\n", server, caller, (void*) hPtr);
 
         if (hPtr != NULL) {
             result = Tcl_GetHashValue(hPtr);
         }
+    } else {
+        fprintf(stderr, "NsGetServer called with NULL server from %s =============================\n", caller);
     }
 
     return result;
+}
+
+NsServer *
+NsGetServer(const char *server)
+{
+    NsServer *result = NULL;
+    const Tcl_HashEntry *hPtr = Tcl_FindHashEntry(&nsconf.servertable, server);
+
+    if (hPtr != NULL) {
+        result = Tcl_GetHashValue(hPtr);
+    }
+
+    return result;
+}
+
+Ns_Server *
+Ns_GetServer(const char *server)
+{
+    return (Ns_Server *)NsGetServer(server);
+}
+
+const char *
+Ns_ServerName(const Ns_Server *servPtr)
+{
+    return ((NsServer *)servPtr)->server;
 }
 
 
@@ -104,6 +132,47 @@ NsGetInitServer(void)
 /*
  *----------------------------------------------------------------------
  *
+ * StartServerCB, StopServerCB, WaitServerCB --
+ *
+ *      Callback functions for NsForeachHashValue().
+ *
+ * Results:
+ *      NS_OK.
+ *
+ * Side effects:
+ *      See NsStartServer(), NsStopHttp(), NsStopServer(),
+ *      and NsWaitServer().
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Ns_ReturnCode
+StartServerCB(void *hashValue, void *UNUSED(ctx))
+{
+    NsStartServer(hashValue);
+    return NS_OK;
+}
+
+static Ns_ReturnCode
+StopServerCB(void *hashValue, void *UNUSED(ctx))
+{
+    NsStopHttp(hashValue);
+    NsStopServer(hashValue);
+    return NS_OK;
+}
+
+static Ns_ReturnCode
+WaitServerCB(void *hashValue, void *ctx)
+{
+    const Ns_Time *toPtr = ctx;
+
+    NsWaitServer(hashValue, toPtr);
+    return NS_OK;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * NsStartServers --
  *
  *      Start all configured servers.
@@ -116,20 +185,10 @@ NsGetInitServer(void)
  *
  *----------------------------------------------------------------------
  */
-
 void
 NsStartServers(void)
 {
-    const Tcl_HashEntry *hPtr;
-    Tcl_HashSearch       search;
-
-    hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
-    while (hPtr != NULL) {
-        const NsServer *servPtr = Tcl_GetHashValue(hPtr);
-
-        NsStartServer(servPtr);
-        hPtr = Tcl_NextHashEntry(&search);
-    }
+    NsForeachHashValue(&nsconf.servertable, StartServerCB, NULL);
 }
 
 
@@ -152,25 +211,10 @@ NsStartServers(void)
 void
 NsStopServers(const Ns_Time *toPtr)
 {
-    NsServer            *servPtr;
-    const Tcl_HashEntry *hPtr;
-    Tcl_HashSearch       search;
-
     NS_NONNULL_ASSERT(toPtr != NULL);
 
-    hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
-    while (hPtr != NULL) {
-        servPtr = Tcl_GetHashValue(hPtr);
-        NsStopHttp(servPtr);
-        NsStopServer(servPtr);
-        hPtr = Tcl_NextHashEntry(&search);
-    }
-    hPtr = Tcl_FirstHashEntry(&nsconf.servertable, &search);
-    while (hPtr != NULL) {
-        servPtr = Tcl_GetHashValue(hPtr);
-        NsWaitServer(servPtr, toPtr);
-        hPtr = Tcl_NextHashEntry(&search);
-    }
+    NsForeachHashValue(&nsconf.servertable, StopServerCB, NULL);
+    NsForeachHashValue(&nsconf.servertable, WaitServerCB, (void*)toPtr);
 }
 
 
@@ -196,12 +240,14 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     Tcl_HashEntry     *hPtr;
     NsServer          *servPtr;
     const ServerInit  *initPtr;
-    const char        *path, *p;
-    Ns_Set            *set = NULL;
+    const char        *section, *p;
+    const Ns_Set      *set = NULL;
     size_t             i;
     int                n;
 
     NS_NONNULL_ASSERT(server != NULL);
+
+    Ns_Log(Debug, "NsInitServer called for <%s>", server);
 
 #if 0
     {
@@ -235,7 +281,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
 #endif
 
     /*
-     * Servers must not be defined twice.
+     * Servers must not be defined twice. Use hash table to avoid duplicates.
      */
     hPtr = Tcl_CreateHashEntry(&nsconf.servertable, server, &n);
     if (n == 0) {
@@ -255,44 +301,123 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     Tcl_DStringAppendElement(&nsconf.servers, server);
     initServPtr = servPtr;
 
-    /*
-     * Run the library init procs in the order they were registered.
-     */
-
-    initPtr = firstInitPtr;
-    while (initPtr != NULL) {
-        (void) (*initPtr->proc)(server);
-        initPtr = initPtr->nextPtr;
-    }
-
-    path = Ns_ConfigSectionPath(NULL, server, NULL, (char *)0L);
+    section = Ns_ConfigSectionPath(NULL, server, NULL, NS_SENTINEL);
 
     /*
      * Set some server options.
      */
 
-    servPtr->opts.realm = ns_strcopy(Ns_ConfigString(path, "realm", server));
-    servPtr->opts.modsince = Ns_ConfigBool(path, "checkmodifiedsince", NS_TRUE);
-    servPtr->opts.noticedetail = Ns_ConfigBool(path, "noticedetail", NS_TRUE);
-    servPtr->opts.noticeADP = Ns_ConfigString(path, "noticeadp", "returnnotice.adp");
+    servPtr->opts.realm = ns_strcopy(Ns_ConfigString(section, "realm", server));
+    servPtr->opts.modsince = Ns_ConfigBool(section, "checkmodifiedsince", NS_TRUE);
 
-    if (Ns_PathIsAbsolute(servPtr->opts.noticeADP) == NS_FALSE
-        && *servPtr->opts.noticeADP != '\0') {
+    servPtr->opts.noticedetail = Ns_ConfigBool(section, "noticedetail", NS_TRUE);
+    servPtr->opts.stealthmode = Ns_ConfigBool(section, "stealthmode", NS_FALSE);
+
+    /*
+     * Resolve "noticeadp" against HOME/conf (the default directory is
+     * currently hard-wired, user can provide an absolute directory).
+     */
+    {
         Tcl_DString  ds;
-        const char  *fileName;
 
         Tcl_DStringInit(&ds);
-        fileName = Ns_HomePath(&ds, "conf", "/",
-                               servPtr->opts.noticeADP, (char *)0L);
-        servPtr->opts.noticeADP = ns_strcopy(fileName);
+        Tcl_DStringAppend(&ds, nsconf.home, TCL_INDEX_NONE);
+        Tcl_DStringAppend(&ds, "/conf", 5);
+        servPtr->opts.noticeADP = Ns_ConfigFilename(section, "noticeadp", 9,
+                                                    ds.string,
+                                                    "returnnotice.adp", NS_FALSE, NS_FALSE);
         Tcl_DStringFree(&ds);
     }
 
-    servPtr->opts.errorminsize = (int)Ns_ConfigMemUnitRange(path, "errorminsize", NULL, 514, 0, INT_MAX);
-    servPtr->filter.rwlocks = Ns_ConfigBool(path, "filterrwlocks", NS_TRUE);
+#ifdef NS_WITH_DEPRECATED_5_0
+    if (Ns_ConfigGetValue(section, "serverdir") == NULL && servPtr->opts.serverdir != NULL) {
+        /*
+         * We have a "serverdir" from the deprecated location but none in the
+         * server section. Be friendly and use the value from the deprecated
+         * location, but provide a warning.
+         */
+        Ns_Log(Warning, "using the 'serverdir' from the deprecated fastpath section");
+    } else {
+        if (servPtr->opts.serverdir != NULL) {
+            Ns_Log(Notice, "overriding 'serverdir' setting from fastpath section with value from %s", section);
+            ns_free((void*)servPtr->opts.serverdir);
+        }
+        servPtr->opts.serverdir = Ns_ConfigFilename(section, "serverdir", 9,
+                                                        nsconf.home, NS_EMPTY_STRING,
+                                                        NS_TRUE, NS_FALSE);
+    }
+#else
+    servPtr->opts.serverdir = Ns_ConfigFilename(section, "serverdir", 9,
+                                                    nsconf.home, NS_EMPTY_STRING,
+                                                    NS_TRUE, NS_FALSE);
+#endif
+    Ns_Log(Notice,  "NsInitServer servPtr->opts.serverdir set to <%s>", servPtr->opts.serverdir);
+
+
+    /*
+     * Resolve and update the server log directory configuration.
+     *
+     *      This block determines the appropriate log directory for the
+     *      server.  If the server-specific log directory is not set, it uses
+     *      the global "ns/parameters" section; otherwise, it uses the current
+     *      configuration section. The code then completes a relative log
+     *      directory path by combining the server's root path with the
+     *      configured log directory value.  The "update" flag is set to
+     *      NS_FALSE to prevent storing the computed absolute path back into
+     *      the configuration database.
+     */
+    servPtr->opts.logDir = Ns_ConfigGetValue(section, "logdir");
+    //Ns_Log(Notice, "??? raw serverlogdir section '%s' <%s>", section, servPtr->opts.logDir);
+
+    {
+        const char *fromSection = servPtr->opts.logDir == NULL ? "ns/parameters" : section;
+        Tcl_DString ds;
+
+        Tcl_DStringInit(&ds);
+        servPtr->opts.logDir = Ns_ConfigFilename(fromSection, "logdir", 6,
+                                                 Ns_ServerPath(&ds, server, NS_SENTINEL),
+                                                 nsconf.logDir, NS_FALSE, NS_FALSE);
+        Tcl_DStringFree(&ds);
+    }
+
+    /*
+     * Optional Server Root Processing Callback
+     *
+     *      This code block checks if a "serverrootproc" value is defined in
+     *      the server configuration section. If present, it creates a Tcl
+     *      callback object from the string and allocates a temporary
+     *      interpreter for processing. The callback is then registered using
+     *      Ns_SetServerRootProc, which sets up the server root processing
+     *      routine (NsTclServerRoot) to dynamically complete server root
+     *      paths. If registration fails, a warning is logged. Finally, the
+     *      temporary interpreter is deallocated.
+     */
+    {
+        const char *rootProcString = Ns_ConfigGetValue(section, "serverrootproc");
+        if (rootProcString != NULL) {
+            Ns_TclCallback *cbPtr;
+            Tcl_Obj        *callbackObj = Tcl_NewStringObj(rootProcString, TCL_INDEX_NONE);
+            Tcl_Interp     *interp;
+
+            interp = NsTclAllocateInterp( servPtr);
+            Tcl_IncrRefCount(callbackObj);
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclServerRoot, callbackObj,
+                                      0, NULL);
+            Tcl_IncrRefCount(callbackObj);
+
+            if (unlikely(Ns_SetServerRootProc(NsTclServerRoot, cbPtr) != NS_OK)) {
+                Ns_Log(Warning, "server init: cannot register serverrootproc");
+            }
+            Ns_TclDeAllocateInterp(interp);
+            //Ns_Log(Notice, "??? serverlogdir NULL, path <%s>", servPtr->opts.logDir);
+        }
+    }
+
+    servPtr->opts.errorminsize = (int)Ns_ConfigMemUnitRange(section, "errorminsize", NULL, 514, 0, INT_MAX);
+    servPtr->filter.rwlocks = Ns_ConfigBool(section, "filterrwlocks", NS_TRUE);
 
     servPtr->opts.hdrcase = Preserve;
-    p = Ns_ConfigString(path, "headercase", "preserve");
+    p = Ns_ConfigString(section, "headercase", "preserve");
     if (STRIEQ(p, "tolower")) {
         servPtr->opts.hdrcase = ToLower;
     } else if (STRIEQ(p, "toupper")) {
@@ -302,21 +427,30 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
     /*
      * Add server specific extra headers.
      */
-    servPtr->opts.extraHeaders = Ns_ConfigSet(path, "extraheaders", NULL);
+    servPtr->opts.extraHeaders = Ns_ConfigSet(section, "extraheaders", NULL);
 
     /*
      * Initialize on-the-fly compression support.
      */
-    servPtr->compress.enable = Ns_ConfigBool(path, "compressenable", NS_FALSE);
+    servPtr->compress.enable = Ns_ConfigBool(section, "compressenable", NS_FALSE);
 #ifndef HAVE_ZLIB_H
     Ns_Log(Warning, "init server %s: compress is enabled, but no zlib support built in",
            server);
 #else
     Ns_Log(Notice, "init server %s: using zlib version %s", server, ZLIB_VERSION);
 #endif
-    servPtr->compress.level = Ns_ConfigIntRange(path, "compresslevel", 4, 1, 9);
-    servPtr->compress.minsize = (int)Ns_ConfigMemUnitRange(path, "compressminsize", NULL, 512, 0, INT_MAX);
-    servPtr->compress.preinit = Ns_ConfigBool(path, "compresspreinit", NS_FALSE);
+    servPtr->compress.level = Ns_ConfigIntRange(section, "compresslevel", 4, 1, 9);
+    servPtr->compress.minsize = (int)Ns_ConfigMemUnitRange(section, "compressminsize", NULL, 512, 0, INT_MAX);
+    servPtr->compress.preinit = Ns_ConfigBool(section, "compresspreinit", NS_FALSE);
+
+    /*
+     * Run the library init procs in the order they were registered.
+     */
+    initPtr = firstInitPtr;
+    while (initPtr != NULL) {
+        (void) (*initPtr->proc)(server);
+        initPtr = initPtr->nextPtr;
+    }
 
     /*
      * Call the static server init proc, if any, which may register
@@ -341,6 +475,11 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
         Ns_MutexInit(&servPtr->filter.lock.mlock);
         Ns_MutexSetName2(&servPtr->filter.lock.mlock, "nsd:filter", server);
     }
+    Ns_RWLockInit(&servPtr->request.rwlock);
+    Ns_RWLockSetName2(&servPtr->request.rwlock, "nsd:auth", server);
+
+    Ns_RWLockInit(&servPtr->opts.rwlock);
+    Ns_RWLockSetName2(&servPtr->opts.rwlock, "nsd:opts", server);
 
     Ns_MutexInit(&servPtr->tcl.synch.lock);
     Ns_MutexSetName2(&servPtr->tcl.synch.lock, "nsd:tcl:synch", server);
@@ -353,7 +492,7 @@ NsInitServer(const char *server, Ns_ServerInitProc *initProc)
      */
 
     CreatePool(servPtr, NS_EMPTY_STRING);
-    set = Ns_ConfigGetSection(Ns_ConfigGetPath(server, NULL, "pools",  (char *)0L));
+    set = Ns_ConfigGetSection(Ns_ConfigGetPath(server, NULL, "pools",  NS_SENTINEL));
 
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         CreatePool(servPtr, Ns_SetKey(set, i));
@@ -441,7 +580,7 @@ CreatePool(NsServer *servPtr, const char *pool)
 
     if (*pool == '\0') {
         /* NB: Default options from pre-4.0 ns/server/server1 section. */
-        section = Ns_ConfigSectionPath(NULL, servPtr->server, NULL, (char *)0L);
+        section = Ns_ConfigSectionPath(NULL, servPtr->server, NULL, NS_SENTINEL);
         servPtr->pools.defaultPtr = poolPtr;
     } else {
         Ns_Set *set;
@@ -449,12 +588,19 @@ CreatePool(NsServer *servPtr, const char *pool)
         /*
          * Map requested method/URL's to this pool.
          */
-        section = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool,  (char *)0L);
+        section = Ns_ConfigGetPath(servPtr->server, NULL, "pool", pool,  NS_SENTINEL);
         set = Ns_ConfigGetSection2(section, NS_FALSE);
         for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
-            if (strcasecmp(Ns_SetKey(set, i), "map") == 0) {
+            const char *key = Ns_SetKey(set, i);
+
+            if ( STREQ(key, "map")
+                || STREQ(key, "map-inherit")) {
                 NsConfigMarkAsRead(section, i);
                 NsMapPool(poolPtr, Ns_SetValue(set, i), 0u);
+            }
+            if (STREQ(key, "map-noinherit")) {
+                NsConfigMarkAsRead(section, i);
+                NsMapPool(poolPtr, Ns_SetValue(set, i), NS_OP_NOINHERIT);
             }
         }
     }
@@ -579,6 +725,378 @@ CreatePool(NsServer *servPtr, const char *pool)
 
         Tcl_DStringFree(&ds);
     }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ServerLogDir --
+ *
+ *      Returns the directory path where the server’s log files are stored.
+ *
+ *      If the provided NsServer pointer is NULL or its logDir field is not set,
+ *      this function returns the default log path obtained from Ns_InfoLogPath().
+ *      Otherwise, it returns the logDir value from the server structure.
+ *
+ * Parameters:
+ *      servPtr - Pointer to the NsServer structure representing the server.
+ *
+ * Results:
+ *      A pointer to a null-terminated string containing the log directory path.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_ServerLogDir(const char *server)
+{
+    const char *result;
+    NsServer *servPtr = NsGetServer(server);
+
+    if (servPtr == NULL || servPtr->opts.logDir == NULL) {
+        result = Ns_InfoLogPath();
+    } else {
+        result = servPtr->opts.logDir;
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ServerRootProcEnabled --
+ *
+ *      Determines whether server root processing is enabled for the specified
+ *      server.  This function checks if the server can be resolved and if its
+ *      virtual host structure has a non-null serverRootProc callback. When
+ *      enabled, this callback is used to process relative paths (e.g., for
+ *      log directories) relative to the server's root.
+ *
+ * Parameters:
+ *      server - A pointer to a null-terminated string representing the server's name.
+ *
+ * Results:
+ *      Returns true if the server exists and its serverRootProc callback is set; otherwise,
+ *      returns false.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+bool
+NsServerRootProcEnabled(const NsServer *servPtr)
+{
+    bool      result;
+
+    if (servPtr == NULL) {
+        result = NS_FALSE;
+    } else {
+        result = (servPtr->vhost.serverRootProc != NULL);
+    }
+    return result;
+}
+
+bool
+Ns_ServerRootProcEnabled(const char *server)
+{
+    return NsServerRootProcEnabled(NsGetServer(server));
+}
+
+
+typedef struct LogfileCtxData {
+    const void *handle;
+    int fd;
+} LogfileCtxData;
+
+typedef struct LogfileCtx {
+    const char *filename;
+    LogfileCtxData *dataPtr;
+} LogfileCtx;
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * LogFileOpen --
+ *
+ *      Opens the log file specified in the LogfileCtx structure. The file is
+ *      opened in append mode. If the file does not exist, it is created with
+ *      permission mode 0644.
+ *
+ * Parameters:
+ *      arg - Pointer to a LogfileCtx structure containing the log filename.
+ *
+ * Results:
+ *      Returns the file descriptor of the opened log file, or NS_INVALID_FD
+ *      on failure.
+ *
+ * Side Effects:
+ *      Logs an error if the file cannot be opened.
+ *
+ *----------------------------------------------------------------------
+ */
+static Ns_ReturnCode
+LogFileOpen(void *arg)
+{
+    LogfileCtx   *ctx = arg;
+    Ns_ReturnCode result = NS_OK;
+
+    ctx->dataPtr->fd = ns_open(ctx->filename, O_APPEND | O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+    if (ctx->dataPtr->fd == NS_INVALID_FD) {
+        Ns_Log(Error, "logfile open: error '%s' opening '%s'",
+               strerror(errno), ctx->filename);
+        result = NS_ERROR;
+
+    } else {
+        Ns_Log(Notice, "logfile open: opened '%s' fd %d", ctx->filename, ctx->dataPtr->fd);
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * LogFileClose --
+ *
+ *      Closes the log file associated with the file descriptor in the given
+ *      LogfileCtx structure.
+ *
+ * Parameters:
+ *      arg - Pointer to a LogfileCtx structure containing the file descriptor
+ *            to close.
+ *
+ * Results:
+ *      Returns the result of ns_close() for the file descriptor.
+ *
+ * Side Effects:
+ *      Closes the file.
+ *
+ *----------------------------------------------------------------------
+ */
+static int
+LogFileClose(void *arg)
+{
+    LogfileCtx *ctx = arg;
+
+    Ns_Log(Notice, "logfile close: fd %d fn %s", ctx->dataPtr->fd, ctx->filename);
+
+    return ns_close(ctx->dataPtr->fd);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ServerLogGetFd --
+ *
+ *      Retrieves the file descriptor for a log file associated with a given
+ *      server.  The function first obtains the server structure via
+ *      NsGetServer(). It then checks a hash table (logfileTable) in the
+ *      server's virtual host structure to determine if a file descriptor for
+ *      the specified filename is already cached.  If so, the cached file
+ *      descriptor is returned; otherwise, the log file is opened, cached (if
+ *      successful), and its file descriptor returned.
+ *
+ * Parameters:
+ *      server   - The server name (as a null-terminated string).
+ *      filename - The log filename.
+ *
+ * Results:
+ *      The file descriptor for the log file, or NS_INVALID_FD if the server
+ *      is not available or the file cannot be opened.
+ *
+ * Side Effects:
+ *      Caches a newly opened file descriptor in the server's logfileTable.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_ServerLogGetFd(const char *server, const void *handle, const char *filename)
+{
+    int       fd;
+    NsServer *servPtr = NsGetServer(server);
+
+    NS_NONNULL_ASSERT(filename != NULL);
+
+    if (servPtr == NULL) {
+        fd = NS_INVALID_FD;
+    } else {
+        int            isNew;
+        Tcl_HashEntry *hPtr;
+
+        Ns_Log(Notice, "logfile getfd: filename '%s'", filename);
+
+        Ns_MutexLock(&servPtr->vhost.logMutex);
+        hPtr = Tcl_CreateHashEntry(&servPtr->vhost.logfileTable, filename, &isNew);
+        if (isNew == 0) {
+            const LogfileCtxData *dataPtr = Tcl_GetHashValue(hPtr);
+            fd = dataPtr->fd;
+            Ns_Log(Notice, "logfile getfd: return cached fd %d for '%s'", fd, filename);
+        } else {
+            LogfileCtx ctx = {filename, NULL};
+
+            ctx.dataPtr = ns_calloc(1u, sizeof(LogfileCtxData));
+            ctx.dataPtr->handle = handle;
+            LogFileOpen(&ctx);
+            fd = ctx.dataPtr->fd;
+            /*
+             * Remember just valid fds. Don't keep hash entries, when open
+             * fails.
+             */
+            if (fd != NS_INVALID_FD) {
+                Tcl_SetHashValue(hPtr, ctx.dataPtr);
+            } else {
+                ns_free(ctx.dataPtr);
+                Tcl_DeleteHashEntry(hPtr);
+            }
+        }
+        Ns_MutexUnlock(&servPtr->vhost.logMutex);
+    }
+
+    return fd;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ServerLogCloseAll --
+ *
+ *      Closes all log file descriptors for a given server that match a
+ *      specific handle.
+ *
+ *      For each log file, it compares the associated handle with the provided
+ *      handle.  If a match is found, the function closes the log file using
+ *      LogFileClose(), frees the associated data, and removes the entry from
+ *      the logfile table. Log messages are issued to indicate which log files
+ *      are closed or skipped.
+ *
+ * Parameters:
+ *      server - A pointer to a null-terminated string representing the server name.
+ *      handle - A pointer to the handle used to identify the log files to close.
+ *
+ * Results:
+ *      Returns NS_OK if the operation is successful, or NS_ERROR if the server could not be
+ *      found.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+Ns_ServerLogCloseAll(const char *server, const void *handle)
+{
+    Ns_ReturnCode result = NS_OK;
+    NsServer     *servPtr = NsGetServer(server);
+
+    Ns_Log(Notice, "logfile closeall server '%s' %s", server, (char*)handle);
+
+    if (servPtr != NULL) {
+        Tcl_HashSearch   search;
+        Tcl_HashEntry   *hPtr;
+
+        Ns_MutexLock(&servPtr->vhost.logMutex);
+        hPtr = Tcl_FirstHashEntry(&servPtr->vhost.logfileTable, &search);
+
+        while (hPtr != NULL) {
+            LogfileCtx ctx = {Tcl_GetHashKey(&servPtr->vhost.logfileTable, hPtr),
+                              Tcl_GetHashValue(hPtr)
+            };
+            if (handle == ctx.dataPtr->handle) {
+                Ns_Log(Notice, "... closeall %s is  for me: %s", (char*)ctx.dataPtr->handle, ctx.filename);
+                LogFileClose(&ctx);
+                ns_free(ctx.dataPtr);
+                Tcl_DeleteHashEntry(hPtr);
+            } else {
+                Ns_Log(Notice, "... closeall %s not for me: %s", (char*)ctx.dataPtr->handle, ctx.filename);
+            }
+            hPtr = Tcl_NextHashEntry(&search);
+        }
+        Ns_MutexUnlock(&servPtr->vhost.logMutex);
+    } else {
+        result = NS_ERROR;
+    }
+
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ServerLogRollAll --
+ *
+ *      Performs log file rollover for all log files associated with the
+ *      specified server.  The function iterates over the server's logfile
+ *      table and for each log file entry, compares its associated handle with
+ *      the provided handle. If the handles match, it invokes
+ *      Ns_RollFileCondFmt() to perform rollover using the specified roll
+ *      format (rollfmt) and maximum backup count (maxbackup).  Diagnostic
+ *      messages are logged to indicate which log files are processed and
+ *      which are skipped.
+ *
+ * Parameters:
+ *      server    - A null-terminated string specifying the server name.
+ *      handle    - A pointer to a handle that identifies the log files to be rolled.
+ *      rollfmt   - A format string used to generate the names of rolled log files.
+ *      maxbackup - The maximum number of backup log files to keep.
+ *
+ * Results:
+ *      Returns NS_OK if the rollover operation is successful for the matching log files;
+ *      otherwise, returns NS_ERROR.
+ *
+ * Side Effects:
+ *      - May trigger rollover (renaming/moving) of log files.
+ *      - Logs messages for each log file processed.
+ */
+Ns_ReturnCode
+Ns_ServerLogRollAll(const char *server, const void *handle, const char *rollfmt, TCL_SIZE_T maxbackup)
+{
+    Ns_ReturnCode result = NS_OK;
+    NsServer     *servPtr = NsGetServer(server);
+
+    Ns_Log(Notice, "logfile rollall server '%s' %s", server, (char *)handle);
+
+    if (servPtr != NULL) {
+        Tcl_HashSearch       search;
+        const Tcl_HashEntry *hPtr;
+
+        Ns_MutexLock(&servPtr->vhost.logMutex);
+
+#ifdef PRINT_FULL_TABLE
+        hPtr = Tcl_FirstHashEntry(&servPtr->vhost.logfileTable, &search);
+        while (hPtr != NULL) {
+            LogfileCtx ctx = {Tcl_GetHashKey(&servPtr->vhost.logfileTable, hPtr),
+                              Tcl_GetHashValue(hPtr)
+            };
+            Ns_Log(Notice, "... fd %d '%s'", ctx.fd, ctx.filename);
+            hPtr = Tcl_NextHashEntry(&search);
+        }
+#endif
+
+        hPtr = Tcl_FirstHashEntry(&servPtr->vhost.logfileTable, &search);
+        while (hPtr != NULL) {
+            LogfileCtx ctx = {Tcl_GetHashKey(&servPtr->vhost.logfileTable, hPtr),
+                              Tcl_GetHashValue(hPtr)
+            };
+
+            if (handle == ctx.dataPtr->handle) {
+                Ns_Log(Notice, "... rollall %s is  for me: %s", (char*)ctx.dataPtr->handle, ctx.filename);
+                result = Ns_RollFileCondFmt(LogFileOpen, LogFileClose, &ctx,
+                                            ctx.filename, rollfmt, maxbackup);
+            } else {
+                Ns_Log(Notice, "... rollall %s not for me: %s", (char*)ctx.dataPtr->handle, ctx.filename);
+
+            }
+
+            hPtr = Tcl_NextHashEntry(&search);
+        }
+        Ns_MutexUnlock(&servPtr->vhost.logMutex);
+
+    } else {
+        result = NS_ERROR;
+    }
+
+    return result;
 }
 
 /*

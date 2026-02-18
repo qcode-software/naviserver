@@ -1,0 +1,301 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_urlspace - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_urlspace.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_urlspace.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_urlspace.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_urlspace.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_urlspace(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_urlspace - Assign Application Data to URLs</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">COMMON OPTIONS</a></li>
+<li class="doctools_section"><a href="#section4">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#section5">Context Constraints</a></li>
+<li class="doctools_section"><a href="#section6">NOTES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_urlspace set</b> <span class="opt">?<b class="option">-constraints <i class="arg">constraints</i></b>?</span> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">URL</i> <i class="arg">data</i></a></li>
+<li><a href="#2"><b class="cmd">ns_urlspace get</b> <span class="opt">?<b class="option">-context <i class="arg">setId</i></b>?</span> <span class="opt">?<b class="option">-exact</b>?</span> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">URL</i></a></li>
+<li><a href="#3"><b class="cmd">ns_urlspace list</b> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span></a></li>
+<li><a href="#4"><b class="cmd">ns_urlspace unset</b> <span class="opt">?<b class="option">-allconstraints</b>?</span> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?<b class="option">-recurse</b>?</span> <i class="arg">URL</i></a></li>
+<li><a href="#5"><b class="cmd">ns_urlspace new</b></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The command <b class="cmd">ns_urlspace</b> allows you to assign, query, list, or
+ delete data in the trie data structure representing the URL space. It
+ supports filters and inheritance, enabling you to assign data to
+ specific URL patterns (e.g., all &quot;.adp&quot; pages) or to assign data to a
+ higher-level node, which can be inherited by all nodes below it.</p>
+<p>The values assigned to the URL space are shared among all threads of
+ a server. This using this command is somewhat similar to the use of
+ <b class="cmd"><a href="nsv.html">nsv</a></b> but differs in its inheritance and filtering capabilities.</p>
+<p>This command allows you, for example, to implement access control
+ (similar to the <a href="../../nsperm/files/nsperm.html">nsperm module</a>)
+ at the Tcl level. Other applications include blacklisting certain
+ parts of the URL tree from statistics, or assigning different master
+ templates to different parts of the URL tree.</p>
+<p>The <b class="cmd">ns_urlspace</b> command provides scripting access to
+ functionality that has been part of NaviServer for a long time. For
+ example, the mapping of requests to connection thread pools is
+ performed using the same mechanism. In this case, the mapping of URLs
+ to pools can be performed via the command <b class="cmd"><a href="ns_server.html">ns_server</a></b>, or it can
+ be provided via configuration variables in the pool section (see,
+ e.g., <a href="../../manual/files/admin-tuning.html">Tuning NaviServer</a>).</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_urlspace set</b> <span class="opt">?<b class="option">-constraints <i class="arg">constraints</i></b>?</span> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">URL</i> <i class="arg">data</i></a></dt>
+<dd><p>Assigns a <i class="arg">value</i> to a node in the URL space specified by
+ <i class="arg">URL</i>. By default, the value is inherited by all sub-nodes, unless the
+ option <b class="option">-noinherit</b> is specified.</p>
+<p>The <i class="arg">URL</i> can include glob-style patterns (e.g., &quot;/*.adp&quot;) to match multiple URLs.</p>
+<p>The option <b class="option">-constraints</b> allows you to
+ specify additional context constraints for the assignment (see
+ <span class="sectref"><a href="#section5">Context Constraints</a></span>).</p>
+<pre class="doctools_example">
+ # Assign values to URL patterns
+ ns_urlspace set /*.adp             A
+ ns_urlspace set /*.html            H
+ ns_urlspace set /internal/space/*  I
+ 
+ # Assign a value with a context constraints
+ ns_urlspace set -constraints {&quot;user-agent&quot; &quot;*bot*&quot;} /*.adp C
+</pre>
+</dd>
+<dt><a name="2"><b class="cmd">ns_urlspace get</b> <span class="opt">?<b class="option">-context <i class="arg">setId</i></b>?</span> <span class="opt">?<b class="option">-exact</b>?</span> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <i class="arg">URL</i></a></dt>
+<dd><p>Retrieves a value from the URL space for a specified <i class="arg">URL</i>. By
+ default, the returned value might be inherited from a parent node in
+ the trie structure.</p>
+<p>When the option <b class="option">-exact</b> is used, inheritance is
+ deactivated, and only values directly assigned to the <i class="arg">URL</i> are
+ returned. When the option <b class="option">-noinherit</b> is specified, only
+ values set with the <b class="option">-noinherit</b> flag are considered.</p>
+<p>The option <b class="option">-context</b> allows you to specify context
+ constraints for the retrieval (see <span class="sectref"><a href="#section5">Context Constraints</a></span>).
+ If this option is not specified, the server tries to
+ use the current connection context, if available. This requires that
+ a connection is open and the socket is connected. Otherwise, no
+ context is provided.</p>
+<pre class="doctools_example">
+ # Retrieve mappings without context
+ ns_urlspace get /test.adp
+ # Returns: A
+ 
+ ns_urlspace get /internal/space/documents/info.html
+ # Returns: I
+ 
+ # Retrieve mapping with context
+ set context [ns_set create &quot;user-agent&quot; &quot;googlebot&quot;]
+ ns_urlspace get -context $context /test.adp
+ # Returns: C
+</pre>
+</dd>
+<dt><a name="3"><b class="cmd">ns_urlspace list</b> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span></a></dt>
+<dd><p>Lists the values assigned to the URL space, which is either the
+ default URL space or the one specified by <b class="option">-id</b>. The command returns a
+ list of lists, where each item contains the following elements:</p>
+<ul class="doctools_itemized">
+    
+<li><p><b class="const">key</b> - The key associated with the assignment.</p></li>
+<li><p><b class="const">path</b> - The URL pattern (e.g., &quot;/internal/space&quot;).</p></li>
+<li><p><b class="const">filter pattern</b> - Any constraints applied (e.g., &quot;*.adp&quot;).</p></li>
+<li><p><b class="const">inherit</b> or <b class="const">noinherit</b> - Whether inheritance is enabled.</p></li>
+<li><p><span class="opt">?contextfilter?</span> - The optional contextfilter</p></li>
+<li><p><b class="const">data</b> - The assigned value.</p></li>
+</ul>
+<pre class="doctools_example">
+ ns_urlspace list
+ Returns: {. / *.html inherit H} {. / *.adp inherit A} {. / *.adp inherit {user-agent *bot*} C} {. /internal/space * inherit I}
+</pre>
+</dd>
+<dt><a name="4"><b class="cmd">ns_urlspace unset</b> <span class="opt">?<b class="option">-allconstraints</b>?</span> <span class="opt">?<b class="option">-id <i class="arg">integer</i></b>?</span> <span class="opt">?<b class="option">-key <i class="arg">value</i></b>?</span> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?<b class="option">-recurse</b>?</span> <i class="arg">URL</i></a></dt>
+<dd><p>Unset a value for a <i class="arg">URL</i> for the given or default key. This
+ command undoes the effects of <b class="cmd">ns_urlspace set</b>.</p>
+<p>The option <b class="option">-allconstraints</b> implies that all context
+ filters are deleted. When the option <b class="option">-noinherit</b> is used,
+ only the values set with <b class="option">-noinherit</b> are deleted, and vice
+ versa.</p>
+<p>The option <b class="option">-recurse</b> performs the operation
+ recursively on all sub-nodes under the specified <i class="arg">URL</i>. Unless
+ <b class="option">-recurse</b> is specified, the command returns 1 on success or
+ 0 on failure.</p></dd>
+<dt><a name="5"><b class="cmd">ns_urlspace new</b></a></dt>
+<dd><p>Allocates a new URL space ID. When the number of compile-time
+ configured URL spaces runs out, a Tcl exception is raised.</p>
+<pre class="doctools_example">
+ # Allocate a new URL space
+ set newId [ns_urlspace new]
+ 
+ # Use the new URL space ID
+ ns_urlspace set -id $newId /*.php P
+</pre>
+</dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">COMMON OPTIONS</a></h2>
+<dl class="doctools_options">
+<dt><b class="option">-id</b> <i class="arg">integer</i></dt>
+<dd><p>Specifies the ID of the URL space. Multiple different URL spaces can
+  be used, which can be allocated with the command
+  <b class="cmd">ns_urlspace new</b>. The maximum number of available URL spaces is a compile-time
+  constant of NaviServer. When no ID is specified, NaviServer
+  automatically allocates a default ID on first usage.</p></dd>
+<dt><b class="option">-key</b> <i class="arg">value</i></dt>
+<dd><p>Every URL assignment can have a key, which is logically part of the
+  URL space. Using this key, you could, for example, assign different
+  values to a URL for different HTTP methods like <i class="term">GET</i> or
+  <i class="term">POST</i>. The key can be used for other purposes as well. If no key is
+  specified, it defaults to the constant &quot;<b class="const">.</b>&quot; (dot character).</p></dd>
+</dl>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ # Define mappings in the default URL space
+ 
+ # Map all .adp files to &quot;A&quot;
+ ns_urlspace set /*.adp A
+ 
+ # Map all .html files to &quot;H&quot;
+ ns_urlspace set /*.html H
+ 
+ # Map a specific internal area to &quot;I&quot;
+ ns_urlspace set /internal/space/* I
+ 
+ # Query mappings
+ ns_urlspace get /test.adp
+ # Returns: A
+ 
+ ns_urlspace get /foo/bar/test.adp
+ # Returns: A
+ 
+ ns_urlspace get /foo/baz/info.html
+ # Returns: H
+ 
+ ns_urlspace get /foo/baz/info.text
+ # Returns: (no value assigned)
+ 
+ ns_urlspace get /internal/space/documents/info.html
+ # Returns: I
+</pre>
+</div>
+<div id="section5" class="doctools_section"><h2><a name="section5">Context Constraints</a></h2>
+<p>In addition to the glob-based URL space matching, NaviServer supports
+ so-called <em>context constraints</em>. These constraints allow you to include additional
+ (context) information such as the current IP addresses or current
+ header fields in the URL space lookup. They’re applied after the
+ constraint-less URL match and
+ participate in the usual &quot;most specific wins&quot; resolution (i.e., if
+ there are multiple definitions for the same method and URL pattern
+ pair, having different context constraints, the most definition is taken).</p>
+<p>With context constraints, you can say &quot;I want /foo.adp to map to
+ X only when this request comes from a Googlebot, and to Y
+ otherwise.&quot;  Or &quot;serve internal pages only to clients in our
+ corporate subnet.&quot;</p>
+<p>When you attach a context constraints in a connection-pool mapping,
+ or via <b class="cmd">ns_register_proc</b>, <b class="cmd">ns_register_filter</b> etc., the
+ live socket’s headers and peer address are used automatically when
+ deciding, which proc/filter/etc. is to be used. When you specify the
+ context constraints in a <b class="cmd">ns_urlspace set</b> command, you can pass
+ directly a context to a <b class="cmd">ns_urlspace set</b> command, by providing
+ an &quot;ns_set&quot; whose keys are header names (e.g. &quot;user-agent&quot;) or the
+ special key &quot;x-ns-ip&quot; (pseudo header field) for IP/mask filters.</p>
+<p>Context constraints may be <em>conjunctive</em>: if you supply
+ multiple key/value pairs, all must match.  Conjunctions are
+ specified as a flat list.</p>
+<p>Example:</p>
+<pre class="doctools_example">
+ # Base mapping when no context matches:
+ % ns_urlspace set /*.adp DefaultHandler
+ 
+ # When *either* user-agent contains &quot;bot&quot;:
+ % ns_urlspace set -constraints {user-agent *bot*} /*.adp BotHandler
+ 
+ # When *both* UA=&quot;bot&quot; *and* IP in 10.0.0.0/8:
+ % ns_urlspace set -constraints {user-agent *bot* x-ns-ip 10.0.0.0/8} \
+                   /*.adp BotInternalHandler
+ 
+ # Try without context:
+ % ns_urlspace get /test.adp
+ DefaultHandler
+ 
+ # Try with only user-agent googlebot:
+ % set ctx1 [ns_set create user-agent googlebot]
+ % ns_urlspace get -context $ctx1 /test.adp
+ BotHandler
+ 
+ # Try with UA=googlebot *and* internal IP:
+ % set ctx2 [ns_set create user-agent googlebot x-ns-ip 10.0.12.5]
+ % ns_urlspace get -context $ctx2 /test.adp
+ BotInternalHandler
+</pre>
+<p>See also the <b class="cmd"><a href="ns_server.html">ns_server</a></b> configuration examples for defining
+connection pools that use context constraints to route &quot;*bot*&quot; traffic
+into a dedicated pool.</p>
+<p>Context constraints can be as well set for the following commands
+<b class="cmd">ns_register_adp</b>,
+<b class="cmd">ns_register_cgi</b>,
+<b class="cmd">ns_register_fastpath</b>,
+<b class="cmd">ns_register_filter</b>, and
+<b class="cmd">ns_register_proc</b>.</p>
+</div>
+<div id="section6" class="doctools_section"><h2><a name="section6">NOTES</a></h2>
+<p>The URL patterns used in <b class="cmd">ns_urlspace</b> commands support
+ glob-style patterns, allowing for flexible matching. Be cautious when
+ defining patterns to ensure they match the intended URLs.</p>
+<p>The URL space is stored in a trie data structure for efficient
+ matching.</p>
+<p>When using context constraints, ensure that the context constraints of
+ the <b class="cmd">ns_urlspace set</b> command and the <b class="cmd"><a href="ns_set.html">ns_set</a></b> (or request
+ headers) accurately represent the request conditions you want to
+ match. For security reasons, you should not rely solely on untrusted
+ request header fields.</p>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_server.html">ns_server</a>, <a href="ns_set.html">ns_set</a>, <a href="nsv.html">nsv</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#context_constraints">context constraints</a>, <a href="../../index.html#data_structure">data structure</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#shared">shared</a>, <a href="../../index.html#trie">trie</a>, <a href="../../index.html#urlspace">urlspace</a>, <a href="../../index.html#variables">variables</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

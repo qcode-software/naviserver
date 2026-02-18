@@ -72,10 +72,10 @@ static void AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsi
 static void AppendTag(Parse *parsePtr, const Tag *tagPtr, char *as, const char *ae, char *se, unsigned int flags)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3)  NS_GNUC_NONNULL(4);
 
-static int RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int type)
+static int RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, int type)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
-static void AppendLengths(AdpCode *codePtr, const int *length, const int *line)
+static void AppendLengths(AdpCode *codePtr, const TCL_SIZE_T *length, const int *line)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static void GetTag(Tcl_DString *dsPtr, char *s, const char *e, char **aPtr)
@@ -110,7 +110,7 @@ static void report(const char *msg, const char *string, ssize_t len)
 {
     const int max = 3000;
 
-    if (len == -1) {
+    if (len == TCL_INDEX_NONE) {
         len = (ssize_t)strlen(string)+1;
     }
     {
@@ -172,42 +172,46 @@ static bool TagValidChar (char c) {
  */
 
 int
-NsTclAdpRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterAdpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_ADP);
 }
 
+#ifdef NS_WITH_DEPRECATED
 int
-NsTclAdpRegisterTagObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterTagObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogDeprecated(objv, 1, "ns_adp_registeradp", NULL);
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_ADP);
 }
+#endif
 
 int
-NsTclAdpRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_PROC);
 }
 
 int
-NsTclAdpRegisterScriptObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterScriptObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_SCRIPT);
 }
 
+#ifdef NS_WITH_DEPRECATED
 int
-NsTclAdpRegisterAdptagObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclAdpRegisterAdptagObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Ns_LogDeprecated(objv, 1, "ns_adp_registerscript", NULL);
     return RegisterObjCmd(clientData, interp, objc, objv, TAG_SCRIPT);
 }
+#endif
 
 /*
  * The actual function doing the hard work.
  */
 static int
-RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, int type)
+RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, int type)
 {
     int result = TCL_OK;
 
@@ -216,7 +220,11 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
 
 
     if (objc != 4 && objc != 3) {
-        Tcl_WrongNumArgs(interp, 1, objv, "tag ?endtag? [adp|proc]");
+        if (type != TAG_ADP) {
+            Tcl_WrongNumArgs(interp, 1, objv, "/tag/ ?/endtag/? /proc/");
+        } else {
+            Tcl_WrongNumArgs(interp, 1, objv, "/tag/ ?/endtag/? /adpstring/");
+        }
         result = TCL_ERROR;
 
     } else {
@@ -230,8 +238,17 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
         Tag            *tagPtr;
 
         /*
-         * Get the content
+         * Get tag and content
          */
+        tag = Tcl_GetStringFromObj(objv[1], &tlen);
+        content = strpbrk(tag, "<&> '\"");
+        if (content != NULL) {
+            Ns_TclPrintfResult(interp, "invalid start tag: '%s'"
+                               " (contains invalid character '%c')",
+                               tag, *content);
+            return TCL_ERROR;
+        }
+
         content = Tcl_GetStringFromObj(objv[objc-1], &slen);
         ++slen;
         if (objc == 3) {
@@ -245,8 +262,17 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
              * end tag provided.
              */
             end = Tcl_GetStringFromObj(objv[2], &elen);
+            if (*end != '/' || elen != tlen + 1 || memcmp(tag, end+1,  (size_t)tlen) != 0) {
+                Ns_TclPrintfResult(interp, "invalid end tag: '%s'"
+                                   " (must start with a '/' followed by the name of the start tag)",
+                                   end);
+                return TCL_ERROR;
+            }
             ++elen;
         }
+        /*fprintf(stderr, "=========== RegisterObjCmd tag '%s', content '%s', end '%s'\n",
+                Tcl_GetString(objv[1]),
+                content, end);*/
 
         /*
          * Allocate piggybacked memory chunk containing
@@ -275,7 +301,6 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
          * Get the tag string and add it to the adp.tag table.
          */
         Tcl_DStringInit(&tbuf);
-        tag = Tcl_GetStringFromObj(objv[1], &tlen);
         (void)Tcl_UtfToLower(Tcl_DStringAppend(&tbuf, tag, tlen));
         Ns_RWLockWrLock(&servPtr->adp.taglock);
         hPtr = Tcl_CreateHashEntry(&servPtr->adp.tags, tbuf.string, &isNew);
@@ -312,7 +337,8 @@ RegisterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_O
 
 static void
 AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flags, const char* file) {
-    int size, line = 0;
+    int        line = 0;
+    TCL_SIZE_T size;
 
     NS_NONNULL_ASSERT(codePtr != NULL);
     NS_NONNULL_ASSERT(adp != NULL);
@@ -328,14 +354,7 @@ AdpParseTclFile(AdpCode *codePtr, const char *adp, unsigned int flags, const cha
         Ns_DStringPrintf(&codePtr->text, "} {0} {} {}]}}\nadp:%s %%>}", file);
     }
     codePtr->nblocks = codePtr->nscripts = 1;
-    /*
-     * The cast of "text.length" to "int" is dangerous (for really big
-     * strings). "size" should be TCL_SIZE_T, but we keep it so far due to the
-     * logic with the negative lengths.
-     *
-     * See also: keep "len" as int in AdpExec() in adpeval.c
-     */
-    size = -(int)codePtr->text.length;
+    size = -codePtr->text.length;
     AppendLengths(codePtr, &size, &line);
 }
 
@@ -623,7 +642,7 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
                   || (s[1] >= 'A' && s[1] <= 'Z')
                   || (s[1] >= '0' && s[1] <= '9')
                   )) {
-                //report("state TagNext, invalid begin of tag", s, -1);
+                //report("state TagNext, invalid begin of tag", s, TCL_INDEX_NONE);
                 adp = s + 1;
                 continue;
             }
@@ -800,17 +819,15 @@ AdpParseAdp(AdpCode *codePtr, NsServer *servPtr, char *adp, unsigned int flags)
 
     if ((flags & ADP_SINGLE) != 0u) {
         /*
-         * The cast of "text.length" to "int" is dangerous (for really big
-         * strings).
-         *
          * See also: AdpParseTclFile(), and AdpExec() in adpeval.c
          */
 
-        int line = 0, len = -(int)codePtr->text.length;
+        int line = 0;
+        TCL_SIZE_T len = -codePtr->text.length;
         codePtr->nscripts = codePtr->nblocks = 1;
         AppendLengths(codePtr, &len, &line);
     } else {
-        AppendLengths(codePtr, (const int *) parse.lengths.string,
+        AppendLengths(codePtr, (const TCL_SIZE_T *) parse.lengths.string,
                       (const int *) parse.lines.string);
     }
 
@@ -918,6 +935,7 @@ AppendBlock(Parse *parsePtr, const char *s, char *e, char type, unsigned int fla
     NS_NONNULL_ASSERT(s <= e);
 
     len = e - s;
+    //Ns_Log(Notice, "AppendBlock %c len %ld '%s'", type, (long)len, s);
 
     if (likely(len > 0)) {
 
@@ -1284,7 +1302,7 @@ AppendTag(Parse *parsePtr, const Tag *tagPtr, char *as, const char *ae, char *se
  */
 
 static void
-AppendLengths(AdpCode *codePtr, const int *length, const int *line)
+AppendLengths(AdpCode *codePtr, const TCL_SIZE_T *length, const int *line)
 {
     Tcl_DString *textPtr;
     TCL_SIZE_T   start, ncopy;

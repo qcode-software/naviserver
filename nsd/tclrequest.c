@@ -29,6 +29,26 @@ static Ns_ObjvTable filters[] = {
     {NULL, 0u}
 };
 
+
+/*
+ * Authorization types
+ */
+typedef enum {
+    AUTH_TYPE_REQUEST,  /* Request-level authorization */
+    AUTH_TYPE_USER      /* User-level authorization */
+} AuthType;
+
+
+static Ns_ObjvTable authprocs[] = {
+    {"request",  (unsigned int)AUTH_TYPE_REQUEST},
+    {"user",     (unsigned int)AUTH_TYPE_USER},
+    {NULL, 0u}
+};
+
+static Ns_ReturnCode EvalTclAuthCallback(const Ns_TclCallback *cbPtr, AuthType authType, void *arg,
+                                         const char *username, const char *password, int *continuation)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(6);
+
 
 /*
  *----------------------------------------------------------------------
@@ -78,22 +98,24 @@ Ns_TclRequest(Ns_Conn *conn, const char *name)
  */
 
 int
-NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     Tcl_Obj      *scriptObj;
     char         *method, *url;
     TCL_SIZE_T    remain = 0;
     int           noinherit = 0, result = TCL_OK;
+    NsUrlSpaceContextSpec *specPtr = NULL;
     Ns_ObjvSpec   opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_TRUE)},
-        {"--",         Ns_ObjvBreak, NULL,       NULL},
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {"-noinherit",     Ns_ObjvBool,        &noinherit,    INT2PTR(NS_TRUE)},
+        {"--",             Ns_ObjvBreak,       NULL,          NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec   args[] = {
         {"method",     Ns_ObjvString, &method,    NULL},
         {"url",        Ns_ObjvString, &url,       NULL},
         {"script",     Ns_ObjvObj,    &scriptObj, NULL},
-        {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+        {"?arg",       Ns_ObjvArgs,   &remain,    NULL},
         {NULL, NULL, NULL, NULL}
     };
 
@@ -111,7 +133,7 @@ NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T ob
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclRequestProc, scriptObj,
                                   remain, objv + ((TCL_SIZE_T)objc - remain));
         result = Ns_RegisterRequest2(interp, itPtr->servPtr->server, method, url,
-                                     NsTclRequestProc, Ns_TclFreeCallback, cbPtr, flags);
+                                     NsTclRequestProc, Ns_TclFreeCallback, cbPtr, flags, specPtr);
     }
     return result;
 }
@@ -134,7 +156,7 @@ NsTclRegisterProcObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T ob
  */
 
 int
-NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     Tcl_Obj        *scriptObj;
@@ -142,18 +164,14 @@ NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T o
     TCL_SIZE_T      remain = 0;
     int             result = TCL_OK;
 
-    Ns_ObjvSpec opts[] = {
-        {"--",         Ns_ObjvBreak, NULL,   NULL},
-        {NULL, NULL, NULL, NULL}
-    };
     Ns_ObjvSpec args[] = {
         {"method",     Ns_ObjvString, &method,    NULL},
         {"protocol",   Ns_ObjvString, &protocol,  NULL},
         {"script",     Ns_ObjvObj,    &scriptObj, NULL},
-        {"?args",      Ns_ObjvArgs,   &remain,    NULL},
+        {"?arg",       Ns_ObjvArgs,   &remain,    NULL},
         {NULL, NULL, NULL, NULL}
     };
-    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
     } else {
         Ns_TclCallback *cbPtr;
@@ -184,13 +202,15 @@ NsTclRegisterProxyObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T o
  */
 
 int
-NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *method, *url;
     int         noinherit = 0, result = TCL_OK;
+    NsUrlSpaceContextSpec *specPtr = NULL;
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,  &noinherit, INT2PTR(NS_OP_NOINHERIT)},
-        {"--",         Ns_ObjvBreak, NULL,       NULL},
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {"-noinherit",     Ns_ObjvBool,        &noinherit,    INT2PTR(NS_OP_NOINHERIT)},
+        {"--",             Ns_ObjvBreak,       NULL,          NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -210,7 +230,7 @@ NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_
         }
 
         result = Ns_RegisterRequest2(interp, itPtr->servPtr->server, method, url,
-                                     Ns_FastPathProc, NULL, NULL, flags);
+                                     Ns_FastPathProc, NULL, NULL, flags, specPtr);
     }
 
     return result;
@@ -234,17 +254,18 @@ NsTclRegisterFastPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_
  */
 
 int
-NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char           *method = NULL, *url = NULL;
-    int             noinherit = 0, recurse = 0, result = TCL_OK;
+    int             noinherit = 0, recurse = 0, allconstraints = 0, result = TCL_OK;
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     Ns_ObjvSpec opts[] = {
-        {"-noinherit", Ns_ObjvBool,   &noinherit, INT2PTR(NS_OP_NOINHERIT)},
-        {"-recurse",   Ns_ObjvBool,   &recurse,   INT2PTR(NS_OP_RECURSE)},
-        {"-server",    Ns_ObjvServer, &servPtr,   NULL},
-        {"--",         Ns_ObjvBreak,  NULL,       NULL},
+        {"-allconstraints",    Ns_ObjvBool,   &allconstraints, INT2PTR(NS_OP_ALLCONSTRAINTS)},
+        {"-noinherit",         Ns_ObjvBool,   &noinherit,      INT2PTR(NS_OP_NOINHERIT)},
+        {"-recurse",           Ns_ObjvBool,   &recurse,        INT2PTR(NS_OP_RECURSE)},
+        {"-server",            Ns_ObjvServer, &servPtr,        NULL},
+        {"--",                 Ns_ObjvBreak,  NULL,            NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -257,7 +278,7 @@ NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T ob
         result = TCL_ERROR;
     } else {
         Ns_UnRegisterRequestEx(servPtr->server, method, url,
-                               ((unsigned int)noinherit | (unsigned int)recurse));
+                               ((unsigned int)noinherit | (unsigned int)recurse | (unsigned int) allconstraints));
     }
     return result;
 }
@@ -280,37 +301,41 @@ NsTclUnRegisterOpObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T ob
  */
 
 int
-NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char         *method, *urlPattern;
     Tcl_Obj      *scriptObj;
     TCL_SIZE_T    remain = 0;
     int           first = (int)NS_FALSE, result = TCL_OK;
     unsigned int  when = 0u;
-    Ns_ObjvSpec   opts[] = {
+    NsUrlSpaceContextSpec *specPtr = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
         {"-first", Ns_ObjvBool,  &first, INT2PTR(NS_TRUE)},
         {"--",     Ns_ObjvBreak, NULL,   NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec   args[] = {
-        {"when",       Ns_ObjvFlags,  &when,       filters},
+        {"when",       Ns_ObjvIndex,  &when,       filters},
         {"method",     Ns_ObjvString, &method,     NULL},
-        {"urlPattern", Ns_ObjvString, &urlPattern, NULL},
+        {"urlpattern", Ns_ObjvString, &urlPattern, NULL},
         {"script",     Ns_ObjvObj,    &scriptObj,  NULL},
-        {"?args",      Ns_ObjvArgs,   &remain,     NULL},
+        {"?arg",       Ns_ObjvArgs,   &remain,     NULL},
         {NULL, NULL, NULL, NULL}
     };
 
     if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
+
     } else {
         const NsInterp  *itPtr = clientData;
         Ns_TclCallback  *cbPtr;
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclFilterProc,
                                   scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
-        (void)Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
-                                NsTclFilterProc, (Ns_FilterType)when, cbPtr, (bool)first);
+        (void)Ns_RegisterFilter2(itPtr->servPtr->server, method, urlPattern,
+                                 NsTclFilterProc, (Ns_FilterType)when, cbPtr, (bool)first,
+                                 specPtr);
     }
     return result;
 }
@@ -333,26 +358,32 @@ NsTclRegisterFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T 
  */
 
 int
-NsTclShortcutFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclShortcutFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char           *method, *urlPattern;
     unsigned int    when = 0u;
     int             result = TCL_OK;
+    NsUrlSpaceContextSpec *specPtr = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
     Ns_ObjvSpec args[] = {
-        {"when",       Ns_ObjvFlags,  &when,       filters},
+        {"when",       Ns_ObjvIndex,  &when,       filters},
         {"method",     Ns_ObjvString, &method,     NULL},
-        {"urlPattern", Ns_ObjvString, &urlPattern, NULL},
+        {"urlpattern", Ns_ObjvString, &urlPattern, NULL},
         {NULL, NULL, NULL, NULL}
     };
 
-    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
     } else {
         const NsInterp *itPtr = clientData;
         const char     *server = itPtr->servPtr->server;
 
-        (void)Ns_RegisterFilter(server, method, urlPattern,
-                                NsShortcutFilterProc, (Ns_FilterType)when, NULL, NS_FALSE);
+        (void)Ns_RegisterFilter2(server, method, urlPattern,
+                                 NsShortcutFilterProc, (Ns_FilterType)when, NULL, NS_FALSE,
+                                 specPtr);
     }
 
     return result;
@@ -376,21 +407,26 @@ NsTclShortcutFilterObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T 
  */
 
 int
-NsTclRegisterTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *method, *urlPattern;
     Tcl_Obj    *scriptObj;
     TCL_SIZE_T  remain = 0;
     int         result = TCL_OK;
+    NsUrlSpaceContextSpec *specPtr = NULL;
+    Ns_ObjvSpec opts[] = {
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {NULL, NULL, NULL, NULL}
+    };
     Ns_ObjvSpec args[] = {
         {"method",     Ns_ObjvString, &method,     NULL},
-        {"urlPattern", Ns_ObjvString, &urlPattern, NULL},
+        {"urlpattern", Ns_ObjvString, &urlPattern, NULL},
         {"script",     Ns_ObjvObj,    &scriptObj,  NULL},
-        {"?args",      Ns_ObjvArgs,   &remain,     NULL},
+        {"?arg",       Ns_ObjvArgs,   &remain,     NULL},
         {NULL, NULL, NULL, NULL}
     };
 
-    if (Ns_ParseObjv(NULL, args, interp, 1, objc, objv) != NS_OK) {
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
         result = TCL_ERROR;
     } else {
         const NsInterp *itPtr = clientData;
@@ -398,17 +434,83 @@ NsTclRegisterTraceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T o
 
         cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclFilterProc,
                                   scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
-        (void)Ns_RegisterFilter(itPtr->servPtr->server, method, urlPattern,
-                                NsTclFilterProc, NS_FILTER_VOID_TRACE, cbPtr, NS_FALSE);
+        (void)Ns_RegisterFilter2(itPtr->servPtr->server, method, urlPattern,
+                                 NsTclFilterProc, NS_FILTER_VOID_TRACE, cbPtr, NS_FALSE,
+                                 specPtr);
     }
     return result;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclRegisterAuthObjCmd --
+ *
+ *      Implements "ns_register_auth".
+ *
+ * Results:
+ *      Tcl result.
+ *
+ * Side effects:
+ *      See docs.
+ *
+ *----------------------------------------------------------------------
+ */
+int
+NsTclRegisterAuthObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
+{
+    Tcl_Obj      *scriptObj;
+    TCL_SIZE_T    remain = 0;
+    int           first = (int)NS_FALSE, result = TCL_OK;
+    const char   *authority = NULL;
+    unsigned int  proctype = 0u;
+    Ns_ObjvSpec opts[] = {
+        {"-authority", Ns_ObjvString, &authority, NULL},
+        {"-first",     Ns_ObjvBool,   &first,     INT2PTR(NS_TRUE)},
+        {"--",         Ns_ObjvBreak,  NULL,       NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+    Ns_ObjvSpec   args[] = {
+        {"type",       Ns_ObjvIndex,  &proctype,   authprocs},
+        {"script",     Ns_ObjvObj,    &scriptObj,  NULL},
+        {"?arg",       Ns_ObjvArgs,   &remain,     NULL},
+        {NULL, NULL, NULL, NULL}
+    };
+
+    if (Ns_ParseObjv(opts, args, interp, 1, objc, objv) != NS_OK) {
+        result = TCL_ERROR;
+
+    } else {
+        const NsInterp  *itPtr = clientData;
+        Ns_TclCallback  *cbPtr;
+
+        if (authority == NULL) {
+            authority = Tcl_GetString(scriptObj);
+        }
+        switch (proctype) {
+        case AUTH_TYPE_REQUEST: {
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclAuthorizeRequestProc,
+                                      scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
+            Ns_RegisterAuthorizeRequest(itPtr->servPtr->server, NsTclAuthorizeRequestProc,
+                                        cbPtr, authority, first);
+            break;
+        }
+        case AUTH_TYPE_USER: {
+            cbPtr = Ns_TclNewCallback(interp, (ns_funcptr_t)NsTclAuthorizeUserProc,
+                                      scriptObj, remain, objv + ((TCL_SIZE_T)objc - remain));
+            Ns_RegisterAuthorizeUser(itPtr->servPtr->server, NsTclAuthorizeUserProc,
+                                     cbPtr, authority, first);
+            break;
+        }
+        }
+    }
+    return result;
+}
 
 /*
  *----------------------------------------------------------------------
  *
- * NsTclRequstProc --
+ * NsTclRequestProc --
  *
  *      Ns_OpProc for Tcl operations.
  *
@@ -427,19 +529,19 @@ NsTclRequestProc(const void *arg, Ns_Conn *conn)
 {
     const Ns_TclCallback *cbPtr = arg;
     Tcl_Interp           *interp;
-    Ns_DString            ds;
+    Tcl_DString           ds;
     Ns_ReturnCode         status = NS_OK;
 
     NS_NONNULL_ASSERT(conn != NULL);
 
     interp = Ns_GetConnInterp(conn);
-    if (Ns_TclEvalCallback(interp, cbPtr, NULL, (char *)0L) != TCL_OK) {
+    if (Ns_TclEvalCallback(interp, cbPtr, NULL, NS_SENTINEL) != TCL_OK) {
         if (NsTclTimeoutException(interp) == NS_TRUE) {
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             Ns_GetProcInfo(&ds, (ns_funcptr_t)NsTclRequestProc, arg);
             Ns_Log(Dev, "%s: %s", ds.string, Tcl_GetStringResult(interp));
             Ns_Log(Ns_LogTimeoutDebug, "Tcl request %s lead to a timeout: %s", conn->request.line, ds.string);
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
             Tcl_ResetResult(interp);
             status = Ns_ConnReturnUnavailable(conn);
         } else {
@@ -505,7 +607,11 @@ NsTclFilterProc(const void *arg, Ns_Conn *conn, Ns_FilterType why)
         Tcl_DStringAppendElement(&ds, "trace");
         break;
     case NS_FILTER_VOID_TRACE:
-        /* Registered with ns_register_trace; always type VOID TRACE, so don't append. */
+        /*
+         * The filter was registered with ns_register_trace; always type VOID
+         * TRACE, so add the filter reason as extra argument of the registered
+         * callback proc.
+         */
         break;
     }
 
@@ -524,9 +630,9 @@ NsTclFilterProc(const void *arg, Ns_Conn *conn, Ns_FilterType why)
     Tcl_AllowExceptions(interp);
     rc = Tcl_EvalEx(interp, ds.string, ds.length, 0);
     result = Tcl_GetStringResult(interp);
-    Ns_DStringSetLength(&ds, 0);
+    Tcl_DStringSetLength(&ds, 0);
 
-    if (rc != TCL_OK) {
+    if (rc == TCL_ERROR) {
 
         /*
          * Handle Tcl errors and timeouts.
@@ -551,19 +657,189 @@ NsTclFilterProc(const void *arg, Ns_Conn *conn, Ns_FilterType why)
 
         if (why == NS_FILTER_VOID_TRACE) {
             status = NS_OK;
-        } else if (STREQ(result, "filter_ok")) {
+
+        } else if (rc == TCL_CONTINUE || STREQ(result, "filter_ok")) {
             status = NS_OK;
-        } else if (STREQ(result, "filter_break")) {
+
+        } else if (rc == TCL_BREAK    || STREQ(result, "filter_break")) {
             status = NS_FILTER_BREAK;
-        } else if (STREQ(result, "filter_return")) {
+
+        } else if (rc == TCL_RETURN   || STREQ(result, "filter_return")) {
             status = NS_FILTER_RETURN;
+
         } else {
-            Ns_Log(Error, "ns:tclfilter: %s return invalid result: %s",
+            Ns_Log(Error, "ns:tclfilter: %s returns invalid result: %s",
                    cbPtr->script, result);
             status = NS_ERROR;
         }
     }
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
+
+    return status;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * EvalTclAuthCallback --
+ *
+ *      Builds and invokes a Tcl-based authorization callback. Constructs a Tcl
+ *      command by concatenating the registered script, a fixed list of
+ *      arguments (such as method, URL, user, password, etc.), and any extra
+ *      arguments provided at registration. Runs the script in the supplied
+ *      interpreter and stores the raw Tcl return code in *continuationPtr.
+ *      The Tcl result string is mapped to an Ns_ReturnCode.
+ *
+ * Parameters:
+ *      cbPtr           - Pointer to the Ns_TclCallback holding script & arguments.
+ *      authType        - The type of authorization (request or user).
+ *      arg             - Connection (for request-level arguments) or interp.
+ *      username        - Username for authorization.
+ *      password        - Password for authorization.
+ *      continuationPtr - Receives the raw Tcl return code (TCL_OK, TCL_ERROR, etc.).
+ *
+ * Results:
+ *      NS_OK           if the script returned "OK".
+ *      NS_FORBIDDEN    if the script returned "FORBIDDEN".
+ *      NS_UNAUTHORIZED if the script returned "UNAUTHORIZED".
+ *      NS_ERROR        on Tcl evaluation error or unexpected script result.
+ *
+ * Side Effects:
+ *      Logs a warning on script errors or unexpected return values.
+ *
+ *----------------------------------------------------------------------
+ */
+
+static Ns_ReturnCode
+EvalTclAuthCallback(const Ns_TclCallback *cbPtr, AuthType authType, void *arg,
+                    const char *username, const char *password, int *continuation)
+{
+    Tcl_DString    ds;
+    int            rc;
+    const char    *result;
+    TCL_SIZE_T     i;
+    Ns_ReturnCode  status;
+    Ns_Conn       *conn;
+    Tcl_Interp    *interp;
+
+    Tcl_DStringInit(&ds);
+    Tcl_DStringAppend(&ds, cbPtr->script, TCL_INDEX_NONE);
+
+    if (authType == AUTH_TYPE_USER) {
+        conn = NULL;
+        interp = arg;
+        /*
+         * Append username and password for user-level authorization
+         */
+        Tcl_DStringAppendElement(&ds, username);
+        Tcl_DStringAppendElement(&ds, password);
+    } else if (authType == AUTH_TYPE_REQUEST) {
+        conn = arg;
+        interp = Ns_GetConnInterp(conn);
+        /*
+         * Append method, URL, username, password, and peer for request-level authorization
+         */
+        Tcl_DStringAppendElement(&ds, conn->request.method);
+        Tcl_DStringAppendElement(&ds, conn->request.url);
+        Tcl_DStringAppendElement(&ds, username);
+        Tcl_DStringAppendElement(&ds, password);
+        Tcl_DStringAppendElement(&ds, Ns_ConnConfiguredPeerAddr(conn));
+    }
+
+    /*
+     * Append additional arguments from the registration
+     */
+    for (i = 0; i < cbPtr->argc; ++i) {
+        Tcl_DStringAppendElement(&ds, cbPtr->argv[i]);
+    }
+
+    /*
+     * Evaluate the Tcl script
+     */
+    Tcl_AllowExceptions(interp);
+    rc = Tcl_EvalEx(interp, ds.string, ds.length, 0);
+    result = Tcl_GetStringResult(interp);
+    Tcl_DStringFree(&ds);
+
+    /*
+     *  Handle result and map to Ns_ReturnCode
+     */
+    if (rc == TCL_ERROR) {
+        Ns_Log(Warning, "authorize script error: %s", result);
+        status = NS_ERROR;
+    } else if (STRIEQ(result, "OK")) {
+        status = NS_OK;
+    } else if (STRIEQ(result, "UNAUTHORIZED")) {
+        status = NS_UNAUTHORIZED;
+    } else if (STRIEQ(result, "FORBIDDEN")) {
+        status = NS_FORBIDDEN;
+    } else {
+        Ns_Log(Warning, "authorize script returned unexpected: %s", result);
+        status = NS_ERROR;
+    }
+
+    *continuation = rc;
+
+    return status;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclAuthorizeRequestProc --
+ *
+ *      Adapter function for request-level authorization. It uses username and
+ *      password from the connection and delegates to
+ *      EvalTclAuthCallback. Returns the raw Tcl return code to control
+ *      whether further callbacks should run.
+ *
+ * Results:
+ *      returns the Ns_ReturnCode from EvalTclAuthCallback
+ *
+ * Side Effects:
+ *      Allocates and deallocates a Tcl interpreter per invocation.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+NsTclAuthorizeRequestProc(void *arg, Ns_Conn *conn, int *continuationPtr)
+{
+    const Ns_TclCallback *cbPtr = arg;
+
+    return EvalTclAuthCallback(cbPtr, AUTH_TYPE_REQUEST, conn,
+                               conn->auth != NULL ? Ns_SetGet(conn->auth, "username") : "",
+                               conn->auth != NULL ? Ns_SetGet(conn->auth, "password") : "",
+                               continuationPtr);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsTclAuthorizeUserProc --
+ *
+ *      Adapter function for user-level password checks. Allocates a Tcl
+ *      interpreter, packs the user and password into arguments, then delegates
+ *      to EvalTclAuthCallback. Returns the raw Tcl return code to control
+ *      whether further callbacks should run.
+ *
+ * Results:
+ *      Returns the Ns_ReturnCode from EvalTclAuthCallback.
+ *
+ * Side Effects:
+ *      Allocates and deallocates a Tcl interpreter for the execution.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+NsTclAuthorizeUserProc(void *arg, const Ns_Server *servPtr,
+                       const char *username, const char *password, int *continuationPtr)
+{
+    const Ns_TclCallback *cbPtr = arg;
+    Tcl_Interp           *interp = NsTclAllocateInterp((NsServer*)servPtr);
+    Ns_ReturnCode         status;
+
+    status = EvalTclAuthCallback(cbPtr, AUTH_TYPE_USER, interp, username, password, continuationPtr);
+    Ns_TclDeAllocateInterp(interp);
 
     return status;
 }

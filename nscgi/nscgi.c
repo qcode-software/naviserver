@@ -106,17 +106,17 @@ static Ns_ReturnCode CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static void          CgiRegister(Mod *modPtr, const char *map)   NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
-static Ns_DString   *CgiDs(Cgi *cgiPtr)                          NS_GNUC_NONNULL(1);
+static Tcl_DString  *CgiDs(Cgi *cgiPtr)                          NS_GNUC_NONNULL(1);
 static Ns_ReturnCode CgiFree(Cgi *cgiPtr)                        NS_GNUC_NONNULL(1);
 static Ns_ReturnCode CgiExec(Cgi *cgiPtr, Ns_Conn *conn)         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static Ns_ReturnCode CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)  NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static Ns_ReturnCode CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)         NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static ssize_t       CgiRead(Cgi *cgiPtr)                        NS_GNUC_NONNULL(1);
-static ssize_t       CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
+static ssize_t       CgiReadLine(Cgi *cgiPtr, Tcl_DString *dsPtr) NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 static char         *NextWord(char *s)                           NS_GNUC_NONNULL(1);
 static void          SetAppend(Ns_Set *set, int index, const char *sep, char *value)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4);
-static void          CgiRegisterFastUrl2File(const char *server, char *url, const char *path)
+static void          CgiRegisterFastUrl2File(const char *server, const char *url, const char *path)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static TCL_OBJCMDPROC_T NsTclRegisterCGIObjCmd;
@@ -176,9 +176,8 @@ AddCmds(Tcl_Interp *interp, const void *arg)
     const Mod *modPtr = arg;
 
     Ns_Log(Ns_LogCGIDebug, "nscgi: adding command ns_register_cgi");
-    (void)TCL_CREATEOBJCOMMAND(interp, "ns_register_cgi",
-                               NsTclRegisterCGIObjCmd, (ClientData)modPtr,
-                               NULL);
+    (void)TCL_CREATEOBJCOMMAND(interp, "ns_register_cgi", NsTclRegisterCGIObjCmd,
+                               (ClientData)modPtr, NULL);
     return TCL_OK;
 }
 
@@ -202,10 +201,10 @@ AddCmds(Tcl_Interp *interp, const void *arg)
 NS_EXPORT Ns_ReturnCode
 Ns_ModuleInit(const char *server, const char *module)
 {
-    const char     *path, *section;
+    const char     *section, *subSection;
     size_t          i;
     const Ns_Set   *set;
-    Ns_DString      ds;
+    Tcl_DString     ds;
     Mod            *modPtr;
     static bool     initialized = NS_FALSE;
 
@@ -235,63 +234,63 @@ Ns_ModuleInit(const char *server, const char *module)
     /*
      * Config basic options.
      */
-    path = Ns_ConfigSectionPath(NULL, server, module, (char *)0L);
+    section = Ns_ConfigSectionPath(NULL, server, module, NS_SENTINEL);
     modPtr = ns_calloc(1u, sizeof(Mod));
     modPtr->module = module;
     modPtr->server = server;
     Ns_MutexInit(&modPtr->lock);
     Ns_MutexSetName2(&modPtr->lock, "nscgi", server);
-    modPtr->maxInput = (int)Ns_ConfigMemUnitRange(path, "maxinput", "1MB", 1024*1024, 0, LLONG_MAX);
-    modPtr->maxCgi = Ns_ConfigInt(path, "limit", 0);
-    modPtr->maxWait = Ns_ConfigInt(path, "maxwait", 30);
-    if (Ns_ConfigBool(path, "gethostbyaddr", NS_FALSE)) {
+    modPtr->maxInput = (int)Ns_ConfigMemUnitRange(section, "maxinput", "1MB", 1024*1024, 0, LLONG_MAX);
+    modPtr->maxCgi = Ns_ConfigInt(section, "limit", 0);
+    modPtr->maxWait = Ns_ConfigInt(section, "maxwait", 30);
+    if (Ns_ConfigBool(section, "gethostbyaddr", NS_FALSE)) {
         modPtr->flags |= CGI_GETHOST;
     }
 
     /*
      * Configure the various interp and env options.
      */
-    Ns_DStringInit(&ds);
-    section = Ns_ConfigGetValue(path, "interps");
-    if (section != NULL) {
-        Ns_DStringVarAppend(&ds, "ns/interps/", section, (char *)0L);
+    Tcl_DStringInit(&ds);
+    subSection = Ns_ConfigGetValue(section, "interps");
+    if (subSection != NULL) {
+        Ns_DStringVarAppend(&ds, "ns/interps/", subSection, NS_SENTINEL);
         modPtr->interps = Ns_ConfigGetSection(ds.string);
         if (modPtr->interps == NULL) {
             Ns_Log(Warning, "nscgi: no such interps section: %s",
                    ds.string);
         }
-        Ns_DStringSetLength(&ds, 0);
+        Tcl_DStringSetLength(&ds, 0);
     }
-    section = Ns_ConfigGetValue(path, "environment");
-    if (section != NULL) {
-        Ns_DStringVarAppend(&ds, "ns/environment/", section, (char *)0L);
+    subSection = Ns_ConfigGetValue(section, "environment");
+    if (subSection != NULL) {
+        Ns_DStringVarAppend(&ds, "ns/environment/", subSection, NS_SENTINEL);
         modPtr->mergeEnv = Ns_ConfigGetSection(ds.string);
         if (modPtr->mergeEnv == NULL) {
             Ns_Log(Warning, "nscgi: no such environment section: %s",
                    ds.string);
         }
-        Ns_DStringSetLength(&ds, 0);
+        Tcl_DStringSetLength(&ds, 0);
     }
-    if (Ns_ConfigBool(path, "systemenvironment", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "systemenvironment", NS_FALSE)) {
         modPtr->flags |= CGI_SYSENV;
     }
-    if (Ns_ConfigBool(path, "allowstaticresources", NS_FALSE)) {
+    if (Ns_ConfigBool(section, "allowstaticresources", NS_FALSE)) {
         modPtr->flags |= CGI_ALLOW_STATIC;
     }
 
     /*
      * Register all requested mappings.
      */
-    set = Ns_ConfigGetSection(path);
+    set = Ns_ConfigGetSection(section);
     for (i = 0u; set != NULL && i < Ns_SetSize(set); ++i) {
         const char *key   = Ns_SetKey(set, i);
-        const char *value = Ns_SetValue(set, i);
 
         if (STRIEQ(key, "map")) {
+            const char *value = Ns_SetValue(set, i);
             CgiRegister(modPtr, value);
         }
     }
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     if (server == NULL) {
         Ns_Log(Warning, "nscgi: loaded as a global module,"
@@ -496,8 +495,8 @@ static Ns_ReturnCode
 CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
 {
     Mod                        *modPtr;
-    Ns_DString                 *dsPtr;
-    TCL_OBJC_T                  i;
+    Tcl_DString                *dsPtr;
+    TCL_SIZE_T                  i;
     size_t                      ulen;
     char                       *e, *s;
     const char                 *url, *server, *fileName;
@@ -518,7 +517,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     cgiPtr->ofd = cgiPtr->ifd = NS_INVALID_FD;
     cgiPtr->ptr = cgiPtr->buf;
     for (i = 0; i < NDSTRINGS; ++i) {
-        Ns_DStringInit(&cgiPtr->ds[i]);
+        Tcl_DStringInit(&cgiPtr->ds[i]);
     }
 
     /*
@@ -590,7 +589,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
         goto err;
     }
     *s = '\0';
-    cgiPtr->dir = Ns_DStringAppend(CgiDs(cgiPtr), cgiPtr->path);
+    cgiPtr->dir = Tcl_DStringAppend(CgiDs(cgiPtr), cgiPtr->path, TCL_INDEX_NONE);
     Ns_Log(Ns_LogCGIDebug, "nscgi: dir <%s>", cgiPtr->dir);
     Ns_Log(Ns_LogCGIDebug, "nscgi: path <%s>", cgiPtr->path);
     Ns_Log(Ns_LogCGIDebug, "nscgi: name <%s>", cgiPtr->name);
@@ -607,7 +606,7 @@ CgiInit(Cgi *cgiPtr, const Map *mapPtr, const Ns_Conn *conn)
     if (modPtr->interps != NULL
         && (s = strrchr(cgiPtr->path, INTCHAR('.'))) != NULL
         && (cgiPtr->interp = Ns_SetIGet(modPtr->interps, s)) != NULL) {
-        cgiPtr->interp = Ns_DStringAppend(CgiDs(cgiPtr), cgiPtr->interp);
+        cgiPtr->interp = Tcl_DStringAppend(CgiDs(cgiPtr), cgiPtr->interp, TCL_INDEX_NONE);
         s = strchr(cgiPtr->interp, INTCHAR('('));
         if (s != NULL) {
             *s++ = '\0';
@@ -652,7 +651,7 @@ err:
 static Ns_ReturnCode
 CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
 {
-    int           fd;
+    int           fd = NS_INVALID_FD;
     Ns_ReturnCode status;
     size_t        len;
     const char   *content, *err = NULL;
@@ -662,18 +661,29 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
 
     len = conn->contentLength;
     content = Ns_ConnContent(conn);
-    fd = Ns_GetTemp();
-    if (fd == NS_INVALID_FD) {
-        Ns_Log(Error, "nscgi: could not allocate temp file.");
-    } else if (ns_write(fd, content, len) != (ssize_t)len) {
-        err = "write";
-    } else if (ns_lseek(fd, 0, SEEK_SET) != 0) {
-        err = "lseek";
-    }
-    if (err != NULL) {
-        Ns_Log(Error, "nscgi: temp file %s failed: %s", err, strerror(errno));
-        (void) ns_close(fd);
-        fd = NS_INVALID_FD;
+    if (content == NULL) {
+        if (Ns_ConnContentFile(conn) == NULL) {
+            Ns_Log(Error, "nscgi: unable to access content.");
+        } else {
+            fd = ns_open(Ns_ConnContentFile(conn), O_RDONLY | O_BINARY | O_CLOEXEC, 0);
+            if (fd == NS_INVALID_FD) {
+                Ns_Log(Error, "nscgi: could not open content file: %s", strerror(errno));
+            }
+        }
+    } else {
+        fd = Ns_GetTemp();
+        if (fd == NS_INVALID_FD) {
+            Ns_Log(Error, "nscgi: could not allocate temp file.");
+        } else if (ns_write(fd, content, len) != (ssize_t)len) {
+            err = "write";
+        } else if (ns_lseek(fd, 0, SEEK_SET) != 0) {
+            err = "lseek";
+        }
+        if (err != NULL) {
+            Ns_Log(Error, "nscgi: temp file %s failed: %s", err, strerror(errno));
+            (void) ns_close(fd);
+            fd = NS_INVALID_FD;
+        }
     }
 
     if (fd == NS_INVALID_FD) {
@@ -702,10 +712,10 @@ CgiSpool(Cgi *cgiPtr, const Ns_Conn *conn)
  *----------------------------------------------------------------------
  */
 
-static Ns_DString *
+static Tcl_DString *
 CgiDs(Cgi *cgiPtr)
 {
-    Ns_DString *result;
+    Tcl_DString *result;
 
     NS_NONNULL_ASSERT(cgiPtr != NULL);
 
@@ -771,7 +781,7 @@ CgiFree(Cgi *cgiPtr)
      * Reap the process.
      */
     if (cgiPtr->pid != NS_INVALID_PID) {
-        int exitCode;
+        int exitCode = 0;
 
         if (Ns_WaitForProcessStatus(cgiPtr->pid, &exitCode, NULL) != NS_OK) {
             Ns_Log(Error, "nscgi: wait for %s failed: %s",
@@ -789,7 +799,7 @@ CgiFree(Cgi *cgiPtr)
      */
 
     while (cgiPtr->nextds-- > 0) {
-        Ns_DStringFree(&cgiPtr->ds[cgiPtr->nextds]);
+        Tcl_DStringFree(&cgiPtr->ds[cgiPtr->nextds]);
     }
     return result;
 }
@@ -818,7 +828,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     int           opipe[2], i;
     Ns_ReturnCode status;
     char         *s, *e;
-    Ns_DString   *dsPtr;
+    Tcl_DString  *dsPtr;
     const Mod    *modPtr;
     const char   *value;
 
@@ -860,13 +870,13 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
                  */
                 idx = Ns_SetFind(cgiPtr->env, s);
                 if (idx < 0) {
-                    (void)Ns_SetPutSz(cgiPtr->env, s, (TCL_SIZE_T)(e-s), e+1, -1);
+                    (void)Ns_SetPutSz(cgiPtr->env, s, (TCL_SIZE_T)(e-s), e+1, TCL_INDEX_NONE);
                 }
                 *e = '=';
             }
             ++envp;
         }
-        Ns_DStringSetLength(dsPtr, 0);
+        Tcl_DStringSetLength(dsPtr, 0);
     }
 
     /*
@@ -886,9 +896,9 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
      */
 
     Ns_SetUpdateSz(cgiPtr->env, "SCRIPT_NAME", 11, cgiPtr->name, TCL_INDEX_NONE);
-    Ns_SetUpdateSz(cgiPtr->env, "SCRIPT_FILENAME", 15, cgiPtr->path, -1);
+    Ns_SetUpdateSz(cgiPtr->env, "SCRIPT_FILENAME", 15, cgiPtr->path, TCL_INDEX_NONE);
     Ns_SetUpdateSz(cgiPtr->env, "REQUEST_URI", 11, Ns_ConnTarget(conn, dsPtr), TCL_INDEX_NONE);
-    Ns_DStringSetLength(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
 
     if (cgiPtr->pathinfo != NULL && *cgiPtr->pathinfo != '\0') {
 
@@ -912,14 +922,14 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
          */
         Ns_SetUpdateSz(cgiPtr->env, "REDIRECT_STATUS", 15, "1", 1);
     }
-    Ns_DStringSetLength(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
     Ns_SetUpdateSz(cgiPtr->env, "GATEWAY_INTERFACE", 17, "CGI/1.1", 7);
-    Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), (char *)0L);
+    Ns_DStringVarAppend(dsPtr, Ns_InfoServerName(), "/", Ns_InfoServerVersion(), NS_SENTINEL);
     Ns_SetUpdateSz(cgiPtr->env, "SERVER_SOFTWARE", 15, dsPtr->string, dsPtr->length);
-    Ns_DStringSetLength(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
     Ns_DStringPrintf(dsPtr, "HTTP/%2.1f", conn->request.version);
     Ns_SetUpdateSz(cgiPtr->env, "SERVER_PROTOCOL", 15, dsPtr->string, dsPtr->length);
-    Ns_DStringSetLength(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
 
 #if 0
     /*
@@ -932,17 +942,19 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_SetUpdateSz(cgiPtr->env, "SERVER_NAME", 11, conn->request.host, TCL_INDEX_NONE);
     Ns_DStringPrintf(dsPtr, "%hu", conn->request.port);
     Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, dsPtr->string, dsPtr->length);
-    Ns_DStringSetLength(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
 #else
-    /*
-     * Determine SERVER_NAME and SERVER_PORT from the conn location.
-     */
     s = Ns_ConnLocationAppend(conn, dsPtr);
-    s = strchr(s, INTCHAR(':'));
-    s += 3;                        /* Get past the protocol "://"  */
-    {
+    if (likely(*s != '\0')) {
+        /*
+         * Determine SERVER_NAME and SERVER_PORT from the conn location.
+         */
         char *end, *portString, *hostString;
-        bool  hostParsedOk = Ns_HttpParseHost2(s, NS_FALSE, &hostString, &portString, &end);
+        bool  hostParsedOk;
+
+        s = strchr(s, INTCHAR(':'));
+        s += 3;                        /* Get past the protocol "://"  */
+        hostParsedOk = Ns_HttpParseHost2(s, NS_FALSE, &hostString, &portString, &end);
 
         if (!hostParsedOk) {
             /*
@@ -951,7 +963,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
              */
             Ns_Log(Warning, "nscgi: invalid hostname: '%s'", s);
             Ns_SetUpdateSz(cgiPtr->env, "SERVER_NAME", 11, "", 0);
-            Ns_DStringSetLength(dsPtr, 0);
+            Tcl_DStringSetLength(dsPtr, 0);
             Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
             Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, dsPtr->string, dsPtr->length);
         } else {
@@ -959,13 +971,22 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
             if (portString != NULL) {
                 Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, portString, TCL_INDEX_NONE);
             } else {
-                Ns_DStringSetLength(dsPtr, 0);
+                Tcl_DStringSetLength(dsPtr, 0);
                 Ns_DStringPrintf(dsPtr, "%hu", Ns_ConnPort(conn));
                 Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, dsPtr->string, dsPtr->length);
             }
         }
-        Ns_DStringSetLength(dsPtr, 0);
+    } else {
+        /*
+         * If for whatever reason the location cannot be determined (e.g.,
+         * running behind a proxy server, where we cannot validate the host
+         * header field), use the provided information.
+         */
+        Ns_SetUpdateSz(cgiPtr->env, "SERVER_NAME", 11, conn->request.host, TCL_INDEX_NONE);
+        Ns_DStringPrintf(dsPtr, "%hu", conn->request.port);
+        Ns_SetUpdateSz(cgiPtr->env, "SERVER_PORT", 11, dsPtr->string, dsPtr->length);
     }
+    Tcl_DStringSetLength(dsPtr, 0);
 #endif
     /*
      * Provide Authentication information
@@ -974,7 +995,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
         const Ns_Set *authSet =  Ns_ConnAuth(conn);
 
         if (authSet != NULL) {
-            const char *authMethod = Ns_SetIGet(authSet, "AuthMethod");
+            const char *authMethod = Ns_SetIGet(authSet, "authmethod");
 
             Ns_SetUpdateSz(cgiPtr->env, "AUTH_TYPE", 9, authMethod ? authMethod : "", TCL_INDEX_NONE);
         } else {
@@ -992,7 +1013,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
                 if (Ns_GetHostByAddr(dsPtr, peer) == NS_TRUE) {
                     Ns_SetUpdateSz(cgiPtr->env, "REMOTE_HOST", 11, dsPtr->string, dsPtr->length);
                 }
-                Ns_DStringSetLength(dsPtr, 0);
+                Tcl_DStringSetLength(dsPtr, 0);
             } else {
                 Ns_SetUpdateSz(cgiPtr->env, "REMOTE_HOST", 11, peer, TCL_INDEX_NONE);
             }
@@ -1006,7 +1027,7 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     Ns_SetUpdateSz(cgiPtr->env, "REQUEST_METHOD", 14, conn->request.method, TCL_INDEX_NONE);
     Ns_SetUpdateSz(cgiPtr->env, "QUERY_STRING", 12, conn->request.query, TCL_INDEX_NONE);
 
-    value = Ns_SetIGet(conn->headers, "Content-Type");
+    value = Ns_SetIGet(conn->headers, "content-type");
     if (value == NULL) {
         if (STREQ("POST", conn->request.method)) {
             value = "application/x-www-form-urlencoded";
@@ -1021,20 +1042,20 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
     } else {
         Ns_DStringPrintf(dsPtr, "%u", (unsigned) conn->contentLength);
         Ns_SetUpdateSz(cgiPtr->env, "CONTENT_LENGTH", 14, dsPtr->string, dsPtr->length);
-        Ns_DStringSetLength(dsPtr, 0);
+        Tcl_DStringSetLength(dsPtr, 0);
     }
 
     /*
      * Set the HTTP_ header variables.
      */
 
-    Ns_DStringAppend(dsPtr, "HTTP_");
+    Tcl_DStringAppend(dsPtr, "HTTP_", 5);
     for (i = 0; (size_t)i < Ns_SetSize(conn->headers); ++i) {
         int idx;
 
         s = Ns_SetKey(conn->headers, i);
         e = Ns_SetValue(conn->headers, i);
-        Ns_DStringAppend(dsPtr, s);
+        Tcl_DStringAppend(dsPtr, s, TCL_INDEX_NONE);
         s = dsPtr->string + 5;
         while (*s != '\0') {
             if (*s == '-') {
@@ -1046,18 +1067,18 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
         }
         idx = Ns_SetFind(cgiPtr->env, dsPtr->string);
         if (idx < 0) {
-            (void)Ns_SetPut(cgiPtr->env, dsPtr->string, e);
+            (void)Ns_SetPutSz(cgiPtr->env, dsPtr->string, dsPtr->length, e, TCL_INDEX_NONE);
         } else {
             SetAppend(cgiPtr->env, idx, ", ", e);
         }
-        Ns_DStringSetLength(dsPtr, 5);
+        Tcl_DStringSetLength(dsPtr, 5);
     }
 
     /*
      * Build up the argument block.
      */
 
-    Ns_DStringSetLength(dsPtr, 0);
+    Tcl_DStringSetLength(dsPtr, 0);
     if (cgiPtr->interp != NULL) {
         Ns_DStringAppendArg(dsPtr, cgiPtr->interp);
     }
@@ -1073,14 +1094,14 @@ CgiExec(Cgi *cgiPtr, Ns_Conn *conn)
                     *e = '\0';
                 }
                 (void) Ns_UrlQueryDecode(dsPtr, s, NULL, NULL);
-                Ns_DStringNAppend(dsPtr, NS_EMPTY_STRING, 1);
+                Tcl_DStringAppend(dsPtr, NS_EMPTY_STRING, 1);
                 if (e != NULL) {
                     *e++ = '+';
                 }
                 s = e;
             } while (s != NULL);
         }
-        Ns_DStringNAppend(dsPtr, NS_EMPTY_STRING, 1);
+        Tcl_DStringAppend(dsPtr, NS_EMPTY_STRING, 1);
     }
 
     /*
@@ -1171,7 +1192,7 @@ CgiRead(Cgi *cgiPtr)
  */
 
 static ssize_t
-CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr)
+CgiReadLine(Cgi *cgiPtr, Tcl_DString *dsPtr)
 {
     char    c;
     ssize_t n;
@@ -1187,11 +1208,11 @@ CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr)
             if (c == '\n') {
                 while (dsPtr->length > 0
                     && CHARTYPE(space, dsPtr->string[dsPtr->length - 1]) != 0) {
-                    Ns_DStringSetLength(dsPtr, dsPtr->length-1);
+                    Tcl_DStringSetLength(dsPtr, dsPtr->length-1);
                 }
                 return (ssize_t)dsPtr->length;
             }
-            Ns_DStringNAppend(dsPtr, &c, 1);
+            Tcl_DStringAppend(dsPtr, &c, 1);
         }
     } while ((n = CgiRead(cgiPtr)) > 0);
     return n;
@@ -1217,7 +1238,7 @@ CgiReadLine(Cgi *cgiPtr, Ns_DString *dsPtr)
 static Ns_ReturnCode
 CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
 {
-    Ns_DString      ds, redir;
+    Tcl_DString     ds;
     int             last, httpstatus;
     Ns_ReturnCode   status;
     char           *value;
@@ -1239,7 +1260,7 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
     /*
      * Read and parse headers up to the blank line or end of file.
      */
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     last = -1;
     httpstatus = 200;
     hdrs = conn->outputheaders;
@@ -1279,22 +1300,28 @@ CgiCopy(Cgi *cgiPtr, Ns_Conn *conn)
                 if (!statusProvided) {
                     httpstatus = 302;
                 }
+#if defined(NS_ALLOW_RELATIVE_REDIRECTS) && NS_ALLOW_RELATIVE_REDIRECTS
+                last = (int)Ns_SetPutSz(hdrs, ds.string, ds.length, value, TCL_INDEX_NONE);
+#else
                 if (*value == '/') {
-                    Ns_DStringInit(&redir);
+                    Tcl_DString redir;
+
+                    Tcl_DStringInit(&redir);
                     (void)Ns_ConnLocationAppend(conn, &redir);
-                    Ns_DStringAppend(&redir, value);
-                    last = (int)Ns_SetPut(hdrs, ds.string, redir.string);
-                    Ns_DStringFree(&redir);
+                    Tcl_DStringAppend(&redir, value, TCL_INDEX_NONE);
+                    last = (int)Ns_SetPutSz(hdrs, ds.string, ds.length, redir.string, TCL_INDEX_NONE);
+                    Tcl_DStringFree(&redir);
                 } else {
-                    last = (int)Ns_SetPut(hdrs, ds.string, value);
+                    last = (int)Ns_SetPutSz(hdrs, ds.string, ds.length, value, TCL_INDEX_NONE);
                 }
+#endif
             } else {
-                last = (int)Ns_SetPut(hdrs, ds.string, value);
+                last = (int)Ns_SetPutSz(hdrs, ds.string, ds.length, value, TCL_INDEX_NONE);
             }
         }
-        Ns_DStringSetLength(&ds, 0);
+        Tcl_DStringSetLength(&ds, 0);
     }
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
     Ns_Log(Ns_LogCGIDebug, "=== header lines %ld", lines);
 
     if (n < 0) {
@@ -1385,7 +1412,7 @@ NextWord(char *s)
  *----------------------------------------------------------------------
  */
 static void
-CgiRegisterFastUrl2File(const char *server, char *url, const char *path)
+CgiRegisterFastUrl2File(const char *server, const char *url, const char *path)
 {
     char *tailSegment;
 
@@ -1431,16 +1458,16 @@ CgiRegister(Mod *modPtr, const char *map)
     char           *method;
     char           *url;
     const char     *path;
-    Ns_DString      ds1, ds2;
+    Tcl_DString     ds1, ds2;
     Map            *mapPtr;
 
     NS_NONNULL_ASSERT(modPtr != NULL);
     NS_NONNULL_ASSERT(map != NULL);
 
-    Ns_DStringInit(&ds1);
-    Ns_DStringInit(&ds2);
+    Tcl_DStringInit(&ds1);
+    Tcl_DStringInit(&ds2);
 
-    Ns_DStringAppend(&ds1, map);
+    Tcl_DStringAppend(&ds1, map, TCL_INDEX_NONE);
     method = ds1.string;
     url = NextWord(method);
     if (*method == '\0' || *url == '\0') {
@@ -1468,7 +1495,7 @@ CgiRegister(Mod *modPtr, const char *map)
            (path != NULL) ? path : NS_EMPTY_STRING);
 
     (void) Ns_RegisterRequest2(NULL, modPtr->server, method, url,
-                               CgiRequest, CgiFreeMap, mapPtr, NS_OP_SEGMENT_MATCH);
+                               CgiRequest, CgiFreeMap, mapPtr, NS_OP_SEGMENT_MATCH, NULL);
     if (path != NULL) {
         /*
          * When a path is provided, register it to the Url2File
@@ -1479,8 +1506,8 @@ CgiRegister(Mod *modPtr, const char *map)
     }
 
 done:
-    Ns_DStringFree(&ds1);
-    Ns_DStringFree(&ds2);
+    Tcl_DStringFree(&ds1);
+    Tcl_DStringFree(&ds2);
 }
 
 
@@ -1530,17 +1557,17 @@ CgiFreeMap(void *arg)
 static void
 SetAppend(Ns_Set *set, int index, const char *sep, char *value)
 {
-    Ns_DString ds;
+    Tcl_DString ds;
 
     NS_NONNULL_ASSERT(set != NULL);
     NS_NONNULL_ASSERT(sep != NULL);
     NS_NONNULL_ASSERT(value != NULL);
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     Ns_DStringVarAppend(&ds, Ns_SetValue(set, index),
-                        sep, value, (char *)0L);
+                        sep, value, NS_SENTINEL);
     Ns_SetPutValueSz(set, (size_t)index, ds.string, ds.length);
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 }
 
 
@@ -1559,15 +1586,17 @@ SetAppend(Ns_Set *set, int index, const char *sep, char *value)
  *----------------------------------------------------------------------
  */
 static int
-NsTclRegisterCGIObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterCGIObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     char       *method, *url, *path = NULL;
     int         noinherit = 0, matchsegments = 0, result = TCL_OK;
+    void       *specPtr = NULL;   /* use void, since no NsUrlSpaceContextSpec declared */
     Ns_ObjvSpec opts[] = {
-        {"-noinherit",     Ns_ObjvBool,   &noinherit,     INT2PTR(NS_OP_NOINHERIT)},
-        {"-matchsegments", Ns_ObjvBool,   &matchsegments, INT2PTR(NS_OP_NOINHERIT)},
-        {"-path",          Ns_ObjvString, &path,          NULL},
-        {"--",             Ns_ObjvBreak,  NULL,           NULL},
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr,  NULL},
+        {"-noinherit",     Ns_ObjvBool,        &noinherit,     INT2PTR(NS_OP_NOINHERIT)},
+        {"-matchsegments", Ns_ObjvBool,        &matchsegments, INT2PTR(NS_OP_SEGMENT_MATCH)},
+        {"-path",          Ns_ObjvString,      &path,          NULL},
+        {"--",             Ns_ObjvBreak,       NULL,           NULL},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -1599,7 +1628,7 @@ NsTclRegisterCGIObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T obj
                (path != NULL) ? path : NS_EMPTY_STRING);
 
         result = Ns_RegisterRequest2(interp, modPtr->server, method, url,
-                                     CgiRequest, CgiFreeMap, mapPtr, flags);
+                                     CgiRequest, CgiFreeMap, mapPtr, flags, specPtr);
         if (path != NULL) {
             /*
              * When a path is provided, register it to the Url2File

@@ -609,13 +609,13 @@ Ns_GetSockAddr(struct sockaddr *saPtr, const char *host, unsigned short port)
 
         r = ns_inet_pton((struct sockaddr *)saPtr, host);
         if (r <= 0) {
-            Ns_DString ds;
+            Tcl_DString ds;
 
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             if (Ns_GetAddrByHost(&ds, host) == NS_TRUE) {
                 r = ns_inet_pton((struct sockaddr *)saPtr, ds.string);
             }
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
             if (r <= 0) {
                 status = NS_ERROR;
             }
@@ -630,13 +630,13 @@ Ns_GetSockAddr(struct sockaddr *saPtr, const char *host, unsigned short port)
     } else {
         ((struct sockaddr_in *)saPtr)->sin_addr.s_addr = inet_addr(host);
         if (((struct sockaddr_in *)saPtr)->sin_addr.s_addr == INADDR_NONE) {
-            Ns_DString ds;
+            Tcl_DString ds;
 
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             if (Ns_GetAddrByHost(&ds, host) == NS_TRUE) {
                 ((struct sockaddr_in *)saPtr)->sin_addr.s_addr = inet_addr(ds.string);
             }
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
             if (((struct sockaddr_in *)saPtr)->sin_addr.s_addr == INADDR_NONE) {
                 status = NS_ERROR;
             }
@@ -872,14 +872,16 @@ Ns_SockaddrTrustedReverseProxy(const struct sockaddr *saPtr) {
 
     NS_INIT_ONCE(SockAddrInit);
 
-    for (i = 0u; trustedServersEntries[i].cdirString != NULL; i++) {
-        //Ns_Log(Notice, "[%ld] trusted reverse proxy check %p> ", i, (void*)trustedServersEntries[i].cdirString) ;
-        //Ns_Log(Notice, "[%ld] trusted reverse proxy check <%s> ", i, trustedServersEntries[i].cdirString);
-        if (Ns_SockaddrMaskedMatch(saPtr,
-                                   (struct sockaddr *) &trustedServersEntries[i].mask,
-                                   (struct sockaddr *) &trustedServersEntries[i].masked)) {
-            success = NS_TRUE;
-            break;
+    if (trustedServersEntries != NULL) {
+        for (i = 0u; trustedServersEntries[i].cdirString != NULL; i++) {
+            //Ns_Log(Notice, "[%ld] trusted reverse proxy check %p> ", i, (void*)trustedServersEntries[i].cdirString) ;
+            //Ns_Log(Notice, "[%ld] trusted reverse proxy check <%s> ", i, trustedServersEntries[i].cdirString);
+            if (Ns_SockaddrMaskedMatch(saPtr,
+                                       (struct sockaddr *) &trustedServersEntries[i].mask,
+                                       (struct sockaddr *) &trustedServersEntries[i].masked)) {
+                success = NS_TRUE;
+                break;
+            }
         }
     }
 #if 0
@@ -935,11 +937,107 @@ Ns_SockaddrPublicIpAddress(const struct sockaddr *saPtr) {
         size_t j;
         for (j = 0u; nonPublicCIDR[j] != NULL; j++) {}
         (void)ns_inet_ntop(saPtr, ipString, NS_IPADDR_SIZE);
-        Ns_Log(Notice, "...... checked %ld/%ld public %s -> %d", i,j, ipString, success);
+        Ns_Log(Notice, "...... checked %ld/%ld public %s -> %d", i, j, ipString, success);
     }
 #endif
     return success;
 }
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockaddrInAny --
+ *
+ *      Determines whether the given socket address represents the
+ *      "any" (unspecified) address. For an IPv4 address, this is equivalent to
+ *      INADDR_ANY (usually 0.0.0.0), and for an IPv6 address, it is equivalent
+ *      to the in6addr_any (an all-zero address). The function returns NS_TRUE
+ *      if the address is unspecified, and NS_FALSE otherwise.
+ *
+ * Returns:
+ *      NS_TRUE  if the address is the "any" address (i.e., unspecified).
+ *      NS_FALSE otherwise, including when the address family is neither AF_INET
+ *               nor AF_INET6.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+bool
+Ns_SockaddrInAny(const struct sockaddr *saPtr) {
+    bool success = NS_TRUE;
+
+    NS_NONNULL_ASSERT(saPtr != NULL);
+
+    switch (saPtr->sa_family) {
+        case AF_INET: {
+            const struct sockaddr_in *ipv4_addr = (const struct sockaddr_in*)saPtr;
+            success = (ipv4_addr->sin_addr.s_addr == htonl(INADDR_ANY));
+            break;
+        }
+        case AF_INET6: {
+            const struct sockaddr_in6 *ipv6_addr = (const struct sockaddr_in6*)saPtr;
+            success = (memcmp(&ipv6_addr->sin6_addr, &in6addr_any, sizeof(in6addr_any)) == 0);
+            break;
+        }
+        default: {
+            /*
+             * Not IPv4 or IPv6
+             */
+            success = NS_FALSE;
+            break;
+        }
+    }
+
+    return success;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_SockaddrAddToDictIpProperties --
+ *
+ *      Add for the speicied IP address properties to the provided dict.
+ *
+ * Results:
+ *      TCL_OK;
+ *
+ * Side effects:
+ *      None
+ *
+ *----------------------------------------------------------------------
+ */
+int
+Ns_SockaddrAddToDictIpProperties(const struct sockaddr *ipPtr, Tcl_Obj *dictObj) {
+    bool     isPublic = Ns_SockaddrPublicIpAddress(ipPtr);
+    bool     isTrusted = Ns_SockaddrTrustedReverseProxy(ipPtr);
+    bool     isInAny = Ns_SockaddrInAny(ipPtr);
+    Tcl_Obj *typeValueObj;
+
+    Tcl_DictObjPut(NULL, dictObj,
+                   Tcl_NewStringObj("public", 6),
+                   Tcl_NewBooleanObj(isPublic));
+    Tcl_DictObjPut(NULL, dictObj,
+                   Tcl_NewStringObj("trusted", 7),
+                   Tcl_NewBooleanObj(isTrusted));
+    Tcl_DictObjPut(NULL, dictObj,
+                   Tcl_NewStringObj("inany", 5),
+                   Tcl_NewBooleanObj(isInAny));
+    if (ipPtr->sa_family == AF_INET) {
+        typeValueObj = Tcl_NewStringObj("IPv4", 4);
+    } else if (ipPtr->sa_family == AF_INET6) {
+        typeValueObj = Tcl_NewStringObj("IPv6", 4);
+    } else {
+        typeValueObj = Tcl_NewStringObj("unknown", 7);
+    }
+    Tcl_DictObjPut(NULL, dictObj,
+                   Tcl_NewStringObj("type", 4),
+                   typeValueObj);
+    return TCL_OK;
+}
+
 
 /*
  * Local Variables:

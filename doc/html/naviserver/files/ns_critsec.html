@@ -1,0 +1,145 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_critsec - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_critsec.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_critsec.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/naviserver/files/ns_critsec.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/naviserver/files/ns_critsec.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_critsec(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_critsec - Operate on critical section objects</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_critsec create</b></a></li>
+<li><a href="#2"><b class="cmd">ns_critsec destroy</b> <i class="arg">csid</i></a></li>
+<li><a href="#3"><b class="cmd">ns_critsec enter</b> <i class="arg">csid</i></a></li>
+<li><a href="#4"><b class="cmd">ns_critsec eval</b> <i class="arg">csid</i> <i class="arg">script</i></a></li>
+<li><a href="#5"><b class="cmd">ns_critsec leave</b> <i class="arg">csid</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p>The <b class="cmd">ns_critsec</b> command provides a mechanism for creating and
+managing critical section objects, which are used for synchronizing
+access to shared resources in a multithreaded environment. Critical
+sections ensure that only one thread can access a protected code
+section at a time, preventing data corruption and ensuring thread
+safety.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_critsec create</b></a></dt>
+<dd><p>Initializes a new critical section object and returns a handle
+  (<i class="arg">csid</i>) to it. This handle is used in other <b class="cmd">ns_critsec</b> commands
+  to reference the critical section.</p></dd>
+<dt><a name="2"><b class="cmd">ns_critsec destroy</b> <i class="arg">csid</i></a></dt>
+<dd><p>Destroys the critical section object identified by <i class="arg">csid</i> and
+  frees any resources it was using. NOTE: In the current
+  implementation, this command is effectively a no-op; the critical
+  section will remain until the server shuts down.</p></dd>
+<dt><a name="3"><b class="cmd">ns_critsec enter</b> <i class="arg">csid</i></a></dt>
+<dd><p>Enters the critical section <i class="arg">csid</i>.  The thread will block if another thread
+is already in the critical section.
+  Enters the critical section identified by <i class="arg">csid</i>. The actual
+  thread will block other threads trying to enter the same critical
+  section. If <i class="arg">csid</i> was not created beforehand, it is
+  auto-created (not recommended for best practices).</p></dd>
+<dt><a name="4"><b class="cmd">ns_critsec eval</b> <i class="arg">csid</i> <i class="arg">script</i></a></dt>
+<dd><p>Evaluates the provided <i class="arg">script</i> inside the critical section
+  identified by <i class="arg">csid</i>. This command ensures the script runs with
+  exclusive access to the critical section. If <i class="arg">csid</i> was not created
+  beforehand, it is auto-created (not recommended for best practices).</p></dd>
+<dt><a name="5"><b class="cmd">ns_critsec leave</b> <i class="arg">csid</i></a></dt>
+<dd><p>Leaves the critical section identified by <i class="arg">csid</i>. If a thread has
+  entered the critical section multiple times, it must call <i class="arg">csid</i> as
+  many times as it entered. When a thread fully exits the critical
+  section, a notification is sent to other threads waiting on the same
+  critical section.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">EXAMPLES</a></h2>
+<p>The following example demonstrates the usage of <b class="cmd">ns_critsec</b>
+  commands to safely access and modify a shared resource:</p>
+<pre class="doctools_example">
+ #
+ # Create a critical section and store its handle
+ #
+ nsv_set . log_critsec [ns_critsec create]
+ 
+ proc log_message {message} {
+    set critsec [nsv_get . log_critsec]
+    #
+    # Enter the critical section to ensure only one thread writes at a time
+    #
+    ns_critsec enter $critsec
+    set timestamp [clock format [clock seconds] -format &quot;%Y-%m-%d %H:%M:%S&quot;]
+    set handle [open &quot;shared_log.txt&quot; &quot;a&quot;]
+    puts $handle &quot;$timestamp - $message&quot;
+    close $handle
+    ns_critsec leave $critsec
+ }
+ 
+ #
+ # Example of multiple threads writing to the log file
+ # (assuming, the proc &quot;log_message&quot; was loaded before and is
+ # available in all threads)
+ #
+ ns_thread create -detached { log_message &quot;Thread 1: Starting process&quot; }
+ ns_thread create -detached { log_message &quot;Thread 2: Completed task A&quot; }
+ ns_thread create -detached { log_message &quot;Thread 3: Encountered an error&quot; }
+</pre>
+<p>Explanation:</p>
+<ul class="doctools_itemized">
+<li><p>The <i class="term">log_message</i> procedure ensures that only one thread at a time writes to the shared log file.</p></li>
+<li><p>This prevents overlapping or incomplete log entries and ensures log data integrity.</p></li>
+<li><p>Each thread can safely call <i class="term">log_message</i>, and the critical section guarantees exclusive access during the write operation.</p></li>
+</ul>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="ns_cond.html">ns_cond</a>, <a href="ns_mutex.html">ns_mutex</a>, <a href="ns_rwlock.html">ns_rwlock</a>, <a href="ns_sema.html">ns_sema</a>, <a href="ns_thread.html">ns_thread</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#concurrency">concurrency</a>, <a href="../../index.html#server_built_in">server built-in</a>, <a href="../../index.html#synchronization">synchronization</a>, <a href="../../index.html#threading">threading</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

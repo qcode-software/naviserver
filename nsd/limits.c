@@ -95,7 +95,8 @@ NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
     NS_NONNULL_ASSERT(url != NULL);
 
     Ns_MutexLock(&lock);
-    limitsPtr = NsUrlSpecificGet(servPtr, method, url, limid, 0u, NS_URLSPACE_DEFAULT, NULL, NULL, NULL);
+    limitsPtr = Ns_UrlSpecificGet((Ns_Server*)servPtr, method, url, limid, 0u,
+                                  NS_URLSPACE_DEFAULT, NULL, NULL, NULL);
     Ns_MutexUnlock(&lock);
 
     return ((limitsPtr != NULL) ? limitsPtr : defLimitsPtr);
@@ -119,7 +120,7 @@ NsGetRequestLimits(NsServer *servPtr, const char *method, const char *url)
  */
 
 int
-NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int          result = TCL_OK;
     NsLimits    *limitsPtr;
@@ -156,12 +157,12 @@ NsTclGetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
  */
 
 int
-NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc > 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "?pattern?");
+        Tcl_WrongNumArgs(interp, 1, objv, "?/pattern/?");
         result = TCL_ERROR;
     } else {
         const Tcl_HashEntry *hPtr;
@@ -206,7 +207,7 @@ NsTclListLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
  */
 
 int
-NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     NsLimits         *limitsPtr;
     int               maxrun = -1, maxwait = -1, maxupload = -1, timeout = -1, result = TCL_OK;
@@ -263,7 +264,7 @@ NsTclSetLimitsObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC
  */
 
 int
-NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclRegisterLimitsObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -420,12 +421,12 @@ ObjvLimits(Ns_ObjvSpec *spec, Tcl_Interp *interp, TCL_SIZE_T *objcPtr, Tcl_Obj *
 static void
 LimitsResult(Tcl_Interp *interp, const NsLimits *limitsPtr)
 {
-    Ns_DString ds;
+    Tcl_DString ds;
 
     NS_NONNULL_ASSERT(interp != NULL);
     NS_NONNULL_ASSERT(limitsPtr != NULL);
 
-    Ns_DStringInit(&ds);
+    Tcl_DStringInit(&ds);
     Ns_DStringPrintf(&ds, "nrunning %u nwaiting %u"
                      " ntimeout %u ndropped %u noverflow %u"
                      " maxrun %u maxwait %u"

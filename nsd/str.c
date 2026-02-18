@@ -18,6 +18,11 @@
 
 #include "nsd.h"
 
+#ifdef HAVE_OPENSSL_EVP_H
+# include "nsopenssl.h"
+# include <openssl/ssl.h>
+# include <openssl/err.h>
+#endif
 
 static void
 InvalidUtf8ErrorMessage(Tcl_DString *dsPtr, const unsigned char *bytes, size_t nrBytes,
@@ -476,6 +481,17 @@ Ns_NextWord(const char *line)
     return line;
 }
 
+#ifdef NS_WITH_DEPRECATED
+const char *
+Ns_StrNStr(const char *chars, const char *subString)
+{
+    NS_NONNULL_ASSERT(chars != NULL);
+    NS_NONNULL_ASSERT(subString != NULL);
+
+    return Ns_StrCaseFind(chars, subString);
+}
+#endif
+
 
 /*
  *----------------------------------------------------------------------
@@ -492,15 +508,6 @@ Ns_NextWord(const char *line)
  *
  *----------------------------------------------------------------------
  */
-
-const char *
-Ns_StrNStr(const char *chars, const char *subString)
-{
-    NS_NONNULL_ASSERT(chars != NULL);
-    NS_NONNULL_ASSERT(subString != NULL);
-
-    return Ns_StrCaseFind(chars, subString);
-}
 
 const char *
 Ns_StrCaseFind(const char *chars, const char *subString)
@@ -738,10 +745,12 @@ InvalidUtf8ErrorMessage(Tcl_DString *dsPtr, const unsigned char *bytes, size_t n
  */
 bool Ns_Valid_UTF8(const unsigned char *bytes, size_t nrBytes, Tcl_DString *dsPtr)
 {
-    size_t index = 0;
+    size_t idx = 0;
+
+    /*NsHexPrint("Valid UTF8?", bytes, (size_t)nrBytes, 32, NS_FALSE);*/
 
     for (;;) {
-        unsigned char byte1, byte2;
+        unsigned char byte1, byte2, byte3, byte4;
 
         /*
          * First a loop over 7-bit ASCII characters.
@@ -749,22 +758,22 @@ bool Ns_Valid_UTF8(const unsigned char *bytes, size_t nrBytes, Tcl_DString *dsPt
          * In most cases, the strings are longer. Reduce the number of
          * loops by processing eight characters at a time.
          */
-        if (likely(index + 8 < nrBytes)) {
-            const uint64_t *p = (const uint64_t*)&bytes[index];
+        if (likely(idx + 8 < nrBytes)) {
+            const uint64_t *p = (const uint64_t*)&bytes[idx];
 
             if ((*p & 0x8080808080808080u) == 0u) {
-                index += 8;
+                idx += 8;
                 continue;
             }
-        } else if (unlikely(index >= nrBytes)) {
+        } else if (unlikely(idx >= nrBytes)) {
             /*
              * Successful end of string.
              */
             return NS_TRUE;
         }
 
-        /*Ns_Log(Notice, "[%ld] work on %.2x %c", index, bytes[index], bytes[index]);*/
-        byte1 = bytes[index++];
+        /*Ns_Log(Notice, "[%ld] work on %.2x %c", idx, bytes[idx], bytes[idx]);*/
+        byte1 = bytes[idx++];
         if (byte1 < 0x80) {
             continue;
 
@@ -772,78 +781,86 @@ bool Ns_Valid_UTF8(const unsigned char *bytes, size_t nrBytes, Tcl_DString *dsPt
             /*
              * Two-byte UTF-8.
              */
-            if (index == nrBytes) {
+            if (idx == nrBytes) {
                 /*
                  * Premature end of string.
                  */
                 Ns_Log(Debug, "UTF8 decode '%s': 2byte premature", bytes);
-                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, index, 2, NS_TRUE);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx, 2, NS_TRUE);
                 return NS_FALSE;
             }
-            byte2 = bytes[index++];
-            if (byte1 < 0xC2 || ((/*bytes[index++]*/ byte2 & 0xC0u) != 0x80u)) {
+            byte2 = bytes[idx++];
+            if (byte1 < 0xC2 || ((/*bytes[idx++]*/ byte2 & 0xC0u) != 0x80u)) {
                 Ns_Log(Debug, "UTF8 decode '%s': 2-byte invalid 2nd byte %.2x", bytes, byte2);
-                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, index-1, 2, NS_FALSE);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx-1, 2, NS_FALSE);
                 return NS_FALSE;
             }
         } else if (byte1 < 0xF0) {
             /*
              * Three-byte UTF-8.
              */
-            if (index + 1 >= nrBytes) {
+            if (idx + 1 >= nrBytes) {
                 /*
                  * Premature end of string.
                  */
-                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, index, 3, NS_TRUE);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx, 3, NS_TRUE);
                 Ns_Log(Debug, "UTF8 decode '%s': 3-byte premature", bytes);
                 return NS_FALSE;
             }
-            byte2 = bytes[index++];
-            if (byte2 > 0xBF
-                /* Overlong? 5 most significant bits must not all be zero. */
-                || (byte1 == 0xE0 && byte2 < 0xA0)
-                /* Check for illegal surrogate codepoints. */
-                || (byte1 == 0xED && 0xA0 <= byte2)
-                /* Third byte trailing-byte test. */
-                || bytes[index++] > 0xBF) {
+            byte2 = bytes[idx++];
+            /* second byte must be a continuation byte */
+            if ((byte2 & 0xC0u) != 0x80u
+                || (byte1 == 0xE0 && byte2 < 0xA0)   /* overlong */
+                || (byte1 == 0xED && byte2 >= 0xA0)) /* surrogate */
+                {
+                    InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx - 1, 3, NS_FALSE);
+                    Ns_Log(Debug, "UTF8 decode '%s': 3-byte 2nd byte must be continuation byte", bytes);
+                    return NS_FALSE;
+                }
 
-                Ns_Log(Debug, "UTF8 decode '%s': 3-byte invalid sequence byte %.2x %.2x %.2x",
-                       bytes, byte1, byte2, bytes[index]);
-
-                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, bytes[index-1] > 0xBF ? index -1 : index, 3, NS_FALSE);
+            /* third byte must be a continuation byte */
+            byte3 = bytes[idx++];
+            if ((byte3 & 0xC0u) != 0x80u) {
+                Ns_Log(Debug, "UTF8 decode '%s': 3-byte invalid 3rd byte %.2x %.2x %.2x",
+                       bytes, byte1, byte2, byte3);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx - 2, 3, NS_FALSE);
                 return NS_FALSE;
             }
+
         } else {
             size_t startIndex;
             /*
              * Four-byte UTF-8.
              */
-            if (index + 2 >= nrBytes) {
+            if (idx + 2 >= nrBytes) {
                 /*
                  * Premature end of string.
                  */
                 Ns_Log(Debug, "UTF8 decode '%s': 4-byte premature", bytes);
-                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, index, 4, NS_TRUE);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx, 4, NS_TRUE);
                 return NS_FALSE;
             }
-            startIndex = index;
-            byte2 = bytes[index++];
-            if (byte2 > 0xBF
-                /* Check that 1 <= plane <= 16. Tricky optimized form of:
-                 * if (byte1 > (byte) 0xF4
-                 *     || byte1 == (unsigned char) 0xF0 && byte2 < (unsigned char) 0x90
-                 *     || byte1 == (unsigned char) 0xF4 && byte2 > (unsigned char) 0x8F)
-                 */
-                || (((unsigned)(byte1 << 28) + (byte2 - 0x90u)) >> 30) != 0
-                /* Third byte trailing byte test */
-                || bytes[index++] > 0xBF
-                /*  Fourth byte trailing byte test */
-                || bytes[index++] > 0xBF) {
-
-                Ns_Log(Debug, "UTF8 decode '%s': 3-byte invalid sequence byte %.2x %.2x %.2x %.2x",
-                       bytes, byte1, byte2, bytes[index-2], bytes[index-1]);
-
+            startIndex = idx;
+            byte2 = bytes[idx++];
+            /* byte2 must be continuation, plus range constraints for planes 1..16 */
+            if ((byte2 & 0xC0u) != 0x80u
+                || (((unsigned)(byte1 << 28) + (byte2 - 0x90u)) >> 30) != 0) {
+                Ns_Log(Debug, "UTF8 decode '%s': 4-byte 2nd byte must be continuation byte + range", bytes);
                 InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, startIndex, 4, NS_FALSE);
+                return NS_FALSE;
+            }
+
+            byte3 = bytes[idx++];
+            if ((byte3 & 0xC0u) != 0x80u) {
+                Ns_Log(Debug, "UTF8 decode '%s': 4-byte 3rd byte must be continuation byte", bytes);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx - 3, 4, NS_FALSE);
+                return NS_FALSE;
+            }
+
+            byte4 = bytes[idx++];
+            if ((byte4 & 0xC0u) != 0x80u) {
+                Ns_Log(Debug, "UTF8 decode '%s': 4-byte 4th byte must be continuation byte", bytes);
+                InvalidUtf8ErrorMessage(dsPtr, bytes, nrBytes, idx - 4, 4, NS_FALSE);
                 return NS_FALSE;
             }
         }
@@ -897,6 +914,43 @@ bool Ns_Is7bit(const char *bytes, size_t nrBytes)
     return ((mask1 | mask2 | mask3 | mask4 | last_mask) & 0x8080808080808080u) == 0u;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_UpperCharPos --
+ *
+ *      This function searches the given byte array for the first uppercase
+ *      character. It iterates over the first 'nrBytes' characters of the array,
+ *      and returns the index of the first character that is recognized as uppercase
+ *      by the CHARTYPE macro.
+ *
+ * Results:
+ *      Returns the zero-based index of the first uppercase character found in the
+ *      array. If no uppercase character is encountered within the specified range,
+ *      the function returns -1.
+ *
+ * Side Effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+
+ssize_t Ns_UpperCharPos(const char *bytes, size_t nrBytes)
+{
+    size_t  i;
+    ssize_t result = -1;
+
+    NS_NONNULL_ASSERT(bytes != NULL);
+
+    for (i = 0; i < nrBytes; i++) {
+        if (CHARTYPE(upper, bytes[i]) != 0) {
+            result = (ssize_t)i;
+            break;
+        }
+    }
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -937,6 +991,107 @@ void NsHexPrint(const char *msg, const unsigned char *octets, size_t octetLength
     }
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_ReturnCodeString, Ns_TclReturnCodeString, Ns_FilterTypeString --
+ *
+ *      Debugging functions, map internal codes to human readable strings.
+ *
+ * Results:
+ *      String.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *Ns_ReturnCodeString(Ns_ReturnCode code)
+{
+    const char  *result;
+
+    switch (code) {
+    case NS_OK:            result = "NS_OK"; break;
+    case NS_ERROR:         result = "NS_ERROR"; break;
+    case NS_TIMEOUT:       result = "NS_TIMEOUT"; break;
+    case NS_UNAUTHORIZED:  result = "NS_UNAUTHORIZED"; break;
+    case NS_FORBIDDEN:     result = "NS_FORBIDDEN"; break;
+    case NS_FILTER_BREAK:  result = "NS_FILTER_BREAK"; break;
+    case NS_FILTER_RETURN: result = "NS_FILTER_RETURN"; break;
+    default: result = "Unknown NaviServer Result Code";
+    }
+
+    return result;
+}
+
+const char *Ns_TclReturnCodeString(int code)
+{
+    const char *result;
+
+    switch (code) {
+    case TCL_OK:       result = "TCL_OK"; break;
+    case TCL_ERROR:    result = "TCL_ERROR"; break;
+    case TCL_RETURN:   result = "TCL_RETURN"; break;
+    case TCL_BREAK:    result = "TCL_BREAK"; break;
+    case TCL_CONTINUE: result = "TCL_CONTINUE"; break;
+    default: result = "Unknown Tcl Result Code";
+    }
+    return result;
+}
+
+const char *Ns_FilterTypeString(Ns_FilterType when)
+{
+    const char *result;
+
+    switch (when) {
+    case NS_FILTER_PRE_AUTH:   result = "preauth"; break;
+    case NS_FILTER_POST_AUTH:  result = "postauth"; break;
+    case NS_FILTER_TRACE:      result = "trace"; break;
+    case NS_FILTER_VOID_TRACE: result = "void"; break;
+    default: result = "Unknown Filter Type";
+    }
+    return result;
+}
+
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsSockErrorCodeString --
+ *
+ *      Return a human readable string from the generalized
+ *      "unsigned long" error code. This code is capable to
+ *      carry the OpenSSL error codes as well as the classical
+ *      POSIX codes. The OpenSSL function ERR_GET_LIB() decides
+ *      how to get the "reason" code.
+ *
+ * Results:
+ *      String.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+NsSockErrorCodeString(unsigned long errorCode, char *buffer, size_t bufferSize)
+{
+    const char *result = NULL;
+
+#ifdef HAVE_OPENSSL_EVP_H
+    if (ERR_GET_LIB(errorCode) == ERR_LIB_SYS) {
+        result = ns_sockstrerror(ERR_GET_REASON(errorCode));
+    } else if (ERR_GET_LIB(errorCode) != 0) {
+        ERR_error_string_n(errorCode, buffer, bufferSize);
+        result = buffer;
+    }
+#endif
+    if (result == NULL) {
+        result = ns_sockstrerror((int)errorCode);
+    }
+    return result;
+}
 
 /*
  * Local Variables:

@@ -22,7 +22,7 @@
 /*
  *----------------------------------------------------------------------
  *
- * ns_realloc, ns_malloc, ns_calloc, ns_free, ns_strdup, ns_strcopy --
+ * ns_realloc, ns_malloc, ns_calloc, ns_free, ns_strdup --
  *
  *      Memory allocation wrappers which either call the platform
  *      versions or the fast pool allocator for a per-thread pool.
@@ -73,6 +73,9 @@ void *ns_malloc(size_t size) {
     return result;
 }
 void ns_free(void *ptr) {
+    /*
+     * Standard POSIX free() allows NULL pointer.
+     */
     free(ptr);
 }
 void *ns_calloc(size_t num, size_t esize) {
@@ -127,6 +130,24 @@ ns_calloc(size_t num, size_t esize)
 }
 #endif /* defined(SYSTEM_MALLOC) */
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_strcopy --
+ *
+ *      Creates and returns a duplicate of the provided string. If the input
+ *      pointer is NULL, the function returns NULL. Otherwise, it delegates to
+ *      ns_strdup() to perform the duplication.
+ *
+ * Results:
+ *      A pointer to the newly allocated copy of the input string, including
+ *      the terminating null byte, or NULL if the input is NULL.
+ *
+ * Side Effects:
+ *      Allocates memory using ns_malloc via ns_strdup().
+ *
+ *----------------------------------------------------------------------
+ */
 char *
 ns_strcopy(const char *old)
 {
@@ -138,16 +159,21 @@ ns_strcopy(const char *old)
  *
  * ns_strncopy --
  *
- *      Copy a string when "old" is not NULL, and compute its size when "size"
- *      is provided as -1.  We stick there to the NaviServer 4.* type of
- *      "ssize_t" instead of "NS_SIZE_T", since the latter falls back to "int"
- *      on NaviServer 4 (which is maybe too small).
+ *      Creates and returns a duplicate of the given string, copying at most
+ *      the specified number of characters. If the provided size is not equal
+ *      to TCL_INDEX_NONE, then exactly that many characters (plus a
+ *      terminating null) are copied; otherwise, the entire string is
+ *      duplicated.
+ *
+ *      If the given string is NULL, NULL is returned.
  *
  * Results:
- *      The copied string
+ *      A pointer to the newly allocated string copy, including the
+ *      terminating NUL character.  If memory allocation fails, the function
+ *      returns NULL and sets errno to ENOMEM (if defined).
  *
- * Side effects:
- *      Memory allocation
+ * Side Effects:
+ *      Allocates memory using ns_malloc.
  *
  *----------------------------------------------------------------------
  */
@@ -171,6 +197,27 @@ ns_strncopy(const char *old, ssize_t size)
     }
     return new;
 }
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * ns_strdup --
+ *
+ *      Duplicates the provided null-terminated string by allocating new
+ *      memory and copying its contents. The input string must not be NULL,
+ *      otherwise use ns_strcopy().
+ *
+ * Results:
+ *      Returns a pointer to a newly allocated copy of the input string, including
+ *      the terminating null character. If memory allocation fails, the function
+ *      returns NULL.
+ *
+ * Side Effects:
+ *      Allocates memory using ns_malloc. If allocation fails, errno is set to ENOMEM
+ *      (if ENOMEM is defined).
+ *
+ *----------------------------------------------------------------------
+ */
 
 char *
 ns_strdup(const char *old)

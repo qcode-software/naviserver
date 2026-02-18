@@ -1,0 +1,208 @@
+<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ns_perm - NaviServer Built-in Commands</title>
+<link rel="stylesheet" href="../man-5.0.css" type="text/css">
+</head>
+<!-- Generated from file 'ns_perm.man' by tcllib/doctools with format 'html'
+   -->
+<!-- ns_perm.n
+   -->
+<body><header class="man-header">
+  <div class="header-main">
+    <div class="header-left">
+      <a href="/"><strong>NaviServer</strong></a>
+      <span class="tagline">Programmable Web Server</span>
+    </div>
+<div class="version-switcher">
+      <a href="https://naviserver.sourceforge.io/5.0/nsperm/files/ns_perm.html" class="active" title="Switch to version 5.0">5.0</a>
+      <a href="https://naviserver.sourceforge.io/4.99/nsperm/files/ns_perm.html" title="Switch to version 4.99">4.99</a>
+    </div>
+  </div>
+<div class="man-info">
+    <h1 class="man-title">ns_perm(n)</h1>
+    <p class="man-details">NaviServer Built-in Commands &ndash; 5.0.4</p>
+  </div>
+</header>
+ <hr> [
+   <a href="../../toc.html">Main Table Of Contents</a>
+&#124; <a href="../toc.html">Table Of Contents</a>
+&#124; <a href="../../index.html">Keyword Index</a>
+ ] <hr>
+<div class="doctools">
+
+<div id="name" class="doctools_section"><h2><a name="name">Name</a></h2>
+<p>ns_perm - Add users, groups, and permissions</p>
+</div>
+<div id="toc" class="doctools_section"><h2><a name="toc">Table Of Contents</a></h2>
+<ul class="doctools_toc">
+<li class="doctools_section"><a href="#toc">Table Of Contents</a></li>
+<li class="doctools_section"><a href="#synopsis">Synopsis</a></li>
+<li class="doctools_section"><a href="#section1">Description</a></li>
+<li class="doctools_section"><a href="#section2">COMMANDS</a></li>
+<li class="doctools_section"><a href="#section3">CONFIGURATION</a></li>
+<li class="doctools_section"><a href="#section4">EXAMPLES</a></li>
+<li class="doctools_section"><a href="#see-also">See Also</a></li>
+<li class="doctools_section"><a href="#keywords">Keywords</a></li>
+</ul>
+</div>
+<div id="synopsis" class="doctools_section"><h2><a name="synopsis">Synopsis</a></h2>
+<div class="doctools_synopsis">
+<ul class="doctools_syntax">
+<li><a href="#1"><b class="cmd">ns_perm adduser</b> <span class="opt">?<b class="option">-allow</b>?</span> <span class="opt">?<b class="option">-deny</b>?</span> <span class="opt">?<b class="option">-clear</b>?</span> <span class="opt">?<b class="option">-salt <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">name</i> <i class="arg">encpass</i> <i class="arg">userfield</i> <span class="opt">?<i class="arg">host ...</i>?</span></a></li>
+<li><a href="#2"><b class="cmd">ns_perm deluser</b> <i class="arg">name</i></a></li>
+<li><a href="#3"><b class="cmd">ns_perm addgroup</b> <i class="arg">group</i> <i class="arg">user</i> <span class="opt">?<i class="arg">user ...</i>?</span></a></li>
+<li><a href="#4"><b class="cmd">ns_perm delgroup</b> <i class="arg">name</i></a></li>
+<li><a href="#5"><b class="cmd">ns_perm allowuser</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">user ...</i></a></li>
+<li><a href="#6"><b class="cmd">ns_perm denyuser</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">user ...</i></a></li>
+<li><a href="#7"><b class="cmd">ns_perm allowgroup</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">group ...</i></a></li>
+<li><a href="#8"><b class="cmd">ns_perm denygroup</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">group ...</i></a></li>
+<li><a href="#9"><b class="cmd">ns_perm checkpass</b> <i class="arg">user</i> <i class="arg">passwd</i></a></li>
+<li><a href="#10"><b class="cmd">ns_perm setpass</b> <i class="arg">user</i> <i class="arg">encpass</i> <span class="opt">?<i class="arg">salt</i>?</span></a></li>
+<li><a href="#11"><b class="cmd">ns_perm listusers</b></a></li>
+<li><a href="#12"><b class="cmd">ns_perm listgroups</b></a></li>
+<li><a href="#13"><b class="cmd">ns_perm listperms</b></a></li>
+<li><a href="#14"><b class="cmd">ns_permreload</b></a></li>
+<li><a href="#15"><b class="cmd">ns_permpasswd</b> <i class="arg">user</i> <i class="arg">oldpasswd</i> <i class="arg">newpasswd</i></a></li>
+</ul>
+</div>
+</div>
+<div id="section1" class="doctools_section"><h2><a name="section1">Description</a></h2>
+<p><b class="cmd">ns_perm</b> implements a command set for simple password and group
+management for NaviServer.</p>
+</div>
+<div id="section2" class="doctools_section"><h2><a name="section2">COMMANDS</a></h2>
+<dl class="doctools_definitions">
+<dt><a name="1"><b class="cmd">ns_perm adduser</b> <span class="opt">?<b class="option">-allow</b>?</span> <span class="opt">?<b class="option">-deny</b>?</span> <span class="opt">?<b class="option">-clear</b>?</span> <span class="opt">?<b class="option">-salt <i class="arg">value</i></b>?</span> <span class="opt">?--?</span> <i class="arg">name</i> <i class="arg">encpass</i> <i class="arg">userfield</i> <span class="opt">?<i class="arg">host ...</i>?</span></a></dt>
+<dd><p>Adds a new user to the in-memory users database. When a
+ <b class="const">passwd</b> file is given, this command is used to load the users
+ from this file.
+ The user is
+ identified by the specified <i class="arg">name</i>, and the provided encrypted
+ password <i class="arg">encpass</i> and additional user information
+ (<i class="arg">userfield</i>) are stored in the database.</p>
+<p>If the <b class="option">-allow</b> option is used along with one or more
+hostnames, the user is granted access only on the specified hosts.</p>
+<p>If the <b class="option">-deny</b> option is used along with hostnames,
+access for the user is explicitly denied on those hosts. Hostnames can
+be specified as an IP address with netmask (e.g.,
+<b class="const">128.2.142.0/255.255.255.0</b>),
+a fully qualified domain name (e.g., <b class="const">www.microsoft.com</b>),
+or as a domain pattern (e.g., <b class="const">.microsoft.com</b>).</p>
+<pre class="doctools_example">
+ 128.2.142.0/255.255.255.0 or www.microsoft.com or .microsoft.com.
+</pre>
+<p><b class="option">-salt</b>
+By default, the password provided in <i class="arg">encpass</i> is assumed to be
+already encrypted with the <b class="cmd"><a href="../../naviserver/files/ns_crypt.html">ns_crypt</a></b> command using the salt
+<b class="const">CU</b>. When the <b class="option">-salt</b> is specified, the <i class="arg">encpass</i> argument
+is treated as clear text and will be encrypted using the specified
+salt via <b class="cmd"><a href="../../naviserver/files/ns_crypt.html">ns_crypt</a></b>.</p>
+<pre class="doctools_example">
+ ns_crypt mypasswd CU
+</pre>
+<p>The <b class="option">-clear</b> indicates that the password should be stored in
+clear text rather than encrypted.</p></dd>
+<dt><a name="2"><b class="cmd">ns_perm deluser</b> <i class="arg">name</i></a></dt>
+<dd><p>Removes the user with the given <i class="arg">name</i> from the users database.</p></dd>
+<dt><a name="3"><b class="cmd">ns_perm addgroup</b> <i class="arg">group</i> <i class="arg">user</i> <span class="opt">?<i class="arg">user ...</i>?</span></a></dt>
+<dd><p>Creates a new group identified by <i class="arg">group</i> and adds the specified
+user(s) (<i class="arg">user</i> and any additional users) to that group.</p></dd>
+<dt><a name="4"><b class="cmd">ns_perm delgroup</b> <i class="arg">name</i></a></dt>
+<dd><p>Deletes the group identified by <i class="arg">name</i> from the system.</p></dd>
+<dt><a name="5"><b class="cmd">ns_perm allowuser</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">user ...</i></a></dt>
+<dd><p>Allows the specified user(s) to access the combination of the HTTP
+<i class="arg">method</i> and <i class="arg">url</i>. If <b class="option">-noinherit</b> is specified, only
+the exact URL is matched; otherwise, all URLs under the given URL are
+permitted.</p></dd>
+<dt><a name="6"><b class="cmd">ns_perm denyuser</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">user ...</i></a></dt>
+<dd><p>Denies access for the specified user(s) to the given HTTP <i class="arg">method</i>
+and <i class="arg">url</i>. With <b class="option">-noinherit</b>, the restriction applies only
+to the exact URL; without it, all URLs beneath the given URL are
+denied.</p></dd>
+<dt><a name="7"><b class="cmd">ns_perm allowgroup</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">group ...</i></a></dt>
+<dd><p>Grants access for the specified group(s) to the HTTP <i class="arg">method</i> and
+<i class="arg">url</i>. The <b class="option">-noinherit</b> behaves as described above.</p></dd>
+<dt><a name="8"><b class="cmd">ns_perm denygroup</b> <span class="opt">?<b class="option">-noinherit</b>?</span> <span class="opt">?--?</span> <i class="arg">method</i> <i class="arg">url</i> <i class="arg">group ...</i></a></dt>
+<dd><p>Denies access for the specified group(s) to the HTTP <i class="arg">method</i> and
+<i class="arg">url</i>. When <b class="option">-noinherit</b> is used, only the exact URL is
+affected; otherwise, the rule applies recursively to subordinate URLs.</p></dd>
+<dt><a name="9"><b class="cmd">ns_perm checkpass</b> <i class="arg">user</i> <i class="arg">passwd</i></a></dt>
+<dd><p>Verifies that the given plain-text <i class="arg">passwd</i> is correct for the
+user specified by <i class="arg">user</i>. If the password does not match, a Tcl
+error is thrown.</p></dd>
+<dt><a name="10"><b class="cmd">ns_perm setpass</b> <i class="arg">user</i> <i class="arg">encpass</i> <span class="opt">?<i class="arg">salt</i>?</span></a></dt>
+<dd><p>Updates the password for the user specified by <i class="arg">user</i> to the new
+encrypted password <i class="arg">encpass</i>. If a <i class="arg">salt</i> is provided, the
+password is expected to be in clear text and will be encrypted using
+<b class="cmd"><a href="../../naviserver/files/ns_crypt.html">ns_crypt</a></b> with the given salt.</p></dd>
+<dt><a name="11"><b class="cmd">ns_perm listusers</b></a></dt>
+<dd><p>Returns a Tcl list of all users in the system. For each user, the list
+includes three elements: the username, the encrypted password, and the
+user's permissions.</p></dd>
+<dt><a name="12"><b class="cmd">ns_perm listgroups</b></a></dt>
+<dd><p>Returns a Tcl list of all registered groups. Each group is represented
+by its group name followed by a list of its members.</p></dd>
+<dt><a name="13"><b class="cmd">ns_perm listperms</b></a></dt>
+<dd><p>Returns a Tcl list of all allow/deny rules registered for each URL.</p></dd>
+<dt><a name="14"><b class="cmd">ns_permreload</b></a></dt>
+<dd><p>Reloads all nsperm files. Note that on very busy sites this operation
+may cause temporary authentication failures, as the in-memory
+permissions are cleared before the files are reloaded from disk.</p></dd>
+<dt><a name="15"><b class="cmd">ns_permpasswd</b> <i class="arg">user</i> <i class="arg">oldpasswd</i> <i class="arg">newpasswd</i></a></dt>
+<dd><p>Updates the password for an existing user both in the running server’s
+memory and in the persistent <b class="const">passwd</b> file on disk. The <i class="arg">user</i>
+parameter specifies the username whose password is to be updated. The
+<i class="arg">oldpasswd</i> parameter must be provided in plain text and
+represents either the user's current password or the nsadmin
+password. The <i class="arg">newpasswd</i> parameter is the new password, also
+supplied in plain text.</p></dd>
+</dl>
+</div>
+<div id="section3" class="doctools_section"><h2><a name="section3">CONFIGURATION</a></h2>
+<p>The following configuration options are available to control
+permission module:</p>
+<dl class="doctools_definitions">
+<dt>htaccess</dt>
+<dd><p>This parameter if set to true, enables .htaccess mode, similar to what
+the Apache web server has but very simple and limited in
+functionality.</p>
+<p>On every request the server looks for .htaccess file in the
+current request directory and loads it if modified since the last
+read. The structure of the file is simple:</p>
+<pre class="doctools_example">
+ allow user ...
+ deny user ...
+</pre>
+</dd>
+<dt>passwdfile</dt>
+<dd><p>This parameter determines in .htaccess mode which file with users and
+passwords needs to be checked for modification and reloaded
+automatically. If .htaccess mode is not active, the parameter is
+ignored.</p></dd>
+</dl>
+<pre class="doctools_example">
+ ns_section ns/server/$server/module/nsperm {
+   ns_param htaccess   true
+   ns_param passwdfile /usr/local/ns/modules/nsperm/passwd
+ }
+</pre>
+</div>
+<div id="section4" class="doctools_section"><h2><a name="section4">EXAMPLES</a></h2>
+<pre class="doctools_example">
+ ns_perm adduser test [ns_crypt testpass &quot;&quot;] TestUser
+ ns_perm adduser -salt CU test2 test TestUser2
+ 
+ ns_perm allowuser GET /Documents test test2
+</pre>
+</div>
+<div id="see-also" class="doctools_section"><h2><a name="see-also">See Also</a></h2>
+<p><a href="../../naviserver/files/ns_crypt.html">ns_crypt</a>, <a href="../../index.html#nsd">nsd</a></p>
+</div>
+<div id="keywords" class="doctools_section"><h2><a name="keywords">Keywords</a></h2>
+<p><a href="../../index.html#naviserver">NaviServer</a>, <a href="../../index.html#nsperm">nsperm</a>, <a href="../../index.html#server_built_in">server built-in</a></p>
+</div>
+<div id="man-footer">
+  
+</div>
+</div></body></html>

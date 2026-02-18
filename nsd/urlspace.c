@@ -117,7 +117,6 @@
 #define DEBUG 1
 */
 #define CONTEXT_FILTER 1
-//#define DEBUG 1
 
 /*
  * This optimization, when turned on, prevents the server from doing a
@@ -178,6 +177,14 @@ static int NS_strcmp(const char *a, const char *b) {
 #define NS_strcmp strcmp
 #endif
 
+// static const char *order = "&64h";
+
+typedef enum {
+    SpecTypeConjunction,
+    SpecTypeIPv6,
+    SpecTypeIPv4,
+    SpecTypeHeader
+} UrlSpaceContextSpecType;
 
 /*
  * This structure defines a Node. It is the lowest-level structure in
@@ -192,14 +199,14 @@ typedef struct {
     void  *dataNoInherit;              /* User's data */
     Ns_FreeProc *deletefuncInherit;    /* Cleanup function */
     Ns_FreeProc *deletefuncNoInherit;  /* Cleanup function */
-    Ns_Index data;                     /* Context filters*/
+    Ns_Index data;                     /* Context constraints*/
 } Node;
 
 /*
  * This structure defines a trie. A trie is a tree whose nodes are
  * branches and channels. It is an inherently recursive data
  * structure, and each node is itself a trie. Each node represents one
- * "part" of a URL; in this case, a "part" is server name, method,
+ * "part" of a URL; in this case, a "part" is server name, key,
  * directory, or wildcard.
  */
 
@@ -266,8 +273,8 @@ typedef struct UrlSpaceContextSpec {
     const char   *patternString;
     struct NS_SOCKADDR_STORAGE ip;
     struct NS_SOCKADDR_STORAGE mask;
+    UrlSpaceContextSpecType    type;
     unsigned int  specificity;
-    unsigned char type;
     bool          hasPattern;
 } UrlSpaceContextSpec;
 
@@ -310,19 +317,24 @@ static TCL_OBJCMDPROC_T UrlSpaceUnsetObjCmd;
  * Utility functions
  */
 
-static void MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
+static void MkSeq(Tcl_DString *dsPtr, const char *key, const char *url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static void WalkTrie(const Trie *triePtr, Ns_ArgProc func,
-                     Ns_DString *dsPtr, char **stack, const char *filter)
+                     Tcl_DString *dsPtr, char **stack, const char *filter)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3) NS_GNUC_NONNULL(4) NS_GNUC_NONNULL(5);
 
 static size_t CountNonWildcharChars(const char *chars)
     NS_GNUC_NONNULL(1) NS_GNUC_CONST;
 
+static const char *ContextFilterTypeString(UrlSpaceContextSpecType when);
+
 #ifdef DEBUG
 static void PrintSeq(const char *seq);
 #endif
+
+static void UrlSpaceContextPrint(const char *caller, const NsUrlSpaceContext *ctxPtr)
+    NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 /*
  * Trie functions
@@ -336,7 +348,7 @@ static void  TrieAdd(Trie *triePtr, char *seq, void *data, unsigned int flags,
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(3);
 
 static void *TrieFind(const Trie *triePtr, char *seq,
-                      NsUrlSpaceContextFilterProc proc, void *context,
+                      Ns_UrlSpaceContextFilterEvalProc proc, void *context,
                       int *depthPtr)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_NONNULL(5);
 
@@ -374,7 +386,7 @@ static void JunctionAdd(Junction *juncPtr, char *seq, void *data,
 
 static void *JunctionFind(const Junction *juncPtr, char *seq,
                           Ns_UrlSpaceMatchInfo *matchInfoPtr,
-                          NsUrlSpaceContextFilterProc proc, void *context)
+                          Ns_UrlSpaceContextFilterEvalProc proc, void *context)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2);
 
 static void *JunctionFindExact(const Junction *juncPtr, char *seq, unsigned int flags)
@@ -410,6 +422,37 @@ static Ns_ObjvValueRange idRange = {-1, MAX_URLSPACES};
 /*
  *----------------------------------------------------------------------
  *
+ * ContextFilterTypeString --
+ *
+ *      Convert a UrlSpaceContextSpecType enum value into a human-readable
+ *      string. This is useful for debugging or logging the type of a
+ *      context constraints specification.
+ *
+ * Returns:
+ *      A constant C-string describing the filter type
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static const char *ContextFilterTypeString(UrlSpaceContextSpecType when)
+{
+    const char *result;
+
+    switch (when) {
+    case SpecTypeConjunction: result = "AND"; break;
+    case SpecTypeIPv6:        result = "IPv6"; break;
+    case SpecTypeIPv4:        result = "IPv4"; break;
+    case SpecTypeHeader:      result = "HEADER"; break;
+    default:                  result = "Unknown Filter Type";
+    }
+    return result;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
  * CountNonWildcharChars --
  *
  *      Helper function to count non-wildcard characters to determine
@@ -440,15 +483,20 @@ CountNonWildcharChars(const char *chars)
 /*
  *----------------------------------------------------------------------
  *
- * UrlSpaceContextSpecFree, NsUrlSpaceContextSpecNew  --
+ * UrlSpaceContextSpecFree --
  *
- *      Lifecycle function for URL context specs.
+ *      Recursively free a UrlSpaceContextSpec and all its associated
+ *      resources.  If the spec represents a conjunction, this will
+ *      traverse the Ns_DList of child specs, free each one via
+ *      recursive calls, then free the list itself.  Otherwise, it
+ *      frees the pattern string and field string directly.
  *
  * Results:
- *      void, or fresh context spec
+ *      None.
  *
- * Side effects:
- *      Allocating/freeing memory
+ * Side Effects:
+ *      Releases all heap memory associated with the spec, including
+ *      nested specs in a conjunction, the patternString, and field.
  *
  *----------------------------------------------------------------------
  */
@@ -458,11 +506,111 @@ UrlSpaceContextSpecFree(void *arg)
 {
     UrlSpaceContextSpec *spec = arg;
 
-    ns_free((void*)spec->field);
-    ns_free((void*)spec->patternString);
-    ns_free(arg);
+    if (unlikely(spec->type == SpecTypeConjunction)) {
+        size_t i;
+        Ns_DList *dlPtr = (Ns_DList *)spec->field;
+
+        /*fprintf(stderr, "FREE CONJUNCTION %p (%ld elements)\n", (void*)dlPtr, dlPtr->size);*/
+        for (i = 0u; i < dlPtr->size; i++) {
+            UrlSpaceContextSpecFree(dlPtr->data[i]);
+        }
+        Ns_DListFree(dlPtr);
+        ns_free(dlPtr);
+        ns_free(arg);
+
+    } else {
+        ns_free((void*)spec->field);
+        ns_free((void*)spec->patternString);
+        ns_free(arg);
+    }
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsObjToUrlSpaceContextSpec --
+ *
+ *      Convert a Tcl list object into a UrlSpaceContextSpec.  The list
+ *      must consist of an even number of elements representing key/value
+ *      pairs.  If exactly two elements are provided, a single-spec filter
+ *      is created.  If more than two elements, a conjunction spec is built
+ *      by combining each pair into a sub-spec.  On parse error, an error
+ *      is set in the interpreter and NULL is returned.
+ *
+ * Parameters:
+ *      interp         - Tcl interpreter for error reporting.
+ *      ctxFilterObj   - Tcl_Obj containing the list of key/value pairs.
+ *
+ * Results:
+ *      Returns a pointer to a newly allocated UrlSpaceContextSpec on
+ *      success, or NULL on error.
+ *
+ * Side Effects:
+ *      Allocates heap memory for the spec (and nested specs for conjunctions).
+ *
+ *----------------------------------------------------------------------
+ */
+NsUrlSpaceContextSpec *
+NsObjToUrlSpaceContextSpec(Tcl_Interp *interp, Tcl_Obj *ctxFilterObj)
+{
+    UrlSpaceContextSpec *spec = NULL;
+    Tcl_Obj            **ov = NULL;
+    TCL_SIZE_T           oc = 0;
+
+    if (Tcl_ListObjGetElements(interp, ctxFilterObj, &oc, &ov) != TCL_OK || (oc % 2) != 0) {
+        Ns_TclPrintfResult(interp,
+                           "invalid context constraints '%s': must be a key/value list",
+                           Tcl_GetString(ctxFilterObj));
+    } else if (oc == 2) {
+        spec = (UrlSpaceContextSpec*)NsUrlSpaceContextSpecNew(Tcl_GetString(ov[0]), Tcl_GetString(ov[1]));
+
+    } else {
+        TCL_SIZE_T i;
+        Ns_DList *dlPtr = ns_calloc(1u, sizeof(Ns_DList));
+
+        spec = ns_calloc(1u, sizeof(UrlSpaceContextSpec));
+        spec->freeProc = UrlSpaceContextSpecFree;
+        spec->type = SpecTypeConjunction;
+        spec->field = (char*)dlPtr;
+
+        Ns_DListInit(dlPtr);
+        for (i=0; i < oc; i += 2) {
+            UrlSpaceContextSpec *ctx =
+                (UrlSpaceContextSpec*)NsUrlSpaceContextSpecNew(Tcl_GetString(ov[i]), Tcl_GetString(ov[i+1]));
+            Ns_DListAppend(dlPtr, ctx);
+            spec->specificity += ctx->specificity;
+        }
+        /*fprintf(stderr, "ALLOCATE CONJUNCTION %p (%ld elements, specificity %d)\n",
+          (void*)dlPtr, dlPtr->size, spec->specificity);*/
+    }
+    return (NsUrlSpaceContextSpec*)spec;
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsUrlSpaceContextSpecNew --
+ *
+ *      Allocate and initialize a UrlSpaceContextSpec for a single
+ *      (non-conjunctive) context constraints.  If the field is "X-NS-ip",
+ *      the patternString is parsed as an IP/mask specification and
+ *      the type is set to SpecTypeIPv4 or SpecTypeIPv6.  Otherwise, the spec is treated
+ *      as a header filter (SpecTypeHeader), with wildcard support.
+ *      Specificity and hasPattern are computed accordingly.
+ *
+ * Parameters:
+ *      field           - Name of the context field (e.g., header name
+ *                        or "X-NS-ip" for IP filters).
+ *      patternString   - Pattern or mask string for matching.
+ *
+ * Results:
+ *      Returns a pointer to a newly allocated UrlSpaceContextSpec.
+ *
+ * Side Effects:
+ *      Allocates heap memory for the spec and its internal strings.
+ *
+ *----------------------------------------------------------------------
+ */
 NsUrlSpaceContextSpec *
 NsUrlSpaceContextSpecNew(const char *field, const char *patternString)
 {
@@ -482,7 +630,7 @@ NsUrlSpaceContextSpecNew(const char *field, const char *patternString)
     //fprintf(stderr, "NsUrlSpaceContextSpecNew: headerField <%s> len %lu\n",
     //        field, fieldLength);
 
-    if (fieldLength == 7 && strncmp(field, "X-NS-ip", 7u) == 0) {
+    if (fieldLength == 7 && strncasecmp(field, "X-NS-ip", 7u) == 0) {
         struct sockaddr *ipPtr   = (struct sockaddr *)&spec->ip,
                         *maskPtr = (struct sockaddr *)&spec->mask;
         Ns_ReturnCode    status;
@@ -496,9 +644,9 @@ NsUrlSpaceContextSpecNew(const char *field, const char *patternString)
             //        ns_inet_ntop(maskPtr, ipString, sizeof(ipString)));
             spec->hasPattern = (strchr(patternString, INTCHAR('/')) != NULL);
             if (maskPtr->sa_family == AF_INET) {
-                spec->type = '4';
+                spec->type = SpecTypeIPv4;
             } else {
-                spec->type = '6';
+                spec->type = SpecTypeIPv6;
             }
 
         } else {
@@ -507,12 +655,12 @@ NsUrlSpaceContextSpecNew(const char *field, const char *patternString)
              */
             spec->hasPattern = (strchr(patternString, INTCHAR('*')) != NULL);
             spec->specificity = (unsigned int)CountNonWildcharChars(patternString);
-            spec->type = 'h';
+            spec->type = SpecTypeHeader;
         }
     } else {
         spec->hasPattern = (strchr(patternString, INTCHAR('*')) != NULL);
         spec->specificity = (unsigned int)CountNonWildcharChars(patternString);
-        spec->type = 'h';
+        spec->type = SpecTypeHeader;
     }
 
     spec->field = ns_strdup(field);
@@ -546,8 +694,19 @@ NsUrlSpaceContextSpecAppend(Tcl_DString *dsPtr, NsUrlSpaceContextSpec *spec)
     UrlSpaceContextSpec *specPtr = (UrlSpaceContextSpec *)spec;
 
     Tcl_DStringAppend(dsPtr, " {", 2);
-    Tcl_DStringAppendElement(dsPtr, specPtr->field);
-    Tcl_DStringAppendElement(dsPtr, specPtr->patternString);
+    /*fprintf(stderr, "NsUrlSpaceContextSpecAppend: ptr %p type %d\n", (void*)spec, specPtr->type);*/
+    if (unlikely(specPtr->type == SpecTypeConjunction)) {
+        Ns_DList *dlPtr = (Ns_DList *)specPtr->field;
+        size_t    i;
+
+        for (i = 0u; i < dlPtr->size; i++) {
+            Tcl_DStringAppendElement(dsPtr, ((UrlSpaceContextSpec *)dlPtr->data[i])->field);
+            Tcl_DStringAppendElement(dsPtr, ((UrlSpaceContextSpec *)dlPtr->data[i])->patternString);
+        }
+    } else {
+        Tcl_DStringAppendElement(dsPtr, specPtr->field);
+        Tcl_DStringAppendElement(dsPtr, specPtr->patternString);
+    }
     Tcl_DStringAppend(dsPtr, "}", 1);
     return dsPtr->string;
 }
@@ -555,57 +714,266 @@ NsUrlSpaceContextSpecAppend(Tcl_DString *dsPtr, NsUrlSpaceContextSpec *spec)
 /*
  *----------------------------------------------------------------------
  *
- * NsUrlSpaceContextFilter  --
+ * UrlSpaceContextPrint --
  *
- *      Function of type "NsUrlSpaceContextFilterProc" the check,
- *      whether the provided context (per call) matches with the
- *      context specs, kept in the context filter definitions.
+ *      Debug helper that logs the resolved client IP address and
+ *      HTTP headers from a given URL–space context.
+ *
+ * Parameters:
+ *      caller  - a prefix string
+ *      ctxPtr  - the NsUrlSpaceContext containing:
+ *                   ctxPtr->saPtr     : the client sockaddr (IP)
+ *                   ctxPtr->headers   : the request headers set
  *
  * Results:
- *      Boolean.
- *
- * Side effects:
  *      None.
+ *
+ * Side Effects:
+ *      Emits message to systemlog when Ns_LogUrlspaceDebug is enabled.
+ *
+ *----------------------------------------------------------------------
+ */
+static void UrlSpaceContextPrint(const char *caller, const NsUrlSpaceContext *ctxPtr)
+{
+    Tcl_DString ds;
+
+    Tcl_DStringInit(&ds);
+
+    if (ctxPtr->saPtr != NULL) {
+        Tcl_DStringSetLength(&ds, NS_IPADDR_SIZE);
+        ns_inet_ntop(ctxPtr->saPtr, ds.string, sizeof(NS_IPADDR_SIZE));
+        Tcl_DStringAppend(&ds, "\n", 1);
+    } else {
+        Tcl_DStringAppend(&ds, "no socket address provided\n", TCL_INDEX_NONE);
+    }
+    //Ns_Log(Ns_LogUrlspaceDebug, "%s: IP %s", caller ds.string);
+
+    Tcl_DStringAppend(&ds, "\n", 1);
+    Ns_SetFormat(&ds, ctxPtr->headers, NS_TRUE, "", ": ");
+    Ns_Log(Ns_LogUrlspaceDebug, "%s: %s", caller, ds.string);
+
+    Tcl_DStringFree(&ds);
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsUrlSpaceContextInit --
+ *
+ *      Initialize an NsUrlSpaceContext structure from a Sock and an
+ *      optional header set.  Chooses the correct client address based
+ *      on reverse proxy settings (uses forwarded address if enabled
+ *      and present, otherwise uses the direct socket address).
+ *
+ * Parameters:
+ *      ctxPtr   - Pointer to the NsUrlSpaceContext to populate.
+ *      sockPtr  - Pointer to the Sock containing request and address
+ *                 information (must not be NULL).
+ *      headers  - Optional Ns_Set of HTTP headers to include; may be NULL.
+ *
+ * Results:
+ *      None.
+ *
+ * Side Effects:
+ *      Updates *ctxPtr.
+ *
+ *----------------------------------------------------------------------
+ */
+void NsUrlSpaceContextInit(NsUrlSpaceContext *ctxPtr, Sock *sockPtr, Ns_Set *headers)
+{
+    assert(sockPtr != NULL);
+    assert(sockPtr->reqPtr != NULL);
+
+    ctxPtr->headers = headers;
+    /*Ns_Log(Notice, "NsUrlSpaceContextInit sockPtr %p headers %p", (void*)sockPtr, (void*)headers);*/
+
+    if (nsconf.reverseproxymode.enabled
+        && ((struct sockaddr *)&sockPtr->clientsa)->sa_family != 0
+        ) {
+        ctxPtr->saPtr = (struct sockaddr *)&(sockPtr->clientsa);
+    } else {
+        ctxPtr->saPtr = (struct sockaddr *)&(sockPtr->sa);
+    }
+
+    if (Ns_LogSeverityEnabled(Ns_LogUrlspaceDebug)) {
+        UrlSpaceContextPrint("NsUrlSpaceContextInit", ctxPtr);
+    }
+}
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsUrlSpaceContextFromSet --
+ *
+ *      Initialize an NsUrlSpaceContext from an Ns_Set of values, treating
+ *      a single "x-ns-ip" entry as a forced client IP override.  If the
+ *      set contains the key "x-ns-ip", its value is parsed as an IPv4 or
+ *      IPv6 address and stored in the provided sockaddr buffer; the
+ *      corresponding entry is then removed from the set (or the set is
+ *      freed if it only contained that key).  All remaining entries in
+ *      the set are treated as HTTP headers and stored in ctxPtr->headers.
+ *
+ * Parameters:
+ *      interp   - Tcl interpreter used for error reporting on invalid IP.
+ *      ctxPtr   - Pointer to the NsUrlSpaceContext to populate.
+ *      ipPtr    - Pointer to a sockaddr structure to receive the parsed IP.
+ *      set       - Ns_Set containing:
+ *                    * A single "x-ns-ip" key to override client address, and/or
+ *                    * HTTP header key/value pairs.
+ *
+ * Results:
+ *      Returns TCL_OK on success.  Returns TCL_ERROR and sets an error
+ *      message in interp if the "x-ns-ip" entry exists but does not parse
+ *      as a valid IP address.
+ *
+ * Side Effects:
+ *      - On IP override: ctxPtr->saPtr is set to ipPtr, the "x-ns-ip" key
+ *        is removed (or the set freed if it was the only entry).
+ *      - On header mode: ctxPtr->headers is set to the original set.
+ *
+ *----------------------------------------------------------------------
+ */
+
+int
+NsUrlSpaceContextFromSet(Tcl_Interp *interp, NsUrlSpaceContext *ctxPtr, struct sockaddr *ipPtr, Ns_Set *set)
+{
+    int         result = TCL_OK;
+    const char *ipString = Ns_SetIGet(set, "x-ns-ip");
+
+    ctxPtr->saPtr = NULL;
+    if (ipString != NULL) {
+        int validIP = ns_inet_pton(ipPtr, ipString);
+
+        if (validIP > 0) {
+            ctxPtr->saPtr = ipPtr;
+        } else if (interp != NULL) {
+            Ns_TclPrintfResult(interp, "invalid IP address '%s' specified", ipString);
+            result = TCL_ERROR;
+        } else {
+            Ns_Log(Warning, "invalid IP address '%s' specified", ipString);
+            result = TCL_ERROR;
+        }
+        Ns_SetDeleteKey(set, "x-ns-ip");
+    }
+
+    ctxPtr->headers = set;
+
+    if (Ns_LogSeverityEnabled(Ns_LogUrlspaceDebug)) {
+        UrlSpaceContextPrint("NsUrlSpaceContextFromSet", ctxPtr);
+    }
+
+    return result;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * NsUrlSpaceContextFilterEval --
+ *
+ *      Determine whether a given request context satisfies a context
+ *      filter specification.  This function implements the
+ *      Ns_UrlSpaceContextFilterEvalProc interface, handling three cases:
+ *
+ *        1. Conjunction: spec->field holds a list of sub-specs;
+ *           all must match for success.
+ *        2. Header match: spec->field is an HTTP header name;
+ *           the request header value is matched against spec->patternString.
+ *        3. IP match (SpecTypeIPv6 or SpecTypeIPv4): spec->ip and spec->mask define an
+ *           IPv4/IPv6 network; the client address (ctx->saPtr) is
+ *           tested for membership.
+ *
+ * Parameters:
+ *      contextSpec    - Pointer to a UrlSpaceContextSpec describing the
+ *                       filter to apply.
+ *      context        - Pointer to an NsUrlSpaceContext containing the
+ *                       request’s headers and sockaddr.
+ *
+ * Results:
+ *      Returns NS_TRUE if the context satisfies the filter, NS_FALSE otherwise.
+ *
+ * Side Effects:
+ *      None beyond optional debug logging.
  *
  *----------------------------------------------------------------------
  */
 bool
-NsUrlSpaceContextFilter(void *contextSpec, void *context) {
+NsUrlSpaceContextFilterEval(void *contextSpec, void *context)
+{
     UrlSpaceContextSpec *spec = contextSpec;
-    NsUrlSpaceContext   *ctx = context;
-    const Ns_Set        *headers;
+    NsUrlSpaceContext   *ctx  = context;
     bool                 success = NS_FALSE;
 
-    headers = ctx->headers;
-    if (headers != NULL && spec->type == 'h') {
-        const char *s = Ns_SetIGet(headers, spec->field);
-        if (s != NULL) {
-            success = (Tcl_StringMatch(s, spec->patternString) != 0);
-            Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceContextFilter match %s: '%s' + '%s' -> %d",
-                   spec->field, s, spec->patternString, success);
+    switch (spec->type) {
+    case SpecTypeConjunction: {
+        Ns_DList *dlPtr = (Ns_DList *)spec->field;
+        size_t    i;
+
+        Ns_Log(Ns_LogUrlspaceDebug, "NsUrlSpaceContextFilterEval: begin CONJUNCTION");
+        for (i = 0; i < dlPtr->size; i++) {
+            success = NsUrlSpaceContextFilterEval(dlPtr->data[i], context);
+            if (!success) {
+                break;
+            }
+        }
+        Ns_Log(Ns_LogUrlspaceDebug, "NsUrlSpaceContextFilterEval: end   CONJUNCTION -> %d", success);
+        break;
+    }
+
+    case SpecTypeHeader: {
+        if (likely(ctx->headers != NULL)) {
+            const char *val = Ns_SetIGet(ctx->headers, spec->field);
+
+            if (val != NULL) {
+                success = Tcl_StringMatch(val, spec->patternString);
+                Ns_Log(Ns_LogUrlspaceDebug,
+                       "NsUrlSpaceContextFilterEval: header match %s: '%s' vs '%s' -> %d",
+                       spec->field, val, spec->patternString, success);
+            } else {
+                /*Tcl_DString ds;
+
+                Tcl_DStringInit(&ds);
+                Ns_SetFormat(&ds, ctx->headers, NS_TRUE, "", ": ");
+                Ns_Log(Ns_LogUrlspaceDebug, "%s", ds.string);
+                Tcl_DStringFree(&ds);*/
+
+                Ns_Log(Ns_LogUrlspaceDebug,
+                       "NsUrlSpaceContextFilterEval: no header field '%s'",
+                       spec->field);
+            }
         } else {
-            Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceContextFilter no such header field '%s'",
+            Ns_Log(Ns_LogUrlspaceDebug,
+                   "NsUrlSpaceContextFilterEval: header spec '%s' but no headers in context",
                    spec->field);
         }
-    } else if (spec->type == '4' || spec->type == '6') {
-        const struct sockaddr *ipPtr = (const struct sockaddr *)&(spec->ip);
-        const struct sockaddr *maskPtr = (const struct sockaddr *)&(spec->mask);
-
-        success = Ns_SockaddrMaskedMatch(ctx->saPtr, maskPtr, ipPtr);
-        Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceContextFilter <%s: %s> called with IP context -> %d",
-               spec->field, spec->patternString, success);
-
-        //char ipString[NS_IPADDR_SIZE];
-        //fprintf(stderr, "NsUrlSpaceContextFilter: IP %s\n",
-        //        ns_inet_ntop(ctx->saPtr, ipString, sizeof(ipString)));
-        //fprintf(stderr, "NsUrlSpaceContextFilter: mask %s\n",
-        //        ns_inet_ntop((const struct sockaddr *)&(spec->mask), ipString, sizeof(ipString)));
-        //fprintf(stderr, "NsUrlSpaceContextFilter: ----> success %d\n",  success);
-
-    } else {
-        Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceContextFilter <%s: %s> called with unexpected type %c",
-               spec->field, spec->patternString, spec->type);
+        break;
     }
+
+    case SpecTypeIPv4:
+    case SpecTypeIPv6: {
+        if (ctx->saPtr) {
+            const struct sockaddr *ipPtr   = (const struct sockaddr *)&spec->ip;
+            const struct sockaddr *maskPtr = (const struct sockaddr *)&spec->mask;
+
+            success = Ns_SockaddrMaskedMatch(ctx->saPtr, maskPtr, ipPtr);
+            Ns_Log(Ns_LogUrlspaceDebug,
+                   "NsUrlSpaceContextFilterEval: IP match %s: '%s' -> %d",
+                   spec->field, spec->patternString, success);
+        } else {
+            Ns_Log(Ns_LogUrlspaceDebug,
+                   "NsUrlSpaceContextFilterEval: IP spec '%s' but no client address",
+                   spec->field);
+        }
+        break;
+    }
+
+    default:
+        Ns_Log(Warning,
+               "NsUrlSpaceContextFilterEval: unexpected spec type '%s' for %s: %s",
+               ContextFilterTypeString(spec->type), spec->field, spec->patternString);
+        break;
+    }
+
     return success;
 }
 
@@ -660,38 +1028,38 @@ Ns_UrlSpecificAlloc(void)
  *----------------------------------------------------------------------
  */
 void
-Ns_UrlSpecificSet(const char *server, const char *method, const char *url, int id,
+Ns_UrlSpecificSet(const char *server, const char *key, const char *url, int id,
                   void *data, unsigned int flags, Ns_FreeProc freeProc)
 {
-    Ns_UrlSpecificSet2(server, method, url, id, data, flags, freeProc, NULL);
+    Ns_UrlSpecificSet2(server, key, url, id, data, flags, freeProc, NULL);
 }
 
 void
-Ns_UrlSpecificSet2(const char *server, const char *method, const char *url, int id,
+Ns_UrlSpecificSet2(const char *server, const char *key, const char *url, int id,
                   void *data, unsigned int flags, Ns_FreeProc freeProc,
                   void *contextSpec)
 {
     NsServer *servPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(url != NULL);
     NS_NONNULL_ASSERT(data != NULL);
 
     servPtr = NsGetServer(server);
 
     if (likely(servPtr != NULL)) {
-        Ns_DString  ds;
+        Tcl_DString ds;
 
-        Ns_DStringInit(&ds);
-        MkSeq(&ds, method, url);
+        Tcl_DStringInit(&ds);
+        MkSeq(&ds, key, url);
 
 #ifdef DEBUG
         PrintSeq(ds.string);
 #endif
 
         JunctionAdd(JunctionGet(servPtr, id), ds.string, data, flags, freeProc, contextSpec);
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
     }
 }
 
@@ -699,7 +1067,7 @@ Ns_UrlSpecificSet2(const char *server, const char *method, const char *url, int 
 /*
  *----------------------------------------------------------------------
  *
- * Ns_UrlSpecificGet, Ns_UrlSpecificGetFast, Ns_UrlSpecificGetExact --
+ * Ns_UrlSpecificGetFast, Ns_UrlSpecificGetExact --
  *
  *      Find URL-specific data in the subspace identified by id that
  *      the passed-in URL matches.
@@ -715,23 +1083,10 @@ Ns_UrlSpecificSet2(const char *server, const char *method, const char *url, int 
  *
  *----------------------------------------------------------------------
  */
+
+#ifdef NS_WITH_DEPRECATED
 void *
-Ns_UrlSpecificGet(const char *server, const char *method, const char *url, int id)
-{
-    NsServer *servPtr;
-
-    NS_NONNULL_ASSERT(server != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
-    NS_NONNULL_ASSERT(url != NULL);
-
-    servPtr = NsGetServer(server);
-    return (likely(servPtr != NULL)) ?
-        NsUrlSpecificGet(servPtr, method, url, id, 0u, NS_URLSPACE_DEFAULT, NULL, NULL, NULL)
-        : NULL;
-}
-
-void *
-Ns_UrlSpecificGetFast(const char *server, const char *method, const char *url, int id)
+Ns_UrlSpecificGetFast(const char *server, const char *key, const char *url, int id)
 {
     NsServer *servPtr;
 
@@ -739,28 +1094,29 @@ Ns_UrlSpecificGetFast(const char *server, const char *method, const char *url, i
     * Deprecated Function. Use Ns_UrlSpecificGet()
     */
     NS_NONNULL_ASSERT(server != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
     servPtr = NsGetServer(server);
     return likely(servPtr != NULL) ?
-        NsUrlSpecificGet(servPtr, method, url, id, 0u, NS_URLSPACE_FAST, NULL, NULL, NULL)
+        Ns_UrlSpecificGet((Ns_Server *)servPtr, key, url, id, 0u, NS_URLSPACE_FAST, NULL, NULL, NULL)
         : NULL;
 }
+#endif
 
 void *
-Ns_UrlSpecificGetExact(const char *server, const char *method, const char *url,
+Ns_UrlSpecificGetExact(const char *server, const char *key, const char *url,
                        int id, unsigned int flags)
 {
     NsServer *servPtr;
 
     NS_NONNULL_ASSERT(server != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
     servPtr = NsGetServer(server);
     return likely(servPtr != NULL) ?
-        NsUrlSpecificGet(servPtr, method, url, id, flags, NS_URLSPACE_EXACT, NULL, NULL, NULL)
+        Ns_UrlSpecificGet((Ns_Server *)servPtr, key, url, id, flags, NS_URLSPACE_EXACT, NULL, NULL, NULL)
         : NULL;
 }
 
@@ -768,7 +1124,7 @@ Ns_UrlSpecificGetExact(const char *server, const char *method, const char *url,
 /*
  *----------------------------------------------------------------------
  *
- * NsUrlSpecificGet --
+ * Ns_UrlSpecificGet --
  *
  *      Lower level function, receives NsServer instead of string base
  *      server name.  "flags" are just used, when NS_URLSPACE_EXACT is
@@ -786,26 +1142,28 @@ Ns_UrlSpecificGetExact(const char *server, const char *method, const char *url,
  */
 
 void *
-NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
-                 unsigned int flags, NsUrlSpaceOp op,
+Ns_UrlSpecificGet(const Ns_Server *server, const char *key, const char *url, int id,
+                 unsigned int flags, Ns_UrlSpaceOp op,
                  Ns_UrlSpaceMatchInfo *matchInfoPtr,
-                 NsUrlSpaceContextFilterProc proc, void *context)
+                 Ns_UrlSpaceContextFilterEvalProc proc, void *context)
 {
-    Ns_DString      ds, *dsPtr = &ds;
+    NsServer       *servPtr;
+    Tcl_DString     ds, *dsPtr = &ds;
     void           *data = NULL; /* Just to make compiler silent, we have a complete enumeration of switch values */
     const Junction *junction;
 
-    NS_NONNULL_ASSERT(servPtr != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(server != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
+    servPtr = (NsServer *)server;
     junction = JunctionGet(servPtr, id);
 
-    Ns_DStringInit(dsPtr);
-    MkSeq(dsPtr, method, url);
+    Tcl_DStringInit(dsPtr);
+    MkSeq(dsPtr, key, url);
 
 #ifdef DEBUG
-    fprintf(stderr, "NsUrlSpecificGet %s %s op %d\n", method, url, op);
+    fprintf(stderr, "Ns_UrlSpecificGet %s %s op %d\n", key, url, op);
     PrintSeq(dsPtr->string);
 #endif
 
@@ -828,7 +1186,7 @@ NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
 
     }
 
-    Ns_DStringFree(dsPtr);
+    Tcl_DStringFree(dsPtr);
 
     return data;
 }
@@ -841,7 +1199,7 @@ NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
  * Ns_UrlSpecificDestroy --
  *
  *      Delete some urlspecific data.  Flags can be NS_OP_NODELETE,
- *      NS_OP_NOINHERIT, NS_OP_RECURSE, or NS_OP_ALLFILTERS.
+ *      NS_OP_NOINHERIT, NS_OP_RECURSE, or NS_OP_ALLCONSTRAINTS.
  *
  * Results:
  *      A pointer to user data if not destroying recursively.
@@ -853,23 +1211,23 @@ NsUrlSpecificGet(NsServer *servPtr, const char *method, const char *url, int id,
  */
 
 void *
-Ns_UrlSpecificDestroy(const char *server, const char *method, const char *url,
+Ns_UrlSpecificDestroy(const char *server, const char *key, const char *url,
                       int id, unsigned int flags)
 {
     NsServer   *servPtr;
     void       *data = NULL;
 
     NS_NONNULL_ASSERT(server != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
     servPtr = NsGetServer(server);
 
     if (likely(servPtr != NULL)) {
-        Ns_DString ds;
+        Tcl_DString ds;
 
-        Ns_DStringInit(&ds);
-        MkSeq(&ds, method, url);
+        Tcl_DStringInit(&ds);
+        MkSeq(&ds, key, url);
         if ((flags & NS_OP_RECURSE) != 0u) {
             //Ns_Log(Ns_LogUrlspaceDebug, "JunctionTruncBranch %s 0x%.6x", url, flags);
             JunctionTruncBranch(JunctionGet(servPtr, id), ds.string);
@@ -877,7 +1235,7 @@ Ns_UrlSpecificDestroy(const char *server, const char *method, const char *url,
             //Ns_Log(Ns_LogUrlspaceDebug, "JunctionDeleteNode %s 0x%.6x", url, flags);
             data = JunctionDeleteNode(JunctionGet(servPtr, id), ds.string, flags);
         }
-        Ns_DStringFree(&ds);
+        Tcl_DStringFree(&ds);
     }
 
     return data;
@@ -934,7 +1292,7 @@ Ns_UrlSpecificWalk(int id, const char *server, Ns_ArgProc func, Tcl_DString *dsP
 
 static void
 WalkTrie(const Trie *triePtr, Ns_ArgProc func,
-         Ns_DString *dsPtr, char **stack, const char *filter)
+         Tcl_DString *dsPtr, char **stack, const char *filter)
 {
     const Branch *branchPtr;
     const Node   *nodePtr;
@@ -986,7 +1344,7 @@ WalkTrie(const Trie *triePtr, Ns_ArgProc func,
 
         /*
          * Put stack contents into the sublist.
-         * Element 0 is method, the rest is url
+         * Element 0 is key, the rest is url
          */
 
         depth = 0;
@@ -1003,7 +1361,7 @@ WalkTrie(const Trie *triePtr, Ns_ArgProc func,
 
             Tcl_DStringInit(&elementDs);
             while (stack[depth] != NULL) {
-                Ns_DStringVarAppend(&elementDs, "/", stack[depth], (char *)0L);
+                Ns_DStringVarAppend(&elementDs, "/", stack[depth], NS_SENTINEL);
                 depth++;
             }
             Tcl_DStringAppendElement(&subDs, elementDs.string);
@@ -1141,6 +1499,48 @@ CmpBranches(const void *leftPtrPtr, const void *rightPtrPtr)
     return NS_strcmp(wordLeft, wordRight);
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * CmpUrlSpaceContextSpecs --
+ *
+ *      Compare two UrlSpaceContextSpec pointers for sorting in URL
+ *      space context constraintsing.  The ordering is determined by:
+ *
+ *        1. Filter type precedence, in the order: IPv6, IPv4,
+ *           header, conjunction.
+ *        2. If the types differ, the one with higher precedence sorts first.
+ *        3. For the same type:
+ *             a. If both specs are conjunctions:
+ *                - Compare total specificity of each conjunction; larger
+ *                  specificity sorts first.
+ *                - If equal specificity, the conjunction with fewer
+ *                  sub-spec elements sorts first.
+ *                - If still equal, compare each element pairwise by their
+ *                  pattern strings in lexical order.
+ *
+ *             b. If both specs have wildcards ("hasPattern" true), the spec
+ *                with greater specificity (number of non-wildcard chars)
+ *                sorts before the other.
+ *
+ *             c. If neither has wildcards, compare their pattern strings
+ *                lexically.
+ *
+ *             d. Otherwise, the spec without a wildcard (more specific)
+ *                sorts before the one with a wildcard. *
+ * Parameters:
+ *      leftPtrPtr   - Pointer to a pointer to the first UrlSpaceContextSpec.
+ *      rightPtrPtr  - Pointer to a pointer to the second UrlSpaceContextSpec.
+ *
+ * Results:
+ *      An integer less than, equal to, or greater than zero if the first
+ *      spec sorts before, is equivalent to, or sorts after the second spec.
+ *
+ * Side Effects:
+ *      None, aside from optional debug output when compiled with DEBUG.
+ *
+ *----------------------------------------------------------------------
+ */
 static int
 CmpUrlSpaceContextSpecs(const void *leftPtrPtr, const void *rightPtrPtr)
 {
@@ -1150,21 +1550,16 @@ CmpUrlSpaceContextSpecs(const void *leftPtrPtr, const void *rightPtrPtr)
     ctxLeft = *(UrlSpaceContextSpec **)leftPtrPtr;
     ctxRight = *(UrlSpaceContextSpec **)rightPtrPtr;
 
-
     if (ctxLeft->type != ctxRight->type) {
-        if (ctxLeft->type == 'h') {
-            result = 1;
-        } else if (ctxRight->type == 'h') {
-            result = -1;
-        } else if (ctxLeft->type == '4') {
-            result = 1;
-        } else if (ctxRight->type == '4') {
-            result = -1;
-        } else {
-            fprintf(stderr, "================== how comes left <%c %s> right <%c %s>\n",
-                    ctxLeft->type, ctxLeft->patternString,
-                    ctxRight->type, ctxRight->patternString);
-        }
+        //static const char *order = "&64h";
+
+        result = ctxLeft->type < ctxRight->type ? -1 : 1;
+
+        ///result = strchr(order, INTCHAR(ctxLeft->type)) > strchr(order, INTCHAR(ctxRight->type)) ? 1 : -1;
+        /*fprintf(stderr, "compare left %d (specificity %d) with right %d (specificity %d) -> diff %d\n",
+                ctxLeft->type, ctxLeft->specificity,
+                ctxRight->type, ctxRight->specificity,
+                result);*/
     } else {
         result = 0;
     }
@@ -1186,6 +1581,65 @@ CmpUrlSpaceContextSpecs(const void *leftPtrPtr, const void *rightPtrPtr)
                  * Both patterns are equally long -> take lexical order.
                  */
                 result = NS_strcmp(ctxLeft->patternString, ctxLeft->patternString);
+            }
+        } else if (ctxRight->type == SpecTypeConjunction) {
+            result = ((int)ctxRight->specificity - (int)ctxLeft->specificity);
+            if (result == 0) {
+                Ns_DList *ctxRightDlPtr = (Ns_DList *)ctxRight->field;
+                Ns_DList *ctxLeftDlPtr = (Ns_DList *)ctxLeft->field;
+                /*
+                 * The specificity of both conjunctions is the same.
+                 */
+                if (ctxLeftDlPtr->size == ctxRightDlPtr->size) {
+#if 0
+                    size_t i;
+                    /*
+                     * Both conjunctions have the same length, take
+                     * take lexical order.
+                     */
+                    for (i = 0u; i < ctxLeftDlPtr->size; i++) {
+                        const UrlSpaceContextSpec *leftElement, *rightElement;
+                        leftElement = ctxLeftDlPtr->data[i];
+                        rightElement = ctxRightDlPtr->data[i];
+                        result = NS_strcmp(leftElement->patternString, rightElement->patternString);
+                        if (result != 0) {
+                            break;
+                        }
+                    }
+#endif
+                    if (result == 0) {
+                        Tcl_DString left, right;
+
+                        Tcl_DStringInit(&left);
+                        Tcl_DStringInit(&right);
+
+                        NsUrlSpaceContextSpecAppend(&left, (NsUrlSpaceContextSpec *)ctxLeft);
+                        NsUrlSpaceContextSpecAppend(&right, (NsUrlSpaceContextSpec *)ctxRight);
+
+                        Ns_Log(Warning, "Houston, we have a problem, two conjunctions with same specificity:\n"
+                               "left:  %s\nright: %s\n", left.string, right.string);
+                        Tcl_DStringFree(&left);
+                        Tcl_DStringFree(&right);
+                    } else {
+                        Tcl_DString left, right;
+
+                        Tcl_DStringInit(&left);
+                        Tcl_DStringInit(&right);
+
+                        NsUrlSpaceContextSpecAppend(&left, (NsUrlSpaceContextSpec *)ctxLeft);
+                        NsUrlSpaceContextSpecAppend(&right, (NsUrlSpaceContextSpec *)ctxRight);
+
+                        Ns_Log(Warning, "Comparison returned %d:\n"
+                               "left:  %s\nright: %s\n", result, left.string, right.string);
+                        Tcl_DStringFree(&left);
+                        Tcl_DStringFree(&right);
+                    }
+                } else {
+                    result = ctxLeftDlPtr->size > ctxRightDlPtr->size ? -1 : 1;
+                }
+
+
+
             }
         } else if (!leftHasPattern && !rightHasPattern){
             /*
@@ -1239,9 +1693,10 @@ CmpKeyWithBranch(const void *key, const void *elemPtr)
     word = (*(const Branch **)elemPtr)->word;
 
 #ifdef DEBUG
-    fprintf(stderr, "CmpKeyWithBranch '%s' with '%s' -> %d\n",
-            keyString, word, NS_strcmp(keyString, word));
+    fprintf(stderr, "CmpKeyWithBranch '%s' with '%s' -> %d %d\n",
+            keyString, word, NS_strcmp(keyString, word), (NS_Tcl_StringMatch(keyString, word) != 1));
 #endif
+    //return (NS_Tcl_StringMatch(keyString, word) != 1);
     return NS_strcmp(keyString, word);
 }
 
@@ -1630,7 +2085,7 @@ TrieDestroy(Trie *triePtr)
  */
 
 static void *
-TrieFind(const Trie *triePtr, char *seq, NsUrlSpaceContextFilterProc proc, void *context, int *depthPtr)
+TrieFind(const Trie *triePtr, char *seq, Ns_UrlSpaceContextFilterEvalProc proc, void *context, int *depthPtr)
 {
     const Node   *nodePtr;
     const Branch *branchPtr;
@@ -1659,7 +2114,7 @@ TrieFind(const Trie *triePtr, char *seq, NsUrlSpaceContextFilterProc proc, void 
 #ifdef CONTEXT_FILTER
             if (nodePtr->data.n != 0) {
                 /*
-                 * We have context filters
+                 * We have context constraintss
                  */
                 if (context != NULL) {
                     size_t i;
@@ -1853,13 +2308,13 @@ TrieDelete(const Trie *triePtr, char *seq, unsigned int flags)
         }
 #ifdef CONTEXT_FILTER
         /*
-         * When NS_OP_ALLFILTERS is set, then delete all filters.
-         * TODO: selective filter deletion not implemented.
+         * When NS_OP_ALLCONSTRAINTS is set, then delete all context constraints.
+         * TODO: selective context constraint deletion is not implemented.
          */
-        if ((flags & NS_OP_ALLFILTERS) != 0u) {
+        if ((flags & NS_OP_ALLCONSTRAINTS) != 0u) {
             Ns_Index* indexPtr = &nodePtr->data;
 
-            //fprintf(stderr, "...   TrieTele NS_OP_ALLFILTERS data %p for node %p fn %p n %" PRIuz "\n",
+            //fprintf(stderr, "...   TrieTele NS_OP_ALLCONSTRAINTS data %p for node %p fn %p n %" PRIuz "\n",
             //        (void*)&indexPtr, (void*)nodePtr, (void*)indexPtr->CmpEls, indexPtr->n);
 
             ContextFilterDestroy(indexPtr);
@@ -1968,7 +2423,7 @@ CmpKeyWithChannel(const void *key, const void *elemPtr)
     }
 
 #ifdef DEBUG
-    fprintf(stderr, "======= CmpKeyWithChannel %s with %s -> %d\n", filter, key, result);
+    fprintf(stderr, "======= CmpKeyWithChannel %s with %s -> %d\n", filter, (char*)key, result);
 #endif
     return result;
 }
@@ -2039,7 +2494,7 @@ CmpKeyWithChannelAsStrings(const void *key, const void *elemPtr)
 
 #ifdef DEBUG
     fprintf(stderr, "CmpKeyWithChannelAsStrings key '%s' with '%s' -> %d\n",
-            key, filter, NS_strcmp(key, filter));
+            (char*)key, filter, NS_strcmp(key, filter));
 #endif
 
     return NS_strcmp(key, filter);
@@ -2155,7 +2610,7 @@ JunctionTruncBranch(const Junction *juncPtr, char *seq)
  *
  * Side effects:
  *      Modifies seq, assuming
- *      seq = "handle\0method\0urltoken\0urltoken\0..\0\0\"
+ *      seq = "handle\key\0urltoken\0urltoken\0..\0\0\"
  *
  *----------------------------------------------------------------------
  */
@@ -2166,7 +2621,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
             void *contextSpec)
 {
     Channel    *channelPtr;
-    Ns_DString  dsFilter;
+    Tcl_DString dsFilter;
     char       *p;
     int         depth;
     size_t      l;
@@ -2177,7 +2632,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
     //fprintf(stderr, "...   JunctionAdd '%s' contextSpec %p\n", seq, contextSpec);
 
     depth = 0;
-    Ns_DStringInit(&dsFilter);
+    Tcl_DStringInit(&dsFilter);
 
     /*
      * Find out how deep the sequence is, and position p at the
@@ -2201,10 +2656,10 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
      * filter.
      */
     if ((depth > 0) && (strchr(p, INTCHAR('*')) != NULL || strchr(p, INTCHAR('?')) != NULL )) {
-                Ns_DStringAppend(&dsFilter, p);
+        Tcl_DStringAppend(&dsFilter, p, TCL_INDEX_NONE);
         *p = '\0';
     } else {
-        Ns_DStringAppend(&dsFilter, "*");
+        Tcl_DStringAppend(&dsFilter, "*", 1);
     }
 
     /*
@@ -2239,7 +2694,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
         //        channelPtr->filter, juncPtr->byname.n);
 
     }
-    Ns_DStringFree(&dsFilter);
+    Tcl_DStringFree(&dsFilter);
 
     /*
      * Now we need to create a sequence of branches in the trie (if no
@@ -2257,7 +2712,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
  * JunctionFind --
  *
  *      Locate a node for a given sequence in a junction.
- *      As usual sequence is "method\0urltoken\0...\0\0".
+ *      As usual sequence is "key\0urltoken\0...\0\0".
  *
  *      The "fast" boolean switch makes it do NS_strcmp instead of
  *      Tcl string matches on the filters. Not useful for wildcard
@@ -2274,7 +2729,7 @@ JunctionAdd(Junction *juncPtr, char *seq, void *data, unsigned int flags,
 static void *
 JunctionFind(const Junction *juncPtr, char *seq,
              Ns_UrlSpaceMatchInfo *matchInfoPtr,
-             NsUrlSpaceContextFilterProc proc, void *context)
+             Ns_UrlSpaceContextFilterEvalProc proc, void *context)
 {
     const Channel *channelPtr;
     const char    *p;
@@ -2348,8 +2803,8 @@ JunctionFind(const Junction *juncPtr, char *seq,
 
         //Ns_Log(Notice, "Junction Filter tail <%s> match with <%s>", p, channelPtr->filter);
 #ifdef DEBUG
-        fprintf(stderr, "JunctionFind: compare filter '%s' with channel filter '%s' => %d\n",
-                p, channelPtr->filter, doit);
+        fprintf(stderr, "JunctionFind: compare filter '%s' with channel filter '%s' => match %d\n",
+                p, channelPtr->filter, match);
 #endif
         if (match) {
             /*
@@ -2634,8 +3089,8 @@ JunctionDeleteNode(const Junction *juncPtr, char *seq, unsigned int flags)
  *
  * MkSeq --
  *
- *      Build a "sequence" out of a method/url; turns it into
- *      "method\0urltoken\0...\0\0".
+ *      Build a "sequence" out of a key/url; turns it into
+ *      "key\0urltoken\0...\0\0".
  *
  * Results:
  *      None.
@@ -2647,17 +3102,17 @@ JunctionDeleteNode(const Junction *juncPtr, char *seq, unsigned int flags)
  */
 
 static void
-MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
+MkSeq(Tcl_DString *dsPtr, const char *key, const char *url)
 {
     const char *p;
     bool        done;
     size_t      l;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
-    NS_NONNULL_ASSERT(method != NULL);
+    NS_NONNULL_ASSERT(key != NULL);
     NS_NONNULL_ASSERT(url != NULL);
 
-    Ns_DStringNAppend(dsPtr, method, (TCL_SIZE_T)NS_strlen(method) + 1);
+    Tcl_DStringAppend(dsPtr, key, (TCL_SIZE_T)NS_strlen(key) + 1);
 
     /*
      * Loop over each directory in the URL and turn the slashes
@@ -2675,8 +3130,8 @@ MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
                 done = NS_TRUE;
             }
 
-            Ns_DStringNAppend(dsPtr, url, (TCL_SIZE_T)l++);
-            Ns_DStringNAppend(dsPtr, "\0", 1);
+            Tcl_DStringAppend(dsPtr, url, (TCL_SIZE_T)l++);
+            Tcl_DStringAppend(dsPtr, "\0", 1);
             url += l;
         } else {
             url++;
@@ -2688,7 +3143,7 @@ MkSeq(Ns_DString *dsPtr, const char *method, const char *url)
      * string.
      */
 
-    Ns_DStringNAppend(dsPtr, "\0", 1);
+    Tcl_DStringAppend(dsPtr, "\0", 1);
 }
 
 #ifdef DEBUG
@@ -2844,7 +3299,7 @@ CheckTclUrlSpaceId(Tcl_Interp *interp, NsServer *servPtr, int *idPtr)
  */
 
 static void
-WalkCallback(Ns_DString *dsPtr, const void *arg)
+WalkCallback(Tcl_DString *dsPtr, const void *arg)
 {
     const char *data = arg;
 
@@ -2859,18 +3314,24 @@ WalkCallback(Ns_DString *dsPtr, const void *arg)
  *
  * UrlSpaceGetObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements "ns_urlspace get".
+ *      Implements the "ns_urlspace get" Tcl command.
+ *
+ *      This function retrieves URL-specific data from the URL space trie.
+ *      It processes the command arguments, determines the appropriate
+ *      URL key, and returns the associated data (if any) as a Tcl object.
  *
  * Results:
- *    Tcl result.
+ *      Returns TCL_OK on success with the retrieved data set in the
+ *      interpreter's result; otherwise, returns TCL_ERROR and an
+ *      error message is set in the interpreter.
  *
  * Side effects:
- *    Depends on subcommand.
+ *      None.
  *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2902,9 +3363,9 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
         result = TCL_ERROR;
 
     } else {
-        NsUrlSpaceOp    op;
+        Ns_UrlSpaceOp    op;
         unsigned int    flags = 0u;
-        NsUrlSpaceContext ctx, *ctxPtr;
+        NsUrlSpaceContext ctx, *ctxPtr = NULL;
         struct NS_SOCKADDR_STORAGE ip;
 
         if (noinherit == (int)NS_TRUE) {
@@ -2919,29 +3380,20 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
         } else {
             op = NS_URLSPACE_DEFAULT;
         }
-        if (context != NULL) {
-            const char *ipString = Ns_SetIGet(context, "X-NS-ip");
-            if (ipString != NULL) {
-                struct sockaddr *ipPtr = (struct sockaddr *)&ip;
-                int validIP = ns_inet_pton(ipPtr, ipString);
-
-                if (validIP > 0) {
-                    ctx.saPtr = ipPtr;
-                    if (Ns_SetSize(context) > 1) {
-                        Ns_TclPrintfResult(interp, "IP has to be in set with a single item");
-                        result = TCL_ERROR;
-                    }
-                } else {
-                    Ns_TclPrintfResult(interp, "invalid IP address '%s' specified", ipString);
-                    result = TCL_ERROR;
-                }
-                ctx.headers = NULL;
+        if (context == NULL) {
+            if (itPtr->conn != NULL && ((Conn *)itPtr->conn)->sockPtr != NULL) {
+                Ns_Log(Debug, "UrlSpaceGetObjCmd: get context from connection");
+                NsUrlSpaceContextInit(&ctx,
+                                      ((Conn *)itPtr->conn)->sockPtr,
+                                      ((Conn *)itPtr->conn)->headers);
             } else {
-                ctx.headers = context;
+                Ns_Log(Debug, "UrlSpaceGetObjCmd: can't get context from connection, connection not available");
             }
-            ctxPtr = &ctx;
         } else {
-            ctxPtr = NULL;
+            result = NsUrlSpaceContextFromSet(interp, &ctx, (struct sockaddr *)&ip, context);
+            if (result == TCL_OK) {
+                ctxPtr = &ctx;
+            }
         }
 
         if (likely(result == TCL_OK)) {
@@ -2952,7 +3404,7 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
 #endif
             //Ns_Log(Notice, "UrlSpaceGetObjCmd context %p context %p", (void*)context, (void*)ctxPtr);
             Ns_RWLockRdLock(&servPtr->urlspace.idlocks[id]);
-            data = NsUrlSpecificGet(servPtr, key, url, id, flags, op, NULL, NsUrlSpaceContextFilter, ctxPtr);
+            data = Ns_UrlSpecificGet((Ns_Server*)servPtr, key, url, id, flags, op, NULL, NsUrlSpaceContextFilterEval, ctxPtr);
             Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
 
             Tcl_SetObjResult(interp, Tcl_NewStringObj(data, TCL_INDEX_NONE));
@@ -2966,18 +3418,25 @@ UrlSpaceGetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
  *
  * UrlSpaceListObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements "ns_urlspace list".
+ *      Implements the "ns_urlspace list" Tcl command.
+ *
+ *      This function walks through the URL space trie and collects
+ *      information about the stored URL-specific data. The resulting
+ *      information is returned as a Tcl list (or another suitable
+ *      structure) containing all matching entries.
  *
  * Results:
- *    Tcl result.
+ *      Returns TCL_OK on success with the list of URL entries set in
+ *      the interpreter's result; otherwise, returns TCL_ERROR with an
+ *      appropriate error message.
  *
  * Side effects:
- *    Depends on subcommand.
+ *    None.
  *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -2996,7 +3455,7 @@ UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, T
     } else {
         Tcl_DString ds, *dsPtr = &ds;
 
-        Ns_DStringInit(dsPtr);
+        Tcl_DStringInit(dsPtr);
 
         Ns_RWLockRdLock(&servPtr->urlspace.idlocks[id]);
         Ns_UrlSpecificWalk(id, servPtr->server, WalkCallback, dsPtr);
@@ -3013,18 +3472,25 @@ UrlSpaceListObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, T
  *
  * UrlSpaceNewObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements "ns_urlspace new".
+ *      Implements the "ns_urlspace new" Tcl command.
+ *
+ *      This function creates a new URL space or a new URL-specific
+ *      entry within an existing URL space. It processes the provided
+ *      arguments to set up the key (or URL pattern) and associates
+ *      the given data with that key in the trie.
  *
  * Results:
- *    Tcl result.
+ *      Returns TCL_OK on successful creation of the new entry, or
+ *      TCL_ERROR if an error occurs.
  *
  * Side effects:
- *    Depends on subcommand.
+ *      Allocates and initializes new trie nodes and possibly new
+ *      channels; modifies the URL space data structure.
  *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
@@ -3053,30 +3519,41 @@ UrlSpaceNewObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
  *
  * UrlSpaceSetObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements "ns_urlspace set".
+ *      Implements the "ns_urlspace set" command in Tcl.
+ *
+ *      This command associates a URL pattern (which may include wildcards)
+ *      with user-specified data in the URL space trie. The command processes
+ *      various options and flags that determine how the data is stored, such as
+ *      whether the data should be inherited by sub-URLs or if existing data should
+ *      be replaced.
  *
  * Results:
- *    Tcl result.
+ *      Returns a standard Tcl result code:
+ *          - TCL_OK on success.
+ *          - TCL_ERROR on failure, with an appropriate error message set in the
+ *            interpreter.
  *
  * Side effects:
- *    Depends on subcommand.
+ *      - May allocate memory for new trie nodes and channels.
+ *      - Modifies the internal URL space data structure by adding or updating entries.
+ *      - The precise behavior (e.g., whether data is overwritten or retained) depends
+ *        on the specific subcommand options provided by the user.
  *
  *----------------------------------------------------------------------
  */
 static int
-UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     int             result = TCL_OK, id = -1, noinherit = 0;
-    TCL_SIZE_T      oc = 0;
     char           *key = (char *)".", *url = (char*)NS_EMPTY_STRING, *data = (char*)NS_EMPTY_STRING;
-    Tcl_Obj        *headerFilterObj = NULL, **ov = NULL;
+    NsUrlSpaceContextSpec *specPtr = NULL;
     Ns_ObjvSpec     lopts[] = {
-        {"-contextfilter", Ns_ObjvObj,    &headerFilterObj, NULL},
-        {"-id",            Ns_ObjvInt,    &id,        &idRange},
-        {"-key",           Ns_ObjvString, &key,       NULL},
-        {"-noinherit",     Ns_ObjvBool,   &noinherit, INT2PTR(NS_TRUE)},
+        {"-constraints", Ns_ObjvUrlspaceSpec, &specPtr, NULL},
+        {"-id",            Ns_ObjvInt,         &id,               &idRange},
+        {"-key",           Ns_ObjvString,      &key,              NULL},
+        {"-noinherit",     Ns_ObjvBool,        &noinherit,        INT2PTR(NS_TRUE)},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
@@ -3095,17 +3572,8 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
         Ns_TclPrintfResult(interp, "provided key must be at least one character");
         result = TCL_ERROR;
 
-    } else if (headerFilterObj != NULL
-               && (Tcl_ListObjGetElements(NULL, headerFilterObj, &oc, &ov) != TCL_OK || oc != 2)) {
-
-        Ns_TclPrintfResult(interp,
-                           "invalid header filter '%s': must be list containing name and match value",
-                           Tcl_GetString(headerFilterObj));
-        result = TCL_ERROR;
-
     } else {
         unsigned int flags = 0u;
-        void        *contextSpec = NULL;
 
         if (noinherit != 0) {
             flags |= NS_OP_NOINHERIT;
@@ -3115,13 +3583,10 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
 #endif
         Ns_RWLockWrLock(&servPtr->urlspace.idlocks[id]);
 
-        if (oc == 2) {
-            contextSpec = NsUrlSpaceContextSpecNew(Tcl_GetString(ov[0]), Tcl_GetString(ov[1]));
-        }
-        /* maybe add a non-string interface for first arg */
-        //Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceSetObjCmd contextFilter %p", (void*)contextSpec);
+        /* maybe add a non-string interface for first arg (pass servPtrt) */
+        //Ns_Log(Ns_LogUrlspaceDebug, "UrlSpaceSetObjCmd contextFilter %p", (void*)specPtr);
         Ns_UrlSpecificSet2(servPtr->server, key, url, id, ns_strdup(data),
-                           flags, ns_free, contextSpec);
+                           flags, ns_free, specPtr);
         Ns_RWLockUnlock(&servPtr->urlspace.idlocks[id]);
     }
     return result;
@@ -3135,30 +3600,42 @@ UrlSpaceSetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tc
  *
  * UrlSpaceUnsetObjCmd, subcommand of NsTclUrlSpaceObjCmd --
  *
- *    Implements "ns_urlspace unset".
+ *      Implements the "ns_urlspace unset" Tcl command.
+ *
+ *      This function removes URL-specific data from the URL
+ *      space. Based on the arguments, it deletes a particular entry
+ *      (or entries) from the trie. If recursive deletion is
+ *      specified, it will remove all data under the given URL prefix.
  *
  * Results:
- *    Tcl result.
+ *      Returns TCL_OK on successful removal of the entry; otherwise,
+ *      returns TCL_ERROR with an appropriate error message.
  *
  * Side effects:
- *    Depends on subcommand.
- *
- *----------------------------------------------------------------------
+ *      Frees memory associated with the deleted data and updates the
+ *      URL space data structure.
+ * *----------------------------------------------------------------------
  */
 static int
-UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsInterp *itPtr = clientData;
     NsServer       *servPtr = itPtr->servPtr;
     int             result = TCL_OK, id = -1;
     char           *key = (char *)".", *url;
-    int             recurse = (int)NS_FALSE, noinherit = (int)NS_FALSE, allfilters = (int)NS_FALSE;
+    int             recurse = 0, noinherit = 0, allconstraints = 0;
+#ifdef NS_WITH_DEPRECATED_5_0
+    int             allfilters = (int)NS_FALSE;
+#endif
     Ns_ObjvSpec     lopts[] = {
-        {"-allfilters", Ns_ObjvBool,   &allfilters, INT2PTR(NS_TRUE)},
-        {"-id",         Ns_ObjvInt,    &id,         &idRange},
-        {"-key",        Ns_ObjvString, &key,        NULL},
-        {"-noinherit",  Ns_ObjvBool,   &noinherit,  INT2PTR(NS_TRUE)},
-        {"-recurse",    Ns_ObjvBool,   &recurse,    INT2PTR(NS_TRUE)},
+        {"-allconstraints",    Ns_ObjvBool,   &allconstraints, INT2PTR(NS_OP_ALLCONSTRAINTS)},
+#ifdef NS_WITH_DEPRECATED_5_0
+        {"-allfilters",        Ns_ObjvBool,   &allfilters,     INT2PTR(NS_TRUE)},
+#endif
+        {"-id",                Ns_ObjvInt,    &id,            &idRange},
+        {"-key",               Ns_ObjvString, &key,            NULL},
+        {"-noinherit",         Ns_ObjvBool,   &noinherit,      INT2PTR(NS_OP_NOINHERIT)},
+        {"-recurse",           Ns_ObjvBool,   &recurse,        INT2PTR(NS_OP_RECURSE)},
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec     args[] = {
@@ -3178,16 +3655,15 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
 
     } else {
         const char   *data;
-        unsigned int  flags = 0u;
+        unsigned int  flags = ((unsigned int)noinherit | (unsigned int)recurse | (unsigned int)allconstraints);
 
-        if (noinherit == (int)NS_TRUE) {
-            flags |= NS_OP_NOINHERIT;
-        }
+#ifdef NS_WITH_DEPRECATED_5_0
         if (allfilters == (int)NS_TRUE) {
-            flags |= NS_OP_ALLFILTERS;
+            Ns_Log(Deprecated, "option -allfilters is deprecated, use -allconstraints instead");
+            flags |= NS_OP_ALLCONSTRAINTS;
         }
-        if (recurse == (int)NS_TRUE) {
-            flags |= NS_OP_RECURSE;
+#endif
+        if (recurse != 0) {
             if ((flags & NS_OP_NOINHERIT) == NS_OP_NOINHERIT) {
                 Ns_Log(Warning, "flag -noinherit is ignored");
             }
@@ -3210,19 +3686,28 @@ UrlSpaceUnsetObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, 
  *
  * NsTclUrlSpaceObjCmd --
  *
- *    Implements "ns_urlspace".
+ *      Implements the top-level "ns_urlspace" Tcl command.
+ *
+ *      This function acts as a dispatcher that examines the first
+ *      argument of the "ns_urlspace" command and calls the
+ *      appropriate subcommand handler (such as "get", "list", "new",
+ *      or "unset"). It centralizes the URL space management commands
+ *      in one interface.
  *
  * Results:
- *    Tcl result.
+ *      Returns the standard Tcl result code (TCL_OK on success,
+ *      TCL_ERROR on failure).
  *
  * Side effects:
- *    Depends on subcommand.
+ *      Dispatches to various URL space subcommand functions,
+ *      potentially modifying internal data structures based on the
+ *      subcommand.
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclUrlSpaceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclUrlSpaceObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const Ns_SubCmdSpec subcmds[] = {
         {"get",   UrlSpaceGetObjCmd},

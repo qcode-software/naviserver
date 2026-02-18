@@ -29,21 +29,43 @@
 
 static Ns_ServerInitProc ConfigServerVhost;
 
-static int PathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, char cmd)
+static int PathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, char cmd)
     NS_GNUC_NONNULL(2);
 
-static char *MakePath(Ns_DString *dest, va_list *pap)
+static char *MakePath(Tcl_DString *dest, va_list *pap)
     NS_GNUC_NONNULL(1) NS_GNUC_RETURNS_NONNULL;
 
-static const char *ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
+static const char *ServerRoot(Tcl_DString *dest, const NsServer *servPtr, const char *rawHost)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2)
     NS_GNUC_RETURNS_NONNULL;
 
-static const char *NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
+static const char *NormalizePath(Tcl_DString *dsPtr, const char *path, bool url)
     NS_GNUC_NONNULL(1) NS_GNUC_NONNULL(2) NS_GNUC_RETURNS_NONNULL;
 
+static bool IsSlashInPath(bool inUrl, const char c)
+    NS_GNUC_PURE;
 
-
+/*
+ *----------------------------------------------------------------------
+ *
+ * IsSlashInPath() --
+ *
+ *      Should a chacter in a path treated as as slash? There are different
+ *      semantics for URLs and file paths.
+ *
+ * Results:
+ *      Boolean value.
+ *
+ * Side effects:
+ *      None.
+ *
+ *----------------------------------------------------------------------
+ */
+static bool
+IsSlashInPath(bool inUrl, const char c) {
+    return inUrl ? (c == '/') : ISSLASH(c);
+}
+
 /*
  *----------------------------------------------------------------------
  *
@@ -80,35 +102,35 @@ ConfigServerVhost(const char *server)
         result = NS_ERROR;
 
     } else {
-        Ns_DString  ds;
-        const char *path;
+        Tcl_DString ds;
+        const char *section;
 
         assert(servPtr->fastpath.pagedir != NULL);
 
-        path = Ns_ConfigGetPath(server, NULL, "vhost", (char *)0L);
+        section = Ns_ConfigGetPath(server, NULL, "vhost", NS_SENTINEL);
 
-        servPtr->vhost.enabled = Ns_ConfigBool(path, "enabled", NS_FALSE);
+        servPtr->vhost.enabled = Ns_ConfigBool(section, "enabled", NS_FALSE);
         if (servPtr->vhost.enabled
             && Ns_PathIsAbsolute(servPtr->fastpath.pagedir) == NS_TRUE) {
             Ns_Log(Error, "vhost[%s]: disabled, pagedir not relative: %s",
                    server, servPtr->fastpath.pagedir);
             servPtr->vhost.enabled = NS_FALSE;
         }
-        if (Ns_ConfigBool(path, "stripwww", NS_TRUE)) {
+        if (Ns_ConfigBool(section, "stripwww", NS_TRUE)) {
             servPtr->vhost.opts |= NSD_STRIP_WWW;
         }
-        if (Ns_ConfigBool(path, "stripport", NS_TRUE)) {
+        if (Ns_ConfigBool(section, "stripport", NS_TRUE)) {
             servPtr->vhost.opts |= NSD_STRIP_PORT;
         }
-        servPtr->vhost.hostprefix = ns_strcopy(Ns_ConfigString(path, "hostprefix", NULL));
+        servPtr->vhost.hostprefix = ns_strcopy(Ns_ConfigString(section, "hostprefix", NULL));
         servPtr->vhost.hosthashlevel =
-            Ns_ConfigIntRange(path, "hosthashlevel", 0, 0, 5);
+            Ns_ConfigIntRange(section, "hosthashlevel", 0, 0, 5);
 
         if (servPtr->vhost.enabled) {
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             (void) NsPageRoot(&ds, servPtr, "www.example.com:80");
             Ns_Log(Notice, "vhost[%s]: www.example.com:80 -> %s", server, ds.string);
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
         }
         result = NS_OK;
     }
@@ -166,30 +188,30 @@ Ns_PathIsAbsolute(const char *path)
  *----------------------------------------------------------------------
  */
 const char *
-Ns_NormalizePath(Ns_DString *dsPtr, const char *path)
+Ns_NormalizePath(Tcl_DString *dsPtr, const char *path)
 {
     return NormalizePath(dsPtr, path, NS_FALSE);
 }
 
 const char *
-Ns_NormalizeUrl(Ns_DString *dsPtr, const char *path)
+Ns_NormalizeUrl(Tcl_DString *dsPtr, const char *path)
 {
     return NormalizePath(dsPtr, path, NS_TRUE);
 }
 
 const char *
-NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
+NormalizePath(Tcl_DString *dsPtr, const char *path, bool url)
 {
     char                 end;
     register char       *src;
     register const char *slash;
-    Ns_DString           tmp;
+    Tcl_DString          tmp;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(path != NULL);
 
-    Ns_DStringInit(&tmp);
-    src = Ns_DStringAppend(&tmp, path);
+    Tcl_DStringInit(&tmp);
+    src = Tcl_DStringAppend(&tmp, path, TCL_INDEX_NONE);
 
     if (!url) {
 #ifdef _WIN32
@@ -197,7 +219,7 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
             if (CHARTYPE(upper, *src) != 0) {
                 *src = CHARCONV(lower, *src);
             }
-            Ns_DStringNAppend(dsPtr, src, 2);
+            Tcl_DStringAppend(dsPtr, src, 2);
             src += 2;
         } else if (ISSLASH(src[0]) && ISSLASH(src[1])) {
             /*
@@ -206,7 +228,7 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
              * slash, so here, add just 1 slash so that we will end up
              * with 2 total: --atp@piskorski.com, 2005/03/14 06:34 EST
              */
-            Ns_DStringNAppend(dsPtr, src, 1);
+            Tcl_DStringAppend(dsPtr, src, 1);
             src += 2;
         }
 #endif
@@ -215,23 +237,22 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
     /*
      * Move past leading slash(es)
      */
-
-    while (ISSLASH(*src)) {
+    while (IsSlashInPath(url, *src)) {
         ++src;
     }
+
     do {
-        register const char *part = src;
+        const char *part = src;
 
         /*
          * Move to next slash
          */
-
-        while (*src != '\0' && !ISSLASH(*src)) {
+        while (*src != '\0' && !IsSlashInPath(url, *src)) {
             ++src;
         }
+
         end = *src;
         *src++ = '\0';
-
         if (part[0] == '.' && part[1] == '.' && part[2] == '\0') {
 
             /*
@@ -240,7 +261,7 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
 
             slash = strrchr(dsPtr->string, INTCHAR('/'));
             if (slash != NULL) {
-                Ns_DStringSetLength(dsPtr, (TCL_SIZE_T)(slash - dsPtr->string));
+                Tcl_DStringSetLength(dsPtr, (TCL_SIZE_T)(slash - dsPtr->string));
             }
         } else if (part[0] != '\0' &&
                (part[0] != '.' || part[1] != '\0')) {
@@ -249,8 +270,8 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
              * There's something non-null and not ".".
              */
 
-            Ns_DStringNAppend(dsPtr, "/", 1);
-            Ns_DStringAppend(dsPtr, part);
+            Tcl_DStringAppend(dsPtr, "/", 1);
+            Tcl_DStringAppend(dsPtr, part, TCL_INDEX_NONE);
         }
     } while (end != '\0');
 
@@ -259,9 +280,9 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
      */
 
     if (dsPtr->string[0] == '\0') {
-        Ns_DStringNAppend(dsPtr, "/", 1);
+        Tcl_DStringAppend(dsPtr, "/", 1);
     }
-    Ns_DStringFree(&tmp);
+    Tcl_DStringFree(&tmp);
 
     return dsPtr->string;
 }
@@ -285,7 +306,7 @@ NormalizePath(Ns_DString *dsPtr, const char *path, bool url)
  */
 
 const char *
-Ns_MakePath(Ns_DString *dsPtr, ...)
+Ns_MakePath(Tcl_DString *dsPtr, ...)
 {
     va_list  ap;
     char    *path;
@@ -324,7 +345,7 @@ Ns_MakePath(Ns_DString *dsPtr, ...)
  */
 
 const char *
-Ns_HashPath(Ns_DString *dsPtr, const char *path, int levels)
+Ns_HashPath(Tcl_DString *dsPtr, const char *path, int levels)
 {
     const char *p = path;
     int         i;
@@ -334,20 +355,20 @@ Ns_HashPath(Ns_DString *dsPtr, const char *path, int levels)
 
     for (i = 0; i < levels; ++i) {
         if (dsPtr->string[dsPtr->length] != '/') {
-            Ns_DStringNAppend(dsPtr, "/", 1);
+            Tcl_DStringAppend(dsPtr, "/", 1);
         }
         while (*p == '.' || ISSLASH(*p)) {
             ++p;
         }
         if (*p != '\0') {
-            Ns_DStringNAppend(dsPtr, p, 1);
+            Tcl_DStringAppend(dsPtr, p, 1);
             p++;
         } else {
-            Ns_DStringNAppend(dsPtr, "_", 1);
+            Tcl_DStringAppend(dsPtr, "_", 1);
         }
     }
 
-    return Ns_DStringValue(dsPtr);
+    return dsPtr->string;
 }
 
 
@@ -370,14 +391,14 @@ Ns_HashPath(Ns_DString *dsPtr, const char *path, int levels)
  */
 
 const char *
-Ns_LibPath(Ns_DString *dsPtr, ...)
+Ns_LibPath(Tcl_DString *dsPtr, ...)
 {
     va_list  ap;
     char    *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "lib", (char *)0L);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "lib", NS_SENTINEL);
     va_start(ap, dsPtr);
     path = MakePath(dsPtr, &ap);
     va_end(ap);
@@ -405,14 +426,14 @@ Ns_LibPath(Ns_DString *dsPtr, ...)
  */
 
 const char *
-Ns_BinPath(Ns_DString *dsPtr, ...)
+Ns_BinPath(Tcl_DString *dsPtr, ...)
 {
     va_list  ap;
     char    *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), "bin", (char *)0L);
+    Ns_MakePath(dsPtr, nsconf.binDir, NS_SENTINEL);
     va_start(ap, dsPtr);
     path = MakePath(dsPtr, &ap);
     va_end(ap);
@@ -438,14 +459,14 @@ Ns_BinPath(Ns_DString *dsPtr, ...)
  */
 
 const char *
-Ns_HomePath(Ns_DString *dsPtr, ...)
+Ns_HomePath(Tcl_DString *dsPtr, ...)
 {
     va_list  ap;
     char    *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), (char *)0L);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), NS_SENTINEL);
     va_start(ap, dsPtr);
     path = MakePath(dsPtr, &ap);
     va_end(ap);
@@ -468,34 +489,78 @@ Ns_HomePath(Ns_DString *dsPtr, ...)
  *
  *----------------------------------------------------------------------
  */
-
 bool
 Ns_HomePathExists(const char *path, ...)
 {
     va_list      ap;
     int          status;
     Tcl_Obj     *obj;
-    Ns_DString   ds;
+    Tcl_DString  ds;
     Tcl_StatBuf *stPtr;
 
     NS_NONNULL_ASSERT(path != NULL);
 
-    Ns_DStringInit(&ds);
-    Ns_MakePath(&ds, Ns_InfoHomePath(), path, (char *)0L);
+    Tcl_DStringInit(&ds);
+    Ns_MakePath(&ds, Ns_InfoHomePath(), path, NS_SENTINEL);
 
     va_start(ap, path);
     MakePath(&ds, &ap);
     va_end(ap);
 
-    obj = Tcl_NewStringObj(ds.string, TCL_INDEX_NONE);
+    obj = Tcl_NewStringObj(ds.string, ds.length);
     Tcl_IncrRefCount(obj);
     stPtr = Tcl_AllocStatBuf();
     status = Tcl_FSStat(obj, stPtr);
     Tcl_Free((char*)stPtr);
     Tcl_DecrRefCount(obj);
-    Ns_DStringFree(&ds);
+    Tcl_DStringFree(&ds);
 
     return (status == 0);
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_RequireDirectory --
+ *
+ *      Ensures that the specified directory exists. If it does not
+ *      exist, the function attempts to create it. If creation fails,
+ *      an error is logged and NS_ERROR is returned; otherwise, NS_OK
+ *      is returned.
+ *
+ * Results:
+ *      NS_OK or NS_ERROR
+ *
+ * Side effects:
+ *      May create the directory if it does not already exist.
+ *
+ *----------------------------------------------------------------------
+ */
+Ns_ReturnCode
+Ns_RequireDirectory(const char *path)
+{
+    Ns_ReturnCode result = TCL_OK;
+    struct stat   fileStat;
+
+    NS_NONNULL_ASSERT(path != NULL);
+
+    if (!Ns_Stat(path, &fileStat)) {
+        Tcl_Obj *pathObj;
+        int      rc;
+
+        pathObj = Tcl_NewStringObj(path, TCL_INDEX_NONE);
+        Tcl_IncrRefCount(pathObj);
+        rc = Tcl_FSCreateDirectory(pathObj);
+        Tcl_DecrRefCount(pathObj);
+
+        if (rc != TCL_OK && Tcl_GetErrno() != EEXIST && Tcl_GetErrno() != EISDIR) {
+            Ns_Log(Error, "nslog: create directory (%s) failed: '%s'",
+                   path, strerror(Tcl_GetErrno()));
+            result = NS_ERROR;
+        }
+    }
+    return result;
 }
 
 
@@ -516,7 +581,7 @@ Ns_HomePathExists(const char *path, ...)
  */
 
 const char *
-Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...)
+Ns_ServerPath(Tcl_DString *dsPtr, const char *server, ...)
 {
     const NsServer *servPtr;
     char           *path;
@@ -558,7 +623,7 @@ Ns_ServerPath(Ns_DString *dsPtr, const char *server, ...)
  */
 
 const char *
-Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
+Ns_PagePath(Tcl_DString *dsPtr, const char *server, ...)
 {
     const NsServer *servPtr;
     char           *path;
@@ -582,6 +647,91 @@ Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
     return path;
 }
 
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_LogPath --
+ *
+ *      Constructs and returns the absolute path for a log file for a given server.
+ *      If the provided filename is absolute, it is returned unchanged.
+ *
+ *      If the filename is relative and server root processing is enabled for
+ *      the specified server, the function retrieves the server-specific log
+ *      directory from the configuration (falling back to the global
+ *      "ns/parameters" logdir if necessary).  It then constructs the full
+ *      path by appending the filename to the resolved log directory. The
+ *      function logs details about whether a relative or absolute server log
+ *      directory was used.
+ *
+ *      If server root processing is not enabled, the function builds the log path using
+ *      the default log directory obtained via Ns_ServerLogDir().
+
+ *
+ * Parameters:
+ *      dsPtr       - Pointer to a Tcl_DString used as a buffer for
+ *                    constructing the path.
+ *      server      - Name of the server.
+ *      configValue - Configured log directory value (may be relative or absolute).
+ *
+ * Results:
+ *      Returns a pointer to a null-terminated string containing the resolved
+ *      absolute log directory.
+ *
+ * Side Effects:
+ *      The Tcl_DString referenced by dsPtr may be modified during the
+ *      construction of the path.
+ *
+ *----------------------------------------------------------------------
+ */
+const char *
+Ns_LogPath(Tcl_DString *dsPtr, const char *server, const char *filename)
+{
+    const char *result;
+
+    if (Ns_PathIsAbsolute(filename)) {
+        result = filename;
+
+    } else if (Ns_ServerRootProcEnabled(server)) {
+        const char *value;
+        const char *section = Ns_ConfigSectionPath(NULL, server, NULL, NS_SENTINEL);
+        const char *serverLogDir = Ns_ConfigGetValue(section, "logdir");
+        Tcl_DString message;
+
+        Tcl_DStringInit(&message);
+
+        if (serverLogDir == NULL) {
+            serverLogDir = Ns_ConfigGetValue("ns/parameters", "logdir");
+            Ns_DStringPrintf(&message, "use global logdir <%s> ", serverLogDir);
+        }
+        if (!Ns_PathIsAbsolute(serverLogDir)) {
+            Tcl_DString scratch;
+            /*
+             * Serverroot + relative server log + filename
+             */
+            Tcl_DStringInit(&scratch);
+            value = Ns_MakePath(dsPtr, Ns_ServerPath(&scratch, server, NS_SENTINEL),
+                                serverLogDir, filename, NS_SENTINEL);
+            Tcl_DStringFree(&scratch);
+            Ns_DStringPrintf(&message, "relative server logdir '%s' ", serverLogDir);
+        } else {
+            /*
+             * Absolute server log + filename
+             */
+            value = Ns_MakePath(dsPtr, serverLogDir, filename, NS_SENTINEL);
+            Ns_DStringPrintf(&message, "absolute server logdir '%s'", serverLogDir);
+        }
+        Ns_Log(Debug, "Ns_LogPath %s --> %s", message.string, value);
+        Tcl_DStringFree(&message);
+
+        result = value;
+
+    } else {
+        result = Ns_MakePath(dsPtr, Ns_ServerLogDir(server), filename, NS_SENTINEL);
+    }
+
+    return result;
+}
+
 
 /*
  *----------------------------------------------------------------------
@@ -602,19 +752,19 @@ Ns_PagePath(Ns_DString *dsPtr, const char *server, ...)
  */
 
 const char *
-Ns_ModulePath(Ns_DString *dsPtr, const char *server, const char *module, ...)
+Ns_ModulePath(Tcl_DString *dsPtr, const char *server, const char *module, ...)
 {
     va_list         ap;
     char           *path;
 
     NS_NONNULL_ASSERT(dsPtr != NULL);
 
-    Ns_MakePath(dsPtr, Ns_InfoHomePath(), (char *)0L);
+    Ns_MakePath(dsPtr, Ns_InfoHomePath(), NS_SENTINEL);
     if (server != NULL) {
-       Ns_MakePath(dsPtr, "servers", server, (char *)0L);
+       Ns_MakePath(dsPtr, "servers", server, NS_SENTINEL);
     }
     if (module != NULL) {
-       Ns_MakePath(dsPtr, "modules", module, (char *)0L);
+       Ns_MakePath(dsPtr, "modules", module, NS_SENTINEL);
     }
     va_start(ap, module);
     path = MakePath(dsPtr, &ap);
@@ -651,6 +801,9 @@ Ns_SetServerRootProc(Ns_ServerRootProc *proc, void *arg)
         status = NS_ERROR;
     } else {
         servPtr->vhost.serverRootProc = proc;
+        if (servPtr->vhost.serverRootArg != NULL) {
+            Ns_TclFreeCallback(servPtr->vhost.serverRootArg);
+        }
         servPtr->vhost.serverRootArg = arg;
     }
 
@@ -675,7 +828,7 @@ Ns_SetServerRootProc(Ns_ServerRootProc *proc, void *arg)
  */
 
 const char *
-NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
+NsPageRoot(Tcl_DString *dsPtr, const NsServer *servPtr, const char *host)
 {
     const char *path;
 
@@ -686,14 +839,15 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
 
     if (Ns_PathIsAbsolute(servPtr->fastpath.pagedir) == NS_TRUE) {
         Ns_Log(Debug, "NsPageRoot is absolute <%s>", servPtr->fastpath.pagedir);
-        path = Ns_DStringAppend(dsPtr, servPtr->fastpath.pagedir);
+        path = Tcl_DStringAppend(dsPtr, servPtr->fastpath.pagedir, TCL_INDEX_NONE);
     } else {
         (void) ServerRoot(dsPtr, servPtr, host);
         Ns_Log(Debug, "NsPageRoot is not absolute <%s>, ServerRoot <%s>",
                servPtr->fastpath.pagedir, dsPtr->string);
-        path = Ns_MakePath(dsPtr, servPtr->fastpath.pagedir, (char *)0L);
+        path = Ns_MakePath(dsPtr, servPtr->fastpath.pagedir, NS_SENTINEL);
     }
 
+    //Ns_Log(Notice, "--- NsPagerRoot returns path <%s>", path);
     return path;
 }
 
@@ -716,7 +870,7 @@ NsPageRoot(Ns_DString *dsPtr, const NsServer *servPtr, const char *host)
 
 
 int
-NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int               levels = 1, result = TCL_OK;
     char             *inputString;
@@ -731,9 +885,9 @@ NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
         result = TCL_ERROR;
 
     } else {
-        Ns_DString  path;
+        Tcl_DString path;
 
-        Ns_DStringInit(&path);
+        Tcl_DStringInit(&path);
         Ns_HashPath(&path, inputString, levels);
         Tcl_DStringResult(interp, &path);
     }
@@ -753,34 +907,34 @@ NsTclHashPathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_
  *  Tcl result.
  *
  * Side effects:
- *  None (deprecated)
+ *  None
  *
  *----------------------------------------------------------------------
  */
 
 int
-NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     int result = TCL_OK;
 
     if (objc < 2) {
-        Tcl_WrongNumArgs(interp, 1, objv, "server ?module ...?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/server/ ?/module .../?");
         result = TCL_ERROR;
 
     } else {
-        Ns_DString  ds;
-        TCL_OBJC_T  i;
+        Tcl_DString ds;
+        TCL_SIZE_T  i;
         const char *module = objc > 2 ? Tcl_GetString(objv[2]) : NULL;
 
-        Ns_DStringInit(&ds);
+        Tcl_DStringInit(&ds);
         /*
          * Use (char *)0 as sentinel instead of NULL to make the function
          * portable. Cppcheck showed this problem in a first step.  See
          * e.g. http://ewontfix.com/11/.
          */
-        Ns_ModulePath(&ds, Tcl_GetString(objv[1]), module, (char *)0L);
+        Ns_ModulePath(&ds, Tcl_GetString(objv[1]), module, NS_SENTINEL);
         for (i = 3; i < objc; ++i) {
-            Ns_MakePath(&ds, Tcl_GetString(objv[i]), (char *)0L);
+            Ns_MakePath(&ds, Tcl_GetString(objv[i]), NS_SENTINEL);
         }
         Tcl_DStringResult(interp, &ds);
     }
@@ -807,19 +961,19 @@ NsTclModulePathObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJ
 
 
 int
-NsTclServerPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclServerPathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return PathObjCmd(clientData, interp, objc, objv, 's');
 }
 
 int
-NsTclPagePathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclPagePathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     return PathObjCmd(clientData, interp, objc, objv, 'p');
 }
 
 static int
-PathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv, char cmd)
+PathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv, char cmd)
 {
     char       *host = NULL;
     TCL_SIZE_T  npaths = 0;
@@ -830,7 +984,7 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *
         {NULL, NULL, NULL, NULL}
     };
     Ns_ObjvSpec args[] = {
-        {"?path", Ns_ObjvArgs, &npaths, NULL},
+        {"?path-segment", Ns_ObjvArgs, &npaths, NULL},
         {NULL, NULL, NULL, NULL}
     };
     NS_NONNULL_ASSERT(interp != NULL);
@@ -851,17 +1005,17 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *
             result = TCL_ERROR;
 
         } else {
-            Ns_DString  ds;
-            TCL_OBJC_T  i;
+            Tcl_DString ds;
+            TCL_SIZE_T  i;
 
-            Ns_DStringInit(&ds);
+            Tcl_DStringInit(&ds);
             if (cmd == 'p') {
                 (void) NsPageRoot(&ds, servPtr, host);
             } else {
                 (void) ServerRoot(&ds, servPtr, host);
             }
-            for (i = objc - (TCL_OBJC_T)npaths; i < objc; ++i) {
-                Ns_MakePath(&ds, Tcl_GetString(objv[i]), (char *)0L);
+            for (i = objc - (TCL_SIZE_T)npaths; i < objc; ++i) {
+                Ns_MakePath(&ds, Tcl_GetString(objv[i]), NS_SENTINEL);
             }
             Tcl_DStringResult(interp, &ds);
         }
@@ -888,13 +1042,13 @@ PathObjCmd(ClientData clientData, Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *
  */
 
 int
-NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_OBJC_T objc, Tcl_Obj *const* objv)
+NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL_SIZE_T objc, Tcl_Obj *const* objv)
 {
     const NsServer *servPtr = NsGetInitServer();
     int             result = TCL_OK;
 
     if (unlikely(objc < 2)) {
-        Tcl_WrongNumArgs(interp, 1, objv, "script ?args?");
+        Tcl_WrongNumArgs(interp, 1, objv, "/script/ ?/arg .../?");
         result = TCL_ERROR;
 
     } else if (unlikely(servPtr == NULL)) {
@@ -932,14 +1086,17 @@ NsTclServerRootProcObjCmd(ClientData UNUSED(clientData), Tcl_Interp *interp, TCL
  */
 
 const char *
-NsTclServerRoot(Ns_DString *dest, const char *host, const void *arg)
+NsTclServerRoot(Tcl_DString *dest, const char *host, const void *arg)
 {
     const Ns_TclCallback *cbPtr = arg;
     const char           *result = NULL;
+    Ns_ReturnCode         rc = Ns_TclEvalCallback(NULL, cbPtr, dest, host, NS_SENTINEL);
 
-    if (Ns_TclEvalCallback(NULL, cbPtr, dest, host, (char *)0L) == TCL_OK) {
-        result = Ns_DStringValue(dest);
+    if (rc == TCL_OK || rc == TCL_RETURN) {
+        result = dest->string;
     }
+
+    /*Ns_Log(Notice, "??? NsTclServerRoot rc %s -> '%s'", Ns_TclReturnCodeString(rc), result);*/
     return result;
 }
 
@@ -961,7 +1118,7 @@ NsTclServerRoot(Ns_DString *dest, const char *host, const void *arg)
  */
 
 static char *
-MakePath(Ns_DString *dest, va_list *pap)
+MakePath(Tcl_DString *dest, va_list *pap)
 {
     char      *s;
     TCL_SIZE_T len;
@@ -973,7 +1130,7 @@ MakePath(Ns_DString *dest, va_list *pap)
             char temp = *(s+2);
 
             *(s + 2) = '\0';
-            Ns_DStringNAppend(dest, s, 2);
+            Tcl_DStringAppend(dest, s, 2);
             *(s + 2) = temp;
             s += 2;
         }
@@ -982,12 +1139,12 @@ MakePath(Ns_DString *dest, va_list *pap)
                 ++s;
             }
             if (*s != '\0') {
-                Ns_DStringNAppend(dest, "/", 1);
+                Tcl_DStringAppend(dest, "/", 1);
                 len = 0;
                 while (s[len] != '\0' && !ISSLASH(s[len])) {
                     ++len;
                 }
-                Ns_DStringNAppend(dest, s, len);
+                Tcl_DStringAppend(dest, s, len);
                 s += len;
             }
         }
@@ -1015,13 +1172,13 @@ MakePath(Ns_DString *dest, va_list *pap)
  *----------------------------------------------------------------------
  */
 static const char *
-ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
+ServerRoot(Tcl_DString *dest, const NsServer *servPtr, const char *rawHost)
 {
     char           *safehost;
     const char     *path = NULL;
     Ns_Conn        *conn;
     const Ns_Set   *headers;
-    Ns_DString      ds;
+    Tcl_DString     ds;
 
     NS_NONNULL_ASSERT(dest != NULL);
     NS_NONNULL_ASSERT(servPtr != NULL);
@@ -1038,7 +1195,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
              */
             Tcl_DStringAppend(dest, conn->request.serverRoot, TCL_INDEX_NONE);
             path = dest->string;
-        } else {
+        } else if (conn != NULL) {
             /*
              * Call the registered proc which is typically, a Tcl
              * call. Therefore, make sure, the connection has already an
@@ -1047,7 +1204,21 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
             Ns_GetConnInterp(conn);
 
             path = (servPtr->vhost.serverRootProc)(dest, rawHost, servPtr->vhost.serverRootArg);
-            if (conn != NULL && path != NULL) {
+            if (path != NULL) {
+                if (!Ns_PathIsAbsolute(path)) {
+                    /*
+                     * The computed path is not absolute. Prepend it with the
+                     * static serverdir.
+                     */
+                    Tcl_DStringInit(&ds);
+                    Ns_MakePath(&ds, servPtr->opts.serverdir, path, NS_SENTINEL);
+                    Tcl_DStringSetLength(dest, 0);
+                    Tcl_DStringAppend(dest, ds.string, ds.length);
+                    Tcl_DStringFree(&ds);
+                }
+            }
+
+            if (path != NULL) {
                 Ns_Log(Debug, "cache value <%s>", path);
                 conn->request.serverRoot = ns_strdup(path);
             }
@@ -1056,7 +1227,7 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
                && (rawHost != NULL
                    || ((conn = Ns_GetConn()) != NULL
                        && (headers = Ns_ConnHeaders(conn)) != NULL
-                       && (rawHost = Ns_SetIGet(headers, "Host")) != NULL))
+                       && (rawHost = Ns_SetIGet(headers, "host")) != NULL))
                && *rawHost != '\0') {
 
         /*
@@ -1068,8 +1239,8 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
             /*
              * Normalize the Host string.
              */
-            Ns_DStringInit(&ds);
-            safehost = Ns_DStringAppend(&ds, rawHost);
+            Tcl_DStringInit(&ds);
+            safehost = Tcl_DStringAppend(&ds, rawHost, TCL_INDEX_NONE);
 
             (void) Ns_StrToLower(safehost);
             if ((servPtr->vhost.opts & NSD_STRIP_WWW) != 0u
@@ -1086,13 +1257,13 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
             /*
              * Build the final path.
              */
-            path = Ns_MakePath(dest, servPtr->fastpath.serverdir,
-                               servPtr->vhost.hostprefix, (char *)0L);
+            path = Ns_MakePath(dest, servPtr->opts.serverdir,
+                               servPtr->vhost.hostprefix, NS_SENTINEL);
             if (servPtr->vhost.hosthashlevel > 0) {
                 Ns_HashPath(dest, safehost, servPtr->vhost.hosthashlevel);
             }
             Ns_NormalizePath(dest, safehost);
-            Ns_DStringFree(&ds);
+            Tcl_DStringFree(&ds);
         }
     }
 
@@ -1100,10 +1271,10 @@ ServerRoot(Ns_DString *dest, const NsServer *servPtr, const char *rawHost)
         /*
          * Default to static server root.
          */
-        path = Ns_MakePath(dest, servPtr->fastpath.serverdir, (char *)0L);
+        path = Ns_MakePath(dest, servPtr->opts.serverdir, NS_SENTINEL);
     }
 
-    Ns_Log(Debug, "ServerRoot returns path <%s> // <%s>", path, dest->string);
+    Ns_Log(Debug, "--- ServerRoot %s returns path <%s>", servPtr->server, path);
     return path;
 }
 

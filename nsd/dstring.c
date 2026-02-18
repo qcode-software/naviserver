@@ -13,7 +13,7 @@
 /*
  * dstring.c --
  *
- *      Ns_DString routines.  Ns_DString's are now compatible
+ *      Tcl_DString routines.  Ns_DString's are now compatible
  *      with Tcl_DString's.
  */
 
@@ -37,14 +37,14 @@
  */
 
 char *
-Ns_DStringVarAppend(Ns_DString *dsPtr, ...)
+Ns_DStringVarAppend(Tcl_DString *dsPtr, ...)
 {
     register const char *s;
     va_list              ap;
 
     va_start(ap, dsPtr);
     for (s = va_arg(ap, char *); s != NULL; s = va_arg(ap, char *)) {
-        Ns_DStringAppend(dsPtr, s);
+        Tcl_DStringAppend(dsPtr, s, TCL_INDEX_NONE);
     }
     va_end(ap);
 
@@ -58,7 +58,7 @@ Ns_DStringVarAppend(Ns_DString *dsPtr, ...)
  * Ns_DStringExport --
  *
  *      Return a copy of the string value on the heap.
- *      Ns_DString is left in an initialized state.
+ *      Tcl_DString is left in an initialized state.
  *
  * Results:
  *      Pointer to ns_malloc'ed string which must be eventually freed.
@@ -71,7 +71,7 @@ Ns_DStringVarAppend(Ns_DString *dsPtr, ...)
  */
 
 char *
-Ns_DStringExport(Ns_DString *dsPtr)
+Ns_DStringExport(Tcl_DString *dsPtr)
 {
     char   *s;
     size_t  size;
@@ -102,7 +102,7 @@ Ns_DStringExport(Ns_DString *dsPtr)
         memcpy(s, dsPtr->string, size);
     }
 #endif
-    Ns_DStringFree(dsPtr);
+    Tcl_DStringFree(dsPtr);
 
     return s;
 }
@@ -124,12 +124,12 @@ Ns_DStringExport(Ns_DString *dsPtr)
  */
 
 char *
-Ns_DStringAppendArg(Ns_DString *dsPtr, const char *bytes)
+Ns_DStringAppendArg(Tcl_DString *dsPtr, const char *bytes)
 {
     NS_NONNULL_ASSERT(dsPtr != NULL);
     NS_NONNULL_ASSERT(bytes != NULL);
 
-    return Ns_DStringNAppend(dsPtr, bytes, (TCL_SIZE_T)strlen(bytes) + 1);
+    return Tcl_DStringAppend(dsPtr, bytes, (TCL_SIZE_T)strlen(bytes) + 1);
 }
 
 
@@ -149,7 +149,7 @@ Ns_DStringAppendArg(Ns_DString *dsPtr, const char *bytes)
  */
 
 char *
-Ns_DStringPrintf(Ns_DString *dsPtr, const char *fmt, ...)
+Ns_DStringPrintf(Tcl_DString *dsPtr, const char *fmt, ...)
 {
     char           *str;
     va_list         ap;
@@ -181,7 +181,7 @@ Ns_DStringPrintf(Ns_DString *dsPtr, const char *fmt, ...)
  */
 
 char *
-Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
+Ns_DStringVPrintf(Tcl_DString *dsPtr, const char *fmt, va_list apSrc)
 {
     char      *buf;
     int        result;
@@ -205,7 +205,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
     } else {
         newLength = dsPtr->spaceAvl -1; /* leave space for dstring NIL */
     }
-    Ns_DStringSetLength(dsPtr, newLength);
+    Tcl_DStringSetLength(dsPtr, newLength);
 
     /*
      * Now that any dstring buffer relocation has taken place it is
@@ -231,7 +231,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
     if ((size_t)result >= bufLength) {
         newLength = dsPtr->spaceAvl + ((TCL_SIZE_T)result - (TCL_SIZE_T)bufLength);
 #endif
-        Ns_DStringSetLength(dsPtr, newLength);
+        Tcl_DStringSetLength(dsPtr, newLength);
 
         buf = dsPtr->string + origLength;
         bufLength = (size_t)newLength - (size_t)origLength;
@@ -247,12 +247,12 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
      */
 
     if (result > 0) {
-        Ns_DStringSetLength(dsPtr, origLength + (TCL_SIZE_T)result);
+        Tcl_DStringSetLength(dsPtr, origLength + (TCL_SIZE_T)result);
     } else {
-        Ns_DStringSetLength(dsPtr, origLength);
+        Tcl_DStringSetLength(dsPtr, origLength);
     }
 
-    return Ns_DStringValue(dsPtr);
+    return dsPtr->string;
 }
 
 
@@ -273,7 +273,7 @@ Ns_DStringVPrintf(Ns_DString *dsPtr, const char *fmt, va_list apSrc)
  */
 
 char **
-Ns_DStringAppendArgv(Ns_DString *dsPtr)
+Ns_DStringAppendArgv(Tcl_DString *dsPtr)
 {
     char      *s, **argv;
     TCL_SIZE_T len, size, i, argc;
@@ -298,7 +298,7 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
 
     len = ((dsPtr->length / 8) + 1) * 8;
     size = len + ((TCL_SIZE_T)sizeof(char *) * (argc + 1));
-    Ns_DStringSetLength(dsPtr, size);
+    Tcl_DStringSetLength(dsPtr, size);
 
     /*
      * Set the argv elements to the strings.
@@ -315,7 +315,7 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
     return argv;
 }
 
-
+#ifdef NS_WITH_DEPRECATED
 /*
  *----------------------------------------------------------------------
  * Ns_DStringPop --
@@ -332,13 +332,13 @@ Ns_DStringAppendArgv(Ns_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 
-Ns_DString *
+Tcl_DString *
 Ns_DStringPop(void)
 {
-    Ns_DString *dsPtr;
+    Tcl_DString *dsPtr;
 
     dsPtr = ns_malloc(sizeof(Ns_DString));
-    Ns_DStringInit(dsPtr);
+    Tcl_DStringInit(dsPtr);
     return dsPtr;
 }
 
@@ -359,11 +359,12 @@ Ns_DStringPop(void)
  */
 
 void
-Ns_DStringPush(Ns_DString *dsPtr)
+Ns_DStringPush(Tcl_DString *dsPtr)
 {
-    Ns_DStringFree(dsPtr);
+    Tcl_DStringFree(dsPtr);
     ns_free(dsPtr);
 }
+#endif
 
 /*----------------------------------------------------------------------
  *
@@ -383,7 +384,7 @@ Ns_DStringPush(Ns_DString *dsPtr)
  *----------------------------------------------------------------------
  */
 char *
-Ns_DStringAppendPrintable(Tcl_DString *dsPtr, bool indentMode, const char *buffer, size_t len)
+Ns_DStringAppendPrintable(Tcl_DString *dsPtr, bool indentMode, bool tabExpandMode, const char *buffer, size_t len)
 {
     size_t i;
 
@@ -395,6 +396,8 @@ Ns_DStringAppendPrintable(Tcl_DString *dsPtr, bool indentMode, const char *buffe
 
         if (c == '\n' && indentMode) {
             Tcl_DStringAppend(dsPtr, "\n:    ", 6);
+        } else if (c == '\t' && tabExpandMode) {
+            Tcl_DStringAppend(dsPtr, "    ", 4);
         } else if ((CHARTYPE(print, c) == 0) || (c > UCHAR(127))) {
             Ns_DStringPrintf(dsPtr, "\\x%.2x", (c & 0xffu));
         } else {
@@ -402,7 +405,91 @@ Ns_DStringAppendPrintable(Tcl_DString *dsPtr, bool indentMode, const char *buffe
         }
     }
 
-    return Ns_DStringValue(dsPtr);
+    return dsPtr->string;
+}
+
+
+/*
+ *----------------------------------------------------------------------
+ *
+ * Ns_DStringAppendEscaped --
+ *
+ *      Scans the input string for special characters (newline, carriage return,
+ *      tab, backslash, and double-quote) and appends an escaped version of the
+ *      string to the given Tcl_DString. Each occurrence of a special character is
+ *      replaced by its corresponding escape sequence:
+ *
+ *          "\n"   for newline
+ *          "\r"   for carriage return
+ *          "\t"   for tab
+ *          "\\"   for backslash
+ *          "\""   for double-quote
+ *
+ *      If no special character is found in the remainder of the input string,
+ *      the rest of the string is appended as is.
+ *
+ * Results:
+ *      None.
+ *
+ * Side effects:
+ *      The content of the Tcl_DString pointed to by dsPtr is modified by appending
+ *      the escaped version of inputString.
+ *
+ *----------------------------------------------------------------------
+ */
+char *
+Ns_DStringAppendEscaped(Tcl_DString *dsPtr, const char *inputString)
+{
+    const char *nextSpecialChar;
+
+    NS_NONNULL_ASSERT(dsPtr != NULL);
+    NS_NONNULL_ASSERT(inputString != NULL);
+
+    do {
+        nextSpecialChar = strpbrk(inputString, "\r\n\t\\\"");
+        if (nextSpecialChar == NULL) {
+            /*
+             * No break-char found, append all and stop
+             */
+            Tcl_DStringAppend(dsPtr, inputString, TCL_INDEX_NONE);
+        } else {
+            /*
+             * Append the break-char free prefix
+             */
+            Tcl_DStringAppend(dsPtr, inputString, (TCL_SIZE_T)(nextSpecialChar - inputString));
+
+            /*
+             * Escape the break-char
+             */
+            switch (*nextSpecialChar) {
+            case '\n':
+                Tcl_DStringAppend(dsPtr, "\\n", 2);
+                break;
+            case '\r':
+                Tcl_DStringAppend(dsPtr, "\\r", 2);
+                break;
+            case '\t':
+                Tcl_DStringAppend(dsPtr, "\\t", 2);
+                break;
+            case '"':
+                Tcl_DStringAppend(dsPtr, "\\\"", 2);
+                break;
+            case '\\':
+                Tcl_DStringAppend(dsPtr, "\\\\", 2);
+                break;
+            default:
+                /*should not happen */ assert(0);
+                break;
+            }
+
+            /*
+             * Check for further protected characters after the break char.
+             */
+            inputString = nextSpecialChar + 1;
+        }
+    } while (nextSpecialChar != NULL);
+
+    return dsPtr->string;
 }
 
 /*----------------------------------------------------------------------
@@ -426,7 +513,7 @@ Ns_DStringAppendTime(Tcl_DString *dsPtr, const Ns_Time *timePtr)
     NS_NONNULL_ASSERT(timePtr != NULL);
 
     if (timePtr->sec < 0 || (timePtr->sec == 0 && timePtr->usec < 0)) {
-        Ns_DStringNAppend(dsPtr, "-", 1);
+        Tcl_DStringAppend(dsPtr, "-", 1);
     }
     if (timePtr->usec == 0) {
         Ns_DStringPrintf(dsPtr, "%lld", llabs(timePtr->sec));
@@ -497,7 +584,7 @@ Ns_DStringAppendSockState(Tcl_DString *dsPtr, Ns_SockState state)
  *----------------------------------------------------------------------
  * Compatibility routines --
  *
- *  Wrappers for old Ns_DString functions.
+ *  Wrappers for old Tcl_DString functions.
  *
  * Results:
  *      See Tcl_DString routine.
@@ -508,101 +595,56 @@ Ns_DStringAppendSockState(Tcl_DString *dsPtr, Ns_SockState state)
  *----------------------------------------------------------------------
  */
 
-#undef Ns_DStringInit
-
-NS_EXTERN void Ns_DStringInit(Ns_DString *dsPtr)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringInit);
-
 void
-Ns_DStringInit(Ns_DString *dsPtr)
+Ns_DStringInit(Tcl_DString *dsPtr)
 {
     Tcl_DStringInit(dsPtr);
 }
 
-#undef Ns_DStringFree
-
-NS_EXTERN void Ns_DStringFree(Ns_DString *dsPtr)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringFree);
-
 void
-Ns_DStringFree(Ns_DString *dsPtr)
+Ns_DStringFree(Tcl_DString *dsPtr)
 {
     Tcl_DStringFree(dsPtr);
 }
 
-#undef Ns_DStringSetLength
-
-NS_EXTERN void Ns_DStringSetLength(Ns_DString *dsPtr, TCL_SIZE_T length)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
-
 void
-Ns_DStringSetLength(Ns_DString *dsPtr, TCL_SIZE_T length)
+Ns_DStringSetLength(Tcl_DString *dsPtr, TCL_SIZE_T length)
 {
     Tcl_DStringSetLength(dsPtr, length);
 }
 
-#undef Ns_DStringTrunc
-
-NS_EXTERN void Ns_DStringTrunc(Ns_DString *dsPtr, TCL_SIZE_T length)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringSetLength);
-
 void
-Ns_DStringTrunc(Ns_DString *dsPtr, TCL_SIZE_T length)
+Ns_DStringTrunc(Tcl_DString *dsPtr, TCL_SIZE_T length)
 {
     Tcl_DStringSetLength(dsPtr, length);
 }
-
-#undef Ns_DStringNAppend
-
-NS_EXTERN char *Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, TCL_SIZE_T length)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppend);
 
 char *
-Ns_DStringNAppend(Ns_DString *dsPtr, const char *bytes, TCL_SIZE_T length)
+Ns_DStringNAppend(Tcl_DString *dsPtr, const char *bytes, TCL_SIZE_T length)
 {
     return Tcl_DStringAppend(dsPtr, bytes, length);
 }
 
-#undef Ns_DStringAppend
-
-NS_EXTERN char *Ns_DStringAppend(Ns_DString *dsPtr, const char *bytes)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppend);
-
 char *
-Ns_DStringAppend(Ns_DString *dsPtr, const char *bytes)
+Ns_DStringAppend(Tcl_DString *dsPtr, const char *bytes)
 {
     return Tcl_DStringAppend(dsPtr, bytes, TCL_INDEX_NONE);
 }
 
-#undef Ns_DStringAppendElement
-
-NS_EXTERN char *Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringAppendElement);
-
 char *
-Ns_DStringAppendElement(Ns_DString *dsPtr, const char *bytes)
+Ns_DStringAppendElement(Tcl_DString *dsPtr, const char *bytes)
 {
     return Tcl_DStringAppendElement(dsPtr, bytes);
 }
 
-#undef Ns_DStringLength
-
-NS_EXTERN TCL_SIZE_T Ns_DStringLength(const Ns_DString *dsPtr)
-    NS_GNUC_DEPRECATED_FOR(TclstringlDStringLength);
-
 TCL_SIZE_T
-Ns_DStringLength(const Ns_DString *dsPtr)
+Ns_DStringLength(const Tcl_DString *dsPtr)
 {
     return dsPtr->length;
 }
 
-#undef Ns_DStringValue
-
-NS_EXTERN char *Ns_DStringValue(const Ns_DString *dsPtr)
-    NS_GNUC_DEPRECATED_FOR(Tcl_DStringValue);
-
 char *
-Ns_DStringValue(const Ns_DString *dsPtr)
+Ns_DStringValue(const Tcl_DString *dsPtr)
 {
     return dsPtr->string;
 }
